@@ -416,6 +416,10 @@ export function useTenantDashboard() {
     headline: '',
     subheadline: '',
     banner_url: '',
+    video_url: '',
+    gallery_video_url: '',
+    limit_single_item: false,
+    section_order: [],
     badge_text: 'Direct Access Offer',
     client_logos: [],
     problem_title: 'Apakah Anda Sering Menghadapi Masalah Ini?',
@@ -1991,6 +1995,10 @@ export function useTenantDashboard() {
       enable_qris: cfg?.enable_qris ?? true,
       enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
       affiliate_commission_rate: 0,
+      video_url: cfg?.video_url || '',
+      gallery_video_url: cfg?.gallery_video_url || '',
+      limit_single_item: cfg?.limit_single_item ?? false,
+      section_order: cfg?.section_order ? [...cfg.section_order] : [],
     });
     setIsSinglePageModalOpen(true);
   };

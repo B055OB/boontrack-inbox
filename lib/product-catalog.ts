@@ -104,6 +104,8 @@ export interface SinglePageConfig {
   headline: string;
   subheadline: string;
   banner_url: string;
+  /** URL Video Utama (YouTube / Shorts / MP4 embed) di Section 1 */
+  video_url?: string;
   badge_text?: string;
   /** Scarcity / Urgency notification badge (e.g. { enabled: true, text: "🔥 Sisa 50 Seat Kuota Terbatas" }) */
   scarcity_badge?: {
@@ -163,9 +165,15 @@ export interface SinglePageConfig {
   whatsapp_cta_number?: string;
   /** When true, hides Alamat Lengkap & Kecamatan/Kota fields (for digital/consultation products). Default: false */
   hide_address_for_digital?: boolean;
+  /** Batasi pembelian maksimal 1 item per checkout (sembunyikan stepper kuantitas [- 1 +]) */
+  limit_single_item?: boolean;
+  /** Urutan kustom untuk section 1-9 pada landing page */
+  section_order?: string[];
 
   // 9. Interactive Product Media Showcase & Lightbox Gallery
   enable_media_gallery?: boolean;
+  /** URL Video Showcase / Review (YouTube / Shorts / MP4) di Section 2 */
+  gallery_video_url?: string;
   gallery_images?: Array<{
     url: string;
     title?: string;
@@ -907,6 +915,10 @@ export function resolveSinglePageProduct(
               badge_text: 'Direct Access Offer',
               checkout_action_mode: 'DIRECT',
               whatsapp_custom_message: '',
+              video_url: '',
+              gallery_video_url: '',
+              limit_single_item: false,
+              section_order: [],
             },
           };
         }

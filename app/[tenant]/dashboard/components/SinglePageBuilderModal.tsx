@@ -7,6 +7,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Plus,
   Trash2,
   Store,
@@ -14,8 +16,10 @@ import {
   Save,
   RefreshCw,
   MessageCircle,
+  Video,
 } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
+import VideoEmbedPlayer from '@/components/VideoEmbedPlayer';
 import {
   ProductItem,
   SinglePageConfig,
@@ -161,6 +165,29 @@ export default function SinglePageBuilderModal({
     }
   }, [isOpen]);
 
+  // Urutan Section yang dapat diatur oleh Merchant [↑] [↓]
+  const defaultTabIds = BUILDER_TABS.map((t) => t.id);
+  const currentSectionOrder: string[] = (singlePageForm.section_order && singlePageForm.section_order.length > 0)
+    ? [
+        ...singlePageForm.section_order.filter((id) => defaultTabIds.includes(id as any)),
+        ...defaultTabIds.filter((id) => !singlePageForm.section_order?.includes(id)),
+      ]
+    : defaultTabIds;
+
+  const orderedTabs = currentSectionOrder
+    .map((id) => BUILDER_TABS.find((t) => t.id === id))
+    .filter(Boolean) as (typeof BUILDER_TABS)[number][];
+
+  const handleMoveSection = (index: number, direction: 'up' | 'down') => {
+    const newOrder = [...currentSectionOrder];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newOrder.length) return;
+    const temp = newOrder[index];
+    newOrder[index] = newOrder[targetIndex];
+    newOrder[targetIndex] = temp;
+    setSinglePageForm((p) => ({ ...p, section_order: newOrder }));
+  };
+
   if (!isOpen || !activeProduct) return null;
 
   return (
@@ -231,25 +258,56 @@ export default function SinglePageBuilderModal({
               <span className="hidden md:block text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 pt-1 pb-1">
                 URUTAN SECTION (ATAS KE BAWAH)
               </span>
-              {BUILDER_TABS.map((tab) => {
+              {orderedTabs.map((tab, idx) => {
                 const isEnabled = (singlePageForm as any)[tab.toggleKey] ?? tab.defaultEnabled;
                 const isActive = activeBuilderTab === tab.id;
                 return (
                   <div
                     key={tab.id}
                     onClick={() => setActiveBuilderTab(tab.id as any)}
-                    className={`flex items-center justify-between p-2 md:p-2.5 rounded-xl md:rounded-2xl border transition-all cursor-pointer shrink-0 md:shrink select-none ${
+                    className={`flex items-center justify-between p-2 md:p-2 rounded-xl md:rounded-2xl border transition-all cursor-pointer shrink-0 md:shrink select-none ${
                       isActive
                         ? 'bg-blue-50/90 border-blue-400 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
                         : 'bg-white hover:bg-slate-100/90 border-slate-200/80 text-slate-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      {/* Tombol Reorder Urutan Section [↑] [↓] */}
+                      <div className="flex items-center gap-0.5 shrink-0 bg-slate-100 rounded-lg p-0.5 border border-slate-200/60">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSection(idx, 'up');
+                          }}
+                          className="p-1 rounded hover:bg-white text-slate-500 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
+                          title="Pindahkan Section ke Atas"
+                          aria-label="Pindahkan Section ke Atas"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === orderedTabs.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSection(idx, 'down');
+                          }}
+                          className="p-1 rounded hover:bg-white text-slate-500 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
+                          title="Pindahkan Section ke Bawah"
+                          aria-label="Pindahkan Section ke Bawah"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <span className="text-[11px] shrink-0 font-mono font-bold text-slate-400">#{idx + 1}</span>
                       <span className="text-sm shrink-0">{tab.icon}</span>
                       <span className={`truncate text-xs font-bold ${
                         isActive ? 'text-blue-900 font-black' : 'text-slate-800'
                       }`}>
-                        {tab.label}
+                        {tab.label.replace(/^\d+\.\s*/, '')}
                       </span>
                     </div>
 
@@ -355,6 +413,36 @@ export default function SinglePageBuilderModal({
                   />
                 </div>
               )}
+
+              {/* Input URL Video Banner Utama */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block text-xs">
+                    URL Video Utama / Banner (YouTube / Shorts / MP4 embed)
+                  </label>
+                  <span className="text-[10px] text-blue-600 bg-blue-50 font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                    Video Hero
+                  </span>
+                </div>
+                <input
+                  type="url"
+                  value={singlePageForm.video_url || ''}
+                  onChange={(e) => setSinglePageForm((p) => ({ ...p, video_url: e.target.value }))}
+                  placeholder="https://www.youtube.com/watch?v=... atau https://youtube.com/shorts/... atau link .mp4"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Mendukung YouTube, YouTube Shorts, atau video MP4. Jika diisi, video akan disematkan di banner utama hero landing page.
+                </p>
+                {singlePageForm.video_url && (
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 mt-2">
+                    <span className="text-[10px] font-bold text-slate-600 block">Preview Video Hero:</span>
+                    <div className="max-w-md">
+                      <VideoEmbedPlayer url={singlePageForm.video_url} title="Preview Video Hero" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -367,6 +455,33 @@ export default function SinglePageBuilderModal({
                 enabled={singlePageForm.enable_media_gallery ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_media_gallery: val }))}
               />
+
+              {/* Input URL Video Galeri Media */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    URL Video Galeri / Showcase (YouTube / Shorts / MP4)
+                  </label>
+                  <span className="text-[10px] text-purple-600 bg-purple-50 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                    Video Showcase
+                  </span>
+                </div>
+                <input
+                  type="url"
+                  value={singlePageForm.gallery_video_url || ''}
+                  onChange={(e) => setSinglePageForm((p) => ({ ...p, gallery_video_url: e.target.value }))}
+                  placeholder="https://www.youtube.com/watch?v=... atau https://youtu.be/... atau link .mp4"
+                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-purple-600"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Sematkan video unboxing, demo produk, atau review customer yang akan ditampilkan di section galeri media.
+                </p>
+                {singlePageForm.gallery_video_url && (
+                  <div className="pt-2 max-w-md">
+                    <VideoEmbedPlayer url={singlePageForm.gallery_video_url} title="Preview Video Galeri" />
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center justify-between">
                 <div>
@@ -1623,6 +1738,39 @@ export default function SinglePageBuilderModal({
                     </div>
                   </>
                 )}
+              </div>
+
+              {/* Batasi Pembelian Maksimal 1 Item Toggle */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black tracking-tight text-slate-900">
+                      Batasi Pembelian Maksimal 1 Item
+                    </h4>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        singlePageForm.limit_single_item
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {singlePageForm.limit_single_item ? 'Aktif' : 'Nonaktif'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Jika diaktifkan, selector tombol [- 1 +] disembunyikan dan otomatis mengunci kuantitas = 1 pada checkout.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(singlePageForm.limit_single_item)}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, limit_single_item: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
               </div>
 
               {/* C. Dynamic CTA Button Text Input */}

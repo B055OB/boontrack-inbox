@@ -72,6 +72,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     return stock > 0 ? Math.min(stock, 99) : 99;
   }, [product]);
 
+  const isLimitSingleItem = Boolean(
+    (product as any)?.single_page_config?.limit_single_item ||
+    (product as any)?.limit_single_item ||
+    (product as any)?.metadata?.limit_single_item
+  );
+
+  useEffect(() => {
+    if (isLimitSingleItem && quantity !== 1) {
+      setQuantity(1);
+    }
+  }, [isLimitSingleItem, quantity]);
+
   const handleQuantityChange = (newQty: number) => {
     const clamped = Math.max(1, Math.min(newQty, maxQuantity));
     setQuantity(clamped);
@@ -662,7 +674,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
     const clientTrackingContext = getClientTrackingContext();
 
-    const cleanBriefingUrl = (!isFood && isDigital) ? normalizeBriefingUrl(briefingUrl) : null;
+    const cleanBriefingUrl = briefingUrl ? normalizeBriefingUrl(briefingUrl) : null;
 
     try {
       const result = await createOrderAndInvoice({
@@ -730,11 +742,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         productType: resolvedProductType,
         fulfillmentMetadata: {
           ...(resolvedFulfillmentMetadata || {}),
+          order_notes: kitchenNotes.trim() || undefined,
           ...(isFood ? {
             dining_option: foodDiningOption,
             kitchen_notes: kitchenNotes.trim() || undefined,
           } : {}),
         },
+        notes: kitchenNotes.trim() || undefined,
+        kitchen_notes: kitchenNotes.trim() || undefined,
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {
           briefing_url: cleanBriefingUrl,
@@ -1430,18 +1445,21 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                   </span>
                 </div>
 
-                {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-300 block">Jumlah Kuantiti:</span>
-                    {quantity > 1 && (
+                {/* Kontrol Pemilihan Kuantitas / Stepper (- [ Qty ] +) */}
+                {!isLimitSingleItem && (
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-300 block">Kuantitas:</span>
                       <span className="text-[10px] text-slate-400">
-                        Subtotal: <strong className="text-emerald-400 font-mono">Rp {productSubtotal.toLocaleString("id-ID")}</strong>
+                        {quantity > 1 ? (
+                          <>Subtotal: <strong className="text-emerald-400 font-mono">Rp {productSubtotal.toLocaleString("id-ID")}</strong></>
+                        ) : (
+                          'Tentukan jumlah kuantitas produk'
+                        )}
                       </span>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-2xs">
+                    <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-2xs">
                     <button
                       type="button"
                       onClick={() => handleQuantityChange(quantity - 1)}
@@ -1473,6 +1491,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                     </button>
                   </div>
                 </div>
+              )}
               </div>
             )}
 
@@ -1560,39 +1579,24 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 </div>
               )}
 
-              {/* INPUT BRIEFING LINK (Google Docs / Drive / Notion) - HANYA UNTUK DIGITAL / SERVICE */}
-              {!isFood && isDigital && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-slate-400 font-medium">Link Dokumen Briefing (Opsional)</label>
-                    <span className="text-[10px] text-slate-500">Google Docs / Notion / Drive</span>
-                  </div>
-                  <input
-                    type="text"
-                    value={briefingUrl}
-                    onChange={(e) => setBriefingUrl(e.target.value)}
-                    placeholder="Contoh: docs.google.com/document/d/... atau notion.so/..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs font-mono"
-                  />
-                  <span className="text-[10px] text-slate-500 block">
-                    💡 Cantumkan link referensi, materi, atau brief kampanye. Protokol https:// otomatis ditambahkan jika terlewat.
-                  </span>
-                </div>
-              )}
-
-              {/* CATATAN KHUSUS DAPUR / ALERGI (HANYA PRODUK KULINER/FOOD) */}
-              {isFood && (
-                <div className="space-y-1">
-                  <label className="text-slate-400 font-medium">Catatan Khusus Dapur / Alergi (Opsional)</label>
-                  <textarea
-                    rows={2}
-                    value={kitchenNotes}
-                    onChange={(e) => setKitchenNotes(e.target.value)}
-                    placeholder="Contoh: Sambal dipisah, level pedas sedang, tanpa daun bawang/alergi udang..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-sm md:text-xs"
-                  />
-                </div>
-              )}
+              {/* CATATAN TAMBAHAN / BRIEFING SINGKAT (UNIVERSAL DI SEMUA KATEGORI PRODUK) */}
+              <div className="space-y-1">
+                <label className="text-slate-400 font-medium text-xs">
+                  Catatan Tambahan / Briefing Singkat <span className="text-slate-500 font-normal text-[11px]">(Opsional)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={kitchenNotes}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setKitchenNotes(val);
+                    const match = val.match(/(https?:\/\/[^\s]+|docs\.google\.com[^\s]+|notion\.so[^\s]+|drive\.google\.com[^\s]+)/i);
+                    if (match) setBriefingUrl(match[0]);
+                  }}
+                  placeholder="Tulis catatan khusus untuk penjual di sini (contoh: request varian khusus, catatan rasa/pengiriman, atau detail briefing jasa)..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-xs transition"
+                />
+              </div>
 
               {/* ── METODE PENGANTARAN / PENYAJIAN MAKANAN (PRESET FOOD) ── */}
               {isFood && (

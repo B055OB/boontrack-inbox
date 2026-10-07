@@ -84,6 +84,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
 import ProductMediaShowcase from '@/components/storefront/ProductMediaShowcase';
+import VideoEmbedPlayer from '@/components/VideoEmbedPlayer';
 import MiniIntakeForm from '@/components/storefront/MiniIntakeForm';
 import { useCart } from '@/lib/cart/use-cart';
 import { evaluateCartPolicy } from '@/lib/cart/cart-policy';
@@ -148,7 +149,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const pSlug = params.productSlug || '';
   const refToken = (params.referenceToken || '').trim();
   const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Resto (Self-Pickup)' : '';
-  const kitchenLine = params.kitchenNotes ? `\n- Catatan Dapur / Alergi: ${params.kitchenNotes}` : '';
+  const notesLine = params.kitchenNotes ? `\n- Catatan / Briefing: ${params.kitchenNotes}` : '';
   const qtyLine = params.quantity && params.quantity > 1 ? `\n- Jumlah (Qty): ${params.quantity} pcs` : '';
 
   let text: string;
@@ -182,7 +183,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
       }
     } else {
       // Format standar: "Halo Admin, konfirmasi pesanan [Ref: BT-XXXXX]..."
-      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${kitchenLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
+      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${notesLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
     }
   } else if (params.customMessage && params.customMessage.trim()) {
     text = params.customMessage
@@ -1182,6 +1183,12 @@ function SingleProductContent() {
   };
 
   useEffect(() => {
+    if (config?.limit_single_item && quantity !== 1) {
+      setQuantity(1);
+    }
+  }, [config?.limit_single_item, quantity]);
+
+  useEffect(() => {
     if (variantList.length === 1) {
       setSelectedVariant(variantList[0]);
     } else if (variantList.length > 1 && (!selectedVariant || !variantList.includes(selectedVariant))) {
@@ -1634,7 +1641,7 @@ function SingleProductContent() {
     const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
     const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
 
-    const cleanBriefingUrl = isDigitalPreset ? normalizeBriefingUrl(briefingUrl) : null;
+    const cleanBriefingUrl = briefingUrl ? normalizeBriefingUrl(briefingUrl) : (kitchenNotes ? normalizeBriefingUrl(kitchenNotes) : null);
     const directRefToken = generateReferenceToken();
 
     const effectiveShippingAddress = isFoodPreset
@@ -1687,6 +1694,9 @@ function SingleProductContent() {
           ...(destinationLatitude ? { destination_latitude: destinationLatitude } : {}),
           ...(destinationLongitude ? { destination_longitude: destinationLongitude } : {}),
           reference_token: directRefToken,
+          order_notes: kitchenNotes.trim() || undefined,
+          notes: kitchenNotes.trim() || undefined,
+          kitchen_notes: kitchenNotes.trim() || undefined,
           ...(isFoodPreset ? {
             dining_option: foodDiningOption,
             kitchen_notes: kitchenNotes.trim() || undefined,
@@ -1774,7 +1784,7 @@ function SingleProductContent() {
     const courierLabel = selectedShipping ? (selectedShipping.courier_name || (selectedShipping as any).name) : '';
     const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
     const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
-    const cleanBriefingUrl = isDigitalPreset ? normalizeBriefingUrl(briefingUrl) : null;
+    const cleanBriefingUrl = briefingUrl ? normalizeBriefingUrl(briefingUrl) : (kitchenNotes ? normalizeBriefingUrl(kitchenNotes) : null);
 
     const effectiveShippingAddress = isFoodPreset
       ? (foodDiningOption === 'PICKUP'
@@ -1826,6 +1836,9 @@ function SingleProductContent() {
           ...(selectedAreaId ? { destination_area_id: selectedAreaId } : {}),
           reference_token: refToken,
           checkout_action_mode: 'WHATSAPP',
+          order_notes: kitchenNotes.trim() || undefined,
+          notes: kitchenNotes.trim() || undefined,
+          kitchen_notes: kitchenNotes.trim() || undefined,
           ...(isFoodPreset ? {
             dining_option: foodDiningOption,
             kitchen_notes: kitchenNotes.trim() || undefined,
@@ -1875,7 +1888,7 @@ function SingleProductContent() {
         variant: selectedVariant,
         quantity,
         fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
-        kitchenNotes: isFoodPreset && kitchenNotes.trim() ? kitchenNotes.trim() : undefined,
+        kitchenNotes: kitchenNotes.trim() ? kitchenNotes.trim() : undefined,
       });
 
       setWaOrderSuccess({ token: refToken, url: waUrl || '' });
@@ -2256,42 +2269,24 @@ function SingleProductContent() {
           </div>
         )}
 
-        {/* Catatan Khusus Dapur / Alergi HANYA untuk Preset FOOD */}
-        {isFoodPreset && (
-          <div>
-            <label className="font-bold text-slate-700 block mb-1">
-              Catatan Khusus Dapur / Alergi <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Contoh: Sambal dipisah, tidak pakai daun bawang, alergi udang/kacang..."
-              value={kitchenNotes}
-              onChange={(e) => setKitchenNotes(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-xs transition"
-            />
-          </div>
-        )}
-
-        {/* Link Dokumen Briefing HANYA untuk Preset DIGITAL / SERVICE */}
-        {isDigitalPreset && (!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="font-bold text-slate-700">
-                Link Dokumen Briefing <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
-              </label>
-              <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                Google Docs / Drive / Notion
-              </span>
-            </div>
-            <input
-              type="text"
-              placeholder="Contoh: docs.google.com/document/d/... atau notion.so/..."
-              value={briefingUrl}
-              onChange={(e) => setBriefingUrl(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-600 focus:bg-white text-sm md:text-xs font-mono transition"
-            />
-          </div>
-        )}
+        {/* Catatan Tambahan Universal di SEMUA Kategori */}
+        <div>
+          <label className="font-bold text-slate-700 block mb-1">
+            Catatan Tambahan / Briefing Singkat <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+          </label>
+          <textarea
+            rows={3}
+            placeholder="Tulis catatan khusus untuk penjual di sini (contoh: request varian khusus, catatan rasa/pengiriman, atau detail briefing jasa)..."
+            value={kitchenNotes}
+            onChange={(e) => {
+              const val = e.target.value;
+              setKitchenNotes(val);
+              const match = val.match(/(https?:\/\/[^\s]+|docs\.google\.com[^\s]+|notion\.so[^\s]+|drive\.google\.com[^\s]+)/i);
+              if (match) setBriefingUrl(match[0]);
+            }}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-xs transition"
+          />
+        </div>
       </div>
 
       {/* Opsi Pengantaran Khusus FOOD / FNB (Kurir Instan / Ambil Sendiri di Resto) */}
@@ -2625,53 +2620,53 @@ function SingleProductContent() {
           </div>
         ) : null}
 
-        {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
-        <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-slate-700 block">Jumlah Kuantiti:</span>
-            <span className="text-[10px] text-slate-500">
-              {quantity > 1 ? (
-                <>Subtotal: <strong className="text-slate-900">Rp {productSubtotal.toLocaleString('id-ID')}</strong></>
-              ) : maxQuantity < 99 ? (
-                `Sisa stok: ${maxQuantity}`
-              ) : (
-                'Bebas tentukan jumlah'
-              )}
-            </span>
-          </div>
+        {/* Kontrol Pemilihan Kuantitas / Stepper (- [ Qty ] +) */}
+        {!config?.limit_single_item && (
+          <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-slate-700 block">Kuantitas:</span>
+              <span className="text-[10px] text-slate-500">
+                {quantity > 1 ? (
+                  <>Subtotal: <strong className="text-slate-900">Rp {productSubtotal.toLocaleString('id-ID')}</strong></>
+                ) : (
+                  'Tentukan jumlah kuantitas produk'
+                )}
+              </span>
+            </div>
 
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => handleQuantityChange(quantity - 1)}
-              disabled={quantity <= 1}
-              aria-label="Kurangi Jumlah"
-              className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <input
-              type="number"
-              min={1}
-              max={maxQuantity}
-              value={quantity}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val)) handleQuantityChange(val);
-              }}
-              className="w-10 text-center font-bold text-xs text-slate-900 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            <button
-              type="button"
-              onClick={() => handleQuantityChange(quantity + 1)}
-              disabled={quantity >= maxQuantity}
-              aria-label="Tambah Jumlah"
-              className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleQuantityChange(quantity - 1)}
+                disabled={quantity <= 1}
+                aria-label="Kurangi Jumlah"
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={maxQuantity}
+                value={quantity}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) handleQuantityChange(val);
+                }}
+                className="w-10 text-center font-bold text-xs text-slate-900 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleQuantityChange(quantity + 1)}
+                disabled={quantity >= maxQuantity}
+                aria-label="Tambah Jumlah"
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Input Data Pembeli: Hanya 3 Field (Ultra-Lean Single Section) */}
@@ -2749,45 +2744,24 @@ function SingleProductContent() {
           </div>
         )}
 
-        {/* Catatan Khusus Dapur / Alergi HANYA untuk Preset FOOD */}
-        {isFoodPreset && (
-          <div>
-            <label className="font-bold text-slate-700 block mb-1">
-              Catatan Khusus Dapur / Alergi <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Contoh: Sambal dipisah, level pedas sedang, alergi udang/kacang..."
-              value={kitchenNotes}
-              onChange={(e) => setKitchenNotes(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-xs transition"
-            />
-          </div>
-        )}
-
-        {/* Link Dokumen Briefing HANYA untuk Preset DIGITAL / SERVICE */}
-        {isDigitalPreset && (!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="font-bold text-slate-700">
-                Link Dokumen Briefing <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
-              </label>
-              <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                Google Docs / Drive / Notion
-              </span>
-            </div>
-            <input
-              type="text"
-              placeholder="Contoh: docs.google.com/document/d/... atau notion.so/..."
-              value={briefingUrl}
-              onChange={(e) => setBriefingUrl(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-600 focus:bg-white text-sm md:text-xs font-mono transition"
-            />
-            <span className="text-[10px] text-slate-500 block mt-1">
-              💡 Cantumkan link referensi, script konten, atau brief kampanye. Protokol https:// otomatis ditambahkan jika terlewat.
-            </span>
-          </div>
-        )}
+        {/* Catatan Tambahan Universal di SEMUA Kategori */}
+        <div>
+          <label className="font-bold text-slate-700 block mb-1">
+            Catatan Tambahan / Briefing Singkat <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+          </label>
+          <textarea
+            rows={3}
+            placeholder="Tulis catatan khusus untuk penjual di sini (contoh: request varian khusus, catatan rasa/pengiriman, atau detail briefing jasa)..."
+            value={kitchenNotes}
+            onChange={(e) => {
+              const val = e.target.value;
+              setKitchenNotes(val);
+              const match = val.match(/(https?:\/\/[^\s]+|docs\.google\.com[^\s]+|notion\.so[^\s]+|drive\.google\.com[^\s]+)/i);
+              if (match) setBriefingUrl(match[0]);
+            }}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-xs transition"
+          />
+        </div>
       </div>
 
       {/* Opsi Metode Pembayaran (Disesuaikan dari Konfigurasi Toko) */}
@@ -3918,490 +3892,534 @@ function SingleProductContent() {
         {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
         {isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
 
-        {/* 1. Hero Section (Hook + Flexible Banner/Image) */}
-        {config.enable_hero !== false && (
-          <section className="space-y-4">
-            <div className="w-full max-h-[420px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-50 border border-slate-100 shadow-sm relative group">
-              <img 
-                src={config.banner_url || (product as any).image_url || product.image || "/placeholder-product.png"} 
-                alt={product.name} 
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
-                }}
-                className="w-full h-auto max-h-[420px] object-contain rounded-2xl transition-transform duration-300 group-hover:scale-[1.01]"
-              />
-            </div>
+        {/* Render sections dynamically according to merchant ordering & video embeds */}
+        {(() => {
+          const defaultSectionOrder = [
+            'hook',
+            'media_gallery',
+            'client_logos',
+            'problem_solution',
+            'comparison',
+            'social_proof',
+            'offer_bonus',
+            'faq',
+            'payment_voucher',
+          ];
+          const effectiveOrder = (config.section_order && config.section_order.length > 0)
+            ? [
+                ...config.section_order.filter((id) => defaultSectionOrder.includes(id)),
+                ...defaultSectionOrder.filter((id) => !config.section_order?.includes(id)),
+              ]
+            : defaultSectionOrder;
 
-            {/* Pricing & Value Proposition */}
-            <div className="space-y-3 pt-1">
-              {config.badge_text && (
-                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 tracking-wide uppercase shadow-2xs">
-                  <Flame className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
-                  <span>{config.badge_text}</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="text-3xl sm:text-4xl font-black text-slate-900">
-                  {basePrice === 0 ? 'GRATIS' : `Rp ${basePrice.toLocaleString('id-ID')}`}
-                </span>
-                {promoPrice > basePrice && (
-                  <span className="text-sm line-through text-slate-400 font-semibold">
-                    Rp {promoPrice.toLocaleString('id-ID')}
-                  </span>
-                )}
-                <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-0.5 rounded-full">
-                  {basePrice === 0 
-                    ? (isFoodPreset ? 'Porsi Promo Spesial' : 'Akses Gratis / Freebie') 
-                    : (isFoodPreset ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini')}
-                </span>
-              </div>
-
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-snug">
-                {config.headline || product.name}
-              </h1>
-              <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
-                {config.subheadline || product.description}
-              </p>
-
-              {/* Visual Indikator Kuota Peserta / Stok Terbatas */}
-              {(!product.is_unlimited && product.stock > 0 && product.stock <= 100) && (
-                <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl space-y-2 my-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                      <Flame className="w-4 h-4 text-amber-600 animate-bounce" />
-                      <span>{scarcityHeaderLabel}</span>
-                    </div>
-                    <span className="font-extrabold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300 text-[11px]">
-                      {scarcityBadgeText}
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-amber-500 to-rose-500 h-2.5 rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(100, Math.max(15, (product.stock / 50) * 100))}%` }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-amber-800 font-medium flex items-center justify-between">
-                    <span>{scarcityFootnoteText}</span>
-                    <span className="font-bold text-rose-600">Sisa Sedikit</span>
-                  </p>
-                </div>
-              )}
-
-              {/* Quick Action Scroll CTA */}
-              <div className="pt-1 space-y-2.5">
-                {isAffiliateProduct ? (
-                  <a
-                    href={externalAffiliateUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handleExternalProductClick}
-                    className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 transition cursor-pointer text-sm"
-                  >
-                    <span>{affiliateCtaLabel}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleOpenCheckout}
-                    className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
-                  >
-                    <span>
-                      {basePrice === 0
-                        ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
-                        : `${dynamicCtaPrefix} - Rp ${basePrice.toLocaleString('id-ID')}`}
-                    </span>
-                    <ArrowDown className="w-4 h-4" />
-                  </button>
-                )}
-
-                {/* ── Dual CTA: Secondary WhatsApp Button (Hero) ── */}
-                {/* Ditampilkan jika whatsapp_cta_enabled === true atau whatsapp_cta_label diisi di metadata produk */}
-                {(config.whatsapp_cta_enabled || config.whatsapp_cta_label) && (() => {
-                  const ctaWaNumber = config.whatsapp_cta_number
-                    ? normalizeStorefrontWhatsAppNumber(config.whatsapp_cta_number)
-                    : tenantWhatsAppNumber;
-                  if (!ctaWaNumber) return null;
-                  const ctaWaMsg = encodeURIComponent(
-                    `Halo kak, saya tertarik dengan ${product.name}. Boleh minta info lebih lanjut?`
-                  );
-                  const ctaWaUrl = `https://wa.me/${ctaWaNumber}?text=${ctaWaMsg}`;
-                  const ctaLabel = config.whatsapp_cta_label || '💬 Tanya via WhatsApp';
-                  return (
-                    <a
-                      href={ctaWaUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        trackWhatsAppConsultation({ name: product.name, price: basePrice });
-                        trackContactEvent('WhatsApp Hero CTA');
-                      }}
-                      className="w-full py-3 px-5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-400 text-emerald-800 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm transition shadow-xs active:scale-[0.99] no-underline"
-                    >
-                      <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>{ctaLabel}</span>
-                    </a>
-                  );
-                })()}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* 1.5 Interactive Product Media Showcase (Multi-Image Carousel / Slider) */}
-        {config.enable_media_gallery !== false && config.gallery_images && config.gallery_images.length > 0 && (
-          <ProductMediaShowcase
-            images={config.gallery_images}
-            productName={product.name}
-            title={isFnbOrCulinary ? '📸 Galeri Menu & Pilihan Varian' : (isPhysicalItem ? '📸 Foto Detail & Pilihan Produk' : '📸 Dokumentasi & Preview Produk')}
-            subtitle={product.name ? `Galeri Foto ${product.name}` : 'Galeri Foto Produk'}
-          />
-        )}
-
-        {/* 2. Client Logos Section (Brand Social Proof) */}
-        {!isDirectCheckoutOnly && config.enable_client_logos && config.client_logos && config.client_logos.length > 0 && (
-          <ClientLogosSection logos={config.client_logos} />
-        )}
-
-        {/* 3 to 7. Copywriting Narrative Sections */}
-        {!isDirectCheckoutOnly && (
-          <>
-            {/* 3. Problem & Solution Section */}
-            {config.enable_problem_solution !== false && (
-              <>
-                {/* 3a. Problem Section */}
-                {/* show_pain_points: Jika false (tiket konsultasi / produk tanpa narasi masalah), section ini disembunyikan */}
-                {config.show_pain_points !== false && Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
-                  <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                    <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                      {config.problem_title || (config.pain_points && config.pain_points.length > 0 ? 'Apakah Anda Sering Menghadapi Masalah Ini?' : '')}
-                    </h2>
-                    {config.pain_points && config.pain_points.length > 0 && (
-                      <div className="space-y-2.5">
-                        {config.pain_points.map((point, idx) => (
-                          <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-rose-100/90 rounded-2xl shadow-xs">
-                            <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                            <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {config.problem_image_url && (
-                      <div className="rounded-2xl overflow-hidden border border-rose-200/80 shadow-sm mt-3 bg-white">
+          return effectiveOrder.map((sectionId) => {
+            switch (sectionId) {
+              case 'hook':
+                return config.enable_hero !== false ? (
+                  <section key="section-hook" className="space-y-4">
+                    {/* Video Embed Hero Utama ATAU Banner Gambar */}
+                    {config.video_url ? (
+                      <VideoEmbedPlayer
+                        url={config.video_url}
+                        title={config.headline || product.name}
+                      />
+                    ) : (
+                      <div className="w-full max-h-[420px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-50 border border-slate-100 shadow-sm relative group">
                         <img 
-                          src={config.problem_image_url} 
-                          alt="Ilustrasi Masalah" 
-                          className="w-full h-auto max-h-72 object-cover"
+                          src={config.banner_url || (product as any).image_url || product.image || "/placeholder-product.png"} 
+                          alt={product.name} 
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+                          }}
+                          className="w-full h-auto max-h-[420px] object-contain rounded-2xl transition-transform duration-300 group-hover:scale-[1.01]"
                         />
                       </div>
                     )}
-                  </section>
-                ) : null}
 
-                {/* 3b. Agitation Section */}
-                {Boolean((config.agitation_points && config.agitation_points.length > 0) || (config.agitation_title && config.agitation_title.trim())) ? (
-                  <section className="bg-amber-50/70 border border-amber-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                    <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                      {config.agitation_title || 'Apa yang Terjadi Jika Masalah Ini Terus Dibiarkan?'}
-                    </h2>
-                    {config.agitation_points && config.agitation_points.length > 0 && (
-                      <div className="space-y-2.5">
-                        {config.agitation_points.map((point, idx) => (
-                          <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-amber-100/90 rounded-2xl shadow-xs">
-                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                            <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
+                    {/* Pricing & Value Proposition */}
+                    <div className="space-y-3 pt-1">
+                      {config.badge_text && (
+                        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 tracking-wide uppercase shadow-2xs">
+                          <Flame className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
+                          <span>{config.badge_text}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="text-3xl sm:text-4xl font-black text-slate-900">
+                          {basePrice === 0 ? 'GRATIS' : `Rp ${basePrice.toLocaleString('id-ID')}`}
+                        </span>
+                        {promoPrice > basePrice && (
+                          <span className="text-sm line-through text-slate-400 font-semibold">
+                            Rp {promoPrice.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                        <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-0.5 rounded-full">
+                          {basePrice === 0 
+                            ? (isFoodPreset ? 'Porsi Promo Spesial' : 'Akses Gratis / Freebie') 
+                            : (isFoodPreset ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini')}
+                        </span>
+                      </div>
+
+                      <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 leading-snug">
+                        {config.headline || product.name}
+                      </h1>
+                      <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
+                        {config.subheadline || product.description}
+                      </p>
+
+                      {/* Visual Indikator Kuota Peserta / Stok Terbatas */}
+                      {(!product.is_unlimited && product.stock > 0 && product.stock <= 100) && (
+                        <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl space-y-2 my-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                              <Flame className="w-4 h-4 text-amber-600 animate-bounce" />
+                              <span>{scarcityHeaderLabel}</span>
+                            </div>
+                            <span className="font-extrabold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300 text-[11px]">
+                              {scarcityBadgeText}
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-amber-500 to-rose-500 h-2.5 rounded-full transition-all duration-700"
+                              style={{ width: `${Math.min(100, Math.max(15, (product.stock / 50) * 100))}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-amber-800 font-medium flex items-center justify-between">
+                            <span>{scarcityFootnoteText}</span>
+                            <span className="font-bold text-rose-600">Sisa Sedikit</span>
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Quick Action Scroll CTA */}
+                      <div className="pt-1 space-y-2.5">
+                        {isAffiliateProduct ? (
+                          <a
+                            href={externalAffiliateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={handleExternalProductClick}
+                            className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 transition cursor-pointer text-sm"
+                          >
+                            <span>{affiliateCtaLabel}</span>
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleOpenCheckout}
+                            className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
+                          >
+                            <span>
+                              {basePrice === 0
+                                ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
+                                : `${dynamicCtaPrefix} - Rp ${basePrice.toLocaleString('id-ID')}`}
+                            </span>
+                            <ArrowDown className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {/* ── Dual CTA: Secondary WhatsApp Button (Hero) ── */}
+                        {(config.whatsapp_cta_enabled || config.whatsapp_cta_label) && (() => {
+                          const ctaWaNumber = config.whatsapp_cta_number
+                            ? normalizeStorefrontWhatsAppNumber(config.whatsapp_cta_number)
+                            : tenantWhatsAppNumber;
+                          if (!ctaWaNumber) return null;
+                          const ctaWaMsg = encodeURIComponent(
+                            `Halo kak, saya tertarik dengan ${product.name}. Boleh minta info lebih lanjut?`
+                          );
+                          const ctaWaUrl = `https://wa.me/${ctaWaNumber}?text=${ctaWaMsg}`;
+                          const ctaLabel = config.whatsapp_cta_label || '💬 Tanya via WhatsApp';
+                          return (
+                            <a
+                              href={ctaWaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => {
+                                trackWhatsAppConsultation({ name: product.name, price: basePrice });
+                                trackContactEvent('WhatsApp Hero CTA');
+                              }}
+                              className="w-full py-3 px-5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-400 text-emerald-800 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm transition shadow-xs active:scale-[0.99] no-underline"
+                            >
+                              <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>{ctaLabel}</span>
+                            </a>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </section>
+                ) : null;
+
+              case 'media_gallery':
+                return (config.enable_media_gallery !== false && ((config.gallery_images && config.gallery_images.length > 0) || config.gallery_video_url)) ? (
+                  <div key="section-media-gallery" className="space-y-3">
+                    {config.gallery_video_url && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                          <span>🎬 Video Galeri &amp; Ulasan Produk</span>
+                        </div>
+                        <VideoEmbedPlayer url={config.gallery_video_url} title={`Video ${product.name}`} />
+                      </div>
+                    )}
+                    {config.gallery_images && config.gallery_images.length > 0 && (
+                      <ProductMediaShowcase
+                        images={config.gallery_images}
+                        productName={product.name}
+                        title={isFnbOrCulinary ? '📸 Galeri Menu & Pilihan Varian' : (isPhysicalItem ? '📸 Foto Detail & Pilihan Produk' : '📸 Dokumentasi & Preview Produk')}
+                        subtitle={product.name ? `Galeri Foto ${product.name}` : 'Galeri Foto Produk'}
+                      />
+                    )}
+                  </div>
+                ) : null;
+
+              case 'client_logos':
+                return (!isDirectCheckoutOnly && config.enable_client_logos && config.client_logos && config.client_logos.length > 0) ? (
+                  <ClientLogosSection key="section-client-logos" logos={config.client_logos} />
+                ) : null;
+
+              case 'problem_solution':
+                return (!isDirectCheckoutOnly && config.enable_problem_solution !== false) ? (
+                  <React.Fragment key="section-problem-solution">
+                    {/* 3a. Problem Section */}
+                    {config.show_pain_points !== false && Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
+                      <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                        <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                          {config.problem_title || (config.pain_points && config.pain_points.length > 0 ? 'Apakah Anda Sering Menghadapi Masalah Ini?' : '')}
+                        </h2>
+                        {config.pain_points && config.pain_points.length > 0 && (
+                          <div className="space-y-2.5">
+                            {config.pain_points.map((point, idx) => (
+                              <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-rose-100/90 rounded-2xl shadow-xs">
+                                <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                                <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {config.problem_image_url && (
+                          <div className="rounded-2xl overflow-hidden border border-rose-200/80 shadow-sm mt-3 bg-white">
+                            <img 
+                              src={config.problem_image_url} 
+                              alt="Ilustrasi Masalah" 
+                              className="w-full h-auto max-h-72 object-cover"
+                            />
+                          </div>
+                        )}
+                      </section>
+                    ) : null}
+
+                    {/* 3b. Agitation Section */}
+                    {Boolean((config.agitation_points && config.agitation_points.length > 0) || (config.agitation_title && config.agitation_title.trim())) ? (
+                      <section className="bg-amber-50/70 border border-amber-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                        <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                          {config.agitation_title || 'Apa yang Terjadi Jika Masalah Ini Terus Dibiarkan?'}
+                        </h2>
+                        {config.agitation_points && config.agitation_points.length > 0 && (
+                          <div className="space-y-2.5">
+                            {config.agitation_points.map((point, idx) => (
+                              <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-amber-100/90 rounded-2xl shadow-xs">
+                                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    ) : null}
+
+                    {/* 3c. Solution Section */}
+                    {Boolean(config.solution_points && config.solution_points.length > 0) ? (
+                      <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                        <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                          {config.solution_title || 'Materi & Fasilitas Utama'}
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {config.solution_points?.map((point, idx) => (
+                            <div key={idx} className="flex items-start gap-2.5 p-3.5 bg-white border border-emerald-100 rounded-2xl shadow-xs">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                              <span className="text-xs sm:text-sm text-slate-800 font-semibold leading-snug">{point}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+                  </React.Fragment>
+                ) : null;
+
+              case 'comparison':
+                return (!isDirectCheckoutOnly && config.enable_us_vs_them !== false && Boolean(config.comparison_rows && config.comparison_rows.length > 0)) ? (
+                  <section key="section-comparison" className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                        Kenapa Memilih Solusi Kami Dibanding Cara Lain?
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-1">
+                      {config.comparison_rows?.map((row, idx) => (
+                        <div key={row.id || idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50 shadow-xs">
+                          <div className="bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-800 border-b border-slate-200">
+                            {row.feature}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+                            {/* Them / Cara Lama */}
+                            <div className="p-3.5 bg-rose-50/40 flex items-start gap-2.5">
+                              <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Cara Lain / Lama</span>
+                                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{row.others}</p>
+                              </div>
+                            </div>
+                            {/* Us / Solusi Kami */}
+                            <div className="p-3.5 bg-emerald-50/50 flex items-start gap-2.5 border-l-2 border-emerald-500 sm:border-l-0">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Solusi Produk Ini</span>
+                                <p className="text-xs font-bold text-slate-900 mt-1 leading-relaxed">{row.us}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null;
+
+              case 'social_proof':
+                return (!isDirectCheckoutOnly && config.enable_testimonials !== false && Boolean((config.testimonials && config.testimonials.length > 0) || (config.testimonial_images && config.testimonial_images.length > 0))) ? (
+                  <section key="section-social-proof" className="bg-slate-50/90 border border-slate-200/90 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
+                        <div className="flex">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          ))}
+                        </div>
+                        <span className="text-slate-800 font-bold text-xs ml-1">5.0 / 5.0 Rating Kepuasan</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-slate-500">Hasil Nyata Member</span>
+                    </div>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                        Bukti Nyata &amp; Kepuasan Pengguna
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
+                      </p>
+                    </div>
+
+                    {config.testimonials && config.testimonials.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        {config.testimonials.map((t) => (
+                          <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex text-amber-400 gap-0.5">
+                                  {[...Array(t.rating || 5)].map((_, i) => (
+                                    <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                                  ))}
+                                </div>
+                                {t.badge && (
+                                  <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full">
+                                    {t.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-700 italic leading-relaxed mb-3">&ldquo;{t.quote}&rdquo;</p>
+                            </div>
+                            <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                {t.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-bold text-slate-900">{t.name}</h5>
+                                <p className="text-[10px] text-slate-500">{t.role}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {config.testimonial_images && config.testimonial_images.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                        {config.testimonial_images.map((imgUrl, idx) => (
+                          <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
+                            <div className="overflow-hidden bg-slate-100">
+                              <img 
+                                src={imgUrl} 
+                                alt={`Bukti Testimoni ${idx + 1}`} 
+                                className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
+                                loading="lazy"
+                              />
+                            </div>
+                            <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
+                              <span className="font-semibold text-slate-700">Verified User</span>
+                              <span className="text-emerald-600 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Sukses
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
                   </section>
-                ) : null}
+                ) : null;
 
-                {/* 3c. Solution Section */}
-                {Boolean(config.solution_points && config.solution_points.length > 0) ? (
-                  <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                    <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                      {config.solution_title || 'Materi & Fasilitas Utama'}
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {config.solution_points?.map((point, idx) => (
-                        <div key={idx} className="flex items-start gap-2.5 p-3.5 bg-white border border-emerald-100 rounded-2xl shadow-xs">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span className="text-xs sm:text-sm text-slate-800 font-semibold leading-snug">{point}</span>
+              case 'offer_bonus':
+                return (!isDirectCheckoutOnly && config.enable_offer !== false && Boolean(config.bonus_items && config.bonus_items.length > 0)) ? (
+                  <section key="section-offer-bonus" className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                        Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
+                      </h2>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                        Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-1">
+                      {config.bonus_items?.map((bonus, idx) => (
+                        <div key={bonus.id || idx} className="p-3.5 bg-white/95 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
+                          <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                            <Gift className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <h4 className="font-bold text-xs sm:text-sm text-slate-900">{bonus.title}</h4>
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0">
+                                Senilai Rp {bonus.value.toLocaleString('id-ID')} (GRATIS)
+                              </span>
+                            </div>
+                            {bonus.description && (
+                              <p className="text-xs text-slate-600 mt-1 leading-relaxed">{bonus.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {totalBonusValue > 0 && (
+                      <div className="p-3 bg-amber-200/60 rounded-xl border border-amber-300/80 text-center text-xs font-bold text-amber-950">
+                        🎉 Total Nilai Semua Bonus: Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
+                      </div>
+                    )}
+                  </section>
+                ) : null;
+
+              case 'faq':
+                return (!isDirectCheckoutOnly && config.enable_faq && Boolean(config.faqs && config.faqs.length > 0)) ? (
+                  <section key="section-faq" className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
+                      <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                        Pertanyaan yang Sering Diajukan (FAQ)
+                      </h2>
+                    </div>
+                    <div className="space-y-3 pt-1">
+                      {config.faqs?.map((faq: any, idx: number) => (
+                        <div key={faq.id || idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1.5">
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-start gap-2">
+                            <span className="text-blue-600 font-black">Q:</span>
+                            <span>{faq.question || faq.q}</span>
+                          </h4>
+                          <p className="text-xs text-slate-600 pl-5 leading-relaxed">
+                            {faq.answer || faq.a}
+                          </p>
                         </div>
                       ))}
                     </div>
                   </section>
-                ) : null}
-              </>
-            )}
+                ) : null;
 
-            {/* 4. Tabel Perbandingan Responsif (Us vs Them) */}
-            {config.enable_us_vs_them !== false && Boolean(config.comparison_rows && config.comparison_rows.length > 0) ? (
-              <section className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                    Kenapa Memilih Solusi Kami Dibanding Cara Lain?
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:
-                  </p>
-                </div>
+              case 'payment_voucher':
+                return config.enable_payment !== false ? (
+                  <React.Fragment key="section-payment-voucher">
+                    {/* 7.5 Mini Intake Form (Positive Friction Filter untuk Konsultasi Medis & Screening) */}
+                    {config.intake_form_config?.enabled && (
+                      <MiniIntakeForm
+                        tenantSlug={tenant}
+                        officialWaNumber={tenantWhatsAppNumber}
+                        onDirectCheckout={(data) => {
+                          setBuyerName(data.parentName);
+                          setBuyerPhone(data.whatsappPhone);
+                          handleOpenCheckout();
+                        }}
+                      />
+                    )}
 
-                <div className="space-y-3 pt-1">
-                  {config.comparison_rows?.map((row, idx) => (
-                    <div key={row.id || idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50 shadow-xs">
-                      <div className="bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-800 border-b border-slate-200">
-                        {row.feature}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                        {/* Them / Cara Lama */}
-                        <div className="p-3.5 bg-rose-50/40 flex items-start gap-2.5">
-                          <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Cara Lain / Lama</span>
-                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">{row.others}</p>
-                          </div>
-                        </div>
-                        {/* Us / Solusi Kami */}
-                        <div className="p-3.5 bg-emerald-50/50 flex items-start gap-2.5 border-l-2 border-emerald-500 sm:border-l-0">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Solusi Produk Ini</span>
-                            <p className="text-xs font-bold text-slate-900 mt-1 leading-relaxed">{row.us}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {/* 5. Galeri & Ulasan Testimoni */}
-            {config.enable_testimonials !== false && Boolean((config.testimonials && config.testimonials.length > 0) || (config.testimonial_images && config.testimonial_images.length > 0)) ? (
-              <section className="bg-slate-50/90 border border-slate-200/90 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
-                    <div className="flex">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      ))}
-                    </div>
-                    <span className="text-slate-800 font-bold text-xs ml-1">5.0 / 5.0 Rating Kepuasan</span>
-                  </div>
-                  <span className="text-[11px] font-semibold text-slate-500">Hasil Nyata Member</span>
-                </div>
-                <div>
-                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                    Bukti Nyata &amp; Kepuasan Pengguna
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
-                  </p>
-                </div>
-
-                {config.testimonials && config.testimonials.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    {config.testimonials.map((t) => (
-                      <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    {/* 8. Ultra-Lean Single Page Checkout Section */}
+                    <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                      <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex text-amber-400 gap-0.5">
-                              {[...Array(t.rating || 5)].map((_, i) => (
-                                <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
-                              ))}
-                            </div>
-                            {t.badge && (
-                              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full">
-                                {t.badge}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-700 italic leading-relaxed mb-3">&ldquo;{t.quote}&rdquo;</p>
+                          <h2 className="text-base font-black text-slate-900">
+                            {isAffiliateProduct
+                              ? 'Beli Melalui Platform Partner / Web Resmi'
+                              : isPaid
+                              ? 'Status Pemesanan & Akses Layanan'
+                              : 'Form Pemesanan & Pembayaran'}
+                          </h2>
                         </div>
-                        <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                            {t.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-bold text-slate-900">{t.name}</h5>
-                            <p className="text-[10px] text-slate-500">{t.role}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {config.testimonial_images && config.testimonial_images.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-                    {config.testimonial_images.map((imgUrl, idx) => (
-                      <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
-                        <div className="overflow-hidden bg-slate-100">
-                          <img 
-                            src={imgUrl} 
-                            alt={`Bukti Testimoni ${idx + 1}`} 
-                            className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
-                            loading="lazy"
-                          />
-                        </div>
-                        <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
-                          <span className="font-semibold text-slate-700">Verified User</span>
-                          <span className="text-emerald-600 font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Sukses
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block font-semibold">
+                            {isPaid ? 'Status Tagihan' : 'Total Tagihan'}
+                          </span>
+                          <span className="text-sm font-black text-emerald-600">
+                            {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
                           </span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            ) : null}
 
-            {/* 6. Irresistible Offer & Bonus Box */}
-            {config.enable_offer !== false && Boolean(config.bonus_items && config.bonus_items.length > 0) ? (
-              <section className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                    Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
-                  </h2>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:
-                  </p>
-                </div>
-
-                <div className="space-y-3 pt-1">
-                  {config.bonus_items?.map((bonus, idx) => (
-                    <div key={bonus.id || idx} className="p-3.5 bg-white/95 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
-                      <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
-                        <Gift className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 flex-wrap">
-                          <h4 className="font-bold text-xs sm:text-sm text-slate-900">{bonus.title}</h4>
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0">
-                            Senilai Rp {bonus.value.toLocaleString('id-ID')} (GRATIS)
-                          </span>
+                      {isAffiliateProduct ? (
+                        <div className="text-center p-6 space-y-4 bg-gradient-to-b from-purple-50/50 via-slate-50 to-white border border-purple-200/70 rounded-2xl">
+                          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-xs">
+                            <ExternalLink className="w-6 h-6" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <h3 className="text-base font-black text-slate-900">
+                              Produk Mitra Resmi (Bypass Checkout)
+                            </h3>
+                            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                              Pesanan untuk produk ini diproses langsung melalui platform partner resmi kami (Shopee, TikTok Shop, Sejoli, atau website resmi). Klik tombol di bawah untuk diarahkan langsung ke halaman pemesanan:
+                            </p>
+                          </div>
+                          <div className="pt-2">
+                            <a
+                              href={externalAffiliateUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={handleExternalProductClick}
+                              className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                            >
+                              <span>{affiliateCtaLabel}</span>
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </div>
                         </div>
-                        {bonus.description && (
-                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">{bonus.description}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      ) : isPaid && requiresDeliveryPayload ? (
+                        <div className="space-y-3">
+                          {renderDeliveryPayloadCard()}
+                        </div>
+                      ) : actionMode === 'WHATSAPP' ? (
+                        renderWhatsAppOrderCard()
+                      ) : (
+                        renderCheckoutForm()
+                      )}
+                    </section>
+                  </React.Fragment>
+                ) : null;
 
-                {totalBonusValue > 0 && (
-                  <div className="p-3 bg-amber-200/60 rounded-xl border border-amber-300/80 text-center text-xs font-bold text-amber-950">
-                    🎉 Total Nilai Semua Bonus: Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
-                  </div>
-                )}
-              </section>
-            ) : null}
-
-            {/* 7. FAQ Section */}
-            {config.enable_faq && Boolean(config.faqs && config.faqs.length > 0) ? (
-              <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                <div className="flex items-center gap-2">
-                  <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
-                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                    Pertanyaan yang Sering Diajukan (FAQ)
-                  </h2>
-                </div>
-                <div className="space-y-3 pt-1">
-                  {config.faqs?.map((faq: any, idx: number) => (
-                    <div key={faq.id || idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1.5">
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-start gap-2">
-                        <span className="text-blue-600 font-black">Q:</span>
-                        <span>{faq.question || faq.q}</span>
-                      </h4>
-                      <p className="text-xs text-slate-600 pl-5 leading-relaxed">
-                        {faq.answer || faq.a}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        )}
-
-        {/* 7.5 Mini Intake Form (Positive Friction Filter untuk Konsultasi Medis & Screening) */}
-        {config.intake_form_config?.enabled && (
-          <MiniIntakeForm
-            tenantSlug={tenant}
-            officialWaNumber={tenantWhatsAppNumber}
-            onDirectCheckout={(data) => {
-              setBuyerName(data.parentName);
-              setBuyerPhone(data.whatsappPhone);
-              handleOpenCheckout();
-            }}
-          />
-        )}
-
-        {/* 8. Ultra-Lean Single Page Checkout Section */}
-        {config.enable_payment !== false && (
-          <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-black text-slate-900">
-                  {isAffiliateProduct
-                    ? 'Beli Melalui Platform Partner / Web Resmi'
-                    : isPaid
-                    ? 'Status Pemesanan & Akses Layanan'
-                    : 'Form Pemesanan & Pembayaran'}
-                </h2>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block font-semibold">
-                  {isPaid ? 'Status Tagihan' : 'Total Tagihan'}
-                </span>
-                <span className="text-sm font-black text-emerald-600">
-                  {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
-                </span>
-              </div>
-            </div>
-
-            {isAffiliateProduct ? (
-              <div className="text-center p-6 space-y-4 bg-gradient-to-b from-purple-50/50 via-slate-50 to-white border border-purple-200/70 rounded-2xl">
-                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-xs">
-                  <ExternalLink className="w-6 h-6" />
-                </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black text-slate-900">
-                    Produk Mitra Resmi (Bypass Checkout)
-                  </h3>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                    Pesanan untuk produk ini diproses langsung melalui platform partner resmi kami (Shopee, TikTok Shop, Sejoli, atau website resmi). Klik tombol di bawah untuk diarahkan langsung ke halaman pemesanan:
-                  </p>
-                </div>
-                <div className="pt-2">
-                  <a
-                    href={externalAffiliateUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handleExternalProductClick}
-                    className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                  >
-                    <span>{affiliateCtaLabel}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
-            ) : isPaid && requiresDeliveryPayload ? (
-              <div className="space-y-3">
-                {renderDeliveryPayloadCard()}
-              </div>
-            ) : actionMode === 'WHATSAPP' ? (
-              renderWhatsAppOrderCard()
-            ) : (
-              renderCheckoutForm()
-            )}
-          </section>
-        )}
+              default:
+                return null;
+            }
+          });
+        })()}
       </main>
 
       {/* 4. Sticky Bottom CTA (Mobile & Desktop) */}

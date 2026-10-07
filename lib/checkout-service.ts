@@ -62,6 +62,9 @@ export interface CreateOrderPayload {
   quantity?: number;
   unitPrice?: number;
   cartId?: string | null;
+  order_notes?: string;
+  notes?: string;
+  kitchen_notes?: string;
   items?: Array<{
     productId: string;
     productTitle: string;
@@ -222,6 +225,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const orderFulfillmentMeta = {
     ...(payload.fulfillmentMetadata || {}),
     ...(verifiedOrderBumps.length > 0 ? { order_bumps: verifiedOrderBumps } : {}),
+    order_notes: payload.order_notes || payload.notes || payload.kitchen_notes || payload.fulfillmentMetadata?.order_notes || undefined,
   };
 
   const orderData = {
@@ -357,6 +361,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     payment_status: "PENDING",
     order_status: "PENDING",
     fulfillment_type: payload.fulfillmentType || 'DELIVERY',
+    fulfillment_metadata: orderFulfillmentMeta,
     metadata: {
       tracking_context: resolvedTrackingContext,
       city: resolvedCity,
@@ -368,6 +373,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       quantity: orderQuantity,
       unit_price: unitPrice,
       product_subtotal: unitPrice * orderQuantity,
+      order_notes: payload.order_notes || payload.notes || payload.kitchen_notes || null,
+      kitchen_notes: payload.kitchen_notes || payload.order_notes || null,
     },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
