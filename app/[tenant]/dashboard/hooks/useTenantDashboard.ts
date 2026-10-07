@@ -1576,17 +1576,26 @@ export function useTenantDashboard() {
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(productForm.image);
-    const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD';
+    const currentPt = (productForm.product_type || '').toUpperCase();
+    const isPhysicalProduct = currentPt === 'PHYSICAL';
+    const isServiceOrDigital = currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE';
+    const isPhysicalStock = isPhysicalProduct || (!isServiceOrDigital && (storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD'));
     const isExternalCheckout = productForm.checkout_type === 'external' || Boolean(productForm.external_url?.trim());
+    const isRequiresShipping = isPhysicalProduct && !isExternalCheckout;
     const cleanExternalUrl = (productForm.external_url || '').trim();
     const cleanCtaLabel = (productForm.metadata?.cta_text || productForm.cta_label || '').trim();
+    const isCartEnabled = productForm.metadata?.enable_cart !== undefined
+      ? Boolean(productForm.metadata.enable_cart)
+      : ((productForm as any)?.enable_cart !== undefined ? Boolean((productForm as any)?.enable_cart) : isPhysicalProduct);
 
     const updatedProductItem: ProductItem = {
       ...productForm,
       price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
       is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (productForm.is_unlimited ?? false)),
       stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (productForm.stock ?? 100)),
-      weight_grams: isExternalCheckout ? 0 : (!isPhysicalStock ? 0 : (productForm.weight_grams ?? 0)),
+      weight_grams: isPhysicalProduct && !isExternalCheckout ? Number(productForm.weight_grams || 1000) : 0,
+      requires_shipping: isRequiresShipping,
+      enable_cart: isCartEnabled,
       image: cleanImage,
       image_url: cleanImage,
       slug: finalSlug,
@@ -1601,6 +1610,7 @@ export function useTenantDashboard() {
         cta_text: cleanCtaLabel || undefined,
         voucher_config: productForm.metadata?.voucher_config,
         payment_methods: productForm.metadata?.payment_methods,
+        enable_cart: isCartEnabled,
       },
       single_page_config: productForm.single_page_config
         ? {
@@ -1656,61 +1666,63 @@ export function useTenantDashboard() {
 
           let allKnownProducts: ProductItem[] = [...existingMetaProducts];
 
-          // Fetch products from relational SQL table to ensure no orphan product is overwritten
-          try {
-            const { data: sqlProds } = await supabase
-              .from('products')
-              .select('*')
-              .eq('tenant_id', tenantRow.id);
+          // Fetch products from relational SQL table ONLY if existing metadata is empty to prevent resurrecting deleted products
+          if (allKnownProducts.length === 0) {
+            try {
+              const { data: sqlProds } = await supabase
+                .from('products')
+                .select('*')
+                .eq('tenant_id', tenantRow.id);
 
-            if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-              const knownSlugs = new Set(allKnownProducts.map(p => (p.slug || '').toLowerCase()));
-              const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
+              if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+                const knownSlugs = new Set(allKnownProducts.map(p => (p.slug || '').toLowerCase()));
+                const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
 
-              for (const sp of sqlProds) {
-                const spSlug = (sp.slug || '').toLowerCase();
-                const spId = String(sp.id);
-                if (!knownSlugs.has(spSlug) && !knownIds.has(spId)) {
-                  allKnownProducts.push({
-                    id: sp.id,
-                    name: sp.title || `Produk`,
-                    title: sp.title,
-                    slug: sp.slug,
-                    category: sp.category || 'digital',
-                    product_type: sp.product_type || 'DIGITAL',
-                    type: sp.product_type === 'PHYSICAL' ? 'physical' : 'digital',
-                    price: Number(sp.price) || 0,
-                    promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-                    sku: sp.sku || `SKU-${sp.id}`,
-                    is_active: sp.is_active !== false,
-                    image: sp.image || sp.image_url || '',
-                    image_url: sp.image || sp.image_url || '',
-                    description: sp.description || '',
-                    download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-                    stock: sp.stock ?? 999999,
-                    is_unlimited: sp.is_unlimited_stock ?? true,
-                    fulfillment_metadata: sp.fulfillment_metadata,
-                    single_page_config: sp.fulfillment_metadata?.single_page_config,
-                  });
+                for (const sp of sqlProds) {
+                  const spSlug = (sp.slug || '').toLowerCase();
+                  const spId = String(sp.id);
+                  if (!knownSlugs.has(spSlug) && !knownIds.has(spId)) {
+                    allKnownProducts.push({
+                      id: sp.id,
+                      name: sp.title || `Produk`,
+                      title: sp.title,
+                      slug: sp.slug,
+                      category: sp.category || 'digital',
+                      product_type: sp.product_type || 'DIGITAL',
+                      type: sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'service' : 'digital'),
+                      price: Number(sp.price) || 0,
+                      promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+                      sku: sp.sku || `SKU-${sp.id}`,
+                      is_active: sp.is_active !== false,
+                      requires_shipping: Boolean(sp.requires_shipping),
+                      image: sp.image || sp.image_url || '',
+                      image_url: sp.image || sp.image_url || '',
+                      description: sp.description || '',
+                      download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+                      stock: sp.stock ?? 999999,
+                      is_unlimited: sp.is_unlimited_stock ?? true,
+                      fulfillment_metadata: sp.fulfillment_metadata,
+                      single_page_config: sp.fulfillment_metadata?.single_page_config,
+                    });
+                  }
                 }
               }
-            }
-          } catch (sqlReadErr) {
-            console.debug('[Dashboard] SQL products read note:', sqlReadErr);
-          }
-
-          // Merge any products currently in React state not yet in DB
-          for (const p of products) {
-            const pSlug = (p.slug || '').toLowerCase();
-            const pId = String(p.id);
-            if (!allKnownProducts.some(kp => String(kp.id) === pId || (kp.slug && kp.slug.toLowerCase() === pSlug))) {
-              allKnownProducts.push(p);
+            } catch (sqlReadErr) {
+              console.debug('[Dashboard] SQL products read note:', sqlReadErr);
             }
           }
 
-          // APPEND or UPDATE fullProductItem cleanly
+          // APPEND or UPDATE fullProductItem cleanly based on target SKU, ID, or slug
+          const targetSku = (fullProductItem.sku || '').trim().toLowerCase();
+          const targetId = String(fullProductItem.id || '').trim().toLowerCase();
+          const targetSlug = finalSlug.trim().toLowerCase();
+
           const editIndex = allKnownProducts.findIndex(
-            p => (editingProductId && String(p.id) === String(editingProductId)) || (p.slug && p.slug.toLowerCase() === finalSlug)
+            p =>
+              (editingProductId && String(p.id).toLowerCase() === String(editingProductId).toLowerCase()) ||
+              (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
+              (targetId && String(p.id).toLowerCase() === targetId) ||
+              (targetSlug && (p.slug || '').toLowerCase() === targetSlug)
           );
 
           let finalMergedProducts: ProductItem[];
@@ -1733,7 +1745,7 @@ export function useTenantDashboard() {
           const updatedMeta = {
             ...(tenantRow.metadata || {}),
             products: finalMergedProducts,
-            product: fullProductItem,
+            product: finalMergedProducts[0] || fullProductItem,
           };
 
           const { error: tErr } = await supabase
@@ -1766,6 +1778,7 @@ export function useTenantDashboard() {
               product_type: fullProductItem.product_type || (isPhysicalStock ? 'PHYSICAL' : 'DIGITAL_FILE'),
               sku: fullProductItem.sku || `SKU-${finalSlug}`,
               is_active: isTargetActive,
+              requires_shipping: Boolean(fullProductItem.requires_shipping),
               fulfillment_metadata: fullProductItem.fulfillment_metadata || {},
             };
 
@@ -1773,7 +1786,7 @@ export function useTenantDashboard() {
               .from('products')
               .select('id')
               .eq('tenant_id', tenantRow.id)
-              .or(`slug.eq.${finalSlug}${isUuid ? `,id.eq.${fullProductItem.id}` : ''}`)
+              .or(`slug.eq.${finalSlug}${fullProductItem.sku ? `,sku.eq.${fullProductItem.sku}` : ''}${isUuid ? `,id.eq.${fullProductItem.id}` : ''}`)
               .maybeSingle();
 
             if (existingSql?.id) {
@@ -1813,7 +1826,11 @@ export function useTenantDashboard() {
     }
     if (!tenantSlug) return;
     if (confirm('Hapus produk ini dari etalase toko?')) {
-      const updated = products.filter(p => String(p.id) !== String(id));
+      const targetProd = products.find(p => String(p.id) === String(id));
+      const targetSlug = targetProd?.slug;
+      const targetSku = targetProd?.sku;
+
+      const updated = products.filter(p => String(p.id) !== String(id) && (!targetSlug || p.slug !== targetSlug));
       setProducts(updated);
       setSaveFeedback('🗑️ Produk telah dihapus.');
 
@@ -1832,15 +1849,32 @@ export function useTenantDashboard() {
             .maybeSingle();
 
           if (tenantRow?.id) {
+            const currentMetaProducts = Array.isArray(tenantRow.metadata?.products) ? tenantRow.metadata.products : [];
+            const filteredMeta = currentMetaProducts.filter((p: any) =>
+              String(p.id) !== String(id) &&
+              (!targetSlug || (p.slug || '').toLowerCase() !== targetSlug.toLowerCase()) &&
+              (!targetSku || (p.sku || '').toLowerCase() !== targetSku.toLowerCase())
+            );
+
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
-              products: updated,
-              product: updated[0] || null,
+              products: filteredMeta,
+              product: filteredMeta[0] || null,
             };
             await supabase
               .from('tenants')
               .update({ metadata: updatedMeta })
               .eq('id', tenantRow.id);
+
+            // Hapus juga secara atomik dari tabel SQL products
+            const deleteFilters = [`id.eq.${id}`];
+            if (targetSlug) deleteFilters.push(`slug.eq.${targetSlug}`);
+            if (targetSku) deleteFilters.push(`sku.eq.${targetSku}`);
+            await supabase
+              .from('products')
+              .delete()
+              .eq('tenant_id', tenantRow.id)
+              .or(deleteFilters.join(','));
           }
         }
       } catch (dbErr) {

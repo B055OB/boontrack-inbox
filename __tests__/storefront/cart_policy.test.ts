@@ -42,6 +42,24 @@ describe('Cart Policy Matrix & Multi-Tenant Isolation', () => {
     expect(policyCreator.allowAddToCart).toBe(false);
   });
 
+  it('defaults to Direct Buy First for DIGITAL_FILE and ecourse products without cart requirement', () => {
+    const policyDigitalFile = evaluateCartPolicy({ productType: 'DIGITAL_FILE' });
+    expect(policyDigitalFile.allowAddToCart).toBe(false);
+    expect(policyDigitalFile.showStickyCart).toBe(false);
+    expect(policyDigitalFile.isDirectBuyPrimary).toBe(true);
+
+    const policyEcourse = evaluateCartPolicy({ category: 'ecourse' });
+    expect(policyEcourse.allowAddToCart).toBe(false);
+    expect(policyEcourse.showStickyCart).toBe(false);
+  });
+
+  it('strictly disables cart when enableCart is explicitly false regardless of category or business type', () => {
+    const policyExplicitFalse = evaluateCartPolicy({ businessType: 'RETAIL', productType: 'PHYSICAL', enableCart: false });
+    expect(policyExplicitFalse.allowAddToCart).toBe(false);
+    expect(policyExplicitFalse.showStickyCart).toBe(false);
+    expect(policyExplicitFalse.isCartEnabled).toBe(false);
+  });
+
   it('complies with ZERO HARDCODING POLICY: does not inspect static slug names', () => {
     const policyFile = fs.readFileSync(path.join(process.cwd(), 'lib/cart/cart-policy.ts'), 'utf-8');
     const forbiddenPatterns = [
@@ -80,5 +98,25 @@ describe('Cart Policy Matrix & Multi-Tenant Isolation', () => {
       expect(catalogPageCode).toContain('cart.items.length > 0');
     });
   });
+
+  describe('Single Page (/p/[slug]) and ProductFormModal Integration', () => {
+    const singlePagePath = path.join(process.cwd(), 'app/[tenant]/p/[slug]/page.tsx');
+    const modalPath = path.join(process.cwd(), 'app/[tenant]/dashboard/components/ProductFormModal.tsx');
+
+    it('unmounts cart buttons on single page when isCartDisabled is true', () => {
+      const code = fs.readFileSync(singlePagePath, 'utf-8');
+      expect(code).toContain('isCartDisabled');
+      expect(code).toContain('!isCartDisabled && cartPolicy.allowAddToCart');
+      expect(code).toContain('allowAddToCart={!isCartDisabled && cartPolicy.allowAddToCart}');
+    });
+
+    it('provides enable_cart toggle in ProductFormModal.tsx', () => {
+      const code = fs.readFileSync(modalPath, 'utf-8');
+      expect(code).toContain('Aktifkan Fitur Keranjang Belanja');
+      expect(code).toContain('handleToggleEnableCart');
+      expect(code).toContain('enable_cart');
+    });
+  });
 });
+
 

@@ -1267,14 +1267,21 @@ function SingleProductContent() {
     : (product.promo_price && product.promo_price > 0 ? Math.round(unitPrice * 1.5) : unitPrice);
 
   const cartState = useCart(tenant);
+  const isCartDisabled =
+    product.metadata?.enable_cart === false ||
+    (product as any).enable_cart === false ||
+    (product.product_type as string) === 'DIGITAL_FILE' ||
+    (product.product_type as string) === 'SERVICE';
+
   const cartPolicy = useMemo(() => {
     return evaluateCartPolicy({
       businessType: tenantData?.metadata?.category || (tenantData as any)?.business_type,
       productType: product.product_type || product.type,
       category: product.category,
       requiresShipping,
+      enableCart: isCartDisabled ? false : (product.metadata?.enable_cart ?? (product as any)?.enable_cart),
     });
-  }, [tenantData, product, requiresShipping]);
+  }, [tenantData, product, requiresShipping, isCartDisabled]);
 
   const handleAddToCart = async () => {
     await cartState.addItem({
@@ -3795,7 +3802,7 @@ function SingleProductContent() {
       </button>
 
       {/* Secondary Add to Cart Button for multi-item catalogs (FOOD / PHYSICAL) */}
-      {cartPolicy.allowAddToCart && (
+      {!isCartDisabled && cartPolicy.allowAddToCart && (
         <button
           type="button"
           onClick={handleAddToCart}
@@ -4358,13 +4365,13 @@ function SingleProductContent() {
           whatsAppUrl={wabaConsultationUrl}
           onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}
-          allowAddToCart={cartPolicy.allowAddToCart}
+          allowAddToCart={!isCartDisabled && cartPolicy.allowAddToCart}
           onAddToCart={handleAddToCart}
         />
       )}
 
       {/* Floating Cart Bar if items exist in cart */}
-      {cartPolicy.showStickyCart && cartState.totalQuantity > 0 && !cartState.isDrawerOpen && !checkoutOpen && (
+      {!isCartDisabled && cartPolicy.showStickyCart && cartState.totalQuantity > 0 && !cartState.isDrawerOpen && !checkoutOpen && (
         <FloatingCartBar
           totalCount={cartState.totalQuantity}
           subtotal={cartState.subtotal}
@@ -4375,19 +4382,21 @@ function SingleProductContent() {
       )}
 
       {/* Cart Drawer */}
-      <CartDrawer
-        isOpen={cartState.isDrawerOpen}
-        onClose={cartState.closeCart}
-        cart={cartState.cart}
-        onUpdateQty={cartState.updateQuantity}
-        onRemoveItem={cartState.removeItem}
-        onCheckout={() => {
-          cartState.closeCart();
-          if (cartState.cart && cartState.cart.items.length > 0) {
-            setCheckoutOpen(true);
-          }
-        }}
-      />
+      {!isCartDisabled && (
+        <CartDrawer
+          isOpen={cartState.isDrawerOpen}
+          onClose={cartState.closeCart}
+          cart={cartState.cart}
+          onUpdateQty={cartState.updateQuantity}
+          onRemoveItem={cartState.removeItem}
+          onCheckout={() => {
+            cartState.closeCart();
+            if (cartState.cart && cartState.cart.items.length > 0) {
+              setCheckoutOpen(true);
+            }
+          }}
+        />
+      )}
 
       {/* 5. Instant Checkout Modal Fallback */}
       {checkoutOpen && (

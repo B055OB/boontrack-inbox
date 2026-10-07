@@ -93,11 +93,11 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
 
           // If order is active/pending/in-verification, lock its code and final amount
           if (!isTerminal) {
-            const code = Number(o.unique_code ?? o.metadata?.unique_code ?? 0);
+            const code = Number((o as any).unique_code ?? o.metadata?.unique_code ?? 0);
             if (code >= 1 && code <= 999) {
               takenCodes.add(code);
             }
-            const amt = Number(o.gross_amount ?? o.total_amount ?? 0);
+            const amt = Number(o.gross_amount ?? (o as any).total_amount ?? 0);
             if (amt > 0) {
               takenAmounts.add(amt);
             }

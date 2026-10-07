@@ -15,6 +15,14 @@ export default function PhysicalRetailProductForm({
   productForm,
   setProductForm,
 }: ModularProductFormProps) {
+  const productType = (productForm.product_type || '').toUpperCase().trim();
+  const isPhysical = productType === 'PHYSICAL';
+
+  // Section "Pengaturan Logistik, Ekspedisi & Berat Paket" HANYA boleh di-render jika productType === 'PHYSICAL'
+  if (!isPhysical) {
+    return null;
+  }
+
   return (
     <div className="space-y-4">
       <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-3">

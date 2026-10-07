@@ -22,9 +22,24 @@ export interface CartPolicyInput {
   fulfillmentStrategy?: string | null;
   requiresShipping?: boolean;
   hasTimeslot?: boolean;
+  enableCart?: boolean;
 }
 
 export function evaluateCartPolicy(input: CartPolicyInput): CartPolicy {
+  // 0. Explicit Toggle Override: If enableCart is explicitly false, strictly disable cart
+  if (input.enableCart === false) {
+    return {
+      isCartEnabled: false,
+      allowDirectBuy: true,
+      allowAddToCart: false,
+      defaultFlow: 'DIRECT',
+      showStickyCart: false,
+      isDirectBuyPrimary: true,
+      multiItemCheckout: false,
+      reason: 'Fitur keranjang belanja dinonaktifkan oleh pengaturan produk (Direct Checkout 100%).',
+    };
+  }
+
   const normBusiness = (input.businessType || '').toUpperCase().trim();
   const normProduct = (input.productType || '').toUpperCase().trim();
   const normCat = (input.category || '').toLowerCase().trim();
@@ -109,9 +124,16 @@ export function evaluateCartPolicy(input: CartPolicyInput): CartPolicy {
   // 4. Evaluate Digital Products
   const isDigital =
     normProduct === 'DIGITAL' ||
+    normProduct === 'DIGITAL_FILE' ||
+    normProduct === 'ECOURSE' ||
+    normProduct === 'COURSE' ||
+    normProduct === 'EBOOK' ||
     normCat === 'digital' ||
+    normCat === 'digital_file' ||
     normCat === 'digital_product' ||
     normCat === 'ecourse' ||
+    normCat === 'course' ||
+    normCat === 'ebook' ||
     normFulfillment === 'DIGITAL' ||
     normBusiness === 'DIGITAL';
 

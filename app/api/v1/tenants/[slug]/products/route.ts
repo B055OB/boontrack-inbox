@@ -28,6 +28,7 @@ export interface ProductItem {
   product_type?: string;
   custom_badge?: string;
   weight_grams?: number;
+  requires_shipping?: boolean;
   fulfillment_metadata?: any;
   single_page_config?: any;
   order_bumps?: any;
@@ -131,9 +132,9 @@ export async function POST(
           ]
         : [];
 
-      // ── DATA INTEGRITY GATE: Query SQL products table to guarantee existing catalog is never overwritten ──
+      // ── DATA INTEGRITY GATE: Query SQL products table ONLY if existing metadata is empty to avoid resurrecting deleted products ──
       let mergedExisting = [...existingProducts];
-      if (existing?.id) {
+      if (existing?.id && mergedExisting.length === 0) {
         try {
           const { data: sqlProds } = await supabase
             .from('products')
@@ -153,7 +154,7 @@ export async function POST(
                   slug: sp.slug,
                   category: sp.category || 'digital',
                   product_type: sp.product_type || 'DIGITAL',
-                  type: sp.product_type === 'PHYSICAL' ? 'physical' : 'digital',
+                  type: sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'service' : 'digital'),
                   price: Number(sp.price) || 0,
                   promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
                   sku: sp.sku || `SKU-${sp.id}`,
@@ -164,6 +165,7 @@ export async function POST(
                   download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
                   stock: sp.stock ?? 999999,
                   is_unlimited: sp.is_unlimited_stock ?? true,
+                  requires_shipping: Boolean(sp.requires_shipping),
                   fulfillment_metadata: sp.fulfillment_metadata,
                   single_page_config: sp.fulfillment_metadata?.single_page_config,
                 });
@@ -175,8 +177,12 @@ export async function POST(
         }
       }
 
+      const targetSku = (body.sku || newProduct.sku || '').trim().toLowerCase();
       const existingIndex = mergedExisting.findIndex(
-        (p: any) => String(p.id) === String(productId) || (p.slug && p.slug.toLowerCase() === finalSlug.toLowerCase())
+        (p: any) =>
+          (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
+          String(p.id) === String(productId) ||
+          (p.slug && p.slug.toLowerCase() === finalSlug.toLowerCase())
       );
 
       // VALIDASI KUOTA CHECKOUT_LITE: MAKSIMAL 3 PRODUK AKTIF
@@ -261,6 +267,7 @@ export async function POST(
             product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : 'DIGITAL_FILE'),
             sku: productSku,
             is_active: body.is_active !== false,
+            requires_shipping: Boolean(body.requires_shipping ?? (body.product_type === 'PHYSICAL')),
             fulfillment_metadata: {
               ...(body.fulfillment_metadata || {}),
               ...(body.order_bumps || body.metadata?.order_bumps ? { order_bumps: body.order_bumps || body.metadata?.order_bumps } : {}),
@@ -272,7 +279,7 @@ export async function POST(
             .from('products')
             .select('id')
             .eq('tenant_id', existing.id)
-            .or(`slug.eq.${finalSlug}${isUuid ? `,id.eq.${productId}` : ''}`)
+            .or(`slug.eq.${finalSlug}${productSku ? `,sku.eq.${productSku}` : ''}${isUuid ? `,id.eq.${productId}` : ''}`)
             .maybeSingle();
 
           if (existingSql?.id) {
@@ -387,6 +394,7 @@ export async function DELETE(
         try {
           const deleteConditions = [`id.eq.${id}`];
           if (targetSlug) deleteConditions.push(`slug.eq.${targetSlug}`);
+          if (targetProduct?.sku) deleteConditions.push(`sku.eq.${targetProduct.sku}`);
           await supabase
             .from('products')
             .delete()

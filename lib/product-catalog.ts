@@ -188,6 +188,7 @@ export interface SinglePageConfig {
 export type ProductType =
   | 'PHYSICAL'
   | 'DIGITAL'
+  | 'DIGITAL_FILE'
   | 'FOOD'
   | 'LOCAL_SERVICE'
   | 'FIELD_SERVICE'
@@ -289,6 +290,7 @@ export interface ProductItem {
   weight_grams?: number;
   requires_shipping?: boolean;
   is_digital?: boolean;
+  enable_cart?: boolean;
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
   external_url?: string;

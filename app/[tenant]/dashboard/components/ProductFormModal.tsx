@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2, Tag, CreditCard } from 'lucide-react';
+import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2, Tag, CreditCard, ShoppingCart } from 'lucide-react';
 import BoonPilotPitchModal from './BoonPilotPitchModal';
 import ImageUpload from '@/components/ImageUpload';
 import {
@@ -91,21 +91,12 @@ export function resolveBoonVertical(
   product: Partial<ProductItem>,
   storeCategory?: string
 ): BoonVerticalOption {
-  // Store category from tenant is the primary source of truth for the store's vertical
-  const sc = (storeCategory || '').toUpperCase();
-  if (['FOOD', 'FNB', 'KULINER'].some((k) => sc.includes(k))) return 'fnb';
-  if (['DIGITAL', 'COURSE', 'SOFTWARE'].some((k) => sc.includes(k))) return 'digital_product';
-  if (['PROFESSIONAL', 'CONSULT'].some((k) => sc.includes(k))) return 'pro_service';
-  if (['AGENCY', 'CREATOR'].some((k) => sc.includes(k))) return 'creator_agency';
-  if (['SERVICE', 'FIELD', 'LOCAL'].some((k) => sc.includes(k))) return 'field_service';
-  if (['PHYSICAL', 'RETAIL'].some((k) => sc.includes(k))) return 'retail_physical';
-
-  // Fallback to product attributes if storeCategory is not specified
+  // 1. Prioritaskan atribut tipe produk spesifik jika ada
   const pt = (product.product_type || '').toUpperCase();
   if (pt === 'FOOD' || pt === 'FNB') return 'fnb';
-  if (pt === 'DIGITAL') return 'digital_product';
+  if (pt === 'DIGITAL' || pt === 'DIGITAL_FILE') return 'digital_product';
   if (pt === 'FIELD_SERVICE') return 'field_service';
-  if (pt === 'PROFESSIONAL_SERVICE') return 'pro_service';
+  if (pt === 'PROFESSIONAL_SERVICE' || pt === 'SERVICE') return 'pro_service';
   if (pt === 'AGENCY') return 'creator_agency';
   if (pt === 'PHYSICAL') return 'retail_physical';
 
@@ -114,12 +105,21 @@ export function resolveBoonVertical(
 
   if (rawCat.includes('kuliner') || rawCat.includes('fnb') || rawCat.includes('food') || rawType.includes('fnb')) return 'fnb';
   if (rawCat.includes('digital') || rawCat.includes('course') || rawCat.includes('ebook') || rawType.includes('digital')) return 'digital_product';
-  if (rawCat.includes('konsultasi') || rawCat.includes('pro_service')) return 'pro_service';
+  if (rawCat.includes('konsultasi') || rawCat.includes('pro_service') || rawCat.includes('medis') || rawCat.includes('dokter')) return 'pro_service';
   if (rawCat.includes('agency') || rawCat.includes('kreator') || rawCat.includes('creator')) return 'creator_agency';
   if (rawCat.includes('jasa') || rawCat.includes('field') || rawCat.includes('service') || rawType.includes('service')) {
     return 'field_service';
   }
   if (rawCat.includes('fisik') || rawCat.includes('physical') || rawType.includes('physical')) return 'retail_physical';
+
+  // 2. Store category from tenant sebagai fallback jika tipe produk belum ada
+  const sc = (storeCategory || '').toUpperCase();
+  if (['FOOD', 'FNB', 'KULINER'].some((k) => sc.includes(k))) return 'fnb';
+  if (['DIGITAL', 'COURSE', 'SOFTWARE'].some((k) => sc.includes(k))) return 'digital_product';
+  if (['PROFESSIONAL', 'CONSULT'].some((k) => sc.includes(k))) return 'pro_service';
+  if (['AGENCY', 'CREATOR'].some((k) => sc.includes(k))) return 'creator_agency';
+  if (['SERVICE', 'FIELD', 'LOCAL'].some((k) => sc.includes(k))) return 'field_service';
+  if (['PHYSICAL', 'RETAIL'].some((k) => sc.includes(k))) return 'retail_physical';
 
   return 'retail_physical';
 }
@@ -167,25 +167,39 @@ export default function ProductFormModal({
       setProductForm((prev) => {
         const vertical = resolveBoonVertical(prev, storeCategory);
         const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === vertical) || BOON_VERTICAL_OPTIONS[0];
-        const reqs = resolveFulfillmentRequirements(meta.productType);
+        const effectiveProductType = prev.product_type || meta.productType;
+        const normPt = String(effectiveProductType).toUpperCase();
+        const isPhysical = normPt === 'PHYSICAL';
+        const isPhysicalStock = isPhysical || normPt === 'FOOD';
+        const isServiceOrDigital = normPt === 'DIGITAL_FILE' || normPt === 'DIGITAL' || normPt === 'SERVICE' || normPt === 'PROFESSIONAL_SERVICE' || normPt === 'FIELD_SERVICE';
+        const defaultEnableCart = isPhysical ? true : (isServiceOrDigital ? false : isPhysical);
+        const explicitEnableCart = prev.metadata?.enable_cart !== undefined
+          ? Boolean(prev.metadata.enable_cart)
+          : ((prev as any).enable_cart !== undefined ? Boolean((prev as any).enable_cart) : undefined);
+        const resolvedEnableCart = explicitEnableCart !== undefined ? explicitEnableCart : defaultEnableCart;
+
+        const reqs = resolveFulfillmentRequirements(effectiveProductType);
         const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
         const customBadge = prev.custom_badge?.trim();
         const resolvedBadge = customBadge || (prev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(prev.category.trim().toLowerCase()) ? prev.category.trim() : meta.defaultBadge);
-
-        const effectiveDomain = resolveDomainVertical(storeCategory || vertical || meta.productType);
-        const isPhysicalStock = effectiveDomain === 'physical-retail' || effectiveDomain === 'fnb-culinary';
 
         return {
           ...prev,
           image: sanitizeImageUrl(prev.image),
           slug: currentSlug,
-          product_type: meta.productType,
-          type: meta.backendType,
+          product_type: effectiveProductType,
+          type: prev.type || meta.backendType,
           category: resolvedBadge,
           custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
           is_unlimited: !isPhysicalStock ? true : (prev.is_unlimited !== undefined ? prev.is_unlimited : reqs.strategy === 'DIGITAL'),
           stock: !isPhysicalStock ? 999999 : (prev.stock ?? 100),
-          weight_grams: !isPhysicalStock ? 0 : (prev.weight_grams ?? 0),
+          weight_grams: !isPhysical ? 0 : (prev.weight_grams ?? 0),
+          requires_shipping: isPhysical,
+          enable_cart: resolvedEnableCart,
+          metadata: {
+            ...(prev.metadata || {}),
+            enable_cart: resolvedEnableCart,
+          },
           checkout_type: prev.checkout_type || (prev.external_url ? 'external' : 'internal'),
           external_url: prev.external_url || '',
           cta_label: prev.cta_label || '',
@@ -200,8 +214,27 @@ export default function ProductFormModal({
   const currentType: ProductType = productForm.product_type || activeVerticalMeta.productType;
   const requirements = resolveFulfillmentRequirements(currentType);
 
-  const effectiveVertical = resolveDomainVertical(storeCategory || currentVerticalKey || currentType);
-  const isPhysicalStockVertical = effectiveVertical === 'physical-retail' || effectiveVertical === 'fnb-culinary';
+  const normProductType = (productForm.product_type || currentType || '').toUpperCase();
+  const isPhysicalProduct = normProductType === 'PHYSICAL';
+  const effectiveVertical = resolveDomainVertical(productForm.product_type || currentType || currentVerticalKey || storeCategory);
+  const isPhysicalStockVertical = isPhysicalProduct || (normProductType === 'FOOD');
+
+  const isCartEnabled = productForm.metadata?.enable_cart !== undefined
+    ? Boolean(productForm.metadata.enable_cart)
+    : (productForm as any).enable_cart !== undefined
+      ? Boolean((productForm as any).enable_cart)
+      : isPhysicalProduct;
+
+  const handleToggleEnableCart = (enabled: boolean) => {
+    setProductForm((prev) => ({
+      ...prev,
+      enable_cart: enabled,
+      metadata: {
+        ...(prev.metadata || {}),
+        enable_cart: enabled,
+      },
+    }));
+  };
 
   const isServiceCluster = currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' || currentVerticalKey === 'creator_agency' || activeVerticalMeta.backendType === 'service';
   const isDigitalCluster = currentVerticalKey === 'digital_product' || activeVerticalMeta.backendType === 'digital';
@@ -528,15 +561,24 @@ export default function ProductFormModal({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const currentPt = (productForm.product_type || '').toUpperCase();
+    const isPhysical = currentPt === 'PHYSICAL';
     const isAffiliate = productForm.checkout_type === 'external';
-    if (!isPhysicalStockVertical || isAffiliate) {
-      setProductForm((p) => ({
-        ...p,
-        is_unlimited: true,
-        stock: 999999,
-        weight_grams: 0,
-      }));
-    }
+
+    const cleanForm: ProductItem = {
+      ...productForm,
+      is_unlimited: !isPhysical ? true : (productForm.is_unlimited ?? false),
+      stock: !isPhysical ? 999999 : (productForm.stock ?? 100),
+      weight_grams: isPhysical && !isAffiliate ? Number(productForm.weight_grams || 1000) : 0,
+      requires_shipping: isPhysical && !isAffiliate,
+      enable_cart: isCartEnabled,
+      metadata: {
+        ...(productForm.metadata || {}),
+        enable_cart: isCartEnabled,
+      },
+    };
+
+    setProductForm(cleanForm);
 
     if (isCheckoutLite && !editingProductId && activeProductsCount >= 3) {
       alert('Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.');
@@ -841,6 +883,43 @@ export default function ProductFormModal({
             </p>
           </div>
 
+          {/* 3d. Fitur Keranjang Belanja (Add to Cart / Direct Checkout) */}
+          {productForm.checkout_type !== 'external' && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5 pr-2">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                    <ShoppingCart className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Aktifkan Fitur Keranjang Belanja</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isCartEnabled 
+                        ? 'text-emerald-700 bg-emerald-100' 
+                        : 'text-slate-600 bg-slate-200'
+                    }`}>
+                      {isCartEnabled ? 'Keranjang Aktif' : 'Direct Checkout (1-Click)'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    {isCartEnabled
+                      ? 'Pembeli dapat menambahkan produk ini ke keranjang belanja (+ Keranjang) dan checkout beberapa item sekaligus.'
+                      : 'Fokus 100% pada Direct Checkout (1-Click). Tombol keranjang disembunyikan agar alur checkout instan dan fokus.'}
+                  </p>
+                </div>
+
+                {/* Master Toggle */}
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={isCartEnabled}
+                    onChange={(e) => handleToggleEnableCart(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            </div>
+          )}
+
           {/* 4. Promo Label & SKU */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -904,7 +983,7 @@ export default function ProductFormModal({
 
           {/* FULFILLMENT & DOMAIN SPECIFIC PRODUCT FORM */}
           <ModularProductFormDispatcher
-            verticalKey={resolveDomainVertical(storeCategory || currentType)}
+            verticalKey={resolveDomainVertical(productForm.product_type || currentType || storeCategory)}
             productForm={productForm}
             setProductForm={setProductForm}
             tenantSlug={tenantSlug}
