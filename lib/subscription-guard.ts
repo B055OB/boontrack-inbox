@@ -95,6 +95,21 @@ export async function checkTenantMutationPermission(
 
     let isExpired = false;
 
+    const now = Date.now();
+    const rawTrialEnds = tenant.trial_ends_at || meta.trial_ends_at;
+    const rawSubEnds = tenant.subscription_ends_at || meta.subscription_ends_at;
+
+    const isTrial = Boolean(
+      tStatus === 'trial' ||
+      metaSubStatus === 'trial' ||
+      meta.is_trial ||
+      rawTrialEnds
+    );
+
+    const trialEndsTime = rawTrialEnds ? new Date(rawTrialEnds).getTime() : null;
+    const subEndsTime = rawSubEnds ? new Date(rawSubEnds).getTime() : null;
+    const isTrialActive = Boolean(isTrial && trialEndsTime && now <= trialEndsTime);
+
     // 1. Explicit status check
     if (
       tStatus === 'expired' ||
@@ -105,23 +120,12 @@ export async function checkTenantMutationPermission(
       meta.is_suspended === true
     ) {
       isExpired = true;
+    } else if (isTrialActive) {
+      // Active Trial: SELALU izinkan mutasi tanpa memblokir pembuatan produk awal
+      isExpired = false;
     } else if (!isActive) {
       isExpired = true;
     } else {
-      const now = Date.now();
-      const rawTrialEnds = tenant.trial_ends_at || meta.trial_ends_at;
-      const rawSubEnds = tenant.subscription_ends_at || meta.subscription_ends_at;
-
-      const isTrial = Boolean(
-        tStatus === 'trial' ||
-        metaSubStatus === 'trial' ||
-        meta.is_trial ||
-        rawTrialEnds
-      );
-
-      const trialEndsTime = rawTrialEnds ? new Date(rawTrialEnds).getTime() : null;
-      const subEndsTime = rawSubEnds ? new Date(rawSubEnds).getTime() : null;
-
       if (isTrial && trialEndsTime) {
         if (now > trialEndsTime) {
           if (!subEndsTime || now > subEndsTime) {

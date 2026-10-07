@@ -438,6 +438,7 @@ export function useTenantDashboard() {
     discount_coupon: 'HEMAT50',
     affiliate_commission_rate: 0,
   });
+  const [isSavingSinglePage, setIsSavingSinglePage] = useState(false);
 
   const [productForm, setProductForm] = useState<ProductItem>({
     id: 0,
@@ -1788,12 +1789,19 @@ export function useTenantDashboard() {
               fulfillment_metadata: fullProductItem.fulfillment_metadata || {},
             };
 
-            const { data: existingSql } = await supabase
-              .from('products')
-              .select('id')
-              .eq('tenant_id', tenantRow.id)
-              .or(`slug.eq.${finalSlug}${fullProductItem.sku ? `,sku.eq.${fullProductItem.sku}` : ''}${isUuid ? `,id.eq.${fullProductItem.id}` : ''}`)
-              .maybeSingle();
+            const orFilters: string[] = [];
+            if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
+            if (fullProductItem.sku) orFilters.push(`sku.eq.${fullProductItem.sku}`);
+            if (isUuid) orFilters.push(`id.eq.${fullProductItem.id}`);
+
+            const { data: existingSql } = orFilters.length > 0
+              ? await supabase
+                  .from('products')
+                  .select('id')
+                  .eq('tenant_id', tenantRow.id)
+                  .or(orFilters.join(','))
+                  .maybeSingle()
+              : { data: null };
 
             if (existingSql?.id) {
               await supabase.from('products').update(sqlPayload).eq('id', existingSql.id);
@@ -1877,14 +1885,19 @@ export function useTenantDashboard() {
               .eq('id', tenantRow.id);
 
             // Hapus juga secara atomik dari tabel SQL products
-            const deleteFilters = [`id.eq.${id}`];
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
+            const deleteFilters: string[] = [];
+            if (isUuid) deleteFilters.push(`id.eq.${id}`);
             if (targetSlug) deleteFilters.push(`slug.eq.${targetSlug}`);
             if (targetSku) deleteFilters.push(`sku.eq.${targetSku}`);
-            await supabase
-              .from('products')
-              .delete()
-              .eq('tenant_id', tenantRow.id)
-              .or(deleteFilters.join(','));
+
+            if (deleteFilters.length > 0) {
+              await supabase
+                .from('products')
+                .delete()
+                .eq('tenant_id', tenantRow.id)
+                .or(deleteFilters.join(','));
+            }
           }
         }
       } catch (dbErr) {
@@ -2008,6 +2021,7 @@ export function useTenantDashboard() {
     e.preventDefault();
     if (!activeSinglePageProduct || !tenantSlug) return;
 
+    setIsSavingSinglePage(true);
     const prodSlug = singlePageForm.slug?.trim() || slugify(activeSinglePageProduct.name);
     const updatedConfig: SinglePageConfig = {
       ...singlePageForm,
@@ -2044,6 +2058,96 @@ export function useTenantDashboard() {
     });
 
     setProducts(updatedProducts);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+    }
+
+    // Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow?.id) {
+          const existingMetaProducts: ProductItem[] = Array.isArray(tenantRow.metadata?.products)
+            ? tenantRow.metadata.products
+            : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
+
+          const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
+          if (targetProd) {
+            const targetSku = (targetProd.sku || '').trim().toLowerCase();
+            const targetId = String(targetProd.id || '').trim().toLowerCase();
+            const targetSlug = (targetProd.slug || prodSlug).trim().toLowerCase();
+
+            const editIndex = existingMetaProducts.findIndex(
+              p =>
+                String(p.id).toLowerCase() === targetId ||
+                (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
+                (targetSlug && (p.slug || '').toLowerCase() === targetSlug)
+            );
+
+            let finalMergedProducts: ProductItem[];
+            if (editIndex >= 0) {
+              finalMergedProducts = [...existingMetaProducts];
+              finalMergedProducts[editIndex] = {
+                ...finalMergedProducts[editIndex],
+                ...targetProd,
+              };
+            } else {
+              finalMergedProducts = [targetProd, ...existingMetaProducts];
+            }
+
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              products: finalMergedProducts,
+              product: finalMergedProducts[0] || targetProd,
+              single_page_config: updatedConfig,
+            };
+
+            await supabase
+              .from('tenants')
+              .update({ metadata: updatedMeta })
+              .eq('id', tenantRow.id);
+
+            // Sync juga ke tabel SQL products jika barisnya ada
+            try {
+              const isUuidVal = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(targetProd.id));
+              const orFilters: string[] = [];
+              if (prodSlug) orFilters.push(`slug.eq.${prodSlug}`);
+              if (targetProd.sku) orFilters.push(`sku.eq.${targetProd.sku}`);
+              if (isUuidVal) orFilters.push(`id.eq.${targetProd.id}`);
+
+              if (orFilters.length > 0) {
+                const { data: existingSql } = await supabase
+                  .from('products')
+                  .select('id, fulfillment_metadata')
+                  .eq('tenant_id', tenantRow.id)
+                  .or(orFilters.join(','))
+                  .maybeSingle();
+
+                if (existingSql?.id) {
+                  await supabase.from('products').update({
+                    slug: prodSlug,
+                    fulfillment_metadata: {
+                      ...(existingSql.fulfillment_metadata || {}),
+                      single_page_config: updatedConfig,
+                    },
+                  }).eq('id', existingSql.id);
+                }
+              }
+            } catch (sqlErr) {
+              console.debug('[Dashboard] SQL products single page sync note:', sqlErr);
+            }
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[Dashboard] Direct Supabase single page save error:', dbErr);
+    }
 
     try {
       const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
@@ -2056,6 +2160,8 @@ export function useTenantDashboard() {
       }
     } catch (err) {
       console.warn('Gagal sync single page ke backend:', err);
+    } finally {
+      setIsSavingSinglePage(false);
     }
 
     setIsSinglePageModalOpen(false);
@@ -2638,6 +2744,7 @@ export function useTenantDashboard() {
     // Single Page Builder Modal
     isSinglePageModalOpen,
     setIsSinglePageModalOpen,
+    isSavingSinglePage,
     activeSinglePageProduct,
     singlePageForm,
     setSinglePageForm,

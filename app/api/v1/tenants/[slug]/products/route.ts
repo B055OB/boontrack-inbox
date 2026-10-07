@@ -6,6 +6,8 @@ import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { slugify, mapToDbProductType, DbProductType } from '@/lib/product-catalog';
 
+const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
 export interface ProductItem {
   id: string | number;
   name: string;
@@ -301,11 +303,11 @@ export async function POST(
 
         // Coba sync juga ke tabel SQL `products` jika memungkinkan
         try {
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(productId));
+          const isUuidVal = isUuid(String(productId));
           const dbProductType = mapToDbProductType(body.product_type || type, resolvedCategory);
 
           const sqlProductPayload = {
-            ...(isUuid ? { id: String(productId) } : {}),
+            ...(isUuidVal ? { id: String(productId) } : {}),
             tenant_id: existing.id,
             title: trimmedName,
             name: trimmedName,
@@ -334,12 +336,20 @@ export async function POST(
             },
           };
 
-          const { data: existingSql } = await supabase
-            .from('products')
-            .select('id')
-            .eq('tenant_id', existing.id)
-            .or(`slug.eq.${finalSlug}${productSku ? `,sku.eq.${productSku}` : ''}${isUuid ? `,id.eq.${productId}` : ''}`)
-            .maybeSingle();
+          const hasValidUuid = isUuid(String(productId || ''));
+          const orFilters: string[] = [];
+          if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
+          if (productSku) orFilters.push(`sku.eq.${productSku}`);
+          if (hasValidUuid) orFilters.push(`id.eq.${productId}`);
+
+          const { data: existingSql } = orFilters.length > 0
+            ? await supabase
+                .from('products')
+                .select('id')
+                .eq('tenant_id', existing.id)
+                .or(orFilters.join(','))
+                .maybeSingle()
+            : { data: null };
 
           if (existingSql?.id) {
             await supabase.from('products').update(sqlProductPayload).eq('id', existingSql.id);
@@ -451,14 +461,18 @@ export async function DELETE(
 
         // Hapus juga dari tabel SQL products Supabase
         try {
-          const deleteConditions = [`id.eq.${id}`];
+          const deleteConditions: string[] = [];
+          if (isUuid(String(id || ''))) deleteConditions.push(`id.eq.${id}`);
           if (targetSlug) deleteConditions.push(`slug.eq.${targetSlug}`);
           if (targetProduct?.sku) deleteConditions.push(`sku.eq.${targetProduct.sku}`);
-          await supabase
-            .from('products')
-            .delete()
-            .eq('tenant_id', existing.id)
-            .or(deleteConditions.join(','));
+
+          if (deleteConditions.length > 0) {
+            await supabase
+              .from('products')
+              .delete()
+              .eq('tenant_id', existing.id)
+              .or(deleteConditions.join(','));
+          }
         } catch (delSqlErr) {
           console.debug('[Products Route] SQL products delete note:', delSqlErr);
         }

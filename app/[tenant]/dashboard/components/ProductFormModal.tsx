@@ -160,6 +160,8 @@ export default function ProductFormModal({
   activeProductsCount = 0,
 }: ProductFormModalProps) {
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Sync vertical option when modal opens
   useEffect(() => {
@@ -559,8 +561,28 @@ export default function ProductFormModal({
     });
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    const trimmedName = (productForm.name || '').trim();
+    if (!trimmedName) {
+      setErrorMessage('Nama produk wajib diisi.');
+      const nameInput = document.getElementById('product-name-input');
+      if (nameInput) {
+        nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        nameInput.focus();
+      }
+      return;
+    }
+
+    if (isCheckoutLite && !editingProductId && activeProductsCount >= 3) {
+      const quotaMsg = 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.';
+      setErrorMessage(quotaMsg);
+      alert(quotaMsg);
+      return;
+    }
+
     const currentPt = (productForm.product_type || '').toUpperCase();
     const isPhysical = currentPt === 'PHYSICAL';
     const isAffiliate = productForm.checkout_type === 'external';
@@ -598,6 +620,7 @@ export default function ProductFormModal({
 
     const cleanForm: ProductItem = {
       ...productForm,
+      name: trimmedName,
       price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
       promo_price: productForm.promo_price ? Number(productForm.promo_price) : undefined,
       is_unlimited: !isPhysical ? true : (productForm.is_unlimited ?? false),
@@ -625,12 +648,15 @@ export default function ProductFormModal({
 
     setProductForm(cleanForm);
 
-    if (isCheckoutLite && !editingProductId && activeProductsCount >= 3) {
-      alert('Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.');
-      return;
+    try {
+      setIsSubmitting(true);
+      await Promise.resolve(onSave(e));
+    } catch (err: any) {
+      console.error('Error saving product in modal:', err);
+      setErrorMessage(err?.message || 'Gagal menyimpan produk ke etalase. Silakan periksa kembali.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onSave(e);
   };
 
   if (!isOpen) return null;
@@ -665,6 +691,23 @@ export default function ProductFormModal({
         </div>
 
         <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* Error Feedback Banner */}
+          {errorMessage && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 font-semibold flex items-center justify-between gap-2 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <span className="text-rose-500 font-bold">⚠️</span>
+                <span>{errorMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-rose-400 hover:text-rose-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Quota Limit Warning Banner for Checkout Lite */}
           {isCheckoutLite && !editingProductId && activeProductsCount >= 3 && (
             <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 font-medium space-y-1">
@@ -685,6 +728,7 @@ export default function ProductFormModal({
             </label>
             <input
               type="text"
+              id="product-name-input"
               required
               value={productForm.name}
               onChange={(e) => {
@@ -1549,10 +1593,20 @@ export default function ProductFormModal({
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
             >
-              <Save className="w-4 h-4" />
-              <span>Simpan ke Etalase</span>
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Menyimpan ke Etalase...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Simpan ke Etalase</span>
+                </>
+              )}
             </button>
           </div>
         </form>

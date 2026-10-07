@@ -152,6 +152,7 @@ export default function TenantDashboardPage() {
 
     isSinglePageModalOpen,
     setIsSinglePageModalOpen,
+    isSavingSinglePage,
     activeSinglePageProduct,
     singlePageForm,
     setSinglePageForm,
@@ -1350,6 +1351,7 @@ export default function TenantDashboardPage() {
         setSinglePageForm={setSinglePageForm}
         onSave={handleSaveSinglePageConfig}
         tenantSlug={tenantSlug}
+        isSaving={isSavingSinglePage}
       />
 
       {/* MODAL EDIT PROFIL TOKO */}

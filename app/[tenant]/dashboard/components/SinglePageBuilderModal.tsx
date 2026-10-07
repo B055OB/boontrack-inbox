@@ -130,6 +130,34 @@ export default function SinglePageBuilderModal({
   isSaving = false,
 }: SinglePageBuilderModalProps) {
   const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTab>('hook');
+  const [isInternalSaving, setIsInternalSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    const effectiveSlug = singlePageForm.slug?.trim() || (activeProduct?.name ? slugify(activeProduct.name) : '');
+    if (!effectiveSlug) {
+      setErrorMessage('Slug URL landing page wajib diisi.');
+      const slugInput = document.getElementById('single-page-slug-input');
+      if (slugInput) {
+        slugInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        slugInput.focus();
+      }
+      return;
+    }
+
+    try {
+      setIsInternalSaving(true);
+      await Promise.resolve(onSave(e));
+    } catch (err: any) {
+      console.error('Error saving single page config:', err);
+      setErrorMessage(err?.message || 'Gagal menyimpan konfigurasi Single Page. Silakan periksa kembali.');
+    } finally {
+      setIsInternalSaving(false);
+    }
+  };
 
   // Tabs scroll state
   const builderTabsRef = useRef<HTMLDivElement | null>(null);
@@ -218,7 +246,24 @@ export default function SinglePageBuilderModal({
           </button>
         </div>
 
-        <form onSubmit={onSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 text-xs text-rose-900 font-semibold flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <span className="text-rose-500 font-bold">⚠️</span>
+                <span>{errorMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-rose-400 hover:text-rose-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* SLUG & URL BAR */}
           <div className="px-4 sm:px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
             <div className="flex items-center gap-1.5 flex-1 min-w-[280px]">
@@ -226,6 +271,7 @@ export default function SinglePageBuilderModal({
               <span className="text-slate-400 font-mono text-[11px] shrink-0">/{tenantSlug}/p/</span>
               <input
                 type="text"
+                id="single-page-slug-input"
                 required
                 value={singlePageForm.slug || ''}
                 onChange={(e) => setSinglePageForm((p) => ({ ...p, slug: slugify(e.target.value) }))}
@@ -1836,11 +1882,20 @@ export default function SinglePageBuilderModal({
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || isInternalSaving}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
               >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? 'Menyimpan...' : 'Simpan & Terapkan'}</span>
+                {(isSaving || isInternalSaving) ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Simpan & Terapkan</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
