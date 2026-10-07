@@ -1839,10 +1839,10 @@ export default function TenantStorefrontPage() {
                         </span>
                       )}
                     </div>
-                    <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
+                    <h3 className="font-black text-slate-900 text-sm sm:text-base leading-snug mb-1 group-hover:text-blue-600 transition-colors">
                       {p?.name || `Layanan ${idx + 1}`}
                     </h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p?.description || ""}</p>
+                    <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-3">{p?.description || ""}</p>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -1926,18 +1926,49 @@ export default function TenantStorefrontPage() {
                       }
 
                       return (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            if (p) {
-                              addToCart(p, e);
-                              setShowCartModal(true);
-                            }
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5" /> + Pilihan
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              if (p) {
+                                addToCart(p, e);
+                              }
+                            }}
+                            title="Tambah ke Keranjang"
+                            className="bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>+ Keranjang</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (p) {
+                                trackInitiateCheckout(p.name, p.price);
+                                setProductForCheckout({
+                                  id: String(p.id),
+                                  title: p.name,
+                                  price: p.price,
+                                  download_url: p.download_url,
+                                  category: p.category,
+                                  type: p.type,
+                                  product_type: p.product_type || 'DIGITAL',
+                                  requires_shipping: false,
+                                  slug: p.slug,
+                                  metadata: p.metadata,
+                                });
+                                setIsCheckoutOpen(true);
+                              }
+                            }}
+                            title="Pesan Langsung"
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer whitespace-nowrap"
+                          >
+                            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                            <span>Pesan Langsung</span>
+                          </button>
+                        </div>
                       );
                     })()}
                   </div>

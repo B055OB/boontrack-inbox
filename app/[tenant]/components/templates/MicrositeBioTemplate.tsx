@@ -545,6 +545,20 @@ export default function MicrositeBioTemplate({
     return btns;
   }, [tenantMetadata, whatsappUrl]);
 
+  // ── Flagship / Card Grid Mode Resolution ─────────────────────────────────
+  const isCardGridLayout = Boolean(
+    tenantMetadata?.is_flagship ||
+    tenantMetadata?.storefront_style === 'flagship' ||
+    tenantMetadata?.product_layout === 'card_grid' ||
+    tenantMetadata?.product_layout === 'grid' ||
+    tenantMetadata?.microsite_product_layout === 'grid' ||
+    tenantMetadata?.microsite_product_layout === 'card_grid' ||
+    tenantMetadata?.flagship_mode ||
+    tenant?.metadata?.is_flagship ||
+    tenant?.metadata?.storefront_style === 'flagship' ||
+    tenant?.metadata?.product_layout === 'card_grid'
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={`${themeStyles.screenBg} min-h-screen antialiased`}>
@@ -560,7 +574,7 @@ export default function MicrositeBioTemplate({
         />
       )}
 
-      <div className="relative max-w-md mx-auto px-4 py-8 flex flex-col items-center">
+      <div className={`relative ${isCardGridLayout ? 'max-w-3xl' : 'max-w-md'} mx-auto px-4 py-8 flex flex-col items-center transition-all duration-300`}>
 
         {/* ── Profile Header ── */}
         <div className="flex flex-col items-center text-center space-y-3 pt-2 w-full">
@@ -652,7 +666,7 @@ export default function MicrositeBioTemplate({
           )}
         </div>
 
-        {/* ── Product Catalog (glass cards, conditional) ── */}
+        {/* ── Product Catalog (Modern Cards or Compact List) ── */}
         {showProducts && visibleProducts.length > 0 && (
           <div className="mt-8 w-full space-y-3">
             {/* Section header */}
@@ -670,134 +684,331 @@ export default function MicrositeBioTemplate({
               </span>
             </div>
 
-            {/* Product cards */}
-            {visibleProducts.map((item) => {
-              const hasDedicatedPage =
-                Boolean(item.slug) &&
-                (Boolean(item.single_page_config) ||
-                 Boolean((item as any).single_page_enabled) ||
-                 Boolean((item as any).single_page));
-              const dedicatedPageUrl = hasDedicatedPage && item.slug
-                ? `/${tenantSlug}/p/${item.slug}`
-                : null;
+            {isCardGridLayout ? (
+              /* Modern Product Cards: Grid 1 Kolom Mobile / 2 Kolom Desktop */
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4.5 w-full mt-3">
+                {visibleProducts.map((item) => {
+                  const hasDedicatedPage =
+                    Boolean(item.slug) &&
+                    (Boolean(item.single_page_config) ||
+                     Boolean((item as any).single_page_enabled) ||
+                     Boolean((item as any).single_page));
+                  const dedicatedPageUrl = hasDedicatedPage && item.slug
+                    ? `/${tenantSlug}/p/${item.slug}`
+                    : null;
 
-              const rawExternal = !hasDedicatedPage
-                ? (item.external_url ||
-                   (item as any).affiliate_url ||
-                   (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
-                   resolveProductExternalUrl(item))
-                : null;
-              const externalUrl = rawExternal ? String(rawExternal).trim() : null;
-              const isExternal = Boolean(externalUrl);
-              const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
+                  const rawExternal = !hasDedicatedPage
+                    ? (item.external_url ||
+                       (item as any).affiliate_url ||
+                       (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
+                       resolveProductExternalUrl(item))
+                    : null;
+                  const externalUrl = rawExternal ? String(rawExternal).trim() : null;
+                  const isExternal = Boolean(externalUrl);
+                  const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
 
-              const handleExternalClick = (e: React.MouseEvent) => {
-                e.stopPropagation();
-                if (!externalUrl) return;
+                  const handleExternalClick = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    if (!externalUrl) return;
 
-                // 1. Trigger Facebook Pixel InitiateCheckout
-                if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                  try {
-                    (window as any).fbq("track", "InitiateCheckout", {
-                      content_name: (item as any).title || item.name,
-                      content_ids: [String(item.id || (item as any).slug)],
-                      content_type: "product",
-                      value: Number(item.price) || 0,
-                      currency: "IDR"
-                    });
-                  } catch (_) {}
-                }
+                    if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                      try {
+                        (window as any).fbq("track", "InitiateCheckout", {
+                          content_name: (item as any).title || item.name,
+                          content_ids: [String(item.id || (item as any).slug)],
+                          content_type: "product",
+                          value: Number(item.price) || 0,
+                          currency: "IDR"
+                        });
+                      } catch (_) {}
+                    }
 
-                // 2. Trigger platform InitiateCheckout tracking
-                try {
-                  trackInitiateCheckout((item as any).title || item.name, Number(item.price) || 0);
-                } catch (_) {}
+                    try {
+                      trackInitiateCheckout((item as any).title || item.name, Number(item.price) || 0);
+                    } catch (_) {}
 
-                // 3. Trigger telemetry event
-                try {
-                  trackContactEvent(`Affiliate Outbound: ${item.name}`);
-                } catch (_) {}
+                    try {
+                      trackContactEvent(`Affiliate Outbound: ${item.name}`);
+                    } catch (_) {}
 
-                try {
-                  onOutboundClick?.(externalUrl, ctaLabel);
-                } catch (_) {}
+                    try {
+                      onOutboundClick?.(externalUrl, ctaLabel);
+                    } catch (_) {}
 
-                // 4. Langsung buka link affiliate / external URL di tab baru tanpa masuk keranjang belanja
-                window.open(externalUrl, "_blank", "noopener,noreferrer");
-              };
+                    window.open(externalUrl, "_blank", "noopener,noreferrer");
+                  };
 
-              const handleCardClick = (e: React.MouseEvent) => {
-                if (dedicatedPageUrl) {
-                  e.stopPropagation();
-                  window.location.href = dedicatedPageUrl;
-                } else if (isExternal && externalUrl) {
-                  handleExternalClick(e);
-                }
-              };
+                  const handleCardClick = (e: React.MouseEvent) => {
+                    if (dedicatedPageUrl) {
+                      e.stopPropagation();
+                      window.location.href = dedicatedPageUrl;
+                    } else if (isExternal && externalUrl) {
+                      handleExternalClick(e);
+                    }
+                  };
 
-              return (
-                <div
-                  key={item.id}
-                  onClick={dedicatedPageUrl || isExternal ? handleCardClick : undefined}
-                  className={`${themeStyles.productCard} ${
-                    dedicatedPageUrl || isExternal ? 'cursor-pointer active:scale-[0.99]' : ''
-                  }`}
-                >
-                  <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+                  const safeImage = sanitizeImageUrl(item.image) || item.image;
 
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
-                    <div className="flex items-baseline gap-1 flex-wrap">
-                      {item.originalPrice && item.originalPrice > item.price ? (
-                        <span className="line-through opacity-50 text-xs mr-1">
-                          Rp {Number(item.originalPrice).toLocaleString('id-ID')}
-                        </span>
-                      ) : null}
-                      <span className={`font-bold text-sm ${themeStyles.productPrice}`}>
-                        {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
-                      </span>
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={dedicatedPageUrl || isExternal ? handleCardClick : undefined}
+                      className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-2xl sm:rounded-3xl border border-slate-200/90 dark:border-white/10 p-4 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group text-slate-900 dark:text-white"
+                    >
+                      <div>
+                        {/* Thumbnail Gambar Besar & Proporsional di Atas Kartu */}
+                        <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-100 dark:bg-black/30 aspect-video sm:h-44 w-full">
+                          {safeImage ? (
+                            <img
+                              src={safeImage}
+                              alt={item.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400">
+                              <ShoppingBag className="w-8 h-8" />
+                            </div>
+                          )}
+                          {item.badge && (
+                            <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Info Produk: Judul penuh tanpa truncate, deskripsi 2-3 baris, harga kontras */}
+                        <h3 className="font-bold text-sm sm:text-base leading-snug group-hover:text-blue-600 dark:group-hover:text-cyan-400 transition-colors">
+                          {item.name}
+                        </h3>
+
+                        {item.description ? (
+                          <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed mt-1.5">
+                            {item.description}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/10 space-y-3">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-black text-sm sm:text-base text-blue-600 dark:text-amber-300">
+                            {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
+                          </span>
+                          {item.originalPrice && item.originalPrice > item.price ? (
+                            <span className="text-[11px] text-slate-400 line-through">
+                              Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* CTA Buttons: + Keranjang dan Pesan Langsung */}
+                        {dedicatedPageUrl ? (
+                          <a
+                            href={dedicatedPageUrl}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
+                          >
+                            <span>{ctaLabel}</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </a>
+                        ) : isExternal ? (
+                          <a
+                            href={externalUrl!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={handleExternalClick}
+                            className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>{ctaLabel}</span>
+                          </a>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                if (onAddToCart) {
+                                  onAddToCart(item, e);
+                                }
+                              }}
+                              className="py-2.5 px-2 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>+ Keranjang</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
+                                onInitiateCheckout({
+                                  id: String(item.id),
+                                  title: item.name,
+                                  price: Number(item.price),
+                                  download_url: item.download_url,
+                                  link_digital: (item as any).link_digital,
+                                  type: item.type,
+                                  category: item.category,
+                                  fulfillment_metadata: (item as any).fulfillment_metadata,
+                                });
+                              }}
+                              className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>Pesan Langsung</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Compact horizontal cards layout for standard microsite theme */
+              visibleProducts.map((item) => {
+                const hasDedicatedPage =
+                  Boolean(item.slug) &&
+                  (Boolean(item.single_page_config) ||
+                   Boolean((item as any).single_page_enabled) ||
+                   Boolean((item as any).single_page));
+                const dedicatedPageUrl = hasDedicatedPage && item.slug
+                  ? `/${tenantSlug}/p/${item.slug}`
+                  : null;
 
-                  {dedicatedPageUrl ? (
-                    <a
-                      href={dedicatedPageUrl}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      className="rounded-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-[11px] font-black transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
-                    >
-                      <span>{ctaLabel}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
-                  ) : isExternal ? (
-                    <a
-                      href={externalUrl!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={handleExternalClick}
-                      className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      <span>{ctaLabel}</span>
-                    </a>
-                  ) : !isDigitalCatalog && onAddToCart ? (
-                    // Split-button untuk produk FOOD / PHYSICAL
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {/* Tombol + Keranjang */}
-                      <button
-                        type="button"
+                const rawExternal = !hasDedicatedPage
+                  ? (item.external_url ||
+                     (item as any).affiliate_url ||
+                     (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
+                     resolveProductExternalUrl(item))
+                  : null;
+                const externalUrl = rawExternal ? String(rawExternal).trim() : null;
+                const isExternal = Boolean(externalUrl);
+                const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
+
+                const handleExternalClick = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (!externalUrl) return;
+
+                  if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                    try {
+                      (window as any).fbq("track", "InitiateCheckout", {
+                        content_name: (item as any).title || item.name,
+                        content_ids: [String(item.id || (item as any).slug)],
+                        content_type: "product",
+                        value: Number(item.price) || 0,
+                        currency: "IDR"
+                      });
+                    } catch (_) {}
+                  }
+
+                  try {
+                    trackInitiateCheckout((item as any).title || item.name, Number(item.price) || 0);
+                  } catch (_) {}
+
+                  try {
+                    trackContactEvent(`Affiliate Outbound: ${item.name}`);
+                  } catch (_) {}
+
+                  try {
+                    onOutboundClick?.(externalUrl, ctaLabel);
+                  } catch (_) {}
+
+                  window.open(externalUrl, "_blank", "noopener,noreferrer");
+                };
+
+                const handleCardClick = (e: React.MouseEvent) => {
+                  if (dedicatedPageUrl) {
+                    e.stopPropagation();
+                    window.location.href = dedicatedPageUrl;
+                  } else if (isExternal && externalUrl) {
+                    handleExternalClick(e);
+                  }
+                };
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={dedicatedPageUrl || isExternal ? handleCardClick : undefined}
+                    className={`${themeStyles.productCard} ${
+                      dedicatedPageUrl || isExternal ? 'cursor-pointer active:scale-[0.99]' : ''
+                    }`}
+                  >
+                    <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
+                      <div className="flex items-baseline gap-1 flex-wrap">
+                        {item.originalPrice && item.originalPrice > item.price ? (
+                          <span className="line-through opacity-50 text-xs mr-1">
+                            Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+                          </span>
+                        ) : null}
+                        <span className={`font-bold text-sm ${themeStyles.productPrice}`}>
+                          {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {dedicatedPageUrl ? (
+                      <a
+                        href={dedicatedPageUrl}
                         onClick={(e) => {
-                          onAddToCart(item, e);
+                          e.stopPropagation();
                         }}
-                        title="Tambah ke Keranjang"
-                        className="bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-[inherit] text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                        className="rounded-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-[11px] font-black transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>+ Keranjang</span>
-                      </button>
+                        <span>{ctaLabel}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </a>
+                    ) : isExternal ? (
+                      <a
+                        href={externalUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={handleExternalClick}
+                        className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>{ctaLabel}</span>
+                      </a>
+                    ) : !isDigitalCatalog && onAddToCart ? (
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            onAddToCart(item, e);
+                          }}
+                          title="Tambah ke Keranjang"
+                          className="bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-[inherit] text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>+ Keranjang</span>
+                        </button>
 
-                      {/* Tombol Pesan */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
+                            onInitiateCheckout({
+                              id: String(item.id),
+                              title: item.name,
+                              price: Number(item.price),
+                              download_url: item.download_url,
+                              link_digital: (item as any).link_digital,
+                              type: item.type,
+                              category: item.category,
+                              fulfillment_metadata: (item as any).fulfillment_metadata,
+                            });
+                          }}
+                          className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
+                        >
+                          <QrCode className="w-3 h-3" />
+                          <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -816,37 +1027,14 @@ export default function MicrositeBioTemplate({
                         }}
                         className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
                       >
-                        <QrCode className="w-3 h-3" />
-                        <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                        {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
+                        <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
                       </button>
-                    </div>
-                  ) : (
-                    // Tombol tunggal untuk DIGITAL / akses
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                        onInitiateCheckout({
-                          id: String(item.id),
-                          title: item.name,
-                          price: Number(item.price),
-                          download_url: item.download_url,
-                          link_digital: (item as any).link_digital,
-                          type: item.type,
-                          category: item.category,
-                          fulfillment_metadata: (item as any).fulfillment_metadata,
-                        });
-                      }}
-                      className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
-                    >
-                      {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                      <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
