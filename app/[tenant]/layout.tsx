@@ -11,7 +11,7 @@ export const revalidate = 60;
 // ── Cache fetch per request agar generateMetadata & TenantStoreLayout tidak melakukan duplikasi query ──
 // Menggunakan native fetch + next:{revalidate:60} agar Vercel Edge Cache aktif.
 // Supabase JS SDK tidak mendukung Next.js fetch cache — gunakan REST API langsung.
-const getTenantStoreData = cache(async (rawTenant: string) => {
+export const getTenantStoreData = cache(async (rawTenant: string) => {
   const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
   const cleanTenant = normalizeTenantSlug((rawTenant || '').toLowerCase().trim());
   if (!cleanTenant || RESERVED_SLUGS.includes(cleanTenant)) {

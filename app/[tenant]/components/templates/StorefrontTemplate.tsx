@@ -129,12 +129,12 @@ export function StorefrontTemplate({
                   className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                 >
                   <div>
-                    <div className="relative rounded-2xl overflow-hidden mb-3.5 bg-slate-50 border border-slate-100 aspect-video sm:h-48 w-full">
+                    <div className="relative rounded-2xl overflow-hidden mb-3.5 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
                       {item.image ? (
                         <img
                           src={item.image}
                           alt={item.name || item.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-400">

@@ -757,12 +757,12 @@ export default function MicrositeBioTemplate({
                     >
                       <div>
                         {/* Thumbnail Gambar Besar & Proporsional di Atas Kartu */}
-                        <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-100 dark:bg-black/30 aspect-video sm:h-44 w-full">
+                        <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-white/10 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
                           {safeImage ? (
                             <img
                               src={safeImage}
                               alt={item.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-slate-400">

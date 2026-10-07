@@ -796,12 +796,12 @@ export default function PersonalAuthorityTemplate({
             {/* Featured Product Card */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-md p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-5 space-y-4">
-                <div className="relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                <div className="relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center p-2">
                   <img
                     src={(!productImgError && mainProduct.image) ? sanitizeImageUrl(mainProduct.image) : "/placeholder-product.png"}
                     alt={mainProduct.name}
                     onError={() => setProductImgError(true)}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                   <span className="absolute top-3 left-3 bg-purple-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-xs uppercase tracking-wider">
                     {mainProduct.badge || 'Pilihan Utama'}
@@ -950,14 +950,14 @@ export default function PersonalAuthorityTemplate({
                       className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
                     >
                       <div className="space-y-3">
-                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                        <div className="relative aspect-[4/3] sm:aspect-video rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
                           <img
                             src={(item.image && sanitizeImageUrl(item.image)) || "/placeholder-product.png"}
                             alt={item.name}
                             onError={(e) => {
                               (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
                             }}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                           />
                           {item.badge && (
                             <span className="absolute top-2.5 left-2.5 bg-white/95 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">

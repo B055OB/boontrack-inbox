@@ -62,4 +62,38 @@ describe('Open Graph & Preview Card Metadata (1200x630 Custom Domain)', () => {
     expect(og.images[0].width).toBe(1200);
     expect(og.images[0].height).toBe(630);
   });
+
+  it('4. ensures PersonalAuthorityTemplate uses object-contain and balanced aspect ratio for product card thumbnails', () => {
+    const templatePath = path.join(process.cwd(), 'app', '[tenant]', 'components', 'templates', 'PersonalAuthorityTemplate.tsx');
+    const content = fs.readFileSync(templatePath, 'utf8');
+
+    // Section "Pilihan Produk & Layanan Lainnya" container must use balanced aspect ratio and object-contain
+    expect(content).toContain('aspect-[4/3] sm:aspect-video');
+    expect(content).toContain('object-contain group-hover:scale-105');
+  });
+
+  it('5. ensures dedicated product layout p/[slug]/layout.tsx generates product-specific OG metadata', async () => {
+    const { generateMetadata: generateProductMetadata } = await import('@/app/[tenant]/p/[slug]/layout');
+
+    const meta = await generateProductMetadata({
+      params: Promise.resolve({
+        tenant: 'tumbuh-kembang-anak',
+        slug: 'eat-and-grow-konsultasi-chat-gtm-anak',
+      }),
+    });
+
+    expect(meta.title).toBeDefined();
+    expect(meta.description).toBeDefined();
+
+    const og = meta.openGraph as any;
+    expect(og).toBeDefined();
+    expect(og.url).toContain('/p/eat-and-grow-konsultasi-chat-gtm-anak');
+    expect(og.images).toBeDefined();
+    expect(og.images[0].url).toBeDefined();
+    expect(og.images[0].width).toBe(1200);
+    expect(og.images[0].height).toBe(630);
+
+    const twitter = meta.twitter as any;
+    expect(twitter.card).toBe('summary_large_image');
+  });
 });

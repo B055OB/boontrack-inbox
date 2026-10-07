@@ -65,7 +65,7 @@ function StoreProductImage({
       <img
         src="/placeholder-product.png"
         alt={alt || "BoonTrack Shop"}
-        className={className || "w-full h-48 object-cover"}
+        className={className || "w-full h-48 object-contain bg-slate-50"}
       />
     );
   }
@@ -75,7 +75,7 @@ function StoreProductImage({
       src={safeSrc}
       alt={alt}
       onError={() => setError(true)}
-      className={className || "w-full h-48 object-cover"}
+      className={className || "w-full h-48 object-contain bg-slate-50"}
     />
   );
 }
@@ -1822,11 +1822,11 @@ export default function TenantStorefrontPage() {
                   className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                 >
                   <div>
-                    <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-50 border border-slate-100">
+                    <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video flex items-center justify-center p-1.5">
                       <StoreProductImage
                         src={p?.image_url || p?.image}
                         alt={p?.name || "Layanan"}
-                        className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                       />
                       {p?.badge && (
                         <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
