@@ -4,7 +4,13 @@ import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
-import { slugify, mapToDbProductType, DbProductType } from '@/lib/product-catalog';
+import {
+  slugify,
+  mapToDbProductType,
+  DbProductType,
+  sanitizeProductPayload,
+  safeJsonStringify,
+} from '@/lib/product-catalog';
 
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
@@ -51,7 +57,8 @@ export async function POST(
     if (!perm.allowed && perm.response) {
       return perm.response;
     }
-    const body = await req.json();
+    const rawBody = await req.json();
+    const body = sanitizeProductPayload(rawBody);
 
     const {
       id,
@@ -382,7 +389,7 @@ export async function POST(
             'Content-Type': 'application/json',
             'X-Tenant-ID': slug,
           },
-          body: JSON.stringify(body),
+          body: safeJsonStringify(body),
           cache: 'no-store',
         }
       );
@@ -393,8 +400,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil disimpan ke katalog toko.',
-      product: newProduct,
-      products: updatedProducts,
+      product: sanitizeProductPayload(newProduct),
+      products: sanitizeProductPayload(updatedProducts),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error saving product';

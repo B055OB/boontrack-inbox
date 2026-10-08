@@ -14,6 +14,8 @@ import {
   slugify,
   resolveFulfillmentRequirements,
   mapToDbProductType,
+  sanitizeProductPayload,
+  safeJsonStringify,
 } from '@/lib/product-catalog';
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
 import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
@@ -915,7 +917,7 @@ export function useTenantDashboard() {
           if (hydratedProducts.length > 0) {
             setProducts(hydratedProducts);
             if (typeof window !== 'undefined') {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(hydratedProducts));
+              localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(hydratedProducts)));
             }
           } else {
             setProducts([]);
@@ -1501,10 +1503,11 @@ export function useTenantDashboard() {
     const changedProduct = updatedProducts.find(p => String(p.id) === String(productId));
     if (changedProduct && tenantSlug) {
       try {
+        const cleanProduct = sanitizeProductPayload(changedProduct);
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(changedProduct),
+          body: safeJsonStringify(cleanProduct),
         });
       } catch { }
     }
@@ -1542,10 +1545,11 @@ export function useTenantDashboard() {
     const changedProduct = updatedProducts.find(p => String(p.id) === String(productId));
     if (changedProduct && tenantSlug) {
       try {
+        const cleanProduct = sanitizeProductPayload(changedProduct);
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(changedProduct),
+          body: safeJsonStringify(cleanProduct),
         });
       } catch (err) {
         console.warn('[Dashboard] Error persisting product is_active status:', err);
@@ -1563,7 +1567,9 @@ export function useTenantDashboard() {
       return;
     }
 
-    const isTargetActive = productForm.is_active !== false;
+    const safeForm = sanitizeProductPayload(productForm);
+
+    const isTargetActive = safeForm.is_active !== false;
     if (isCheckoutLite && isTargetActive) {
       const isEditing = editingProductId !== null && editingProductId !== undefined;
       const otherActiveCount = products.filter(p => {
@@ -1581,26 +1587,26 @@ export function useTenantDashboard() {
       }
     }
 
-    const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
-    const cleanImage = sanitizeImageUrl(productForm.image);
-    const currentPt = (productForm.product_type || '').toUpperCase();
+    const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name)).toLowerCase();
+    const cleanImage = sanitizeImageUrl(safeForm.image);
+    const currentPt = (safeForm.product_type || '').toUpperCase();
     const isPhysicalProduct = currentPt === 'PHYSICAL';
     const isServiceOrDigital = currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE';
     const isPhysicalStock = isPhysicalProduct || (!isServiceOrDigital && (storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD'));
-    const isExternalCheckout = productForm.checkout_type === 'external' || Boolean(productForm.external_url?.trim());
+    const isExternalCheckout = safeForm.checkout_type === 'external' || Boolean(safeForm.external_url?.trim());
     const isRequiresShipping = isPhysicalProduct && !isExternalCheckout;
-    const cleanExternalUrl = (productForm.external_url || '').trim();
-    const cleanCtaLabel = (productForm.metadata?.cta_text || productForm.cta_label || '').trim();
-    const isCartEnabled = productForm.metadata?.enable_cart !== undefined
-      ? Boolean(productForm.metadata.enable_cart)
-      : ((productForm as any)?.enable_cart !== undefined ? Boolean((productForm as any)?.enable_cart) : isPhysicalProduct);
+    const cleanExternalUrl = (safeForm.external_url || '').trim();
+    const cleanCtaLabel = (safeForm.metadata?.cta_text || safeForm.cta_label || '').trim();
+    const isCartEnabled = safeForm.metadata?.enable_cart !== undefined
+      ? Boolean(safeForm.metadata.enable_cart)
+      : ((safeForm as any)?.enable_cart !== undefined ? Boolean((safeForm as any)?.enable_cart) : isPhysicalProduct);
 
-    const updatedProductItem: ProductItem = {
-      ...productForm,
-      price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
-      is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (productForm.is_unlimited ?? false)),
-      stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (productForm.stock ?? 100)),
-      weight_grams: isPhysicalProduct && !isExternalCheckout ? Number(productForm.weight_grams || 1000) : 0,
+    const updatedProductItem: ProductItem = sanitizeProductPayload({
+      ...safeForm,
+      price: typeof safeForm.price === 'number' ? safeForm.price : (Number(safeForm.price) || 0),
+      is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (safeForm.is_unlimited ?? false)),
+      stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (safeForm.stock ?? 100)),
+      weight_grams: isPhysicalProduct && !isExternalCheckout ? Number(safeForm.weight_grams || 1000) : 0,
       requires_shipping: isRequiresShipping,
       enable_cart: isCartEnabled,
       image: cleanImage,
@@ -1610,35 +1616,35 @@ export function useTenantDashboard() {
       external_url: isExternalCheckout ? cleanExternalUrl : undefined,
       cta_label: cleanCtaLabel || undefined,
       metadata: {
-        ...(productForm.metadata || {}),
+        ...(safeForm.metadata || {}),
         checkout_type: isExternalCheckout ? 'external' : 'internal',
         external_url: isExternalCheckout ? cleanExternalUrl : undefined,
         cta_label: cleanCtaLabel || undefined,
         cta_text: cleanCtaLabel || undefined,
-        voucher_config: productForm.metadata?.voucher_config,
-        payment_methods: productForm.metadata?.payment_methods,
+        voucher_config: safeForm.metadata?.voucher_config,
+        payment_methods: safeForm.metadata?.payment_methods,
         enable_cart: isCartEnabled,
       },
-      single_page_config: productForm.single_page_config
+      single_page_config: safeForm.single_page_config
         ? {
-          ...productForm.single_page_config,
+          ...safeForm.single_page_config,
           slug: finalSlug,
-          banner_url: sanitizeImageUrl(productForm.single_page_config.banner_url || cleanImage),
+          banner_url: sanitizeImageUrl(safeForm.single_page_config.banner_url || cleanImage),
         }
         : undefined,
-    };
+    });
 
     const newProdId = (editingProductId !== null && editingProductId !== undefined)
       ? editingProductId
       : (updatedProductItem.id || `prod-${Date.now()}`);
     const newProdSku = updatedProductItem.sku || `SKU-${finalSlug}`;
 
-    const fullProductItem: ProductItem = {
+    const fullProductItem: ProductItem = sanitizeProductPayload({
       ...updatedProductItem,
       id: newProdId,
       sku: newProdSku,
       is_active: isTargetActive,
-    };
+    });
 
     let updatedProducts: ProductItem[];
     if (editingProductId !== null && editingProductId !== undefined) {
@@ -1652,7 +1658,7 @@ export function useTenantDashboard() {
     }
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+      localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updatedProducts)));
     }
 
     // 1. Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
@@ -1744,15 +1750,16 @@ export function useTenantDashboard() {
             finalMergedProducts = [fullProductItem, ...allKnownProducts];
           }
 
-          setProducts(finalMergedProducts);
+          const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
+          setProducts(cleanFinalMerged);
           if (typeof window !== 'undefined') {
-            localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(finalMergedProducts));
+            localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanFinalMerged));
           }
 
           const updatedMeta = {
             ...(tenantRow.metadata || {}),
-            products: finalMergedProducts,
-            product: finalMergedProducts[0] || fullProductItem,
+            products: cleanFinalMerged,
+            product: cleanFinalMerged[0] || fullProductItem,
           };
 
           const { error: tErr } = await supabase
@@ -1819,10 +1826,11 @@ export function useTenantDashboard() {
 
     // 2. Sync via API Route Gateway (forward ke core backend)
     try {
+      const cleanProdPayload = sanitizeProductPayload(fullProductItem);
       const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullProductItem),
+        body: safeJsonStringify(cleanProdPayload),
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
@@ -1853,7 +1861,7 @@ export function useTenantDashboard() {
       setSaveFeedback('🗑️ Produk telah dihapus.');
 
       if (typeof window !== 'undefined') {
-        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updated));
+        localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updated)));
       }
 
       // Direct delete ke database Supabase
@@ -2022,20 +2030,21 @@ export function useTenantDashboard() {
     if (!activeSinglePageProduct || !tenantSlug) return;
 
     setIsSavingSinglePage(true);
-    const prodSlug = singlePageForm.slug?.trim() || slugify(activeSinglePageProduct.name);
-    const updatedConfig: SinglePageConfig = {
-      ...singlePageForm,
+    const cleanSpForm = sanitizeProductPayload(singlePageForm);
+    const prodSlug = cleanSpForm.slug?.trim() || slugify(activeSinglePageProduct.name);
+    const updatedConfig: SinglePageConfig = sanitizeProductPayload({
+      ...cleanSpForm,
       slug: prodSlug,
-      discount_coupon: singlePageForm.voucher?.code || singlePageForm.discount_coupon || '',
-      checkout_action_mode: singlePageForm.checkout_action_mode || 'DIRECT',
-      whatsapp_custom_message: singlePageForm.whatsapp_custom_message || '',
-      whatsapp_number: singlePageForm.whatsapp_number || '',
-    };
+      discount_coupon: cleanSpForm.voucher?.code || cleanSpForm.discount_coupon || '',
+      checkout_action_mode: cleanSpForm.checkout_action_mode || 'DIRECT',
+      whatsapp_custom_message: cleanSpForm.whatsapp_custom_message || '',
+      whatsapp_number: cleanSpForm.whatsapp_number || '',
+    });
 
     const updatedProducts = products.map(p => {
       if (p.id === activeSinglePageProduct.id) {
-        const ctaText = (singlePageForm.cta_label || p.metadata?.cta_text || p.cta_label || '').trim();
-        return {
+        const ctaText = (cleanSpForm.cta_label || p.metadata?.cta_text || p.cta_label || '').trim();
+        return sanitizeProductPayload({
           ...p,
           slug: prodSlug,
           cta_label: ctaText || undefined,
@@ -2052,14 +2061,15 @@ export function useTenantDashboard() {
             checkout_action_mode: updatedConfig.checkout_action_mode,
             whatsapp_custom_message: updatedConfig.whatsapp_custom_message,
           },
-        };
+        });
       }
       return p;
     });
 
-    setProducts(updatedProducts);
+    const cleanUpdatedProducts = sanitizeProductPayload(updatedProducts);
+    setProducts(cleanUpdatedProducts);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+      localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanUpdatedProducts));
     }
 
     // Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
@@ -2077,7 +2087,7 @@ export function useTenantDashboard() {
             ? tenantRow.metadata.products
             : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
 
-          const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
+          const targetProd = cleanUpdatedProducts.find(p => p.id === activeSinglePageProduct.id);
           if (targetProd) {
             const targetSku = (targetProd.sku || '').trim().toLowerCase();
             const targetId = String(targetProd.id || '').trim().toLowerCase();
@@ -2101,11 +2111,13 @@ export function useTenantDashboard() {
               finalMergedProducts = [targetProd, ...existingMetaProducts];
             }
 
+            const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
+            const cleanUpdatedConfig = sanitizeProductPayload(updatedConfig);
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
-              products: finalMergedProducts,
-              product: finalMergedProducts[0] || targetProd,
-              single_page_config: updatedConfig,
+              products: cleanFinalMerged,
+              product: cleanFinalMerged[0] || sanitizeProductPayload(targetProd),
+              single_page_config: cleanUpdatedConfig,
             };
 
             await supabase
@@ -2150,12 +2162,12 @@ export function useTenantDashboard() {
     }
 
     try {
-      const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
+      const targetProd = cleanUpdatedProducts.find(p => p.id === activeSinglePageProduct.id);
       if (targetProd) {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(targetProd),
+          body: safeJsonStringify(sanitizeProductPayload(targetProd)),
         });
       }
     } catch (err) {

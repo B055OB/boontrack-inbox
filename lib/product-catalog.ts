@@ -1197,3 +1197,167 @@ export function normalizeBriefingUrl(url?: string | null): string {
   return `https://${trimmed}`;
 }
 
+/**
+ * Checks if a value is a DOM Element (HTMLSpanElement, HTMLElement),
+ * React SyntheticEvent, or internal React Fiber object.
+ */
+export function isDomOrReactFiber(val: any): boolean {
+  if (!val || typeof val !== 'object') return false;
+
+  // 1. Browser/Node Element & Node instances
+  if (typeof Element !== 'undefined' && val instanceof Element) return true;
+  if (typeof Node !== 'undefined' && val instanceof Node) return true;
+  if (typeof val.nodeType === 'number') return true;
+
+  // 2. React SyntheticEvent characteristics
+  if (typeof val._reactName === 'string') return true;
+  if ('nativeEvent' in val && '_reactName' in val) return true;
+  if ('bubbles' in val && 'cancelable' in val && 'defaultPrevented' in val && typeof val.preventDefault === 'function') {
+    return true;
+  }
+  if ('target' in val && val.target && typeof (val.target as any).nodeType === 'number') {
+    return true;
+  }
+  if (val.constructor && typeof val.constructor.name === 'string') {
+    const cName = val.constructor.name;
+    if (
+      cName === 'SyntheticBaseEvent' ||
+      cName.endsWith('Event') ||
+      cName.startsWith('HTML') ||
+      cName === 'FiberNode'
+    ) {
+      return true;
+    }
+  }
+
+  // 3. React Fiber & internal DOM properties
+  try {
+    const keys = Object.keys(val);
+    for (const k of keys) {
+      if (
+        k.startsWith('__reactFiber$') ||
+        k.startsWith('__reactProps$') ||
+        k.startsWith('__reactContainer$') ||
+        k.startsWith('__reactEvents$') ||
+        k === '_reactListening'
+      ) {
+        return true;
+      }
+    }
+  } catch {}
+
+  return false;
+}
+
+/**
+ * Deeply sanitizes any product form payload or record before state persistence,
+ * localStorage caching, or API mutation.
+ * Guarantees that:
+ * 1. All fields are pure primitives, clean arrays, or plain objects.
+ * 2. Any accidental DOM elements (HTMLSpanElement, HTMLElement) or SyntheticEvents are stripped.
+ * 3. Circular references are completely broken to guarantee JSON.stringify never throws.
+ */
+export function sanitizeProductPayload<T = any>(input: T, seen = new WeakSet()): T {
+  if (input === null || input === undefined) return input;
+
+  // Primitives pass directly
+  const inputType = typeof input;
+  if (inputType === 'string' || inputType === 'number' || inputType === 'boolean') {
+    return input;
+  }
+
+  // Discard functions, symbols, and bigints
+  if (inputType === 'function' || inputType === 'symbol' || inputType === 'bigint') {
+    return undefined as any;
+  }
+
+  // Detect and discard DOM elements, SyntheticEvents, or React Fibers
+  if (isDomOrReactFiber(input)) {
+    return undefined as any;
+  }
+
+  // Break circular structures
+  if (typeof input === 'object') {
+    if (seen.has(input as object)) {
+      return undefined as any;
+    }
+    seen.add(input as object);
+  }
+
+  // Handle Arrays
+  if (Array.isArray(input)) {
+    const cleanArray: any[] = [];
+    for (const item of input) {
+      if (isDomOrReactFiber(item)) continue;
+      const cleanItem = sanitizeProductPayload(item, seen);
+      if (cleanItem !== undefined) {
+        cleanArray.push(cleanItem);
+      }
+    }
+    return cleanArray as any;
+  }
+
+  // Handle Plain Objects
+  const cleanObj: Record<string, any> = {};
+  for (const [key, value] of Object.entries(input as Record<string, any>)) {
+    if (isDomOrReactFiber(value)) {
+      continue;
+    }
+    const cleanVal = sanitizeProductPayload(value, seen);
+    if (cleanVal !== undefined) {
+      cleanObj[key] = cleanVal;
+    }
+  }
+
+  // Specific product field string/number guarantees
+  if ('name' in (input as any)) {
+    cleanObj.name = typeof cleanObj.name === 'string' ? cleanObj.name : (typeof cleanObj.name === 'object' ? '' : String(cleanObj.name || ''));
+  }
+  if ('slug' in (input as any)) {
+    cleanObj.slug = typeof cleanObj.slug === 'string' ? cleanObj.slug : (typeof cleanObj.slug === 'object' ? '' : String(cleanObj.slug || ''));
+  }
+  if ('category' in (input as any)) {
+    cleanObj.category = typeof cleanObj.category === 'string' ? cleanObj.category : (typeof cleanObj.category === 'object' ? '' : String(cleanObj.category || ''));
+  }
+  if ('custom_badge' in (input as any)) {
+    cleanObj.custom_badge = typeof cleanObj.custom_badge === 'string' ? cleanObj.custom_badge : (typeof cleanObj.custom_badge === 'object' ? '' : (cleanObj.custom_badge ? String(cleanObj.custom_badge) : ''));
+  }
+  if ('cta_label' in (input as any) && cleanObj.cta_label !== undefined) {
+    cleanObj.cta_label = typeof cleanObj.cta_label === 'string' ? cleanObj.cta_label : (typeof cleanObj.cta_label === 'object' ? undefined : String(cleanObj.cta_label || ''));
+  }
+  if ('price' in cleanObj && typeof cleanObj.price !== 'number') {
+    cleanObj.price = Number(cleanObj.price) || 0;
+  }
+  if ('promo_price' in cleanObj && cleanObj.promo_price !== undefined && typeof cleanObj.promo_price !== 'number') {
+    cleanObj.promo_price = cleanObj.promo_price ? Number(cleanObj.promo_price) : undefined;
+  }
+
+  return cleanObj as T;
+}
+
+/**
+ * Defensive JSON.stringify that is 100% resilient against circular structures,
+ * DOM elements, and React fibers.
+ */
+export function safeJsonStringify(val: any, indent?: number): string {
+  const sanitized = sanitizeProductPayload(val);
+  try {
+    return JSON.stringify(sanitized, null, indent);
+  } catch (err) {
+    const seen = new WeakSet();
+    return JSON.stringify(
+      val,
+      (key, value) => {
+        if (isDomOrReactFiber(value)) return undefined;
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) return undefined;
+          seen.add(value);
+        }
+        return value;
+      },
+      indent
+    );
+  }
+}
+
+

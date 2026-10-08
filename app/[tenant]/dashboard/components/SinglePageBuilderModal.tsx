@@ -25,6 +25,7 @@ import {
   SinglePageConfig,
   slugify,
   resolveFulfillmentRequirements,
+  sanitizeProductPayload,
 } from '@/lib/product-catalog';
 import { getProductPageUrl } from '@/lib/utils/storefrontUrl';
 
@@ -137,7 +138,9 @@ export default function SinglePageBuilderModal({
     e.preventDefault();
     setErrorMessage(null);
 
-    const effectiveSlug = singlePageForm.slug?.trim() || (activeProduct?.name ? slugify(activeProduct.name) : '');
+    const targetSlugRaw = typeof singlePageForm.slug === 'string' ? singlePageForm.slug.trim() : '';
+    const activeProdName = typeof activeProduct?.name === 'string' ? activeProduct.name.trim() : '';
+    const effectiveSlug = targetSlugRaw || (activeProdName ? slugify(activeProdName) : '');
     if (!effectiveSlug) {
       setErrorMessage('Slug URL landing page wajib diisi.');
       const slugInput = document.getElementById('single-page-slug-input');
@@ -150,6 +153,8 @@ export default function SinglePageBuilderModal({
 
     try {
       setIsInternalSaving(true);
+      const cleanForm = sanitizeProductPayload(singlePageForm);
+      setSinglePageForm(cleanForm);
       await Promise.resolve(onSave(e));
     } catch (err: any) {
       console.error('Error saving single page config:', err);
@@ -281,7 +286,9 @@ export default function SinglePageBuilderModal({
               <button
                 type="button"
                 onClick={() => {
-                  const targetTitle = singlePageForm.headline?.trim() || activeProduct.name;
+                  const targetTitle = (typeof singlePageForm.headline === 'string' && singlePageForm.headline.trim())
+                    ? singlePageForm.headline.trim()
+                    : (typeof activeProduct?.name === 'string' ? activeProduct.name.trim() : 'produk');
                   setSinglePageForm((p) => ({ ...p, slug: slugify(targetTitle) }));
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-1 rounded-lg transition cursor-pointer"

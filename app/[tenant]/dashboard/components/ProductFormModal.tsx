@@ -14,6 +14,9 @@ import {
   OrderBumpConfig,
   ProductVoucherConfig,
   resolveProductDefaultCta,
+  sanitizeProductPayload,
+  safeJsonStringify,
+  isDomOrReactFiber,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { ModularProductFormDispatcher, resolveDomainVertical } from './modules';
@@ -247,16 +250,48 @@ export default function ProductFormModal({
     instructions: '',
   };
 
-  const handleCustomBadgeChange = (val: string) => {
+  const handleCustomBadgeChange = (val: any) => {
+    // Strictly sanitize val to primitive string, preventing SyntheticEvents or DOM elements
+    let safeString = '';
+    if (typeof val === 'string') {
+      safeString = val;
+    } else if (val && typeof val === 'object' && 'target' in val && val.target?.value !== undefined) {
+      safeString = String(val.target.value || '');
+    } else if (typeof val === 'number') {
+      safeString = String(val);
+    } else if (val && typeof val.toString === 'function' && !isDomOrReactFiber(val)) {
+      safeString = String(val);
+    }
+
     setProductForm((prev) => {
       const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
-      const trimmed = val.trim();
+      const trimmed = safeString.trim();
       return {
         ...prev,
-        custom_badge: val,
+        custom_badge: safeString,
         category: trimmed || meta.defaultBadge,
       };
     });
+  };
+
+  const handleSetBadge = (badge: any) => {
+    const safeBadge = typeof badge === 'string' ? badge : '';
+    handleCustomBadgeChange(safeBadge);
+  };
+
+  const handleSyncSlug = (e?: any) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    const safeName = typeof productForm.name === 'string' ? productForm.name.trim() : '';
+    const generated = slugify(safeName || 'produk');
+    setProductForm((p) => ({
+      ...p,
+      slug: generated,
+      single_page_config: p.single_page_config
+        ? { ...p.single_page_config, slug: generated }
+        : undefined,
+    }));
   };
 
   const handleMetadataChange = (key: keyof FulfillmentMetadata, value: string) => {
@@ -646,7 +681,9 @@ export default function ProductFormModal({
       },
     };
 
-    setProductForm(cleanForm);
+    // Defensive Sanitization: Clean any circular references, DOM elements, or SyntheticEvents
+    const sanitizedCleanForm = sanitizeProductPayload(cleanForm);
+    setProductForm(sanitizedCleanForm);
 
     try {
       setIsSubmitting(true);
@@ -760,16 +797,7 @@ export default function ProductFormModal({
               </label>
               <button
                 type="button"
-                onClick={() => {
-                  const generated = slugify(productForm.name || 'produk');
-                  setProductForm((p) => ({
-                    ...p,
-                    slug: generated,
-                    single_page_config: p.single_page_config
-                      ? { ...p.single_page_config, slug: generated }
-                      : undefined,
-                  }));
-                }}
+                onClick={() => handleSyncSlug()}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
                 title="Sinkronkan slug dengan judul produk terbaru"
               >
@@ -803,26 +831,72 @@ export default function ProductFormModal({
           </div>
 
           {/* 2. Kategori / Label Produk (Opsional) - Full Width */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700">
                 Kategori / Label Produk (Opsional)
               </label>
-              <span className="text-[11px] text-slate-500 font-medium">
-                Badge default: <strong className="text-blue-600 font-bold">"{activeVerticalMeta.defaultBadge}"</strong>
-              </span>
+              <button
+                type="button"
+                onClick={() => handleSetBadge(String(activeVerticalMeta.defaultBadge))}
+                className="text-[11px] text-slate-500 hover:text-blue-600 font-medium transition cursor-pointer"
+                title="Klik untuk gunakan badge default ini"
+              >
+                Badge default: <strong className="text-blue-600 font-bold hover:underline">"{activeVerticalMeta.defaultBadge}"</strong>
+              </button>
             </div>
             <input
               type="text"
-              value={productForm.custom_badge || ''}
+              value={typeof productForm.custom_badge === 'string' ? productForm.custom_badge : ''}
               onChange={(e) => handleCustomBadgeChange(e.target.value)}
               placeholder="Contoh: Cuci AC, Kuras Toren, Aksesoris, dsb. (Biarkan kosong untuk label default)"
               className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
             />
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span>
-                Badge etalase: <strong className="text-slate-700">{productForm.custom_badge?.trim() || activeVerticalMeta.defaultBadge}</strong>
-              </span>
+            {/* Saran Kategori & Label Cepat (Primitive Strings Only) */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[10px] text-slate-400 font-bold shrink-0">Saran Label:</span>
+              {[
+                activeVerticalMeta.defaultBadge,
+                'Terlaris',
+                'Promo',
+                'Best Seller',
+                'Eksklusif',
+                ...(currentVerticalKey === 'digital_product' ? ['Digital', 'E-Course', 'Template'] : []),
+                ...(currentVerticalKey === 'retail_physical' ? ['Fisik', 'Ready Stock', 'Limited'] : []),
+                ...(currentVerticalKey === 'fnb' ? ['Menu Baru', 'Favorit', 'Spesial'] : []),
+                ...(currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' ? ['Konsultasi', 'Layanan', 'Paket Servis'] : []),
+              ]
+                .filter((v, i, a) => Boolean(v) && a.indexOf(v) === i)
+                .slice(0, 5)
+                .map((badgeText) => (
+                  <button
+                    key={String(badgeText)}
+                    type="button"
+                    onClick={() => handleSetBadge(String(badgeText))}
+                    className="px-2 py-0.5 rounded-md bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-700 text-[10px] font-bold border border-slate-200 hover:border-blue-300 transition cursor-pointer"
+                  >
+                    +{String(badgeText)}
+                  </button>
+                ))}
+              {Boolean(productForm.custom_badge) && (
+                <button
+                  type="button"
+                  onClick={() => handleSetBadge('')}
+                  className="text-[10px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer ml-1"
+                >
+                  Reset Default
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+              <button
+                type="button"
+                onClick={() => handleSetBadge(typeof productForm.custom_badge === 'string' && productForm.custom_badge.trim() ? productForm.custom_badge.trim() : String(activeVerticalMeta.defaultBadge))}
+                className="text-left hover:text-blue-600 transition cursor-pointer"
+                title="Klik untuk memilih badge etalase"
+              >
+                Badge etalase: <strong className="text-slate-700 hover:underline">{typeof productForm.custom_badge === 'string' && productForm.custom_badge.trim() ? productForm.custom_badge.trim() : activeVerticalMeta.defaultBadge}</strong>
+              </button>
               <span className="text-[10px] text-slate-400">
                 Vertikal toko: <span className="text-slate-600 font-semibold">{activeVerticalMeta.label}</span>
               </span>
