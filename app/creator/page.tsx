@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -14,14 +13,18 @@ import {
   Camera,
   MessageCircle,
   CheckCircle,
-  Share2,
   Globe,
   ChevronRight,
   Flame,
-  Smartphone
+  Smartphone,
+  TrendingUp,
+  CreditCard,
+  Users,
+  Check,
+  Star
 } from 'lucide-react';
 
-function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
@@ -31,7 +34,7 @@ function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
   );
 }
 
-function YoutubeIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+function YoutubeIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/>
@@ -40,10 +43,17 @@ function YoutubeIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
   );
 }
 
-export default function CreatorPublicLandingPage() {
+function TikTokIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+    </svg>
+  );
+}
+
+export default function CreatorCleanLandingPage() {
   const router = useRouter();
   const [handle, setHandle] = useState('');
-  const [copiedLink, setCopiedLink] = useState(false);
 
   const handleClaim = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,19 +66,18 @@ export default function CreatorPublicLandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-pink-500 selection:text-white font-sans relative overflow-x-hidden">
-      {/* Background Sunset Glow Effects */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[550px] bg-gradient-to-b from-orange-500/15 via-pink-500/10 to-transparent blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute top-1/3 -left-48 w-96 h-96 bg-orange-600/10 rounded-full blur-[100px] pointer-events-none -z-10" />
-      <div className="absolute top-1/2 -right-48 w-96 h-96 bg-pink-600/10 rounded-full blur-[100px] pointer-events-none -z-10" />
+    <div className="min-h-screen bg-[#FAFAFC] text-slate-900 selection:bg-orange-500 selection:text-white font-sans relative overflow-x-hidden">
+      {/* Soft Ambient Sunset Glow in Hero Background */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[550px] bg-gradient-to-b from-orange-500/10 via-rose-500/5 to-transparent blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-80 right-0 w-[450px] h-[450px] bg-pink-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
-      {/* ── 1. NAVBAR ────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0B0F17]/80 border-b border-white/5 transition-all">
+      {/* ── A. NAVBAR BERSIH ───────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/85 border-b border-slate-200/80 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           {/* Logo & Wordmark */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-orange-500 to-pink-500 shadow-lg shadow-orange-500/20 group-hover:scale-105 transition-transform">
-              <div className="w-full h-full bg-[#0B0F17] rounded-[11px] flex items-center justify-center overflow-hidden">
+            <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500 shadow-md shadow-orange-500/15 group-hover:scale-105 transition-transform">
+              <div className="w-full h-full bg-white rounded-[11px] flex items-center justify-center overflow-hidden">
                 <img
                   src="/branding/creator/icon.png"
                   alt="BoonTrack Creator Logo"
@@ -77,219 +86,245 @@ export default function CreatorPublicLandingPage() {
               </div>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="font-bold text-lg tracking-tight text-white">boontrack</span>
-              <span className="text-xs font-black tracking-widest bg-gradient-to-r from-orange-400 via-pink-500 to-rose-400 bg-clip-text text-transparent uppercase">
+              <span className="font-extrabold text-lg tracking-tight text-slate-900">boontrack</span>
+              <span className="text-xs font-black tracking-widest bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 bg-clip-text text-transparent uppercase">
                 CREATOR
               </span>
             </div>
           </Link>
 
           {/* Navigation Links */}
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-300">
-            <a href="#fitur" className="hover:text-white transition-colors">
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+            <a href="#fitur" className="hover:text-slate-900 transition-colors">
               Fitur
             </a>
-            <a href="#showcase" className="hover:text-white transition-colors">
-              Showcase
+            <a href="#untuk-siapa" className="hover:text-slate-900 transition-colors">
+              Untuk Siapa?
             </a>
-            <a href="#affiliate" className="hover:text-white transition-colors flex items-center gap-1.5">
-              <span>Untuk Affiliate</span>
-              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-full">
-                HOT
+            <a href="#showcase" className="hover:text-slate-900 transition-colors flex items-center gap-1.5">
+              <span>Inspirasi Showcase</span>
+              <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200 rounded-full">
+                Live
               </span>
             </a>
           </div>
 
-          {/* CTA Buat Bio Link */}
+          {/* Right Action Buttons */}
           <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 hidden sm:block"
+              className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors px-3 py-2"
             >
               Masuk
             </Link>
             <Link
               href="/register"
-              className="relative inline-flex items-center justify-center p-0.5 overflow-hidden text-xs font-bold rounded-xl group bg-gradient-to-r from-orange-500 to-pink-500 shadow-md shadow-pink-500/20 hover:shadow-orange-500/30 transition-shadow"
+              className="px-5 py-2.5 rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-bold text-xs sm:text-sm tracking-wide shadow-md shadow-orange-500/25 hover:shadow-orange-500/40 transition-all active:scale-95 flex items-center gap-1.5"
             >
-              <span className="relative px-4 py-2.5 transition-all ease-in duration-75 bg-[#0B0F17] rounded-[10px] group-hover:bg-transparent text-white flex items-center gap-1.5">
-                <span>Buat Bio Link</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-              </span>
+              <span>Mulai Gratis</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
       </nav>
 
-      {/* ── 2. HERO SECTION ──────────────────────────────────── */}
+      {/* ── B. HERO SECTION (CLEAN & HIGH-CONVERTING) ─────────── */}
       <section className="pt-12 md:pt-20 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          {/* Left Column: Text & Claim Handle */}
-          <div className="lg:col-span-7 space-y-8 text-center lg:text-left">
+          {/* Left Column: Headlines & Interactive Claim Handle */}
+          <div className="lg:col-span-7 space-y-7 text-center lg:text-left">
             {/* Pill Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-orange-300/90 shadow-inner">
-              <Flame className="w-3.5 h-3.5 text-orange-400 fill-orange-400" />
-              <span>Bio Link & Rate Card Monetisasi Kreator #1</span>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-50/80 border border-orange-200/70 text-xs font-bold text-orange-700 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+              <span>Platform Bio Link & Komisi No. 1 Kreator Indonesia</span>
             </div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-[1.12]">
-              Satu Link Bio.{' '}
-              <span className="bg-gradient-to-r from-orange-400 via-pink-500 to-rose-400 bg-clip-text text-transparent">
-                Semua Penghasilan
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 leading-[1.12]">
+              Satu Link Bio untuk{' '}
+              <span className="bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 bg-clip-text text-transparent">
+                Semua Karya, Jualan,
               </span>{' '}
-              Kreator Anda.
+              dan Endorse Kamu.
             </h1>
 
             {/* Subheadline */}
-            <p className="text-base sm:text-lg text-zinc-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
+            <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal">
               Showcase produk rekomendasi, direct deep-link Shopee/TikTok tanpa terpotong browser in-app, hingga pembayaran QRIS instan langsung ke rekening Anda.
             </p>
 
-            {/* Interactive Claim Handle Form */}
+            {/* Interactive Claim Handle Bar */}
             <div className="pt-2 max-w-xl mx-auto lg:mx-0">
               <form
                 onSubmit={handleClaim}
-                className="p-1.5 sm:p-2 bg-[#121824]/90 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2 focus-within:border-pink-500/60 focus-within:ring-2 focus-within:ring-pink-500/20 transition-all"
+                className="p-2 bg-white border-2 border-slate-200/90 hover:border-slate-300 focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/10 rounded-2xl shadow-xl shadow-slate-200/60 transition-all flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
               >
-                <div className="flex items-center px-3 py-2 sm:py-0 text-sm font-mono text-zinc-400 flex-1">
-                  <span className="text-zinc-500 select-none hidden sm:inline">creator.boontrack.com/@</span>
-                  <span className="text-zinc-500 select-none sm:hidden">@</span>
+                <div className="flex items-center px-3 py-2 sm:py-0 text-sm font-mono text-slate-400 flex-1">
+                  <span className="text-slate-400 select-none hidden sm:inline font-semibold">creator.boontrack.com/@</span>
+                  <span className="text-slate-400 select-none sm:hidden font-semibold">@</span>
                   <input
                     type="text"
                     value={handle}
                     onChange={(e) => setHandle(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
-                    placeholder="nama_kreator"
-                    className="w-full bg-transparent text-white font-medium focus:outline-none placeholder-zinc-600 ml-1 text-sm sm:text-base"
+                    placeholder="nama_kamu"
+                    className="w-full bg-transparent text-slate-900 font-bold focus:outline-none placeholder-slate-400 ml-1 text-sm sm:text-base font-sans"
                     required
                   />
                 </div>
                 <button
                   type="submit"
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-400 hover:to-pink-400 text-white font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-pink-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 whitespace-nowrap"
+                  className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-orange-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 whitespace-nowrap"
                 >
                   <span>Klaim Bio Link</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
-              <div className="flex items-center justify-center lg:justify-start gap-4 mt-3 text-[11px] text-zinc-400 px-2">
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <CheckCircle className="w-3 h-3" /> Gratis Selamanya
+
+              {/* Micro-Trust Badges */}
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 mt-3 text-xs text-slate-500 px-2 font-medium">
+                <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
+                  <Check className="w-3.5 h-3.5" /> 100% Gratis Selamanya
                 </span>
-                <span>•</span>
-                <span>Direct App Deep-Link</span>
-                <span>•</span>
-                <span>QRIS Instant Payout</span>
+                <span className="text-slate-300">•</span>
+                <span className="flex items-center gap-1.5 text-slate-600">
+                  <Zap className="w-3.5 h-3.5 text-orange-500" /> Direct Native App Launch
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="flex items-center gap-1.5 text-slate-600">
+                  <CreditCard className="w-3.5 h-3.5 text-rose-500" /> QRIS Instant Settlement
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Right Column: 3. Mobile Mockup Preview */}
+          {/* Right Column: Mobile Mockup Preview (Clean Light Style ala Bento/Lynk) */}
           <div id="showcase" className="lg:col-span-5 flex justify-center relative">
-            {/* Glow Aura behind phone */}
-            <div className="absolute -inset-4 bg-gradient-to-r from-orange-500/20 via-pink-500/20 to-purple-500/20 rounded-[48px] blur-2xl -z-10" />
+            {/* Ambient Background Aura */}
+            <div className="absolute -inset-4 bg-gradient-to-r from-orange-400/20 via-rose-400/20 to-pink-400/20 rounded-[52px] blur-3xl -z-10" />
 
-            {/* Smartphone Frame */}
-            <div className="w-[300px] sm:w-[320px] rounded-[42px] p-3 bg-gradient-to-b from-white/20 via-white/5 to-white/10 shadow-2xl shadow-black/80 border border-white/15">
-              <div className="w-full h-full rounded-[34px] bg-[#090D14] overflow-hidden border border-black/40 flex flex-col relative text-zinc-200">
-                {/* Phone Speaker & Camera Notch */}
-                <div className="pt-3 pb-2 px-6 flex justify-between items-center text-[10px] text-zinc-500 font-mono">
+            {/* Floating Trust Pills around phone */}
+            <div className="hidden sm:flex absolute -left-6 top-16 z-20 bg-white/90 backdrop-blur-md border border-slate-200/80 px-3.5 py-2 rounded-2xl shadow-lg shadow-slate-200/80 items-center gap-2 text-xs font-bold text-slate-800 animate-bounce duration-1000">
+              <span className="w-7 h-7 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                ⚡
+              </span>
+              <div>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase leading-none">Anti WebView Trap</p>
+                <p className="text-xs font-bold text-slate-800 leading-tight">Shopee App Direct</p>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex absolute -right-6 bottom-24 z-20 bg-white/90 backdrop-blur-md border border-slate-200/80 px-3.5 py-2 rounded-2xl shadow-lg shadow-slate-200/80 items-center gap-2 text-xs font-bold text-slate-800">
+              <span className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                ✓
+              </span>
+              <div>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase leading-none">Zero Custody</p>
+                <p className="text-xs font-bold text-emerald-700 leading-tight">QRIS Langsung Cair</p>
+              </div>
+            </div>
+
+            {/* Smartphone Frame (Pure Clean Light Frame) */}
+            <div className="w-[300px] sm:w-[325px] rounded-[46px] p-3.5 bg-white border-4 border-slate-200/90 shadow-2xl shadow-slate-300/80">
+              <div className="w-full h-full rounded-[36px] bg-[#F8FAFC] overflow-hidden border border-slate-200/80 flex flex-col relative text-slate-800">
+                {/* Phone Notch & Status Bar */}
+                <div className="pt-3 pb-2 px-6 flex justify-between items-center text-[10px] text-slate-400 font-mono">
                   <span>9:41</span>
-                  <div className="w-20 h-3.5 bg-black rounded-full" />
+                  <div className="w-20 h-4 bg-slate-900 rounded-full" />
                   <span>5G 100%</span>
                 </div>
 
                 {/* Profile Header Inside Mockup */}
                 <div className="p-4 pt-2 text-center space-y-2">
-                  <div className="relative w-18 h-18 mx-auto rounded-full p-1 bg-gradient-to-tr from-orange-500 via-pink-500 to-rose-400 shadow-md shadow-pink-500/30">
-                    <div className="w-full h-full rounded-full bg-[#151C2A] flex items-center justify-center font-bold text-lg text-white">
-                      AG
+                  <div className="relative w-18 h-18 mx-auto rounded-full p-1 bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500 shadow-md shadow-orange-500/20">
+                    <div className="w-full h-full rounded-full bg-slate-100 border-2 border-white flex items-center justify-center font-black text-lg text-slate-700">
+                      AP
                     </div>
-                    <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-blue-500 border-2 border-[#090D14] flex items-center justify-center text-[10px] text-white font-black shadow">
+                    <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow">
                       ✓
                     </span>
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-center gap-1">
-                      <h3 className="font-bold text-sm text-white">Alldy Pratama</h3>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 font-mono">creator.boontrack.com/@alldy</p>
-                    <p className="text-[11px] text-zinc-300 mt-1 px-3 line-clamp-2">
-                      Review Gadget, Setup Meja Kerja & AI Tools 🚀
+                    <h3 className="font-extrabold text-sm text-slate-900">Alldy Pratama</h3>
+                    <p className="text-[11px] text-slate-500 font-mono">creator.boontrack.com/@alldy</p>
+                    <p className="text-[11px] text-slate-600 mt-1 px-2 leading-relaxed">
+                      Review Gadget, Setup Kerja Minimalis & Tips Konten 🚀
                     </p>
                   </div>
 
                   {/* Social Links Row */}
-                  <div className="flex justify-center gap-3 pt-1">
-                    <span className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white text-xs">
-                      <InstagramIcon className="w-3.5 h-3.5" />
+                  <div className="flex justify-center gap-2.5 pt-1">
+                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                      <InstagramIcon className="w-3.5 h-3.5 text-pink-600" />
                     </span>
-                    <span className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white text-xs">
-                      <YoutubeIcon className="w-3.5 h-3.5" />
+                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                      <TikTokIcon className="w-3.5 h-3.5 text-slate-900" />
                     </span>
-                    <span className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white text-xs">
-                      <Globe className="w-3.5 h-3.5" />
+                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                      <YoutubeIcon className="w-3.5 h-3.5 text-red-600" />
+                    </span>
+                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                      <Globe className="w-3.5 h-3.5 text-slate-600" />
                     </span>
                   </div>
                 </div>
 
-                {/* 3 Contoh Kartu Bio Link */}
+                {/* 3 Contoh Kartu Bio Link (Clean White Cards) */}
                 <div className="p-3.5 pt-0 space-y-2.5 flex-1 pb-6">
                   {/* Card 1: Rekomendasi Skincare / Shopee Direct */}
-                  <div className="p-3 rounded-2xl bg-gradient-to-r from-orange-500/10 to-amber-500/5 border border-orange-500/25 hover:border-orange-500/50 transition-all flex items-center justify-between gap-3 group">
+                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
                         <ShoppingBag className="w-4 h-4" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-orange-400 block">
-                          Shopee Direct (Native App)
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-orange-600 block">
+                          Shopee Direct (Buka Aplikasi)
                         </span>
-                        <p className="text-xs font-semibold text-white leading-snug">
-                          Setup Ergonomic Desk Mat
+                        <p className="text-xs font-bold text-slate-900 leading-snug">
+                          Meja Ergonomis Standing Desk
                         </p>
                       </div>
                     </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-500 transition-colors" />
                   </div>
 
                   {/* Card 2: Preset Lightroom / Checkout QRIS */}
-                  <div className="p-3 rounded-2xl bg-gradient-to-r from-pink-500/10 to-rose-500/5 border border-pink-500/25 hover:border-pink-500/50 transition-all flex items-center justify-between gap-3 group">
+                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
                         <Camera className="w-4 h-4" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-pink-400 block">
-                          Checkout QRIS Instan
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-rose-600 block">
+                          BoonTrack QRIS Checkout
                         </span>
-                        <p className="text-xs font-semibold text-white leading-snug">
-                          Preset Moody Clean 2026
+                        <p className="text-xs font-bold text-slate-900 leading-snug">
+                          Lightroom Preset Moody 2026
                         </p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold text-pink-300 bg-pink-500/10 px-2 py-0.5 rounded-full border border-pink-500/20">
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
                       49K
                     </span>
                   </div>
 
                   {/* Card 3: Booking Brand / WhatsApp */}
-                  <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-teal-500/5 border border-emerald-500/25 hover:border-emerald-500/50 transition-all flex items-center justify-between gap-3 group">
+                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
                         <MessageCircle className="w-4 h-4" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-400 block">
-                          Booking Brand & Endorse
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-600 block">
+                          Tanya Rate Card & Jadwal Endorse
                         </span>
-                        <p className="text-xs font-semibold text-white leading-snug">
-                          Hubungi Manajemen via WA
+                        <p className="text-xs font-bold text-slate-900 leading-snug">
+                          Hubungi Manajemen via WhatsApp
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                   </div>
                 </div>
               </div>
@@ -298,102 +333,155 @@ export default function CreatorPublicLandingPage() {
         </div>
       </section>
 
-      {/* ── 4. VALUE PILLARS (3 GRID CARDS) ───────────────────── */}
-      <section id="fitur" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/5">
+      {/* ── C. VALUE PILLARS (CLEAN WHITE CARDS) ──────────────── */}
+      <section id="fitur" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-slate-200/80">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-orange-400">
-            Arsitektur Standar Industri
+          <span className="text-xs font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
+            ARSITEKTUR KHUSUS KREATOR
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+            Kenapa Kreator Indonesia Pindah ke BoonTrack?
           </h2>
-          <p className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Kenapa Kreator Beralih ke BoonTrack?
-          </p>
-          <p className="text-sm sm:text-base text-zinc-400">
-            Solusi teknis yang didesain untuk memaksimalkan setiap klik menjadi komisi dan konversi penjualan.
+          <p className="text-sm sm:text-base text-slate-600">
+            Dibuat untuk menghilangkan segala friksi teknis yang membuat affiliate dan produk digital kamu kehilangan pembeli.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Pillar 1: Direct App Launch */}
-          <div className="p-8 rounded-3xl bg-gradient-to-b from-[#121824] to-[#0D121C] border border-white/10 hover:border-orange-500/40 transition-all duration-300 relative group shadow-xl">
-            <div className="w-14 h-14 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-6 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-orange-500/20 transition-all">
+          <div className="p-8 rounded-3xl bg-white border border-slate-200/80 hover:border-orange-300 shadow-sm hover:shadow-xl transition-all duration-300 group">
+            <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-100 text-orange-600 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform shadow-inner">
               <Smartphone className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-3">Direct App Launch</h3>
-            <p className="text-sm text-zinc-400 leading-relaxed">
-              Tautan e-commerce langsung memanggil aplikasi native Shopee & TikTok tanpa terperangkap browser in-app IG/TikTok yang sering menghilangkan cookie affiliate Anda.
+            <h3 className="text-xl font-black text-slate-900 mb-3">Direct App Launch</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Tautan Shopee & TikTok Affiliate langsung membuka aplikasi resmi tanpa terjebak browser in-app IG/TikTok yang menghilangkan tracking cookie komisi kamu.
             </p>
-            <div className="mt-6 pt-4 border-t border-white/5 flex items-center text-xs font-semibold text-orange-400 gap-1">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-bold text-orange-600 gap-1.5">
               <span>Bypass WebView Trap</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
 
           {/* Pillar 2: Zero-Custodial Payout */}
-          <div className="p-8 rounded-3xl bg-gradient-to-b from-[#121824] to-[#0D121C] border border-white/10 hover:border-pink-500/40 transition-all duration-300 relative group shadow-xl">
-            <div className="w-14 h-14 rounded-2xl bg-pink-500/10 border border-pink-500/20 text-pink-400 flex items-center justify-center mb-6 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-pink-500/20 transition-all">
+          <div className="p-8 rounded-3xl bg-white border border-slate-200/80 hover:border-rose-300 shadow-sm hover:shadow-xl transition-all duration-300 group">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform shadow-inner">
               <ShieldCheck className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-3">Zero-Custodial Payout</h3>
-            <p className="text-sm text-zinc-400 leading-relaxed">
-              Pembayaran hasil penjualan produk digital (preset, ebook, konsultasi) langsung 100% masuk ke QRIS atau rekening kreator tanpa penahanan dana saldo platform.
+            <h3 className="text-xl font-black text-slate-900 mb-3">Zero-Custodial Payout</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Pembayaran penjualan produk digital (preset, e-book, tiket event, konsultasi) 100% langsung masuk ke QRIS atau rekening bank kamu tanpa penahanan saldo platform.
             </p>
-            <div className="mt-6 pt-4 border-t border-white/5 flex items-center text-xs font-semibold text-pink-400 gap-1">
-              <span>Settlement Otomatis Real-Time</span>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-bold text-rose-600 gap-1.5">
+              <span>Settlement Real-Time Otomatis</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
 
           {/* Pillar 3: Sub-Second Speed */}
-          <div className="p-8 rounded-3xl bg-gradient-to-b from-[#121824] to-[#0D121C] border border-white/10 hover:border-rose-500/40 transition-all duration-300 relative group shadow-xl">
-            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mb-6 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-rose-500/20 transition-all">
+          <div className="p-8 rounded-3xl bg-white border border-slate-200/80 hover:border-pink-300 shadow-sm hover:shadow-xl transition-all duration-300 group">
+            <div className="w-14 h-14 rounded-2xl bg-pink-50 border border-pink-100 text-pink-600 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform shadow-inner">
               <Zap className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-3">Sub-Second Speed</h3>
-            <p className="text-sm text-zinc-400 leading-relaxed">
-              Infrastruktur edge ultra-ringan memuat landing bio dalam hitungan milidetik saat diklik oleh jutaan audiens dari Instagram bio maupun TikTok link.
+            <h3 className="text-xl font-black text-slate-900 mb-3">Sub-Second Speed</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Halaman bio super ringan memuat dalam hitungan milidetik saat diklik jutaan followers dari profil Instagram & TikTok tanpa loading berat yang bikin kabur.
             </p>
-            <div className="mt-6 pt-4 border-t border-white/5 flex items-center text-xs font-semibold text-rose-400 gap-1">
-              <span>99.9% Uptime CDN</span>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-bold text-pink-600 gap-1.5">
+              <span>99.9% Uptime CDN Global</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── 5. AFFILIATE & CONVERSION SECTION ────────────────── */}
-      <section id="affiliate" className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="relative rounded-3xl p-8 sm:p-12 overflow-hidden bg-gradient-to-r from-orange-950/40 via-[#121824] to-pink-950/40 border border-white/10 shadow-2xl">
-          <div className="max-w-2xl space-y-4">
-            <span className="px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">
-              UNTUK AFFILIATE & CREATOR ENTERPRISE
-            </span>
-            <h3 className="text-3xl font-extrabold text-white leading-tight">
-              Ingin Bikin Script Video UGC Otomatis?
-            </h3>
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              Gunakan generator naskah 9-scene berbasis formula viral kami di <strong>studio.boontrack.com</strong> untuk mempercepat produksi konten endorsement dan affiliate TikTok/Shopee Anda.
+      {/* ── D. UNTUK SIAPA? (CREATOR PERSONA CATEGORIES) ───────── */}
+      <section id="untuk-siapa" className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto bg-slate-50/70 border-y border-slate-200/80 rounded-3xl my-8">
+        <div className="text-center max-w-3xl mx-auto mb-14 space-y-3">
+          <span className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+            KATEGORI PENGGUNA
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+            Cocok untuk Semua Tipe Kreator & Influencer
+          </h2>
+          <p className="text-sm sm:text-base text-slate-600">
+            Apapun format konten yang kamu buat, BoonTrack Creator siap jadi rumah utama portofolio dan bisnis kamu.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <span className="text-2xl">🛍️</span>
+            <h4 className="font-extrabold text-slate-900">Affiliate Marketer</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Kumpulkan ratusan racun produk Shopee & TikTok dalam satu etalase rapi tanpa khawatir tracking link hilang.
             </p>
-            <div className="pt-2">
-              <a
-                href="https://studio.boontrack.com/ugc-studio"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-zinc-950 hover:bg-zinc-200 font-bold text-xs sm:text-sm transition-colors shadow-lg"
-              >
-                <span>Buka BoonTrack Studio</span>
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </div>
+          </div>
+
+          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <span className="text-2xl">📸</span>
+            <h4 className="font-extrabold text-slate-900">Fotografer & Desainer</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Jual preset Lightroom, font, template Canva, dan file digital dengan pembayaran QRIS serta download otomatis.
+            </p>
+          </div>
+
+          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <span className="text-2xl">🤝</span>
+            <h4 className="font-extrabold text-slate-900">Talent & Kolaborator</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tampilkan paket rate card video endorsement, live shopping, dan sambungkan brand langsung ke WhatsApp manajer.
+            </p>
+          </div>
+
+          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <span className="text-2xl">🎙️</span>
+            <h4 className="font-extrabold text-slate-900">Edukatif & Coach</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Buka slot konsultasi 1-on-1, tiket webinar, dan e-book panduan tanpa perlu setup website mahal yang rumit.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* ── 6. FOOTER ────────────────────────────────────────── */}
-      <footer className="py-10 border-t border-white/5 text-center text-xs text-zinc-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* ── E. CTA BANNER (CLEAN SUNSET CALLOUT) ───────────────── */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="rounded-3xl p-8 sm:p-14 bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 text-white shadow-2xl shadow-orange-500/20 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8">
+          {/* Subtle Graphic Accents */}
+          <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-2xl pointer-events-none -mr-20 -mt-20" />
+
+          <div className="space-y-3 text-center md:text-left relative z-10 max-w-xl">
+            <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-white/20 text-white backdrop-blur-md">
+              MULAI SEKARANG
+            </span>
+            <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+              Siap Maksimalkan Penghasilan Kreator Kamu?
+            </h3>
+            <p className="text-sm sm:text-base text-white/90 leading-relaxed">
+              Gratis selamanya, setup selesai dalam 2 menit, dan langsung siap dipasang di bio Instagram & TikTok.
+            </p>
+          </div>
+
+          <div className="relative z-10 flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <Link
+              href="/register"
+              className="px-8 py-4 rounded-full bg-white text-slate-900 hover:bg-slate-100 font-extrabold text-sm transition-all shadow-xl text-center active:scale-95 whitespace-nowrap"
+            >
+              Buat Bio Link Sekarang
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── F. CLEAN LIGHT FOOTER ────────────────────────────── */}
+      <footer className="py-10 border-t border-slate-200/80 bg-white text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© 2026 PT BOONTRACK INOVASI DIGITAL. Seluruh hak cipta dilindungi.</p>
-          <div className="flex items-center gap-6 text-zinc-400">
-            <Link href="/terms" className="hover:text-white transition-colors">Syarat & Ketentuan</Link>
-            <Link href="/privacy" className="hover:text-white transition-colors">Kebijakan Privasi</Link>
-            <a href="https://studio.boontrack.com" className="hover:text-white transition-colors">Studio Workspace</a>
+          <div className="flex items-center gap-6 text-slate-600 font-medium">
+            <Link href="/terms" className="hover:text-slate-900 transition-colors">Syarat & Ketentuan</Link>
+            <Link href="/privacy" className="hover:text-slate-900 transition-colors">Kebijakan Privasi</Link>
+            <a href="https://studio.boontrack.com" className="hover:text-slate-900 transition-colors">Studio Workspace</a>
+            <a href="https://shop.boontrack.com" className="hover:text-slate-900 transition-colors">Shop Platform</a>
           </div>
         </div>
       </footer>
