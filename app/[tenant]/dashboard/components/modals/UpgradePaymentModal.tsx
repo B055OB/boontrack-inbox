@@ -520,23 +520,23 @@ export default function UpgradePaymentModal({
       solo: [
         'Storefront mandiri katalog tanpa batas',
         'Kalkulasi ongkir multi-ekspedisi otomatis',
-        'QRIS Dinamis (Langsung Toko) + Bot auto-reply dasar',
+        'QRIS Dinamis (Langsung Toko)',
         'Manajemen stok real-time & laporan lengkap',
         'Custom branding toko & link bio',
       ],
       ads_performance: [
         'Meta & TikTok CAPI Server-Side (anti iOS block)',
         'God Button Tracking Konversi Otomatis',
+        'Smart Chatbox AI (BoonPilot 24/7)',
         '2 Seats CS Inbox (multi-admin rotasi)',
-        'Advanced Funnel Analytics & Real-Time Tracking',
-        'Semua fitur paket Solo',
+        'Tanpa Fitur CRM & Sistem Reseller',
       ],
       team_scale: [
-        'Official Meta Cloud API (WABA centang hijau)',
-        'Unlimited CS Seats (bebas tambah admin)',
-        'WhatsApp Broadcast mesin promosi massal',
-        'Custom Domain Toko Pribadi + Free SSL',
-        'Semua fitur Ads Performance',
+        'Semua fitur Ads Performance (termasuk Smart Chatbox AI)',
+        'WhatsApp Commerce CRM Terintegrasi',
+        'Sistem Reseller & Keagenan Terpusat',
+        'Official Meta Cloud API & Multi-Seat CS',
+        'WhatsApp Broadcast & Custom Domain + SSL',
       ],
     };
 

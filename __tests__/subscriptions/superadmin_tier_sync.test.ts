@@ -18,10 +18,10 @@ describe('Superadmin Tier Synchronization & Unified Grant Logic', () => {
       expect(resolveCanonicalTier('Enterprise').key).toBe('ENTERPRISE');
     });
 
-    it('resolves PRO_SCALE (ads_performance) correctly with crm and capi enabled', () => {
+    it('resolves PRO_SCALE (ads_performance) correctly with capi enabled and crm disabled', () => {
       const canonical = resolveCanonicalTier('ads_performance');
       expect(canonical.key).toBe('PRO_SCALE');
-      expect(canonical.features.crm).toBe(true);
+      expect(canonical.features.crm).toBe(false);
       expect(canonical.features.has_capi).toBe(true);
     });
 

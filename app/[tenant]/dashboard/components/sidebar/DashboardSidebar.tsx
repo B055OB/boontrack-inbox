@@ -240,6 +240,7 @@ interface DashboardSidebarProps {
     [key: string]: any;
   } | null;
   isCrmEnabled?: boolean;
+  isAiBotAllowed?: boolean;
   onOpenStoreSettings: () => void;
   onOpenUpgradeModal: () => void;
   onCloseMobileDrawer?: () => void;
@@ -273,6 +274,7 @@ export default function DashboardSidebar({
   businessType,
   capabilities,
   isCrmEnabled = false,
+  isAiBotAllowed,
   onOpenStoreSettings,
   onOpenUpgradeModal,
   onCloseMobileDrawer,
@@ -281,7 +283,9 @@ export default function DashboardSidebar({
   const currentTier = String(tenant?.tier || '').toUpperCase();
   const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
   const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
-  const isCrmEffective = Boolean(isCrmEnabled || hasTierAccess(tenant, 'crm'));
+  const isCrmEffective = Boolean(isCrmEnabled || (isTeamScale && hasTierAccess(tenant, 'crm')));
+  const isResellerEffective = Boolean(isTeamScale || hasTierAccess(tenant, 'reseller'));
+  const isAiBotEffective = isAiBotAllowed !== undefined ? isAiBotAllowed : Boolean(!isCheckoutLite && (isAdsPerformance || isTeamScale || hasTierAccess(tenant, 'ai_bot')));
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -732,7 +736,7 @@ export default function DashboardSidebar({
                 {!isCrmEffective ? (
                   <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
                     <Lock className="w-2.5 h-2.5 text-amber-600" />
-                    <span>PRO</span>
+                    <span>SCALE</span>
                   </span>
                 ) : (
                   <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
@@ -1010,7 +1014,7 @@ export default function DashboardSidebar({
                   {!isCrmEffective ? (
                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
                       <Lock className="w-2.5 h-2.5 text-amber-500" />
-                      <span>PRO</span>
+                      <span>SCALE</span>
                     </span>
                   ) : (
                     <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
@@ -1099,9 +1103,16 @@ export default function DashboardSidebar({
                     </div>
                     <span className="truncate">AI Knowledge &amp; Bot</span>
                   </div>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
-                    AI
-                  </span>
+                  {isAiBotEffective ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                      AI
+                    </span>
+                  ) : (
+                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
+                      <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      <span>PRO</span>
+                    </span>
+                  )}
                 </button>
 
                 {/* Ads Tracking Pro */}
@@ -1180,9 +1191,16 @@ export default function DashboardSidebar({
                     </div>
                     <span className="truncate">Mitra Reseller</span>
                   </div>
-                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    BARU
-                  </span>
+                  {isResellerEffective ? (
+                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      BARU
+                    </span>
+                  ) : (
+                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
+                      <Lock className="w-2.5 h-2.5 text-slate-500" />
+                      <span>SCALE</span>
+                    </span>
+                  )}
                 </button>
               </div>
             </div>

@@ -41,18 +41,37 @@ describe('Tier Hierarchy & Centralized Feature Gating', () => {
   });
 
   describe('canAccessFeature', () => {
-    it('allows CRM access to PRO_SCALE and above (PRO, SCALE, ENTERPRISE)', () => {
-      expect(canAccessFeature('PRO_SCALE', 'crm')).toBe(true);
-      expect(canAccessFeature('ADS_PERFORMANCE', 'crm')).toBe(true);
+    it('allows CRM access ONLY to TEAM_SCALE and ENTERPRISE', () => {
       expect(canAccessFeature('TEAM_SCALE', 'crm')).toBe(true);
       expect(canAccessFeature('ENTERPRISE', 'crm')).toBe(true);
       expect(canAccessFeature('SPECIAL_GRANT', 'crm')).toBe(true);
+      expect(canAccessFeature('PRO_SCALE', 'crm')).toBe(false);
+      expect(canAccessFeature('ADS_PERFORMANCE', 'crm')).toBe(false);
     });
 
     it('blocks CRM access for STARTER and CHECKOUT_LITE without explicit override', () => {
       expect(canAccessFeature('STARTER', 'crm')).toBe(false);
       expect(canAccessFeature('CHECKOUT_LITE', 'crm')).toBe(false);
       expect(canAccessFeature('SOLO', 'crm')).toBe(false);
+    });
+
+    it('allows Reseller access ONLY to TEAM_SCALE and ENTERPRISE', () => {
+      expect(canAccessFeature('TEAM_SCALE', 'reseller')).toBe(true);
+      expect(canAccessFeature('ENTERPRISE', 'reseller')).toBe(true);
+      expect(canAccessFeature('PRO_SCALE', 'reseller')).toBe(false);
+      expect(canAccessFeature('ADS_PERFORMANCE', 'reseller')).toBe(false);
+      expect(canAccessFeature('SOLO', 'reseller')).toBe(false);
+      expect(canAccessFeature('CHECKOUT_LITE', 'reseller')).toBe(false);
+    });
+
+    it('allows Smart Chatbox AI (ai_bot) starting from ADS_PERFORMANCE and TEAM_SCALE', () => {
+      expect(canAccessFeature('ADS_PERFORMANCE', 'ai_bot')).toBe(true);
+      expect(canAccessFeature('PRO_SCALE', 'ai_bot')).toBe(true);
+      expect(canAccessFeature('TEAM_SCALE', 'ai_bot')).toBe(true);
+      expect(canAccessFeature('ENTERPRISE', 'ai_bot')).toBe(true);
+      expect(canAccessFeature('SOLO', 'ai_bot')).toBe(false);
+      expect(canAccessFeature('STARTER', 'ai_bot')).toBe(false);
+      expect(canAccessFeature('CHECKOUT_LITE', 'ai_bot')).toBe(false);
     });
 
     it('allows Multi CS and Broadcast ONLY to SCALE and ENTERPRISE', () => {
@@ -130,11 +149,18 @@ describe('Tier Hierarchy & Centralized Feature Gating', () => {
   });
 
   describe('Canonical Tiers definition', () => {
-    it('defines crm: true in PRO_SCALE and ENTERPRISE', () => {
-      expect(CANONICAL_TIERS.PRO_SCALE.features.crm).toBe(true);
+    it('defines crm: true only in ENTERPRISE, and false in PRO_SCALE, STARTER, and CHECKOUT_LITE', () => {
+      expect(CANONICAL_TIERS.PRO_SCALE.features.crm).toBe(false);
       expect(CANONICAL_TIERS.ENTERPRISE.features.crm).toBe(true);
       expect(CANONICAL_TIERS.STARTER.features.crm).toBe(false);
       expect(CANONICAL_TIERS.CHECKOUT_LITE.features.crm).toBe(false);
+    });
+
+    it('defines ai_bot: true in PRO_SCALE and ENTERPRISE, and false in STARTER and CHECKOUT_LITE', () => {
+      expect(CANONICAL_TIERS.PRO_SCALE.features.ai_bot).toBe(true);
+      expect(CANONICAL_TIERS.ENTERPRISE.features.ai_bot).toBe(true);
+      expect(CANONICAL_TIERS.STARTER.features.ai_bot).toBe(false);
+      expect(CANONICAL_TIERS.CHECKOUT_LITE.features.ai_bot).toBe(false);
     });
   });
 });

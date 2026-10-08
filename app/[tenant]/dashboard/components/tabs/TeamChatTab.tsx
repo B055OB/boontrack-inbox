@@ -3286,8 +3286,8 @@ export default function TeamChatTab({
             ) : (
               <div className="space-y-3">
                 <FeatureLockedTeaser
-                  featureTitle="Customer Memory Layer & Lifecycle CRM"
-                  badgeTier="Pro Scale & Team Scale"
+                  featureTitle="WhatsApp Commerce CRM Terintegrasi"
+                  badgeTier="Eksklusif Paket Team Scale"
                   headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
                   comparison={{
                     problemTitle: 'Tantangan Saat Ini',
@@ -3300,11 +3300,11 @@ export default function TeamChatTab({
                     'Tahapan Lifecycle Prospek: Pantau transisi LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER secara visual.',
                     'Catatan Internal Tim: Kolaborasi catatan rahasia antar CS per pelanggan tanpa terlihat oleh konsumen.',
                   ]}
-                  ctaText="Buka Akses CRM & Upgrade ke Pro Scale"
+                  ctaText="Buka Akses CRM & Upgrade ke Team Scale"
                   featureIcon={<Brain className="w-6 h-6 text-indigo-400" />}
                   compact={true}
                   tenantSlug={resolvedTenant || tenantSlug}
-                  onUpgrade={() => handleUpgradeTier?.('ads_performance')}
+                  onUpgrade={() => handleUpgradeTier?.('team_scale')}
                 />
               </div>
             )

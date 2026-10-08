@@ -210,8 +210,8 @@ export function useTenantDashboard() {
   const isBroadcastUnlocked = !isCheckoutLite && isTeamScale;
 
   const isAiBotAllowed =
-    String(tenantFeatureFlags.tier || '').toUpperCase() !== 'CHECKOUT_LITE' &&
-    !isCheckoutLite;
+    !isCheckoutLite &&
+    Boolean(isAdsPerformance || isTeamScale);
 
   const isSubscriptionExpired = Boolean(
     !isGrant && (

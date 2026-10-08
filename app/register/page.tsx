@@ -1998,6 +1998,10 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Smart Chatbox AI (BoonPilot): Asisten bot otomatis untuk katalog, cek ongkir, &amp; kualifikasi leads otomatis 24/7.</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>BoonTrack Reader APK: Deteksi pembayaran &amp; mutasi otomatis dalam hitungan detik</span>
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
@@ -2015,6 +2019,10 @@ export default function RegisterShopPage() {
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>Prioritas Data Sync: Tanpa delay pencatatan omzet harian</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
+                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>Tanpa Fitur CRM &amp; Sistem Reseller (Khusus Paket Team Scale)</span>
                         </li>
                       </ul>
                     </div>
@@ -2085,7 +2093,15 @@ export default function RegisterShopPage() {
                       <ul className="space-y-2 text-xs">
                         <li className="flex items-start gap-2 text-slate-800 font-bold">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Semua fitur di Paket Ads Performance (Termasuk CAPI &amp; GTM Full Access)</span>
+                          <span>Semua Fitur Ads Performance (Termasuk Smart Chatbox AI, CAPI &amp; GTM Full Access)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-purple-950 font-medium bg-purple-50/70 p-1.5 rounded-lg border border-purple-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>WhatsApp Commerce CRM Terintegrasi: Database pembeli otomatis, riwayat transaksi, tagging segmen, &amp; manajemen follow-up pelanggan.</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-purple-950 font-medium bg-purple-50/70 p-1.5 rounded-lg border border-purple-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Sistem Reseller &amp; Keagenan Terpusat: Multi-tier harga agen, rekap komisi otomatis, &amp; monitoring penjualan reseller.</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
@@ -2093,11 +2109,11 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-                          <span>Akses Knowledge Base &amp; AI Assistant Bot</span>
+                          <span>Akses Knowledge Base &amp; Pelatihan Mandiri BoonPilot AI</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-                          <span>Kuota Broadcast Notifikasi Skala Bisnis</span>
+                          <span>Kuota Broadcast Notifikasi Skala Bisnis (Official WABA Meta Cloud API)</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />

@@ -19,6 +19,8 @@ import {
   MessageSquare,
   Radio,
   Brain,
+  Sparkles,
+  Users,
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
@@ -229,8 +231,12 @@ export default function TenantDashboardPage() {
   }), [tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale]);
 
   const isCrmEnabled = React.useMemo(() => {
-    return hasTierAccess(tenantData, 'crm');
-  }, [tenantData]);
+    return isTeamScale || hasTierAccess(tenantData, 'crm');
+  }, [isTeamScale, tenantData]);
+
+  const isResellerFeatureUnlocked = React.useMemo(() => {
+    return isTeamScale || hasTierAccess(tenantData, 'reseller');
+  }, [isTeamScale, tenantData]);
 
   const renderLockedFeatureCard = (cardProps: {
     title: string;
@@ -430,6 +436,7 @@ export default function TenantDashboardPage() {
               businessType={businessType || storeCategory}
               capabilities={capabilities}
               isCrmEnabled={isCrmEnabled}
+              isAiBotAllowed={isAiBotAllowed}
               activeTab={activeTab}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
@@ -477,6 +484,7 @@ export default function TenantDashboardPage() {
         businessType={businessType || storeCategory}
         capabilities={capabilities}
         isCrmEnabled={isCrmEnabled}
+        isAiBotAllowed={isAiBotAllowed}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTeamScale={isTeamScale}
@@ -768,27 +776,27 @@ export default function TenantDashboardPage() {
         !isCrmEnabled ? (
           <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
             <FeatureLockedTeaser
-              featureTitle="Customer Memory Layer & Lifecycle CRM"
-              badgeTier="Eksklusif Paket Pro & Scale"
-              headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
+              featureTitle="WhatsApp Commerce CRM Terintegrasi"
+              badgeTier="Eksklusif Paket Team Scale"
+              headline="Database Pembeli Otomatis, Tagging & Manajemen Follow-up Pelanggan"
               comparison={{
                 problemTitle: 'Masalah: CS Lupa Histori & Chat Acak-acakan',
                 problem:
                   'CS sering lupa riwayat belanja, preferensi, dan keluhan pelanggan terdahulu. Chat acak-acakan tanpa histori membuat closing lambat dan pelanggan frustrasi.',
-                solutionTitle: 'Solusi: Memory Layer & Lifecycle BoonTrack',
+                solutionTitle: 'Solusi: Memory Layer & Lifecycle CRM BoonTrack',
                 solution:
                   'Memory layer merekam interaksi, tag relasional, catatan internal rahasia CS, dan tahapan lifecycle otomatis tepat di samping jendela obrolan.',
               }}
               bullets={[
-                'Customer Memory Layer: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
+                'Database Pembeli Otomatis: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
                 'Lifecycle Stage Engine: Pantau alur prospek (LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER) secara visual.',
-                'Internal Team Notes: Kolaborasi catatan rahasia dan operasional antar CS per pelanggan tanpa terlihat oleh pembeli.',
+                'Internal Team Notes & Broadcast Follow-up: Kolaborasi catatan rahasia dan operasional follow-up pelanggan.',
               ]}
-              calloutBanner="💡 Tips Hemat: Ambil langganan 1 tahun langsung otomatis unlock fitur Memory CRM ini tanpa biaya tambahan!"
-              ctaText="Upgrade ke Pro Scale / Paket Tahunan"
+              calloutBanner="💡 Fitur Eksklusif Paket Team Scale: Buka modul CRM terintegrasi bersama Multi-CS & Broadcast WA!"
+              ctaText="Upgrade ke Team Scale"
               featureIcon={<Brain className="w-7 h-7 text-indigo-400" />}
               tenantSlug={tenantSlug}
-              onUpgrade={() => handleUpgradeTier('ads_performance')}
+              onUpgrade={() => handleUpgradeTier('team_scale')}
             />
           </div>
         ) : (
@@ -910,29 +918,57 @@ export default function TenantDashboardPage() {
 
       {/* TAB 3: AI Knowledge */}
       {activeTab === 'ai_knowledge' && (
-        <AiKnowledgeTab
-          tenantSlug={tenantSlug}
-          tenant={tenant}
-          aiForm={aiForm}
-          setAiForm={setAiForm}
-          greetingMessage={greetingMessage}
-          setGreetingMessage={setGreetingMessage}
-          salesPolicy={salesPolicy}
-          setSalesPolicy={setSalesPolicy}
-          faqs={faqs}
-          setFaqs={setFaqs}
-          interactiveMenus={interactiveMenus}
-          setInteractiveMenus={setInteractiveMenus}
-          botMode={botMode}
-          setBotMode={setBotMode}
-          handleSaveAiKnowledge={handleSaveAiKnowledge}
-          isSavingAi={isSavingAi}
-          isLoadingAi={isLoadingAi}
-          isSimulatorOpen={isSimulatorOpen}
-          setIsSimulatorOpen={setIsSimulatorOpen}
-          storeCategory={storeCategory}
-          saveFeedback={saveFeedback}
-        />
+        !isAiBotAllowed ? (
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+            <FeatureLockedTeaser
+              featureTitle="Smart Chatbox AI (BoonPilot)"
+              badgeTier="Eksklusif Ads Performance & Team Scale"
+              headline="Asisten Bot Otomatis untuk Katalog, Cek Ongkir, & Kualifikasi Leads 24/7"
+              comparison={{
+                problemTitle: 'Masalah: Respon Lambat & Kehilangan Pembeli Malam Hari',
+                problem:
+                  'Calon pembeli sering chat di luar jam kerja. Menunggu balasan manual membuat prospek dingin dan beralih ke toko kompetitor.',
+                solutionTitle: 'Solusi: BoonPilot Smart Chatbox AI',
+                solution:
+                  'BoonPilot otomatis melayani pembeli, mengecek ongkir ekspedisi, merekomendasikan produk relevan, dan mengkualifikasi leads secara cerdas 24/7.',
+              }}
+              bullets={[
+                'Smart Chatbox AI (BoonPilot): Asisten bot otomatis untuk katalog, cek ongkir, & kualifikasi leads otomatis 24/7.',
+                'Product Knowledge Grounding: Dilatih otomatis dari katalog produk dan informasi toko Anda.',
+                'Seamless CS Handoff: Mengalihkan obrolan kompleks ke admin CS manusia dengan ringkasan konteks.',
+              ]}
+              calloutBanner="💡 Fitur Eksklusif Paket Ads Performance & Team Scale: Buka modul Smart Chatbox AI untuk melipatgandakan konversi!"
+              ctaText="Upgrade ke Ads Performance"
+              featureIcon={<Sparkles className="w-7 h-7 text-indigo-400" />}
+              tenantSlug={tenantSlug}
+              onUpgrade={() => handleUpgradeTier('ads_performance')}
+            />
+          </div>
+        ) : (
+          <AiKnowledgeTab
+            tenantSlug={tenantSlug}
+            tenant={tenant}
+            aiForm={aiForm}
+            setAiForm={setAiForm}
+            greetingMessage={greetingMessage}
+            setGreetingMessage={setGreetingMessage}
+            salesPolicy={salesPolicy}
+            setSalesPolicy={setSalesPolicy}
+            faqs={faqs}
+            setFaqs={setFaqs}
+            interactiveMenus={interactiveMenus}
+            setInteractiveMenus={setInteractiveMenus}
+            botMode={botMode}
+            setBotMode={setBotMode}
+            handleSaveAiKnowledge={handleSaveAiKnowledge}
+            isSavingAi={isSavingAi}
+            isLoadingAi={isLoadingAi}
+            isSimulatorOpen={isSimulatorOpen}
+            setIsSimulatorOpen={setIsSimulatorOpen}
+            storeCategory={storeCategory}
+            saveFeedback={saveFeedback}
+          />
+        )
       )}
 
       {/* TAB: LAPORAN & KEUANGAN */}
@@ -1249,7 +1285,35 @@ export default function TenantDashboardPage() {
 
       {/* TAB: MITRA RESELLER & KOMISI (STORE RESELLER SYSTEM) */}
       {activeTab === 'reseller' && (
-        <ResellerTab tenantSlug={tenantSlug} tenantData={tenantData} />
+        !isResellerFeatureUnlocked ? (
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+            <FeatureLockedTeaser
+              featureTitle="Sistem Reseller & Keagenan Terpusat"
+              badgeTier="Eksklusif Paket Team Scale"
+              headline="Multi-Tier Harga Agen, Rekap Komisi Otomatis, & Monitoring Penjualan Reseller"
+              comparison={{
+                problemTitle: 'Masalah: Rekap Komisi Manual & Orderan Berceceran',
+                problem:
+                  'Mencatat komisi reseller lewat spreadsheet rentan selisih, menyita waktu CS, dan rawan komplain. Reseller sulit memantau performa penjualan mereka sendiri.',
+                solutionTitle: 'Solusi: Portal Reseller & Komisi Otomatis BoonTrack',
+                solution:
+                  'Setiap reseller mendapat kode/link referral otomatis, komisi dihitung per transaksi berhasil, dan monitoring penjualan reseller real-time.',
+              }}
+              bullets={[
+                'Sistem Reseller & Keagenan Terpusat: Multi-tier harga agen, rekap komisi otomatis, & monitoring penjualan reseller.',
+                'Pelacakan referral non-kustodial berbasis parameter link (?r=KODE).',
+                'Rekap komisi otomatis & riwayat pencairan transparan.',
+              ]}
+              calloutBanner="💡 Fitur Eksklusif Paket Team Scale: Buka modul Reseller bersama Official WABA & CRM Terintegrasi!"
+              ctaText="Upgrade ke Team Scale"
+              featureIcon={<Users className="w-7 h-7 text-purple-400" />}
+              tenantSlug={tenantSlug}
+              onUpgrade={() => handleUpgradeTier('team_scale')}
+            />
+          </div>
+        ) : (
+          <ResellerTab tenantSlug={tenantSlug} tenantData={tenantData} />
+        )
       )}
 
             {/* MOBILE LIVE PHONE PREVIEW (< lg, smartphone) */}
@@ -1311,9 +1375,9 @@ export default function TenantDashboardPage() {
         botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
         isQrisUploaded={!!storeQrisUrl}
         subscriptionPlan={tenant.tier}
-        isAiBotAllowed={tenant.tier?.toUpperCase() !== 'CHECKOUT_LITE'}
-        isCheckoutLite={tenant.tier?.toUpperCase() === 'CHECKOUT_LITE'}
-        onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'starter')}
+        isAiBotAllowed={Boolean(isAiBotAllowed)}
+        isCheckoutLite={Boolean(isCheckoutLite)}
+        onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'ads_performance')}
       />
 
       {/* MODAL BULK IMPORT */}

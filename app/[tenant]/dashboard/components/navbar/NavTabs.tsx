@@ -79,6 +79,7 @@ interface NavTabsProps {
   businessType?: string;
   capabilities?: NavTabsCapabilities | null;
   isCrmEnabled?: boolean;
+  isAiBotAllowed?: boolean;
 }
 
 export default function NavTabs({
@@ -103,12 +104,14 @@ export default function NavTabs({
   businessType,
   capabilities,
   isCrmEnabled = false,
+  isAiBotAllowed,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   const teamScaleActive = isTeamScale || permissions.isTeamScale;
+  const isAiBotEffective = isAiBotAllowed !== undefined ? isAiBotAllowed : Boolean(!isSoloOrTrial && (isAdsPerformance || isTeamScale));
 
   // Resolusi kategori toko fisik vs digital vs jasa yang ketat
   const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase().trim();
@@ -252,6 +255,11 @@ export default function NavTabs({
           >
             <Brain className="w-4 h-4 shrink-0" />
             <span>AI Knowledge & Bot</span>
+            {!isAiBotEffective && (
+              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> PRO
+              </span>
+            )}
           </button>
 
           {/* TAB 3: WHATSAPP & BROADCAST */}
@@ -456,7 +464,7 @@ export default function NavTabs({
             <span>Pelanggan</span>
             {!isCrmEnabled ? (
               <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5 text-amber-500" /> PRO
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> SCALE
               </span>
             ) : (
               <span className="px-1.5 py-0.5 bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-extrabold">
