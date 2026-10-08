@@ -5,6 +5,24 @@ export const runtime = 'nodejs';
 
 const IS_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function slugify(text: string): string {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\-]+/g, '')
+    .replace(/\-\-+/g, '-')
+    .replace(/^-+/, '')
+    .replace(/-+$/, '') || 'produk';
+}
+
+function sanitizeAngle(angle: string | undefined, fallback: string): string {
+  if (!angle) return fallback;
+  const cleaned = angle.replace(/[^a-zA-Z0-9]/g, '');
+  return cleaned || fallback;
+}
+
 async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
   if (!tenantIdentifier) {
     const { data } = await supabase.from('tenants').select('id, slug, metadata').limit(1).maybeSingle();
@@ -27,6 +45,7 @@ async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
 /**
  * POST /api/studio/render/batch
  * Dispatches FCD (Flexible Creative Delivery) batch variations to FFmpeg render queue
+ * Formats standardized MP4 naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
  */
 export async function POST(req: Request) {
   try {
@@ -45,6 +64,24 @@ export async function POST(req: Request) {
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
 
     let remainingCredits = 1;
+
+    // Standardized file naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
+    const productSlug = slugify(product_name || 'fcd-campaign');
+    const formattedVariations = variations.map((v: any, i: number) => {
+      const idx = v.id || i + 1;
+      const rawHook = v.hook_angle || v.hookKey ? `Hook${v.hookKey || ''}` : v.hookTitle || '';
+      const rawCta = v.cta_angle || v.ctaKey ? `CTA${v.ctaKey || ''}` : v.ctaTitle || '';
+      const hookAngle = sanitizeAngle(rawHook, `Hook${String.fromCharCode(65 + (i % 3))}`);
+      const ctaAngle = sanitizeAngle(rawCta, `CTA${(i % 2) + 1}`);
+      const filename = `${productSlug}_VAR${idx}_${hookAngle}_${ctaAngle}.mp4`;
+      return {
+        ...v,
+        index: idx,
+        hook_angle: hookAngle,
+        cta_angle: ctaAngle,
+        filename,
+      };
+    });
 
     if (tenant && supabase) {
       const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
@@ -77,20 +114,24 @@ export async function POST(req: Request) {
         .update({ metadata: updatedMeta })
         .eq('id', tenant.id);
 
-      // Insert each variation into studio_jobs
-      const jobInserts = variations.map((v, i) => ({
+      // Insert each variation into studio_jobs with standardized filename
+      const jobInserts = formattedVariations.map(v => ({
         tenant_id: tenant.id,
         user_id: tenant.id,
         status: 'QUEUED',
         job_type: 'FFMPEG_FCD_BATCH',
         payload: {
           product_name: product_name || 'FCD Campaign',
+          product_slug: productSlug,
           model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
-          variation_index: i + 1,
-          variation_title: v.title || `Variasi #${i + 1}`,
+          variation_index: v.index,
+          variation_title: v.title || `Variasi #${v.index}`,
+          filename: v.filename, // Standardized format: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
           hook: v.hook,
           body: v.body,
           cta: v.cta,
+          hook_angle: v.hook_angle,
+          cta_angle: v.cta_angle,
           is_aigc: 1, // Official White-Hat AIGC tag
           aspect_ratio: '9:16',
           resolution: '1080x1920',
@@ -103,12 +144,22 @@ export async function POST(req: Request) {
     }
 
     const batchId = `fcd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const zipArchiveName = `${productSlug}_FCD_BATCH_${Date.now()}.zip`;
 
     return NextResponse.json({
       success: true,
       batch_id: batchId,
       model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
       status: 'QUEUED',
+      product_slug: productSlug,
+      zip_archive_name: zipArchiveName,
+      files: formattedVariations.map(v => ({
+        index: v.index,
+        filename: v.filename,
+        title: v.title || `Variasi #${v.index}`,
+        hook_angle: v.hook_angle,
+        cta_angle: v.cta_angle,
+      })),
       jobs_count: requiredCredits,
       consumed_credits: requiredCredits,
       remaining_credits: remainingCredits,

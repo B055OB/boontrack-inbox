@@ -34,9 +34,11 @@ export async function POST(req: Request) {
 
     // Attempt generation with Gemini Studio AI Engine
     let generatedScenes: any[] | null = null;
+    let generatedAdsCopy: any = null;
+
     try {
       const prompt = `Anda adalah Creative Director iklan UGC (User Generated Content) TikTok, Shopee Video, dan Reels nomor 1 di Indonesia.
-Buatkan 9 adegan naskah terstruktur untuk formula video 30 detik berikut:
+Buatkan 9 adegan naskah terstruktur untuk formula video 30 detik serta salinan iklan (Meta & TikTok Ads Manager) berikut:
 - Nama Produk: ${product_name}
 - Kategori: ${category}
 - Masalah / Pain Point: ${pain_point}
@@ -44,7 +46,7 @@ Buatkan 9 adegan naskah terstruktur untuk formula video 30 detik berikut:
 - Tujuan CTA: ${cta_goal}
 - Gaya Bahasa / Tone: ${tone}
 
-Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) mengikuti format:
+Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) serta ads_copy mengikuti schema:
 {
   "scenes": [
     {
@@ -128,7 +130,23 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
       "visual_direction": "...",
       "on_screen_text": "..."
     }
-  ]
+  ],
+  "ads_copy": {
+    "headlines": [
+      "Headline 1 singkat & menarik",
+      "Headline 2 penasaran & klik",
+      "Headline 3 promo & benefit"
+    ],
+    "primary_texts": [
+      "Naskah feed variasi 1 (Storytelling & problem-solving)",
+      "Naskah feed variasi 2 (Direct offer & urgensi diskon terbatas)"
+    ],
+    "call_to_actions": [
+      "Beli Sekarang / Shop Now",
+      "Pesan Sekarang / Order Now",
+      "Pelajari Selengkapnya / Learn More"
+    ]
+  }
 }`;
 
       const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
@@ -154,6 +172,9 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
           const parsed = JSON.parse(cleaned);
           if (parsed?.scenes && Array.isArray(parsed.scenes) && parsed.scenes.length === 9) {
             generatedScenes = parsed.scenes;
+          }
+          if (parsed?.ads_copy && typeof parsed.ads_copy === 'object') {
+            generatedAdsCopy = parsed.ads_copy;
           }
         }
       }
@@ -298,6 +319,36 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
       },
     ];
 
+    // Ads Copy Meta & TikTok
+    const defaultAdsCopy = {
+      headlines: [
+        `Solusi Atasi ${pain_point.slice(0, 32)} Seketika!`,
+        `Viral di TikTok! Rahasia Baru ${product_name}`,
+        `Jangan Beli ${category} Sebelum Lihat Ini!`,
+      ],
+      primary_texts: [
+        `Capek ngadepin ${pain_point}? Kini hadir ${product_name} yang dirancang khusus untuk memberikan hasil nyata tanpa ribet. Coba sekarang dan buktikan sendiri perbedaannya!`,
+        `Promo bundling terbatas hari ini! Dapatkan ${product_name} dengan penawaran harga spesial sebelum kehabisan stok. Garansi original & pengiriman kilat.`,
+      ],
+      call_to_actions: [
+        'Shop Now (Beli Sekarang)',
+        'Order Now (Pesan Sekarang)',
+        'Learn More (Pelajari Selengkapnya)',
+      ],
+    };
+
+    const finalAdsCopy = {
+      headlines: Array.isArray(generatedAdsCopy?.headlines) && generatedAdsCopy.headlines.length > 0
+        ? generatedAdsCopy.headlines.slice(0, 3)
+        : defaultAdsCopy.headlines,
+      primary_texts: Array.isArray(generatedAdsCopy?.primary_texts) && generatedAdsCopy.primary_texts.length > 0
+        ? generatedAdsCopy.primary_texts.slice(0, 2)
+        : defaultAdsCopy.primary_texts,
+      call_to_actions: Array.isArray(generatedAdsCopy?.call_to_actions) && generatedAdsCopy.call_to_actions.length > 0
+        ? generatedAdsCopy.call_to_actions.slice(0, 3)
+        : defaultAdsCopy.call_to_actions,
+    };
+
     return NextResponse.json({
       success: true,
       product_name,
@@ -307,6 +358,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
       model_name: modelName,
       total_duration_sec: 30,
       scenes,
+      ads_copy: finalAdsCopy,
     });
   } catch (err: any) {
     console.error('[Studio Script Generate API] Error:', err);
