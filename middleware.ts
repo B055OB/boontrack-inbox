@@ -580,6 +580,12 @@ export async function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
+    // 4b. /fcd-automator -> rewrite ke /studio/fcd-automator
+    if (pathname === '/fcd-automator' || pathname.startsWith('/fcd-automator/')) {
+      url.pathname = `/studio${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
     // 5. Jika sudah berada di path /studio/... -> pass-through
     if (pathname.startsWith('/studio')) {
       return NextResponse.next();

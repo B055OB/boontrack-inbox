@@ -128,6 +128,18 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/studio/register');
     });
+
+    it('10. Rewrites /fcd-automator to /studio/fcd-automator on studio.boontrack.com', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/fcd-automator', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/fcd-automator');
+    });
   });
 
   describe('B. Host-Aware 301 Legacy Redirect for UGC Studio on Creator Host', () => {

@@ -273,23 +273,27 @@ export default function StudioDeskPage() {
             </div>
           </div>
 
-          {/* Feature 3: Cloud Render Queue */}
-          <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 opacity-90 flex flex-col justify-between space-y-6">
+          {/* Feature 3: Cloud Render Queue & FCD Automator */}
+          <Link
+            href="/studio/fcd-automator"
+            className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-indigo-500/50 hover:bg-white/[0.04] transition group flex flex-col justify-between space-y-6"
+          >
             <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
                 <Cpu className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-white">
+              <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors">
                 Render Queue & FCD Automator
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Antrean render otomatis tingkat server FFmpeg dengan output siap ekspor untuk TikTok Ads & Meta CAPI.
+                Antrean batch render multi-variasi (3 Hook x 1 Body x 2 CTA) otomatis tingkat server FFmpeg siap ekspor untuk TikTok Ads & Meta CAPI.
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400">
-              <span>Fast-Track Render Ready</span>
+              <span>Buka FCD Automator</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
-          </div>
+          </Link>
         </div>
       </main>
 
