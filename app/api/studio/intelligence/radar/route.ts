@@ -26,7 +26,8 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category') || 'general';
-    const limit = Math.min(Number(searchParams.get('limit')) || 3, 10);
+    const cluster = searchParams.get('cluster') || undefined;
+    const limit = Math.max(1, Math.min(Number(searchParams.get('limit')) || 10, 50));
     const tenantId = searchParams.get('tenant_id') || req.headers.get('x-tenant-id');
 
     if (tenantId) {
@@ -43,11 +44,12 @@ export async function GET(req: Request) {
       }
     }
 
-    const insights = await getFreshHookPatternInsights(category, limit);
+    const insights = await getFreshHookPatternInsights(category, limit, cluster);
 
     return NextResponse.json({
       success: true,
       category,
+      cluster: cluster || null,
       count: insights.length,
       insights,
     });

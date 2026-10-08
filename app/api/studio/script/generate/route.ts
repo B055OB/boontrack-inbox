@@ -19,6 +19,8 @@ interface GenerateRequest {
   tenant_id?: string;
   tenant_slug?: string;
   require_radar?: boolean;
+  selected_hook?: string;
+  selected_hook_template?: string;
 }
 
 export async function POST(req: Request) {
@@ -185,9 +187,15 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
   }
 }`;
 
+      const chosenSelectedHook = body.selected_hook || body.selected_hook_template;
       let radarConstraintText = '';
+      if (chosenSelectedHook) {
+        radarConstraintText += `\n\nFORMULA HOOK RADAR TERPILIH (PRIORITAS UTAMA):\n` +
+          `Pengguna telah memilih secara spesifik formula hook ini: "${chosenSelectedHook}".\n` +
+          `WAJIB adaptasikan pola kalimat dan emosi hook ini ke dalam Scene 1 dan Scene 2 untuk produk ${product_name}.\n`;
+      }
       if (radarInsights.length > 0) {
-        radarConstraintText = `\n\nBATASAN REFERENSI VIRAL TRENDS RADAR (TOP ${radarInsights.length} FRESH HOOK PATTERNS):\n` +
+        radarConstraintText += `\n\nBATASAN REFERENSI VIRAL TRENDS RADAR (TOP ${radarInsights.length} FRESH HOOK PATTERNS):\n` +
           `Sistem mendeteksi pola hook berkinerja tertinggi saat ini untuk kategori ${category}.\n` +
           `Adaptasikan dan adopsi pola hook berikut untuk menyusun Scene 1 (Visual Pattern Interrupt) dan Scene 2 (Hook Problem):\n` +
           radarInsights.map((insight, idx) => `  ${idx + 1}. [Keyakinan ${Math.round(insight.confidence_score * 100)}%] Pola: "${insight.pattern_template}"`).join('\n') +

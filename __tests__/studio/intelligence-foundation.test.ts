@@ -340,4 +340,75 @@ describe('§ 54 Studio Intelligence Foundation Test Suite', () => {
       expect(fashionInsights[0].confidence_score).toBeGreaterThanOrEqual(0.9);
     });
   });
+
+  // =========================================================================
+  // 6. SPRINT 2 — PHASE II: INDONESIAN HOOK PATTERNS & CLUSTERS
+  // =========================================================================
+  describe('6. Sprint 2 — Phase II: Indonesian Hook Patterns & 4 Clusters', () => {
+    it('covers all 5 categories (skincare, fashion, fnb, gadget, general) with fresh hooks', async () => {
+      const mockQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue({
+        from: jest.fn().mockReturnValue(mockQuery),
+      } as any);
+
+      const categories = ['skincare', 'fashion', 'fnb', 'gadget', 'general'];
+      for (const cat of categories) {
+        const insights = await getFreshHookPatternInsights(cat, 4);
+        expect(insights.length).toBeGreaterThanOrEqual(4);
+        insights.forEach(item => {
+          expect(item.category).toBe(cat);
+          expect(item.commercial_eligibility).toBe(true);
+          expect(item.freshness_status).toBe('FRESH');
+          expect(item.confidence_score).toBeGreaterThanOrEqual(0.90);
+        });
+      }
+    });
+
+    it('filters hooks by cluster (Problem-Agitate, Curiosity Gap, Shocking Fact, POV Skit)', async () => {
+      const mockQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue({
+        from: jest.fn().mockReturnValue(mockQuery),
+      } as any);
+
+      const clusters = ['Problem-Agitate', 'Curiosity Gap', 'Shocking Fact', 'POV Skit'];
+      for (const cluster of clusters) {
+        const insights = await getFreshHookPatternInsights('skincare', 5, cluster);
+        expect(insights.length).toBeGreaterThan(0);
+        insights.forEach(item => {
+          expect(item.cluster).toBe(cluster);
+        });
+      }
+    });
+
+    it('returns cross-category hooks when category is "all"', async () => {
+      const mockQuery: any = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue({
+        from: jest.fn().mockReturnValue(mockQuery),
+      } as any);
+
+      const allInsights = await getFreshHookPatternInsights('all', 10);
+      expect(allInsights.length).toBe(10);
+      const uniqueCats = new Set(allInsights.map(i => i.category));
+      expect(uniqueCats.size).toBeGreaterThan(1);
+    });
+  });
 });
+

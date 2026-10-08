@@ -4664,3 +4664,35 @@ CREATE INDEX idx_studio_jobs_tenant_status ON public.studio_jobs(tenant_id, stat
 
 
 
+---
+
+## § 54. STUDIO INTELLIGENCE FOUNDATION & MODULAR ADD-ONS (ADR §54)
+
+### 54.1 Latar Belakang & Paradigma Produk
+Modul Studio (`studio.boontrack.com`) diperluas dengan kapabilitas intelijen berbasis keputusan kreatif (*Creative Decision Engine*).
+- **Core Principle**: Sistem tidak menjual *raw data scraping*, melainkan *curated signal & normalized patterns* (Evidence $\rightarrow$ Normalization $\rightarrow$ Insight $\rightarrow$ Gemini Interpretation $\rightarrow$ Creation).
+- **Integritas Klaim**: Sistem dilarang mengklaim status "Winning Ad" tanpa data performa riil. Indikator iklan berdurasi panjang dicatat secara faktual sebagai `Long-running ad signal`.
+
+### 54.2 Isolasi Modular & Entitlement Contract
+Kapabilitas intelijen dibagi menjadi dua add-on independen di bawah kontrol *TenantRuntimeContext*:
+1. `VIRAL_TRENDS_RADAR`:
+   - Sasaran: Kreator organik, admin media sosial, affiliate marketer.
+   - Fokus: 3 detik pertama (*hook patterns*), audio komersial berlisensi, retensi format vertikal 9:16.
+   - Status: **Phase I & II — ACTIVE**.
+2. `PAID_ADS_INTELLIGENCE`:
+   - Sasaran: Performance media buyer, pengiklan Meta & TikTok Ads.
+   - Fokus: Sudut penawaran (*offer angles*), struktur naskah feed, sinyal iklan berdurasi panjang.
+   - Status: **Phase III — HOLD** (kontrak antarmuka teknis terpasang, ingestion ditahan).
+
+Pengecekan hak akses diwajibkan di level server-side (`assertStudioIntelligenceEntitled()`). Permintaan tanpa langganan add-on wajib ditolak dengan HTTP 403 `FEATURE_NOT_ENTITLED`.
+
+### 54.3 Freshness Lifecycle & Evidence Schema
+Setiap rekaman sinyal wajib membawa metadata masa berlaku (*freshness status*):
+- `FRESH`: Terobservasi $\le$ 48 jam (layak disuntikkan ke prompt Gemini 3.8 Flash).
+- `AGING`: Terobservasi 48 jam – 7 hari (masih dapat digunakan sebagai referensi cadangan).
+- `STALE`: Terobservasi 7 – 14 hari (tidak disarankan untuk rekomendasi utama).
+- `EXPIRED`: Usia $> 14$ hari atau telah melewati `expires_at` (otomatis diabaikan oleh generator).
+
+### 54.4 Isolasi Beban Kerja & Zero Contamination Core
+- Antrean pekerja penarikan/normalisasi data berjalan pada antrean Redis/worker terisolasi (`intelligence_ingestion_worker`).
+- Dilarang keras membebani database utama transaksi Shop, alur QRIS, maupun bot WhatsApp. Latensi checkout toko wajib tetap berada di level sub-detik tanpa regresi (Gate 3 Compliance).

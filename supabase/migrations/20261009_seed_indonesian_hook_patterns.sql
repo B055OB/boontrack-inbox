@@ -1,0 +1,205 @@
+-- ==============================================================================
+-- Migration: Sprint 2 — Phase II: Seed Indonesian Hook Patterns & Normalized Insights
+-- File: supabase/migrations/20261009_seed_indonesian_hook_patterns.sql
+-- Status: Official Migration / Architecture Contract ADR § 54 (Sprint 2 Phase II)
+-- Scope: 50+ Curated Indonesian Social Commerce Hook Patterns
+-- Categories: skincare, fashion, fnb, gadget, general
+-- Clusters: Problem-Agitate, Curiosity Gap, Shocking Fact, POV Skit
+-- Invariants: freshness_status = 'FRESH', commercial_eligibility = true
+-- ==============================================================================
+
+BEGIN;
+
+-- 1. Ensure public.studio_normalized_insights Table Exists
+CREATE TABLE IF NOT EXISTS public.studio_normalized_insights (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category TEXT NOT NULL CHECK (category IN ('skincare', 'fashion', 'fnb', 'gadget', 'general')),
+    cluster TEXT NOT NULL CHECK (cluster IN ('Problem-Agitate', 'Curiosity Gap', 'Shocking Fact', 'POV Skit')),
+    insight_type TEXT NOT NULL DEFAULT 'HOOK_PATTERN' CHECK (insight_type IN ('HOOK_PATTERN', 'PROBLEM_FRAMING', 'CURIOSITY_GAP', 'CTA_PATTERN')),
+    pattern_template TEXT NOT NULL,
+    confidence_score NUMERIC(3,2) NOT NULL DEFAULT 0.95,
+    commercial_eligibility BOOLEAN NOT NULL DEFAULT true,
+    freshness_status TEXT NOT NULL DEFAULT 'FRESH' CHECK (freshness_status IN ('FRESH', 'AGING', 'STALE', 'EXPIRED')),
+    metadata JSONB DEFAULT '{"locale": "id-ID", "platform": ["tiktok", "reels", "shopee"]}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- Indexes for Fast Radar Querying
+CREATE INDEX IF NOT EXISTS idx_studio_norm_cat_fresh ON public.studio_normalized_insights (category, freshness_status);
+CREATE INDEX IF NOT EXISTS idx_studio_norm_cluster ON public.studio_normalized_insights (cluster);
+CREATE INDEX IF NOT EXISTS idx_studio_norm_score ON public.studio_normalized_insights (confidence_score DESC);
+
+-- RLS Configuration
+ALTER TABLE public.studio_normalized_insights ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role full access on studio_normalized_insights" ON public.studio_normalized_insights;
+CREATE POLICY "Service role full access on studio_normalized_insights" 
+    ON public.studio_normalized_insights FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public read on studio_normalized_insights" ON public.studio_normalized_insights;
+CREATE POLICY "Public read on studio_normalized_insights" 
+    ON public.studio_normalized_insights FOR SELECT TO authenticated, anon USING (true);
+
+-- 2. Seed 60 Indonesian Hook Formulas into studio_normalized_insights
+INSERT INTO public.studio_normalized_insights (category, cluster, insight_type, pattern_template, confidence_score, commercial_eligibility, freshness_status)
+VALUES
+-- ==========================================
+-- KATEGORI 1: SKINCARE (12 Hooks)
+-- ==========================================
+-- Cluster: Problem-Agitate
+('skincare', 'Problem-Agitate', 'HOOK_PATTERN', 'Nyesel banget baru tau sekarang, ternyata pori-pori kesumbat bukan gara-gara salah cuci muka tapi karena cara double cleansing kamu salah total!', 0.97, true, 'FRESH'),
+('skincare', 'Problem-Agitate', 'HOOK_PATTERN', 'Capek gak sih tiap bangun tidur kulit muka kilang minyak tapi pas dipegang rasanya kering ketarik? Jangan-jangan skin barrier kamu udah jebol!', 0.95, true, 'FRESH'),
+('skincare', 'Problem-Agitate', 'HOOK_PATTERN', 'Stop buang duit beli serum jutaan kalau jerawat mendem kamu masih dipencet paksa tiap malam. Liat deh yang terjadi di bawah kulit kamu!', 0.94, true, 'FRESH'),
+
+-- Cluster: Curiosity Gap
+('skincare', 'Curiosity Gap', 'HOOK_PATTERN', 'Ada satu alasan kenapa cewek-cewek Korea kulitnya bisa glowing kaca pas cuaca panas, padahal mereka cuma nambahin 1 step simpel ini sebelum tidur!', 0.96, true, 'FRESH'),
+('skincare', 'Curiosity Gap', 'HOOK_PATTERN', 'Dokter kulit pasti kaget kalau tau produk under 100 ribu ini punya kandungan active ingredient yang sama persis kayak brand high-end!', 0.95, true, 'FRESH'),
+('skincare', 'Curiosity Gap', 'HOOK_PATTERN', 'Ternyata rahasia flek hitam gak balik lagi bukan di sunscreen tebel, tapi di timing layering 2 botol kecil ini!', 0.93, true, 'FRESH'),
+
+-- Cluster: Shocking Fact
+('skincare', 'Shocking Fact', 'HOOK_PATTERN', 'Fakta ngeri: 80% orang Indonesia salah urutan pakai retinol sampai mukanya merah iritasi, padahal kuncinya ada di teknik sandwich ini!', 0.98, true, 'FRESH'),
+('skincare', 'Shocking Fact', 'HOOK_PATTERN', 'Kalian tau gak kalau cuci muka pakai air hangat tiap hari itu justru bikin penuaan dini 2x lebih cepat? Ini bukti sainsnya!', 0.92, true, 'FRESH'),
+('skincare', 'Shocking Fact', 'HOOK_PATTERN', 'Jangan pernah campur vitamin C sama bahan ini kalau gamau kulit kamu breakout semaleman! Simak penjelasannya.', 0.94, true, 'FRESH'),
+
+-- Cluster: POV Skit
+('skincare', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu baru nyadar selama ini muka kusam bukan karena kurang tidur, tapi karena belum pernah eksfoliasi pakai formula gentle ini!', 0.95, true, 'FRESH'),
+('skincare', 'POV Skit', 'HOOK_PATTERN', 'POV: Temen kantor ngira lu perawatan jutaan di klinik kecantikan, padahal cuma rutin pake combo serum 50 ribuan ini tiap malem!', 0.96, true, 'FRESH'),
+('skincare', 'POV Skit', 'HOOK_PATTERN', 'POV: Reaksi pacar pas liat muka lu mulus tanpa bekas jerawat setelah 2 minggu konsisten pakai ini: ''Kok beda banget?''', 0.93, true, 'FRESH'),
+
+-- ==========================================
+-- KATEGORI 2: FASHION (12 Hooks)
+-- ==========================================
+-- Cluster: Problem-Agitate
+('fashion', 'Problem-Agitate', 'HOOK_PATTERN', 'Lemari baju udah mau roboh tapi tiap mau berangkat selalu ngerasa ''gak punya baju''? Masalahnya bukan di jumlahnya, tapi di cuttingan ini!', 0.96, true, 'FRESH'),
+('fashion', 'Problem-Agitate', 'HOOK_PATTERN', 'Sering ngerasa saltum dan keliatan bantet pas pake kulot? Fix kamu salah pilih waistline dan bahan yang bikin siluet badan melebar!', 0.94, true, 'FRESH'),
+('fashion', 'Problem-Agitate', 'HOOK_PATTERN', 'Beli blazer mahal-mahal tapi pas dipake malah kayak pinjem baju orang tua? Jangan buru-buru dibuang, ini cara styling biar auto-fit!', 0.93, true, 'FRESH'),
+
+-- Cluster: Curiosity Gap
+('fashion', 'Curiosity Gap', 'HOOK_PATTERN', 'Outfit 50 ribuan tapi vibes-nya Old Money? Rahasia cewek-cewek Jakarta Selatan ada di paduan palet warna ''Monochrome Muted'' satu ini!', 0.97, true, 'FRESH'),
+('fashion', 'Curiosity Gap', 'HOOK_PATTERN', 'Jangan checkout kemeja linen sebelum kamu tau 3 trik kancing ini yang bikin look kamu langsung naik kelas kayak selebgram!', 0.95, true, 'FRESH'),
+('fashion', 'Curiosity Gap', 'HOOK_PATTERN', 'Kenapa celana satu ini bisa bikin kaki keliatan 10cm lebih jenjang tanpa perlu high heels? Cek ilusi optik cuttingannya!', 0.94, true, 'FRESH'),
+
+-- Cluster: Shocking Fact
+('fashion', 'Shocking Fact', 'HOOK_PATTERN', 'Fakta fashion: Baju warna gelap gak selalu bikin kamu keliatan kurus kalau kamu salah pilih tekstur kain yang nempel di lipatan tubuh!', 0.95, true, 'FRESH'),
+('fashion', 'Shocking Fact', 'HOOK_PATTERN', 'Jangan pernah nyuci bahan knitwear digantung kalau gamau bajumu melar 2 kali lipat dalam seminggu! Tonton cara rawat yang bener.', 0.93, true, 'FRESH'),
+('fashion', 'Shocking Fact', 'HOOK_PATTERN', '85% orang salah nentuin undertone kulit pas beli jilbab atau outfit, makanya wajah sering keliatan kuyu dan kusam di kamera!', 0.96, true, 'FRESH'),
+
+-- Cluster: POV Skit
+('fashion', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu pake outfit simpel ini ke acara keluarga terus tante-tante lu pada nanya: ''Beli di butik mana tuh, pasti mahal ya?''', 0.97, true, 'FRESH'),
+('fashion', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu ketemu mantan di mall pas lagi pake one-set ini, auto jalan ala model runway fashion week!', 0.94, true, 'FRESH'),
+('fashion', 'POV Skit', 'HOOK_PATTERN', 'POV: Pas checkout cuma abis 80 ribu, tapi pas dateng ke kondangan semua mata tertuju ke styling outfit lu!', 0.95, true, 'FRESH'),
+
+-- ==========================================
+-- KATEGORI 3: FNB (12 Hooks)
+-- ==========================================
+-- Cluster: Problem-Agitate
+('fnb', 'Problem-Agitate', 'HOOK_PATTERN', 'Gue rela antre 1 jam demi menu ini, dan ternyata rasanya beneran di luar nalar—pantesan rame terus tiap sore sampai tumpah ke jalan!', 0.97, true, 'FRESH'),
+('fnb', 'Problem-Agitate', 'HOOK_PATTERN', 'Bosan gak sih jajan makanan viral tapi isinya cuma micin doang gak ada dagingnya? Sekali nyoba yang ini baru tau definisi kaya rempah sesungguhnya!', 0.95, true, 'FRESH'),
+('fnb', 'Problem-Agitate', 'HOOK_PATTERN', 'Lagi tanggal tua tapi ngidam makan steak melt-in-mouth juicy? Stop nelen ludah, gue nemu hidden gem yang porsinya bar-bar harganya ramah dompet!', 0.94, true, 'FRESH'),
+
+-- Cluster: Curiosity Gap
+('fnb', 'Curiosity Gap', 'HOOK_PATTERN', 'Kenapa sambal di resto satu ini bisa bikin orang nagih sampe bungkus berliter-liter? Ternyata bumbu rahasianya diungkep selama 12 jam!', 0.96, true, 'FRESH'),
+('fnb', 'Curiosity Gap', 'HOOK_PATTERN', 'Minuman matcha 15 ribuan tapi rasanya bisa se-creamy cafe Jepang bintang lima? Rahasianya ada di cara whisking dan jenis susu ini!', 0.95, true, 'FRESH'),
+('fnb', 'Curiosity Gap', 'HOOK_PATTERN', 'Ada satu menu legendaris di pojokan kota yang gak pernah pasang plang tapi selalu ludes dalam 2 jam pertama buka!', 0.93, true, 'FRESH'),
+
+-- Cluster: Shocking Fact
+('fnb', 'Shocking Fact', 'HOOK_PATTERN', 'Fakta dapur: Minyak goreng yang dipake berulang kali itu bukan cuma bahaya, tapi bikin gorengan kamu bau tengik dan kehilangan kerenyahannya!', 0.96, true, 'FRESH'),
+('fnb', 'Shocking Fact', 'HOOK_PATTERN', 'Daging empuk tanpa presto? Cuma modal potongan nanas muda dan marinasi 15 menit, daging sapi alot langsung selembut tahu sutra!', 0.98, true, 'FRESH'),
+('fnb', 'Shocking Fact', 'HOOK_PATTERN', 'Satu mangkok dessert viral ini kalorinya lebih rendah dari sepiring nasi putih, tapi rasa manisnya dapet dari gula kelapa murni!', 0.92, true, 'FRESH'),
+
+-- Cluster: POV Skit
+('fnb', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu bawa camilan ini ke tongkrongan dan baru ditaruh di meja 3 detik langsung diserbu abis gak bersisa!', 0.96, true, 'FRESH'),
+('fnb', 'POV Skit', 'HOOK_PATTERN', 'POV: Pertama kali nyobain kuah kaldunya pas lagi laper-lapernya tengah malam: ''Buset, ini enak banget gila!'' (sound crunch)', 0.95, true, 'FRESH'),
+('fnb', 'POV Skit', 'HOOK_PATTERN', 'POV: Ibu mertua nyicip masakan lu dan langsung minta resep rahasianya: ''Beli di mana bumbu selezat ini?''', 0.94, true, 'FRESH'),
+
+-- ==========================================
+-- KATEGORI 4: GADGET (12 Hooks)
+-- ==========================================
+-- Cluster: Problem-Agitate
+('gadget', 'Problem-Agitate', 'HOOK_PATTERN', 'Baterai HP kamu bocor dan selalu drop pas lagi di luar rumah? Jangan langsung ganti HP, cek dulu kabel charger murah kamu yang ngerusak IC power!', 0.96, true, 'FRESH'),
+('gadget', 'Problem-Agitate', 'HOOK_PATTERN', 'Telinga sakit dan panas gara-gara pakai TWS murahan berjam-jam? Upgrade ke earphone open-ear ini sebelum pendengaran kamu kena dampak permanen!', 0.94, true, 'FRESH'),
+('gadget', 'Problem-Agitate', 'HOOK_PATTERN', 'Capek memori HP internal merah terus tiap mau update aplikasi? Stop hapus foto kenangan, colokin flashdisk dual-type C ini langsung lega!', 0.95, true, 'FRESH'),
+
+-- Cluster: Curiosity Gap
+('gadget', 'Curiosity Gap', 'HOOK_PATTERN', 'Gadget 70 ribuan ini punya fungsi yang bikin smart watch sejutaan keliatan kemahalan. Liat sendiri fitur sensor kesehatannya!', 0.96, true, 'FRESH'),
+('gadget', 'Curiosity Gap', 'HOOK_PATTERN', 'Kenapa keyboard mekanikal satu ini suaranya se-thocky dan empuk banget padahal harganya cuma 100 ribuan? Cek modding bawaan pabriknya!', 0.93, true, 'FRESH'),
+('gadget', 'Curiosity Gap', 'HOOK_PATTERN', 'Ada satu settingan tersembunyi di Android yang bikin layar kamu 2x lebih smooth dan gak ada lag pas main game berat!', 0.95, true, 'FRESH'),
+
+-- Cluster: Shocking Fact
+('gadget', 'Shocking Fact', 'HOOK_PATTERN', 'Fakta teknis: Wireless charger abal-abal bisa bikin suhu baterai tembus 45 derajat Celsius dan nurunin battery health 20% dalam 3 bulan!', 0.97, true, 'FRESH'),
+('gadget', 'Shocking Fact', 'HOOK_PATTERN', 'Kalian tau gak kalau casing HP yang terlalu tebal tanpa ventilasi itu penyebab utama performa chipset HP kalian throttling dan lemot?', 0.94, true, 'FRESH'),
+('gadget', 'Shocking Fact', 'HOOK_PATTERN', 'Powerbank murah tanpa sertifikasi flight safety bisa meledak di kabin pesawat. Ini standar wajib yang harus kamu cek sebelum beli!', 0.98, true, 'FRESH'),
+
+-- Cluster: POV Skit
+('gadget', 'POV Skit', 'HOOK_PATTERN', 'POV: Temen lu masih ribet nyari colokan di kafe sementara lu tinggal tempel powerbank magsafe slim ini sambil santai ngopi!', 0.96, true, 'FRESH'),
+('gadget', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu pamer setup meja kerja minimalis di TikTok terus kolom komentar isinya: ''Spill lampu monitor sama deskmat-nya bang!''', 0.95, true, 'FRESH'),
+('gadget', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu beli stabilizer gimbal 100 ribuan ini dan video jalan-jalan lu mendadak keliatan sinematik kayak hasil sewa videografer pro!', 0.94, true, 'FRESH'),
+
+-- ==========================================
+-- KATEGORI 5: GENERAL (12 Hooks)
+-- ==========================================
+-- Cluster: Problem-Agitate
+('general', 'Problem-Agitate', 'HOOK_PATTERN', 'Stop scroll dulu! Sumpah barang 20 ribuan ini bikin hidup aku 10 kali lebih gampang pas lagi beresin rumah yang berantakan!', 0.97, true, 'FRESH'),
+('general', 'Problem-Agitate', 'HOOK_PATTERN', 'Pernah gak sih kalian kesel banget pas lagi buru-buru tapi barang penting malah nyelip gak ketemu? Solusinya cuma gantungan pintar sekecil ini!', 0.94, true, 'FRESH'),
+('general', 'Problem-Agitate', 'HOOK_PATTERN', 'Udah rajin nabung tapi uang bulanan selalu habis tanpa jejak? Masalahnya kamu belum pakai dompet budgeting metode amplop pintar satu ini!', 0.95, true, 'FRESH'),
+
+-- Cluster: Curiosity Gap
+('general', 'Curiosity Gap', 'HOOK_PATTERN', 'Kalian wajib curiga kalau barang semurah ini fiturnya selengkap ini. Mari kita uji ketahanannya dibanting dari lantai 2!', 0.96, true, 'FRESH'),
+('general', 'Curiosity Gap', 'HOOK_PATTERN', 'Ada satu barang sepele yang wajib ada di setiap tas anak kos, dan benda ini udah nyelametin gue berkali-kali dari momen darurat!', 0.95, true, 'FRESH'),
+('general', 'Curiosity Gap', 'HOOK_PATTERN', 'Ternyata trik orang kaya biar rumahnya selalu wangi hotel mewah bintang 5 bukan pakai parfum semprot, tapi diffuser oil blend ini!', 0.93, true, 'FRESH'),
+
+-- Cluster: Shocking Fact
+('general', 'Shocking Fact', 'HOOK_PATTERN', 'Fakta kebersihan: Spon cuci piring yang dipake lebih dari sebulan itu nampung bakteri lebih banyak dari dudukan toilet! Wajib ganti spons antibakteri ini!', 0.97, true, 'FRESH'),
+('general', 'Shocking Fact', 'HOOK_PATTERN', 'Tidur 8 jam tapi bangun-bangun leher kaku dan badan pegal? Fix bantal tidur kamu gak punya lekukan ergonomis penopang servikal!', 0.95, true, 'FRESH'),
+('general', 'Shocking Fact', 'HOOK_PATTERN', '80% orang salah cara menyimpan bahan makanan di kulkas sampai cepet busuk. Cukup pakai wadah kedap vakum ini sayur awet sebulan!', 0.94, true, 'FRESH'),
+
+-- Cluster: POV Skit
+('general', 'POV Skit', 'HOOK_PATTERN', 'POV: Tetangga lu kepo nanya kenapa teras rumah lu bisa terang benderang tiap malam tanpa nambah tagihan listrik sepeserpun: ''Pake solar lamp bang!''', 0.96, true, 'FRESH'),
+('general', 'POV Skit', 'HOOK_PATTERN', 'POV: Lu nemu solusi hack rumah tangga di marketplace dan mikir: ''Kenapa gue gak tau benda ini dari 5 tahun lalu ya?!''', 0.95, true, 'FRESH'),
+('general', 'POV Skit', 'HOOK_PATTERN', 'POV: Pas gajian langsung borong barang bermanfaat ini buat sekeluarga, dan semua orang sepakat ini belanjaan terbaik bulan ini!', 0.94, true, 'FRESH');
+
+-- 3. Mirror Seeding to studio_intelligence_items and studio_intelligence_insights
+-- Menjaga interoperabilitas penuh dengan skema ADR §54 sebelumnya
+DO $$
+DECLARE
+    r RECORD;
+    v_item_id UUID;
+    v_source_id UUID := '44444444-4444-4444-a444-444444444444';
+BEGIN
+    -- Pastikan tabel studio_intelligence_items ada sebelum melakukan insert
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'studio_intelligence_items') THEN
+        FOR r IN SELECT * FROM public.studio_normalized_insights LOOP
+            INSERT INTO public.studio_intelligence_items (
+                source_id,
+                category,
+                format_type,
+                raw_signals,
+                observed_at,
+                freshness_status
+            ) VALUES (
+                v_source_id,
+                r.category,
+                'VERTICAL_VIDEO_9_16',
+                jsonb_build_object('cluster', r.cluster, 'seed', true),
+                NOW(),
+                'FRESH'
+            ) RETURNING id INTO v_item_id;
+
+            INSERT INTO public.studio_intelligence_insights (
+                item_id,
+                insight_type,
+                pattern_template,
+                confidence_score,
+                commercial_eligibility
+            ) VALUES (
+                v_item_id,
+                r.insight_type,
+                r.pattern_template,
+                r.confidence_score,
+                r.commercial_eligibility
+            );
+        END LOOP;
+    END IF;
+END $$;
+
+COMMIT;

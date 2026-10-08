@@ -32,9 +32,16 @@ import {
   Share2,
   Music,
   ShoppingBag,
-  Download
+  Download,
+  Radio,
+  Flame,
+  Filter,
+  Target,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
+import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
 
 interface Variation {
   id: number;
@@ -64,6 +71,17 @@ export default function FCDAutomatorPage() {
   // Panel 1: Matrix Inputs
   const [campaignTitle, setCampaignTitle] = useState('Serum Retinol Pro - Kampanye Flash Sale');
   
+  // Viral Trends Radar & Hook Pattern Picker State (Sprint 2 — Phase II)
+  const [radarCategory, setRadarCategory] = useState<string>('skincare');
+  const [radarCluster, setRadarCluster] = useState<string>('all');
+  const [radarHooks, setRadarHooks] = useState<NormalizedInsight[]>([]);
+  const [isLoadingRadar, setIsLoadingRadar] = useState(false);
+  const [radarError, setRadarError] = useState<string | null>(null);
+  const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
+  const [selectedHookText, setSelectedHookText] = useState<string | null>(null);
+  const [isRadarOpen, setIsRadarOpen] = useState(true);
+  const [appliedSlotToast, setAppliedSlotToast] = useState<string | null>(null);
+
   // 3 Multi-Hooks
   const [hookA, setHookA] = useState('Stop scroll kalau kamu masih mikir flek hitam bisa hilang pakai sabun muka biasa!');
   const [hookB, setHookB] = useState('Capek banget tiap ngaca flek makin tebal, padahal udah gonta-ganti skincare mahal?');
@@ -187,6 +205,57 @@ export default function FCDAutomatorPage() {
     buildMatrix();
   }, []);
 
+  // Fetch Viral Trends Radar Hooks (Sprint 2 — Phase II)
+  const fetchRadarHooks = async (cat: string = radarCategory, cls: string = radarCluster) => {
+    setIsLoadingRadar(true);
+    setRadarError(null);
+    try {
+      const params = new URLSearchParams();
+      if (cat && cat !== 'all') params.append('category', cat);
+      if (cls && cls !== 'all') params.append('cluster', cls);
+      params.append('limit', '12');
+
+      const res = await fetch(`/api/studio/intelligence/radar?${params.toString()}`);
+      const data = await res.json();
+      if (data?.success && Array.isArray(data?.insights)) {
+        setRadarHooks(data.insights);
+      } else {
+        setRadarError(data?.message || 'Gagal memuat formula radar hook.');
+      }
+    } catch (err: any) {
+      console.warn('[Radar Fetch Error]', err);
+      setRadarError('Koneksi radar offline.');
+    } finally {
+      setIsLoadingRadar(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRadarHooks(radarCategory, radarCluster);
+  }, [radarCategory, radarCluster]);
+
+  const applyHookToSlot = (slot: 'A' | 'B' | 'C', text: string) => {
+    if (slot === 'A') setHookA(text);
+    if (slot === 'B') setHookB(text);
+    if (slot === 'C') setHookC(text);
+    setAppliedSlotToast(`Formula hook berhasil dipasang ke Hook ${slot}!`);
+    setTimeout(() => setAppliedSlotToast(null), 3000);
+  };
+
+  const handleSelectHookForAi = (insight: NormalizedInsight) => {
+    if (selectedHookId === insight.id) {
+      setSelectedHookId(null);
+      setSelectedHookText(null);
+      setAppliedSlotToast('Pemilihan hook AI dibatalkan.');
+      setTimeout(() => setAppliedSlotToast(null), 2500);
+    } else {
+      setSelectedHookId(insight.id);
+      setSelectedHookText(insight.pattern_template);
+      setAppliedSlotToast('Hook terpilih sebagai prioritas utama generator Gemini 3.8 Flash! ✨');
+      setTimeout(() => setAppliedSlotToast(null), 3000);
+    }
+  };
+
   // Fetch / Refresh Ads Copy via Gemini 3.8 Flash
   const fetchAiAdsCopy = async () => {
     setIsGeneratingAdsCopy(true);
@@ -197,9 +266,11 @@ export default function FCDAutomatorPage() {
         body: JSON.stringify({
           product_name: campaignTitle,
           pain_point: hookB || 'masalah audiens target',
-          hook_angle: hookA,
+          hook_angle: selectedHookText || hookA,
+          selected_hook: selectedHookText || hookA,
+          selected_hook_template: selectedHookText || hookA,
           cta_goal: cta1,
-          category: 'Produk Iklan',
+          category: radarCategory !== 'all' ? radarCategory : 'Produk Iklan',
           tone: 'Casual Gaul & Persuasif',
         }),
       });
@@ -475,6 +546,229 @@ export default function FCDAutomatorPage() {
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-indigo-500 transition"
                   placeholder="Nama produk atau tema iklan"
                 />
+              </div>
+
+              {/* ── VIRAL TRENDS RADAR HOOK PICKER (SPRINT 2 PHASE II) ── */}
+              <div className="rounded-2xl bg-gradient-to-b from-indigo-950/40 via-slate-900/60 to-slate-950/80 border border-indigo-500/30 p-3.5 space-y-3 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                      <Radio className="w-3.5 h-3.5 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black text-white">Viral Trends Radar</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        <span className="text-[9px] font-mono font-bold text-emerald-400 px-1 py-0.2 bg-emerald-500/10 rounded">LIVE §54</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">50+ Hook Terkurasi & Freshness Guaranteed</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => fetchRadarHooks(radarCategory, radarCluster)}
+                      disabled={isLoadingRadar}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                      title="Segarkan Radar"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isLoadingRadar ? 'animate-spin text-indigo-400' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsRadarOpen(!isRadarOpen)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                      title={isRadarOpen ? 'Sembunyikan' : 'Buka'}
+                    >
+                      {isRadarOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Toast Notification when hook is applied */}
+                {appliedSlotToast && (
+                  <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-medium flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span className="truncate">{appliedSlotToast}</span>
+                  </div>
+                )}
+
+                {/* Active Hook Banner for Gemini 3.8 Flash */}
+                {selectedHookText && (
+                  <div className="p-2.5 rounded-xl bg-violet-500/15 border border-violet-500/40 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-violet-300 uppercase tracking-wider">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-violet-400" />
+                        Hook Prioritas Gemini 3.8 Flash:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedHookId(null); setSelectedHookText(null); }}
+                        className="text-slate-400 hover:text-white underline cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-white font-medium italic line-clamp-2">&ldquo;{selectedHookText}&rdquo;</p>
+                  </div>
+                )}
+
+                {isRadarOpen && (
+                  <div className="space-y-2.5 pt-1 border-t border-white/5">
+                    {/* Category Filter Pills */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pilih Kategori:</span>
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                        {[
+                          { id: 'skincare', label: 'Skincare' },
+                          { id: 'fashion', label: 'Fashion' },
+                          { id: 'fnb', label: 'F&B' },
+                          { id: 'gadget', label: 'Gadget' },
+                          { id: 'general', label: 'General' },
+                          { id: 'all', label: 'Semua' },
+                        ].map(cat => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setRadarCategory(cat.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition cursor-pointer ${
+                              radarCategory === cat.id
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                                : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Cluster Filter Pills */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Kluster Hook:</span>
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                        {[
+                          { id: 'all', label: 'Semua' },
+                          { id: 'Problem-Agitate', label: 'Problem-Agitate' },
+                          { id: 'Curiosity Gap', label: 'Curiosity Gap' },
+                          { id: 'Shocking Fact', label: 'Shocking Fact' },
+                          { id: 'POV Skit', label: 'POV Skit' },
+                        ].map(cls => (
+                          <button
+                            key={cls.id}
+                            type="button"
+                            onClick={() => setRadarCluster(cls.id)}
+                            className={`px-2 py-0.5 rounded-md text-[9px] font-semibold whitespace-nowrap transition cursor-pointer ${
+                              radarCluster === cls.id
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-white/5 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {cls.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Hook List Container */}
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                      {isLoadingRadar ? (
+                        <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                          <span>Memindai radar hook aktif...</span>
+                        </div>
+                      ) : radarHooks.length === 0 ? (
+                        <div className="p-3 text-center text-[11px] text-slate-500">
+                          {radarError || 'Tidak ada hook ditemukan untuk filter ini.'}
+                        </div>
+                      ) : (
+                        radarHooks.map(h => {
+                          const isSelectedAi = selectedHookId === h.id;
+                          const clusterColor =
+                            h.cluster === 'Problem-Agitate'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : h.cluster === 'Curiosity Gap'
+                              ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                              : h.cluster === 'Shocking Fact'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+
+                          return (
+                            <div
+                              key={h.id}
+                              className={`p-2.5 rounded-xl border transition space-y-2 ${
+                                isSelectedAi
+                                  ? 'bg-indigo-950/60 border-indigo-400 shadow-md shadow-indigo-500/20 ring-1 ring-indigo-400'
+                                  : 'bg-white/[0.03] border-white/5 hover:border-white/15'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1 text-[9px]">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`px-1.5 py-0.5 rounded border font-semibold ${clusterColor}`}>
+                                    {h.cluster || 'Hook Pattern'}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400 uppercase font-mono">
+                                    {h.category}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-emerald-400 font-bold">
+                                  {Math.round(h.confidence_score * 100)}% Match
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-slate-200 leading-snug font-medium italic">
+                                &ldquo;{h.pattern_template}&rdquo;
+                              </p>
+
+                              <div className="flex items-center justify-between pt-1 border-t border-white/5 gap-1 flex-wrap">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[9px] text-slate-500 font-mono">Pasang:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => applyHookToSlot('A', h.pattern_template)}
+                                    className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
+                                    title="Salin ke Hook A"
+                                  >
+                                    + A
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => applyHookToSlot('B', h.pattern_template)}
+                                    className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
+                                    title="Salin ke Hook B"
+                                  >
+                                    + B
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => applyHookToSlot('C', h.pattern_template)}
+                                    className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
+                                    title="Salin ke Hook C"
+                                  >
+                                    + C
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectHookForAi(h)}
+                                  className={`px-2 py-0.5 rounded-lg text-[9px] font-bold flex items-center gap-1 transition cursor-pointer ${
+                                    isSelectedAi
+                                      ? 'bg-indigo-600 text-white shadow-sm'
+                                      : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30'
+                                  }`}
+                                >
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  <span>{isSelectedAi ? 'Hook Utama ✓' : 'Pilih AI'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 3 Multi-Hooks */}

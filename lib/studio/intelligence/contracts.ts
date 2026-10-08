@@ -95,6 +95,8 @@ export interface NormalizedInsight {
   confidence_score: number;
   commercial_eligibility: boolean;
   category?: string;
+  cluster?: 'Problem-Agitate' | 'Curiosity Gap' | 'Shocking Fact' | 'POV Skit' | string;
+  freshness_status?: FreshnessStatus;
   created_at: string;
 }
 
