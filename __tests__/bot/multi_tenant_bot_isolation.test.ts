@@ -281,7 +281,7 @@ describe('MULTI-TENANT BOT ISOLATION & ZERO CROSS-TENANT LEAKAGE SPECIFICATION',
   });
 
   describe('3. Decision Tree Bot & Campaign Routing for Tumbuh Kembang Anak', () => {
-    it('routes campaign "mpasi_anti_gtm" directly to dr. Harys nutrition consult node', async () => {
+    it('routes campaign "mpasi_anti_gtm" directly to nutrition consult node', async () => {
       const res = await routeTenantInboundMessage({
         tenantIdOrSlug: 'tumbuh-kembang-anak',
         senderPhone: '+6281234567890',
@@ -293,9 +293,9 @@ describe('MULTI-TENANT BOT ISOLATION & ZERO CROSS-TENANT LEAKAGE SPECIFICATION',
       expect(res.handled).toBe(true);
       expect(res.intent_key).toBe('NUTRITION_CONSULT');
       expect(res.reply).toContain('KONSULTASI NUTRISI, MASALAH MAKAN & GTM');
-      expect(res.reply).toContain('dr. Harys Maulana');
+      expect(res.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
       expect(res.reply).toContain('WHO Child Growth Standards');
-      expect(res.quick_actions).toContain('📅 Jadwal Konsultasi dr. Harys');
+      expect(res.quick_actions).toContain('📅 Jadwal Konsultasi Dokter');
     });
 
     it('routes campaign "speech_delay" directly to dr. Azizah screening node', async () => {

@@ -133,8 +133,9 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('GREETING');
-      expect(result.reply).toContain('dr. Harys Maulana');
+      expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
       expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).toContain('secara menyeluruh');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
@@ -153,6 +154,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.type).toBe('CONSULTATION_OFFER');
       expect(result.reply).toContain('Bunda Maya');
       expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).not.toContain('INVOICE');
     });
 
@@ -167,7 +169,9 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('Arka');
+      expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
       expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).toContain('secara menyeluruh');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
@@ -203,6 +207,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.mediaUrl).toBeDefined();
       expect(result.mediaUrl).toContain('quickchart.io/qr');
       expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI');
+      expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
       expect(result.reply).toContain('QRIS Otomatis');
       expect(result.checkoutUrl).toContain('konsul.littlebitefeeding.com/checkout');
     });

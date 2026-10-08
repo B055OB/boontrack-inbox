@@ -448,9 +448,9 @@ export async function routeTenantInboundMessage(params: {
       }, supabaseClient);
 
       const replyText =
-        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM (dr. Harys Maulana)*\n\n` +
+        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM (Tim Dokter Klinik Tumbuh Kembang Anak)*\n\n` +
         `Halo Ayah & Bunda! Masalah makan seperti Gerakan Tutup Mulut (GTM), durasi makan terlalu lama / anak mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret/stuck, sensitivitas tekstur MPASI, hingga pilih-pilih makan (picky eater) memerlukan pendekatan terstruktur tanpa paksaan trauma.\n\n` +
-        `📋 *Fokus Pendampingan Medis dr. Harys:*\n` +
+        `📋 *Fokus Pendampingan Tim Dokter Spesialis Anak:*\n` +
         `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards) serta strategi penanganan BB seret/stuck.\n` +
         `2. Pembentukan jadwal makan disiplin & penerapan responsive feeding rules (Happy Eating).\n` +
         `3. Evaluasi oromotor pada kebiasaan mengemut/makan lama & penyesuaian tekstur MPASI bertahap.\n` +
@@ -460,6 +460,7 @@ export async function routeTenantInboundMessage(params: {
         `• Sesi: Chat WhatsApp Intensif & Video Call Google Meet 45 Menit\n\n` +
         `📝 *Form Skrining Awal Mandiri:* https://screening.tumbuhkembanganak.com/\n` +
         `👉 *Daftar Sesi Konsultasi Nutrisi:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
+        `Ayah/Bunda bisa mengisi formulir skrining di https://screening.tumbuhkembanganak.com/ atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
         `_Ketik *5* atau *admin* untuk terhubung langsung dengan pendaftaran klinik._`;
 
       return {
@@ -469,7 +470,7 @@ export async function routeTenantInboundMessage(params: {
         intent_key: 'NUTRITION_CONSULT',
         node_id: 'opt_gtm_nutrition',
         quick_actions: [
-          '📅 Jadwal Konsultasi dr. Harys',
+          '📅 Jadwal Konsultasi Dokter',
           '💰 Biaya & Paket Konsultasi',
           '🩺 Screening Stimulasi',
           '💬 Chat Pendaftaran',
@@ -532,9 +533,9 @@ export async function routeTenantInboundMessage(params: {
 
       const replyText =
         `📅 *JADWAL KONSULTASI DOKTER KLINIK TUMBUH KEMBANG ANAK*\n\n` +
-        `👨‍⚕️ *dr. Harys Maulana* (Konsultasi Nutrisi, MPASI & Masalah Makan):\n` +
+        `👨‍⚕️ *Tim Dokter Konsultan Nutrisi & GTM* (Dokter Spesialis Anak):\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
-        `👩‍⚕️ *dr. Azizah Ridwan* (Screening Stimulasi, Sensori & Speech Delay):\n` +
+        `👩‍⚕️ *Tim Dokter Konsultan Screening & Stimulasi* (Dokter Spesialis Anak):\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
         `📋 *Alur Reservasi Konsultasi:*\n` +
         `1. Pilih jadwal dan paket di website resmi: https://shop.boontrack.com/tumbuh-kembang-anak\n` +
@@ -549,8 +550,8 @@ export async function routeTenantInboundMessage(params: {
         intent_key: 'HOW_TO_ORDER',
         node_id: 'opt_book_consultation',
         quick_actions: [
-          '🥣 Konsultasi Nutrisi (dr. Harys)',
-          '🩺 Screening Stimulasi (dr. Azizah)',
+          '🥣 Konsultasi Nutrisi & GTM',
+          '🩺 Screening Stimulasi',
           '💰 Biaya & Paket',
           '💬 Chat Pendaftaran',
         ],
