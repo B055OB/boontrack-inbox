@@ -40,12 +40,27 @@ export default function StudioRegisterPage() {
   const [remainingSeconds, setRemainingSeconds] = useState(900); // 15 mins
   const [copiedLink, setCopiedLink] = useState(false);
   const [simulating, setSimulating] = useState(false);
+  const [manualChecking, setManualChecking] = useState(false);
 
   // Success State (State 3)
   const [isSuccess, setIsSuccess] = useState(false);
   const [successSlug, setSuccessSlug] = useState('');
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Resume token if present in URL query params
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenParam = urlParams.get('token');
+      if (tokenParam) {
+        const cleanT = tokenParam.toUpperCase().trim();
+        setToken(cleanT);
+        setWaLink(`https://wa.me/6285181830080?text=AKTIFKAN%20STUDIO%20${encodeURIComponent(cleanT)}`);
+        setIsVerifying(true);
+      }
+    }
+  }, []);
 
   // Normalizing WA live preview
   const formattedWaPreview = whatsapp
@@ -67,6 +82,48 @@ export default function StudioRegisterPage() {
 
     return () => clearInterval(timer);
   }, [isVerifying, expiresAt, isSuccess]);
+
+  // Handle manual check trigger
+  const handleManualCheck = async () => {
+    if (!token) return;
+    setManualChecking(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`/api/studio/auth/registration-status?token=${encodeURIComponent(token)}`);
+      const data = await res.json();
+      if (data.status === 'SUCCESS' && data.session) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        setIsSuccess(true);
+        const tenantSlug = data.session.slug || 'studio';
+        setSuccessSlug(tenantSlug);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('merchant_store', tenantSlug);
+          localStorage.setItem('merchant_session', tenantSlug);
+          localStorage.setItem('bt_tenant', tenantSlug);
+          localStorage.setItem('studio_session', JSON.stringify(data.session));
+          document.cookie = `merchant_store=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+          document.cookie = `merchant_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+          document.cookie = `bt_tenant=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+        }
+        setTimeout(() => {
+          const isProd = window.location.hostname.endsWith('boontrack.com');
+          if (isProd) {
+            window.location.href = 'https://studio.boontrack.com/desk';
+          } else {
+            router.push('/desk');
+          }
+        }, 1200);
+      } else if (data.status === 'PENDING') {
+        setErrorMsg('Pesan konfirmasi belum terdeteksi. Pastikan Anda sudah mengirim pesan AKTIFKAN STUDIO ' + token + ' ke WhatsApp 085181830080.');
+      } else {
+        setErrorMsg(data.message || 'Token kedaluwarsa. Silakan lakukan registrasi ulang.');
+      }
+    } catch (err: any) {
+      setErrorMsg('Gagal mengecek status: ' + err.message);
+    } finally {
+      setManualChecking(false);
+    }
+  };
 
   // Polling registration status every 2.5 seconds
   useEffect(() => {
@@ -326,6 +383,26 @@ export default function StudioRegisterPage() {
                 <span>Buka WhatsApp & Kirim Pesan Konfirmasi</span>
                 <ArrowRight className="w-4 h-4" />
               </a>
+
+              {/* Manual Trigger Fallback Button */}
+              <button
+                type="button"
+                onClick={handleManualCheck}
+                disabled={manualChecking}
+                className="w-full py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer disabled:opacity-50"
+              >
+                {manualChecking ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-400" />
+                    <span>Mengecek status verifikasi ke server...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Sudah kirim pesan? Cek Status Ulang</span>
+                  </>
+                )}
+              </button>
 
               {/* Desktop Dynamic QR Code Section */}
               <div className="p-4 rounded-2xl bg-black/40 border border-white/5 text-center space-y-3">

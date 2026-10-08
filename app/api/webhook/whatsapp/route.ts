@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
           console.log(`[WhatsApp Inbound] From: ${senderPhone} | Text: "${textBody}"`);
 
           // ── A. STUDIO INBOUND ACTIVATION MATCHER: "AKTIFKAN STUDIO {TOKEN}" ──
-          const studioActivationMatch = textBody.match(/^AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{6,8})$/i);
+          const studioActivationMatch = textBody.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
           if (studioActivationMatch) {
             const studioToken = studioActivationMatch[1].toUpperCase().trim();
             console.log(`[WhatsApp Inbound Studio] Extracted token: "${studioToken}" from ${senderPhone}`);

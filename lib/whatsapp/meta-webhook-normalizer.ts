@@ -426,6 +426,28 @@ export async function processNormalizedMetaEvent(
     };
   }
 
+  // --- INBOUND SYSTEM ACTIVATION INTERCEPTOR (STUDIO WORKSPACE) ---
+  if (Array.isArray(messages) && messages.length > 0) {
+    for (const msg of messages) {
+      const text = (msg.text || '').trim();
+      const studioMatch = text.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+      if (studioMatch) {
+        const studioToken = studioMatch[1].toUpperCase().trim();
+        const { activateStudioRegistrationByToken } = await import('@/lib/studio/auth');
+        const activatedStudio = await activateStudioRegistrationByToken(studioToken, msg.senderPhone);
+        if (activatedStudio) {
+          return {
+            status: 'processed',
+            tenant_id: activatedStudio.id,
+            processed_messages: 1,
+            processed_statuses: 0,
+            messages_count: 1,
+          };
+        }
+      }
+    }
+  }
+
   // --- TENANT RESOLUTION & OWNERSHIP VALIDATION ---
   // Query Supabase whatsapp_connections: domain TENANT and status != REVOKED
   let connection: any = null;
