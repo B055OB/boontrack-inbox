@@ -59,9 +59,10 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
     verification_status: 'PENDING',
     phone_verified: false,
     studio_workspace: {
-      render_credits: 50,
-      max_concurrent_jobs: 2,
-      plan_tier: 'STUDIO_STARTER',
+      render_credits: 1,
+      max_concurrent_jobs: 1,
+      plan_tier: 'free_trial',
+      tier: 'free_trial',
       status: 'PENDING',
     },
   };
@@ -153,7 +154,7 @@ export async function getStudioRegistrationStatus(token: string) {
         name: tenant.name,
         whatsapp: meta.whatsapp,
         email: meta.email,
-        render_credits: meta.studio_workspace?.render_credits || 50,
+        render_credits: meta.studio_workspace?.render_credits ?? 1,
       },
     };
   }
@@ -199,9 +200,10 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
     verified_by_sender: senderPhone || currentMeta.whatsapp,
     studio_workspace: {
       ...(currentMeta.studio_workspace || {}),
-      render_credits: currentMeta.studio_workspace?.render_credits ?? 50,
-      max_concurrent_jobs: currentMeta.studio_workspace?.max_concurrent_jobs ?? 2,
-      plan_tier: 'STUDIO_STARTER',
+      render_credits: currentMeta.studio_workspace?.render_credits ?? 1,
+      max_concurrent_jobs: currentMeta.studio_workspace?.max_concurrent_jobs ?? 1,
+      plan_tier: currentMeta.studio_workspace?.plan_tier ?? 'free_trial',
+      tier: 'free_trial',
       status: 'ACTIVE',
     },
   };
@@ -228,11 +230,11 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
       tenant_id: tenant.id,
       owner_phone: currentMeta.whatsapp || senderPhone || '',
       owner_email: currentMeta.email || '',
-      render_credits: 50,
-      max_concurrent_jobs: 2,
-      plan_tier: 'STUDIO_STARTER',
+      render_credits: 1,
+      max_concurrent_jobs: 1,
+      plan_tier: 'free_trial',
       status: 'ACTIVE',
-      metadata: { activated_via: 'WABA_INBOUND', token: cleanToken },
+      metadata: { activated_via: 'WABA_INBOUND', token: cleanToken, tier: 'free_trial' },
     });
   } catch (err) {
     // Graceful fallback for hybrid schema

@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
               await sendWhatsAppSessionMessage(
                 senderPhone,
                 `🎉 Selamat! Workspace BoonTrack Studio Anda (${activatedStudio.name}) telah aktif!\n\n` +
-                `⚡ 50 Render Credits & 2 Concurrent Jobs siap digunakan.\n` +
+                `⚡ 1 Free Trial Render Credit siap digunakan.\n` +
                 `Buka ruang kerja Anda di: https://studio.boontrack.com/desk`
               );
               return NextResponse.json({ success: true, message: 'Studio workspace activated successfully' });

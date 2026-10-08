@@ -28,6 +28,7 @@ import {
   AlertCircle,
   ExternalLink
 } from 'lucide-react';
+import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 
 interface Scene {
   scene_number: number;
@@ -53,8 +54,9 @@ interface ScriptResult {
 export default function UGCStudioPage() {
   // Session & Workspace Context
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
-  const [renderCredits, setRenderCredits] = useState<number>(50);
+  const [renderCredits, setRenderCredits] = useState<number>(1);
   const [hasValidSession, setHasValidSession] = useState<boolean>(true);
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
   // Panel 1: Brief Form State
   const [productName, setProductName] = useState('Serum Brightening Niacinamide');
@@ -257,7 +259,7 @@ export default function UGCStudioPage() {
   // Dispatch to Render Queue
   const handleDispatchRender = async () => {
     if (renderCredits < 1) {
-      alert('Kredit render tidak mencukupi (0 Credits). Silakan isi ulang kuota render.');
+      setIsPaywallOpen(true);
       return;
     }
 
@@ -371,11 +373,19 @@ export default function UGCStudioPage() {
               <span className="font-bold text-white font-mono">{tenantSlug}</span>
             </div>
 
-            {/* Credit Pill */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/30 text-xs font-bold text-fuchsia-400">
-              <Zap className="w-3.5 h-3.5" />
-              <span>{renderCredits} Credits</span>
+            {/* Credit Pill & Top Up */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
+              <Zap className="w-3.5 h-3.5 text-violet-400" />
+              <span>{renderCredits} Credit{renderCredits === 1 ? ' (Trial)' : 's'}</span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsPaywallOpen(true)}
+              className="py-1.5 px-3 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/40 text-violet-300 hover:text-white font-bold text-xs transition cursor-pointer"
+            >
+              + Top Up
+            </button>
           </div>
         </div>
       </header>
@@ -767,6 +777,14 @@ export default function UGCStudioPage() {
 
         </div>
       </main>
+
+      {/* ── NATIVE STUDIO PAYWALL MODAL ───────────────────────── */}
+      <StudioPaywallModal
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        tenantSlug={tenantSlug}
+        currentCredits={renderCredits}
+      />
 
       {/* ── FOOTER ────────────────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5 mt-12">

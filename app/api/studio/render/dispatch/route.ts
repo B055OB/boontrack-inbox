@@ -44,10 +44,10 @@ export async function POST(req: Request) {
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
 
     // Credit deduction safeguard
-    let remainingCredits = 50;
+    let remainingCredits = 1;
     if (tenant && supabase) {
       const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
-      const currentCredits = currentMeta.studio_workspace?.render_credits ?? 50;
+      const currentCredits = currentMeta.studio_workspace?.render_credits ?? 1;
 
       if (currentCredits < 1) {
         return NextResponse.json(

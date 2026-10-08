@@ -4,25 +4,28 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Film,
+  Zap,
   Sparkles,
   Layers,
+  FolderKanban,
+  PlaySquare,
+  Clock,
+  TrendingUp,
+  ShieldCheck,
+  CheckCircle2,
+  ChevronRight,
+  Plus,
   Cpu,
   Video,
-  CheckCircle2,
-  FolderKanban,
-  PlayCircle,
-  Terminal,
-  UploadCloud,
-  ChevronRight,
-  ShieldCheck,
-  Zap,
-  Clock,
+  ExternalLink,
   ArrowRight
 } from 'lucide-react';
+import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 
 export default function StudioDeskPage() {
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
   const [sessionData, setSessionData] = useState<any>(null);
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,6 +51,15 @@ export default function StudioDeskPage() {
       }
     }
   }, []);
+
+  const currentCredits = sessionData?.render_credits ?? 1;
+
+  const handleStartVideo = (e: React.MouseEvent) => {
+    if (currentCredits <= 0) {
+      e.preventDefault();
+      setIsPaywallOpen(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden">
@@ -88,14 +100,26 @@ export default function StudioDeskPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/30 text-xs font-bold text-fuchsia-400">
-              <Zap className="w-3.5 h-3.5" />
-              <span>{sessionData?.render_credits ?? 50} Render Credits</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Credit Pill */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
+              <Zap className="w-3.5 h-3.5 text-violet-400" />
+              <span>{currentCredits} Render Credit{currentCredits === 1 ? ' (Trial)' : 's'}</span>
             </div>
 
+            {/* Top Up Button */}
+            <button
+              type="button"
+              onClick={() => setIsPaywallOpen(true)}
+              className="py-1.5 px-3 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/40 text-violet-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>+ Top Up Kredit</span>
+            </button>
+
+            {/* Buat Naskah UGC Link */}
             <Link
               href="/studio/ugc-studio"
+              onClick={handleStartVideo}
               className="py-2 px-4 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 text-white font-extrabold text-xs shadow-lg shadow-fuchsia-500/20 flex items-center gap-1.5 transition active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -126,6 +150,7 @@ export default function StudioDeskPage() {
           <div className="flex items-center gap-3 flex-shrink-0">
             <Link
               href="/studio/ugc-studio"
+              onClick={handleStartVideo}
               className="py-3 px-5 rounded-2xl bg-white text-slate-900 hover:bg-slate-100 font-extrabold text-xs shadow-md transition flex items-center gap-2"
             >
               <span>Mulai Buat Video</span>
@@ -136,17 +161,31 @@ export default function StudioDeskPage() {
 
         {/* 4 Stat Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-fuchsia-500/40 transition space-y-2">
+          {/* Card 1: Render Credits */}
+          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-violet-500/40 transition space-y-2">
             <div className="flex items-center justify-between text-slate-400">
               <span className="text-xs font-semibold">Render Credits</span>
-              <Zap className="w-4 h-4 text-fuchsia-400" />
+              <Zap className="w-4 h-4 text-violet-400" />
             </div>
-            <div className="text-2xl font-black text-white font-mono">
-              {sessionData?.render_credits ?? 50}
-              <span className="text-xs font-normal text-slate-400 ml-1.5">/ 50 Kuota Awal</span>
+            <div className="text-2xl font-black text-white font-mono flex items-baseline justify-between">
+              <div>
+                {currentCredits}
+                <span className="text-xs font-normal text-slate-400 ml-1.5">
+                  {currentCredits <= 1 ? '/ 1 Trial Kuota' : 'Credits'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaywallOpen(true)}
+                className="text-[11px] font-bold text-violet-400 hover:text-violet-300 underline cursor-pointer"
+              >
+                Top Up
+              </button>
             </div>
             <p className="text-[10px] text-slate-500">
-              Cukup untuk merender ~10 video UGC resolusi Full HD
+              {currentCredits > 0
+                ? `Tersedia ${currentCredits} kredit render video UGC resolusi Full HD`
+                : 'Kredit habis. Top up sekarang untuk melanjutkan render.'}
             </p>
           </div>
 
@@ -156,7 +195,7 @@ export default function StudioDeskPage() {
               <Cpu className="w-4 h-4 text-purple-400" />
             </div>
             <div className="text-2xl font-black text-white font-mono">
-              0 <span className="text-xs font-normal text-slate-400">/ 2 Slot Antrean</span>
+              0 <span className="text-xs font-normal text-slate-400">/ 1 Slot Antrean</span>
             </div>
             <p className="text-[10px] text-slate-500">
               Antrean paralel pemrosesan video otomatis
@@ -196,6 +235,7 @@ export default function StudioDeskPage() {
           {/* Feature 1: UGC Script Studio */}
           <Link
             href="/studio/ugc-studio"
+            onClick={handleStartVideo}
             className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/[0.04] transition group flex flex-col justify-between space-y-6"
           >
             <div className="space-y-3">
@@ -252,6 +292,14 @@ export default function StudioDeskPage() {
           </div>
         </div>
       </main>
+
+      {/* ── NATIVE STUDIO PAYWALL MODAL ───────────────────────── */}
+      <StudioPaywallModal
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        tenantSlug={tenantSlug}
+        currentCredits={currentCredits}
+      />
 
       {/* ── FOOTER ────────────────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5">
