@@ -35,6 +35,50 @@ export async function generateMetadata(): Promise<Metadata> {
   const hostClean = hostHeader.split(',')[0].trim().toLowerCase().split(':')[0];
 
   const isCreatorHost = hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.');
+  const isStudioHost = hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.');
+
+  if (isStudioHost) {
+    return {
+      metadataBase: new URL('https://studio.boontrack.com'),
+      title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+      description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
+      manifest: "/manifest-creator.json",
+      openGraph: {
+        title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+        description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
+        url: "https://studio.boontrack.com",
+        siteName: "BoonTrack Studio",
+        images: [
+          {
+            url: '/app-brand/logo-master.png',
+            width: 1024,
+            height: 1024,
+            alt: 'BoonTrack Studio Platform',
+          },
+        ],
+        locale: 'id_ID',
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary',
+        title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+        description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
+        images: ['/app-brand/logo-master.png'],
+      },
+      appleWebApp: {
+        capable: true,
+        statusBarStyle: "default",
+        title: "BoonTrack Studio",
+      },
+      icons: {
+        icon: [
+          { url: '/app-brand/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+          { url: '/app-brand/favicon.ico', sizes: 'any' },
+        ],
+        apple: '/app-brand/apple-touch-icon.png',
+      },
+    };
+  }
 
   if (isCreatorHost) {
     return {

@@ -62,6 +62,11 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
     return true;
   }
 
+  // studio.boontrack.com
+  if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+    return true;
+  }
+
   // BoonTrack official domain & subdomains
   if (
     hostClean === 'boontrack.com' ||
@@ -307,21 +312,30 @@ export async function middleware(req: NextRequest) {
         url.pathname = '/app-brand/favicon.ico';
         return NextResponse.rewrite(url);
       }
-      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+      if (
+        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
+        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
+      ) {
         const url = req.nextUrl.clone();
         url.pathname = '/app-brand/favicon.ico';
         return NextResponse.rewrite(url);
       }
     }
     if (pathname === '/apple-touch-icon.png') {
-      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+      if (
+        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
+        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
+      ) {
         const url = req.nextUrl.clone();
         url.pathname = '/app-brand/apple-touch-icon.png';
         return NextResponse.rewrite(url);
       }
     }
     if (pathname === '/manifest.json' || pathname === '/site.webmanifest') {
-      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+      if (
+        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
+        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
+      ) {
         const url = req.nextUrl.clone();
         url.pathname = '/manifest-creator.json';
         return NextResponse.rewrite(url);
@@ -737,29 +751,69 @@ export async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // ── 4. KHUSUS CREATOR.BOONTRACK.COM (CREATOR_V1 Profile Rewrite) ──
+  // ── 4. KHUSUS CREATOR.BOONTRACK.COM (CREATOR_V1 Profile Rewrite & 301 UGC Studio Migration) ──
   if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+    // 4.1 Host-Aware 301 Legacy Redirect: /ugc-studio & variasi UGC di domain creator dialihkan permanen ke studio.boontrack.com
+    if (
+      pathname === '/ugc-studio' ||
+      pathname.startsWith('/ugc-studio/') ||
+      pathname === '/creator/ugc-studio' ||
+      pathname.startsWith('/creator/ugc-studio/')
+    ) {
+      const redirectPath = pathname.startsWith('/creator/ugc-studio')
+        ? pathname.replace(/^\/creator/, '')
+        : pathname;
+      const targetUrl = new URL(`https://studio.boontrack.com${redirectPath}`);
+      targetUrl.search = req.nextUrl.search;
+      return NextResponse.redirect(targetUrl, 301);
+    }
+
     const url = req.nextUrl.clone();
 
-    // Landing/portal root creator
+    // 4.2 Landing/portal root creator
     if (pathname === '/' || pathname === '') {
       url.pathname = '/creator';
       return NextResponse.rewrite(url);
     }
 
-    // Bypass /ugc-studio agar tidak masuk ke dynamic slug /creator/[slug]
-    if (pathname.startsWith('/ugc-studio')) {
-      url.pathname = `/creator/ugc-studio`;
-      return NextResponse.rewrite(url);
-    }
+    // 4.3 Routing /@handle atau /[slug] -> rewrite ke /creator/[slug] dengan normalisasi cleanSlug
+    const relativePath = pathname.startsWith('/creator/')
+      ? pathname.slice('/creator/'.length)
+      : pathname.replace(/^\/+/, '');
+    const cleanSlug = relativePath.replace(/^@+/, '').trim();
 
-    // Rewrite creator.boontrack.com/[slug] ke /creator/[slug]
-    if (!pathname.startsWith('/creator/')) {
-      url.pathname = `/creator${pathname}`;
+    if (cleanSlug) {
+      url.pathname = `/creator/${cleanSlug}`;
       return NextResponse.rewrite(url);
     }
 
     return NextResponse.next();
+  }
+
+  // ── 4b. KHUSUS STUDIO.BOONTRACK.COM (Studio Dashboard Workspace & UGC Studio Resolver) ──
+  if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+    const url = req.nextUrl.clone();
+
+    // 1. Root / -> rewrite ke /studio (Dashboard Workspace)
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/studio';
+      return NextResponse.rewrite(url);
+    }
+
+    // 2. /ugc-studio -> rewrite ke /studio/ugc-studio
+    if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
+      url.pathname = `/studio${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 3. Jika sudah berada di path /studio/... -> pass-through
+    if (pathname.startsWith('/studio')) {
+      return NextResponse.next();
+    }
+
+    // 4. Sub-path /[path] -> rewrite ke /studio/[path]
+    url.pathname = `/studio${pathname}`;
+    return NextResponse.rewrite(url);
   }
 
   // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
@@ -833,13 +887,55 @@ export async function middleware(req: NextRequest) {
   }
 
   if (subdomain === 'creator') {
+    // Host-Aware 301 Legacy Redirect
+    if (
+      pathname === '/ugc-studio' ||
+      pathname.startsWith('/ugc-studio/') ||
+      pathname === '/creator/ugc-studio' ||
+      pathname.startsWith('/creator/ugc-studio/')
+    ) {
+      const redirectPath = pathname.startsWith('/creator/ugc-studio')
+        ? pathname.replace(/^\/creator/, '')
+        : pathname;
+      const targetUrl = new URL(`https://studio.boontrack.com${redirectPath}`);
+      targetUrl.search = req.nextUrl.search;
+      return NextResponse.redirect(targetUrl, 301);
+    }
+
     const url = req.nextUrl.clone();
-    // Bypass /ugc-studio agar tidak dianggap sebagai dynamic profile slug
-    if (pathname.startsWith('/ugc-studio')) {
-      url.pathname = `/creator/ugc-studio`;
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/creator';
       return NextResponse.rewrite(url);
     }
+
+    const relativePath = pathname.startsWith('/creator/')
+      ? pathname.slice('/creator/'.length)
+      : pathname.replace(/^\/+/, '');
+    const cleanSlug = relativePath.replace(/^@+/, '').trim();
+
+    if (cleanSlug) {
+      url.pathname = `/creator/${cleanSlug}`;
+      return NextResponse.rewrite(url);
+    }
+
     url.pathname = `/creator${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  if (subdomain === 'studio') {
+    const url = req.nextUrl.clone();
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/studio';
+      return NextResponse.rewrite(url);
+    }
+    if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
+      url.pathname = `/studio${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    if (pathname.startsWith('/studio')) {
+      return NextResponse.next();
+    }
+    url.pathname = `/studio${pathname}`;
     return NextResponse.rewrite(url);
   }
 
@@ -952,7 +1048,7 @@ export async function middleware(req: NextRequest) {
     // Safeguard: Jangan rewrite subdomain cadangan sistem
     const RESERVED_SUBDOMAINS = new Set([
       'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
-      'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static'
+      'affiliate', 'manager', 'shop', 'creator', 'studio', 'www', 'app', 'career', 'static'
     ]);
     if (RESERVED_SUBDOMAINS.has(subdomain)) {
       return NextResponse.next();
