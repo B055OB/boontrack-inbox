@@ -458,9 +458,10 @@ export async function routeTenantInboundMessage(params: {
         `📅 *Jadwal Praktik Konsultasi:*\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
         `• Sesi: Chat WhatsApp Intensif & Video Call Google Meet 45 Menit\n\n` +
-        `📝 *Form Skrining Awal Mandiri:* https://screening.tumbuhkembanganak.com/\n` +
+        `📝 *Form Skrining Resmi:* https://screening.littlebitefeeding.com/\n` +
         `👉 *Daftar Sesi Konsultasi Nutrisi:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
-        `Ayah/Bunda bisa mengisi formulir skrining di https://screening.tumbuhkembanganak.com/ atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/\n` +
+        `atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
         `_Ketik *5* atau *admin* untuk terhubung langsung dengan pendaftaran klinik._`;
 
       return {
@@ -478,9 +479,9 @@ export async function routeTenantInboundMessage(params: {
       };
     }
 
-    // Screening / Speech Delay / Stimulation Route (dr. Azizah Ridwan)
+    // Screening / Speech Delay / Stimulation Route (Tim Dokter Spesialis Anak)
     if (
-      /speech delay|bicara|terapi|sensori|stimulasi|tumbuh kembang|dr azizah|dr\. azizah/i.test(combinedSignal) ||
+      /speech delay|bicara|terapi|sensori|stimulasi|motorik|evaluasi perkembangan|tes mandiri|skrining|tumbuh kembang|dr azizah|dr\. azizah/i.test(combinedSignal) ||
       interactiveReply?.id === 'opt_screening' ||
       cleanMsg === '4' ||
       cleanMsg.startsWith('4.')
@@ -491,9 +492,9 @@ export async function routeTenantInboundMessage(params: {
       }, supabaseClient);
 
       const replyText =
-        `🩺 *SCREENING STIMULASI & EVALUASI TUMBUH KEMBANG (dr. Azizah Ridwan)*\n\n` +
+        `🩺 *SCREENING STIMULASI & EVALUASI TUMBUH KEMBANG (Tim Dokter Spesialis Anak)*\n\n` +
         `Deteksi dini keterlambatan perkembangan anak sangat krusial pada 1.000 Hari Pertama Kehidupan. Evaluasi menyeluruh membantu anak mengejar ketertinggalan milestone tepat waktu.\n\n` +
-        `📋 *Aspek Evaluasi dr. Azizah:*\n` +
+        `📋 *Aspek Evaluasi Tim Dokter:*\n` +
         `1. Perkembangan Bahasa & Bicara (Speech Delay, kontak mata, interaksi 2 arah).\n` +
         `2. Motorik Kasar & Motorik Halus (merangkak, berjalan, koordinasi tangan).\n` +
         `3. Sensori Integrasi & Regulasi Emosi (tantrum berlebih, sensitif tekstur/suara).\n` +
@@ -501,7 +502,9 @@ export async function routeTenantInboundMessage(params: {
         `📅 *Jadwal Sesi Screening:*\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
         `• Format: Video Call 1-on-1 & Observasi Klinis\n\n` +
+        `📝 *Form Skrining Resmi:* https://screening.littlebitefeeding.com/\n` +
         `👉 *Pesan Sesi Screening Tumbuh Kembang:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/\n\n` +
         `_Ketik *5* atau *admin* untuk chat tim pendaftaran klinik._`;
 
       return {
@@ -511,7 +514,7 @@ export async function routeTenantInboundMessage(params: {
         intent_key: 'SCREENING_CONSULT',
         node_id: 'opt_screening',
         quick_actions: [
-          '📅 Jadwal Sesi dr. Azizah',
+          '📅 Jadwal Screening Dokter',
           '🥣 Konsultasi Nutrisi & GTM',
           '💰 Paket Layanan',
           '💬 Chat Pendaftaran',

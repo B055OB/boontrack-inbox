@@ -101,7 +101,7 @@ export function resolveLockedGtmProduct(products: any[], meta: any) {
   return prods.find((p: any) => (p.name || '').toLowerCase().includes('konsul')) || prods[0];
 }
 
-export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.tumbuhkembanganak.com/';
+export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.littlebitefeeding.com/';
 
 /**
  * Broad regex covering the full spectrum of pediatric feeding and growth issues:
@@ -110,9 +110,10 @@ export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.tumbuhkembangana
  * - Masalah kenaikan berat badan (BB seret / stuck / susah naik)
  * - Sensitivitas tekstur MPASI (melepeh, muntah, hoek, trauma tekstur)
  * - GTM / menolak nasi / hanya mau susu / picky eater
+ * - Evaluasi tumbuh kembang, keterlambatan bicara (speech delay), motorik, & tes mandiri
  */
 export const CLINIC_FEEDING_COMPLAINT_REGEX =
-  /(?:makan\s*lama|lama\s*makan|durasi\s*makan|makan\s*berjam-jam|makan\s*lambat|lambat\s*makan|mengemut|ngemut|diemut|dimut|food\s*pocketing|menahan\s*makanan|jadwal\s*(?:makan\s*)?berantakan|feeding\s*rules|aturan\s*makan|jam\s*makan(?:\s*berantakan)?|jadwal\s*(?:gak|tidak)\s*teratur|bb\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|serat)|berat\s*badan\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|seret|stagnan)|gagal\s*tumbuh|weight\s*faltering|tekstur|sensitivitas|sensori|dilepeh|lepeh|melepeh|muntah|hoek|tersedak|gagging|trauma\s*(?:makan|tekstur)|tidak\s*mau\s*(?:nasi|makan|ngunyah)|gamau\s*(?:nasi|makan|ngunyah)|gak\s*mau\s*(?:nasi|makan|ngunyah)|gtm|gerakan\s*tutup\s*mulut|tutup\s*mulut|susah\s*makan|sulit\s*makan|nolak\s*makan|menolak\s*makan|mogok\s*makan|hanya\s*mau\s*susu|cuma\s*mau\s*susu|picky\s*eater|pilih[\s-]*pilih\s*makan|stunting|nutrisi)/i;
+  /(?:makan\s*lama|lama\s*makan|durasi\s*makan|makan\s*berjam-jam|makan\s*lambat|lambat\s*makan|mengemut|ngemut|diemut|dimut|food\s*pocketing|menahan\s*makanan|jadwal\s*(?:makan\s*)?berantakan|feeding\s*rules|aturan\s*makan|jam\s*makan(?:\s*berantakan)?|jadwal\s*(?:gak|tidak)\s*teratur|bb\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|serat)|berat\s*badan\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|seret|stagnan)|gagal\s*tumbuh|weight\s*faltering|tekstur|sensitivitas|sensori|dilepeh|lepeh|melepeh|muntah|hoek|tersedak|gagging|trauma\s*(?:makan|tekstur)|tidak\s*mau\s*(?:nasi|makan|ngunyah)|gamau\s*(?:nasi|makan|ngunyah)|gak\s*mau\s*(?:nasi|makan|ngunyah)|gtm|gerakan\s*tutup\s*mulut|tutup\s*mulut|susah\s*makan|sulit\s*makan|nolak\s*makan|menolak\s*makan|mogok\s*makan|hanya\s*mau\s*susu|cuma\s*mau\s*susu|picky\s*eater|pilih[\s-]*pilih\s*makan|stunting|nutrisi|bicara|speech\s*delay|terlambat\s*bicara|belum\s*bisa\s*bicara|keterlambatan\s*bicara|motorik|terlambat\s*jalan|keterlambatan\s*motorik|tumbuh\s*kembang|perkembangan|evaluasi\s*perkembangan|tes\s*mandiri|skrining|screening)/i;
 
 /**
  * Checks and extracts progressive clinic intake data (Slot-filling).
@@ -417,7 +418,7 @@ export async function processConsultationLeadFunnel(
       `👉 *Link Skrining Resmi:*\n` +
       `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
       `Melalui data awal ini, Tim Dokter kami akan mendapatkan gambaran menyeluruh tentang pola makan si kecil sebelum menentukan jadwal sesi konsultasi yang paling tepat.\n\n` +
-      `Ayah/Bunda bisa mengisi formulir skrining di ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan ya Bun/Yah. 😊`;
+      `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan ya Bun/Yah. 😊`;
 
     if (isShortGreeting && !hasStructuredData && !hasComplaintSignal && !isPaymentRequest && rawMsg.length < 35) {
       return {
@@ -577,8 +578,14 @@ export async function processConsultationLeadFunnel(
         validationNote = 'Kenaikan berat badan yang seret atau stuck memerlukan evaluasi cermat terhadap kurva pertumbuhan WHO, asupan kalori efektif, dan penyerapan nutrisi si kecil.';
       } else if (complaintLower.includes('tekstur') || complaintLower.includes('lepeh') || complaintLower.includes('muntah') || complaintLower.includes('sensitivitas')) {
         validationNote = 'Sensitivitas tekstur atau refleks melepeh makanan bertekstur erat kaitannya dengan adaptasi sensori mulut dan tahapan kenaikan tekstur MPASI.';
+      } else if (complaintLower.includes('bicara') || complaintLower.includes('speech delay') || complaintLower.includes('ngomong') || complaintLower.includes('bahasa')) {
+        validationNote = 'Deteksi dini keterlambatan bicara (speech delay) dan evaluasi perkembangan komunikasi dua arah sangat penting dilakukan pada periode emas anak.';
+      } else if (complaintLower.includes('motorik') || complaintLower.includes('jalan') || complaintLower.includes('merangkak')) {
+        validationNote = 'Pemantauan tahapan milestone motorik kasar dan halus memastikan koordinasi gerak fisik si kecil berkembang optimal sesuai usianya.';
+      } else if (complaintLower.includes('tumbuh kembang') || complaintLower.includes('perkembangan') || complaintLower.includes('evaluasi') || complaintLower.includes('tes mandiri') || complaintLower.includes('skrining') || complaintLower.includes('screening')) {
+        validationNote = 'Evaluasi awal perkembangan anak secara berkala membantu orang tua mendeteksi potensi keterlambatan milestone sejak dini.';
       } else {
-        validationNote = 'Tantangan makan pada anak memerlukan penelusuran akar masalah secara bertahap dan suportif tanpa paksaan.';
+        validationNote = 'Tantangan tumbuh kembang dan pola makan pada anak memerlukan penelusuran akar masalah secara menyeluruh dan suportif tanpa paksaan.';
       }
 
       const parentDisplayName = clinicIntake.data.parentName || 'Ayah/Bunda';
@@ -586,13 +593,13 @@ export async function processConsultationLeadFunnel(
 
       const screeningOfferReply =
         `Halo ${parentDisplayName}! Terima kasih banyak sudah menceritakan kondisi ${childDisplayName} kepada kami. 🙏\n\n` +
-        `Kami sangat memahami rasa lelah dan kekhawatiran Ayah/Bunda menghadapi kendala ini: *${clinicIntake.data.complaint || 'masalah makan & nutrisi si kecil'}*. ${validationNote}\n\n` +
-        `Masalah makan pada anak perlu kita lihat secara menyeluruh—mulai dari penerapan feeding rules, kenyamanan sensori & oromotor saat makan, hingga evaluasi kecukupan nutrisi dan kurva pertumbuhannya.\n\n` +
-        `Agar Tim Dokter Klinik Tumbuh Kembang Anak mendapatkan gambaran lengkap riwayat pola makan dan tumbuh kembang ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
+        `Kami sangat memahami rasa lelah dan kekhawatiran Ayah/Bunda menghadapi kendala ini: *${clinicIntake.data.complaint || 'masalah tumbuh kembang & nutrisi si kecil'}*. ${validationNote}\n\n` +
+        `Kondisi tumbuh kembang dan pola makan anak perlu kita lihat secara menyeluruh—mulai dari evaluasi milestone perkembangan, penerapan feeding rules, kenyamanan sensori & oromotor, hingga kecukupan nutrisi dan kurva pertumbuhannya.\n\n` +
+        `Agar Tim Dokter Klinik Tumbuh Kembang Anak mendapatkan gambaran lengkap riwayat perkembangan ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
         `👉 *Link Skrining Resmi:*\n` +
         `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
         `Setelah form skrining terisi, data akan langsung dipelajari oleh Tim Dokter kami, dan tim asisten klinik akan segera mengonfirmasi jadwal sesi konsultasi yang paling tepat untuk ${childDisplayName}.\n\n` +
-        `Ayah/Bunda bisa mengisi formulir skrining di ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan/perkembangan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
 
       return {
         handled: true,
@@ -608,8 +615,8 @@ export async function processConsultationLeadFunnel(
     if (clinicIntake.data.parentName) {
       const reply =
         `Halo ${clinicIntake.data.parentName}! Senang bisa berkenalan. 🙏\n\n` +
-        `Boleh ceritakan sedikit tentang kondisi atau kendala makan yang sedang dialami si kecil saat ini (misal: apakah durasi makan lama/mengemut, BB seret/stuck, jadwal makan belum teratur, atau fase GTM)?\n\n` +
-        `Ayah/Bunda bisa mengisi formulir skrining di ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan dan mendampingi ya Bun/Yah. 😊`;
+        `Boleh ceritakan sedikit tentang kondisi atau kendala tumbuh kembang / makan yang sedang dialami si kecil saat ini (misal: apakah evaluasi perkembangan, deteksi keterlambatan bicara/motorik, durasi makan lama/mengemut, BB seret/stuck, jadwal makan belum teratur, atau fase GTM)?\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan dan mendampingi ya Bun/Yah. 😊`;
 
       return {
         handled: true,

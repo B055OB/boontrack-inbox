@@ -134,7 +134,8 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('GREETING');
       expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
-      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
       expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).toContain('secara menyeluruh');
       expect(result.reply).not.toContain('INVOICE');
@@ -153,7 +154,8 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('CONSULTATION_OFFER');
       expect(result.reply).toContain('Bunda Maya');
-      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
       expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).not.toContain('INVOICE');
     });
@@ -170,12 +172,13 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('Arka');
       expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
-      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
       expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
       expect(result.reply).toContain('secara menyeluruh');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
-      expect(result.checkoutUrl).toBe('https://screening.tumbuhkembanganak.com/');
+      expect(result.checkoutUrl).toBe('https://screening.littlebitefeeding.com/');
     });
 
     it('validates GTM inquiry empathetically and provides official screening link without invoice', async () => {
@@ -188,9 +191,25 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
-      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
+    });
+
+    it('handles inquiries on developmental evaluation, speech/motor delay, and self-screening with supportive screening invitation', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockClinicTenant,
+        tenantSlug: 'tumbuh-kembang-anak',
+        message: 'Anak saya 2 tahun belum bisa bicara dan terlambat jalan, mau evaluasi perkembangan anak dan tes mandiri',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}5`,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('SCREENING_OFFER');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
+      expect(result.checkoutUrl).toBe('https://screening.littlebitefeeding.com/');
     });
 
     it('dispatches Hybrid Checkout QRIS when user explicitly asks for payment / invoice', async () => {
