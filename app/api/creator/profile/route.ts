@@ -107,7 +107,6 @@ export async function POST(req: Request) {
     const {
       tenant_id,
       handle,
-      display_name = '',
       bio = '',
       avatar_url = '',
       social_links = {},
@@ -117,8 +116,16 @@ export async function POST(req: Request) {
       is_verified = true,
     } = body;
 
-    const rawHandle = handle || display_name || 'creator';
-    const cleanHandle = rawHandle.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase();
+    const displayName = (
+      body.display_name ||
+      body.displayName ||
+      body.handle ||
+      handle ||
+      'Kreator BoonTrack'
+    ).toString().trim() || 'Kreator BoonTrack';
+
+    const rawHandle = handle || body.handle || displayName || 'creator';
+    const cleanHandle = rawHandle.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase() || 'creator';
 
     if (!cleanHandle) {
       return NextResponse.json(
@@ -147,8 +154,11 @@ export async function POST(req: Request) {
 
     const themeConfig = {
       theme: theme || 'clean_light',
-      display_name: display_name.trim(),
-      avatar_url: avatar_url.trim(),
+      display_name: displayName,
+      displayName: displayName,
+      avatar_url: (avatar_url || '').trim(),
+      whatsapp: (body.whatsapp || '').trim(),
+      pin: (body.pin || '').trim(),
       links: Array.isArray(links) ? links : [],
       qris_config: {
         enabled: Boolean(qris_config.enabled),
@@ -161,6 +171,7 @@ export async function POST(req: Request) {
     const payload = {
       tenant_id: resolvedTenantId,
       handle: cleanHandle,
+      display_name: displayName,
       bio: (bio || '').trim(),
       social_links: social_links || {},
       theme_config: themeConfig,

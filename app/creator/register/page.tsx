@@ -27,7 +27,7 @@ function RegisterFormContent() {
   const searchParams = useSearchParams();
 
   const [handle, setHandle] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState('Kreator BoonTrack');
   const [whatsapp, setWhatsapp] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -40,7 +40,7 @@ function RegisterFormContent() {
     if (handleParam) {
       const clean = handleParam.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
       setHandle(clean);
-      if (!displayName && clean) {
+      if (clean) {
         // Auto capitalise handle as initial display name
         const autoName = clean.charAt(0).toUpperCase() + clean.slice(1);
         setDisplayName(autoName);
@@ -53,7 +53,7 @@ function RegisterFormContent() {
     setErrorMsg('');
 
     const cleanHandle = handle.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase();
-    const cleanName = displayName.trim();
+    const finalDisplayName = displayName?.trim() || handle?.trim() || 'Kreator BoonTrack';
     const cleanWa = whatsapp.trim().replace(/[^0-9+]/g, '');
     const cleanPin = pin.trim();
 
@@ -62,7 +62,7 @@ function RegisterFormContent() {
       return;
     }
 
-    if (!cleanName) {
+    if (!finalDisplayName) {
       setErrorMsg('Mohon isi nama tampilan kreator Anda.');
       return;
     }
@@ -86,14 +86,15 @@ function RegisterFormContent() {
         body: JSON.stringify({
           tenant_id: 'creator',
           handle: cleanHandle,
-          display_name: cleanName,
+          display_name: finalDisplayName,
+          displayName: finalDisplayName,
           whatsapp: cleanWa,
           pin: cleanPin,
           social_links: {
             whatsapp: cleanWa,
             instagram: cleanHandle,
           },
-          bio: `Mam / Creator ${cleanName} ✨ Spill Rekomendasi & Produk Unik. Hubungi saya via WhatsApp 📩`,
+          bio: `Mam / Creator ${finalDisplayName} ✨ Spill Rekomendasi & Produk Unik. Hubungi saya via WhatsApp 📩`,
           avatar_url: '/images/creator/suzieray.jpg',
           is_verified: true,
           theme: 'clean_light',
@@ -126,7 +127,7 @@ function RegisterFormContent() {
         // Persist session locally
         if (typeof window !== 'undefined') {
           localStorage.setItem('creator_handle', cleanHandle);
-          localStorage.setItem('creator_display_name', cleanName);
+          localStorage.setItem('creator_display_name', finalDisplayName);
           localStorage.setItem('creator_whatsapp', cleanWa);
           // Set cookie for creator session persistence
           document.cookie = `creator_handle=${encodeURIComponent(cleanHandle)}; path=/; max-age=2592000; SameSite=Lax`;
