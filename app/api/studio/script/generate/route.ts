@@ -13,6 +13,12 @@ interface GenerateRequest {
 
 export async function POST(req: Request) {
   try {
+    // Isolated Studio Gemini Key Guard
+    const apiKey = process.env.GEMINI_API_KEY_STUDIO;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY_STUDIO belum terkonfigurasi.');
+    }
+
     const body: GenerateRequest = await req.json();
     const { product_name, pain_point, hook_angle, cta_goal, category = 'General', tone = 'Casual Gaul' } = body;
 
@@ -23,11 +29,142 @@ export async function POST(req: Request) {
       );
     }
 
-    // Dynamic 9-Scene Formula Generation Engine
+    const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    const aiModel = process.env.AI_MODEL_NAME || 'gemini-2.5-flash';
+
+    // Attempt generation with Gemini Studio AI Engine
+    let generatedScenes: any[] | null = null;
+    try {
+      const prompt = `Anda adalah Creative Director iklan UGC (User Generated Content) TikTok, Shopee Video, dan Reels nomor 1 di Indonesia.
+Buatkan 9 adegan naskah terstruktur untuk formula video 30 detik berikut:
+- Nama Produk: ${product_name}
+- Kategori: ${category}
+- Masalah / Pain Point: ${pain_point}
+- Sudut Pandang Hook: ${hook_angle}
+- Tujuan CTA: ${cta_goal}
+- Gaya Bahasa / Tone: ${tone}
+
+Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) mengikuti format:
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "stage_name": "Visual Pattern Interrupt",
+      "duration_sec": 3,
+      "time_range": "0-3s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 2,
+      "stage_name": "Hook Problem",
+      "duration_sec": 3,
+      "time_range": "3-6s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 3,
+      "stage_name": "Agitation / Relatability",
+      "duration_sec": 3,
+      "time_range": "6-9s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 4,
+      "stage_name": "Introduction Solution",
+      "duration_sec": 3,
+      "time_range": "9-12s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 5,
+      "stage_name": "Product In-Action Demo",
+      "duration_sec": 4,
+      "time_range": "12-16s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 6,
+      "stage_name": "Key Benefit 1",
+      "duration_sec": 3,
+      "time_range": "16-19s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 7,
+      "stage_name": "Key Benefit 2",
+      "duration_sec": 3,
+      "time_range": "19-22s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 8,
+      "stage_name": "Social Proof / Reassurance",
+      "duration_sec": 3,
+      "time_range": "22-25s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    },
+    {
+      "scene_number": 9,
+      "stage_name": "Strong CTA",
+      "duration_sec": 5,
+      "time_range": "25-30s",
+      "voiceover": "...",
+      "visual_direction": "...",
+      "on_screen_text": "..."
+    }
+  ]
+}`;
+
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${cleanApiKey}`;
+      const geminiRes = await fetch(geminiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
+          },
+        }),
+        cache: 'no-store',
+      });
+
+      if (geminiRes.ok) {
+        const geminiData = await geminiRes.json();
+        const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) {
+          const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+          const parsed = JSON.parse(cleaned);
+          if (parsed?.scenes && Array.isArray(parsed.scenes) && parsed.scenes.length === 9) {
+            generatedScenes = parsed.scenes;
+          }
+        }
+      }
+    } catch (aiErr) {
+      console.warn('[Studio AI Engine] Gemini call warning (falling back to formula):', aiErr);
+    }
+
+    // Dynamic 9-Scene Formula Generation Engine (Fallback & Deterministic baseline)
     const isUnboxing = hook_angle.toLowerCase().includes('unboxing');
     const isBeforeAfter = hook_angle.toLowerCase().includes('sebelum-sesudah') || hook_angle.toLowerCase().includes('before');
     const isHemat = hook_angle.toLowerCase().includes('hemat') || hook_angle.toLowerCase().includes('boncos');
-    const isProblemFirst = hook_angle.toLowerCase().includes('masalah') || hook_angle.toLowerCase().includes('sehari-hari');
 
     // Scene 1: Visual Pattern Interrupt (3s)
     let s1Visual = `Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan ${product_name}. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.`;
@@ -44,40 +181,40 @@ export async function POST(req: Request) {
     }
 
     // Scene 2: Hook Problem (3s)
-    let s2Visual = `Kreator menatap cermin atau layar dengan ekspresi lelah. Tangan menunjuk area masalah (${category}) secara jelas dan natural.`;
-    let s2Voiceover = `Pasti capek banget kan tiap hari harus ngadepin ${pain_point.slice(0, 60)} yang gak kelar-kelar?`;
+    const s2Visual = `Kreator menatap cermin atau layar dengan ekspresi lelah. Tangan menunjuk area masalah (${category}) secara jelas dan natural.`;
+    const s2Voiceover = `Pasti capek banget kan tiap hari harus ngadepin ${pain_point.slice(0, 60)} yang gak kelar-kelar?`;
 
     // Scene 3: Agitation / Relatability (3s)
-    let s3Visual = `B-roll footage cepat: Menyingkirkan produk-produk lama yang tidak efektif ke meja, gestur menghela napas geleng kepala.`;
-    let s3Voiceover = `Udah coba macam-macam cara, gonta-ganti produk lain tapi hasilnya zonk dan bikin kantong jebol.`;
+    const s3Visual = `B-roll footage cepat: Menyingkirkan produk-produk lama yang tidak efektif ke meja, gestur menghela napas geleng kepala.`;
+    const s3Voiceover = `Udah coba macam-macam cara, gonta-ganti produk lain tapi hasilnya zonk dan bikin kantong jebol.`;
 
     // Scene 4: Introduction Solution (3s)
-    let s4Visual = `Hero shot sinematik! ${product_name} diangkat sejajar mata dengan pencahayaan hangat, efek kilau bersih dan gerakan memutar perlahan.`;
-    let s4Voiceover = `Sampai akhirnya aku nemu penyelamat baru: ${product_name}. Ini game changer yang beneran ngubah rutinitas aku.`;
+    const s4Visual = `Hero shot sinematik! ${product_name} diangkat sejajar mata dengan pencahayaan hangat, efek kilau bersih dan gerakan memutar perlahan.`;
+    const s4Voiceover = `Sampai akhirnya aku nemu penyelamat baru: ${product_name}. Ini game changer yang beneran ngubah rutinitas aku.`;
 
     // Scene 5: Product In-Action Demo (4s)
-    let s5Visual = `Macro zoom tekstur/penggunaan produk saat diaplikasikan: tekstur ringan meresap cepat, bahan premium, atau build quality kokoh.`;
-    let s5Voiceover = `Lihat pas dipakai, teksturnya ringan banget, nyaman, gak ribet sama sekali dan langsung bekerja seketika.`;
+    const s5Visual = `Macro zoom tekstur/penggunaan produk saat diaplikasikan: tekstur ringan meresap cepat, bahan premium, atau build quality kokoh.`;
+    const s5Voiceover = `Lihat pas dipakai, teksturnya ringan banget, nyaman, gak ribet sama sekali dan langsung bekerja seketika.`;
 
     // Scene 6: Key Benefit 1 (3s)
-    let s6Visual = `Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.`;
-    let s6Voiceover = `Manfaat utamanya langsung berasa, bikin aktivitas seharian jadi jauh lebih tenang dan pede maksimal.`;
+    const s6Visual = `Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.`;
+    const s6Voiceover = `Manfaat utamanya langsung berasa, bikin aktivitas seharian jadi jauh lebih tenang dan pede maksimal.`;
 
     // Scene 7: Key Benefit 2 (3s)
-    let s7Visual = `Visual kemudahan dibawa bepergian (travel-friendly) atau ketahanan jangka panjang saat digunakan seharian.`;
-    let s7Voiceover = `Plus praktis banget dibawa ke mana-mana, formulanya aman dan udah teruji klinis untuk pemakaian harian.`;
+    const s7Visual = `Visual kemudahan dibawa bepergian (travel-friendly) atau ketahanan jangka panjang saat digunakan seharian.`;
+    const s7Voiceover = `Plus praktis banget dibawa ke mana-mana, formulanya aman dan udah teruji klinis untuk pemakaian harian.`;
 
     // Scene 8: Social Proof / Reassurance (3s)
-    let s8Visual = `Menampilkan pop-up screenshot sertifikat BPOM/Halal, rating 4.9/5 dari marketplace, dan testimoni ribuan pelanggan puas.`;
-    let s8Voiceover = `Gak heran ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. Dijamin original dan terpercaya.`;
+    const s8Visual = `Menampilkan pop-up screenshot sertifikat BPOM/Halal, rating 4.9/5 dari marketplace, dan testimoni ribuan pelanggan puas.`;
+    const s8Voiceover = `Gak heran ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. Dijamin original dan terpercaya.`;
 
     // Scene 9: Strong CTA (5s)
-    let s9Visual = `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;
-    let s9Voiceover = cta_goal.toLowerCase().includes('bio')
+    const s9Visual = `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;
+    const s9Voiceover = cta_goal.toLowerCase().includes('bio')
       ? `Khusus hari ini lagi ada diskon bundling terbatas! Langsung klik tautan di Bio profil sekarang sebelum kehabisan!`
       : `Stok promo terbatas banget dan bisa habis sewaktu-waktu. Yuk tap keranjang kuning di bawah sekarang juga!`;
 
-    const scenes = [
+    const scenes = generatedScenes || [
       {
         scene_number: 1,
         stage_name: 'Visual Pattern Interrupt',
