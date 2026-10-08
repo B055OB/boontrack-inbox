@@ -261,5 +261,17 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(location).toBeDefined();
       expect(location).toContain('/admin');
     });
+
+    it('11. Rewrites boontrack.com/@handle (root domain short link) to /creator/handle', async () => {
+      const req = new NextRequest('https://boontrack.com/@suzieray_', {
+        headers: { host: 'boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/suzieray_');
+    });
   });
 });

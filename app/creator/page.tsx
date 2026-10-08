@@ -168,7 +168,7 @@ export default function CreatorCleanLandingPage() {
                 className="p-2 bg-white border-2 border-slate-200/90 hover:border-slate-300 focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/10 rounded-2xl shadow-xl shadow-slate-200/60 transition-all flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
               >
                 <div className="flex items-center px-3 py-2 sm:py-0 text-sm font-mono text-slate-400 flex-1">
-                  <span className="text-slate-400 select-none hidden sm:inline font-semibold">creator.boontrack.com/@</span>
+                  <span className="text-slate-400 select-none hidden sm:inline font-semibold">boontrack.com/@</span>
                   <span className="text-slate-400 select-none sm:hidden font-semibold">@</span>
                   <input
                     type="text"
@@ -267,7 +267,7 @@ export default function CreatorCleanLandingPage() {
                         ✓
                       </span>
                     </h3>
-                    <p className="text-[11px] text-rose-600/90 font-mono font-medium">creator.boontrack.com/@suzieray_</p>
+                    <p className="text-[11px] text-rose-600/90 font-mono font-medium">boontrack.com/@suzieray_</p>
                     <p className="text-[11px] text-slate-600 mt-1 px-1.5 leading-relaxed font-normal">
                       Mam Ray | Spill Barang Unik & Murah ✨ Fashion & Home Living 🏡 Endorse by @bintangagency
                     </p>

@@ -289,7 +289,7 @@ export default function CreatorAdminPage() {
   };
 
   const copyPublicUrl = () => {
-    const fullUrl = `https://creator.boontrack.com/@${handle.replace(/^@+/, '')}`;
+    const fullUrl = `https://boontrack.com/@${handle.replace(/^@+/, '')}`;
     navigator.clipboard.writeText(fullUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -335,7 +335,7 @@ export default function CreatorAdminPage() {
               ) : (
                 <>
                   <Share2 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>creator.boontrack.com/@{handle}</span>
+                  <span>boontrack.com/@{handle}</span>
                 </>
               )}
             </button>
@@ -815,7 +815,7 @@ export default function CreatorAdminPage() {
                       </span>
                     </h3>
                     <p className="text-[11px] text-rose-600/90 font-mono font-medium">
-                      creator.boontrack.com/@{handle || 'handle'}
+                      boontrack.com/@{handle || 'handle'}
                     </p>
                     <p className="text-[11px] text-slate-600 mt-1 px-1.5 leading-relaxed font-normal">
                       {bio || 'Bio singkat belum diatur...'}

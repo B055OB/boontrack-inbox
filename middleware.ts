@@ -522,6 +522,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
+  // ── Universal Creator @handle routing: boontrack.com/@handle -> /creator/handle ──
+  if (pathname.startsWith('/@')) {
+    const handleSlug = pathname.replace(/^\/@+/, '').trim();
+    if (handleSlug) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/creator/${handleSlug}`;
+      return NextResponse.rewrite(url);
+    }
+  }
+
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
   if (pathname.startsWith('/admin')) {
     return NextResponse.next();
