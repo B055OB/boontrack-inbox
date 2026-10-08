@@ -77,6 +77,8 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 | `affiliate.boontrack.com` | Mitra Affiliate Aktif (role: 'affiliate') & Affiliate Manager (role: 'am' - Kang Sakti / buzzerukm) | Vercel (Next.js) | Dashboard Mandiri Mitra, serta Agregasi Metrik Jaringan Downline & Monitoring Payout khusus role AM. | - |
 | `dashboard.boontrack.com` | Merchant (Seller) â€” semua tier | Vercel (Next.js) via internal rewrite middleware | Login & Dashboard manajemen toko. Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
 | `bossob.boontrack.com/admin` | Super Admin Internal | Vercel (Next.js) | Control Plane, Leads Pipeline & Tenant Registry | - |
+| `creator.boontrack.com` | Solo Creator, Affiliate Marketer, Public Audience | Vercel (Next.js) | Public Showcase, Link-in-Bio, Transparent Deep-link E-commerce & Direct QRIS Checkout | `PageView`, `ViewContent` |
+| `studio.boontrack.com` | Brand Owner, Merchant, In-House Creative, Agensi | Vercel (Next.js) | Production Control Room, UGC Script Studio, Storyboard, Asset Library & Render Queue | - |
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
 
@@ -4228,8 +4230,13 @@ Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middlew
 - **`app.boontrack.com` (Application & Public Service Domain)**:
   * Mengizinkan tenant aplikasi kustom, layanan warga digital (`PUBLIC_SERVICE_V1`), portal enterprise, dan routing portal aplikasi (`/app-portal`).
   * Akses operator PTSP (`/[tenant]/desk`) dan autentikasi kontekstual (`/login?redirectTo=...`) diselesaikan secara otomatis tanpa circular redirect.
-- **`creator.boontrack.com` (Creator Domain)**:
-  * Didedikasikan khusus untuk profil kreator, UGC Studio, dan rate card interaktif (`CREATOR_V1`).
+- **`creator.boontrack.com` (Public Creator Experience)**:
+  * Didedikasikan khusus untuk showcase publik, link-in-bio mobile-first, transparent deep-linking Shopee/TikTok native, dan etalase produk digital/jasa bertema Clean Light (`CREATOR_V1`).
+  * Murni melayani audiens publik tanpa beban proses render media berat.
+- **`studio.boontrack.com` (Authenticated Creative Workspace)**:
+  * Ruang kerja produksi kreatif B2B bertema Electric Dark.
+  * Menampung generator naskah video 9-scene, storyboard, manajemen aset kreatif, serta pemantauan antrean render media (FFmpeg CPU).
+  * Terproteksi otentikasi secara default dengan resolusi tenant berbasis sesi (`TenantRuntimeContext`).
 - **`career.boontrack.com` (Career Domain)**:
   * Didedikasikan untuk intake CV, evaluasi AI ATS, dan talent pool recruitment (`CAREER_V1`).
 
@@ -4550,6 +4557,108 @@ Untuk mencegah eksploitasi kuota Free Tier (5 mitra) melalui pembuatan akun toko
 2. **Deteksi Anomali Multi-Tenant Farming**:
    - Toko yang terdeteksi berbagi nomor WhatsApp owner atau rekening penampung yang sama dilarang mengklaim kuota Free Tier berulang kali pada storefront tiruan.
    - Pelanggaran multi-tenant farming akan membekukan fitur reseller pada seluruh etalase terafiliasi hingga verifikasi kepemilikan bisnis terselesaikan.
+
+---
+
+## § 53. CREATOR SHOWCASE VS STUDIO WORKSPACE DECOUPLING & CREATIVE ENGINE ARCHITECTURE (ADR 2026-10-08)
+
+> **Architectural Status**: 🔒 **APPROVED & FROZEN (CTO & CFO CONSENSUS)**  
+> **Core Principle**: *"Creator is where the audience lands. Studio is where the business creates. BoonTrack Core is where the system orchestrates."*
+
+### 53.1 Executive Architectural Verdict
+BoonTrack memisahkan secara tegas ranah **Etalase Publik Kreator** (`creator.boontrack.com`) dari **Ruang Kerja Produksi Kreatif** (`studio.boontrack.com`). Keduanya tetap beroperasi di bawah payung Core tunggal:
+$$\text{BoonTrack Core} \longrightarrow \text{TenantRuntimeContext} \longrightarrow \text{Dual Runtime Experience (Creator vs Studio)} \longrightarrow \text{Shared Core Services}$$
+
+Pemisahan ini didasari oleh perbedaan profil beban kerja (*workload profile*):
+
+| Parameter | `creator.boontrack.com` (Public Showcase) | `studio.boontrack.com` (Production Workspace) |
+| :--- | :--- | :--- |
+| **Profil Akses** | Predominantly Public-facing (`/@handle` / `/[slug]`) | Authenticated Workspace by default |
+| **Beban Komputasi** | Ultra-ringan (Edge SSR/SSG, fast read-path) | Asinkron Berat (FFmpeg CPU render, media queue) |
+| **Toleransi Latensi** | Kritis / Sub-second (<300ms) untuk trafik medsos | Standar aplikasi kerja B2B (asinkron polling) |
+| **Arah Desain UI** | Clean Light Friendly (Warm white, aksen sunset) | Technical Dark Canvas (Slate-900, electric magenta) |
+| **Model Monetisasi** | Entry-level commerce (Direct QRIS / Affiliate) | SaaS B2B + Fair Use Quota + Compute Add-on |
+
+---
+
+### 53.2 Host-Aware Routing, 301 Migration & Session Invariants
+1. **Legacy 301 Permanent Redirect**:
+   - Seluruh trafik lama ke `creator.boontrack.com/ugc-studio` (beserta sub-path dan query parameters) dialihkan permanen (HTTP 301) ke:
+     `https://studio.boontrack.com/ugc-studio`
+   - Redirect logic dieksekusi di edge middleware (`middleware.ts`) dengan mempertahankan context sesi dan query string.
+2. **Authentication Boundary by Default**:
+   - `studio.boontrack.com` terproteksi autentikasi secara bawaan untuk seluruh rute workspace (`/`, `/ugc-studio`, `/scripts`, `/assets`, `/jobs`).
+   - Rute publik/sistem (`/login`, `/signup`, `/auth/callback`, `/public/*`) dikecualikan secara eksplisit tanpa mengunci seluruh domain secara brutal.
+3. **Session-Authorized Tenant Context (Zero IDOR)**:
+   - Konteks tenant pada Studio wajib dibaca dari sesi terotentikasi (`auth.users -> memberships -> tenant_id`).
+   - Domain dan parameter URL hanya berfungsi sebagai petunjuk navigasi (*navigation hint*). Sistem menolak mutasi berbasis manipulasi query param (`?tenant_id=...`).
+
+---
+
+### 53.3 Workload Isolation & Database Schema (Phase A Expand-Only)
+Render media FCD Automation tidak boleh membebani alur transaksi Core Shop. Beban kerja diisolasi melalui arsitektur antrean:
+$$\text{Studio API} \longrightarrow \text{Media Job Queue (Redis)} \longrightarrow \text{Isolated Media Worker (FFmpeg CPU)}$$
+
+Skema database menerapkan prinsip **Phase A Expand-Only** (nol mutasi pada tabel `orders`, `products`, `tenants`):
+
+```sql
+-- 1. Identitas Publik Kreator
+CREATE TABLE public.creator_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    handle TEXT UNIQUE NOT NULL,
+    bio TEXT NULL,
+    social_links JSONB DEFAULT '{}'::jsonb,
+    theme_config JSONB DEFAULT '{"theme": "clean_light"}'::jsonb,
+    is_verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Naskah Video & Storyboard UGC
+CREATE TABLE public.studio_scripts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    product_name TEXT NOT NULL,
+    brief JSONB NOT NULL,
+    scenes JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Repositori Aset Kreatif
+CREATE TABLE public.studio_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    script_id UUID REFERENCES public.studio_scripts(id) ON DELETE SET NULL,
+    file_url TEXT NOT NULL,
+    asset_type TEXT NOT NULL, -- 'image', 'video_broll', 'audio', 'output_fcd'
+    is_aigc BOOLEAN DEFAULT true,
+    file_size BIGINT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Antrean Job Render Media
+CREATE TABLE public.studio_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED', -- 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'
+    job_type TEXT NOT NULL DEFAULT 'FFMPEG_LEVEL_1',
+    payload JSONB NOT NULL,
+    output_url TEXT NULL,
+    error_message TEXT NULL,
+    attempt INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_creator_profiles_handle ON public.creator_profiles(handle);
+CREATE INDEX idx_studio_scripts_tenant ON public.studio_scripts(tenant_id);
+CREATE INDEX idx_studio_jobs_tenant_status ON public.studio_jobs(tenant_id, status);
+```
 
 
 
