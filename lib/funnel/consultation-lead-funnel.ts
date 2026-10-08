@@ -102,11 +102,22 @@ export function resolveLockedGtmProduct(products: any[], meta: any) {
 }
 
 /**
+ * Broad regex covering the full spectrum of pediatric feeding and growth issues:
+ * - Durasi makan lama / anak mengemut makanan (food pocketing)
+ * - Jadwal makan & aturan makan (feeding rules) yang belum teratur
+ * - Masalah kenaikan berat badan (BB seret / stuck / susah naik)
+ * - Sensitivitas tekstur MPASI (melepeh, muntah, hoek, trauma tekstur)
+ * - GTM / menolak nasi / hanya mau susu / picky eater
+ */
+export const CLINIC_FEEDING_COMPLAINT_REGEX =
+  /(?:makan\s*lama|lama\s*makan|durasi\s*makan|makan\s*berjam-jam|makan\s*lambat|lambat\s*makan|mengemut|ngemut|diemut|dimut|food\s*pocketing|menahan\s*makanan|jadwal\s*(?:makan\s*)?berantakan|feeding\s*rules|aturan\s*makan|jam\s*makan(?:\s*berantakan)?|jadwal\s*(?:gak|tidak)\s*teratur|bb\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|serat)|berat\s*badan\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|seret|stagnan)|gagal\s*tumbuh|weight\s*faltering|tekstur|sensitivitas|sensori|dilepeh|lepeh|melepeh|muntah|hoek|tersedak|gagging|trauma\s*(?:makan|tekstur)|tidak\s*mau\s*(?:nasi|makan|ngunyah)|gamau\s*(?:nasi|makan|ngunyah)|gak\s*mau\s*(?:nasi|makan|ngunyah)|gtm|gerakan\s*tutup\s*mulut|tutup\s*mulut|susah\s*makan|sulit\s*makan|nolak\s*makan|menolak\s*makan|mogok\s*makan|hanya\s*mau\s*susu|cuma\s*mau\s*susu|picky\s*eater|pilih[\s-]*pilih\s*makan|stunting|nutrisi)/i;
+
+/**
  * Checks and extracts progressive clinic intake data (Slot-filling).
  * Extracts:
- * - Nama Orang Tua
+ * - Nama Orang Tua (graceful fallback to 'Ayah/Bunda')
  * - Nama & Usia Anak
- * - Keluhan / Kondisi Utama
+ * - Keluhan / Kondisi Utama (GTM & non-GTM feeding issues)
  */
 export function extractClinicIntakeData(
   message: string,
@@ -114,6 +125,9 @@ export function extractClinicIntakeData(
 ): { data: ClinicIntakeData; isComplete: boolean } {
   const data: ClinicIntakeData = { ...(existing || {}) };
   const cleanMsg = (message || '').trim();
+  if (!cleanMsg) {
+    return { data, isComplete: false };
+  }
 
   // 1. Key-value style regex
   const parentMatch = /(?:nama\s*(?:orang\s*tua|ortu|ibu|ayah|bunda|mama|papa)|orang\s*tua|bunda|ayah|ibu|mama|papa)\s*[:=]\s*([^\n,;]+)/i.exec(cleanMsg);
@@ -121,10 +135,18 @@ export function extractClinicIntakeData(
     data.parentName = parentMatch[1].trim();
   }
 
+  // Natural parent prefix fallback (e.g. "Saya Bunda Sinta", "Bunda Dewi:")
+  if (!data.parentName) {
+    const naturalParent = /^(?:saya\s+)?(?:bunda|ayah|ibu|mama|papa)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\b/i.exec(cleanMsg);
+    if (naturalParent && !/^(halo|dok|dokter|selamat)$/i.test(naturalParent[1].trim())) {
+      data.parentName = naturalParent[0].trim();
+    }
+  }
+
   const childMatch = /(?:nama\s*(?:dan|&)?\s*usia\s*anak|nama\s*anak|data\s*anak|pasien\s*anak|anak|si\s*kecil)\s*[:=]\s*([^\n;]+)/i.exec(cleanMsg);
   if (childMatch) {
     data.childInfo = childMatch[1].trim();
-    const ageMatch = /([0-9]+[\s\w]*(?:tahun|thn|th|bulan|bln))/i.exec(childMatch[1]);
+    const ageMatch = /([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(childMatch[1]);
     if (ageMatch) {
       data.childAge = ageMatch[1].trim();
       data.childName = childMatch[1].replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
@@ -152,7 +174,7 @@ export function extractClinicIntakeData(
         if (num === '1' && !data.parentName) data.parentName = val;
         if (num === '2' && !data.childInfo) {
           data.childInfo = val;
-          const ageMatch = /([0-9]+[\s\w]*(?:tahun|thn|th|bulan|bln))/i.exec(val);
+          const ageMatch = /([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(val);
           if (ageMatch) {
             data.childAge = ageMatch[1].trim();
             data.childName = val.replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
@@ -165,29 +187,80 @@ export function extractClinicIntakeData(
     }
   }
 
-  // 3. Fallback narrative extraction if message talks about GTM / makan
-  if (!data.complaint) {
-    const lower = cleanMsg.toLowerCase();
-    if (
-      lower.includes('gtm') ||
-      lower.includes('susah makan') ||
-      lower.includes('sulit makan') ||
-      lower.includes('berat badan') ||
-      lower.includes('bb seret') ||
-      lower.includes('stunting') ||
-      lower.includes('muntah') ||
-      lower.includes('nutrisi')
-    ) {
-      if (cleanMsg.length > 20 && !parentMatch && !childMatch) {
-        data.complaint = cleanMsg;
+  // 3. Natural Language extraction for Child Name & Age if not set via key-value or list
+  if (!data.childInfo && !data.childName) {
+    const naturalChildPattern =
+      /(?:(?:anak\s*(?:saya)?|si\s*kecil|pasien)\s*(?:namanya\s*)?([A-Za-z]+(?:\s+[A-Za-z]+)?)|([A-Z][a-z]+))\s*[,]?\s*(?:usia|umur)?\s*([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(cleanMsg);
+
+    if (naturalChildPattern) {
+      const parsedName = (naturalChildPattern[1] || naturalChildPattern[2] || '').trim();
+      const parsedAge = naturalChildPattern[3]?.trim();
+      if (parsedName && !/^(halo|hai|dok|dokter|selamat|bunda|ayah|ibu)$/i.test(parsedName)) {
+        data.childName = parsedName;
+      }
+      if (parsedAge) {
+        data.childAge = parsedAge;
+      }
+      if (data.childName && data.childAge) {
+        data.childInfo = `${data.childName} (${data.childAge})`;
+      } else if (data.childName) {
+        data.childInfo = data.childName;
+      } else if (data.childAge) {
+        data.childInfo = `Si Kecil (${data.childAge})`;
+      }
+    } else {
+      const ageOnly = /(?:usia|umur)?\s*([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))\b/i.exec(cleanMsg);
+      if (ageOnly) {
+        data.childAge = ageOnly[1].trim();
+        data.childInfo = `Si Kecil (${data.childAge})`;
       }
     }
   }
 
-  const hasParent = Boolean(data.parentName);
-  const hasChild = Boolean(data.childInfo || data.childName);
-  const hasComplaint = Boolean(data.complaint);
-  const isComplete = hasParent && hasChild && hasComplaint;
+  // 4. Fallback narrative extraction for Complaint:
+  // Non-GTM and GTM spectrum recognition
+  if (!data.complaint) {
+    if (CLINIC_FEEDING_COMPLAINT_REGEX.test(cleanMsg)) {
+      const stripped = cleanMsg
+        .replace(/^(?:halo|hai|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|dok|dokter|asisten)[,.\s]+/i, '')
+        .trim();
+      data.complaint = stripped || cleanMsg;
+    }
+  }
+
+  // 5. Intelligent Completion & Anti-Looping State Transition:
+  // If user has provided child name, age, OR any complaint description (non-GTM or GTM),
+  // immediately consider initial medical intake COMPLETE and ready for checkout.
+  // Never get stuck in slot-filling loop when parent name is absent.
+  const hasChild = Boolean(data.childInfo || data.childName || data.childAge);
+  const hasComplaint = Boolean(data.complaint) || CLINIC_FEEDING_COMPLAINT_REGEX.test(cleanMsg);
+
+  if (hasChild || hasComplaint) {
+    if (!data.parentName) {
+      data.parentName = 'Ayah/Bunda';
+    }
+    if (!data.childInfo) {
+      if (data.childName && data.childAge) {
+        data.childInfo = `${data.childName} (${data.childAge})`;
+      } else if (data.childName) {
+        data.childInfo = data.childName;
+      } else if (data.childAge) {
+        data.childInfo = `Si Kecil (${data.childAge})`;
+      } else {
+        data.childInfo = 'Si Kecil';
+      }
+    }
+    if (!data.complaint) {
+      data.complaint = 'Konsultasi masalah makan, feeding rules & tumbuh kembang anak';
+    }
+  }
+
+  const isComplete = Boolean(
+    (hasChild || hasComplaint) &&
+    data.parentName &&
+    (data.childInfo || data.childName) &&
+    data.complaint
+  );
 
   return { data, isComplete };
 }
@@ -331,11 +404,12 @@ export async function processConsultationLeadFunnel(
     // Check short greeting
     const isShortGreeting = /^(halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|tes|test)\b/i.test(normalizedMsg);
     const hasStructuredData = rawMsg.includes(':') || rawMsg.includes('=') || /(?:^|\n)\s*[1-3][.)\-:]/.test(rawMsg);
+    const hasComplaintSignal = CLINIC_FEEDING_COMPLAINT_REGEX.test(rawMsg);
 
     // Initial greeting definition
     const initialGreeting =
       `Halo Ayah/Bunda! Selamat datang di layanan *Konsultasi Chat GTM Anak bersama dr. Harys Maulana* (Klinik Tumbuh Kembang Anak). 👋\n\n` +
-      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat si kecil sedang mengalami fase GTM (Gerakan Tutup Mulut), berat badan seret, atau sulit menerima makanan. InsyaAllah tim kami siap mendampingi secara suportif.\n\n` +
+      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat si kecil sedang mengalami fase GTM (Gerakan Tutup Mulut), durasi makan terlalu lama / mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret atau stuck, maupun sensitivitas tekstur MPASI. InsyaAllah tim kami siap mendampingi secara suportif.\n\n` +
       `👩‍⚕️ *Informasi & Alur Layanan:*\n` +
       `Peran saya sebagai asisten klinik adalah mendata kondisi si kecil untuk rekam medis awal dan menyiapkan reservasi jadwal. Seluruh evaluasi klinis nutrisi mendalam, analisis akar masalah makan, serta rekomendasi penanganan akan diberikan langsung oleh dr. Harys pada sesi konsultasi chat resmi.\n\n` +
       `📌 *Layanan:* ${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}\n` +
@@ -343,10 +417,10 @@ export async function processConsultationLeadFunnel(
       `Boleh kami bantu catat data awal si kecil terlebih dahulu ya Bun/Yah:\n` +
       `1. *Nama Orang Tua*:\n` +
       `2. *Nama & Usia Anak*:\n` +
-      `3. *Keluhan / Kondisi Utama*: (misal: sudah berapa lama GTM, apakah ada riwayat muntah/pilih tekstur, dsb.)\n\n` +
-      `Ayah/Bunda cukup membalas pesan ini dengan 3 poin data di atas ya. Terima kasih! 🙏`;
+      `3. *Keluhan / Kondisi Utama*: (misal: durasi makan lama/mengemut, jadwal feeding rules belum teratur, BB seret/stuck, sensitivitas tekstur MPASI, atau menolak makan/GTM)\n\n` +
+      `Ayah/Bunda cukup membalas pesan ini atau dapat langsung menceritakan kendala makan si kecil dengan santai ya. Terima kasih! 🙏`;
 
-    if (isShortGreeting && !hasStructuredData && rawMsg.length < 35) {
+    if (isShortGreeting && !hasStructuredData && !hasComplaintSignal && rawMsg.length < 35) {
       return {
         handled: true,
         reply: initialGreeting,
@@ -427,10 +501,10 @@ export async function processConsultationLeadFunnel(
         }
       }
 
-      const encodedParent = encodeURIComponent(clinicIntake.data.parentName || '');
+      const encodedParent = encodeURIComponent(clinicIntake.data.parentName || 'Ayah/Bunda');
       const encodedPhone = encodeURIComponent(senderPhone || '');
       const fullCheckoutUrl = `https://${domain}/checkout/${orderId}?name=${encodedParent}&phone=${encodedPhone}`;
-      const childDisplay = clinicIntake.data.childInfo || `${clinicIntake.data.childName || 'Anak'} (${clinicIntake.data.childAge || 'Balita'})`.trim();
+      const childDisplay = clinicIntake.data.childInfo || `${clinicIntake.data.childName || 'Si Kecil'} (${clinicIntake.data.childAge || 'Balita'})`.trim();
 
       const companionReply =
         `📋 *INVOICE REGISTRASI KONSULTASI GTM*\n` +
@@ -438,13 +512,13 @@ export async function processConsultationLeadFunnel(
         `Layanan: *${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}*\n` +
         `Biaya Konsultasi: *${priceStr}*\n\n` +
         `*Data Pasien Terdaftar:*\n` +
-        `• Orang Tua: ${clinicIntake.data.parentName}\n` +
+        `• Orang Tua: ${clinicIntake.data.parentName || 'Ayah/Bunda'}\n` +
         `• Pasien Anak: ${childDisplay}\n` +
         `• Keluhan Utama: ${clinicIntake.data.complaint}\n\n` +
         `✨ *Instruksi Pembayaran (QRIS Otomatis):*\n` +
         `1. Scan kode QRIS yang kami kirimkan di atas menggunakan aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, Dana, ShopeePay).\n` +
         `2. Pembayaran terverifikasi otomatis dalam 1–2 menit 24 jam.\n` +
-        `3. Setelah pembayaran selesai, dr. Harys Maulana & asisten klinik akan langsung membuka sesi konsultasi chat ini untuk mengevaluasi kondisi nutrisi si kecil.\n\n` +
+        `3. Setelah pembayaran selesai, dr. Harys Maulana & asisten klinik akan langsung membuka sesi konsultasi chat ini untuk mengevaluasi keluhan makan si kecil (durasi makan/mengemut, jadwal feeding rules, evaluasi BB seret/stuck, tekstur MPASI, maupun GTM).\n\n` +
         `🔗 *Tautan Checkout Web Resmi:*\n` +
         `${fullCheckoutUrl}\n\n` +
         `Mohon konfirmasi jika ada data yang perlu diperbarui ya Bun/Yah. Terima kasih! 🙏`;
@@ -492,13 +566,13 @@ export async function processConsultationLeadFunnel(
       const missing: string[] = [];
       if (!clinicIntake.data.parentName) missing.push('Nama Orang Tua');
       if (!clinicIntake.data.childInfo && !clinicIntake.data.childName) missing.push('Nama & Usia Anak');
-      if (!clinicIntake.data.complaint) missing.push('Keluhan / Kondisi Utama si kecil (misal: sudah berapa lama GTM atau makanan apa saja yang ditolak)');
+      if (!clinicIntake.data.complaint) missing.push('Keluhan / Kondisi Utama si kecil (misal: anak mengemut/makan lama, BB seret/stuck, jadwal feeding rules, tekstur MPASI, atau GTM)');
 
       const reply =
         `Terima kasih banyak Ayah/Bunda! Sebagian data si kecil sudah kami catat dengan baik. 🙏\n\n` +
         `Agar berkas rekam medis awal si kecil lengkap sebelum kami buatkan invoice & jadwal sesi dr. Harys, mohon bantu lengkapi:\n` +
         missing.map((m, idx) => `${idx + 1}. *${m}*`).join('\n') +
-        `\n\nAyah/Bunda cukup membalas pesan ini ya. Kami siap membantu. 😊`;
+        `\n\nAyah/Bunda dapat menceritakan kondisi si kecil dengan santai ya. Kami siap membantu. 😊`;
 
       return {
         handled: true,

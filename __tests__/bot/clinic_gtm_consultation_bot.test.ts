@@ -95,7 +95,25 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.data.complaint).toBe('BB seret dan suka melepeh makanan');
     });
 
-    it('handles partial patient data and flags incomplete', () => {
+    it('extracts intake from natural non-GTM symptoms (makan lama, mengemut, BB seret)', () => {
+      const message = 'Arka 14 bulan makan lama diemut terus dan BB susah naik';
+      const result = extractClinicIntakeData(message);
+      expect(result.isComplete).toBe(true);
+      expect(result.data.parentName).toBe('Ayah/Bunda');
+      expect(result.data.childName).toBe('Arka');
+      expect(result.data.childAge).toBe('14 bulan');
+      expect(result.data.complaint).toContain('makan lama');
+    });
+
+    it('extracts intake from feeding rules and texture sensitivity complaints', () => {
+      const message = 'jadwal makan anak saya berantakan dan sering melepeh tekstur MPASI';
+      const result = extractClinicIntakeData(message);
+      expect(result.isComplete).toBe(true);
+      expect(result.data.parentName).toBe('Ayah/Bunda');
+      expect(result.data.complaint).toContain('jadwal makan');
+    });
+
+    it('handles partial patient data with only parent name and flags incomplete', () => {
       const message = 'Nama Orang Tua: Bunda Maya';
       const result = extractClinicIntakeData(message);
       expect(result.isComplete).toBe(false);
@@ -122,18 +140,48 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.reply).toContain('Keluhan / Kondisi Utama');
     });
 
-    it('handles inquiry mentioning GTM and politely asks for missing parent & child info', async () => {
+    it('handles partial submission with only parent name and asks for child & complaint info', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
-        message: 'Halo dokter, anak saya GTM susah makan',
-        senderPhone: '62899990002',
+        message: 'Nama Orang Tua: Bunda Maya',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}1`,
       });
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('CONSULTATION_OFFER');
-      expect(result.reply).toContain('Nama Orang Tua');
       expect(result.reply).toContain('Nama & Usia Anak');
+      expect(result.reply).toContain('Keluhan / Kondisi Utama');
+    });
+
+    it('prevents looping and immediately dispatches Hybrid Checkout when non-GTM feeding complaint is provided', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockClinicTenant,
+        tenantSlug: 'tumbuh-kembang-anak',
+        message: 'Arka 14 bulan makan lama diemut terus dan BB susah naik',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}2`,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('HYBRID_CHECKOUT');
+      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI GTM');
+      expect(result.reply).toContain('Arka');
+      expect(result.reply).toContain('QRIS Otomatis');
+      expect(result.checkoutUrl).toContain('konsul.littlebitefeeding.com/checkout');
+    });
+
+    it('dispatches Hybrid Checkout when inquiry mentions GTM or difficulty eating without looping', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockClinicTenant,
+        tenantSlug: 'tumbuh-kembang-anak',
+        message: 'Halo dokter, anak saya GTM susah makan',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}3`,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('HYBRID_CHECKOUT');
+      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI GTM');
+      expect(result.reply).toContain('QRIS Otomatis');
     });
 
     it('dispatches Hybrid Checkout when complete intake data is submitted', async () => {
@@ -146,7 +194,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
         message,
-        senderPhone: '62899990003',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}4`,
       });
 
       expect(result.handled).toBe(true);

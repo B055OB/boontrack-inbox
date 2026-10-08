@@ -435,9 +435,9 @@ export async function routeTenantInboundMessage(params: {
 
   // 3b. Built-In Specialized Decision Tree for Tumbuh Kembang Anak (Clinic Standard)
   if (treeConfig.tenant_slug === 'tumbuh-kembang-anak' || treeConfig.category === 'CLINIC' || treeConfig.category === 'KLINIK_KONSULTASI') {
-    // Nutrition / GTM Route (dr. Harys Maulana)
+    // Nutrition / Feeding / GTM Route (dr. Harys Maulana)
     if (
-      /gtm|mpasi|makan|berat badan|bb seret|nutrisi|dr harys|dr\. harys/i.test(combinedSignal) ||
+      /gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\. harys/i.test(combinedSignal) ||
       interactiveReply?.id === 'opt_gtm_nutrition' ||
       cleanMsg === '3' ||
       cleanMsg.startsWith('3.')
@@ -449,12 +449,12 @@ export async function routeTenantInboundMessage(params: {
 
       const replyText =
         `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM (dr. Harys Maulana)*\n\n` +
-        `Halo Ayah & Bunda! Masalah makan seperti Gerakan Tutup Mulut (GTM), pilih-pilih makan (picky eater), dan berat badan seret memerlukan pendekatan feeding rules yang terstruktur tanpa paksaan trauma.\n\n` +
+        `Halo Ayah & Bunda! Masalah makan seperti Gerakan Tutup Mulut (GTM), durasi makan terlalu lama / anak mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret/stuck, sensitivitas tekstur MPASI, hingga pilih-pilih makan (picky eater) memerlukan pendekatan terstruktur tanpa paksaan trauma.\n\n` +
         `📋 *Fokus Pendampingan Medis dr. Harys:*\n` +
-        `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards).\n` +
-        `2. Pembentukan jadwal makan disiplin & responsive feeding (Happy Eating).\n` +
-        `3. Evaluasi tekstur makanan sesuai usia & pencegahan sensory food aversion.\n` +
-        `4. Rekomendasi suplementasi nutrisi & penanganan defisiensi zat besi.\n\n` +
+        `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards) serta strategi penanganan BB seret/stuck.\n` +
+        `2. Pembentukan jadwal makan disiplin & penerapan responsive feeding rules (Happy Eating).\n` +
+        `3. Evaluasi oromotor pada kebiasaan mengemut/makan lama & penyesuaian tekstur MPASI bertahap.\n` +
+        `4. Pencegahan sensory food aversion & penanganan defisiensi mikronutrien (zat besi & zinc).\n\n` +
         `📅 *Jadwal Praktik Konsultasi:*\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
         `• Sesi: Chat WhatsApp Intensif & Video Call Google Meet 45 Menit\n\n` +
