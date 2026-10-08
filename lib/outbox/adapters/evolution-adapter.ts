@@ -8,6 +8,7 @@
 
 import type { IProviderAdapter, OutboxMessage, SendResult } from '../types';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -101,13 +102,14 @@ export class EvolutionProviderAdapter implements IProviderAdapter {
       };
     }
 
-    const textBody = extractTextFromPayload(message.payload);
-    if (!textBody) {
+    const rawText = extractTextFromPayload(message.payload);
+    if (!rawText) {
       return {
         success: false,
         error: '[EvolutionProviderAdapter] Empty message payload text',
       };
     }
+    const textBody = formatToWhatsAppMarkdown(rawText);
 
     const { instanceName, apiKey } = await resolveEvolutionInstance(message.tenant_id);
 

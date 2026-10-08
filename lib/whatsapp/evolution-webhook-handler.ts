@@ -1,4 +1,5 @@
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
+import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
 /**
  * lib/whatsapp/evolution-webhook-handler.ts
  * Ingress Webhook Processor for WhatsApp Evolution API v2.
@@ -140,10 +141,12 @@ export async function sendEvolutionTextMessage(
     }
   }
 
+  const formattedText = formatToWhatsAppMarkdown(text).trim();
+
   // Pre-register in Outbound Registry to eliminate race condition with immediate webhook echo
   registerBotOutbound({
     recipientPhone: cleanNumber,
-    text: text.trim(),
+    text: formattedText,
   });
 
   try {
@@ -155,7 +158,7 @@ export async function sendEvolutionTextMessage(
       },
       body: JSON.stringify({
         number: cleanNumber,
-        text: text.trim(),
+        text: formattedText,
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -168,7 +171,7 @@ export async function sendEvolutionTextMessage(
           registerBotOutbound({
             messageId: returnedId,
             recipientPhone: cleanNumber,
-            text: text.trim(),
+            text: formattedText,
           });
         }
       } catch (_) {}
@@ -251,10 +254,12 @@ export async function sendEvolutionMediaMessage(
     }
   }
 
-  if (caption) {
+  const formattedCaption = caption ? formatToWhatsAppMarkdown(caption).trim() : undefined;
+
+  if (formattedCaption) {
     registerBotOutbound({
       recipientPhone: cleanNumber,
-      text: caption.trim(),
+      text: formattedCaption,
     });
   }
 
@@ -269,7 +274,7 @@ export async function sendEvolutionMediaMessage(
         number: cleanNumber,
         mediatype: 'image',
         media: mediaUrlOrBase64,
-        caption: caption ? caption.trim() : undefined,
+        caption: formattedCaption,
         fileName: 'qris-konsultasi.webp',
       }),
       signal: AbortSignal.timeout(12000),

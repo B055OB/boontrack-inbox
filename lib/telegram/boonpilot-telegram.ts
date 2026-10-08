@@ -21,6 +21,10 @@ import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { resolveChannelBinding, hasCapability, buildGranularReferralUrl } from '@/lib/channels';
+import {
+  formatToTelegramHtml,
+  formatToTelegramMarkdown,
+} from '@/lib/formatting/universal-chat-formatter';
 
 export function getTelegramBotToken(): string {
   return (
@@ -48,8 +52,8 @@ export interface SendTelegramMessageOptions {
 
 /**
  * Sends a message to a Telegram chat via Telegram Bot API.
- * Includes automatic chunking for messages exceeding Telegram's 4096 character limit
- * and fallback to plain text if Markdown parsing fails.
+ * Includes automatic chunking for messages exceeding Telegram's 4096 character limit,
+ * universal markdown conversion, explicit parse_mode, and graceful fallback to plain text.
  */
 export async function sendTelegramMessage(
   chatId: number | string,
@@ -64,13 +68,19 @@ export async function sendTelegramMessage(
     return { ok: false, error: 'Empty text' };
   }
 
+  // Universal Outbound Formatter: Always include parse_mode ('HTML' or 'Markdown')
+  const resolvedParseMode: 'HTML' | 'Markdown' = options.parseMode || 'HTML';
+  const formattedText = resolvedParseMode === 'HTML'
+    ? formatToTelegramHtml(cleanText)
+    : formatToTelegramMarkdown(cleanText);
+
   const MAX_CHUNK = 3800;
   let chunks: string[] = [];
 
-  if (cleanText.length <= MAX_CHUNK) {
-    chunks = [cleanText];
+  if (formattedText.length <= MAX_CHUNK) {
+    chunks = [formattedText];
   } else {
-    const lines = cleanText.split('\n');
+    const lines = formattedText.split('\n');
     let currentChunk = '';
     for (const line of lines) {
       if (currentChunk.length + line.length + 1 > MAX_CHUNK) {
@@ -94,13 +104,10 @@ export async function sendTelegramMessage(
     const payload: Record<string, any> = {
       chat_id: chatId,
       text: chunk,
+      parse_mode: resolvedParseMode,
       disable_web_page_preview:
         options.disableWebPagePreview !== undefined ? options.disableWebPagePreview : true,
     };
-
-    if (options.parseMode) {
-      payload.parse_mode = options.parseMode;
-    }
 
     if (isLast && options.buttons && options.buttons.length > 0) {
       payload.reply_markup = {
@@ -121,9 +128,10 @@ export async function sendTelegramMessage(
 
       let data = await res.json();
 
-      // If Markdown parse failed (400 Bad Request), retry without parse_mode
-      if (!data.ok && options.parseMode) {
+      // If HTML / Markdown parse failed (400 Bad Request), retry without parse_mode and clean HTML tags
+      if (!data.ok && payload.parse_mode) {
         delete payload.parse_mode;
+        payload.text = chunk.replace(/<[^>]+>/g, '');
         res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -449,19 +457,44 @@ export async function handleTelegramUpdate(
   // ── END COMMAND HANDLERS ──────────────────────────────────────────────────
 
   // 1. EVALUASI AWAL OBROLAN GRUP (Fast-path Silent Ignore):
-  // Jika pesan obrolan biasa tanpa mention '@', tanpa kata pemicu, dan BUKAN reply ke bot,
-  // segera silent ignore tanpa membebani network / kuota database egress.
+  // Di grup atau supergroup, bot HANYA membalas jika pesan diawali command (misal /id, /help)
+  // atau bot di-mention/di-reply secara eksplisit. Jangan kirim template sapaan default pada pesan obrolan umum.
+  const botUsername = getTelegramBotUsername().toLowerCase();
   const isReplyToBot = Boolean(
     message.reply_to_message &&
     (message.reply_to_message.from?.is_bot ||
+      message.reply_to_message.from?.username?.toLowerCase() === botUsername ||
       message.reply_to_message.from?.username?.toLowerCase() === 'boonshop_bot' ||
       message.reply_to_message.from?.username?.toLowerCase() === 'boontrack_bot')
   );
 
+  const isDirectBotMention =
+    new RegExp(`@(?:${botUsername}|boonshop_bot|boontrack_bot)\\b`, 'i').test(rawText) ||
+    isReplyToBot;
+
+  const isBoonTrigger =
+    isDirectBotMention ||
+    /(?:^|\s)@boon\b/i.test(rawText) ||
+    /^\s*boon\b/i.test(rawText) ||
+    isBoonPilotWakeWordTriggered(rawText, true, 'TELEGRAM').triggered;
+
+  const SYSTEM_MENTIONS = new Set([
+    'boon',
+    'boontrack',
+    'boontrack_bot',
+    'boonshop_bot',
+    'admin',
+    'channel',
+    'everyone',
+    'here',
+  ]);
+  const mentionMatches = [...rawText.matchAll(/(?:^|\s)@([a-zA-Z0-9_\-]+)/g)];
+  const candidateSlugs = mentionMatches
+    .map((m) => m[1].toLowerCase())
+    .filter((s) => !SYSTEM_MENTIONS.has(s));
+
   if (isGroup) {
-    const hasMention = /@([a-zA-Z0-9_\-]+)/.test(rawText);
-    const hasWakeWord = isBoonPilotWakeWordTriggered(rawText, true, 'TELEGRAM').triggered;
-    if (!hasMention && !hasWakeWord && !isReplyToBot) {
+    if (!isBoonTrigger && !isReplyToBot && candidateSlugs.length === 0) {
       return {
         handled: false,
         reason: 'silent_ignore_group_chatter',
@@ -594,7 +627,7 @@ export async function handleTelegramUpdate(
 
     await sendTelegramMessage(chatId, aiReply, {
       replyToMessageId: message.message_id,
-      parseMode: 'Markdown',
+      parseMode: 'HTML',
       buttons: promoButtons,
       disableWebPagePreview: true,
     });
@@ -827,10 +860,19 @@ export async function handleTelegramUpdate(
         }
       }
     }
+
+    // Jika pesan menyebut @user lain di grup dan bukan mention bot atau reply ke bot: silent ignore
+    if (!isBoonTrigger && !isReplyToBot) {
+      return {
+        handled: false,
+        reason: 'silent_ignore_group_chatter',
+        chatId,
+      };
+    }
   }
 
   // 1. EVALUASI WAKE WORD / MENTION RULES:
-  // - Grup: HANYA merespons jika pesan diawali/mengandung "boon", "@boon", atau "@boontrack_bot"
+  // - Grup: HANYA merespons jika bot di-mention/di-reply secara eksplisit atau ada wake word pemicu
   // - DM Pribadi: Merespons semua pesan masuk secara normal
   const wakeWordCheck = isBoonPilotWakeWordTriggered(rawText, isGroup, 'TELEGRAM');
 
@@ -863,8 +905,10 @@ export async function handleTelegramUpdate(
     String(fromId);
 
   // 3. Teruskan ke ConversationEngine resmi BoonTrack (pipeline yang sama persis dengan WhatsApp)
+  const isGeneralGreeting = /^(?:halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|tes|test)[,.\s!]*$/i.test(cleanMessage);
+
   const engineResult = await ConversationEngine.process({
-    tenant_id: matchedTenant?.id || 'boon', // Tenant terkait atau official BoonPilot platform
+    tenant_id: isGroup ? 'boon' : (matchedTenant?.id || 'boon'), // Di grup, gunakan BoonPilot platform engine agar tidak kirim greeting toko ritel
     channel: 'TELEGRAM',
     session_id: String(chatId),
     user_identifier: senderIdentifier,
@@ -872,7 +916,14 @@ export async function handleTelegramUpdate(
     channel_type: 'TELEGRAM',
   });
 
-  const replyText = engineResult.reply || 'Halo! Saya BoonPilot, ada yang bisa saya bantu?';
+  let replyText = engineResult.reply || 'Halo! Saya BoonPilot, ada yang bisa saya bantu?';
+
+  // Di grup: Jangan kirim template sapaan default toko pada pesan obrolan umum
+  if (isGroup) {
+    if (isGeneralGreeting || replyText.includes('Selamat datang di') || engineResult.active_engine === 'SALES_REP_V1') {
+      replyText = `Halo kak, bantu jawab ya! Ada yang bisa BoonPilot bantu seputar toko, order, atau integrasi platform? 😊`;
+    }
+  }
 
   // 4. Susun quick actions / tombol inline jika ada
   let buttons: TelegramButton[][] | undefined;
@@ -888,7 +939,7 @@ export async function handleTelegramUpdate(
   // 5. Kirim balasan ke chat Telegram
   await sendTelegramMessage(chatId, replyText, {
     replyToMessageId: isGroup ? message.message_id : undefined,
-    parseMode: 'Markdown',
+    parseMode: 'HTML',
     buttons,
     disableWebPagePreview: true,
   });

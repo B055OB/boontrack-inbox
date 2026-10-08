@@ -7,6 +7,8 @@
  * Parameter wajib: phoneNumberId, accessToken (resolve dari credential_ref), to, payload.
  */
 
+import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
+
 export interface WabaSendOptions {
   phoneNumberId: string;
   accessToken: string;
@@ -90,11 +92,22 @@ export class MetaWabaProviderAdapter {
       cleanPhoneId
     )}/messages`;
 
+    let formattedPayload = payload;
+    if (payload?.type === 'text' && payload.text?.body && typeof payload.text.body === 'string') {
+      formattedPayload = {
+        ...payload,
+        text: {
+          ...payload.text,
+          body: formatToWhatsAppMarkdown(payload.text.body),
+        },
+      };
+    }
+
     const body = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: cleanTo,
-      ...payload,
+      ...formattedPayload,
     };
 
     try {

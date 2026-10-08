@@ -1,4 +1,5 @@
 import { resolveChannelBinding, hasCapability } from '@/lib/channels';
+import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
 
 
 export interface OrderNotificationParams {
@@ -68,6 +69,8 @@ export async function sendWhatsAppSessionMessage(
     return { success: false, error: 'Nomor WhatsApp penerima tidak valid' };
   }
 
+  const formattedBody = formatToWhatsAppMarkdown(textMessage);
+
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
@@ -81,7 +84,7 @@ export async function sendWhatsAppSessionMessage(
 
   if (!phoneNumberId || !accessToken) {
     console.warn(
-      `[WhatsApp Cloud API] Kredensial WABA belum lengkap (PHONE_NUMBER_ID / API_TOKEN). Simulasi pesan ke ${normalizedTo}: ${textMessage}`
+      `[WhatsApp Cloud API] Kredensial WABA belum lengkap (PHONE_NUMBER_ID / API_TOKEN). Simulasi pesan ke ${normalizedTo}: ${formattedBody}`
     );
     return {
       success: true,
@@ -98,7 +101,7 @@ export async function sendWhatsAppSessionMessage(
       type: 'text',
       text: {
         preview_url: false,
-        body: textMessage,
+        body: formattedBody,
       },
     };
 
