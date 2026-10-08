@@ -99,7 +99,7 @@ interface CreatorData {
   is_verified?: boolean;
 }
 
-export default function CreatorPublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
+export default function CreatorPublicProfilePage({ params }: { params: Promise<{ handle?: string; slug?: string }> }) {
   const [resolvedSlug, setResolvedSlug] = useState('');
   const [profile, setProfile] = useState<CreatorData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,8 +109,9 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
 
   useEffect(() => {
     let isMounted = true;
-    params.then(({ slug }) => {
-      const clean = decodeURIComponent(slug).replace(/^@+/, '').trim().toLowerCase();
+    params.then((p) => {
+      const raw = p.handle || p.slug || '';
+      const clean = decodeURIComponent(raw).replace(/^@+/, '').trim().toLowerCase();
       setResolvedSlug(clean);
 
       fetch(`/api/creator/profile?handle=${encodeURIComponent(clean)}`, { cache: 'no-store' })
@@ -404,12 +405,15 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
       {/* ── FOOTER BRANDING ───────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-400">
         <Link
-          href="/creator"
-          className="inline-flex items-center gap-1.5 hover:text-slate-700 font-bold transition"
+          href="/register"
+          className="inline-flex items-center gap-1.5 hover:text-slate-700 font-medium transition"
         >
           <span>Dibuat dengan</span>
-          <span className="font-extrabold text-slate-900">boontrack</span>
-          <span className="font-black bg-gradient-to-r from-orange-500 to-rose-500 bg-clip-text text-transparent">CREATOR</span>
+          <span className="font-extrabold text-slate-900">BoonTrack Creator</span>
+          <span>•</span>
+          <span className="font-bold bg-gradient-to-r from-orange-500 to-rose-500 bg-clip-text text-transparent hover:underline">
+            Bikin Punya Kamu Gratis
+          </span>
         </Link>
       </footer>
 
