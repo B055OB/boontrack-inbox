@@ -458,6 +458,7 @@ export async function routeTenantInboundMessage(params: {
         `📅 *Jadwal Praktik Konsultasi:*\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
         `• Sesi: Chat WhatsApp Intensif & Video Call Google Meet 45 Menit\n\n` +
+        `📝 *Form Skrining Awal Mandiri:* https://screening.tumbuhkembanganak.com/\n` +
         `👉 *Daftar Sesi Konsultasi Nutrisi:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
         `_Ketik *5* atau *admin* untuk terhubung langsung dengan pendaftaran klinik._`;
 

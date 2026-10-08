@@ -123,7 +123,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
   });
 
   describe('3. Consultation Lead Funnel Processing', () => {
-    it('provides warm supportive greeting with medical boundary on initial greeting', async () => {
+    it('provides warm supportive greeting without invoice or tariff on initial greeting', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
@@ -133,14 +133,15 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('GREETING');
-      expect(result.reply).toContain('Konsultasi Chat GTM Anak bersama dr. Harys Maulana');
-      expect(result.reply).toContain('asisten klinik');
-      expect(result.reply).toContain('Nama Orang Tua');
-      expect(result.reply).toContain('Nama & Usia Anak');
-      expect(result.reply).toContain('Keluhan / Kondisi Utama');
+      expect(result.reply).toContain('dr. Harys Maulana');
+      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('secara menyeluruh');
+      expect(result.reply).not.toContain('INVOICE');
+      expect(result.reply).not.toContain('Rp 150.000');
+      expect(result.reply).not.toContain('1. *Nama Orang Tua*:');
     });
 
-    it('handles partial submission with only parent name and asks for child & complaint info', async () => {
+    it('handles partial submission with only parent name and warmly invites sharing struggles or screening link', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
@@ -150,11 +151,12 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('CONSULTATION_OFFER');
-      expect(result.reply).toContain('Nama & Usia Anak');
-      expect(result.reply).toContain('Keluhan / Kondisi Utama');
+      expect(result.reply).toContain('Bunda Maya');
+      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).not.toContain('INVOICE');
     });
 
-    it('prevents looping and immediately dispatches Hybrid Checkout when non-GTM feeding complaint is provided', async () => {
+    it('validates non-GTM feeding complaint empathetically and directs parent to official screening form CTA', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
@@ -163,14 +165,16 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       });
 
       expect(result.handled).toBe(true);
-      expect(result.type).toBe('HYBRID_CHECKOUT');
-      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI GTM');
+      expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('Arka');
-      expect(result.reply).toContain('QRIS Otomatis');
-      expect(result.checkoutUrl).toContain('konsul.littlebitefeeding.com/checkout');
+      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).toContain('secara menyeluruh');
+      expect(result.reply).not.toContain('INVOICE');
+      expect(result.reply).not.toContain('Rp 150.000');
+      expect(result.checkoutUrl).toBe('https://screening.tumbuhkembanganak.com/');
     });
 
-    it('dispatches Hybrid Checkout when inquiry mentions GTM or difficulty eating without looping', async () => {
+    it('validates GTM inquiry empathetically and provides official screening link without invoice', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
@@ -179,17 +183,14 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       });
 
       expect(result.handled).toBe(true);
-      expect(result.type).toBe('HYBRID_CHECKOUT');
-      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI GTM');
-      expect(result.reply).toContain('QRIS Otomatis');
+      expect(result.type).toBe('SCREENING_OFFER');
+      expect(result.reply).toContain('https://screening.tumbuhkembanganak.com/');
+      expect(result.reply).not.toContain('INVOICE');
+      expect(result.reply).not.toContain('Rp 150.000');
     });
 
-    it('dispatches Hybrid Checkout when complete intake data is submitted', async () => {
-      const message = `
-        1. Bunda Fitri
-        2. Rayyan (15 bulan)
-        3. Menolak makan nasi padat dan sering muntah jika disuapi
-      `;
+    it('dispatches Hybrid Checkout QRIS when user explicitly asks for payment / invoice', async () => {
+      const message = 'Saya mau bayar biaya konsultasi dokter, boleh minta invoice dan QRIS?';
       const result = await processConsultationLeadFunnel({
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
@@ -201,12 +202,9 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.type).toBe('HYBRID_CHECKOUT');
       expect(result.mediaUrl).toBeDefined();
       expect(result.mediaUrl).toContain('quickchart.io/qr');
-      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI GTM');
-      expect(result.reply).toContain('Bunda Fitri');
-      expect(result.reply).toContain('Rayyan');
+      expect(result.reply).toContain('INVOICE REGISTRASI KONSULTASI');
       expect(result.reply).toContain('QRIS Otomatis');
       expect(result.checkoutUrl).toContain('konsul.littlebitefeeding.com/checkout');
-      expect(result.checkoutUrl).toContain('Bunda%20Fitri');
     });
   });
 

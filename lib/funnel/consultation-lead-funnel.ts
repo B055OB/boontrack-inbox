@@ -35,7 +35,7 @@ export interface ClinicIntakeData {
 export interface ConsultationFunnelResult {
   handled: boolean;
   reply: string;
-  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER' | 'HYBRID_CHECKOUT';
+  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER' | 'HYBRID_CHECKOUT' | 'SCREENING_OFFER';
   nextState?: string;
   leadData?: Record<string, any>;
   checkoutUrl?: string;
@@ -100,6 +100,8 @@ export function resolveLockedGtmProduct(products: any[], meta: any) {
 
   return prods.find((p: any) => (p.name || '').toLowerCase().includes('konsul')) || prods[0];
 }
+
+export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.tumbuhkembanganak.com/';
 
 /**
  * Broad regex covering the full spectrum of pediatric feeding and growth issues:
@@ -405,28 +407,25 @@ export async function processConsultationLeadFunnel(
     const isShortGreeting = /^(halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|tes|test)\b/i.test(normalizedMsg);
     const hasStructuredData = rawMsg.includes(':') || rawMsg.includes('=') || /(?:^|\n)\s*[1-3][.)\-:]/.test(rawMsg);
     const hasComplaintSignal = CLINIC_FEEDING_COMPLAINT_REGEX.test(rawMsg);
+    const isPaymentRequest = /(?:bayar|biaya|tarif|harga|invoice|qris|transfer|tagihan|rekening|checkout|daftar\s*sekarang|link\s*pembayaran)/i.test(normalizedMsg);
 
-    // Initial greeting definition
+    // Initial greeting definition (Natural, Conversational & Empathetic, NO invoice/tarif/format formulir 1 & 2)
     const initialGreeting =
-      `Halo Ayah/Bunda! Selamat datang di layanan *Konsultasi Chat GTM Anak bersama dr. Harys Maulana* (Klinik Tumbuh Kembang Anak). 👋\n\n` +
-      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat si kecil sedang mengalami fase GTM (Gerakan Tutup Mulut), durasi makan terlalu lama / mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret atau stuck, maupun sensitivitas tekstur MPASI. InsyaAllah tim kami siap mendampingi secara suportif.\n\n` +
-      `👩‍⚕️ *Informasi & Alur Layanan:*\n` +
-      `Peran saya sebagai asisten klinik adalah mendata kondisi si kecil untuk rekam medis awal dan menyiapkan reservasi jadwal. Seluruh evaluasi klinis nutrisi mendalam, analisis akar masalah makan, serta rekomendasi penanganan akan diberikan langsung oleh dr. Harys pada sesi konsultasi chat resmi.\n\n` +
-      `📌 *Layanan:* ${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}\n` +
-      `💰 *Investasi:* ${priceStr}\n\n` +
-      `Boleh kami bantu catat data awal si kecil terlebih dahulu ya Bun/Yah:\n` +
-      `1. *Nama Orang Tua*:\n` +
-      `2. *Nama & Usia Anak*:\n` +
-      `3. *Keluhan / Kondisi Utama*: (misal: durasi makan lama/mengemut, jadwal feeding rules belum teratur, BB seret/stuck, sensitivitas tekstur MPASI, atau menolak makan/GTM)\n\n` +
-      `Ayah/Bunda cukup membalas pesan ini atau dapat langsung menceritakan kendala makan si kecil dengan santai ya. Terima kasih! 🙏`;
+      `Halo Ayah/Bunda! Selamat datang di layanan konsultasi tumbuh kembang & nutrisi anak bersama dr. Harys Maulana. 👋\n\n` +
+      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat mendampingi si kecil yang sedang mengalami tantangan makan—baik durasi makan yang lama, anak suka mengemut makanan, jadwal makan yang belum teratur, berat badan seret atau stuck, maupun fase GTM. Ayah/Bunda tidak sendirian, tim kami siap mendampingi.\n\n` +
+      `Masalah makan pada anak perlu kita lihat secara menyeluruh, mulai dari kebiasaan makan harian (feeding rules), perkembangan oromotor/tekstur, hingga evaluasi kurva pertumbuhannya.\n\n` +
+      `Ayah/Bunda boleh ceritakan langsung kondisi atau keluhan yang dialami si kecil saat ini, atau bisa langsung mengisi form skrining singkat resmi kami di:\n` +
+      `👉 *Link Skrining Resmi:*\n` +
+      `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
+      `Melalui form tersebut, dr. Harys akan mendapatkan gambaran menyeluruh tentang pola makan si kecil sebelum tim klinik menentukan jadwal sesi konsultasi yang paling tepat. Kami siap mendengarkan ya Bun/Yah. 😊`;
 
-    if (isShortGreeting && !hasStructuredData && !hasComplaintSignal && rawMsg.length < 35) {
+    if (isShortGreeting && !hasStructuredData && !hasComplaintSignal && !isPaymentRequest && rawMsg.length < 35) {
       return {
         handled: true,
         reply: initialGreeting,
         type: 'GREETING',
         nextState: 'CLINIC_INTAKE_ASKED',
-        checkoutUrl: `https://${domain}/checkout`,
+        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
       };
     }
 
@@ -443,9 +442,12 @@ export async function processConsultationLeadFunnel(
             session_id: `wa_${targetTenantId}_${senderPhone}`,
             channel: 'WHATSAPP',
             user_identifier: senderPhone,
-            current_state: clinicIntake.isComplete ? 'CLINIC_INTAKE_COMPLETED' : 'CLINIC_INTAKE_IN_PROGRESS',
+            current_state: isPaymentRequest
+              ? (clinicIntake.isComplete ? 'WAITING_PAYMENT' : 'CLINIC_INTAKE_IN_PROGRESS')
+              : 'SCREENING_OFFERED',
             metadata: {
               clinic_intake: clinicIntake.data,
+              screening_url: CLINIC_OFFICIAL_SCREENING_URL,
               updated_at: nowIso,
             },
             updated_at: nowIso,
@@ -457,8 +459,8 @@ export async function processConsultationLeadFunnel(
       }
     }
 
-    // CASE 1: All 3 fields are collected -> HYBRID CHECKOUT DISPATCH
-    if (clinicIntake.isComplete) {
+    // CASE 1: Explicit Payment / QRIS / Checkout Request
+    if (isPaymentRequest) {
       let orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
       let qrCodeUrl = '';
 
@@ -507,18 +509,18 @@ export async function processConsultationLeadFunnel(
       const childDisplay = clinicIntake.data.childInfo || `${clinicIntake.data.childName || 'Si Kecil'} (${clinicIntake.data.childAge || 'Balita'})`.trim();
 
       const companionReply =
-        `📋 *INVOICE REGISTRASI KONSULTASI GTM*\n` +
+        `📋 *INVOICE REGISTRASI KONSULTASI (dr. Harys Maulana)*\n` +
         `No. Pesanan: #${orderId}\n` +
         `Layanan: *${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}*\n` +
         `Biaya Konsultasi: *${priceStr}*\n\n` +
         `*Data Pasien Terdaftar:*\n` +
         `• Orang Tua: ${clinicIntake.data.parentName || 'Ayah/Bunda'}\n` +
         `• Pasien Anak: ${childDisplay}\n` +
-        `• Keluhan Utama: ${clinicIntake.data.complaint}\n\n` +
+        `• Keluhan Utama: ${clinicIntake.data.complaint || 'Konsultasi Nutrisi & Masalah Makan'}\n\n` +
         `✨ *Instruksi Pembayaran (QRIS Otomatis):*\n` +
         `1. Scan kode QRIS yang kami kirimkan di atas menggunakan aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, Dana, ShopeePay).\n` +
         `2. Pembayaran terverifikasi otomatis dalam 1–2 menit 24 jam.\n` +
-        `3. Setelah pembayaran selesai, dr. Harys Maulana & asisten klinik akan langsung membuka sesi konsultasi chat ini untuk mengevaluasi keluhan makan si kecil (durasi makan/mengemut, jadwal feeding rules, evaluasi BB seret/stuck, tekstur MPASI, maupun GTM).\n\n` +
+        `3. Setelah pembayaran selesai, dr. Harys Maulana & asisten klinik akan langsung membuka sesi konsultasi chat resmi untuk mengevaluasi keluhan makan si kecil.\n\n` +
         `🔗 *Tautan Checkout Web Resmi:*\n` +
         `${fullCheckoutUrl}\n\n` +
         `Mohon konfirmasi jika ada data yang perlu diperbarui ya Bun/Yah. Terima kasih! 🙏`;
@@ -561,18 +563,54 @@ export async function processConsultationLeadFunnel(
       };
     }
 
-    // CASE 2: Partial data submitted
-    if (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint) {
-      const missing: string[] = [];
-      if (!clinicIntake.data.parentName) missing.push('Nama Orang Tua');
-      if (!clinicIntake.data.childInfo && !clinicIntake.data.childName) missing.push('Nama & Usia Anak');
-      if (!clinicIntake.data.complaint) missing.push('Keluhan / Kondisi Utama si kecil (misal: anak mengemut/makan lama, BB seret/stuck, jadwal feeding rules, tekstur MPASI, atau GTM)');
+    // CASE 2: Conversational Intake & Empathetic Assessment (Complaint Provided or Structured Data)
+    // Listens, validates complaint (makan lama, mengemut, jadwal berantakan, BB seret),
+    // explains holistic assessment, and directs to official screening link CTA.
+    if (clinicIntake.isComplete || clinicIntake.data.complaint || clinicIntake.data.childInfo || clinicIntake.data.childName) {
+      let validationNote = '';
+      const complaintLower = (clinicIntake.data.complaint || normalizedMsg).toLowerCase();
+      if (complaintLower.includes('ngemut') || complaintLower.includes('emut') || complaintLower.includes('makan lama') || complaintLower.includes('durasi')) {
+        validationNote = 'Kebiasaan makan lama dan mengemut makanan sering kali berkaitan dengan stimulasi oromotor, teknik menelan, maupun pembiasaan fokus saat jam makan.';
+      } else if (complaintLower.includes('jadwal') || complaintLower.includes('feeding rules') || complaintLower.includes('jam makan')) {
+        validationNote = 'Jadwal makan yang belum teratur dapat memengaruhi sinyal lapar alami si kecil, sehingga konsistensi jadwal (feeding rules) sangat penting untuk dibentuk secara bertahap.';
+      } else if (complaintLower.includes('bb') || complaintLower.includes('berat badan') || complaintLower.includes('stuck') || complaintLower.includes('seret') || complaintLower.includes('susah naik')) {
+        validationNote = 'Kenaikan berat badan yang seret atau stuck memerlukan evaluasi cermat terhadap kurva pertumbuhan WHO, asupan kalori efektif, dan penyerapan nutrisi si kecil.';
+      } else if (complaintLower.includes('tekstur') || complaintLower.includes('lepeh') || complaintLower.includes('muntah') || complaintLower.includes('sensitivitas')) {
+        validationNote = 'Sensitivitas tekstur atau refleks melepeh makanan bertekstur erat kaitannya dengan adaptasi sensori mulut dan tahapan kenaikan tekstur MPASI.';
+      } else {
+        validationNote = 'Tantangan makan pada anak memerlukan penelusuran akar masalah secara bertahap dan suportif tanpa paksaan.';
+      }
 
+      const parentDisplayName = clinicIntake.data.parentName || 'Ayah/Bunda';
+      const childDisplayName = clinicIntake.data.childName || (clinicIntake.data.childInfo ? clinicIntake.data.childInfo.split(/[(,]/)[0].trim() : 'si kecil');
+
+      const screeningOfferReply =
+        `Halo ${parentDisplayName}! Terima kasih banyak sudah menceritakan kondisi ${childDisplayName} kepada kami. 🙏\n\n` +
+        `Kami sangat memahami rasa lelah dan kekhawatiran Ayah/Bunda menghadapi kendala ini: *${clinicIntake.data.complaint || 'masalah makan & nutrisi si kecil'}*. ${validationNote}\n\n` +
+        `Masalah makan pada anak perlu kita lihat secara menyeluruh—mulai dari penerapan feeding rules, kenyamanan sensori & oromotor saat makan, hingga evaluasi kecukupan nutrisi dan kurva pertumbuhannya.\n\n` +
+        `Agar dr. Harys Maulana mendapatkan gambaran lengkap riwayat pola makan dan tumbuh kembang ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
+        `👉 *Link Skrining Resmi:*\n` +
+        `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
+        `Setelah form skrining terisi, data akan langsung dipelajari oleh dr. Harys, dan tim asisten klinik akan segera mengonfirmasi jadwal sesi konsultasi yang paling tepat untuk ${childDisplayName}. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
+
+      return {
+        handled: true,
+        reply: screeningOfferReply,
+        type: 'SCREENING_OFFER',
+        nextState: 'SCREENING_OFFERED',
+        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
+        leadData: clinicIntake.data,
+      };
+    }
+
+    // CASE 3: Only Parent Name provided
+    if (clinicIntake.data.parentName) {
       const reply =
-        `Terima kasih banyak Ayah/Bunda! Sebagian data si kecil sudah kami catat dengan baik. 🙏\n\n` +
-        `Agar berkas rekam medis awal si kecil lengkap sebelum kami buatkan invoice & jadwal sesi dr. Harys, mohon bantu lengkapi:\n` +
-        missing.map((m, idx) => `${idx + 1}. *${m}*`).join('\n') +
-        `\n\nAyah/Bunda dapat menceritakan kondisi si kecil dengan santai ya. Kami siap membantu. 😊`;
+        `Halo ${clinicIntake.data.parentName}! Senang bisa berkenalan. 🙏\n\n` +
+        `Boleh ceritakan sedikit tentang kondisi atau kendala makan yang sedang dialami si kecil saat ini (misal: apakah durasi makan lama/mengemut, BB seret/stuck, jadwal makan belum teratur, atau fase GTM)?\n\n` +
+        `Ayah/Bunda juga bisa langsung melengkapi form skrining singkat resmi kami di:\n` +
+        `👉 *Link Skrining Resmi:* ${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
+        `Kami siap mendengarkan dan mendampingi ya Bun/Yah. 😊`;
 
       return {
         handled: true,
@@ -580,17 +618,17 @@ export async function processConsultationLeadFunnel(
         type: 'CONSULTATION_OFFER',
         nextState: 'CLINIC_INTAKE_IN_PROGRESS',
         leadData: clinicIntake.data,
-        checkoutUrl: `https://${domain}/checkout`,
+        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
       };
     }
 
-    // CASE 3: Initial greeting / inquiry
+    // Default: Initial greeting / inquiry
     return {
       handled: true,
       reply: initialGreeting,
       type: 'GREETING',
       nextState: 'CLINIC_INTAKE_ASKED',
-      checkoutUrl: `https://${domain}/checkout`,
+      checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
     };
   }
 
