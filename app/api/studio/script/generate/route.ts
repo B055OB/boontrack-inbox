@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
-    const aiModel = process.env.AI_MODEL_NAME || 'gemini-2.5-flash';
+    const modelName = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
 
     // Attempt generation with Gemini Studio AI Engine
     let generatedScenes: any[] | null = null;
@@ -131,7 +131,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
   ]
 }`;
 
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${cleanApiKey}`;
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
       const geminiRes = await fetch(geminiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,6 +304,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) me
       hook_angle,
       category,
       tone,
+      model_name: modelName,
       total_duration_sec: 30,
       scenes,
     });

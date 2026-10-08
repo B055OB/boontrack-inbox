@@ -71,7 +71,7 @@ export interface RecordAIConsumptionParams {
   latencyMs?: number;
   /** Session ID for tracing */
   sessionId?: string;
-  /** Override model name (default: gemini-2.5-flash) */
+  /** Override model name (default: gemini-3.8-flash) */
   model?: string;
   /** Manually override IDR cost (skip auto-calc) */
   costIdrOverride?: number;
@@ -140,7 +140,7 @@ export async function recordAIConsumption(params: RecordAIConsumptionParams): Pr
       input_tokens: params.inputTokens,
       output_tokens: params.outputTokens,
       cost_idr: costIdr,
-      model: params.model ?? 'gemini-2.5-flash',
+      model: params.model ?? 'gemini-3.8-flash',
       latency_ms: params.latencyMs ?? null,
       session_id: params.sessionId ?? null,
     });

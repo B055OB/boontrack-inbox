@@ -85,6 +85,7 @@ export async function POST(req: Request) {
         job_type: 'FFMPEG_FCD_BATCH',
         payload: {
           product_name: product_name || 'FCD Campaign',
+          model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
           variation_index: i + 1,
           variation_title: v.title || `Variasi #${i + 1}`,
           hook: v.hook,
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       batch_id: batchId,
+      model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
       status: 'QUEUED',
       jobs_count: requiredCredits,
       consumed_credits: requiredCredits,
