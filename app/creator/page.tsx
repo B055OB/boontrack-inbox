@@ -233,9 +233,9 @@ export default function CreatorCleanLandingPage() {
 
             {/* Smartphone Frame (Aesthetic Pastel Glass Styling) */}
             <div className="w-[300px] sm:w-[325px] rounded-[46px] p-3.5 bg-white border-4 border-slate-200/90 shadow-2xl shadow-slate-300/80">
-              <div className="w-full h-full rounded-[36px] bg-gradient-to-b from-rose-50/70 via-amber-50/40 to-slate-50/80 overflow-hidden border border-rose-200/50 flex flex-col relative text-slate-800">
-                {/* Subtle Ambient Mesh Glow */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-56 h-36 bg-gradient-to-b from-rose-300/25 via-orange-200/20 to-transparent rounded-full blur-2xl pointer-events-none" />
+              <div className="w-full h-full rounded-[36px] bg-gradient-to-b from-rose-50/70 via-orange-50/30 to-slate-50/90 overflow-hidden border border-rose-200/50 flex flex-col relative text-slate-800">
+                {/* Subtle Ambient Mesh Glow behind avatar */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-40 bg-gradient-to-b from-rose-300/30 via-orange-200/20 to-transparent rounded-full blur-2xl pointer-events-none" />
 
                 {/* Phone Notch & Status Bar */}
                 <div className="pt-3 pb-2 px-6 flex justify-between items-center text-[10px] text-slate-400 font-mono relative z-10">
@@ -246,10 +246,10 @@ export default function CreatorCleanLandingPage() {
 
                 {/* Profile Header Inside Mockup */}
                 <div className="p-4 pt-2 text-center space-y-2 relative z-10">
-                  <div className="relative w-18 h-18 mx-auto rounded-full p-1 bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500 shadow-md shadow-orange-500/20">
+                  <div className="relative w-18 h-18 mx-auto rounded-full ring-2 ring-orange-400/60 p-0.5 shadow-md bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500">
                     <div className="w-full h-full rounded-full overflow-hidden bg-rose-100 border-2 border-white flex items-center justify-center">
                       <img
-                        src="https://images.unsplash.com/photo-1584999734482-0311abc182e2?w=150&auto=format&fit=crop&q=80"
+                        src="/images/creator/suzieray.jpg"
                         alt="Foto Suzie Ray"
                         className="w-full h-full object-cover"
                         loading="lazy"
@@ -261,23 +261,29 @@ export default function CreatorCleanLandingPage() {
                   </div>
 
                   <div>
-                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center justify-center gap-1">
+                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center justify-center gap-1.5">
                       <span>Suzie Ray</span>
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-black shadow-xs">
+                        ✓
+                      </span>
                     </h3>
                     <p className="text-[11px] text-rose-600/90 font-mono font-medium">creator.boontrack.com/@suzieray_</p>
-                    <p className="text-[11px] text-slate-600 mt-1 px-2 leading-relaxed">
-                      Spill Barang Unik & Murah ✨ Fashion & Home Living 🏡 Endorse & Collab via WA 📩
+                    <p className="text-[11px] text-slate-600 mt-1 px-1.5 leading-relaxed font-normal">
+                      Mam Ray | Spill Barang Unik & Murah ✨ Fashion & Home Living 🏡 Endorse by @bintangagency
                     </p>
                   </div>
 
                   {/* Social Links Row */}
-                  <div className="flex justify-center items-center gap-2 pt-1">
-                    <span className="h-7 px-2.5 rounded-full bg-white/90 backdrop-blur-sm border border-rose-200/70 shadow-xs flex items-center gap-1.5 text-slate-700 text-[11px] font-semibold hover:scale-105 transition-transform">
+                  <div className="flex justify-center items-center gap-1.5 pt-1">
+                    <span className="h-7 px-2.5 rounded-full bg-white/90 backdrop-blur-sm border border-rose-200/70 shadow-xs flex items-center gap-1 text-slate-700 text-[11px] font-semibold hover:scale-105 transition-transform">
                       <InstagramIcon className="w-3.5 h-3.5 text-pink-600" />
                       <span className="text-[10px] text-slate-600">@suzieray_</span>
                     </span>
                     <span className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-800 hover:scale-105 transition-transform">
                       <TikTokIcon className="w-3.5 h-3.5 text-slate-900" />
+                    </span>
+                    <span className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-red-200/80 shadow-xs flex items-center justify-center text-red-600 hover:scale-105 transition-transform">
+                      <YoutubeIcon className="w-3.5 h-3.5 text-red-600" />
                     </span>
                     <span className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-orange-200/80 shadow-xs flex items-center justify-center text-orange-600 hover:scale-105 transition-transform">
                       <ShopeeIcon className="w-3.5 h-3.5 text-orange-600" />
@@ -285,46 +291,62 @@ export default function CreatorCleanLandingPage() {
                   </div>
                 </div>
 
-                {/* 3 Contoh Kartu Bio Link (Aesthetic Glassmorphism) */}
+                {/* 3 Contoh Kartu Bio Link (Glassmorphism & Relatable Niche Suzie Ray) */}
                 <div className="p-3.5 pt-0 space-y-2.5 flex-1 pb-6 relative z-10">
                   {/* Card 1: Shopee Direct */}
-                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-rose-100/70 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                  <div className="p-3 rounded-2xl bg-white/90 backdrop-blur-md border border-rose-200/60 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-2.5 group">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
                         <ShoppingBag className="w-4 h-4 text-orange-500" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-orange-600 block">
-                          Buka Langsung di Shopee App (Diskon 50%)
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wide text-orange-600">
+                            Shopee Direct
+                          </span>
+                          <span className="text-[8px] font-bold px-1.5 py-0.2 bg-orange-100 text-orange-700 rounded-full">
+                            Bebas WebView
+                          </span>
+                        </div>
                         <p className="text-xs font-bold text-slate-900 leading-snug">
-                          Alat Bersih Elektrik & Barang Unik Viral
+                          Spill Alat Rumah & Barang Unik Viral
+                        </p>
+                        <p className="text-[10px] text-slate-500 leading-tight">
+                          Buka Langsung di Shopee App (Bebas WebView)
                         </p>
                       </div>
                     </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-500 transition-colors" />
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-500 transition-colors flex-shrink-0" />
                   </div>
 
                   {/* Card 2: Koleksi Fashion & OOTD */}
-                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-100/70 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                  <div className="p-3 rounded-2xl bg-white/90 backdrop-blur-md border border-amber-200/60 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-2.5 group">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
                         <Sparkles className="w-4 h-4 text-amber-500" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-amber-600 block">
-                          Shopee Video & Toko Rekomendasi
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wide text-amber-600">
+                            Shopee Video
+                          </span>
+                          <span className="text-[8px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-700 rounded-full">
+                            Diskon Spesial
+                          </span>
+                        </div>
                         <p className="text-xs font-bold text-slate-900 leading-snug">
-                          Rekomendasi Gamis & Hijab Plisket Premium
+                          Rekomendasi Hijab & Outfit Daily Suzie
+                        </p>
+                        <p className="text-[10px] text-slate-500 leading-tight">
+                          Koleksi Pilihan & Diskon Spesial
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors flex-shrink-0" />
                   </div>
 
-                  {/* Card 3: Rate Card Endorsement WhatsApp */}
-                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-emerald-100 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                  {/* Card 3: Endorsement & Collaboration WhatsApp */}
+                  <div className="p-3 rounded-2xl bg-white/90 backdrop-blur-md border border-emerald-200/60 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-2.5 group">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
                         <MessageCircle className="w-4 h-4 text-emerald-600" />
@@ -332,7 +354,7 @@ export default function CreatorCleanLandingPage() {
                       <div className="text-left">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-600">
-                            Langsung Hubungi Manajemen via WhatsApp
+                            Endorsement & Collab
                           </span>
                           <span className="text-[8px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-700 rounded-full">
                             Fast Response
@@ -341,9 +363,12 @@ export default function CreatorCleanLandingPage() {
                         <p className="text-xs font-bold text-slate-900 leading-snug">
                           Tanya Rate Card & Jadwal Endorse
                         </p>
+                        <p className="text-[10px] text-slate-500 leading-tight">
+                          Hubungi Manajemen via WhatsApp
+                        </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors flex-shrink-0" />
                   </div>
                 </div>
               </div>
