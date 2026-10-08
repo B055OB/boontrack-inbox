@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -9,84 +9,157 @@ import {
   Copy,
   Check,
   Film,
-  Layers,
-  Store,
   Clock,
   Video,
   Save,
   Download,
-  History,
   CheckCircle2,
   ChevronRight,
-  Flame,
   Camera,
   Type,
   Mic,
   RefreshCw,
-  FolderOpen
+  UploadCloud,
+  X,
+  Play,
+  Cpu,
+  Layers,
+  ShieldCheck,
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
 
 interface Scene {
   scene_number: number;
+  stage_name: string;
   duration_sec: number;
   time_range: string;
-  stage_name: string;
+  voiceover: string;
   visual_direction: string;
   on_screen_text: string;
-  voiceover: string;
+  asset_url?: string;
+  asset_name?: string;
 }
 
 interface ScriptResult {
   product_name: string;
   hook_angle: string;
-  category: string;
-  tone: string;
+  category?: string;
+  tone?: string;
+  total_duration_sec: number;
   scenes: Scene[];
-}
-
-interface SavedScriptItem {
-  id: string;
-  product_name: string;
-  brief: {
-    category?: string;
-    hook_angle?: string;
-    tone?: string;
-    pain_point?: string;
-    cta_goal?: string;
-  };
-  scenes: Scene[];
-  status: string;
-  created_at: string;
 }
 
 export default function UGCStudioPage() {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  // Session & Workspace Context
+  const [tenantSlug, setTenantSlug] = useState<string>('studio');
+  const [renderCredits, setRenderCredits] = useState<number>(50);
+  const [hasValidSession, setHasValidSession] = useState<boolean>(true);
+
+  // Panel 1: Brief Form State
+  const [productName, setProductName] = useState('Serum Brightening Niacinamide');
+  const [painPoint, setPainPoint] = useState('Kulit kusam, flek hitam bekas jerawat, dan pori-pori besar yang susah hilang meski sudah coba berbagai skincare mahal.');
+  const [hookAngle, setHookAngle] = useState('Unboxing Viral (POV ASMR Unboxing)');
+  const [ctaGoal, setCtaGoal] = useState('Bio Link Creator (creator.boontrack.com/@handle)');
+  const [generating, setGenerating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Panel 2: 9-Scene Storyboard State
+  const [scenes, setScenes] = useState<Scene[]>([
+    {
+      scene_number: 1,
+      stage_name: 'Visual Pattern Interrupt',
+      duration_sec: 3,
+      time_range: '0-3s',
+      voiceover: 'Stop scroll dulu! Sumpah kalau kamu masih mikir kulit kusam gak ada solusinya, kamu wajib tahu ini!',
+      visual_direction: 'Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan produk. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.',
+      on_screen_text: 'JANGAN BELI SEBELUM TAHU INI! 😱',
+    },
+    {
+      scene_number: 2,
+      stage_name: 'Hook Problem',
+      duration_sec: 3,
+      time_range: '3-6s',
+      voiceover: 'Pasti capek banget kan tiap hari insecure gara-gara flek hitam dan pori besar yang gak kelar-kelar?',
+      visual_direction: 'Kreator menatap cermin dengan ekspresi lelah. Tangan menunjuk pipi/dahi memperlihatkan tekstur kulit secara natural tanpa filter berlebih.',
+      on_screen_text: 'Pernah ngerasain hal yang sama? ✋',
+    },
+    {
+      scene_number: 3,
+      stage_name: 'Agitation / Relatability',
+      duration_sec: 3,
+      time_range: '6-9s',
+      voiceover: 'Udah coba macam-macam serum viral lain tapi hasilnya zonk dan cuma bikin kantong boncos.',
+      visual_direction: 'B-roll footage cepat: Menyingkirkan botol-botol produk lama yang tidak efektif ke meja, gestur menghela napas geleng kepala.',
+      on_screen_text: 'Udah coba ini itu tapi zonk... 💸',
+    },
+    {
+      scene_number: 4,
+      stage_name: 'Introduction Solution',
+      duration_sec: 3,
+      time_range: '9-12s',
+      voiceover: 'Sampai akhirnya aku nemu penyelamat baru: Serum Brightening Niacinamide. Ini game changer banget!',
+      visual_direction: 'Hero shot sinematik! Produk diangkat sejajar mata dengan pencahayaan hangat dan efek lens flare/glint. Botol diputar perlahan.',
+      on_screen_text: 'Solusi Baru: Serum Brightening ✨',
+    },
+    {
+      scene_number: 5,
+      stage_name: 'Product In-Action Demo',
+      duration_sec: 4,
+      time_range: '12-16s',
+      voiceover: 'Lihat pas dipakai, teksturnya ringan banget, gak lengket sama sekali dan langsung meresap dalam hitungan detik.',
+      visual_direction: 'Macro zoom tekstur produk saat diaplikasikan: tetesan pipet kental lembut meresap seketika ke kulit tangan/pipi.',
+      on_screen_text: 'Tekstur ringan, cepat meresap & gak lengket! 💧',
+    },
+    {
+      scene_number: 6,
+      stage_name: 'Key Benefit 1',
+      duration_sec: 3,
+      time_range: '16-19s',
+      voiceover: 'Pemakaian rutin bikin warna kulit jauh lebih rata dan cerah alami tanpa efek pengelupasan perih.',
+      visual_direction: 'Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.',
+      on_screen_text: 'Flek memudar & glowing alami 🔥',
+    },
+    {
+      scene_number: 7,
+      stage_name: 'Key Benefit 2',
+      duration_sec: 3,
+      time_range: '19-22s',
+      voiceover: 'Plus formulanya aman banget buat all skin types, non-comedogenic dan nyaman dipakai pagi & malam.',
+      visual_direction: 'Kreator mengusap wajah dengan lembut, menunjukkan rasa nyaman dan sensasi dingin menenangkan.',
+      on_screen_text: 'Aman untuk kulit sensitif 🌟',
+    },
+    {
+      scene_number: 8,
+      stage_name: 'Social Proof / Reassurance',
+      duration_sec: 3,
+      time_range: '22-25s',
+      voiceover: 'Gak heran ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. BPOM resmi ya!',
+      visual_direction: 'Menampilkan badge sertifikat BPOM resmi, rating bintang 4.9 dari marketplace, dan screenshot testimoni pelanggan puas.',
+      on_screen_text: '⭐⭐⭐⭐⭐ 4.9/5 (BPOM Resmi & Teruji)',
+    },
+    {
+      scene_number: 9,
+      stage_name: 'Strong CTA (Klaim Promo / Cek Link Bio)',
+      duration_sec: 5,
+      time_range: '25-30s',
+      voiceover: 'Khusus hari ini lagi ada diskon bundling terbatas! Langsung klik tautan di Bio profil sekarang sebelum kehabisan!',
+      visual_direction: 'Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (link bio) dengan grafis panah animasi.',
+      on_screen_text: '👉 Klik Link di Bio Sekarang! 🛒',
+    },
+  ]);
+
+  // Panel 3: Render Dispatch State
+  const [dispatching, setDispatching] = useState(false);
+  const [jobStatus, setJobStatus] = useState<'IDLE' | 'QUEUED' | 'PROCESSING' | 'COMPLETED'>('IDLE');
+  const [jobProgress, setJobProgress] = useState(0);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [allCopied, setAllCopied] = useState(false);
-  const [tenantId, setTenantId] = useState<string>('');
-  const [tenantDisplay, setTenantDisplay] = useState<string>('');
-  
-  // History tab / state
-  const [savedScripts, setSavedScripts] = useState<SavedScriptItem[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    product_name: 'Serum Brightening Niacinamide',
-    category: 'Skincare',
-    pain_point: 'Kulit kusam, noda hitam bekas jerawat, dan pori-pori besar yang susah hilang meski sudah coba berbagai produk.',
-    hook_angle: 'Stop-Scroll Hook (Patahkan Mitos / Kontroversi)',
-    tone: 'Casual Gaul',
-    cta_goal: 'Checkout Keranjang Kuning / Orange',
-  });
+  // File upload input references
+  const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
-  // Generated Result State
-  const [result, setResult] = useState<ScriptResult | null>(null);
-
-  // 1. Resolve dynamic tenant context (Zero Hardcoding)
+  // 1. Resolve Session Context
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant)=([^;]+)/);
@@ -100,795 +173,605 @@ export default function UGCStudioPage() {
 
       const resolved = (localVal || cookieVal || '').toLowerCase();
       if (resolved && resolved !== 'null' && resolved !== 'undefined') {
-        setTenantId(resolved);
-        setTenantDisplay(resolved);
+        setTenantSlug(resolved);
+        setHasValidSession(true);
+      }
+
+      const storedSession = localStorage.getItem('studio_session');
+      if (storedSession) {
+        try {
+          const parsed = JSON.parse(storedSession);
+          if (parsed.render_credits !== undefined) {
+            setRenderCredits(parsed.render_credits);
+          }
+        } catch {}
       }
     }
   }, []);
 
-  // Fetch saved scripts history
-  const fetchSavedScripts = async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch(`/api/studio/scripts?tenant_id=${encodeURIComponent(tenantId || 'creator')}&limit=10`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        setSavedScripts(data.data);
-      }
-    } catch (err) {
-      console.warn('[UGC Studio] History fetch note:', err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
+  // Calculate total duration
+  const totalDuration = scenes.reduce((sum, s) => sum + (s.duration_sec || 0), 0);
 
-  useEffect(() => {
-    fetchSavedScripts();
-  }, [tenantId]);
-
-  // 2. High-converting 9-Scene Direct Response Storyboard Engine
-  const generateNineScenesLocally = (data: typeof formData): ScriptResult => {
-    const { product_name, category, pain_point, hook_angle, tone, cta_goal } = data;
-
-    // Tailored hook patterns based on selected formula
-    let hookVisual = `Close-up ekspresi kaget menatap kamera sambil memegang ${product_name}. Tangan menunjuk kamera atau menepuk jidat dengan gerakan cepat.`;
-    let hookText = `JANGAN BELI INI SEBELUM TAHU INI! 😱`;
-    let hookVO = `Stop scroll dulu! Sumpah kalau kamu masih mikir ${pain_point.slice(0, 45)} itu nggak ada solusinya, kamu wajib dengar ini.`;
-
-    if (hook_angle.includes('Problem-Agitation-Solution')) {
-      hookVisual = `Kamera selfie handheld pencahayaan natural. Wajah terlihat lelah atau frustrasi menatap pantulan cermin / layar smartphone.`;
-      hookText = `Capek banget sama masalah ini... 😭`;
-      hookVO = `Jujur aku udah capek banget ngadepin ${pain_point.slice(0, 50)} tiap hari.`;
-    } else if (hook_angle.includes('Before-After')) {
-      hookVisual = `Split screen visual transisi cepat: Kiri foto kusam/masalah awal, Kanan visual glowing mulus setelah pakai ${product_name}.`;
-      hookText = `REAL 14 HARI BEDANYA JAUH BANGET! ✨`;
-      hookVO = `Liat sendiri perbedaannya! Ini muka aku 2 minggu lalu dibanding sekarang setelah nemu ${product_name}.`;
-    } else if (hook_angle.includes('Unboxing')) {
-      hookVisual = `Kamera bird-eye view / POV membuka paket bubble wrap dengan suara renyah (ASMR unboxing). Menampakkan botol packaging ${product_name}.`;
-      hookText = `UNBOXING RACUN BARU YANG LAGI VIRAL 🔥`;
-      hookVO = `Akhirnya paket yang lagi rame di FYP nyampe juga! Kita review jujur ya, apakah ${product_name} ini beneran sebagus itu?`;
+  // Generate Script via AI API
+  const handleGenerateScript = async () => {
+    if (!productName.trim() || !painPoint.trim()) {
+      setErrorMsg('Nama produk dan target masalah wajib diisi.');
+      return;
     }
 
-    // Dynamic Tone Modulation
-    const isCasual = tone.includes('Casual') || tone.includes('Humoris');
-    const isExpert = tone.includes('Pakar') || tone.includes('Edukatif');
-
-    const scenes: Scene[] = [
-      {
-        scene_number: 1,
-        duration_sec: 3,
-        time_range: '0-3s',
-        stage_name: 'Visual & Hook Stop-Scroll',
-        visual_direction: hookVisual,
-        on_screen_text: hookText,
-        voiceover: hookVO,
-      },
-      {
-        scene_number: 2,
-        duration_sec: 4,
-        time_range: '3-7s',
-        stage_name: 'Relatability & Identifikasi Masalah',
-        visual_direction: `Kamera medium shot kreator mengangguk empati, menunjuk area masalah (${category === 'Skincare' ? 'pipi/dahi' : 'produk lama'}), footage zoom-in memperlihatkan bukti real.`,
-        on_screen_text: `Pernah ngerasain hal yang sama? ✋`,
-        voiceover: isCasual
-          ? `Pasti banyak yang ngerasa relate kan? Tiap hari insecure gara-gara ${pain_point.slice(0, 60)} padahal udah rutin perawatan.`
-          : `Kondisi ini wajar dialami karena formulasi sebelumnya belum tepat menangani akar penyebab ${pain_point.slice(0, 40)}.`,
-      },
-      {
-        scene_number: 3,
-        duration_sec: 4,
-        time_range: '7-11s',
-        stage_name: 'Agitasi Masalah (The Struggle)',
-        visual_direction: `B-roll footage cepat: Membuang produk lama yang tidak ngefek ke meja, atau gestur menghela napas geleng-geleng kepala.`,
-        on_screen_text: `Udah keluar ratusan ribu tapi zonk... 💸`,
-        voiceover: isCasual
-          ? `Dulu aku habis jutaan buat coba ini itu, tapi hasilnya malah bikin boncos dan masalahnya gak kelar-kelar.`
-          : `Banyak yang terjebak beli produk murah tanpa sertifikasi aktif yang justru memperburuk kondisi dalam jangka panjang.`,
-      },
-      {
-        scene_number: 4,
-        duration_sec: 5,
-        time_range: '11-16s',
-        stage_name: 'Introduction / Penyelamat Datang',
-        visual_direction: `Hero shot sinematik! ${product_name} diangkat sejajar mata dengan pencahayaan hangat dan efek lens flare/glint. Botol/kemasan diputar perlahan.`,
-        on_screen_text: `Penyelamat Baru: ${product_name} 🌟`,
-        voiceover: `Sampai akhirnya aku cobain ${product_name}. Ini game changer yang beneran ngubah rutinitas harian aku!`,
-      },
-      {
-        scene_number: 5,
-        duration_sec: 5,
-        time_range: '16-21s',
-        stage_name: 'Fitur Utama & Visual Proof Tekstur/Bahan',
-        visual_direction: `Macro zoom tekstur produk saat diaplikasikan: tetesan cairan kental lembut / bahan kain berkualitas / build quality presisi. Efek penyerapan cepat.`,
-        on_screen_text: `Tekstur ringan, cepat meresap & gak lengket! 💧`,
-        voiceover: `Lihat teksturnya, ringan banget, gak lengket sama sekali dan langsung meresap dalam hitungan detik. Mengandung bahan konsentrat aktif pilihan.`,
-      },
-      {
-        scene_number: 6,
-        duration_sec: 5,
-        time_range: '21-26s',
-        stage_name: 'Manfaat Riil & Cara Pakai Praktis',
-        visual_direction: `Kreator mendemonstrasikan cara pakai dengan senyum puas. Kamera mengikuti gerakan aplikator dengan transisi halus ke hasil seketika.`,
-        on_screen_text: `Cukup 2-3 tetes pagi & malam hari ✨`,
-        voiceover: `Cukup pakai secara rutin tiap hari, sensasinya adem banget dan perlahan bikin rasa percaya diri kamu balik 100%.`,
-      },
-      {
-        scene_number: 7,
-        duration_sec: 4,
-        time_range: '26-30s',
-        stage_name: 'Social Proof & Jaminan Kualitas',
-        visual_direction: `Menampilkan logo BPOM / Sertifikat Halal resmi, screenshot rating bintang 4.9 di marketplace, dan tumpukan ribuan ulasan positif pembeli.`,
-        on_screen_text: `⭐⭐⭐⭐⭐ 4.9/5 (BPOM Resmi & Teruji)`,
-        voiceover: `Nggak heran ratingnya tembus 4.9 dan udah terjual puluhan ribu pieces. Udah BPOM resmi jadi aman dipakai jangka panjang.`,
-      },
-      {
-        scene_number: 8,
-        duration_sec: 4,
-        time_range: '30-34s',
-        stage_name: 'Urgensi Promo & Diskon Terbatas',
-        visual_direction: `Menampilkan kotak harga promo coret warna merah/oranye. Tangan menunjuk ke pojok kiri bawah layar dengan teks flash sale menyala.`,
-        on_screen_text: `FLASH SALE HARI INI DISKON S/D 40%! 🔥`,
-        voiceover: `Khusus yang nonton video ini hari ini, lagi ada promo bundling diskon gede-gedean plus voucher gratis ongkir ekstra!`,
-      },
-      {
-        scene_number: 9,
-        duration_sec: 5,
-        time_range: '34-39s',
-        stage_name: 'Hard Call-to-Action (CTA)',
-        visual_direction: `Kreator menatap langsung ke lensa, tersenyum ramah sambil menunjuk jari ke arah keranjang kuning / tombol checkout di layar.`,
-        on_screen_text: `👉 Klik Keranjang Kuning Sebelum Kehabisan! 🛒`,
-        voiceover: cta_goal.includes('Bio')
-          ? `Jangan sampai nyesel kehabisan promo! Langsung klik tautan di bio profil aku sekarang juga ya!`
-          : `Slot promo terbatas banget, langsung tap keranjang kuning di kiri bawah sebelum kehabisan stok!`,
-      },
-    ];
-
-    return {
-      product_name,
-      hook_angle,
-      category,
-      tone,
-      scenes,
-    };
-  };
-
-  // 3. Handle Form Submit
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setSaveSuccess(false);
+    setGenerating(true);
+    setErrorMsg('');
 
     try {
-      // First try backend gateway if reachable
-      let generatedData: ScriptResult | null = null;
-      try {
-        const res = await fetch('/api/v1/creator/ugc/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...formData,
-            tenant_id: tenantId || 'creator',
-          }),
-        });
-        if (res.ok) {
-          const apiJson = await res.json();
-          if (apiJson.success && apiJson.data?.scenes) {
-            generatedData = {
-              product_name: formData.product_name,
-              hook_angle: formData.hook_angle,
-              category: formData.category,
-              tone: formData.tone,
-              scenes: apiJson.data.scenes.map((s: any, idx: number) => ({
-                scene_number: s.scene_number || idx + 1,
-                duration_sec: s.duration_sec || 4,
-                time_range: `${idx * 4}-${(idx + 1) * 4}s`,
-                stage_name: s.stage_name || `Scene #${idx + 1}`,
-                visual_direction: s.visual_direction || '',
-                on_screen_text: s.on_screen_text || '',
-                voiceover: s.voiceover || '',
-              })),
-            };
-          }
-        }
-      } catch (backendErr) {
-        // Backend offline / local dev fallback
-      }
-
-      // If backend was not active or returned without full scenes, use direct generator
-      if (!generatedData) {
-        generatedData = generateNineScenesLocally(formData);
-      }
-
-      setResult(generatedData);
-    } catch (err) {
-      console.error(err);
-      alert('Terjadi kesalahan saat meracik naskah.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 4. Save to Database (public.studio_scripts via POST /api/studio/scripts)
-  const handleSaveToDatabase = async () => {
-    if (!result) return;
-    setSaving(true);
-    setSaveSuccess(false);
-
-    try {
-      const res = await fetch('/api/studio/scripts', {
+      const res = await fetch('/api/studio/script/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenant_id: tenantId || 'creator',
-          product_name: result.product_name,
-          brief: {
-            category: result.category,
-            hook_angle: result.hook_angle,
-            tone: result.tone,
-            pain_point: formData.pain_point,
-            cta_goal: formData.cta_goal,
-          },
-          scenes: result.scenes,
-          status: 'draft',
+          product_name: productName.trim(),
+          pain_point: painPoint.trim(),
+          hook_angle: hookAngle,
+          cta_goal: ctaGoal,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        setSaveSuccess(true);
-        fetchSavedScripts();
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        alert(data.message || 'Gagal menyimpan naskah ke database.');
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Gagal generate naskah.');
+      }
+
+      if (Array.isArray(data.scenes)) {
+        setScenes(data.scenes);
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan jaringan: ' + err.message);
+      setErrorMsg(err.message || 'Terjadi kesalahan sistem.');
     } finally {
-      setSaving(false);
+      setGenerating(false);
     }
   };
 
-  // 5. Copy Functions
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+  // Update specific scene field
+  const handleSceneChange = (index: number, field: keyof Scene, value: any) => {
+    setScenes(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
-  const copyFullScript = () => {
-    if (!result) return;
-    const fullText = `=== 9-SCENE UGC DIRECT RESPONSE SCRIPT ===\n` +
-      `Produk: ${result.product_name}\n` +
-      `Formula Hook: ${result.hook_angle}\n` +
-      `Kategori: ${result.category} | Gaya: ${result.tone}\n\n` +
-      result.scenes
-        .map(
-          (s) =>
-            `--------------------------------------------------\n` +
-            `[SCENE ${s.scene_number}] (${s.time_range}) - ${s.stage_name}\n` +
-            `📹 ARAHAN VISUAL:\n${s.visual_direction}\n\n` +
-            `💬 TEKS LAYAR (HOOK/CAPTION):\n"${s.on_screen_text}"\n\n` +
-            `🎙️ VOICEOVER SCRIPT:\n"${s.voiceover}"`
-        )
-        .join('\n\n');
+  // Handle asset file upload per scene
+  const handleFileUpload = (sceneIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    handleSceneChange(sceneIndex, 'asset_url', previewUrl);
+    handleSceneChange(sceneIndex, 'asset_name', file.name);
+  };
+
+  // Remove asset from scene
+  const handleRemoveAsset = (sceneIndex: number) => {
+    handleSceneChange(sceneIndex, 'asset_url', undefined);
+    handleSceneChange(sceneIndex, 'asset_name', undefined);
+  };
+
+  // Dispatch to Render Queue
+  const handleDispatchRender = async () => {
+    if (renderCredits < 1) {
+      alert('Kredit render tidak mencukupi (0 Credits). Silakan isi ulang kuota render.');
+      return;
+    }
+
+    setDispatching(true);
+    setJobStatus('QUEUED');
+    setJobProgress(15);
+
+    try {
+      const res = await fetch('/api/studio/render/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantSlug,
+          product_name: productName,
+          scenes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Gagal mengirim job render.');
+      }
+
+      setActiveJobId(data.job_id);
+      if (data.remaining_credits !== undefined) {
+        setRenderCredits(data.remaining_credits);
+      }
+
+      // Simulated real-time rendering progression
+      setTimeout(() => {
+        setJobStatus('PROCESSING');
+        setJobProgress(55);
+      }, 1500);
+
+      setTimeout(() => {
+        setJobProgress(85);
+      }, 3000);
+
+      setTimeout(() => {
+        setJobStatus('COMPLETED');
+        setJobProgress(100);
+        setDispatching(false);
+      }, 4500);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengirim job render.');
+      setJobStatus('IDLE');
+      setDispatching(false);
+    }
+  };
+
+  // Copy full script to clipboard
+  const handleCopyFullScript = () => {
+    const fullText = scenes
+      .map(
+        s =>
+          `[Scene ${s.scene_number}: ${s.stage_name} (${s.duration_sec}s)]\n` +
+          `• Panduan Visual: ${s.visual_direction}\n` +
+          `• Teks Layar: ${s.on_screen_text}\n` +
+          `• Voiceover: "${s.voiceover}"\n`
+      )
+      .join('\n');
 
     navigator.clipboard.writeText(fullText);
     setAllCopied(true);
-    setTimeout(() => setAllCopied(false), 2500);
-  };
-
-  const downloadScriptTxt = () => {
-    if (!result) return;
-    const fullText = `=== 9-SCENE UGC DIRECT RESPONSE SCRIPT ===\n` +
-      `Produk: ${result.product_name}\n` +
-      `Formula Hook: ${result.hook_angle}\n` +
-      `Dibuat di: BoonTrack Studio Workspace\n\n` +
-      result.scenes
-        .map(
-          (s) =>
-            `[SCENE ${s.scene_number}] (${s.time_range}) - ${s.stage_name}\n` +
-            `ARAHAN KAMERA : ${s.visual_direction}\n` +
-            `TEKS LAYAR     : "${s.on_screen_text}"\n` +
-            `VOICEOVER      : "${s.voiceover}"\n`
-        )
-        .join('\n');
-
-    const element = document.createElement('a');
-    const file = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
-    element.href = URL.createObjectURL(file);
-    element.download = `UGC-Script-${result.product_name.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  // Load past script into current view
-  const loadPastScript = (item: SavedScriptItem) => {
-    setResult({
-      product_name: item.product_name,
-      hook_angle: item.brief?.hook_angle || 'Standard Direct Response',
-      category: item.brief?.category || 'Umum',
-      tone: item.brief?.tone || 'Casual',
-      scenes: item.scenes || [],
-    });
-    setFormData((prev) => ({
-      ...prev,
-      product_name: item.product_name,
-      category: item.brief?.category || prev.category,
-      pain_point: item.brief?.pain_point || prev.pain_point,
-      hook_angle: item.brief?.hook_angle || prev.hook_angle,
-      tone: item.brief?.tone || prev.tone,
-      cta_goal: item.brief?.cta_goal || prev.cta_goal,
-    }));
-    setShowHistoryModal(false);
+    setTimeout(() => setAllCopied(false), 2000);
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-slate-100 selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden">
-      {/* Background Electric Studio Glow Accents */}
-      <div className="absolute top-0 right-1/4 w-[600px] h-[400px] bg-gradient-to-b from-fuchsia-600/15 via-purple-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
-      <div className="absolute top-1/2 left-0 w-96 h-96 bg-violet-600/10 rounded-full blur-[120px] pointer-events-none -z-10" />
+    <div className="min-h-screen bg-[#070A10] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden flex flex-col justify-between">
+      {/* Background Electric Glow Mesh */}
+      <div className="absolute top-0 right-1/4 w-[800px] h-[450px] bg-gradient-to-b from-fuchsia-600/12 via-purple-600/8 to-transparent blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-1/2 left-0 w-96 h-96 bg-purple-700/8 rounded-full blur-[130px] pointer-events-none -z-10" />
 
-      {/* ── A. HEADER & WORKSPACE NAVIGATION ─────────────────────── */}
-      <header className="border-b border-slate-800/80 bg-[#0B0F17]/90 backdrop-blur-xl sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* ── TOP HEADER ────────────────────────────────────────── */}
+      <header className="border-b border-white/10 bg-[#070A10]/90 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link
-              href="/studio"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
+              href="/studio/desk"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition"
+              title="Kembali ke Studio Desk"
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span>Kembali ke Studio</span>
+              <ArrowLeft className="w-4 h-4" />
             </Link>
 
-            <div className="hidden sm:block text-slate-600">/</div>
-
-            <nav className="text-xs font-mono flex items-center gap-1.5 text-slate-400">
-              <span className="text-slate-500">Studio Workspace</span>
-              <ChevronRight className="w-3 h-3 text-slate-600" />
-              <span className="text-fuchsia-400 font-bold">UGC Script Studio</span>
-            </nav>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-0.5 shadow-md shadow-fuchsia-500/20">
+                <div className="w-full h-full bg-[#070A10] rounded-[10px] flex items-center justify-center">
+                  <Film className="w-4 h-4 text-fuchsia-400" />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">boontrack</span>
+                  <span className="text-[11px] font-black tracking-widest bg-gradient-to-r from-fuchsia-400 via-pink-400 to-purple-400 bg-clip-text text-transparent uppercase">
+                    UGC SCRIPT STUDIO
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono">
+                  9-Scene Direct-Response Generator & Asset Assembler
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            {/* Direct Response Formula Pill */}
-            <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300 text-[11px] font-bold">
-              <Zap className="w-3 h-3 text-fuchsia-400" />
-              <span>9-Scene Direct Response Formula (TikTok & Shopee Video)</span>
-            </span>
+          <div className="flex items-center gap-3">
+            {/* Active Workspace Badge */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-mono text-slate-400">Workspace:</span>
+              <span className="font-bold text-white font-mono">{tenantSlug}</span>
+            </div>
 
-            {/* Riwayat Draf Button */}
-            <button
-              onClick={() => setShowHistoryModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
-            >
-              <History className="w-3.5 h-3.5 text-purple-400" />
-              <span>Draf ({savedScripts.length})</span>
-            </button>
-
-            {/* Tenant Pill */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-mono text-zinc-300">
-              <Store className="w-3 h-3 text-fuchsia-400" />
-              <span>@{tenantDisplay || 'creator'}</span>
+            {/* Credit Pill */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/30 text-xs font-bold text-fuchsia-400">
+              <Zap className="w-3.5 h-3.5" />
+              <span>{renderCredits} Credits</span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* ── MAIN CONTENT WORKSPACE ───────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Workspace Title & Intro */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-bold">
-              <Film className="w-3.5 h-3.5 text-purple-400" />
-              <span>High-Converting Video Blueprint</span>
+      {/* ── 3-PANEL WORKSPACE CONTENT ─────────────────────────── */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1">
+        {/* Session Warning Guard */}
+        {!hasValidSession && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>Anda berada dalam mode pratinjau publik. Untuk merender video dan menyimpan draf naskah permanen, aktifkan akun Studio Anda.</span>
             </div>
-            <h1 className="text-3xl font-black tracking-tight text-white flex items-center gap-2.5">
-              <span>UGC Script Studio</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-md bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-extrabold uppercase tracking-wider">
-                9-SCENE
-              </span>
-            </h1>
-            <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
-              Rancang naskah video TikTok & Shopee Video 30-45 detik yang terbukti melipatgandakan retensi tontonan dan klik keranjang, lengkap dengan arahan kamera, teks layar, dan skrip voiceover.
-            </p>
+            <Link
+              href="/studio/register"
+              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs whitespace-nowrap transition"
+            >
+              Daftar Gratis
+            </Link>
           </div>
+        )}
 
-          {result && (
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={handleSaveToDatabase}
-                disabled={saving}
-                className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:border-fuchsia-500/50"
-              >
-                {saving ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-400" />
-                    <span>Menyimpan...</span>
-                  </>
-                ) : saveSuccess ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">Tersimpan di Studio!</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5 text-fuchsia-400" />
-                    <span>Simpan ke Database</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={copyFullScript}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-xs font-bold text-white transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-fuchsia-600/20 active:scale-95"
-              >
-                {allCopied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>Semua Tersalin!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Salin Naskah Utuh</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── TWO COLUMN WORKSPACE GRID ────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* ── B. INPUT BRIEF PANEL (COL-SPAN-5) ───────────────────── */}
-          <div className="lg:col-span-5 bg-[#1E293B]/70 border border-slate-700/80 rounded-3xl p-6 md:p-7 space-y-6 backdrop-blur-md shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-white">
-                <Layers className="w-4 h-4 text-fuchsia-400" />
-                <span>Formulir Parameter Produk</span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* ======================================================== */}
+          {/* PANEL 1: BRIEF PRODUK & PROMPT AI (4 Cols)               */}
+          {/* ======================================================== */}
+          <div className="lg:col-span-4 bg-slate-900/60 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-5 sticky lg:top-20">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-400 uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Panel 1: Brief Produk & Formula AI</span>
               </div>
-              <span className="text-[10px] font-mono text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20">
-                PROMPT ENGINE
-              </span>
+              <h2 className="text-lg font-black text-white">Parameter Naskah UGC</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Formula copywriting teruji untuk iklan berbayar TikTok Ads, Shopee Video, dan Reels.
+              </p>
             </div>
 
-            <form onSubmit={handleGenerate} className="space-y-5 text-xs">
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            <div className="space-y-4 text-xs">
               {/* Nama Produk */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-200 font-semibold">
-                  Nama Produk <span className="text-fuchsia-400">*</span>
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1.5">
+                  Nama Produk / Jasa
                 </label>
                 <input
                   type="text"
-                  required
-                  value={formData.product_name}
-                  onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                  placeholder="e.g., Serum Brightening Niacinamide"
-                  className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500/40 transition text-xs font-medium"
+                  value={productName}
+                  onChange={e => setProductName(e.target.value)}
+                  placeholder="Contoh: Serum Brightening Niacinamide"
+                  className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
                 />
               </div>
 
-              {/* Kategori Produk */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-200 font-semibold">Kategori Produk</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-fuchsia-500 transition text-xs font-medium"
-                >
-                  <option value="Skincare">Skincare & Kecantikan</option>
-                  <option value="Fashion">Fashion & Aksesoris</option>
-                  <option value="Gadget">Gadget & Setup Kerja</option>
-                  <option value="Makanan">Makanan & Minuman Viral</option>
-                  <option value="Jasa/Digital">Produk Digital & Kursus</option>
-                  <option value="Home & Living">Perlengkapan Rumah Tangga</option>
-                </select>
-              </div>
-
-              {/* Target Persona / Masalah Utama (Pain Point) */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-200 font-semibold">
-                  Target Persona & Masalah Utama (Pain Point) <span className="text-fuchsia-400">*</span>
+              {/* Target Masalah / Pain Point */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1.5">
+                  Target Masalah / Pain Point Audiens
                 </label>
                 <textarea
                   rows={3}
-                  required
-                  value={formData.pain_point}
-                  onChange={(e) => setFormData({ ...formData, pain_point: e.target.value })}
-                  placeholder="Jelaskan keresahan target pembeli (e.g., Kulit kusam dan noda hitam membandel yang bikin gak pede)..."
-                  className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500/40 transition text-xs font-medium resize-none leading-relaxed"
+                  value={painPoint}
+                  onChange={e => setPainPoint(e.target.value)}
+                  placeholder="Masalah nyata yang dialami pembeli target..."
+                  className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition resize-none leading-relaxed"
                 />
               </div>
 
-              {/* Angle Hook Formula */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-200 font-semibold">Angle Hook Formula</label>
+              {/* Hook Angle Dropdown */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1.5">
+                  Sudut Penjualan (Hook Angle)
+                </label>
                 <select
-                  value={formData.hook_angle}
-                  onChange={(e) => setFormData({ ...formData, hook_angle: e.target.value })}
-                  className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-200 focus:outline-none focus:border-fuchsia-500 transition text-xs font-medium"
+                  value={hookAngle}
+                  onChange={e => setHookAngle(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
                 >
-                  <option value="Stop-Scroll Hook (Patahkan Mitos / Kontroversi)">
-                    Stop-Scroll Hook (Patahkan Mitos / Kontroversi)
-                  </option>
-                  <option value="Problem-Agitation-Solution (Curhat Masalah)">
-                    Problem-Agitation-Solution (Curhat Masalah)
-                  </option>
-                  <option value="Before-After & Visual Proof (Demonstrasi Nyata)">
-                    Before-After & Visual Proof (Demonstrasi Nyata)
-                  </option>
-                  <option value="Unboxing & First Impression Jujur">
-                    Unboxing & First Impression Jujur
-                  </option>
+                  <option value="Unboxing Viral (POV ASMR Unboxing)">📦 Unboxing Viral (POV ASMR Unboxing)</option>
+                  <option value="Masalah Nyata Sehari-hari (Relatable Problem)">😩 Masalah Nyata Sehari-hari (Relatable Problem)</option>
+                  <option value="Perbandingan Sebelum-Sesudah (Before & After Transformation)">✨ Perbandingan Sebelum-Sesudah (Before & After)</option>
+                  <option value="Rahasia Hemat (Solusi Anti-Boncos)">💰 Rahasia Hemat (Solusi Anti-Boncos)</option>
+                  <option value="Stop-Scroll Hook (Patahkan Mitos / Kontroversi)">😱 Stop-Scroll Hook (Patahkan Mitos / Kontroversi)</option>
                 </select>
               </div>
 
-              {/* Tone of Voice & CTA Goal Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">Tone of Voice</label>
-                  <select
-                    value={formData.tone}
-                    onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
-                    className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 focus:outline-none focus:border-fuchsia-500 transition text-xs font-medium"
-                  >
-                    <option value="Casual Gaul">Casual Gaul</option>
-                    <option value="Emosional / Curhat">Emosional / Curhat</option>
-                    <option value="Review Jujur Pakar">Review Jujur Pakar</option>
-                    <option value="Humoris & Energik">Humoris & Energik</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">Goal Call-to-Action</label>
-                  <select
-                    value={formData.cta_goal}
-                    onChange={(e) => setFormData({ ...formData, cta_goal: e.target.value })}
-                    className="w-full bg-[#0B0F17] border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 focus:outline-none focus:border-fuchsia-500 transition text-xs font-medium"
-                  >
-                    <option value="Checkout Keranjang Kuning / Orange">
-                      Keranjang Kuning / Orange
-                    </option>
-                    <option value="Klik Link di Bio">Klik Link di Bio</option>
-                    <option value="Konsultasi / WA Admin">Konsultasi / WA Admin</option>
-                  </select>
-                </div>
+              {/* Call-to-Action Dropdown */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1.5">
+                  Call-to-Action (Arahkan ke Mana?)
+                </label>
+                <select
+                  value={ctaGoal}
+                  onChange={e => setCtaGoal(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
+                >
+                  <option value="Bio Link Creator (creator.boontrack.com/@handle)">🔗 Bio Link Creator (creator.boontrack.com/@handle)</option>
+                  <option value="Keranjang Shopee / TikTok Shop">🛒 Keranjang Shopee / TikTok Shop</option>
+                  <option value="WhatsApp Direct (Pesan Otomatis)">💬 WhatsApp Direct (Pesan Otomatis)</option>
+                </select>
               </div>
 
-              {/* Tombol Utama Generator */}
+              {/* Generate CTA Button */}
               <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-4 py-3.5 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-purple-600 to-indigo-600 hover:from-fuchsia-500 hover:via-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm transition-all shadow-xl shadow-fuchsia-600/25 flex items-center justify-center gap-2.5 cursor-pointer disabled:cursor-not-allowed active:scale-98"
+                type="button"
+                onClick={handleGenerateScript}
+                disabled={generating}
+                className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-purple-600 hover:from-fuchsia-600 hover:via-pink-600 hover:to-purple-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-fuchsia-500/25 flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50 cursor-pointer"
               >
-                {loading ? (
+                {generating ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Meracik 9-Scene Storyboard...</span>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Menyusun 9-Scene AI...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Generate 9-Scene Storyboard</span>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Naskah 9-Scene AI ✨</span>
                   </>
                 )}
               </button>
-            </form>
+            </div>
           </div>
 
-          {/* ── C. INTERACTIVE 9-SCENE STORYBOARD DISPLAY (COL-SPAN-7) ── */}
-          <div className="lg:col-span-7 space-y-4">
-            {result ? (
-              <div className="space-y-4 animate-in fade-in duration-300">
-                {/* Result Control Bar */}
-                <div className="bg-[#1E293B]/70 border border-slate-700/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 backdrop-blur-md">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-400 block font-mono">
-                      HASIL GENERASI RESMI
-                    </span>
-                    <h3 className="text-sm font-black text-white mt-0.5">
-                      {result.product_name} <span className="text-slate-400 font-normal">({result.category})</span>
-                    </h3>
-                  </div>
+          {/* ======================================================== */}
+          {/* PANEL 2: STRUKTUR NASKAH 9-SCENE (EDITABLE CARDS) (8 Cols) */}
+          {/* ======================================================== */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {/* Panel 2 Header & Quick Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <div>
+                <span className="text-[11px] font-bold text-fuchsia-400 uppercase tracking-wider block">
+                  Panel 2: Struktur Storyboard
+                </span>
+                <h3 className="text-base font-extrabold text-white">
+                  9 Kartu Adegan Berurutan (Editable)
+                </h3>
+              </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={downloadScriptTxt}
-                      className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-600 text-xs font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Unduh .TXT</span>
-                    </button>
-                    <button
-                      onClick={copyFullScript}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition flex items-center gap-1.5 cursor-pointer border border-slate-600"
-                    >
-                      {allCopied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Tersalin!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Script</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyFullScript}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  {allCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{allCopied ? 'Tersalin!' : 'Salin Semua Naskah'}</span>
+                </button>
+              </div>
+            </div>
 
-                {/* The 9 Scene Cards */}
-                <div className="space-y-3.5">
-                  {result.scenes.map((scene) => (
-                    <div
-                      key={scene.scene_number}
-                      className="p-5 rounded-2xl bg-[#1E293B]/70 border border-slate-700/70 hover:border-fuchsia-500/50 transition-all duration-200 space-y-3 shadow-lg relative group"
-                    >
-                      {/* Scene Header */}
-                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-6 h-6 rounded-lg bg-fuchsia-500/20 border border-fuchsia-500/30 text-fuchsia-300 font-black text-xs flex items-center justify-center">
-                            {scene.scene_number}
-                          </span>
-                          <span className="text-xs font-bold text-white">
-                            Scene {scene.scene_number}: {scene.stage_name}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono text-purple-300">
-                            {scene.time_range}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => copyToClipboard(scene.voiceover, scene.scene_number)}
-                          className="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] font-medium text-slate-400 hover:text-white transition flex items-center gap-1 cursor-pointer"
-                        >
-                          {copiedIndex === scene.scene_number ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-400" />
-                              <span className="text-emerald-400">VO Tersalin</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Copy VO</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Visual Direction */}
-                      <div className="text-xs space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                          <Camera className="w-3 h-3 text-purple-400" />
-                          <span>Arahan Visual & Kamera:</span>
+            {/* 9 Editable Cards List */}
+            <div className="space-y-4">
+              {scenes.map((scene, idx) => (
+                <div
+                  key={scene.scene_number}
+                  className="p-5 rounded-3xl bg-slate-900/70 border border-white/10 hover:border-fuchsia-500/40 backdrop-blur-xl transition space-y-4 shadow-lg group"
+                >
+                  {/* Card Header */}
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-white/5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-gradient-to-tr from-fuchsia-500 to-purple-600 font-mono font-black text-white text-xs flex items-center justify-center shadow-md shadow-fuchsia-500/20">
+                        {scene.scene_number}
+                      </span>
+                      <div>
+                        <span className="font-extrabold text-sm text-white block">
+                          Scene {scene.scene_number}: {scene.stage_name}
                         </span>
-                        <p className="text-slate-300 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60 leading-relaxed font-sans">
-                          {scene.visual_direction}
-                        </p>
-                      </div>
-
-                      {/* On-Screen Text */}
-                      <div className="text-xs space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400/90 flex items-center gap-1">
-                          <Type className="w-3 h-3 text-amber-400" />
-                          <span>Teks Layar / Sticker Hook:</span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Timeline: {scene.time_range}
                         </span>
-                        <p className="text-amber-200 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 leading-relaxed font-mono">
-                          "{scene.on_screen_text}"
-                        </p>
-                      </div>
-
-                      {/* Voiceover Script */}
-                      <div className="text-xs space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-400 flex items-center gap-1">
-                          <Mic className="w-3 h-3 text-fuchsia-400" />
-                          <span>Voiceover Script (Naskah Pembicara):</span>
-                        </span>
-                        <p className="text-white bg-[#0B0F17] p-3 rounded-xl border border-slate-800 leading-relaxed font-medium">
-                          "{scene.voiceover}"
-                        </p>
                       </div>
                     </div>
-                  ))}
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono font-bold text-slate-300">
+                        ⏱ {scene.duration_sec}s
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Content Grid (Voiceover + Visual Notes) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    {/* Voiceover Textarea */}
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                        <Mic className="w-3.5 h-3.5 text-fuchsia-400" />
+                        <span>Teks Voiceover / Narasi Kreator:</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={scene.voiceover}
+                        onChange={e => handleSceneChange(idx, 'voiceover', e.target.value)}
+                        className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-fuchsia-500 transition resize-none leading-relaxed"
+                        placeholder="Masukkan kalimat yang diucapkan kreator..."
+                      />
+                    </div>
+
+                    {/* Visual Direction Textarea */}
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Panduan Visual (Catatan Sutradara):</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={scene.visual_direction}
+                        onChange={e => handleSceneChange(idx, 'visual_direction', e.target.value)}
+                        className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-purple-500 transition resize-none leading-relaxed"
+                        placeholder="Instruksi kamera, gestur, dan pencahayaan..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Teks Pada Layar (Overlay Text) */}
+                  <div className="space-y-1 text-xs">
+                    <label className="font-semibold text-slate-400 flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-pink-400" />
+                      <span>On-Screen Subtitle / Teks Hook Layar:</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={scene.on_screen_text}
+                      onChange={e => handleSceneChange(idx, 'on_screen_text', e.target.value)}
+                      className="w-full px-3 py-1.5 bg-black/30 border border-white/10 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-pink-500 transition"
+                      placeholder="Teks tebal di layar..."
+                    />
+                  </div>
+
+                  {/* Slot Upload Aset Foto/Video Per Scene */}
+                  <div className="pt-2 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <span className="text-slate-400 font-medium">
+                      Slot Aset Media Adegan:
+                    </span>
+
+                    {scene.asset_url ? (
+                      /* Display Attached Asset Preview */
+                      <div className="flex items-center gap-2 p-1.5 bg-white/5 border border-white/10 rounded-xl">
+                        <img
+                          src={scene.asset_url}
+                          alt={`Asset Scene ${scene.scene_number}`}
+                          className="w-10 h-10 object-cover rounded-lg border border-white/10"
+                        />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-bold text-white block truncate max-w-[140px]">
+                            {scene.asset_name || 'asset_attached'}
+                          </span>
+                          <span className="text-[9px] font-mono text-emerald-400">
+                            is_aigc: 1 (Ready)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAsset(idx)}
+                          className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-rose-400 transition ml-1"
+                          title="Hapus aset"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      /* Upload Button & Hidden Input */
+                      <div>
+                        <input
+                          type="file"
+                          accept="image/*,video/*"
+                          ref={el => {
+                            fileInputRefs.current[idx] = el;
+                          }}
+                          onChange={e => handleFileUpload(idx, e)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRefs.current[idx]?.click()}
+                          className="py-1.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-medium text-xs flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <UploadCloud className="w-3.5 h-3.5 text-fuchsia-400" />
+                          <span>Unggah Footage/Foto Scene</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              /* Empty Placeholder State */
-              <div className="border-2 border-dashed border-slate-800 rounded-3xl p-12 text-center flex flex-col items-center justify-center space-y-4 bg-[#1E293B]/20">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-fuchsia-500/20 to-purple-600/20 border border-fuchsia-500/30 flex items-center justify-center text-fuchsia-400 shadow-xl shadow-fuchsia-500/10">
-                  <Film className="w-8 h-8" />
-                </div>
-                <div className="space-y-1.5 max-w-md">
-                  <h3 className="text-base font-bold text-white">
-                    Storyboard 9-Scene Belum Dibuat
+              ))}
+            </div>
+
+            {/* ======================================================== */}
+            {/* PANEL 3: RENDER PREVIEW & QUEUE DISPATCH                 */}
+            {/* ======================================================== */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-fuchsia-950/40 border border-fuchsia-500/30 backdrop-blur-xl shadow-2xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <span className="text-xs font-bold text-fuchsia-400 uppercase tracking-wider block">
+                    Panel 3: Perakitan Video & Render Dispatch
+                  </span>
+                  <h3 className="text-xl font-black text-white">
+                    Perakitan Antrean Render FFmpeg
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Masukkan detail produk dan pilih formula hook pada panel sebelah kiri. Sistem akan langsung meracik 9 kartu scene terstruktur siap rekam dalam hitungan detik.
+                  <p className="text-xs text-slate-400">
+                    Otomatisasi penggabungan klip, audio narasi, subtitle dinamis, dan watermark AIGC resmi.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-[11px] text-slate-500">
-                  <span className="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800">
-                    ⏱️ 30-45 Detik
-                  </span>
-                  <span className="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800">
-                    🎯 Direct Response Hook
-                  </span>
-                  <span className="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800">
-                    💾 Simpan ke Database
-                  </span>
+
+                {/* Duration & Credit Summary */}
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-black/50 border border-white/10 text-center">
+                    <span className="text-[10px] text-slate-400 block font-mono">Total Durasi</span>
+                    <span className="text-lg font-black text-white font-mono">~{totalDuration}s</span>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/30 text-center">
+                    <span className="text-[10px] text-fuchsia-300 block font-mono">Konsumsi Biaya</span>
+                    <span className="text-lg font-black text-fuchsia-400 font-mono">1 Credit</span>
+                  </div>
                 </div>
               </div>
-            )}
+
+              {/* Status Box if Dispatched */}
+              {jobStatus !== 'IDLE' && (
+                <div className="p-4 rounded-2xl bg-black/60 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      {jobStatus === 'COMPLETED' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 text-fuchsia-400 animate-spin" />
+                      )}
+                      <span className="font-bold text-white">
+                        Status Job: <span className="font-mono text-fuchsia-400">{jobStatus}</span>
+                      </span>
+                    </div>
+                    <span className="font-mono font-bold text-slate-300">{jobProgress}%</span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-fuchsia-500 to-emerald-400 transition-all duration-500 rounded-full"
+                      style={{ width: `${jobProgress}%` }}
+                    />
+                  </div>
+
+                  {jobStatus === 'COMPLETED' && (
+                    <div className="pt-2 flex items-center justify-between text-xs text-emerald-400 font-medium">
+                      <span>🎉 Render Selesai! Output video 9:16 tersimpan di Cloud Storage.</span>
+                      <span className="text-[10px] font-mono text-slate-400">is_aigc: 1</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Main Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleDispatchRender}
+                  disabled={dispatching || renderCredits < 1}
+                  className="w-full sm:flex-1 py-4 px-6 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-purple-600 hover:from-fuchsia-600 hover:via-pink-600 hover:to-purple-700 text-white font-black text-sm shadow-xl shadow-fuchsia-500/25 flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50 cursor-pointer"
+                >
+                  {dispatching ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                      <span>Memproses Antrean Render FFmpeg...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Film className="w-5 h-5" />
+                      <span>Kirim ke Antrean Render FFmpeg 🚀</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="text-[11px] text-slate-400 flex items-center justify-between border-t border-white/5 pt-3">
+                <span>⚡ FFmpeg Level 1 Server Worker</span>
+                <span>Watermark Etis: <strong className="text-slate-300">is_aigc = 1</strong></span>
+              </div>
+            </div>
+
           </div>
+
         </div>
       </main>
 
-      {/* ── DRAFTS HISTORY MODAL ─────────────────────────────────── */}
-      {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#1E293B] border border-slate-700 rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-purple-400" />
-                <h3 className="text-sm font-bold text-white">Riwayat Draf Naskah Studio</h3>
-              </div>
-              <button
-                onClick={() => setShowHistoryModal(false)}
-                className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1"
-              >
-                Tutup ✕
-              </button>
-            </div>
-
-            {loadingHistory ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                Memuat riwayat draf naskah...
-              </div>
-            ) : savedScripts.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400 space-y-2">
-                <FolderOpen className="w-8 h-8 mx-auto text-slate-600" />
-                <p>Belum ada naskah tersimpan di workspace ini.</p>
-              </div>
-            ) : (
-              <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1">
-                {savedScripts.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => loadPastScript(item)}
-                    className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-fuchsia-500/50 hover:bg-slate-800/80 transition-all cursor-pointer flex items-center justify-between group"
-                  >
-                    <div>
-                      <h4 className="text-xs font-bold text-white group-hover:text-fuchsia-300 transition-colors">
-                        {item.product_name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {item.brief?.category || 'Umum'} • {item.brief?.hook_angle || 'Direct Response'}
-                      </p>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {new Date(item.created_at).toLocaleDateString('id-ID', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs text-fuchsia-400 opacity-0 group-hover:opacity-100 transition-opacity font-semibold">
-                      <span>Muat Draf</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ── FOOTER ────────────────────────────────────────────── */}
+      <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5 mt-12">
+        <p>BoonTrack Studio • UGC 9-Scene Generator & FFmpeg Assembly Workspace</p>
+      </footer>
     </div>
   );
 }
