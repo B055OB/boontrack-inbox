@@ -66,7 +66,7 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
     },
   };
 
-  const payload = {
+  const payload: Record<string, any> = {
     name: `${input.name.trim()} Studio`,
     slug: uniqueSlug,
     tier: 'PRO_SCALE',
@@ -76,18 +76,29 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
     is_active: false,
     metadata,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   };
 
-  const { data: tenant, error } = await supabase
+  let { data: tenant, error } = await supabase
     .from('tenants')
     .insert(payload)
     .select('id, slug, name, metadata')
     .single();
 
-  if (error) {
+  // Safeguard fallback: if tenant_kind or business_type column is missing in schema cache
+  if (error && (error.message?.includes('tenant_kind') || error.message?.includes('business_type'))) {
+    const { tenant_kind, business_type, ...safePayload } = payload;
+    const retry = await supabase
+      .from('tenants')
+      .insert(safePayload)
+      .select('id, slug, name, metadata')
+      .single();
+    tenant = retry.data;
+    error = retry.error;
+  }
+
+  if (error || !tenant) {
     console.error('[Studio Auth] Failed to insert tenant:', error);
-    throw new Error(error.message || 'Gagal membuat draf akun Studio.');
+    throw new Error(error?.message || 'Gagal membuat draf akun Studio.');
   }
 
   const waNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '6285181830080';
@@ -201,7 +212,6 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
       is_active: true,
       status: 'active',
       metadata: updatedMeta,
-      updated_at: new Date().toISOString(),
     })
     .eq('id', tenant.id)
     .select('id, slug, name, metadata')
