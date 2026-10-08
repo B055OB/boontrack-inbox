@@ -113,6 +113,12 @@ export const DASHBOARD_8_TABS: Record<
     description: 'Profil toko (nomor registrasi terkunci), ganti email, dan PIN.',
     keywords: ['settings', 'pengaturan', 'profil', 'nama toko', 'ganti email', 'pin', 'nomor registrasi', 'keamanan', 'domain'],
   },
+  reseller: {
+    key: 'reseller',
+    label: 'Mitra Reseller (Reseller System)',
+    description: 'Manajemen mitra reseller, kuota tier (Free 5, Starter 25, Scale 100, Unlimited), tautan unik ?r=KODE, dan buku besar komisi.',
+    keywords: ['reseller', 'mitra reseller', 'komisi reseller', 'kuota reseller', 'status frozen', 'tambah reseller', 'magic link', 'portal reseller', '?r='],
+  },
 };
 
 /**
@@ -128,6 +134,9 @@ export function detectTargetTab(query: string): string | null {
   const q = query.toLowerCase();
 
   // Explicit target keywords
+  if (q.includes('reseller') || q.includes('mitra reseller') || q.includes('komisi reseller') || q.includes('kuota reseller')) {
+    return 'reseller';
+  }
   if (q.includes('resi') || q.includes('input resi') || q.includes('nomor resi') || q.includes('status pesanan')) {
     return 'orders';
   }

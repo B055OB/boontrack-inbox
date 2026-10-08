@@ -25,7 +25,10 @@ import {
   resolveBoonPilotSender,
 } from './sender-resolver';
 import { getPlatformBaseUrl, getRegisterUrl } from '@/lib/platform-urls';
-import { getBoonPilotPaymentNotificationKnowledge } from '@/lib/boonpilotKnowledge';
+import {
+  getBoonPilotPaymentNotificationKnowledge,
+  getBoonPilotStoreResellerKnowledge,
+} from '@/lib/boonpilotKnowledge';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 export interface BoonPilotCommunityContext {
@@ -235,6 +238,7 @@ export function buildBoonPilotSystemPrompt(
   communityContext?: BoonPilotCommunityContext
 ): string {
   const paymentNotificationKb = getBoonPilotPaymentNotificationKnowledge();
+  const storeResellerKb = getBoonPilotStoreResellerKnowledge();
 
   const signaturePersonaDirective = `GAYA PERSONA & PEMBUKAAN WAJIB (KONSULTAN EDUKATIF):
 - Anda adalah Konsultan E-Commerce & Performa Iklan Digital Resmi dari BoonTrack (https://boontrack.com) yang ramah, cerdas, solutif, dan edukatif dalam Bahasa Indonesia.
@@ -350,6 +354,8 @@ PERAN & TUGAS UTAMA (MERCHANT):
 
 ${paymentNotificationKb}
 
+${storeResellerKb}
+
 ${smartChatboxKnowledge}
 
 ${adsPixelCapiKnowledge}
@@ -398,6 +404,8 @@ PERAN & TUGAS UTAMA (NON-MERCHANT):
 ${communityContextKnowledge}
 
 ${paymentNotificationKb}
+
+${storeResellerKb}
 
 ${smartChatboxKnowledge}
 
@@ -538,6 +546,36 @@ function resolveBoonPilotFallbackReply(
       activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
       tenant: resolution.tenant,
       quick_actions: ['💎 Hubungi Tim Billing', '💬 Fitur Smart Chatbox', '🚀 Cek Paket Pro Scale'],
+      isDeterministicMatch: true,
+    };
+  }
+
+  // 4. Pertanyaan seputar Program Store Reseller Toko / Kemitraan / Kuota & Komisi Reseller
+  if (/(reseller|mitra reseller|program reseller|kuota reseller|komisi reseller|status frozen|reseller frozen|portal reseller|\?r=|tambah reseller|skema reseller|add-?on reseller)/i.test(cleanMsg)) {
+    const reply =
+      `Halo kak, bantu jawab ya!\n\n` +
+      `BoonTrack memiliki fitur *Program Store Reseller Toko (V1)* yang memungkinkan setiap merchant merekrut mitra reseller untuk menyebarkan link toko (*?r=KODE*) dengan komisi otomatis:\n\n` +
+      `🤝 *1. Fitur & Skema Komisi:*
+• Komisi fleksibel: Persentase (%) per omzet riil atau Flat (Rp) per pesanan sukses.
+• Non-Custodial: Hasil penjualan 100% langsung ke rekening/QRIS merchant (0% MDR). Pencairan komisi ditransfer manual oleh merchant lalu ditandai lunas di dashboard.
+• Komisi hanya sah dicatat saat pesanan berstatus lunas (*PAYMENT_CONFIRMED* atau *COD_SETTLED*).\n\n` +
+      `📊 *2. Struktur Kuota & Biaya Paket:*
+• *Free Tier (Gratis):* Kuota hingga *5 mitra reseller aktif* (default untuk validasi tim penjualan pemula).
+• *Starter Add-on:* Rp 79.000 / bulan (hingga *25 mitra reseller aktif*).
+• *Scale Add-on:* Rp 149.000 / bulan (hingga *100 mitra reseller aktif* + ekspor CSV komisi).
+• *Unlimited Add-on:* Rp 249.000 / bulan (hingga *999.999 mitra reseller aktif*, gratis jika langganan tahunan Pro Scale).\n\n` +
+      `❄️ *3. Guardrails Downgrade-Safe (Status FROZEN):*
+Jika merchant downgrade paket, data mitra tidak pernah dihapus! Mitra di luar batas kuota hanya berstatus *FROZEN* (read-only). Link tetap bisa dipakai belanja reguler tanpa menghasilkan komisi baru sampai kuota aktif kembali.\n\n` +
+      `📱 *4. Portal Reseller Mandiri:*
+Mitra reseller mendapatkan portal akses mandiri berbasis nomor WhatsApp tanpa password (*Passwordless Magic Link*) untuk memantau performa link, klik, pesanan, dan saldo komisi mereka secara transparan.\n\n` +
+      `Fitur ini dapat diakses langsung di Dashboard Toko pada Tab *Reseller*! Ada yang ingin didiskusikan lebih lanjut Kak? 😊`;
+
+    return {
+      reply,
+      role: resolution.role,
+      activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
+      tenant: resolution.tenant,
+      quick_actions: ['🤝 Info Kuota Reseller', '💰 Skema Komisi', '💎 Hubungi Tim Billing'],
       isDeterministicMatch: true,
     };
   }

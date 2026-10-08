@@ -523,6 +523,31 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     text: `💎 **Panduan Upgrade Paket Tahunan & Unlock Fitur Pro/Scale:**\n\nUntuk upgrade ke **Paket Tahunan** atau membuka fitur tingkat lanjut seperti **Smart Chatbox CRM, Server-Side Meta CAPI, Multi-Seat CS, dan Official WhatsApp WABA**, proses upgrade saat ini diproses secara personal via chat WhatsApp agar Anda mendapatkan rekomendasi paket terbaik dan diskon tahunan eksklusif.\n\n📞 **Hubungi Tim Billing Resmi BoonTrack:**\n- **WhatsApp Billing:** [081977655099](https://wa.me/6281977655099?text=Halo%20Tim%20Billing%20BoonTrack%2C%20saya%20tertarik%20upgrade%20paket%20Pro%2FScale%20dan%20Paket%20Tahunan.%20Mohon%20info%20biaya%20dan%20panduan%20aktivasi)\n- **Format Pesan:** *"Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur [Nama Fitur] & Paket Tahunan toko [Nama Toko]. Mohon info biaya dan panduan aktivasi."*\n\n⚡ *Aktivasi cepat tanpa downtime dan seluruh data konfigurasi toko Anda tetap aman 100%!*`,
     quick_actions: ['📞 Hubungi Tim Billing', '7. Smart Chatbox', '🧭 Mulai Tur Menu'],
   },
+  {
+    id: 'store_reseller_v1',
+    category: 'COMMERCE',
+    keywords: [
+      'reseller',
+      'mitra reseller',
+      'program reseller',
+      'tambah reseller',
+      'kuota reseller',
+      'komisi reseller',
+      'status frozen',
+      'reseller frozen',
+      'portal reseller',
+      'paket reseller',
+      'starter addon',
+      'scale addon',
+      'add on reseller',
+      'cara rekrut reseller',
+      '?r=',
+      'magic link',
+    ],
+    title: '🤝 Program Store Reseller Toko (Kemitraan Penjualan)',
+    text: `🤝 **Program Store Reseller Toko V1 (Sistem Kemitraan Penjualan):**\n\nSetiap merchant BoonTrack dapat merekrut mitra reseller untuk menyebarkan link toko (\`?r=KODE\`) dengan komisi otomatis:\n\n📦 **1. Struktur Kuota & Biaya Paket:**\n• **Free Tier (Gratis):** Kuota hingga 5 mitra reseller aktif (default untuk validasi tim penjualan pemula tanpa biaya).\n• **Starter Add-on (Rp 79.000 / bln):** Kuota hingga 25 mitra reseller aktif.\n• **Scale Add-on (Rp 149.000 / bln):** Kuota hingga 100 mitra reseller aktif + ekspor CSV komisi.\n• **Unlimited Add-on (Rp 249.000 / bln):** Kuota 999.999 mitra reseller tanpa batas (GRATIS/bundling jika langganan tahunan Pro Scale).\n\n💰 **2. Skema Komisi Fleksibel & Non-Custodial:**\n• Komisi otomatis dihitung per produk (Persentase % omzet) atau Flat (Rp per pesanan sukses).\n• Komisi hanya sah dicatat saat pesanan berstatus lunas (PAYMENT_CONFIRMED atau COD_SETTLED).\n• Non-Custodial: Hasil penjualan 100% langsung ke rekening/QRIS merchant (0% MDR). Pencairan komisi ditransfer manual oleh merchant lalu ditandai selesai di dashboard.\n\n❄️ **3. Guardrails Downgrade-Safe (Status FROZEN):**\n• Jika merchant turun paket, data mitra tidak pernah dihapus! Mitra di luar batas kuota hanya berstatus **FROZEN** (read-only).\n• Pesanan via link reseller FROZEN tetap diproses lancar sebagai pesanan reguler toko tanpa menghasilkan komisi baru sampai kuota aktif kembali.\n\n📱 **4. Portal Reseller Mandiri (Passwordless Magic Link):**\n• Mitra reseller mendapatkan portal akses mandiri berbasis nomor WhatsApp tanpa password (Magic Link) untuk menyalin tautan promosi unik, memantau jumlah klik, melacak pesanan, dan mengecek akumulasi saldo komisi secara transparan.\n\n👉 *Akses menu pengelolaan mitra di Dashboard Toko > Tab **Reseller**!*`,
+    quick_actions: ['🤝 Info Program Reseller', '💎 Hubungi Tim Billing', '🧭 Mulai Tur Menu'],
+  },
 ];
 
 export function searchPlatformKnowledge(query: string): KnowledgeItem | null {
@@ -587,4 +612,54 @@ Jika pengguna menanyakan "notifikasi payment via apa aja", "notifikasi via apa s
   * Console dashboard web terpadu 3-panel untuk tim admin/CS memantau riwayat notifikasi, status pesanan, status pembayaran, serta membalas chat pembeli secara keroyokan tanpa bertabrakan (dengan auto-pause bot saat CS membalas manual).
   * Pada tier Pro Scale dan Team Scale, dilengkapi Customer Memory Layer, Lifecycle Engine, Inline Edit Nama Pelanggan, dan tombol Unduh Kontak vCard (.vcf) langsung ke HP admin.
   * Untuk upgrade ke paket tahunan atau unlock fitur Pro/Scale, hubungi Tim Billing via WhatsApp ke nomor 081977655099 (https://wa.me/6281977655099).`;
+}
+
+/**
+ * Structured Knowledge Base for Store Reseller V1 in BoonTrack ecosystem.
+ * Injected into BoonPilot prompt context for intelligent AI Q&A across WhatsApp & Telegram.
+ */
+export function getBoonPilotStoreResellerKnowledge(): string {
+  return `KNOWLEDGE BASE RESMI STORE RESELLER V1 (TENANT-SCOPED RESELLER SYSTEM):
+
+1. FITUR UTAMA PROGRAM RESELLER TOKO:
+- Definisi & Mekanisme:
+  Setiap merchant toko di BoonTrack dapat merekrut pasukan mitra reseller untuk membagikan tautan toko unik berparameter (?r=KODE atau alias ?reseller=KODE).
+- Komisi Otomatis Fleksibel:
+  Dukungan 2 skema komisi resmi per mitra:
+  * Persentase (%) per omzet produk riil (misal 10% dari harga produk).
+  * Flat / Nominal Tetap (Rp) per pesanan sukses (misal Rp15.000 per transaksi).
+- Otoritas Finansial Kanonikal:
+  Komisi reseller HANYA sah dicatat saat pesanan terverifikasi sah lunas: PAYMENT_CONFIRMED (prabayar/QRIS) atau COD_SETTLED (COD kurir).
+- Non-Custodial:
+  BoonTrack bertindak sebagai ledger pencatatan dan kalkulasi komisi otomatis. Dana penjualan 100% tetap masuk langsung ke rekening/QRIS merchant (0% MDR). Pencairan (payout) ke reseller dilakukan oleh merchant via transfer manual, lalu merchant menandai "Sudah Ditransfer" di dashboard (1-klik).
+
+2. STRUKTUR KUOTA & PAKET RESELLER (COMMERCIAL TIERS):
+- Free Tier (Gratis - Rp0):
+  Kuota hingga 5 mitra reseller aktif. Diberikan secara default kepada seluruh merchant terverifikasi untuk uji coba validasi tim penjualan tanpa modal awal.
+- Starter Add-on:
+  Rp 79.000 / bulan untuk kuota hingga 25 mitra reseller aktif. Cocok untuk bisnis berkembang yang mulai membuka kemitraan terstruktur.
+- Scale Add-on:
+  Rp 149.000 / bulan untuk kuota hingga 100 mitra reseller aktif. Dilengkapi laporan ekspor CSV komisi dan analitik performa mitra.
+- Unlimited Add-on:
+  Rp 249.000 / bulan untuk kuota hingga 999.999 mitra reseller aktif tanpa batas. GRATIS (bundling) bagi merchant yang mengambil paket tahunan (Annual Pro Scale / Enterprise).
+
+3. MEKANISME DOWNGRADE-SAFE & STATUS FROZEN:
+- Zero Hard Delete:
+  Jika merchant downgrade paket atau add-on kedaluwarsa, seluruh data profil reseller dan riwayat komisi historis TIDAK PERNAH DIHAPUS.
+- Transisi Status FROZEN:
+  Mitra di luar batas kuota tier aktif dialihkan ke status FROZEN (dibekukan). Reseller tertua (FIFO) tetap berstatus ACTIVE.
+- Proteksi Finansial & Checkout Reguler:
+  Jika link ?r=KODE milik reseller FROZEN dikunjungi pembeli, proses checkout tetap berjalan lancar sebagai pesanan reguler toko. Namun, pesanan tersebut TIDAK menghasilkan komisi baru untuk melindungi beban finansial merchant.
+- Auto-Thaw saat Upgrade:
+  Saat merchant upgrade kembali, reseller berstatus FROZEN otomatis dipulihkan menjadi ACTIVE (FIFO) hingga memenuhi kuota tier baru.
+
+4. PORTAL RESELLER MANDIRI (PASSWORDLESS MAGIC LINK):
+- Akses Tanpa Password:
+  Mitra reseller di tier berbayar mendapatkan portal akses mandiri (Reseller Portal) berbasis nomor WhatsApp aktif tanpa perlu mengingat kata sandi (Passwordless Magic Link).
+- Fitur Portal Reseller:
+  Reseller dapat login mandiri untuk menyalin tautan promosi unik (?r=KODE), melihat jumlah klik link, memantau riwayat pesanan yang berhasil ditarik, dan mengecek akumulasi saldo komisi (pending vs lunas ditransfer) secara transparan.
+
+5. PANDUAN MERCHANT & LOKASI MENU:
+- Menu Pengelolaan: Dashboard Toko > Tab Reseller (https://dashboard.boontrack.com).
+- Kepatuhan Regulasi: Sistem mematuhi regulasi penjualan langsung 1-tingkat (Anti-Piramida / Anti-MLM sesuai UU No. 7/2014 & Permendag No. 70/2019).`;
 }

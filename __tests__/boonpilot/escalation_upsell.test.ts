@@ -46,4 +46,17 @@ describe('BoonPilot Persona, Escalation & Upsell Engine', () => {
     expect(res.reply).toContain('QRIS');
     expect(res.reply).toContain('WhatsApp');
   });
+
+  it('handles reseller queries by detailing Free Tier, Starter Add-on, Scale, and Frozen mechanism', async () => {
+    const res = await processBoonPilotPlatformChat({
+      senderPhone: '08999999999',
+      message: 'Apakah ada fitur reseller toko dan berapa kuota serta biaya paketnya?',
+    });
+
+    expect(res.reply).toContain('Store Reseller');
+    expect(res.reply).toContain('Free Tier');
+    expect(res.reply).toContain('Starter Add-on');
+    expect(res.reply).toContain('FROZEN');
+    expect(res.reply).toContain('Magic Link');
+  });
 });
