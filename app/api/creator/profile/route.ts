@@ -66,7 +66,8 @@ export async function GET(req: Request) {
 
     if (handleParam) {
       const cleanHandle = handleParam.replace(/^@+/, '').trim().toLowerCase();
-      query = query.eq('handle', cleanHandle);
+      const baseHandle = cleanHandle.replace(/_+$/, '');
+      query = query.or(`handle.eq.${cleanHandle},handle.eq.${baseHandle},handle.eq.${baseHandle}_`);
     } else if (tenantParam) {
       const resolvedTenantId = await resolveTenantUuid(supabase, tenantParam);
       if (resolvedTenantId) {
