@@ -262,16 +262,29 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(location).toContain('/admin');
     });
 
-    it('11. Rewrites boontrack.com/@handle (root domain short link) to /creator/handle', async () => {
+    it('11. Redirects (301) boontrack.com/@handle to https://creator.boontrack.com/@handle', async () => {
       const req = new NextRequest('https://boontrack.com/@suzieray_', {
         headers: { host: 'boontrack.com' },
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      const rewriteHeader = res.headers.get('x-middleware-rewrite');
-      expect(rewriteHeader).toBeDefined();
-      expect(rewriteHeader).toContain('/creator/suzieray_');
+      expect(res.status).toBe(301);
+      const location = res.headers.get('location');
+      expect(location).toBeDefined();
+      expect(location).toBe('https://creator.boontrack.com/@suzieray_');
+    });
+
+    it('12. Redirects (301) shop.boontrack.com/@handle to https://creator.boontrack.com/@handle', async () => {
+      const req = new NextRequest('https://shop.boontrack.com/@suzieray', {
+        headers: { host: 'shop.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(301);
+      const location = res.headers.get('location');
+      expect(location).toBeDefined();
+      expect(location).toBe('https://creator.boontrack.com/@suzieray');
     });
   });
 });
+

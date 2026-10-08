@@ -452,6 +452,27 @@ export async function middleware(req: NextRequest) {
     subdomain === 'creator';
 
   // ===========================================================================
+  // 1. CANONICAL ENFORCEMENT: SEMUA ROUTE /@handle WAJIB KE creator.boontrack.com
+  // ===========================================================================
+  if (pathname.startsWith('/@')) {
+    const handle = pathname.replace(/^\/@+/, '').trim();
+    if (handle) {
+      // Jika hostname BUKAN creator.boontrack.com (misal shop.boontrack.com atau boontrack.com)
+      // -> Lakukan 301 Canonical Redirect ke https://creator.boontrack.com/@${handle}
+      if (!isCreatorHost) {
+        const targetUrl = new URL(`https://creator.boontrack.com/@${handle}`, req.url);
+        targetUrl.search = req.nextUrl.search;
+        return NextResponse.redirect(targetUrl, 301);
+      }
+
+      // Jika hostname SUDAH creator.boontrack.com -> rewrite ke /creator/${handle}
+      const url = req.nextUrl.clone();
+      url.pathname = `/creator/${handle}`;
+      return NextResponse.rewrite(url);
+    }
+  }
+
+  // ===========================================================================
   // SUBDOMAIN CREATOR (creator.boontrack.com) - ARSITEKTUR TERISOLASI
   // ===========================================================================
   if (isCreatorHost) {
@@ -520,16 +541,6 @@ export async function middleware(req: NextRequest) {
 
     url.pathname = `/creator${pathname}`;
     return NextResponse.rewrite(url);
-  }
-
-  // ── Universal Creator @handle routing: boontrack.com/@handle -> /creator/handle ──
-  if (pathname.startsWith('/@')) {
-    const handleSlug = pathname.replace(/^\/@+/, '').trim();
-    if (handleSlug) {
-      const url = req.nextUrl.clone();
-      url.pathname = `/creator/${handleSlug}`;
-      return NextResponse.rewrite(url);
-    }
   }
 
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
