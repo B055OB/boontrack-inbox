@@ -10,6 +10,13 @@ export type BusinessType = 'RETAIL' | 'FNB' | 'PUBLIC_SERVICE' | 'CORPORATE' | s
 
 export type TemplateCode = 'SHOP_V1' | 'DROP_V1' | 'PUBLIC_SERVICE_V1' | 'CORPORATE_V1' | 'UNKNOWN_TEMPLATE';
 
+export enum StudioCapability {
+  VIRAL_TRENDS_RADAR = 'VIRAL_TRENDS_RADAR',
+  PAID_ADS_INTELLIGENCE = 'PAID_ADS_INTELLIGENCE',
+}
+
+export type StudioCapabilityType = `${StudioCapability}` | 'VIRAL_TRENDS_RADAR' | 'PAID_ADS_INTELLIGENCE';
+
 export interface TenantCapabilities {
   // Public Service & Civic Capabilities
   service_catalog: boolean;
@@ -33,6 +40,12 @@ export interface TenantCapabilities {
   payment: boolean;
   order: boolean;
   sales_rep: boolean;
+
+  // Studio Intelligence Capabilities
+  viral_trends_radar?: boolean;
+  paid_ads_intelligence?: boolean;
+  VIRAL_TRENDS_RADAR?: boolean;
+  PAID_ADS_INTELLIGENCE?: boolean;
 
   [key: string]: boolean | undefined;
 }

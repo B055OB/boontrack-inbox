@@ -1,4 +1,11 @@
 import { NextResponse } from 'next/server';
+import {
+  checkStudioIntelligenceEntitled,
+  assertStudioIntelligenceEntitled,
+  StudioEntitlementError,
+} from '@/lib/entitlements/studio-guard';
+import { getFreshHookPatternInsights } from '@/lib/studio/intelligence/repository';
+import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +16,9 @@ interface GenerateRequest {
   cta_goal: string;
   category?: string;
   tone?: string;
+  tenant_id?: string;
+  tenant_slug?: string;
+  require_radar?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -27,6 +37,32 @@ export async function POST(req: Request) {
         { success: false, message: 'Nama produk dan pain point audiens wajib diisi.' },
         { status: 400 }
       );
+    }
+
+    const tenantIdentifier =
+      body.tenant_id ||
+      body.tenant_slug ||
+      req.headers.get('x-tenant-id') ||
+      req.headers.get('x-tenant-slug');
+
+    // Server-side guard: If radar is explicitly required, throw 403 FEATURE_NOT_ENTITLED if unentitled
+    if (body.require_radar) {
+      await assertStudioIntelligenceEntitled(tenantIdentifier || '', 'VIRAL_TRENDS_RADAR');
+    }
+
+    // Evaluate entitlement for Viral Trends Radar
+    let isRadarEntitled = false;
+    if (tenantIdentifier) {
+      const check = await checkStudioIntelligenceEntitled(tenantIdentifier, 'VIRAL_TRENDS_RADAR');
+      isRadarEntitled = check.entitled;
+    } else {
+      isRadarEntitled = true;
+    }
+
+    // Retrieve up to 3 FRESH hook pattern insights if entitled
+    let radarInsights: NormalizedInsight[] = [];
+    if (isRadarEntitled) {
+      radarInsights = await getFreshHookPatternInsights(category, 3);
     }
 
     const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
@@ -149,12 +185,23 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
   }
 }`;
 
+      let radarConstraintText = '';
+      if (radarInsights.length > 0) {
+        radarConstraintText = `\n\nBATASAN REFERENSI VIRAL TRENDS RADAR (TOP ${radarInsights.length} FRESH HOOK PATTERNS):\n` +
+          `Sistem mendeteksi pola hook berkinerja tertinggi saat ini untuk kategori ${category}.\n` +
+          `Adaptasikan dan adopsi pola hook berikut untuk menyusun Scene 1 (Visual Pattern Interrupt) dan Scene 2 (Hook Problem):\n` +
+          radarInsights.map((insight, idx) => `  ${idx + 1}. [Keyakinan ${Math.round(insight.confidence_score * 100)}%] Pola: "${insight.pattern_template}"`).join('\n') +
+          `\nCatatan: Jangan copy-paste secara mentah, melainkan terapkan pola psikologi di atas secara kontekstual untuk ${product_name}.\n`;
+      }
+
+      const promptWithRadar = prompt + radarConstraintText;
+
       const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
       const geminiRes = await fetch(geminiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{ parts: [{ text: promptWithRadar }] }],
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 2048,
@@ -357,14 +404,27 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
       tone,
       model_name: modelName,
       total_duration_sec: 30,
+      radar_insights_applied: radarInsights.length > 0 ? radarInsights.map((r) => ({
+        id: r.id,
+        pattern_template: r.pattern_template,
+        confidence_score: r.confidence_score,
+      })) : undefined,
       scenes,
       ads_copy: finalAdsCopy,
     });
   } catch (err: any) {
     console.error('[Studio Script Generate API] Error:', err);
+
+    if (err.code === 'FEATURE_NOT_ENTITLED' || err.statusCode === 403) {
+      return NextResponse.json(
+        { success: false, error: 'FEATURE_NOT_ENTITLED', message: err.message },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
       { success: false, message: err.message || 'Gagal menghasilkan naskah AI.' },
-      { status: 500 }
+      { status: err.statusCode || 500 }
     );
   }
 }
