@@ -51,6 +51,14 @@ function TikTokIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+function ShopeeIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.5 6.5h-2.22A5.28 5.28 0 0 0 12 2a5.28 5.28 0 0 0-5.28 4.5H4.5A2.5 2.5 0 0 0 2 9v10.5A2.5 2.5 0 0 0 4.5 22h15a2.5 2.5 0 0 0 2.5-2.5V9a2.5 2.5 0 0 0-2.5-2.5zm-7.5-3a3.78 3.78 0 0 1 3.72 3h-7.44a3.78 3.78 0 0 1 3.72-3zm4.2 12.18c-.46 1.48-1.8 2.32-3.62 2.32-2.34 0-3.7-1.34-3.72-3.14h1.72c.06.94.8 1.62 2 1.62 1.12 0 1.86-.54 1.86-1.34 0-.8-.74-1.12-1.94-1.42-1.98-.5-3.48-1.1-3.48-2.92 0-1.6 1.34-2.8 3.32-2.8 1.94 0 3.32 1.14 3.42 2.76h-1.72c-.08-.76-.7-1.3-1.7-1.3-.98 0-1.62.54-1.62 1.26 0 .68.64.98 1.8 1.28 2.06.52 3.68 1.18 3.68 2.94z"/>
+    </svg>
+  );
+}
+
 export default function CreatorCleanLandingPage() {
   const router = useRouter();
   const [handle, setHandle] = useState('');
@@ -223,108 +231,119 @@ export default function CreatorCleanLandingPage() {
               </div>
             </div>
 
-            {/* Smartphone Frame (Pure Clean Light Frame) */}
+            {/* Smartphone Frame (Aesthetic Pastel Glass Styling) */}
             <div className="w-[300px] sm:w-[325px] rounded-[46px] p-3.5 bg-white border-4 border-slate-200/90 shadow-2xl shadow-slate-300/80">
-              <div className="w-full h-full rounded-[36px] bg-[#F8FAFC] overflow-hidden border border-slate-200/80 flex flex-col relative text-slate-800">
+              <div className="w-full h-full rounded-[36px] bg-gradient-to-b from-rose-50/70 via-amber-50/40 to-slate-50/80 overflow-hidden border border-rose-200/50 flex flex-col relative text-slate-800">
+                {/* Subtle Ambient Mesh Glow */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-56 h-36 bg-gradient-to-b from-rose-300/25 via-orange-200/20 to-transparent rounded-full blur-2xl pointer-events-none" />
+
                 {/* Phone Notch & Status Bar */}
-                <div className="pt-3 pb-2 px-6 flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                <div className="pt-3 pb-2 px-6 flex justify-between items-center text-[10px] text-slate-400 font-mono relative z-10">
                   <span>9:41</span>
                   <div className="w-20 h-4 bg-slate-900 rounded-full" />
                   <span>5G 100%</span>
                 </div>
 
                 {/* Profile Header Inside Mockup */}
-                <div className="p-4 pt-2 text-center space-y-2">
+                <div className="p-4 pt-2 text-center space-y-2 relative z-10">
                   <div className="relative w-18 h-18 mx-auto rounded-full p-1 bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500 shadow-md shadow-orange-500/20">
-                    <div className="w-full h-full rounded-full bg-slate-100 border-2 border-white flex items-center justify-center font-black text-lg text-slate-700">
-                      AP
+                    <div className="w-full h-full rounded-full overflow-hidden bg-rose-100 border-2 border-white flex items-center justify-center">
+                      <img
+                        src="https://images.unsplash.com/photo-1584999734482-0311abc182e2?w=150&auto=format&fit=crop&q=80"
+                        alt="Foto Suzie Ray"
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
                     </div>
-                    <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow">
+                    <span className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center text-[10px] text-white font-black shadow">
                       ✓
                     </span>
                   </div>
 
                   <div>
-                    <h3 className="font-extrabold text-sm text-slate-900">Alldy Pratama</h3>
-                    <p className="text-[11px] text-slate-500 font-mono">creator.boontrack.com/@alldy</p>
+                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center justify-center gap-1">
+                      <span>Suzie Ray</span>
+                    </h3>
+                    <p className="text-[11px] text-rose-600/90 font-mono font-medium">creator.boontrack.com/@suzieray_</p>
                     <p className="text-[11px] text-slate-600 mt-1 px-2 leading-relaxed">
-                      Review Gadget, Setup Kerja Minimalis & Tips Konten 🚀
+                      Spill Barang Unik & Murah ✨ Fashion & Home Living 🏡 Endorse & Collab via WA 📩
                     </p>
                   </div>
 
                   {/* Social Links Row */}
-                  <div className="flex justify-center gap-2.5 pt-1">
-                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                  <div className="flex justify-center items-center gap-2 pt-1">
+                    <span className="h-7 px-2.5 rounded-full bg-white/90 backdrop-blur-sm border border-rose-200/70 shadow-xs flex items-center gap-1.5 text-slate-700 text-[11px] font-semibold hover:scale-105 transition-transform">
                       <InstagramIcon className="w-3.5 h-3.5 text-pink-600" />
+                      <span className="text-[10px] text-slate-600">@suzieray_</span>
                     </span>
-                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
+                    <span className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-800 hover:scale-105 transition-transform">
                       <TikTokIcon className="w-3.5 h-3.5 text-slate-900" />
                     </span>
-                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
-                      <YoutubeIcon className="w-3.5 h-3.5 text-red-600" />
-                    </span>
-                    <span className="w-7 h-7 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 text-xs">
-                      <Globe className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border border-orange-200/80 shadow-xs flex items-center justify-center text-orange-600 hover:scale-105 transition-transform">
+                      <ShopeeIcon className="w-3.5 h-3.5 text-orange-600" />
                     </span>
                   </div>
                 </div>
 
-                {/* 3 Contoh Kartu Bio Link (Clean White Cards) */}
-                <div className="p-3.5 pt-0 space-y-2.5 flex-1 pb-6">
-                  {/* Card 1: Rekomendasi Skincare / Shopee Direct */}
-                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                {/* 3 Contoh Kartu Bio Link (Aesthetic Glassmorphism) */}
+                <div className="p-3.5 pt-0 space-y-2.5 flex-1 pb-6 relative z-10">
+                  {/* Card 1: Shopee Direct */}
+                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-rose-100/70 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
-                        <ShoppingBag className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
+                        <ShoppingBag className="w-4 h-4 text-orange-500" />
                       </div>
                       <div className="text-left">
                         <span className="text-[9px] font-extrabold uppercase tracking-wide text-orange-600 block">
-                          Shopee Direct (Buka Aplikasi)
+                          Buka Langsung di Shopee App (Diskon 50%)
                         </span>
                         <p className="text-xs font-bold text-slate-900 leading-snug">
-                          Meja Ergonomis Standing Desk
+                          Alat Bersih Elektrik & Barang Unik Viral
                         </p>
                       </div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-500 transition-colors" />
                   </div>
 
-                  {/* Card 2: Preset Lightroom / Checkout QRIS */}
-                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                  {/* Card 2: Koleksi Fashion & OOTD */}
+                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-100/70 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
-                        <Camera className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-4 h-4 text-amber-500" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-rose-600 block">
-                          BoonTrack QRIS Checkout
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-amber-600 block">
+                          Shopee Video & Toko Rekomendasi
                         </span>
                         <p className="text-xs font-bold text-slate-900 leading-snug">
-                          Lightroom Preset Moody 2026
+                          Rekomendasi Gamis & Hijab Plisket Premium
                         </p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                      49K
-                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-500 transition-colors" />
                   </div>
 
-                  {/* Card 3: Booking Brand / WhatsApp */}
-                  <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
+                  {/* Card 3: Rate Card Endorsement WhatsApp */}
+                  <div className="p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-emerald-100 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-3 group">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                        <MessageCircle className="w-4 h-4" />
+                        <MessageCircle className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div className="text-left">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-600 block">
-                          Tanya Rate Card & Jadwal Endorse
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-600">
+                            Langsung Hubungi Manajemen via WhatsApp
+                          </span>
+                          <span className="text-[8px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-700 rounded-full">
+                            Fast Response
+                          </span>
+                        </div>
                         <p className="text-xs font-bold text-slate-900 leading-snug">
-                          Hubungi Manajemen via WhatsApp
+                          Tanya Rate Card & Jadwal Endorse
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                   </div>
                 </div>
               </div>
