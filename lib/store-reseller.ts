@@ -19,7 +19,7 @@ export interface StoreReseller {
   name: string;
   phone: string;
   email?: string | null;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'FROZEN';
   commission_type: 'PERCENTAGE' | 'FIXED';
   commission_value: number;
   metadata?: Record<string, any>;

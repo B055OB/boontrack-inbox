@@ -80,12 +80,18 @@ export async function GET(
 
     const commList = Array.isArray(commissions) ? commissions : [];
 
-    // 3. Count active resellers
+    // 3. Count active and frozen resellers
     const { count: activeResellerCount } = await supabase
       .from('store_resellers')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenant.id)
       .eq('status', 'ACTIVE');
+
+    const { count: frozenResellerCount } = await supabase
+      .from('store_resellers')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.id)
+      .eq('status', 'FROZEN');
 
     // 4. Calculate metrics summary
     let totalOrders = 0;
@@ -109,6 +115,7 @@ export async function GET(
       commissions: commList,
       metrics: {
         active_resellers: activeResellerCount || 0,
+        frozen_resellers: frozenResellerCount || 0,
         total_orders: totalOrders,
         total_gmv: totalGmv,
         total_outstanding_commission: totalOutstanding,

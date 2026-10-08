@@ -149,20 +149,40 @@ Untuk menjaga akurasi optimasi algoritma Meta Ads & TikTok Ads serta mencegah pe
 
 ---
 
-## 7. Pricing Tier Add-on (CFO Monetization Plan)
+## 7. Pricing Tier Add-on & Entitlement Engine (CFO Monetization Plan)
 
-Fitur Store Reseller disediakan sebagai modular add-on berbasis jumlah kapasitas reseller aktif:
+Fitur Store Reseller disediakan dengan model kuota berjenjang yang tegas antara paket gratis dasar dan modular add-on:
 
-| Paket Add-On | Kapasitas Reseller Aktif | Biaya Bulanan (IDR) | Ketentuan Khusus |
-| :--- | :--- | :--- | :--- |
-| **Starter** | Hingga 25 Reseller | Rp 79.000 / bulan | Cocok untuk bisnis berkembang yang mulai membuka kemitraan |
-| **Scale** | Hingga 100 Reseller | Rp 149.000 / bulan | Dilengkapi export CSV komisi & analitik performa |
-| **Unlimited** | Reseller Tanpa Batas | Rp 249.000 / bulan | **GRATIS** untuk merchant dengan paket langganan tahunan (Annual Pro/Enterprise) |
+| Paket / Add-On | Kapasitas Reseller Aktif (`max_active_resellers`) | Biaya Bulanan (IDR) | Ketentuan Khusus & Target |
+| :--- | :---: | :--- | :--- |
+| **Free Tier** | **5 Reseller** | Rp 0 (Gratis) | Default merchant terverifikasi untuk uji coba kemitraan |
+| **Starter Add-on** | **25 Reseller** | Rp 79.000 / bulan | Bisnis berkembang yang mulai membuka kemitraan terstruktur |
+| **Scale Add-on** | **100 Reseller** | Rp 149.000 / bulan | Dilengkapi export CSV komisi & analitik performa |
+| **Unlimited** | **999.999 Reseller** | Rp 249.000 / bulan | **GRATIS** untuk merchant dengan paket Enterprise / Annual Pro Scale |
 
-### Mekanisme Validasi Kuota (Quota Guard)
-Sebelum merchant mengundang atau mengaktifkan reseller baru:
-- Sistem mengecek `COUNT(*)` reseller dengan `status = 'ACTIVE'` di `store_resellers` milik `tenant_id`.
-- Jika jumlah mencapai limit tier yang aktif, aktivasi reseller baru diblokir dengan instruksi upgrade tier.
+### Entitlement Model & Server-Side Deterministic Rejection
+Evaluasi kuota berjalan deterministik di server-side (`app/api/v1/tenants/[slug]/reseller/members/route.ts`):
+- Kuota aktif hanya dihitung dari reseller berstatus `ACTIVE` (`status = 'ACTIVE'`). Reseller berstatus `INACTIVE`, `SUSPENDED`, atau `FROZEN` tidak memotong kuota.
+- Jika kuota sudah penuh (misal Free Tier mencoba menambah reseller ke-6), mutasi ditolak deterministik dengan HTTP status 403 dan payload:
+  ```json
+  {
+    "success": false,
+    "error": "RESELLER_LIMIT_REACHED",
+    "message": "Batas kuota mitra reseller aktif telah tercapai. Upgrade ke Starter Add-on untuk menambah hingga 25 reseller.",
+    "current_quota": 5,
+    "upgrade_url": "/dashboard/billing?feature=reseller_starter"
+  }
+  ```
+
+### Guardrails Downgrade-Safe & Status `FROZEN`
+1. **Zero Hard Delete**: Sistem dilarang keras melakukan hard delete terhadap data profil reseller maupun buku besar riwayat komisi saat tenant mengalami downgrade paket.
+2. **Status Transisi `FROZEN`**: Reseller yang berada di luar batas kuota aktif ditandai berstatus `FROZEN` (read-only). Reseller tertua (FIFO) tetap berstatus `ACTIVE`.
+3. **Proteksi Finansial & Non-Blocking Checkout**: Pada kunjungan link toko `?r=KODE`, jika reseller berstatus `FROZEN`, transaksi checkout pembeli tetap diproses lancar sebagai pesanan reguler toko tanpa mencatatkan komisi baru.
+4. **Self-Healing Auto-Thaw**: Ketika merchant melakukan upgrade kembali, reseller berstatus `FROZEN` secara otomatis dipulihkan menjadi `ACTIVE` hingga batas kuota baru.
+
+### Anti-Farming Policy
+- Hak kuota Free Tier (5 mitra) diikat ke identitas unik pemilik bisnis yang terverifikasi (nomor WhatsApp owner, identitas penampung pencairan, atau histori akun).
+- Tenant dilarang membuat multi-store dummy untuk mengumpulkan kuota Free Tier secara berulang. Pelanggaran terdeteksi akan menonaktifkan fitur kemitraan pada seluruh etalase terkait.
 
 ---
 

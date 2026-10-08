@@ -35,7 +35,7 @@ interface ResellerMember {
   name: string;
   phone: string;
   email?: string | null;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'FROZEN';
   commission_type: 'PERCENTAGE' | 'FIXED';
   commission_value: number;
   order_count?: number;
@@ -99,11 +99,21 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
   const [commissions, setCommissions] = useState<ResellerCommissionRecord[]>([]);
   const [metrics, setMetrics] = useState({
     active_resellers: 0,
+    frozen_resellers: 0,
     total_orders: 0,
     total_gmv: 0,
     total_outstanding_commission: 0,
     total_paid_commission: 0,
   });
+
+  const [entitlement, setEntitlement] = useState<{
+    tier: string;
+    max_active_resellers: number;
+    current_quota: number;
+    active_count: number;
+    frozen_count: number;
+    upgrade_url: string;
+  } | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -119,6 +129,10 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
   const [formCommissionValue, setFormCommissionValue] = useState<number>(10);
   const [isSubmittingNew, setIsSubmittingNew] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [upgradeUrlPrompt, setUpgradeUrlPrompt] = useState<string | null>(null);
+
+  // ── Member status update state ──
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
 
   // ── Copy feedback state ──
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -150,6 +164,9 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
         const mData = await membersRes.json();
         if (mData.success && Array.isArray(mData.resellers)) {
           setResellers(mData.resellers);
+          if (mData.entitlement) {
+            setEntitlement(mData.entitlement);
+          }
         }
       }
 
@@ -158,7 +175,14 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
         if (cData.success && Array.isArray(cData.commissions)) {
           setCommissions(cData.commissions);
           if (cData.metrics) {
-            setMetrics(cData.metrics);
+            setMetrics({
+              active_resellers: cData.metrics.active_resellers || 0,
+              frozen_resellers: cData.metrics.frozen_resellers || 0,
+              total_orders: cData.metrics.total_orders || 0,
+              total_gmv: cData.metrics.total_gmv || 0,
+              total_outstanding_commission: cData.metrics.total_outstanding_commission || 0,
+              total_paid_commission: cData.metrics.total_paid_commission || 0,
+            });
           }
         }
       }
@@ -207,6 +231,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
       return;
     }
     setFormError(null);
+    setUpgradeUrlPrompt(null);
     setIsSubmittingNew(true);
 
     try {
@@ -229,14 +254,43 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
         setFormPhone('');
         setFormCode('');
         setFormCommissionValue(10);
+        setUpgradeUrlPrompt(null);
         await loadData(true);
       } else {
-        setFormError(data.error || 'Gagal menambahkan reseller baru.');
+        if (data.error === 'RESELLER_LIMIT_REACHED') {
+          setFormError(data.message || 'Batas kuota mitra reseller aktif telah tercapai.');
+          setUpgradeUrlPrompt(data.upgrade_url || '/dashboard/billing?feature=reseller_starter');
+        } else {
+          setFormError(data.error || 'Gagal menambahkan reseller baru.');
+          setUpgradeUrlPrompt(null);
+        }
       }
     } catch (err: any) {
       setFormError('Terjadi kesalahan jaringan.');
     } finally {
       setIsSubmittingNew(false);
+    }
+  };
+
+  // Toggle member status (ACTIVE / INACTIVE)
+  const handleToggleMemberStatus = async (member: ResellerMember, newStatus: 'ACTIVE' | 'INACTIVE') => {
+    setUpdatingMemberId(member.id);
+    try {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/reseller/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: member.id, status: newStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        await loadData(true);
+      } else {
+        alert(data.message || data.error || 'Gagal mengubah status mitra reseller.');
+      }
+    } catch {
+      alert('Terjadi kesalahan jaringan.');
+    } finally {
+      setUpdatingMemberId(null);
     }
   };
 
@@ -411,11 +465,29 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
         <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[11px] font-semibold">Reseller Aktif</span>
-            <Users className="w-4 h-4 text-indigo-500" />
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+              entitlement?.tier === 'UNLIMITED'
+                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                : entitlement?.tier === 'SCALE'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                : entitlement?.tier === 'STARTER'
+                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                : 'bg-slate-100 text-slate-600 border border-slate-200'
+            }`}>
+              {entitlement?.tier || 'FREE'}
+            </span>
           </div>
-          <div className="text-xl font-black text-slate-900">
-            {metrics.active_resellers} <span className="text-xs font-normal text-slate-400">mitra</span>
+          <div className="text-xl font-black text-slate-900 flex items-baseline gap-1">
+            {metrics.active_resellers}
+            <span className="text-xs font-normal text-slate-400">
+              / {entitlement?.max_active_resellers === 999999 ? '∞' : (entitlement?.max_active_resellers ?? 5)} kuota
+            </span>
           </div>
+          {metrics.frozen_resellers > 0 && (
+            <div className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 pt-0.5">
+              <span>❄️ {metrics.frozen_resellers} mitra dibekukan</span>
+            </div>
+          )}
         </div>
 
         {/* Metric 2 */}
@@ -623,18 +695,54 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
                         {/* Status */}
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            reseller.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border border-slate-200'
-                          }`}>
-                            {reseller.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}
-                          </span>
+                          {reseller.status === 'ACTIVE' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Aktif
+                            </span>
+                          ) : reseller.status === 'FROZEN' ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 cursor-help"
+                              title="Dibekukan secara aman saat downgrade paket. Riwayat komisi utuh. Upgrade paket untuk mengaktifkan kembali."
+                            >
+                              ❄️ Beku (Kuota)
+                            </span>
+                          ) : reseller.status === 'SUSPENDED' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              Ditangguhkan
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                              Nonaktif
+                            </span>
+                          )}
                         </td>
 
                         {/* Aksi Cepat */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Toggle Aktif / Nonaktif */}
+                            {reseller.status === 'ACTIVE' ? (
+                              <button
+                                type="button"
+                                disabled={updatingMemberId === reseller.id}
+                                onClick={() => handleToggleMemberStatus(reseller, 'INACTIVE')}
+                                className="px-2 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 text-[10px] font-bold transition cursor-pointer disabled:opacity-50"
+                                title="Nonaktifkan mitra untuk mengosongkan slot kuota aktif"
+                              >
+                                {updatingMemberId === reseller.id ? '...' : 'Nonaktifkan'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={updatingMemberId === reseller.id}
+                                onClick={() => handleToggleMemberStatus(reseller, 'ACTIVE')}
+                                className="px-2 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition cursor-pointer disabled:opacity-50"
+                                title="Aktifkan kembali mitra reseller (memeriksa kuota aktif)"
+                              >
+                                {updatingMemberId === reseller.id ? '...' : 'Aktifkan'}
+                              </button>
+                            )}
+
                             {/* Salin Link */}
                             <button
                               type="button"
@@ -644,7 +752,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                                   : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
                               }`}
-                              title="Salin Link Jualan Toko"
+                              title={reseller.status === 'FROZEN' ? 'Salin link toko (pesanan tetap diproses reguler tanpa komisi saat frozen)' : 'Salin Link Jualan Toko'}
                             >
                               {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-500" />}
                               <span>{isCopied ? 'Tersalin' : 'Salin Link'}</span>
@@ -827,9 +935,22 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
             <form onSubmit={handleCreateReseller} className="space-y-3.5 text-xs">
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{formError}</span>
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                    <span className="font-semibold leading-relaxed">{formError}</span>
+                  </div>
+                  {upgradeUrlPrompt && (
+                    <div className="pt-1">
+                      <a
+                        href={upgradeUrlPrompt}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-xs transition"
+                      >
+                        <span>Upgrade Paket Reseller</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

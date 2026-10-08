@@ -143,3 +143,59 @@ When a merchant's plan expires:
      ```typescript
      cleanReply = cleanReply.replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1');
      ```
+---
+
+## Store Reseller V1 Commercial & Entitlement Contract
+
+### 1. Nomenklatur Resmi & Commercial Tiers
+Pemisahan tegas antara paket dasar gratis, add-on berbayar, dan paket enterprise:
+
+| Tier / Add-on | Kuota Reseller Aktif (`max_active_resellers`) | Biaya Langganan | Target & Peruntukan |
+| :--- | :---: | :--- | :--- |
+| **FREE TIER** | **5** | Rp 0 (Gratis) | Default merchant terverifikasi untuk uji coba pasukan penjualan kecil |
+| **STARTER ADD-ON** | **25** | Rp 79.000 / bulan | Bisnis berkembang yang mulai merekrut tim reseller terstruktur |
+| **SCALE ADD-ON** | **100** | Rp 149.000 / bulan | Brand dengan pasukan distributor/reseller aktif + laporan ekspor |
+| **UNLIMITED** | **999.999** | Rp 249.000 / bulan | Termasuk gratis pada paket Enterprise / Annual Pro Scale |
+
+### 2. Entitlement Model & Deterministic Evaluation
+Alur evaluasi entitlement berjalan deterministik di server-side gateway (`app/api/v1/tenants/[slug]/reseller/members/route.ts`):
+
+```mermaid
+flowchart LR
+    A["Merchant / Tenant"] --> B["Supabase tenants.tier & metadata"]
+    B --> C["resolveResellerEntitlement()"]
+    C --> D{"Active Quota Limit<br/>(FREE: 5, STARTER: 25, SCALE: 100, UNL: 999k)"}
+    D -->|Quota Exceeded| E["HTTP 403 Forbidden<br/>RESELLER_LIMIT_REACHED"]
+    D -->|Within Quota| F["Mutasi Disetujui (ACTIVE)"]
+```
+
+#### Deterministic Rejection Response Payload (HTTP 403)
+Ketika kuota reseller aktif telah tercapai, mutasi penambahan atau aktivasi reseller ditolak deterministik dengan payload:
+```json
+{
+  "success": false,
+  "error": "RESELLER_LIMIT_REACHED",
+  "message": "Batas kuota mitra reseller aktif telah tercapai. Upgrade ke Starter Add-on untuk menambah hingga 25 reseller.",
+  "current_quota": 5,
+  "upgrade_url": "/dashboard/billing?feature=reseller_starter"
+}
+```
+
+### 3. Guardrails Downgrade-Safe & Status `FROZEN`
+Untuk menjaga integritas ledger dan keadilan finansial mitra:
+1. **Zero Hard Delete Policy**:
+   - Dilarang keras melakukan `DELETE` terhadap record di `store_resellers` maupun buku besar komisi `reseller_commissions` saat tenant downgrade paket atau membatalkan add-on.
+2. **Status Transition (`FROZEN`)**:
+   - Jika tenant mengalami downgrade (misal: Starter 25 mitra turun ke Free 5 mitra), sistem menandai reseller ke-6 dan seterusnya dengan status `FROZEN` (read-only).
+   - Reseller tertua (berdasarkan `created_at ASC` / FIFO) tetap berstatus `ACTIVE` sejumlah limit kuota baru.
+3. **Proteksi Finansial & Non-Blocking Checkout**:
+   - Pada link atribusi toko (`?r=KODE`), jika reseller target berstatus `FROZEN`, checkout pelanggan **tetap diproses lancar sebagai pesanan reguler toko**.
+   - Sistem **tidak mencatatkan komisi baru** untuk reseller berstatus `FROZEN` guna melindungi merchant dari kewajiban komisi di luar paket aktif.
+4. **Self-Healing Auto-Thaw saat Upgrade**:
+   - Saat merchant meng-upgrade paket kembali, sistem secara otomatis merekonsiliasi dan memulihkan reseller tertua berstatus `FROZEN` kembali ke `ACTIVE` hingga batas kuota tier baru.
+
+### 4. Anti-Farming Policy
+Untuk mencegah penyalahgunaan kuota Free Tier (5 reseller) melalui pembuatan akun toko dummy massal:
+- **Binding Identitas Unik**: Hak kuota Free Tier diikat secara ketat ke identitas terverifikasi pemilik bisnis (nomor WhatsApp terverifikasi, nomor rekening bank settlement, atau riwayat transaksi toko).
+- **Deteksi Anomali Multi-Tenant**: Tenant yang terdeteksi berbagi nomor WhatsApp owner atau rekening penampung yang sama tidak dapat mengklaim kuota Free Tier berulang kali pada storefront tiruan.
+

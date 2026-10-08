@@ -4486,5 +4486,45 @@ WHERE slug = 'tumbuh-kembang-anak';
    - **Hostname status**: `Active`
 3. Lakukan pengetesan via `curl -I https://[custom_domain]` dan pastikan HTTP status code `200 OK` tanpa peringatan SSL.
 
+---
+
+## STORE RESELLER V1 COMMERCIAL & ENTITLEMENT CONTRACT
+
+### 1. Nomenklatur Resmi & Commercial Tiers
+Pemisahan tegas antara paket dasar gratis, add-on berbayar, dan paket enterprise:
+
+| Tier / Add-on | Kuota Reseller Aktif (`max_active_resellers`) | Biaya Langganan | Target & Peruntukan |
+| :--- | :---: | :--- | :--- |
+| **FREE TIER** | **5** | Rp 0 (Gratis) | Default merchant terverifikasi untuk uji coba pasukan penjualan kecil |
+| **STARTER ADD-ON** | **25** | Rp 79.000 / bulan | Bisnis berkembang yang mulai merekrut tim reseller terstruktur |
+| **SCALE ADD-ON** | **100** | Rp 149.000 / bulan | Brand dengan pasukan distributor/reseller aktif + laporan ekspor |
+| **UNLIMITED** | **999.999** | Rp 249.000 / bulan | Termasuk gratis pada paket Enterprise / Annual Pro Scale |
+
+### 2. Entitlement Model & Deterministic Evaluation
+Alur evaluasi entitlement berjalan deterministik di server-side gateway (`app/api/v1/tenants/[slug]/reseller/members/route.ts`):
+- Sumber kebenaran: `tenants.tier` dan `tenants.metadata.reseller_settings.tier`.
+- Penghitungan kuota: Hanya menghitung reseller berstatus `ACTIVE` (`status = 'ACTIVE'`). Reseller `FROZEN`, `INACTIVE`, atau `SUSPENDED` tidak memotong kuota.
+- Rejection deterministik: Jika kuota penuh, tolak mutasi secara server-side dengan status HTTP 403 dan respons terstruktur:
+  ```json
+  {
+    "success": false,
+    "error": "RESELLER_LIMIT_REACHED",
+    "message": "Batas kuota mitra reseller aktif telah tercapai. Upgrade ke Starter Add-on untuk menambah hingga 25 reseller.",
+    "current_quota": 5,
+    "upgrade_url": "/dashboard/billing?feature=reseller_starter"
+  }
+  ```
+
+### 3. Guardrails Downgrade-Safe & Status `FROZEN`
+1. **Zero Hard Delete**: Sistem dilarang keras menghapus baris tabel `store_resellers` maupun buku besar riwayat komisi saat tenant downgrade paket.
+2. **Status Transisi `FROZEN`**: Reseller yang berada di luar batas kuota tier aktif ditandai berstatus `FROZEN` (read-only). Reseller tertua (FIFO) tetap `ACTIVE`.
+3. **Proteksi Finansial & Non-Blocking Checkout**: Pada kunjungan link toko `?r=KODE`, jika reseller target berstatus `FROZEN`, checkout pembeli tetap diproses lancar sebagai pesanan reguler toko tanpa mencatatkan komisi baru.
+4. **Self-Healing Auto-Thaw saat Upgrade**: Saat merchant melakukan upgrade paket kembali, sistem secara otomatis merekonsiliasi dan memulihkan reseller tertua berstatus `FROZEN` kembali ke `ACTIVE` hingga batas kuota baru.
+
+### 4. Anti-Farming Policy
+- Pengikatan hak kuota Free Tier (5 mitra) diikat ke identitas unik pemilik bisnis yang terverifikasi (nomor WhatsApp owner, identitas penampung pencairan, atau histori akun).
+- Tenant dilarang melakukan eksploitasi multi-tenant farming (membuat banyak toko dummy untuk mengakumulasi kuota free reseller). Pelanggaran terdeteksi akan menonaktifkan fitur kemitraan pada seluruh etalase terkait.
+
+
 
 

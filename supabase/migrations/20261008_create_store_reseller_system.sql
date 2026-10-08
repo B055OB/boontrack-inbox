@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.store_resellers (
     name TEXT NOT NULL,
     phone TEXT NOT NULL,
     email TEXT,
-    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED', 'FROZEN')),
     commission_type TEXT NOT NULL DEFAULT 'PERCENTAGE' CHECK (commission_type IN ('PERCENTAGE', 'FIXED')),
     commission_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (commission_value >= 0),
     metadata JSONB DEFAULT '{}'::jsonb,
