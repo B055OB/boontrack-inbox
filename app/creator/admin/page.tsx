@@ -84,7 +84,7 @@ interface BioLinkItem {
   is_active: boolean;
 }
 
-export default function CreatorDashboardPage() {
+export default function CreatorAdminPage() {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [tenantId, setTenantId] = useState('');
@@ -107,140 +107,145 @@ export default function CreatorDashboardPage() {
     twitter: '',
   });
 
-  // QRIS Support Configuration
+  // QRIS Config
   const [qrisConfig, setQrisConfig] = useState({
     enabled: true,
-    button_label: 'Traktir Kopi / Dukung Karya ☕',
-    qr_image_url: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020101021226600014ID.LINKAJA.WWW01189360091800000000005204581253033605802ID5910SUZIERAY6007BANDUNG62070703A0163041234',
+    qr_image_url: '',
+    button_label: 'Traktir Kopi / Dukung Suzie Ray ☕',
     nmid: 'ID102003920199',
   });
 
-  // Bio Link Cards
+  // Bio Links
   const [links, setLinks] = useState<BioLinkItem[]>([
     {
-      id: 'link-1',
+      id: '1',
       title: 'Spill Alat Rumah & Barang Unik Viral',
       subtitle: 'Buka Langsung di Shopee App (Bebas WebView)',
-      url: 'https://shopee.co.id',
+      url: 'https://shope.ee/direct-spill-suzie',
       category: 'shopee_direct',
       badge: 'Shopee Direct',
       is_active: true,
     },
     {
-      id: 'link-2',
+      id: '2',
       title: 'Rekomendasi Hijab & Outfit Daily Suzie',
       subtitle: 'Koleksi Pilihan & Diskon Spesial',
-      url: 'https://shopee.co.id',
+      url: 'https://shope.ee/outfit-suzieray',
       category: 'shopee_direct',
       badge: 'Shopee Video',
       is_active: true,
     },
     {
-      id: 'link-3',
+      id: '3',
       title: 'Tanya Rate Card & Jadwal Endorse',
       subtitle: 'Hubungi Manajemen via WhatsApp',
-      url: 'https://wa.me/6281234567890',
+      url: 'https://wa.me/6281234567890?text=Halo%20Admin%20Suzie%20Ray',
       category: 'wa_endorse',
       badge: 'Fast Response',
       is_active: true,
     },
   ]);
 
-  // Dynamic session resolution (Zero Hardcoding)
+  // Load tenant context & creator profile on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant)=([^;]+)/);
-      const cookieVal = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim() : '';
-      const localVal = (
+    try {
+      const storedTenant =
         localStorage.getItem('merchant_store') ||
-        localStorage.getItem('merchant_session') ||
         localStorage.getItem('bt_tenant') ||
-        ''
-      ).replace(/^["']|["']$/g, '').trim();
-
-      const resolved = (localVal || cookieVal || '').toLowerCase();
-      if (resolved && resolved !== 'null' && resolved !== 'undefined') {
-        setTenantId(resolved);
-        setTenantDisplay(resolved);
+        '';
+      const cleanTenant = storedTenant.replace(/^["']|["']$/g, '').trim().toLowerCase();
+      if (cleanTenant) {
+        setTenantId(cleanTenant);
+        setTenantDisplay(cleanTenant);
       }
+
+      // Check query param or localStorage for custom handle from registration
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlHandle = urlParams.get('handle') || localStorage.getItem('creator_handle');
+      if (urlHandle) {
+        setHandle(urlHandle.replace(/^@+/, '').trim().toLowerCase());
+      }
+      const urlName = localStorage.getItem('creator_display_name');
+      if (urlName) {
+        setDisplayName(urlName);
+      }
+
+      // Fetch existing profile from backend API
+      const fetchProfile = async () => {
+        try {
+          const targetHandle = urlHandle || 'suzieray_';
+          const res = await fetch(`/api/creator/profile?handle=${encodeURIComponent(targetHandle)}`);
+          if (res.ok) {
+            const result = await res.json();
+            if (result.success && result.data) {
+              const p = result.data;
+              if (p.handle) setHandle(p.handle);
+              if (p.bio) setBio(p.bio);
+              if (p.social_links) {
+                setSocials((prev) => ({ ...prev, ...p.social_links }));
+              }
+              if (p.theme_config) {
+                const tc = p.theme_config;
+                if (tc.display_name) setDisplayName(tc.display_name);
+                if (tc.avatar_url) setAvatarUrl(tc.avatar_url);
+                if (Array.isArray(tc.links) && tc.links.length > 0) {
+                  setLinks(tc.links);
+                }
+                if (tc.qris_config) {
+                  setQrisConfig((prev) => ({ ...prev, ...tc.qris_config }));
+                }
+              }
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[Creator Admin] Could not fetch saved profile:', fetchErr);
+        }
+      };
+
+      fetchProfile();
+    } catch {
+      // Fallback
     }
   }, []);
 
-  // Fetch initial profile data from API
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const query = handle ? `handle=${encodeURIComponent(handle)}` : (tenantId ? `tenant_id=${encodeURIComponent(tenantId)}` : '');
-        if (!query) return;
-        const res = await fetch(`/api/creator/profile?${query}`);
-        const data = await res.json();
-        if (data.success && data.data) {
-          const p = data.data;
-          if (p.handle) setHandle(p.handle);
-          if (p.bio) setBio(p.bio);
-          if (p.social_links) setSocials((prev) => ({ ...prev, ...p.social_links }));
-          if (p.theme_config) {
-            const tc = p.theme_config;
-            if (tc.display_name) setDisplayName(tc.display_name);
-            if (tc.avatar_url) setAvatarUrl(tc.avatar_url);
-            if (Array.isArray(tc.links) && tc.links.length > 0) setLinks(tc.links);
-            if (tc.qris_config) setQrisConfig((prev) => ({ ...prev, ...tc.qris_config }));
-          }
-        }
-      } catch (err) {
-        console.warn('[Creator Dashboard] Load profile note:', err);
-      }
-    }
-    loadProfile();
-  }, [tenantId]);
-
-  // Add Link Card
+  // CRUD Bio Links
   const addLink = () => {
+    const newId = Date.now().toString();
     const newLink: BioLinkItem = {
-      id: `link-${Date.now()}`,
-      title: 'Tautan Baru Saya',
-      subtitle: 'Keterangan singkat produk atau layanan',
+      id: newId,
+      title: 'Tautan Baru',
+      subtitle: 'Deskripsi tautan',
       url: 'https://',
-      category: 'custom_web',
-      badge: 'Link',
+      category: 'shopee_direct',
+      badge: 'Rekomendasi',
       is_active: true,
     };
     setLinks([...links, newLink]);
   };
 
-  // Remove Link Card
   const removeLink = (id: string) => {
     setLinks(links.filter((l) => l.id !== id));
   };
 
-  // Move Link Order
-  const moveLink = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= links.length) return;
-    const updated = [...links];
-    const temp = updated[index];
-    updated[index] = updated[targetIndex];
-    updated[targetIndex] = temp;
-    setLinks(updated);
-  };
-
-  // Update Link Field
-  const updateLink = (id: string, field: keyof BioLinkItem, val: any) => {
+  const updateLink = (id: string, field: keyof BioLinkItem, value: any) => {
     setLinks(
       links.map((l) => {
         if (l.id === id) {
-          const updated = { ...l, [field]: val };
-          if (field === 'category') {
-            if (val === 'shopee_direct') updated.badge = 'Shopee Direct';
-            else if (val === 'tokopedia') updated.badge = 'Tokopedia';
-            else if (val === 'wa_endorse') updated.badge = 'Fast Response';
-            else updated.badge = 'Link';
-          }
-          return updated;
+          return { ...l, [field]: value };
         }
         return l;
       })
     );
+  };
+
+  const moveLink = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= links.length) return;
+    const newLinks = [...links];
+    const temp = newLinks[index];
+    newLinks[index] = newLinks[targetIndex];
+    newLinks[targetIndex] = temp;
+    setLinks(newLinks);
   };
 
   // Save to public.creator_profiles via API
@@ -249,12 +254,13 @@ export default function CreatorDashboardPage() {
     setSaveSuccess(false);
 
     try {
+      const cleanHandle = handle.replace(/^@+/, '').trim().toLowerCase();
       const res = await fetch('/api/creator/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_id: tenantId || 'creator',
-          handle: handle.replace(/^@+/, '').trim().toLowerCase(),
+          handle: cleanHandle,
           display_name: displayName,
           bio,
           avatar_url: avatarUrl,
@@ -269,6 +275,8 @@ export default function CreatorDashboardPage() {
       const data = await res.json();
       if (data.success) {
         setSaveSuccess(true);
+        localStorage.setItem('creator_handle', cleanHandle);
+        localStorage.setItem('creator_display_name', displayName);
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
         alert(data.message || 'Gagal menyimpan profil.');
@@ -306,7 +314,10 @@ export default function CreatorDashboardPage() {
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-base text-slate-900">boontrack</span>
               <span className="text-xs font-black tracking-widest bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 bg-clip-text text-transparent uppercase">
-                CREATOR DASHBOARD
+                CREATOR ADMIN
+              </span>
+              <span className="text-[11px] font-medium text-slate-400 hidden sm:inline">
+                (Kelola Bio Link & Etalase)
               </span>
             </div>
           </div>
@@ -840,7 +851,7 @@ export default function CreatorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => setPreviewQrisModal(true)}
-                        className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white font-extrabold text-xs shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 transition cursor-pointer active:scale-98"
+                        className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-extrabold text-xs shadow-md shadow-orange-500/25 flex items-center justify-center gap-2 transition cursor-pointer active:scale-98"
                       >
                         <QrCode className="w-4 h-4" />
                         <span>{qrisConfig.button_label}</span>

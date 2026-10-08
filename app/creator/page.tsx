@@ -120,7 +120,7 @@ export default function CreatorCleanLandingPage() {
           {/* Right Action Buttons */}
           <div className="flex items-center gap-3">
             <Link
-              href="/login"
+              href="/admin"
               className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors px-3 py-2"
             >
               Masuk

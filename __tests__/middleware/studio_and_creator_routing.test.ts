@@ -213,5 +213,53 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/branding/creator/manifest.json');
     });
+
+    it('7. Rewrites /admin to /creator/admin on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/admin', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/admin');
+    });
+
+    it('8. Rewrites /register to /creator/register on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/register', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/register');
+    });
+
+    it('9. Preserves query parameters when rewriting /register on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/register?handle=suzieray_&ref=creator_claim', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/creator/register?handle=suzieray_&ref=creator_claim');
+    });
+
+    it('10. Redirects legacy /dashboard permanently (301) to /admin on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/dashboard', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(301);
+      const location = res.headers.get('location');
+      expect(location).toBeDefined();
+      expect(location).toContain('/admin');
+    });
   });
 });

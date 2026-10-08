@@ -444,12 +444,88 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const subdomain = extractSubdomain(host);
+
+  const isCreatorHost =
+    hostClean === 'creator.boontrack.com' ||
+    hostClean.startsWith('creator.') ||
+    subdomain === 'creator';
+
+  // ===========================================================================
+  // SUBDOMAIN CREATOR (creator.boontrack.com) - ARSITEKTUR TERISOLASI
+  // ===========================================================================
+  if (isCreatorHost) {
+    // 1. Host-Aware 301 Legacy Redirect: /ugc-studio dialihkan ke studio.boontrack.com
+    if (
+      pathname === '/ugc-studio' ||
+      pathname.startsWith('/ugc-studio/') ||
+      pathname === '/creator/ugc-studio' ||
+      pathname.startsWith('/creator/ugc-studio/')
+    ) {
+      const redirectPath = pathname.startsWith('/creator/ugc-studio')
+        ? pathname.replace(/^\/creator/, '')
+        : pathname;
+      const targetUrl = new URL(`https://studio.boontrack.com${redirectPath}`);
+      targetUrl.search = req.nextUrl.search;
+      return NextResponse.redirect(targetUrl, 301);
+    }
+
+    // 2. Legacy /dashboard redirect 301 ke /admin
+    if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
+      const adminUrl = req.nextUrl.clone();
+      adminUrl.pathname = '/admin';
+      return NextResponse.redirect(adminUrl, 301);
+    }
+
+    const url = req.nextUrl.clone();
+
+    // 3. Root landing page -> /creator
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/creator';
+      return NextResponse.rewrite(url);
+    }
+
+    // 4. Creator Admin Workspace -> /creator/admin
+    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      const adminSubpath = pathname === '/admin' ? '' : pathname.replace(/^\/admin/, '');
+      url.pathname = `/creator/admin${adminSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 5. Creator Dedicated Registration -> /creator/register
+    if (pathname === '/register' || pathname.startsWith('/register/')) {
+      const regSubpath = pathname === '/register' ? '' : pathname.replace(/^\/register/, '');
+      url.pathname = `/creator/register${regSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 6. Direct /creator/* pass-through if already rewritten
+    if (
+      pathname.startsWith('/creator/admin') ||
+      pathname.startsWith('/creator/register')
+    ) {
+      return NextResponse.next();
+    }
+
+    // 7. Dynamic handle routing: /@handle atau /[slug] -> /creator/[slug]
+    const relativePath = pathname.startsWith('/creator/')
+      ? pathname.slice('/creator/'.length)
+      : pathname.replace(/^\/+/, '');
+    const cleanSlug = relativePath.replace(/^@+/, '').trim();
+
+    if (cleanSlug) {
+      url.pathname = `/creator/${cleanSlug}`;
+      return NextResponse.rewrite(url);
+    }
+
+    url.pathname = `/creator${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
   if (pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
-
-  const subdomain = extractSubdomain(host);
 
   // ===========================================================================
   // SUBDOMAIN: affiliate.boontrack.com
@@ -757,44 +833,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // ── 4. KHUSUS CREATOR.BOONTRACK.COM (CREATOR_V1 Profile Rewrite & 301 UGC Studio Migration) ──
-  if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
-    // 4.1 Host-Aware 301 Legacy Redirect: /ugc-studio & variasi UGC di domain creator dialihkan permanen ke studio.boontrack.com
-    if (
-      pathname === '/ugc-studio' ||
-      pathname.startsWith('/ugc-studio/') ||
-      pathname === '/creator/ugc-studio' ||
-      pathname.startsWith('/creator/ugc-studio/')
-    ) {
-      const redirectPath = pathname.startsWith('/creator/ugc-studio')
-        ? pathname.replace(/^\/creator/, '')
-        : pathname;
-      const targetUrl = new URL(`https://studio.boontrack.com${redirectPath}`);
-      targetUrl.search = req.nextUrl.search;
-      return NextResponse.redirect(targetUrl, 301);
-    }
 
-    const url = req.nextUrl.clone();
-
-    // 4.2 Landing/portal root creator
-    if (pathname === '/' || pathname === '') {
-      url.pathname = '/creator';
-      return NextResponse.rewrite(url);
-    }
-
-    // 4.3 Routing /@handle atau /[slug] -> rewrite ke /creator/[slug] dengan normalisasi cleanSlug
-    const relativePath = pathname.startsWith('/creator/')
-      ? pathname.slice('/creator/'.length)
-      : pathname.replace(/^\/+/, '');
-    const cleanSlug = relativePath.replace(/^@+/, '').trim();
-
-    if (cleanSlug) {
-      url.pathname = `/creator/${cleanSlug}`;
-      return NextResponse.rewrite(url);
-    }
-
-    return NextResponse.next();
-  }
 
   // ── 4b. KHUSUS STUDIO.BOONTRACK.COM (Studio Dashboard Workspace & UGC Studio Resolver) ──
   if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
@@ -892,41 +931,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (subdomain === 'creator') {
-    // Host-Aware 301 Legacy Redirect
-    if (
-      pathname === '/ugc-studio' ||
-      pathname.startsWith('/ugc-studio/') ||
-      pathname === '/creator/ugc-studio' ||
-      pathname.startsWith('/creator/ugc-studio/')
-    ) {
-      const redirectPath = pathname.startsWith('/creator/ugc-studio')
-        ? pathname.replace(/^\/creator/, '')
-        : pathname;
-      const targetUrl = new URL(`https://studio.boontrack.com${redirectPath}`);
-      targetUrl.search = req.nextUrl.search;
-      return NextResponse.redirect(targetUrl, 301);
-    }
 
-    const url = req.nextUrl.clone();
-    if (pathname === '/' || pathname === '') {
-      url.pathname = '/creator';
-      return NextResponse.rewrite(url);
-    }
-
-    const relativePath = pathname.startsWith('/creator/')
-      ? pathname.slice('/creator/'.length)
-      : pathname.replace(/^\/+/, '');
-    const cleanSlug = relativePath.replace(/^@+/, '').trim();
-
-    if (cleanSlug) {
-      url.pathname = `/creator/${cleanSlug}`;
-      return NextResponse.rewrite(url);
-    }
-
-    url.pathname = `/creator${pathname}`;
-    return NextResponse.rewrite(url);
-  }
 
   if (subdomain === 'studio') {
     const url = req.nextUrl.clone();
