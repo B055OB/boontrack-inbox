@@ -177,5 +177,41 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/creator');
     });
+
+    it('4. Rewrites /favicon.ico to /branding/creator/favicon.ico on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/favicon.ico', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/branding/creator/favicon.ico');
+    });
+
+    it('5. Rewrites /apple-touch-icon.png to /branding/creator/icon.png on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/apple-touch-icon.png', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/branding/creator/icon.png');
+    });
+
+    it('6. Rewrites /manifest.json to /branding/creator/manifest.json on creator.boontrack.com', async () => {
+      const req = new NextRequest('https://creator.boontrack.com/manifest.json', {
+        headers: { host: 'creator.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/branding/creator/manifest.json');
+    });
   });
 });

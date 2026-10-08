@@ -82,7 +82,7 @@ export async function generateMetadata(): Promise<Metadata> {
       metadataBase: new URL('https://creator.boontrack.com'),
       title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
       description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
-      manifest: "/manifest-creator.json",
+      manifest: "/branding/creator/manifest.json",
       openGraph: {
         title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
         description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
@@ -90,9 +90,9 @@ export async function generateMetadata(): Promise<Metadata> {
         siteName: "BoonTrack Creator",
         images: [
           {
-            url: '/app-brand/logo-master.png',
-            width: 1024,
-            height: 1024,
+            url: '/branding/creator/icon.png',
+            width: 512,
+            height: 512,
             alt: 'BoonTrack Creator Platform',
           },
         ],
@@ -103,7 +103,7 @@ export async function generateMetadata(): Promise<Metadata> {
         card: 'summary',
         title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
         description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
-        images: ['/app-brand/logo-master.png'],
+        images: ['/branding/creator/icon.png'],
       },
       appleWebApp: {
         capable: true,
@@ -111,11 +111,8 @@ export async function generateMetadata(): Promise<Metadata> {
         title: "BoonTrack Creator",
       },
       icons: {
-        icon: [
-          { url: '/app-brand/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-          { url: '/app-brand/favicon.ico', sizes: 'any' },
-        ],
-        apple: '/app-brand/apple-touch-icon.png',
+        icon: '/branding/creator/favicon.ico',
+        apple: '/branding/creator/icon.png',
       },
     };
   }

@@ -44,19 +44,14 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     const meta = await generateMetadata();
 
     expect(meta.metadataBase?.toString()).toBe('https://creator.boontrack.com/');
-    expect(meta.manifest).toBe('/manifest-creator.json');
+    expect(meta.manifest).toBe('/branding/creator/manifest.json');
     expect(meta.title).toContain('Creator');
 
-    // Icons must be scoped to Creator (/app-brand/*)
-    const iconsObj = meta.icons && typeof meta.icons === 'object' && !Array.isArray(meta.icons) ? (meta.icons as any) : null;
-    const iconList = iconsObj?.icon ? (iconsObj.icon as any[]) : [];
-    expect(iconList).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ url: '/app-brand/favicon-32x32.png' }),
-        expect.objectContaining({ url: '/app-brand/favicon.ico' }),
-      ])
-    );
-    expect(iconsObj?.apple).toBe('/app-brand/apple-touch-icon.png');
+    // Icons must be scoped to Creator (/branding/creator/*)
+    expect(meta.icons).toEqual({
+      icon: '/branding/creator/favicon.ico',
+      apple: '/branding/creator/icon.png',
+    });
   });
 
   it('resolves Studio metadata, icons, and manifest for studio.boontrack.com host', async () => {
@@ -144,7 +139,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
   });
 
   describe('Middleware Asset Rewrites Isolation', () => {
-    it('rewrites /favicon.ico to /app-brand/favicon.ico on creator.boontrack.com', async () => {
+    it('rewrites /favicon.ico to /branding/creator/favicon.ico on creator.boontrack.com', async () => {
       const req = new NextRequest('https://creator.boontrack.com/favicon.ico', {
         headers: {
           host: 'creator.boontrack.com',
@@ -154,10 +149,10 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
 
       const res = await middleware(req);
       const rewriteHeader = res.headers.get('x-middleware-rewrite');
-      expect(rewriteHeader).toContain('/app-brand/favicon.ico');
+      expect(rewriteHeader).toContain('/branding/creator/favicon.ico');
     });
 
-    it('rewrites /manifest.json to /manifest-creator.json on creator.boontrack.com', async () => {
+    it('rewrites /manifest.json to /branding/creator/manifest.json on creator.boontrack.com', async () => {
       const req = new NextRequest('https://creator.boontrack.com/manifest.json', {
         headers: {
           host: 'creator.boontrack.com',
@@ -167,7 +162,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
 
       const res = await middleware(req);
       const rewriteHeader = res.headers.get('x-middleware-rewrite');
-      expect(rewriteHeader).toContain('/manifest-creator.json');
+      expect(rewriteHeader).toContain('/branding/creator/manifest.json');
     });
 
     it('passes through /favicon.ico and /manifest.json naturally on shop.boontrack.com', async () => {

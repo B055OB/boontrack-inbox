@@ -314,7 +314,7 @@ export async function middleware(req: NextRequest) {
       }
       if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
-        url.pathname = '/app-brand/favicon.ico';
+        url.pathname = '/branding/creator/favicon.ico';
         return NextResponse.rewrite(url);
       }
       if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
@@ -326,7 +326,7 @@ export async function middleware(req: NextRequest) {
     if (pathname === '/apple-touch-icon.png') {
       if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
-        url.pathname = '/app-brand/apple-touch-icon.png';
+        url.pathname = '/branding/creator/icon.png';
         return NextResponse.rewrite(url);
       }
       if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
@@ -338,7 +338,7 @@ export async function middleware(req: NextRequest) {
     if (pathname === '/manifest.json' || pathname === '/site.webmanifest') {
       if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
-        url.pathname = '/manifest-creator.json';
+        url.pathname = '/branding/creator/manifest.json';
         return NextResponse.rewrite(url);
       }
       if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
