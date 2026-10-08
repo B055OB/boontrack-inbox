@@ -5,9 +5,6 @@ import {
   X,
   Zap,
   Check,
-  ShieldCheck,
-  Sparkles,
-  ExternalLink,
   Crown,
   QrCode,
   ArrowRight,
@@ -268,17 +265,15 @@ export default function StudioPaywallModal({
           </div>
         </div>
 
-        {/* Modal Footer: Affiliate Program Link */}
-        <div className="border-t border-white/5 pt-4 text-center">
-          <a
-            href="https://affiliate.boontrack.com"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-violet-400 hover:text-violet-300 font-medium inline-flex items-center gap-1.5 transition hover:underline"
+        {/* Modal Footer: Close / Cancel */}
+        <div className="border-t border-white/5 pt-3 text-center">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs text-slate-400 hover:text-white transition font-medium cursor-pointer"
           >
-            <span>Ingin dapat komisi 20-30%? Gabung Program Afiliasi BoonTrack ➔</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+            Batal / Kembali ke Workspace
+          </button>
         </div>
       </div>
     </div>
