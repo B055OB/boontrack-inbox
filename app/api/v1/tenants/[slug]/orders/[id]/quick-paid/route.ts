@@ -7,6 +7,7 @@ import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
+import { recordResellerCommissionOnCanonicalEvent } from '@/lib/store-reseller';
 
 export async function POST(
   req: NextRequest,
@@ -291,6 +292,34 @@ export async function POST(
     }).catch((notifErr) => {
       console.warn('[Quick-Paid] Non-fatal affiliate commission alert error:', notifErr);
     });
+
+    // Reseller Commission Snapshot on PAYMENT_CONFIRMED (Canonical Financial Event)
+    const effectiveResellerCode = order.reseller_code || order.metadata?.reseller_code;
+    if (effectiveResellerCode && order.tenant_id) {
+      try {
+        const { data: resellerData } = await supabase
+          .from('store_resellers')
+          .select('id, commission_type, commission_value')
+          .eq('tenant_id', order.tenant_id)
+          .ilike('code', effectiveResellerCode)
+          .eq('status', 'ACTIVE')
+          .maybeSingle();
+
+        if (resellerData) {
+          await recordResellerCommissionOnCanonicalEvent({
+            tenantId: order.tenant_id,
+            orderId: String(order.id || orderId),
+            resellerId: resellerData.id,
+            commissionBase: Number(order.net_product_price || order.gross_amount || 0),
+            commissionType: resellerData.commission_type || 'PERCENTAGE',
+            commissionValue: Number(resellerData.commission_value || 0),
+            supabaseClient: supabase,
+          });
+        }
+      } catch (resellerErr) {
+        console.warn('[Quick-Paid] Reseller commission calculation note:', resellerErr);
+      }
+    }
 
     // Dispatch Meta CAPI Purchase (EMQ Optimization 8.0+)
     dispatchMetaCAPIPurchaseForOrder(String(order.id || orderId), supabase)

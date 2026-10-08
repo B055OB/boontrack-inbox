@@ -12,6 +12,150 @@
 
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 
+export type ResellerTier = 'FREE' | 'STARTER' | 'SCALE' | 'UNLIMITED';
+
+export interface ResellerEntitlement {
+  tier: ResellerTier;
+  max_active_resellers: number;
+  current_quota: number;
+  message: string;
+  upgrade_url: string;
+}
+
+/**
+ * Resolves dynamic reseller entitlement based on tenant tier and reseller add-on subscription.
+ * CTO & CFO Entitlement Invariants:
+ * - FREE: 5 active resellers (Default zero-cost tier for verified merchants)
+ * - STARTER: 25 active resellers (Starter Add-on, Rp 79.000/bln)
+ * - SCALE: 100 active resellers (Scale Add-on, Rp 149.000/bln)
+ * - UNLIMITED: 999999 active resellers (Enterprise / Team Scale or Unlimited Add-on)
+ */
+export function resolveResellerEntitlement(tenant: { tier?: string; metadata?: any }): ResellerEntitlement {
+  const meta = tenant?.metadata || {};
+  const metaTier = String(
+    meta?.reseller_settings?.tier ||
+    meta?.reseller_tier ||
+    meta?.reseller_plan ||
+    meta?.features?.reseller_tier ||
+    meta?.addons?.reseller?.tier ||
+    meta?.addons?.store_reseller?.tier ||
+    (meta?.addons?.reseller_unlimited || meta?.features?.reseller_unlimited ? 'UNLIMITED' : '') ||
+    (meta?.addons?.reseller_scale || meta?.features?.reseller_scale ? 'SCALE' : '') ||
+    (meta?.addons?.reseller_starter || meta?.features?.reseller_starter ? 'STARTER' : '') ||
+    ''
+  ).toUpperCase();
+
+  const baseTier = String(tenant?.tier || '').toUpperCase();
+
+  if (metaTier === 'UNLIMITED' || baseTier === 'ENTERPRISE' || baseTier === 'TEAM_SCALE') {
+    return {
+      tier: 'UNLIMITED',
+      max_active_resellers: 999999,
+      current_quota: 999999,
+      message: 'Batas kuota mitra reseller telah tercapai.',
+      upgrade_url: '/dashboard/billing',
+    };
+  }
+
+  if (metaTier === 'SCALE') {
+    return {
+      tier: 'SCALE',
+      max_active_resellers: 100,
+      current_quota: 100,
+      message: 'Batas kuota mitra reseller aktif telah tercapai (100 mitra). Upgrade ke Unlimited Add-on untuk kapasitas reseller tanpa batas.',
+      upgrade_url: '/dashboard/billing?feature=reseller_unlimited',
+    };
+  }
+
+  if (metaTier === 'STARTER') {
+    return {
+      tier: 'STARTER',
+      max_active_resellers: 25,
+      current_quota: 25,
+      message: 'Batas kuota mitra reseller aktif telah tercapai (25 mitra). Upgrade ke Scale Add-on untuk menambah hingga 100 reseller.',
+      upgrade_url: '/dashboard/billing?feature=reseller_scale',
+    };
+  }
+
+  // Default: FREE Tier (5 active resellers)
+  return {
+    tier: 'FREE',
+    max_active_resellers: 5,
+    current_quota: 5,
+    message: 'Batas kuota mitra reseller aktif telah tercapai. Upgrade ke Starter Add-on untuk menambah hingga 25 reseller.',
+    upgrade_url: '/dashboard/billing?feature=reseller_starter',
+  };
+}
+
+/**
+ * Guardrails Downgrade-Safe & Status FROZEN:
+ * - NEVER perform hard delete on reseller profiles or commission history during downgrades.
+ * - If tenant has more ACTIVE resellers than maxLimit, excess resellers transition to 'FROZEN' (read-only).
+ * - If tenant upgrades, older 'FROZEN' resellers automatically restore to 'ACTIVE' (FIFO).
+ */
+export async function syncDowngradeSafeResellers(tenantId: string, maxLimit: number, supabaseClient?: any) {
+  try {
+    const supabase = supabaseClient || getSupabaseAdmin() || getSupabase();
+    if (!supabase) return;
+
+    const { data: activeResellers, error: aErr } = await supabase
+      .from('store_resellers')
+      .select('id, created_at, status, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'ACTIVE')
+      .order('created_at', { ascending: true });
+
+    if (aErr || !Array.isArray(activeResellers)) return;
+
+    if (activeResellers.length > maxLimit) {
+      // Transition excess active resellers to FROZEN (FIFO: keep oldest active)
+      const toFreeze = activeResellers.slice(maxLimit);
+      for (const r of toFreeze) {
+        await supabase
+          .from('store_resellers')
+          .update({
+            status: 'FROZEN',
+            metadata: {
+              ...(r.metadata || {}),
+              frozen_reason: 'DOWNGRADE_QUOTA_EXCEEDED',
+              frozen_at: new Date().toISOString(),
+              previous_status: 'ACTIVE',
+            },
+          })
+          .eq('id', r.id);
+      }
+    } else if (activeResellers.length < maxLimit) {
+      // Room available: auto-thaw previously frozen resellers up to maxLimit
+      const room = maxLimit - activeResellers.length;
+      const { data: frozenResellers } = await supabase
+        .from('store_resellers')
+        .select('id, metadata')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'FROZEN')
+        .order('created_at', { ascending: true })
+        .limit(room);
+
+      if (Array.isArray(frozenResellers) && frozenResellers.length > 0) {
+        for (const fr of frozenResellers) {
+          await supabase
+            .from('store_resellers')
+            .update({
+              status: 'ACTIVE',
+              metadata: {
+                ...(fr.metadata || {}),
+                unfrozen_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', fr.id);
+        }
+      }
+    }
+  } catch (syncErr) {
+    console.warn('[syncDowngradeSafeResellers] Note:', syncErr);
+  }
+}
+
+
 export interface StoreReseller {
   id: string;
   tenant_id: string;
@@ -251,6 +395,21 @@ export async function recordResellerCommissionOnCanonicalEvent(params: {
 
     if (commissionAmount <= 0) {
       return { success: false, error: 'Calculated commission is zero' };
+    }
+
+    // Downgrade-Safe Guardrail: Reseller must be ACTIVE (FROZEN/INACTIVE resellers do NOT accrue new commissions)
+    const { data: resellerCheck } = await supabase
+      .from('store_resellers')
+      .select('status')
+      .eq('id', params.resellerId)
+      .eq('tenant_id', params.tenantId)
+      .maybeSingle();
+
+    if (!resellerCheck || resellerCheck.status !== 'ACTIVE') {
+      return {
+        success: false,
+        error: `Reseller is not active (status is ${resellerCheck?.status || 'NOT_FOUND'}). Commission withheld.`,
+      };
     }
 
     const rate = params.commissionType === 'PERCENTAGE'
