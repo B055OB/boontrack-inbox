@@ -312,32 +312,38 @@ export async function middleware(req: NextRequest) {
         url.pathname = '/app-brand/favicon.ico';
         return NextResponse.rewrite(url);
       }
-      if (
-        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
-        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
-      ) {
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
         url.pathname = '/app-brand/favicon.ico';
         return NextResponse.rewrite(url);
       }
+      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/branding/studio/favicon.ico';
+        return NextResponse.rewrite(url);
+      }
     }
     if (pathname === '/apple-touch-icon.png') {
-      if (
-        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
-        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
-      ) {
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
         url.pathname = '/app-brand/apple-touch-icon.png';
         return NextResponse.rewrite(url);
       }
+      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/branding/studio/icon.png';
+        return NextResponse.rewrite(url);
+      }
     }
     if (pathname === '/manifest.json' || pathname === '/site.webmanifest') {
-      if (
-        hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.') ||
-        hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')
-      ) {
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
         url.pathname = '/manifest-creator.json';
+        return NextResponse.rewrite(url);
+      }
+      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/branding/studio/manifest.json';
         return NextResponse.rewrite(url);
       }
       if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {

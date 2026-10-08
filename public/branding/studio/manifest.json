@@ -1,0 +1,21 @@
+{
+  "name": "BoonTrack Studio",
+  "short_name": "Studio",
+  "description": "Creative Workspace & Production Engine",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/studio",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#e11d48",
+  "orientation": "portrait",
+  "version": "1.0.0",
+  "icons": [
+    {
+      "src": "/branding/studio/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -40,19 +40,19 @@ export async function generateMetadata(): Promise<Metadata> {
   if (isStudioHost) {
     return {
       metadataBase: new URL('https://studio.boontrack.com'),
-      title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+      title: "BoonTrack Studio — Creative Workspace & Production Engine",
       description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
-      manifest: "/manifest-creator.json",
+      manifest: "/branding/studio/manifest.json",
       openGraph: {
-        title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+        title: "BoonTrack Studio — Creative Workspace & Production Engine",
         description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
         url: "https://studio.boontrack.com",
         siteName: "BoonTrack Studio",
         images: [
           {
-            url: '/app-brand/logo-master.png',
-            width: 1024,
-            height: 1024,
+            url: '/branding/studio/icon.png',
+            width: 512,
+            height: 512,
             alt: 'BoonTrack Studio Platform',
           },
         ],
@@ -61,9 +61,9 @@ export async function generateMetadata(): Promise<Metadata> {
       },
       twitter: {
         card: 'summary',
-        title: "BoonTrack Studio | Workspace Produksi UGC & Script Generator AI",
+        title: "BoonTrack Studio — Creative Workspace & Production Engine",
         description: "Pusat kreativitas BoonTrack: generator naskah video 9-scene untuk Shopee & TikTok, kolaborasi talent kreator, dan integrasi iklan berkonversi tinggi.",
-        images: ['/app-brand/logo-master.png'],
+        images: ['/branding/studio/icon.png'],
       },
       appleWebApp: {
         capable: true,
@@ -71,11 +71,8 @@ export async function generateMetadata(): Promise<Metadata> {
         title: "BoonTrack Studio",
       },
       icons: {
-        icon: [
-          { url: '/app-brand/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-          { url: '/app-brand/favicon.ico', sizes: 'any' },
-        ],
-        apple: '/app-brand/apple-touch-icon.png',
+        icon: '/branding/studio/favicon.ico',
+        apple: '/branding/studio/icon.png',
       },
     };
   }

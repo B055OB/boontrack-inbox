@@ -59,6 +59,26 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(iconsObj?.apple).toBe('/app-brand/apple-touch-icon.png');
   });
 
+  it('resolves Studio metadata, icons, and manifest for studio.boontrack.com host', async () => {
+    mockGet.mockImplementation((headerName: string) => {
+      if (headerName === 'x-forwarded-host') return 'studio.boontrack.com';
+      if (headerName === 'host') return 'studio.boontrack.com';
+      return null;
+    });
+
+    const meta = await generateMetadata();
+
+    expect(meta.metadataBase?.toString()).toBe('https://studio.boontrack.com/');
+    expect(meta.manifest).toBe('/branding/studio/manifest.json');
+    expect(meta.title).toBe('BoonTrack Studio — Creative Workspace & Production Engine');
+
+    // Icons must be strictly scoped to Studio (/branding/studio/*)
+    expect(meta.icons).toEqual({
+      icon: '/branding/studio/favicon.ico',
+      apple: '/branding/studio/icon.png',
+    });
+  });
+
   it('resolves Shop metadata, icons, and manifest for shop.boontrack.com host', async () => {
     mockGet.mockImplementation((headerName: string) => {
       if (headerName === 'x-forwarded-host') return 'shop.boontrack.com';
