@@ -104,6 +104,30 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/branding/studio/manifest.json');
     });
+
+    it('8. Rewrites /desk to /studio/desk on studio.boontrack.com', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/desk', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/desk');
+    });
+
+    it('9. Rewrites /register to /studio/register on studio.boontrack.com', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/register', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/register');
+    });
   });
 
   describe('B. Host-Aware 301 Legacy Redirect for UGC Studio on Creator Host', () => {

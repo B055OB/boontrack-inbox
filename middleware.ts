@@ -543,6 +543,53 @@ export async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
+  // ===========================================================================
+  // SUBDOMAIN STUDIO (studio.boontrack.com) - ARSITEKTUR TERISOLASI (P0)
+  // ===========================================================================
+  const isStudioHost =
+    hostClean === 'studio.boontrack.com' ||
+    hostClean.startsWith('studio.') ||
+    subdomain === 'studio';
+
+  if (isStudioHost) {
+    const url = req.nextUrl.clone();
+
+    // 1. Root / -> rewrite ke /studio (Dashboard Workspace)
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/studio';
+      return NextResponse.rewrite(url);
+    }
+
+    // 2. /desk -> rewrite ke /studio/desk
+    if (pathname === '/desk' || pathname.startsWith('/desk/')) {
+      const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
+      url.pathname = `/studio/desk${deskSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 3. /register -> rewrite ke /studio/register
+    if (pathname === '/register' || pathname.startsWith('/register/')) {
+      const regSubpath = pathname === '/register' ? '' : pathname.replace(/^\/register/, '');
+      url.pathname = `/studio/register${regSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 4. /ugc-studio -> rewrite ke /studio/ugc-studio
+    if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
+      url.pathname = `/studio${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 5. Jika sudah berada di path /studio/... -> pass-through
+    if (pathname.startsWith('/studio')) {
+      return NextResponse.next();
+    }
+
+    // 6. Sub-path /[path] -> rewrite ke /studio/[path]
+    url.pathname = `/studio${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
   if (pathname.startsWith('/admin')) {
     return NextResponse.next();
@@ -856,31 +903,7 @@ export async function middleware(req: NextRequest) {
 
 
 
-  // ── 4b. KHUSUS STUDIO.BOONTRACK.COM (Studio Dashboard Workspace & UGC Studio Resolver) ──
-  if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
-    const url = req.nextUrl.clone();
 
-    // 1. Root / -> rewrite ke /studio (Dashboard Workspace)
-    if (pathname === '/' || pathname === '') {
-      url.pathname = '/studio';
-      return NextResponse.rewrite(url);
-    }
-
-    // 2. /ugc-studio -> rewrite ke /studio/ugc-studio
-    if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
-      url.pathname = `/studio${pathname}`;
-      return NextResponse.rewrite(url);
-    }
-
-    // 3. Jika sudah berada di path /studio/... -> pass-through
-    if (pathname.startsWith('/studio')) {
-      return NextResponse.next();
-    }
-
-    // 4. Sub-path /[path] -> rewrite ke /studio/[path]
-    url.pathname = `/studio${pathname}`;
-    return NextResponse.rewrite(url);
-  }
 
   // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
   if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {

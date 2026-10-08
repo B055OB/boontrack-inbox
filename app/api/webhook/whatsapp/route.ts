@@ -80,6 +80,33 @@ export async function POST(req: NextRequest) {
 
           console.log(`[WhatsApp Inbound] From: ${senderPhone} | Text: "${textBody}"`);
 
+          // ── A. STUDIO INBOUND ACTIVATION MATCHER: "AKTIFKAN STUDIO {TOKEN}" ──
+          const studioActivationMatch = textBody.match(/^AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{6,8})$/i);
+          if (studioActivationMatch) {
+            const studioToken = studioActivationMatch[1].toUpperCase().trim();
+            console.log(`[WhatsApp Inbound Studio] Extracted token: "${studioToken}" from ${senderPhone}`);
+
+            const { activateStudioRegistrationByToken } = await import('@/lib/studio/auth');
+            const activatedStudio = await activateStudioRegistrationByToken(studioToken, senderPhone);
+
+            if (activatedStudio) {
+              await sendWhatsAppSessionMessage(
+                senderPhone,
+                `🎉 Selamat! Workspace BoonTrack Studio Anda (${activatedStudio.name}) telah aktif!\n\n` +
+                `⚡ 50 Render Credits & 2 Concurrent Jobs siap digunakan.\n` +
+                `Buka ruang kerja Anda di: https://studio.boontrack.com/desk`
+              );
+              return NextResponse.json({ success: true, message: 'Studio workspace activated successfully' });
+            } else {
+              console.warn(`[WhatsApp Webhook] Studio token "${studioToken}" tidak ditemukan.`);
+              await sendWhatsAppSessionMessage(
+                senderPhone,
+                `Halo! Kode aktivasi Studio ${studioToken} tidak ditemukan atau sudah kedaluwarsa. Silakan periksa kembali di layar registrasi Studio Anda.`
+              );
+              continue;
+            }
+          }
+
           // Deteksi pola aktivasi "AKTIVASI BT-XXXX" (case-insensitive)
           const activationMatch = textBody.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
           if (!activationMatch) {
