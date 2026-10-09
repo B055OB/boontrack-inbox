@@ -99,11 +99,14 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL ||
       'https://studio.boontrack.com';
 
-    const xenditKey = (
-      process.env.XENDIT_API_KEY ||
-      process.env.XENDIT_SECRET_KEY ||
-      'xnd_development_2itAoTg8FOAdr8Vk7jKpU0MksgDSAjaWzlLHzEMkPuHcRyf5IUxfvO7MG1KPe'
-    ).trim();
+    const xenditKey = (process.env.XENDIT_SECRET_KEY || process.env.XENDIT_API_KEY || '').trim();
+    if (!xenditKey) {
+      console.error('[Studio Billing] Payment gateway configuration is missing on server: XENDIT_SECRET_KEY or XENDIT_API_KEY is not configured.');
+      return NextResponse.json(
+        { error: 'Payment gateway configuration is missing on server' },
+        { status: 500 }
+      );
+    }
 
     const xenditApiUrl = (process.env.XENDIT_API_URL || 'https://api.xendit.co').replace(/\/$/, '');
     const authHeader = `Basic ${Buffer.from(`${xenditKey}:`).toString('base64')}`;

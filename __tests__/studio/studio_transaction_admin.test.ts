@@ -86,9 +86,17 @@ describe('1. Studio Token Pricing SSOT Configuration Suite', () => {
 
 describe('2. Studio Xendit Create Invoice API Suite', () => {
   const originalFetch = global.fetch;
+  const originalEnvSecret = process.env.XENDIT_SECRET_KEY;
+  const originalEnvApi = process.env.XENDIT_API_KEY;
+
+  beforeEach(() => {
+    process.env.XENDIT_SECRET_KEY = 'xnd_test_mock_secret_key';
+  });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    process.env.XENDIT_SECRET_KEY = originalEnvSecret;
+    process.env.XENDIT_API_KEY = originalEnvApi;
     jest.clearAllMocks();
   });
 
@@ -192,6 +200,32 @@ describe('2. Studio Xendit Create Invoice API Suite', () => {
         body: expect.stringContaining('"category":"STUDIO_TOKEN"'),
       })
     );
+  });
+
+  it('returns 500 when Xendit keys are missing on server (fail-secure check)', async () => {
+    delete process.env.XENDIT_SECRET_KEY;
+    delete process.env.XENDIT_API_KEY;
+
+    mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: '11111111-2222-3333-4444-555555555555',
+        slug: 'warungkreatif',
+        name: 'Warung Kreatif Studio',
+        metadata: {},
+      },
+      error: null,
+    });
+
+    const req = createPostRequest({
+      packageId: 'creator',
+      tenantSlug: 'warungkreatif',
+    });
+
+    const res = await createInvoiceHandler(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json.error).toBe('Payment gateway configuration is missing on server');
   });
 });
 
