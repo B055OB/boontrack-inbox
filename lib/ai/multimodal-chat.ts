@@ -14,6 +14,7 @@ import {
   processConsultationLeadFunnel,
   isClinicConsultationTenant,
   generateBoonPilotSystemPrompt,
+  validateClinicBotOutput,
   CLINIC_OFFICIAL_SCREENING_URL,
   CLINIC_KIDMAP_ASSESSMENT_URL,
   CLINIC_BCA_ACCOUNT,
@@ -130,6 +131,7 @@ export async function processMultimodalChat(
   let category = input.context?.category || 'retail';
   let tenantDomainInfo = { slug, custom_domain: null as string | null };
   let tenantMetadata: any = {};
+  let tenantProducts: any[] = [];
   let botProfileRow: any = null;
 
   const isUuid = (val?: string | null) =>
@@ -191,6 +193,9 @@ export async function processMultimodalChat(
         custom_domain: t?.metadata?.custom_domain || null,
       };
       tenantMetadata = t?.metadata || {};
+      tenantProducts = Array.isArray(tenantMetadata.products)
+        ? tenantMetadata.products
+        : [];
       if (t?.category || t?.business_type) {
         category = t.category || t.business_type;
       }
@@ -576,13 +581,13 @@ export async function processMultimodalChat(
         };
       }
 
-      // 1.05. HARDENING_V1: Pre-LLM Clinical Safety Gate (Acute Medical Danger Interceptor)
+      // 1.05. Pre-LLM Clinical Safety Gate (Acute Medical Danger Interceptor)
       const hardeningPolicy = resolveHardeningPolicy(t || { slug, metadata: tenantMetadata });
-      if (hardeningPolicy === 'HARDENING_V1') {
+      const isClinicTenant = isClinicConsultationTenant(t, tenantMetadata, tenantProducts);
+      if (hardeningPolicy === 'HARDENING_V1' || isClinicTenant) {
         const clinicalGate = evaluateClinicalSafetyGate(message);
         if (clinicalGate.isEmergency) {
-          console.warn(`[MultimodalChat] HARDENING_V1 Clinical Emergency intercepted for tenant '${slug}'. AI STOP.`, {
-            hardening_policy_version: 'HARDENING_V1',
+          console.warn(`[MultimodalChat] Clinical Emergency intercepted for tenant '${slug}'. AI STOP.`, {
             category: clinicalGate.category,
             matched_keywords: clinicalGate.matchedKeywords,
           });
@@ -619,6 +624,7 @@ export async function processMultimodalChat(
           type: consultFunnelRes.type,
           quick_actions: defaultQuickActions,
           active_engine: activeEngine,
+          bot_paused: consultFunnelRes.type === 'EMERGENCY_ESCALATION' || consultFunnelRes.nextState === 'HANDOVER_TO_HUMAN',
         };
       }
 
@@ -769,9 +775,7 @@ export async function processMultimodalChat(
     try {
       // 1. Ambil katalog produk aktual dari Supabase
       let productCatalogText = '';
-      const metaProducts: any[] = Array.isArray(tenantMetadata.products)
-        ? tenantMetadata.products
-        : [];
+      const metaProducts: any[] = tenantProducts;
 
       if (metaProducts.length > 0) {
         productCatalogText = metaProducts
@@ -1035,6 +1039,17 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
           const candidateText = gData.candidates?.[0]?.content?.parts?.[0]?.text;
           if (candidateText && candidateText.trim().length > 0) {
             reply = candidateText.trim();
+            if (isClinicConsultationTenant(t, tenantMetadata, metaProducts)) {
+              const valResult = validateClinicBotOutput(reply, { tenant: t, meta: tenantMetadata });
+              if (!valResult.isValid) {
+                console.warn(`[MultimodalChat] Post-LLM Safety Validator rejected candidate output:`, {
+                  violations: valResult.violations,
+                  reason: valResult.reason,
+                  blockedUrls: valResult.blockedUrls,
+                });
+                reply = valResult.sanitizedReply;
+              }
+            }
           }
         } else {
           const errText = await geminiRes.text().catch(() => '');
@@ -1080,6 +1095,9 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
         }
       } else if (fallbackFunnel.handled && fallbackFunnel.reply) {
         reply = fallbackFunnel.reply;
+      } else if (isClinicConsultationTenant(t, tenantMetadata, tenantProducts)) {
+        const clinicStoreName = tenantMetadata.clinic_name || t?.name || 'Layanan Tumbuh Kembang & Nutrisi Anak';
+        reply = `Halo Ayah/Bunda! Terima kasih sudah berbagi dengan kami di *${clinicStoreName}*. 😊\n\nKami sangat memahami kekhawatiran Ayah/Bunda. Tim kami siap mendampingi dan berdiskusi langsung di sini tanpa perlu khawatir. Boleh ceritakan lebih lanjut mengenai kondisi si kecil?`;
       } else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
         reply = `Pembayaran di *${storeName}* dapat dilakukan secara praktis dan otomatis melalui QRIS 24 jam.` +
           (cleanCheckoutUrl ? `\n\n👉 *Link Checkout Resmi:*\n${cleanCheckoutUrl}` : '');
@@ -1087,6 +1105,14 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
         reply = `Halo Kak! Ada yang bisa kami bantu seputar produk atau layanan di *${storeName}*?` +
           (cleanCheckoutUrl ? `\n\n👉 *Kunjungi Etalase & Pendaftaran Resmi:*\n${cleanCheckoutUrl}` : '');
       }
+    }
+  }
+
+  // Final Output Safety Check for Clinic Consultation
+  if (reply && isClinicConsultationTenant(t, tenantMetadata, tenantProducts)) {
+    const finalVal = validateClinicBotOutput(reply, { tenant: t, meta: tenantMetadata });
+    if (!finalVal.isValid) {
+      reply = finalVal.sanitizedReply;
     }
   }
 

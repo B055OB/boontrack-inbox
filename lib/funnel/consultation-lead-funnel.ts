@@ -13,6 +13,13 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
+import { evaluateClinicalSafetyGate } from '@/lib/hardening/clinical-safety-gate';
+import {
+  validateClinicBotOutput,
+  buildSafeFrontDeskFallback,
+  type ClinicOutputValidationResult,
+  type ClinicSafetyViolationType,
+} from '@/lib/ai/clinic-output-validator';
 
 
 export interface ProcessConsultationFunnelParams {
@@ -50,7 +57,7 @@ export interface ClinicIntakeData {
 export interface ConsultationFunnelResult {
   handled: boolean;
   reply: string;
-  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER' | 'HYBRID_CHECKOUT' | 'SCREENING_OFFER';
+  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER' | 'HYBRID_CHECKOUT' | 'SCREENING_OFFER' | 'EMERGENCY_ESCALATION';
   nextState?: string;
   leadData?: Record<string, any>;
   checkoutUrl?: string;
@@ -838,6 +845,28 @@ export function extractLeadFormData(
 }
 
 /**
+ * Detects whether the user is expressing technological difficulty ("gaptek"),
+ * reluctance with links/forms, or wants to explore/chat casually first.
+ * If true, the system MUST NOT force static templates or external links,
+ * but forward the conversation directly to Gemini 3.8 Flash (generateBoonPilotSystemPrompt).
+ */
+export function isGaptekOrCasualMessage(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase().trim();
+
+  // 1. Gaptek / Difficulty with external links or forms
+  const gaptekSignal = /\b(gaptek|gagap\s*teknologi|bingung\s*(?:buka|isi|pencet|klik)\s*(?:link|tautan|form|web)|gak\s*(?:bisa|ngerti|paham|tau)\s*(?:buka|isi|pencet|klik)\s*(?:link|tautan|form|web)|sulit\s*buka\s*(?:link|form|tautan)|belum\s*(?:bisa|mau)\s*isi\s*form|jangan\s*(?:kirim|kasih)\s*link|males\s*(?:buka|isi)\s*link)\b/i.test(lower);
+
+  // 2. Explicit request for casual / preliminary chat in WhatsApp directly
+  const casualChatSignal = /\b(tanya(?:-tanya)?\s*(?:dulu|santai)|mau\s*(?:tanya(?:-tanya)?|ngobrol|curhat|diskusi)\s*(?:dulu|santai)|curhat(?:\s*dulu)?|ngobrol\s*santai|chat\s*(?:santai|aja)|di\s*(?:chat|wa)(?:\s*(?:wa|chat))?\s*aja|chat\s*(?:di\s*)?(?:sini|wa)\s*aja|bisa\s*(?:di)?jelas(?:kan|in)\s*langsung|(?:di)?jelas(?:kan|in)\s*di\s*sini|konsul(?:tasi)?\s*di\s*sini\s*aja|mau\s*(?:tahu|tanya)\s*dulu)\b/i.test(lower);
+
+  // 3. Inquiring about other products / digital education / alternatives ("beli produk lain", "ada buku", "ecourse", etc.)
+  const otherProductsSignal = /\b(beli\s*produk\s*lain|produk\s*lain|produk\s*apa\s*aja|ada\s*produk\s*apa|ada\s*(?:ebook|e-book|buku|modul|panduan)|play\s*n\s*grow|paket\s*lain|pilihan\s*lain|ada\s*pilihan\s*apa|selain\s*(?:konsultasi|konsul)|opsi\s*lain)\b/i.test(lower);
+
+  return gaptekSignal || casualChatSignal || otherProductsSignal;
+}
+
+/**
  * Main processor for the consultation & lead funnel order gatekeeper.
  */
 export async function processConsultationLeadFunnel(
@@ -899,6 +928,57 @@ export async function processConsultationLeadFunnel(
   const hardeningPolicy = resolveHardeningPolicy(tenant);
 
   if (isClinic) {
+    // ── 0. DETERMINISTIC EMERGENCY SAFETY GATE (PRE-LLM / PRE-FUNNEL) ────────
+    // Immediate clinical emergency interceptor (kejang, tidak sadar, sesak napas berat, henti napas)
+    const emergencyEval = evaluateClinicalSafetyGate(rawMsg);
+    if (emergencyEval.isEmergency) {
+      console.warn(`[ConsultationFunnel] Acute clinical emergency intercepted for tenant '${tenant.slug || tenant.id}':`, {
+        category: emergencyEval.category,
+        matched_keywords: emergencyEval.matchedKeywords,
+      });
+
+      if (supabase && senderPhone) {
+        try {
+          const nowIso = new Date().toISOString();
+          const targetTenantId = tenant.slug || tenant.id;
+          await supabase.from('conversation_sessions').upsert(
+            {
+              tenant_id: targetTenantId,
+              session_id: `wa_${targetTenantId}_${senderPhone}`,
+              channel: 'WHATSAPP',
+              user_identifier: senderPhone,
+              current_state: 'HANDOVER_TO_HUMAN',
+              is_paused: true,
+              paused_by: 'clinical_emergency',
+              metadata: {
+                clinic_intake: extractClinicIntakeData(rawMsg).data,
+                current_step: 'EMERGENCY_ESCALATION',
+                handover_reason: 'CLINICAL_EMERGENCY',
+                handover_state: 'HUMAN_HANDOVER',
+                emergency_category: emergencyEval.category,
+                emergency_keywords: emergencyEval.matchedKeywords,
+                is_paused: true,
+                paused_by: 'clinical_emergency',
+                updated_at: nowIso,
+              },
+              updated_at: nowIso,
+            },
+            { onConflict: 'tenant_id,user_identifier' }
+          );
+        } catch (err) {
+          console.warn('[ConsultationFunnel] Failed to persist emergency handover session:', err);
+        }
+      }
+
+      return {
+        handled: true,
+        reply: emergencyEval.replyMessage,
+        type: 'EMERGENCY_ESCALATION',
+        nextState: 'HANDOVER_TO_HUMAN',
+        leadData: extractClinicIntakeData(rawMsg).data,
+      };
+    }
+
     // ── Dynamic clinic config (doctor team & payment account) ──────────────
     const clinicDoctorLabel = buildDoctorTeamLabel(meta);
     const clinicPaymentAcct = resolveClinicPaymentAccount(meta);
@@ -1003,6 +1083,18 @@ export async function processConsultationLeadFunnel(
         console.warn('[ConsultationFunnel] persistSessionStep error:', e);
       }
     };
+
+    // ── Gaptek or Casual Chat Bypass (Forward to Gemini 3.8 Flash) ──────────
+    // If the user says they are "gaptek", asks to chat/curhat casually first, or
+    // doesn't want to open links, DO NOT intercept with static screening templates!
+    // Forward the turn directly to Gemini 3.8 Flash with generateBoonPilotSystemPrompt.
+    const isGaptekOrCasual = isGaptekOrCasualMessage(rawMsg);
+    if (isGaptekOrCasual && !isPaymentConfirmed && !isPaymentRequest) {
+      if (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint) {
+        await persistSessionStep('STEP_2_ANAMNESIS', clinicIntake.data);
+      }
+      return { handled: false, reply: '', type: 'GREETING' };
+    }
 
     // ── Initial greeting (STEP 1) — dynamic doctor label & store name ─
     const clinicStoreName = tenant.name || meta.store_name || 'Layanan Tumbuh Kembang & Nutrisi Anak';
@@ -1553,3 +1645,16 @@ export async function processConsultationLeadFunnel(
 
   return { handled: false, reply: '', type: 'GREETING' };
 }
+
+// ── Re-exports for Post-LLM Safety Validator & Clinical Gate ───────────────
+export {
+  validateClinicBotOutput,
+  buildSafeFrontDeskFallback,
+  DEFINITIVE_DIAGNOSIS_REGEX,
+  HARD_DRUGS_REGEX,
+  OFFICIAL_ALLOWED_HOSTNAMES,
+  type ClinicOutputValidationResult,
+  type ClinicSafetyViolationType,
+  type ClinicValidationContext,
+} from '@/lib/ai/clinic-output-validator';
+

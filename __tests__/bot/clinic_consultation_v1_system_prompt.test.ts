@@ -19,6 +19,10 @@ import {
   BOONPILOT_TRIAGE_SYSTEM_PROMPT,
   CLINIC_OFFICIAL_SCREENING_URL,
   CLINIC_KIDMAP_ASSESSMENT_URL,
+  processConsultationLeadFunnel,
+  isGaptekOrCasualMessage,
+  validateClinicBotOutput,
+  buildSafeFrontDeskFallback,
 } from '@/lib/funnel/consultation-lead-funnel';
 import { KnownBlueprintCodeSchema } from '@/lib/types/tenant-bot-config';
 
@@ -175,4 +179,183 @@ describe('CONSULTATION_V1: Clinic Bot System Prompt on Gemini 3.8 Flash', () => 
       expect(KnownBlueprintCodeSchema.parse('CLINIC_CONSULTATION')).toBe('CLINIC_CONSULTATION');
     });
   });
+
+  const mockDynamicClinicTenant = {
+    id: 'tenant-clinic-101',
+    slug: 'ziad-medika',
+    name: 'Klinik Ziad Medika',
+    category: 'CLINIC',
+    tier: 'PRO_SCALE',
+    metadata: mockClinicMetadata,
+  };
+
+  // ── TEST 5: INTERCEPTOR AUDIT & GAPTEK / CASUAL CHAT BYPASS ────────────────
+  describe('5. Interceptor Audit & "Gaptek" / Casual Chat Bypass', () => {
+    it('correctly detects gaptek and casual chat requests via isGaptekOrCasualMessage', () => {
+      expect(isGaptekOrCasualMessage('Halo dok, saya gaptek nih')).toBe(true);
+      expect(isGaptekOrCasualMessage('saya bingung buka link form nya')).toBe(true);
+      expect(isGaptekOrCasualMessage('mau tanya-tanya santai dulu ya dok')).toBe(true);
+      expect(isGaptekOrCasualMessage('bisa dijelaskan langsung di chat wa aja?')).toBe(true);
+      expect(isGaptekOrCasualMessage('curhat dulu dong dok soal anak saya')).toBe(true);
+
+      // Normal clinical anamnesis messages without gaptek signals must NOT trigger bypass
+      expect(isGaptekOrCasualMessage('Si kecil 18 bulan makan diemut terus dan BB susah naik')).toBe(false);
+      expect(isGaptekOrCasualMessage('Halo selamat siang dokter')).toBe(false);
+      expect(isGaptekOrCasualMessage('Hasil skrining kemarin waspada, mau bayar')).toBe(false);
+    });
+
+    it('bypasses static screening interceptor when parent mentions gaptek (handled: false -> passes to LLM)', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Halo dok, saya gaptek nih mau tanya-tanya dulu soal anak saya susah makan',
+        senderPhone: '6281234567890',
+      });
+
+      // Must NOT be intercepted by static rigid template screening reply
+      expect(result.handled).toBe(false);
+      expect(result.reply).toBe('');
+      // Flow falls through to Gemini 3.8 Flash which uses generateBoonPilotSystemPrompt
+    });
+
+    it('bypasses static screening interceptor when parent requests casual chat directly in WA', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Dok mau tanya-tanya santai dulu di chat aja ya, belum mau isi form link luar',
+        senderPhone: '6281234567891',
+      });
+
+      expect(result.handled).toBe(false);
+      expect(result.reply).toBe('');
+    });
+
+    it('bypasses static screening interceptor when parent inquires about other products / e-book', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Saya mau beli produk lain atau modul e-book panduan makan ada gak dok?',
+        senderPhone: '6281234567899',
+      });
+
+      expect(result.handled).toBe(false);
+      expect(result.reply).toBe('');
+    });
+  });
+
+  // ── TEST 6: PRE-LLM DETERMINISTIC EMERGENCY SAFETY GATE ───────────────────
+  describe('6. Pre-LLM Deterministic Emergency Safety Gate', () => {
+    it('immediately intercepts "anak saya kejang" deterministically with IGD referral and human handover', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Tolong dok anak saya kejang matanya melotot ke atas!',
+        senderPhone: '6281234567892',
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('EMERGENCY_ESCALATION');
+      expect(result.nextState).toBe('HANDOVER_TO_HUMAN');
+      expect(result.reply).toContain('[PERINGATAN KEGAWATDARURATAN MEDIS]');
+      expect(result.reply).toContain('Instalasi Gawat Darurat (IGD)');
+      expect(result.reply).toContain('DIHENTIKAN SEKETIKA');
+      expect(result.reply).toContain('kejang');
+    });
+
+    it('intercepts "tidak sadar lemas lunglai" and triggers emergency gate', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Anak saya pingsan tidak sadar lemas lunglai tidak merespon',
+        senderPhone: '6281234567893',
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('EMERGENCY_ESCALATION');
+      expect(result.nextState).toBe('HANDOVER_TO_HUMAN');
+      expect(result.reply).toContain('IGD');
+    });
+
+    it('intercepts "sesak napas berat" and "henti napas" acute signals', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'Tolong dok si kecil sesak napas berat dan bibir biru membiru',
+        senderPhone: '6281234567894',
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('EMERGENCY_ESCALATION');
+      expect(result.nextState).toBe('HANDOVER_TO_HUMAN');
+      expect(result.reply).toContain('IGD');
+    });
+  });
+
+  // ── TEST 7: POST-LLM OUTPUT VALIDATOR ─────────────────────────────────────
+  describe('7. Post-LLM Output Validator (Post-Inference Safety Guardrails)', () => {
+    it('blocks definitive diagnosis claims ("anak Anda menderita...") and returns safe front-desk fallback', () => {
+      const dangerousOutput =
+        'Berdasarkan gejala yang Bunda sampaikan, anak Anda menderita stunting kronis dan gizi buruk berat. Segera lakukan penanganan ini.';
+
+      const validation = validateClinicBotOutput(dangerousOutput, {
+        tenant: mockDynamicClinicTenant,
+        meta: mockClinicMetadata,
+      });
+
+      expect(validation.isValid).toBe(false);
+      expect(validation.violations).toContain('DEFINITIVE_DIAGNOSIS');
+      expect(validation.sanitizedReply).toContain('Sebagai asisten front-desk dan edukasi');
+      expect(validation.sanitizedReply).toContain('tidak berwenang menegakkan diagnosis medis pasti');
+      expect(validation.sanitizedReply).not.toContain('anak Anda menderita stunting kronis');
+    });
+
+    it('blocks prescription or hard drug recommendations ("antibiotik amoxicillin...") and returns safe fallback', () => {
+      const dangerousDrugOutput =
+        'Untuk mengatasi demam dan radang si kecil, Bunda bisa berikan antibiotik amoxicillin puyer racikan 3 kali sehari.';
+
+      const validation = validateClinicBotOutput(dangerousDrugOutput, {
+        tenant: mockDynamicClinicTenant,
+        meta: mockClinicMetadata,
+      });
+
+      expect(validation.isValid).toBe(false);
+      expect(validation.violations).toContain('HARD_DRUG_PRESCRIPTION');
+      expect(validation.sanitizedReply).toContain('tidak berwenang');
+      expect(validation.sanitizedReply).toContain('resep obat keras');
+      expect(validation.sanitizedReply).not.toContain('amoxicillin');
+    });
+
+    it('blocks unauthorized foreign URLs outside tenant and official screening whitelist', () => {
+      const foreignLinkOutput =
+        'Untuk beli suplemen anak, silakan kunjungi link toko ini: https://shopee.co.id/toko-herbal-murah atau https://random-blog.xyz/obat';
+
+      const validation = validateClinicBotOutput(foreignLinkOutput, {
+        tenant: mockDynamicClinicTenant,
+        meta: mockClinicMetadata,
+      });
+
+      expect(validation.isValid).toBe(false);
+      expect(validation.violations).toContain('UNAUTHORIZED_URL');
+      expect(validation.blockedUrls).toContain('https://shopee.co.id/toko-herbal-murah');
+      expect(validation.sanitizedReply).toContain('Sebagai asisten front-desk');
+    });
+
+    it('permits safe front-desk output with official whitelisted screening link', () => {
+      const safeOutput =
+        `Halo Bunda Rina! Terima kasih sudah berbagi. Masalah si kecil yang mulai pemilih makanan di usia 14 bulan adalah hal yang umum terjadi.\n\n` +
+        `Agar tim dokter kami mendapatkan gambaran lengkap mengenai riwayat makan si kecil, silakan isi form skrining resmi berikut ya:\n` +
+        `👉 https://screening.littlebitefeeding.com/\n\n` +
+        `Tim kami siap mendampingi. Tetap semangat ya Bun! 😊`;
+
+      const validation = validateClinicBotOutput(safeOutput, {
+        tenant: mockDynamicClinicTenant,
+        meta: mockClinicMetadata,
+      });
+
+      expect(validation.isValid).toBe(true);
+      expect(validation.violations.length).toBe(0);
+      expect(validation.sanitizedReply).toBe(safeOutput);
+    });
+  });
 });
+

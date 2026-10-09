@@ -30,7 +30,8 @@ export const CLINICAL_EMERGENCY_SIGNALS: ClinicalEmergencySignal[] = [
     category: 'RESPIRATORY_DISTRESS',
     label: 'Kegawatan Pernapasan / Tersedak / Sianosis',
     patterns: [
-      /\b(sesak\s*napas|sulit\s*bernafas|susah\s*nafas|megap\s*megap|tarikan\s*(?:dinding\s*)?dada|retraksi\s*dada|stridor|nafas\s*bunyi|tersedak|tersumbat|choking)\b/i,
+      /\b(sesak\s*(?:napas|nafas)(?:\s*(?:berat|parah))?|sulit\s*(?:ber)?nafas|susah\s*nafas|megap\s*megap|tarikan\s*(?:dinding\s*)?dada|retraksi\s*dada|stridor|nafas\s*bunyi|tersedak|tersumbat|choking)\b/i,
+      /\b(henti\s*(?:napas|nafas)|tidak\s*(?:ber)?napas|nafas\s*berhenti|napas\s*(?:berat|tersengal(?:-sengal)?))\b/i,
       /\b(membiru|bibir\s*biru|ujung\s*kuku\s*biru|sianosis|kurang\s*oksigen)\b/i,
     ],
   },
@@ -38,14 +39,14 @@ export const CLINICAL_EMERGENCY_SIGNALS: ClinicalEmergencySignal[] = [
     category: 'SEIZURE',
     label: 'Kejang / Step / Penurunan Kesadaran Akut',
     patterns: [
-      /\b(kejang|step|kelonjotan|kaku\s*tubuh|mata\s*melotot\s*ke\s*atas|bibir\s*(?:bergetar|terkunci))\b/i,
+      /\b(kejang(?:-kejang)?|step|kelonjotan|kaku\s*tubuh|mata\s*melotot\s*ke\s*atas|bibir\s*(?:bergetar|terkunci))\b/i,
     ],
   },
   {
     category: 'ALTERED_CONSCIOUSNESS_DEHYDRATION',
     label: 'Penurunan Kesadaran / Dehidrasi Sangat Berat',
     patterns: [
-      /\b(tidak\s*sadar|hilang\s*kesadaran|pingsan|tidak\s*merespon|lemas\s*lunglai|tidur\s*terus\s*tidak\s*bangun|koma)\b/i,
+      /\b(tidak\s*(?:sadarkan\s*diri|sadar|merespon|responsif|bergerak)|hilang\s*kesadaran|penurunan\s*kesadaran|pingsan|lemas\s*(?:lunglai|terkulai|dehidrasi\s*berat)|tidur\s*terus\s*tidak\s*bangun|koma|letargis)\b/i,
       /\b(tidak\s*(?:bisa\s*)?pipis\s*(?:>|lebih\s*dari)?\s*6\s*jam|popok\s*kering\s*(?:seharian|8\s*jam)|mata\s*sangat\s*cekung|ubun\s*ubun\s*cekung)\b/i,
     ],
   },
