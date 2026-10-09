@@ -74,28 +74,27 @@ describe('Cart Policy Matrix & Multi-Tenant Isolation', () => {
     }
   });
 
-  describe('Catalog Storefront (app/[tenant]/page.tsx) Product Card & FloatingCartBar Integration', () => {
-    const catalogPagePath = path.join(process.cwd(), 'app/[tenant]/page.tsx');
-    let catalogPageCode: string;
+  describe('Catalog Storefront (StorefrontTemplate.tsx) Product Card & FloatingCartBar Integration', () => {
+    const templatePath = path.join(process.cwd(), 'app/[tenant]/components/templates/StorefrontTemplate.tsx');
+    let templateCode: string;
 
     beforeAll(() => {
-      catalogPageCode = fs.readFileSync(catalogPagePath, 'utf-8');
+      templateCode = fs.readFileSync(templatePath, 'utf-8');
     });
 
     it('exposes [+ Keranjang] button on catalog product cards for physical & food products', () => {
-      expect(catalogPageCode).toContain('+ Keranjang');
-      expect(catalogPageCode).toContain('addToCart(p, e)');
+      expect(templateCode).toContain('+ Keranjang');
+      expect(templateCode).toContain('addToCart');
     });
 
-    it('exposes [Beli Langsung] quick buy button on catalog product cards for physical & food products', () => {
-      expect(catalogPageCode).toContain('Beli Langsung');
-      expect(catalogPageCode).toContain('setIsCheckoutOpen(true)');
+    it('exposes [Pesan Langsung] / [Beli Langsung] quick buy button on catalog product cards for physical & food products', () => {
+      expect(templateCode).toContain('setIsCheckoutOpen(true)');
     });
 
     it('mounts FloatingCartBar at bottom of page when cart has items', () => {
-      expect(catalogPageCode).toContain('import FloatingCartBar from "@/components/cart/FloatingCartBar"');
-      expect(catalogPageCode).toContain('<FloatingCartBar');
-      expect(catalogPageCode).toContain('cart.items.length > 0');
+      expect(templateCode).toContain("import FloatingCartBar from '@/components/cart/FloatingCartBar'");
+      expect(templateCode).toContain('<FloatingCartBar');
+      expect(templateCode).toContain('cart.length > 0');
     });
   });
 

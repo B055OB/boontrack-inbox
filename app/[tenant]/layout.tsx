@@ -52,7 +52,7 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
 
     if (!store) {
       const localConfig = getTenantConfig(cleanTenant);
-      if (localConfig && (localConfig.category === 'public_service' || localConfig.slug === 'margasari')) {
+      if (localConfig && (localConfig.category === 'public_service' || localConfig.business_type === 'B2G')) {
         store = {
           name: localConfig.name,
           metadata: {
@@ -76,7 +76,7 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
   } catch (err) {
     console.warn('[TenantStoreLayout] Cached fetch error:', err);
     const localConfig = getTenantConfig(cleanTenant);
-    if (localConfig && (localConfig.category === 'public_service' || localConfig.slug === 'margasari')) {
+    if (localConfig && (localConfig.category === 'public_service' || localConfig.business_type === 'B2G')) {
       return {
         store: {
           name: localConfig.name,
@@ -209,15 +209,15 @@ export async function generateMetadata({
         ? 'image/webp'
         : 'image/png';
 
-    // Favicon dinamis per-tenant sesuai logo toko atau default shopping cart khas storefront
-    const resolvedFavicon = logoUrl || '/shopping-cart.svg';
-    const resolvedAppleIcon = logoUrl || '/shopping-cart.png';
-
     const isPublicService =
       metaObj.business_type === 'B2G' ||
+      metaObj.business_type === 'public_service' ||
       metaObj.category === 'public_service' ||
-      cleanTenant === 'margasari' ||
-      cleanTenant === 'kelurahan-margasari';
+      metaObj.category === 'civic';
+
+    // Favicon dinamis per-tenant sesuai logo atau ikon netral
+    const resolvedFavicon = logoUrl || (isPublicService ? '/favicon.ico' : '/shopping-cart.svg');
+    const resolvedAppleIcon = logoUrl || (isPublicService ? '/favicon.ico' : '/shopping-cart.png');
 
     const pageTitle = `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
 
@@ -228,8 +228,10 @@ export async function generateMetadata({
       icons: {
         icon: [
           { url: resolvedFavicon, type: resolvedFavicon.endsWith('.svg') ? 'image/svg+xml' : 'image/png' },
-          { url: '/shopping-cart.png', sizes: '512x512', type: 'image/png' },
-          { url: '/cart-icon.png', sizes: '192x192', type: 'image/png' },
+          ...(isPublicService ? [] : [
+            { url: '/shopping-cart.png', sizes: '512x512', type: 'image/png' },
+            { url: '/cart-icon.png', sizes: '192x192', type: 'image/png' },
+          ]),
           { url: '/favicon.ico' },
         ],
         shortcut: resolvedFavicon,
@@ -248,7 +250,7 @@ export async function generateMetadata({
             width: 1200,
             height: 630,
             type: imageMimeType,
-            alt: `${storeName} - ${metaObj.tagline || 'Konsultasi & Layanan Resmi'}`,
+            alt: `${storeName} - ${metaObj.tagline || (isPublicService ? 'Portal Layanan Publik Resmi' : 'Konsultasi & Layanan Resmi')}`,
           },
         ],
       },
@@ -262,8 +264,8 @@ export async function generateMetadata({
   } catch (err) {
     console.warn('[TenantStoreLayout] generateMetadata fallback triggered:', err);
     return {
-      title: 'BoonTrack Shop | Toko Resmi',
-      description: 'Pemesanan online praktis dan aman terverifikasi di BoonTrack Shop.',
+      title: 'BoonTrack Platform | Portal Layanan Resmi',
+      description: 'Layanan resmi terverifikasi pada BoonTrack Multi-Tenant Platform.',
     };
   }
 }

@@ -1,52 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import Link from "next/link";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { ArrowRight, Layers } from "lucide-react";
+import ControlledProvisioningError from "@/components/ControlledProvisioningError";
 import {
-  ShoppingBag,
-  Send,
-  QrCode,
-  Plus,
-  Minus,
-  X,
-  Clock,
-  ArrowRight,
-  Store,
-  PackageOpen,
-  Package,
-  Check,
-  ExternalLink,
-  Zap
-} from "lucide-react";
-import FloatingCartBar from "@/components/cart/FloatingCartBar";
-import ShopClaimSection from "@/app/components/ShopClaimSection";
-import dynamic from 'next/dynamic';
-
-const BarcodeScannerModal = dynamic(() => import('./dashboard/components/BarcodeScannerModal'), {
-  ssr: false,
-  loading: () => null,
-});
-import CheckoutModal from "@/app/components/CheckoutModal";
-import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
-import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
-import PublicServicePortalTemplate from './components/templates/PublicServicePortalTemplate';
-import StorefrontTemplate from './components/templates/StorefrontTemplate';
-import ControlledProvisioningError from '@/components/ControlledProvisioningError';
-import { resolveTenantRuntime, resolveTemplate, executeStorefrontRuntimePipeline, resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
-import { TenantRuntimeProvider } from '@/lib/context/tenant-runtime-context';
-import {
-  captureAffiliateReferral,
-  initSellerTracking,
-  trackInitiateCheckout,
-  trackViewContent,
-  trackContactEvent,
-  initPixelsFromMetadata
-} from "@/lib/tracking";
+  executeStorefrontRuntimePipeline,
+  resolveStorefrontSections,
+  resolveStorefrontCopy,
+} from "@/lib/resolvers/tenant-runtime-resolver";
+import { TenantRuntimeProvider } from "@/lib/context/tenant-runtime-context";
+import { trackInitiateCheckout } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
-import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
-import { resolveProductExternalUrl, resolveProductCtaLabel } from "@/lib/product-catalog";
 import { getTenantConfig, normalizeTenantSlug } from "@/lib/tenant-config";
 import type { Product, StoreChatMessage } from "./types";
 import {
@@ -56,6 +23,32 @@ import {
   isPublicServiceTenant,
 } from "./types";
 
+// ── HERMETIC DYNAMIC TEMPLATE CHUNKING (CTO Mandate) ──
+const ShopClaimSection = dynamic(
+  () => import("@/app/components/ShopClaimSection"),
+  { ssr: true }
+);
+
+const PublicServicePortalTemplate = dynamic(
+  () => import("./components/templates/PublicServicePortalTemplate"),
+  { ssr: true }
+);
+
+const PersonalAuthorityTemplate = dynamic(
+  () => import("./components/templates/PersonalAuthorityTemplate"),
+  { ssr: true }
+);
+
+const MicrositeBioTemplate = dynamic(
+  () => import("./components/templates/MicrositeBioTemplate"),
+  { ssr: true }
+);
+
+const StorefrontTemplate = dynamic(
+  () => import("./components/templates/StorefrontTemplate"),
+  { ssr: true }
+);
+
 export type { Product, StoreChatMessage };
 export {
   formatCategoryBadge,
@@ -64,100 +57,75 @@ export {
   isPublicServiceTenant,
 };
 
-function StoreProductImage({
-  src,
-  alt,
-  className
-}: {
-  src?: string;
-  alt: string;
-  className?: string;
-}) {
-  const [error, setError] = useState(false);
-  const safeSrc = sanitizeImageUrl(src);
-  const isFallback = !safeSrc || error || safeSrc === "/logo-shop.png" || safeSrc === "null" || safeSrc === "undefined";
-
-  if (isFallback) {
-    return (
-      <img
-        src="/placeholder-product.png"
-        alt={alt || "BoonTrack Shop"}
-        className={className || "w-full h-48 object-contain bg-slate-50"}
-      />
-    );
-  }
-
-  return (
-    <img
-      src={safeSrc}
-      alt={alt}
-      onError={() => setError(true)}
-      className={className || "w-full h-48 object-contain bg-slate-50"}
-    />
-  );
-}
-
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   if (!p || typeof p !== "object") {
     return {
       id: `prod-${idx + 1}`,
       name: `Layanan ${idx + 1}`,
-      category: "Fisik",
-      type: "physical",
-      product_type: "PHYSICAL",
-      requires_shipping: true,
+      category: "Layanan",
+      type: "service",
+      product_type: "SERVICE",
+      requires_shipping: false,
       price: 0,
       image: "",
       image_url: "",
       description: "",
       stock: 999,
-      sku: `SKU-${idx + 1}`
+      sku: `SKU-${idx + 1}`,
     };
   }
 
   const rawPrice = Number(p.price) || 0;
-  const rawPromoPrice = p.promo_price !== undefined && p.promo_price !== null && p.promo_price !== "" ? Number(p.promo_price) : undefined;
-  const hasValidPromo = rawPromoPrice !== undefined && !isNaN(rawPromoPrice) && rawPromoPrice > 0 && rawPrice > rawPromoPrice;
-  const price = hasValidPromo ? rawPromoPrice : (rawPrice > 0 ? rawPrice : (rawPromoPrice || 0));
-  const originalPrice = hasValidPromo ? rawPrice : (p.originalPrice ? Number(p.originalPrice) : undefined);
+  const rawPromoPrice =
+    p.promo_price !== undefined && p.promo_price !== null && p.promo_price !== ""
+      ? Number(p.promo_price)
+      : undefined;
+  const hasValidPromo =
+    rawPromoPrice !== undefined && !isNaN(rawPromoPrice) && rawPromoPrice > 0 && rawPrice > rawPromoPrice;
+  const price = hasValidPromo ? rawPromoPrice : rawPrice > 0 ? rawPrice : rawPromoPrice || 0;
+  const originalPrice = hasValidPromo ? rawPrice : p.originalPrice ? Number(p.originalPrice) : undefined;
 
   const categoryBadge = formatCategoryBadge(
     typeof p.category === "string" ? p.category : undefined,
-    typeof (p.product_type || p.type) === "string" ? (p.product_type || p.type) : undefined,
+    typeof (p.product_type || p.type) === "string" ? p.product_type || p.type : undefined,
     typeof p.custom_badge === "string" ? p.custom_badge : undefined
   );
 
   const rawImg = p.image_url || p.image || (Array.isArray(p.images) && p.images[0]) || "";
-  const sanitizedImg = (rawImg === "/logo-shop.png" || rawImg === "null" || rawImg === "undefined" || !rawImg)
-    ? "/placeholder-product.png"
-    : (sanitizeImageUrl(rawImg) || "/placeholder-product.png");
-
-  const externalUrl = resolveProductExternalUrl(p);
-  const isExternal = Boolean(externalUrl);
-  const ctaLabel = resolveProductCtaLabel(p, isExternal);
+  const sanitizedImg =
+    rawImg === "/logo-shop.png" || rawImg === "null" || rawImg === "undefined" || !rawImg
+      ? "/placeholder-product.png"
+      : sanitizeImageUrl(rawImg) || "/placeholder-product.png";
 
   const isExplicitlyInactive =
     (p as any).is_active === false ||
-    (p as any).is_active === 'false' ||
+    (p as any).is_active === "false" ||
     (p as any).is_active === 0 ||
-    (p as any).is_active === '0' ||
-    (typeof (p as any).status === 'string' && ['draft', 'inactive', 'archived'].includes((p as any).status.toLowerCase()));
+    (p as any).is_active === "0" ||
+    (typeof (p as any).status === "string" &&
+      ['draft', 'inactive', 'archived'].includes((p as any).status.toLowerCase()));
 
-  const rawType = String((p as any).type || (p as any).product_type || '').toLowerCase();
-  const rawCat = String(p.category || '').toLowerCase();
-  const isFoodType = rawType.includes('food') || rawType.includes('fnb') || rawCat.includes('food') || rawCat.includes('kuliner');
-  const isPhysicalType = rawType.includes('physical') || rawType.includes('fisik') || rawCat.includes('fisik') || isFoodType || Boolean(p.requires_shipping) || Boolean(p.requiresShipping);
-  const resolvedType =
-    isFoodType
-      ? 'food'
-      : isPhysicalType
-        ? 'physical'
-        : (rawType.includes('service') || rawType.includes('jasa') || rawCat.includes('jasa')
-          ? 'service'
-          : 'digital');
-  const resolvedProductType = (p.product_type || (isFoodType ? 'FOOD' : isPhysicalType ? 'PHYSICAL' : resolvedType.toUpperCase()));
+  const rawType = String((p as any).type || (p as any).product_type || "").toLowerCase();
+  const rawCat = String(p.category || "").toLowerCase();
+  const isFoodType =
+    rawType.includes("food") || rawType.includes("fnb") || rawCat.includes("food") || rawCat.includes("kuliner");
+  const isPhysicalType =
+    rawType.includes("physical") ||
+    rawType.includes("fisik") ||
+    rawCat.includes("fisik") ||
+    isFoodType ||
+    Boolean(p.requires_shipping) ||
+    Boolean(p.requiresShipping);
+  const resolvedType = isFoodType
+    ? "food"
+    : isPhysicalType
+    ? "physical"
+    : rawType.includes("service") || rawType.includes("jasa") || rawCat.includes("jasa")
+    ? "service"
+    : "digital";
+  const resolvedProductType =
+    p.product_type || (isFoodType ? "FOOD" : isPhysicalType ? "PHYSICAL" : resolvedType.toUpperCase());
   const requiresShipping = Boolean(p.requires_shipping || p.requiresShipping || isPhysicalType || isFoodType);
 
   return {
@@ -179,12 +147,18 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [],
     modules: Array.isArray(p.modules) ? p.modules : undefined,
     promo_price: rawPromoPrice,
-    download_url: p.download_url || (p as any).delivery_url || (p as any).link_digital || (p as any).asset_reference || (p as any).fulfillment_metadata?.access_url || "",
+    download_url:
+      p.download_url ||
+      (p as any).delivery_url ||
+      (p as any).link_digital ||
+      (p as any).asset_reference ||
+      (p as any).fulfillment_metadata?.access_url ||
+      "",
     stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
     sku: p.sku || `SKU-${idx + 1}`,
-    external_url: externalUrl || undefined,
-    cta_label: ctaLabel,
-    checkout_type: isExternal ? 'external' : (p.checkout_type || 'standard'),
+    external_url: p.external_url || undefined,
+    cta_label: p.cta_label,
+    checkout_type: p.checkout_type || "standard",
     metadata: p.metadata || {},
     is_active: !isExplicitlyInactive,
   };
@@ -198,11 +172,9 @@ export default function TenantStorefrontPage() {
   const tenantSlug = normalizedSlug || rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
 
-  const initialConfig = getTenantConfig(tenantSlug) || (tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari' ? getTenantConfig('margasari') : null);
+  const initialConfig = getTenantConfig(tenantSlug);
   const isInitialPublicService = isPublicServiceTenant(initialConfig, (initialConfig as any)?.metadata, tenantSlug);
 
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [tenant, setTenant] = useState<any>(() => (isInitialPublicService ? initialConfig : null));
   const [tenantMetadata, setTenantMetadata] = useState<any>(() =>
     isInitialPublicService && initialConfig
@@ -218,16 +190,19 @@ export default function TenantStorefrontPage() {
         }
       : null
   );
-  const [tenantCategory, setTenantCategory] = useState<string>(() => (isInitialPublicService ? 'public_service' : ''));
-  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">(() => (isInitialPublicService ? "active" : "checking"));
-  const [storeName, setStoreName] = useState(() => (isInitialPublicService && initialConfig ? (initialConfig.name || displayName) : ""));
+  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">(() =>
+    isInitialPublicService ? "active" : "checking"
+  );
+  const [storeName, setStoreName] = useState(() =>
+    isInitialPublicService && initialConfig ? initialConfig.name || displayName : ""
+  );
   const [storeProducts, setStoreProducts] = useState<Product[]>(() => {
     if (isInitialPublicService && initialConfig) {
       return (initialConfig.pricing?.custom_packages || []).map((p: any, idx: number) =>
         mapProductItemToStoreProduct(
           {
             ...p,
-            category: 'Layanan Publik',
+            category: "Layanan Publik",
           },
           idx
         )
@@ -235,383 +210,70 @@ export default function TenantStorefrontPage() {
     }
     return [];
   });
-  const [activeCategory, setActiveCategory] = useState<string>("all");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [productForCheckout, setProductForCheckout] = useState<{
-    id: string;
-    title: string;
-    price: number;
-    download_url?: string;
-    link_digital?: string;
-    delivery_url?: string;
-    category?: string;
-    type?: string;
-    product_type?: string;
-    requires_shipping?: boolean;
-    slug?: string;
-    metadata?: any;
-    fulfillment_metadata?: any;
-    items?: Array<any>;
-    weight_grams?: number;
-    cartId?: string | null;
-    slot?: {
-      slotDate: string;
-      startTime: string;
-      displayLabel: string;
-      businessTopic: string;
-    };
-  } | null>(null);
-  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
-  const [showCartModal, setShowCartModal] = useState(false);
-  const [inputMessage, setInputMessage] = useState("");
-  const [messages, setMessages] = useState<StoreChatMessage[]>([]);
-  const [isBotTyping, setIsBotTyping] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const mobileMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const resolvedCategory = useMemo(() => {
-    return String(
-      tenant?.category ||
-      tenantCategory ||
-      tenantMetadata?.category ||
-      tenantMetadata?.business_category ||
-      tenantMetadata?.vertical ||
-      ""
-    ).trim();
-  }, [tenant?.category, tenantCategory, tenantMetadata?.category, tenantMetadata?.business_category, tenantMetadata?.vertical]);
+  const [dynamicQuickReplies, setDynamicQuickReplies] = useState<string[]>([]);
 
-  const dynamicQuickReplies = useMemo(() => {
-    return getIndustryQuickReplies(resolvedCategory, tenantMetadata);
-  }, [resolvedCategory, tenantMetadata]);
-
-  // Dynamic Header & Product CTA Button Labels (Zero Hardcoding via Tenant Metadata)
-  const headerCtaText = useMemo(() => {
-    // 1. Ambil kustomisasi dari metadata tenant
-    const customCtaLabel =
-      tenant?.metadata?.storefront_config?.header_cta_label ||
-      tenantMetadata?.storefront_config?.header_cta_label ||
-      tenant?.metadata?.theme?.cta_button_text ||
-      tenantMetadata?.theme?.cta_button_text;
-
-    // 2. Fallback cerdas jika belum diset di admin
-    const raw = resolvedCategory.toUpperCase();
-    if (raw === 'PUBLIC_SERVICE' || raw === 'B2G' || raw.includes('PUBLIC_SERVICE') || raw.includes('PELAYANAN') || raw.includes('WARGA')) {
-      return customCtaLabel || 'Layanan Warga';
-    }
-    if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
-      return customCtaLabel || 'Konsultasi Layanan';
-    }
-    const isService =
-      raw === 'FIELD_SERVICE' ||
-      raw.includes('FIELD') ||
-      raw.includes('TEKNISI') ||
-      raw.includes('TOREN') ||
-      raw.includes('REPARASI') ||
-      raw === 'SERVICE' ||
-      tenantCategory.toLowerCase().includes('service') ||
-      tenantCategory.toLowerCase().includes('jasa');
-
-    const defaultCtaLabel = isService ? 'Tanya Layanan' : 'Pilihan Produk';
-    return customCtaLabel || defaultCtaLabel;
-  }, [tenant, tenantMetadata, resolvedCategory, tenantCategory]);
-
-  const chatCtaLabel = useMemo(() => {
-    const custom =
-      tenant?.metadata?.storefront_config?.chat_cta_label ||
-      tenantMetadata?.storefront_config?.chat_cta_label ||
-      tenant?.metadata?.theme?.chat_cta_label ||
-      tenantMetadata?.theme?.chat_cta_label;
-    if (custom) return custom;
-
-    const raw = resolvedCategory.toUpperCase();
-    if (raw === 'PUBLIC_SERVICE' || raw === 'B2G' || raw.includes('PUBLIC_SERVICE') || raw.includes('PELAYANAN') || raw.includes('WARGA')) {
-      return 'Tanya Loket Digital';
-    }
-    if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
-      return 'Tanya Konsultan';
-    }
-
-    const isService =
-      raw === 'FIELD_SERVICE' ||
-      raw.includes('FIELD') ||
-      raw.includes('TEKNISI') ||
-      raw.includes('TOREN') ||
-      raw.includes('REPARASI') ||
-      raw === 'SERVICE' ||
-      tenantCategory.toLowerCase().includes('field') ||
-      tenantCategory.toLowerCase().includes('teknisi');
-
-    return isService ? 'Tanya Layanan' : 'Tanya Admin';
-  }, [tenant, tenantMetadata, resolvedCategory, tenantCategory]);
-
-  const uniqueCategories = useMemo(() => {
-    const set = new Set<string>();
-    (storeProducts || [])
-      .filter((p) => p && p.is_active !== false)
-      .forEach((p) => {
-        if (p && p.category) {
-          const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
-          if (badge && typeof badge === 'string' && badge.trim()) {
-            set.add(badge.trim());
-          }
-        }
-      });
-    return Array.from(set);
-  }, [storeProducts]);
-
-  // 0. CAPTURE UTM TRACKING PARAMETERS TO SESSION STORAGE
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const utm_source = urlParams.get("utm_source");
-      const utm_medium = urlParams.get("utm_medium");
-      const utm_campaign = urlParams.get("utm_campaign");
-      const utm_content = urlParams.get("utm_content");
-      const utm_term = urlParams.get("utm_term");
-
-      if (utm_source || utm_medium || utm_campaign) {
-        const utmData = {
-          utm_source: utm_source || "",
-          utm_medium: utm_medium || "",
-          utm_campaign: utm_campaign || "",
-          utm_content: utm_content || "",
-          utm_term: utm_term || "",
-          captured_at: new Date().toISOString(),
-        };
-        sessionStorage.setItem("boontrack_utm", JSON.stringify(utmData));
-      }
-
-      // Tangkap parameter atribusi ctwa_clid (Click-to-WhatsApp)
-      const ctwa_clid = urlParams.get("ctwa_clid");
-      if (ctwa_clid) {
-        sessionStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
-        try {
-          localStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
-        } catch { }
-      }
-    } catch (err) {
-      console.warn("[Tracking] UTM capture error:", err);
-    }
-  }, []);
-
-  // 0b. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
-  useEffect(() => {
-    if (!tenantSlug) return;
-    try {
-      captureAffiliateReferral();
-      if (typeof window !== "undefined") {
-        initSellerTracking(tenantSlug);
-      }
-    } catch (err) {
-      console.warn("[Storefront] Tracking initialization caught error:", err);
-    }
-  }, [tenantSlug]);
-
-  // 0b2. AUTO INITIALIZE META & TIKTOK PIXELS FROM TENANT METADATA
-  useEffect(() => {
-    if (tenantMetadata?.tracking) {
-      initPixelsFromMetadata(tenantMetadata.tracking);
-    }
-  }, [tenantMetadata?.tracking]);
-
-  // 0c. FETCH TENANT & CATALOG FROM SUPABASE
+  // 0c. FETCH TENANT DATA (SUPABASE / EDGE DATA)
   useEffect(() => {
     let isMounted = true;
 
     async function loadTenantAndCatalog() {
-      if (!tenantSlug) {
-        if (isMounted) setStoreStatus("not_found");
-        return;
-      }
-
-      const RESERVED_SLUGS = new Set([
-        "login", "register", "daftar", "api", "dashboard", "auth",
-        "admin", "affiliate", "manager", "checkout", "pricing",
-        "onboarding", "pilot-onboarding", "enterprise", "gym",
-        "terms", "privacy", "acceptable-use", "refund", "store-original"
-      ]);
-      if (RESERVED_SLUGS.has(tenantSlug)) {
-        return;
-      }
-
+      if (!tenantSlug) return;
       try {
         const supabase = getSupabase();
-        let { data: tenantRow, error: dbErr } = await supabase
+        const { data: tenantData, error } = await supabase
           .from("tenants")
-          .select("*")
+          .select("id, name, slug, category, tier, status, business_type, template_code, metadata")
           .eq("slug", tenantSlug)
-          .maybeSingle();
+          .single();
 
-        if (!tenantRow && rawTenant && rawTenant.toLowerCase().trim() !== tenantSlug) {
-          const { data: rawRow } = await supabase
-            .from("tenants")
-            .select("*")
-            .eq("slug", rawTenant.toLowerCase().trim())
-            .maybeSingle();
-          if (rawRow) {
-            tenantRow = rawRow;
-            dbErr = null;
-          }
-        }
-
-        if (dbErr || !tenantRow) {
-          try {
-            const fallbackRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
-            if (fallbackRes.ok) {
-              const fbData = await fallbackRes.json();
-              if (fbData?.success && fbData?.settings) {
-                if (isMounted) {
-                  setTenant(fbData.settings);
-                  setStoreName(fbData.settings.name || displayName);
-                  setTenantMetadata(fbData.settings.metadata || fbData.settings);
-                  const rawProds = fbData.settings.products;
-                  const prods = Array.isArray(rawProds) ? rawProds : [];
-                  setStoreProducts(
-                    prods
-                      .filter(Boolean)
-                      .map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx))
-                      .filter((p: Product) => p.is_active !== false)
-                  );
-                  setStoreStatus("active");
-                }
-                return;
-              }
-            }
-          } catch (fbErr) {
-            console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
-          }
-
-          // Fallback lokal untuk tenant B2G/public service/desa/community (margasari)
-          const fallbackConfig = getTenantConfig(tenantSlug) || (tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari' || tenantSlug === 'pelayanan-publik' ? getTenantConfig('margasari') : null);
-          if (fallbackConfig && isPublicServiceTenant(fallbackConfig, (fallbackConfig as any)?.metadata, tenantSlug)) {
+        if (error || !tenantData) {
+          const fallbackConfig = getTenantConfig(tenantSlug);
+          if (fallbackConfig) {
             if (isMounted) {
               setTenant(fallbackConfig);
               setStoreName(fallbackConfig.name || displayName);
-              setTenantMetadata({
-                ...fallbackConfig,
-                title: fallbackConfig.title,
-                subtitle: fallbackConfig.subtitle,
-                lurah: fallbackConfig.lurah,
-                address: fallbackConfig.address,
-                business_type: fallbackConfig.business_type || 'PUBLIC_SERVICE',
-                category: fallbackConfig.category || 'public_service',
-                products: fallbackConfig.pricing?.custom_packages || [],
-              });
-              setTenantCategory('public_service');
-              const customPkgs = fallbackConfig.pricing?.custom_packages || [];
+              setTenantMetadata(fallbackConfig);
               setStoreProducts(
-                customPkgs.map((p: any, idx: number) => mapProductItemToStoreProduct({
-                  ...p,
-                  category: 'Layanan Publik',
-                }, idx))
+                (fallbackConfig.pricing?.custom_packages || []).map((p: any, idx: number) =>
+                  mapProductItemToStoreProduct(p, idx)
+                )
               );
               setStoreStatus("active");
             }
             return;
           }
 
-          // Fallback: Periksa apakah slug subdomain adalah kode referral affiliate mitra
-          try {
-            const { data: affRow } = await supabase
-              .from("affiliates")
-              .select("id, referral_code")
-              .or(`referral_code.ilike.${tenantSlug},affiliate_code.ilike.${tenantSlug}`)
-              .limit(1)
-              .maybeSingle();
-
-            if (affRow) {
-              const affCode = (affRow.referral_code || tenantSlug).trim();
-              if (typeof window !== "undefined") {
-                try {
-                  localStorage.setItem("boontrack_affiliate_code", affCode);
-                  localStorage.setItem("affiliate_code", affCode);
-                  localStorage.setItem("boontrack_referral_code", affCode);
-                  localStorage.setItem("boontrack_merchant_ref", affCode);
-                  const domainStr = window.location.hostname.endsWith(".boontrack.com") ? "; domain=.boontrack.com" : "";
-                  document.cookie = `ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-                  document.cookie = `boontrack_referral_code=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-                  document.cookie = `boontrack_merchant_ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-                } catch (_) { }
-                router.replace(`https://shop.boontrack.com/?ref=${encodeURIComponent(affCode)}`);
-              }
-              return;
-            }
-          } catch (affCheckErr) {
-            console.warn("[Storefront] Affiliate check error:", affCheckErr);
-          }
-
           if (isMounted) {
-            // Guard: Never set public service tenants to not_found!
-            if (isPublicServiceTenant(null, null, tenantSlug)) {
-              const defConfig = getTenantConfig('margasari');
-              if (defConfig) {
-                setTenant(defConfig);
-                setStoreName(defConfig.name || displayName);
-                setTenantMetadata({
-                  ...defConfig,
-                  business_type: 'PUBLIC_SERVICE',
-                  category: 'public_service',
-                  products: defConfig.pricing?.custom_packages || [],
-                });
-                setTenantCategory('public_service');
-                const customPkgs = defConfig.pricing?.custom_packages || [];
-                setStoreProducts(
-                  customPkgs.map((p: any, idx: number) => mapProductItemToStoreProduct({
-                    ...p,
-                    category: 'Layanan Publik',
-                  }, idx))
-                );
-                setStoreStatus("active");
-                return;
-              }
-            }
-            setTenant(null);
             setStoreStatus("not_found");
           }
           return;
         }
 
-        // ── QUERY RELASIONAL SQL PRODUCTS SECARA PARALEL (DATA INTEGRITY GUARANTEE) ──
+        const tenantRow = tenantData;
         let sqlProducts: any[] = [];
-        if (tenantRow?.id) {
-          try {
-            const { data: sqlData } = await supabase
-              .from("products")
-              .select("*")
-              .eq("tenant_id", tenantRow.id);
-            if (Array.isArray(sqlData)) {
-              sqlProducts = sqlData;
-            }
-          } catch (sqlErr) {
-            console.debug("[Storefront] SQL products query note:", sqlErr);
-          }
-        }
+        try {
+          const { data: prodsData } = await supabase
+            .from("products")
+            .select("*")
+            .eq("tenant_id", tenantRow.id);
+          sqlProducts = prodsData || [];
+        } catch {}
 
         if (isMounted) {
           setTenant(tenantRow);
           setStoreName(tenantRow.name || displayName);
-          setTenantMetadata(tenantRow.metadata || null);
-          if (tenantRow.category) setTenantCategory(tenantRow.category);
-          const rawProds = tenantRow.metadata?.products;
-          const prodsList = Array.isArray(rawProds)
-            ? rawProds.filter((p: any) => p !== null && typeof p === "object")
-            : (tenantRow.metadata?.product &&
-              typeof tenantRow.metadata.product === "object" &&
-              tenantRow.metadata.product.name &&
-              tenantRow.metadata.product.name !== tenantRow.name &&
-              tenantRow.metadata.product.name !== tenantSlug
-              ? [tenantRow.metadata.product]
-              : []);
+          const meta = tenantRow.metadata || {};
+          setTenantMetadata(meta);
 
-          // Gabungkan metadata dan SQL table (menjamin SKU dan etalase toko tidak pernah hilang)
+          const rawProds = Array.isArray(meta.products) ? meta.products : [];
+          const prodsList = rawProds.filter((p: any) => p !== null && typeof p === "object");
           const combinedProds = [...prodsList];
-          const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || '').toLowerCase()));
+          const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || "").toLowerCase()));
           const existingIds = new Set(prodsList.map((p: any) => String(p.id)));
 
           for (const sp of sqlProducts) {
-            const spSlug = (sp.slug || '').toLowerCase();
+            const spSlug = (sp.slug || "").toLowerCase();
             const spId = String(sp.id);
             if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
               combinedProds.push({
@@ -619,18 +281,22 @@ export default function TenantStorefrontPage() {
                 name: sp.title || `Produk`,
                 title: sp.title,
                 slug: sp.slug,
-                category: sp.category || 'Digital',
-                product_type: sp.product_type || 'DIGITAL',
-                requires_shipping: Boolean(sp.requires_shipping || String(sp.product_type || '').toUpperCase() === 'PHYSICAL' || String(sp.product_type || '').toUpperCase() === 'FOOD'),
-                type: String(sp.product_type || '').toUpperCase() === 'FOOD' ? 'food' : String(sp.product_type || '').toUpperCase() === 'PHYSICAL' ? 'physical' : 'digital',
+                category: sp.category || "Digital",
+                product_type: sp.product_type || "DIGITAL",
+                requires_shipping: Boolean(
+                  sp.requires_shipping ||
+                    String(sp.product_type || "").toUpperCase() === "PHYSICAL" ||
+                    String(sp.product_type || "").toUpperCase() === "FOOD"
+                ),
+                type:
+                  String(sp.product_type || "").toUpperCase() === "FOOD"
+                    ? "food"
+                    : String(sp.product_type || "").toUpperCase() === "PHYSICAL"
+                    ? "physical"
+                    : "digital",
                 price: Number(sp.price) || 0,
                 promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-                sku: sp.sku || `SKU-${sp.id}`,
-                is_active: sp.is_active !== false,
-                image: sp.image || sp.image_url || '',
-                image_url: sp.image || sp.image_url || '',
-                description: sp.description || '',
-                download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+                download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || "",
                 stock: sp.stock ?? 999999,
                 is_unlimited: sp.is_unlimited_stock ?? true,
                 fulfillment_metadata: sp.fulfillment_metadata,
@@ -648,13 +314,22 @@ export default function TenantStorefrontPage() {
           setStoreStatus("active");
         }
       } catch (err) {
-        console.error("[Storefront] Storefront load error:", err);
+        console.error("[TenantRuntime] Failed to load tenant record:", err);
         if (isMounted) {
-          setTenant(null);
-          setStoreName(displayName || "Toko");
-          setTenantMetadata(null);
-          setStoreProducts([]);
-          setStoreStatus("active");
+          const fallbackConfig = getTenantConfig(tenantSlug);
+          if (fallbackConfig) {
+            setTenant(fallbackConfig);
+            setStoreName(fallbackConfig.name || displayName);
+            setTenantMetadata(fallbackConfig);
+            setStoreProducts(
+              (fallbackConfig.pricing?.custom_packages || []).map((p: any, idx: number) =>
+                mapProductItemToStoreProduct(p, idx)
+              )
+            );
+            setStoreStatus("active");
+          } else {
+            setStoreStatus("not_found");
+          }
         }
       }
     }
@@ -666,383 +341,7 @@ export default function TenantStorefrontPage() {
     };
   }, [tenantSlug, displayName]);
 
-  // 0c2. REALTIME THEME & CHAT TOGGLE SYNC
-  useEffect(() => {
-    const handleTemplateChange = (e: any) => {
-      if (e?.detail) {
-        setTenantMetadata((prev: any) => ({
-          ...(prev || {}),
-          visual_theme: e.detail.visual_theme ?? prev?.visual_theme,
-          theme: {
-            ...(prev?.theme || {}),
-            theme_id: e.detail.visual_theme ?? e.detail.theme_id ?? prev?.theme?.theme_id,
-            visual_theme: e.detail.visual_theme ?? prev?.theme?.visual_theme,
-            template: e.detail.template ?? prev?.theme?.template,
-            chat_enabled: e.detail.chat_enabled ?? prev?.theme?.chat_enabled,
-          },
-          chat_enabled: e.detail.chat_enabled ?? prev?.chat_enabled,
-        }));
-      }
-    };
-    if (typeof window !== "undefined") {
-      window.addEventListener("storefront-template-changed", handleTemplateChange);
-      window.addEventListener("storefront-theme-changed", handleTemplateChange);
-      return () => {
-        window.removeEventListener("storefront-template-changed", handleTemplateChange);
-        window.removeEventListener("storefront-theme-changed", handleTemplateChange);
-      };
-    }
-  }, []);
-
-  // 0d. INIT CHAT MESSAGES
-  useEffect(() => {
-    const activeName = storeName || displayName.toUpperCase();
-    const greetingText = getStoreChatGreeting(resolvedCategory, activeName);
-    setMessages((prev) => {
-      if (prev.length === 0 || (prev.length === 1 && String(prev[0].id).startsWith("init-"))) {
-        return [
-          {
-            id: "init-1",
-            sender: "bot",
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            text: greetingText,
-            type: "TEXT",
-            quick_actions: dynamicQuickReplies,
-          },
-        ];
-      }
-      return prev;
-    });
-  }, [storeName, displayName, resolvedCategory, dynamicQuickReplies]);
-
-  // 0e. AUTO SCROLL MESSAGES
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    if (isMobileChatOpen) {
-      mobileMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isBotTyping, isMobileChatOpen]);
-
-  const handleOutboundClick = (url: string, label: string) => {
-    if (typeof window === "undefined") return;
-    let finalUrl = url;
-    try {
-      const storedUtmStr = sessionStorage.getItem("boontrack_utm");
-      if (storedUtmStr) {
-        const utm = JSON.parse(storedUtmStr);
-        if (!url.includes("utm_source")) {
-          const separator = url.includes("?") ? "&" : "?";
-          const paramsObj: Record<string, string> = {};
-          Object.entries(utm).forEach(([k, v]) => {
-            if (k.startsWith("utm_") && typeof v === "string" && v) {
-              paramsObj[k] = v;
-            }
-          });
-          const query = new URLSearchParams(paramsObj).toString();
-          if (query) {
-            finalUrl = `${url}${separator}${query}`;
-          }
-        }
-      }
-    } catch { }
-    window.open(finalUrl, "_blank", "noopener,noreferrer");
-  };
-
-  const trackExternalInitiateCheckout = (product: any) => {
-    try {
-      trackContactEvent(`Affiliate Outbound: ${product?.name || product?.title || 'Product'}`);
-    } catch (_) { }
-    if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-      try {
-        (window as any).fbq("track", "InitiateCheckout", {
-          content_name: product?.title || product?.name,
-          content_ids: [String(product?.id || product?.slug)],
-          content_type: "product",
-          value: Number(product?.price) || 0,
-          currency: "IDR"
-        });
-      } catch (_) { }
-    }
-  };
-
-  const visibleProducts = useMemo(() => {
-    return (storeProducts || []).filter((p) => p && p.is_active !== false);
-  }, [storeProducts]);
-
-  const filteredProducts = activeCategory === "all"
-    ? visibleProducts
-    : visibleProducts.filter((p) => {
-      if (!p) return false;
-      const cat = String(p.category || "").toLowerCase();
-      const badge = String(p.badge || "").toLowerCase();
-      const type = String(p.type || "").toLowerCase();
-      const active = String(activeCategory || "").toLowerCase();
-      return cat === active || badge === active || type === active;
-    });
-
-  const addToCart = (product: Product, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const extUrl = resolveProductExternalUrl(product);
-    if (extUrl) {
-      trackExternalInitiateCheckout(product);
-      window.open(extUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-    setCart((prev) => {
-      const exist = prev.find((item) => String(item.product.id) === String(product.id));
-      if (exist) {
-        return prev.map((item) =>
-          String(item.product.id) === String(product.id) ? { ...item, qty: item.qty + 1 } : item
-        );
-      }
-      return [...prev, { product, qty: 1 }];
-    });
-  };
-
-  const handleBarcodeDetected = (code: string) => {
-    const matched = storeProducts.find(
-      (p: any) =>
-        p && (
-          p.barcode === code ||
-          p.sku === code ||
-          String(p.id) === code ||
-          p.name?.toLowerCase().includes(code.toLowerCase())
-        )
-    );
-
-    if (matched) {
-      addToCart(matched);
-      alert(`Produk "${matched.name}" berhasil ditambahkan ke keranjang!`);
-    } else {
-      alert(`Produk dengan barcode/kode "${code}" tidak ditemukan.`);
-    }
-  };
-
-  const updateCartQty = (productId: number | string, delta: number) => {
-    setCart((prev) =>
-      prev
-        .map((item) => {
-          if (String(item.product.id) === String(productId)) {
-            const nextQty = item.qty + delta;
-            return nextQty > 0 ? { ...item, qty: nextQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean) as { product: Product; qty: number }[]
-    );
-  };
-
-  const totalCartCount = cart.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0);
-  const totalCartPrice = cart.reduce((sum, item) => sum + ((Number(item?.product?.price) || 0) * (Number(item?.qty) || 0)), 0);
-
-  const handleCartCheckout = () => {
-    if (cart.length === 0) return;
-    const combinedTitles = cart.map(c => `${c.product?.name || 'Produk'} (${c.qty || 1}x)`).join(", ");
-
-    trackInitiateCheckout(combinedTitles, totalCartPrice);
-
-    const hasPhysicalOrFood = cart.some(c => isPhysicalOrFoodProduct(c.product, tenantMetadata?.category || tenantCategory || tenant?.category));
-    const totalPackageWeight = cart.reduce((sum, c) => {
-      const w = Number((c.product as any).weight_grams || (c.product as any).weight || 250);
-      return sum + (w * (c.qty || 1));
-    }, 0);
-
-    setProductForCheckout({
-      id: `CART-${Date.now()}`,
-      title: combinedTitles,
-      price: totalCartPrice,
-      requires_shipping: hasPhysicalOrFood,
-      product_type: hasPhysicalOrFood ? 'PHYSICAL' : 'DIGITAL',
-      type: hasPhysicalOrFood ? 'physical' : 'digital',
-      items: cart.map(c => ({
-        productId: String(c.product.id),
-        productTitle: c.product.name,
-        unitPrice: c.product.price,
-        quantity: c.qty,
-        weightGrams: Number((c.product as any).weight_grams || (c.product as any).weight || 250),
-      })),
-      weight_grams: totalPackageWeight,
-    });
-    setShowCartModal(false);
-    setIsCheckoutOpen(true);
-  };
-
-  const sendChatMessage = async (userText: string) => {
-    const trimmed = userText.trim();
-    if (!trimmed || isBotTyping) return;
-
-    const newMsg: StoreChatMessage = {
-      id: `usr-${Date.now()}`,
-      sender: "user",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: trimmed,
-      type: 'TEXT'
-    };
-
-    const nextHistory = [...messages, newMsg];
-    setMessages(nextHistory);
-    setIsBotTyping(true);
-
-    try {
-      const res = await fetch("/api/v1/store/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenant_slug: tenantSlug,
-          message: trimmed,
-          conversation_history: nextHistory.map((m) => ({
-            sender: m.sender,
-            text: m.text
-          })),
-          products: storeProducts,
-          cart
-        })
-      });
-
-      if (!res.ok) throw new Error("Gagal memproses obrolan");
-
-      const data = await res.json();
-      const action = data.action || (data.type === 'TEXT' ? 'NONE' : data.type) || 'NONE';
-      const type = data.type || (action === 'NONE' ? 'TEXT' : action) || 'TEXT';
-      const text = data.reply_text || data.reply || data.text || `Ada lagi yang bisa kami bantu seputar produk atau layanan ${storeName || displayName}?`;
-
-      const botMsg: StoreChatMessage = {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text,
-        action,
-        type,
-        product: (action === 'SHOW_PRODUCT' || action === 'SHOW_CHECKOUT' || type === 'SHOW_PRODUCT' || type === 'SHOW_CHECKOUT') ? data.product : undefined,
-        quick_actions: Array.isArray(data.quick_actions) && data.quick_actions.length > 0 ? data.quick_actions : dynamicQuickReplies
-      };
-
-      setMessages((prev) => [...prev, botMsg]);
-    } catch {
-      const rawCat = resolvedCategory.toUpperCase();
-      const isPro = rawCat.includes('PROFESSIONAL') || rawCat.includes('CONSULT');
-      const isField = rawCat.includes('FIELD') || rawCat.includes('TEKNISI') || rawCat === 'SERVICE';
-      const teamLabel = isPro ? 'konsultan kami' : isField ? 'tim teknisi kami' : 'tim kami';
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `bot-${Date.now()}`,
-          sender: "bot",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Halo! Tim ${storeName || displayName.toUpperCase()} siap membantu. Silakan pilih menu pertanyaan di bawah atau hubungi ${teamLabel}.`,
-          type: 'TEXT',
-          quick_actions: dynamicQuickReplies
-        }
-      ]);
-    } finally {
-      setIsBotTyping(false);
-    }
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || isBotTyping) return;
-    const msg = inputMessage;
-    setInputMessage("");
-    sendChatMessage(msg);
-  };
-
-  const currentTheme = tenantMetadata?.theme || {};
-  const currentVisualTheme = (
-    currentTheme.theme_id ||
-    currentTheme.visual_theme ||
-    tenantMetadata?.visual_theme ||
-    tenant?.metadata?.theme?.theme_id ||
-    tenant?.metadata?.theme?.visual_theme ||
-    tenant?.metadata?.visual_theme ||
-    'clean_minimal'
-  );
-
-  const defaultThemeConfig = React.useMemo(() => {
-    switch (currentVisualTheme) {
-      case 'midnight_luxe':
-        return {
-          wrapper: 'bg-slate-950 text-slate-100 selection:bg-sky-900 selection:text-sky-100',
-          header: 'bg-slate-900/90 border-slate-800 backdrop-blur-md',
-          headerTitle: 'text-slate-100',
-          headerCta: 'bg-sky-500 hover:bg-sky-600 text-white shadow-sky-500/20',
-          activeCategory: 'bg-sky-500 text-white shadow-xs',
-          inactiveCategory: 'text-slate-400 hover:bg-slate-800',
-          categoryBar: 'bg-slate-900 border-slate-800',
-          card: 'bg-slate-900 border-slate-800 text-slate-100',
-          cardPrice: 'text-sky-400',
-          ctaButton: 'bg-sky-500 hover:bg-sky-600 text-white',
-        };
-      case 'warm_terra':
-        return {
-          wrapper: 'bg-[#FFFBEB] text-stone-900 selection:bg-amber-100 selection:text-amber-900',
-          header: 'bg-white/90 border-amber-200/80 backdrop-blur-md',
-          headerTitle: 'text-stone-900',
-          headerCta: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20',
-          activeCategory: 'bg-amber-600 text-white shadow-xs',
-          inactiveCategory: 'text-stone-600 hover:bg-amber-100/60',
-          categoryBar: 'bg-white border-amber-200/70',
-          card: 'bg-white border-amber-200/60 text-stone-900',
-          cardPrice: 'text-amber-700',
-          ctaButton: 'bg-amber-600 hover:bg-amber-700 text-white',
-        };
-      case 'bold_performance':
-        return {
-          wrapper: 'bg-[#F0FDF4] text-slate-900 selection:bg-emerald-100 selection:text-emerald-900',
-          header: 'bg-white border-black border-b-2',
-          headerTitle: 'text-black font-black uppercase',
-          headerCta: 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]',
-          activeCategory: 'bg-emerald-500 text-slate-950 font-black border border-black shadow-xs',
-          inactiveCategory: 'text-slate-700 hover:bg-emerald-100',
-          categoryBar: 'bg-white border-2 border-black',
-          card: 'bg-white border-2 border-black text-slate-900 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]',
-          cardPrice: 'text-emerald-700 font-black',
-          ctaButton: 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black border border-black',
-        };
-      case 'slate_monochrome':
-        return {
-          wrapper: 'bg-slate-100 text-slate-900 selection:bg-slate-300 selection:text-slate-900',
-          header: 'bg-white/90 border-slate-300 backdrop-blur-md',
-          headerTitle: 'text-slate-900',
-          headerCta: 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20',
-          activeCategory: 'bg-slate-900 text-white shadow-xs',
-          inactiveCategory: 'text-slate-600 hover:bg-slate-200',
-          categoryBar: 'bg-white border-slate-300',
-          card: 'bg-white border-slate-300 text-slate-900',
-          cardPrice: 'text-slate-900 font-bold',
-          ctaButton: 'bg-slate-900 hover:bg-slate-800 text-white',
-        };
-      case 'aurora_gradient':
-        return {
-          wrapper: 'bg-[#FAF5FF] text-slate-900 selection:bg-purple-100 selection:text-purple-900',
-          header: 'bg-white/90 border-purple-100 backdrop-blur-md',
-          headerTitle: 'text-slate-900',
-          headerCta: 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20',
-          activeCategory: 'bg-purple-600 text-white shadow-xs',
-          inactiveCategory: 'text-slate-600 hover:bg-purple-50',
-          categoryBar: 'bg-white border-purple-100',
-          card: 'bg-white border-purple-100 text-slate-900',
-          cardPrice: 'text-purple-600 font-bold',
-          ctaButton: 'bg-purple-600 hover:bg-purple-700 text-white',
-        };
-      case 'clean_minimal':
-      default:
-        return {
-          wrapper: 'bg-[#F8FAFC] text-slate-900 selection:bg-blue-100 selection:text-blue-900',
-          header: 'bg-white border-slate-200 shadow-xs',
-          headerTitle: 'text-slate-900',
-          headerCta: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20',
-          activeCategory: 'bg-blue-600 text-white shadow-xs',
-          inactiveCategory: 'text-slate-600 hover:bg-slate-100',
-          categoryBar: 'bg-white border-slate-200',
-          card: 'bg-white border-slate-200 text-slate-900',
-          cardPrice: 'text-blue-600 font-bold',
-          ctaButton: 'bg-blue-600 hover:bg-blue-700 text-white',
-        };
-    }
-  }, [currentVisualTheme]);
-
-  // ── CANONICAL TENANT RUNTIME BOUNDARY RESOLUTION (CTO Mandate) ──
+  // CANONICAL TENANT RUNTIME BOUNDARY RESOLUTION
   const [host, setHost] = useState("");
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1053,27 +352,19 @@ export default function TenantStorefrontPage() {
   const pipeline = executeStorefrontRuntimePipeline({
     host: host || (typeof window !== "undefined" ? window.location.host : ""),
     tenantSlug,
-    tenantRecord: tenant
-      ? { ...tenant, slug: tenantSlug, metadata: tenantMetadata }
-      : null,
+    tenantRecord: tenant ? { ...tenant, slug: tenantSlug, metadata: tenantMetadata } : null,
   });
 
   const runtime = pipeline.runtime;
   const templateResult = pipeline.templateResult;
 
-  // Guard Web Chat Widget: strictly check toggle status (boolean / string)
   const rawChatEnabled =
     tenantMetadata?.theme?.chat_enabled ??
     tenant?.metadata?.theme?.chat_enabled ??
     tenantMetadata?.chat_enabled ??
-    tenant?.metadata?.chat_enabled ??
-    currentTheme.chat_enabled;
-  const isChatEnabled = rawChatEnabled !== false && rawChatEnabled !== 'false';
+    tenant?.metadata?.chat_enabled;
+  const isChatEnabled = rawChatEnabled !== false && rawChatEnabled !== "false";
 
-  const storefrontSections = resolveStorefrontSections(tenantMetadata || tenant?.metadata);
-  const storefrontCopy = resolveStorefrontCopy(tenantMetadata || tenant?.metadata, storeName || displayName);
-
-  // Resolusi logo toko dengan prioritas terlengkap
   const activeLogo =
     tenant?.metadata?.logo_url ||
     tenant?.metadata?.store_logo_url ||
@@ -1085,15 +376,29 @@ export default function TenantStorefrontPage() {
     tenant?.avatar_url ||
     "/logo-master.png";
   const sanitizedActiveLogo = sanitizeImageUrl(activeLogo) || activeLogo;
-  const storeLogoUrl = sanitizedActiveLogo === "/icon-shop.png" || sanitizedActiveLogo === "/logo-master.png" || sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
-  const displayAvatar = sanitizedActiveLogo;
 
-  // ── RESERVED SYSTEM SLUGS CHECK ──
+  // RESERVED SYSTEM SLUGS CHECK
   const RESERVED_SYSTEM_SLUGS = new Set([
-    "login", "register", "daftar", "api", "dashboard", "auth",
-    "admin", "affiliate", "manager", "checkout", "pricing",
-    "onboarding", "pilot-onboarding", "enterprise", "gym",
-    "terms", "privacy", "acceptable-use", "refund", "store-original"
+    "login",
+    "register",
+    "daftar",
+    "api",
+    "dashboard",
+    "auth",
+    "admin",
+    "affiliate",
+    "manager",
+    "checkout",
+    "pricing",
+    "onboarding",
+    "pilot-onboarding",
+    "enterprise",
+    "gym",
+    "terms",
+    "privacy",
+    "acceptable-use",
+    "refund",
+    "store-original",
   ]);
 
   if (tenantSlug === "login" || tenantSlug === "auth") {
@@ -1114,6 +419,31 @@ export default function TenantStorefrontPage() {
     return null;
   }
 
+  const handleOutboundClick = (url: string, _label: string) => {
+    if (typeof window === "undefined") return;
+    let finalUrl = url;
+    try {
+      const storedUtmStr = sessionStorage.getItem("boontrack_utm");
+      if (storedUtmStr) {
+        const utm = JSON.parse(storedUtmStr);
+        if (!url.includes("utm_source")) {
+          const separator = url.includes("?") ? "&" : "?";
+          const paramsObj: Record<string, string> = {};
+          Object.entries(utm).forEach(([k, v]) => {
+            if (k.startsWith("utm_") && typeof v === "string" && v) {
+              paramsObj[k] = v;
+            }
+          });
+          const query = new URLSearchParams(paramsObj).toString();
+          if (query) {
+            finalUrl = `${url}${separator}${query}`;
+          }
+        }
+      }
+    } catch {}
+    window.open(finalUrl, "_blank", "noopener,noreferrer");
+  };
+
   const runtimeContextValue = {
     runtime,
     templateResult,
@@ -1123,7 +453,7 @@ export default function TenantStorefrontPage() {
 
   // ── TENANT TYPE DETECTION & PUBLIC SERVICE ROUTING (ADR §50 & §54) ──
   const isPublicServiceMode =
-    templateResult.templateCode === 'PUBLIC_SERVICE_V1' ||
+    templateResult.templateCode === "PUBLIC_SERVICE_V1" ||
     isPublicServiceTenant(tenant, tenantMetadata, tenantSlug);
 
   if (isPublicServiceMode) {
@@ -1142,8 +472,6 @@ export default function TenantStorefrontPage() {
           chatEnabled={isChatEnabled}
           onInitiateCheckout={(p) => {
             trackInitiateCheckout(p.title, p.price);
-            setProductForCheckout(p);
-            setIsCheckoutOpen(true);
           }}
           onOutboundClick={handleOutboundClick}
         />
@@ -1151,11 +479,11 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── STORE STATUS CHECKS ──
+  // STORE STATUS CHECKS
   if (storeStatus === "checking") {
     return (
       <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
-        Memverifikasi toko {displayName}...
+        Memverifikasi portal {displayName}...
       </div>
     );
   }
@@ -1165,25 +493,25 @@ export default function TenantStorefrontPage() {
       <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
         <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
           <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
-            <Store className="w-7 h-7" />
+            <Layers className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
+            <h2 className="text-xl font-black text-slate-900">Layanan Belum Terdaftar</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Alamat toko <span className="font-bold text-slate-800 font-mono">shop.boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
+              Alamat layanan <span className="font-bold text-slate-800 font-mono">boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
             </p>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-2">
-            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand ini?</span>
+            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand atau instansi ini?</span>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Daftarkan nama toko Anda dalam 1 menit dan aktifkan katalog produk instan terhubung QRIS &amp; WhatsApp Automation.
+              Daftarkan nama portal Anda dalam 1 menit dan aktifkan layanan digital terintegrasi otomatis.
             </p>
           </div>
           <button
             onClick={() => router.push(`/register?claim=${tenantSlug}`)}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>Klaim &amp; Daftarkan Toko Ini</span>
+            <span>Klaim &amp; Daftarkan Layanan Ini</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -1191,18 +519,18 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── DOMAIN BOUNDARY GUARD (CTO Mandate) ──
+  // DOMAIN BOUNDARY GUARD (CTO Mandate)
   if (!runtime.isAllowedHost && runtime.statusCode === 404) {
     return (
       <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
         <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
           <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
-            <Store className="w-7 h-7" />
+            <Layers className="w-7 h-7" />
           </div>
           <div>
             <h2 className="text-xl font-black text-slate-900">404 - Halaman Tidak Ditemukan</h2>
             <p className="text-xs text-slate-500 mt-1">
-              {runtime.errorMessage || `Alamat toko shop.boontrack.com/${tenantSlug} tidak dapat diakses di domain ini.`}
+              {runtime.errorMessage || `Alamat portal boontrack.com/${tenantSlug} tidak dapat diakses di domain ini.`}
             </p>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-1">
@@ -1216,8 +544,8 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── TEMPLATE ROUTING BOUNDARY: FAIL-CLOSED RESOLVER (CTO Mandate) ──
-  if (templateResult.status === 'ERROR' || !runtime.isAllowedHost) {
+  // TEMPLATE ROUTING BOUNDARY: FAIL-CLOSED RESOLVER (CTO Mandate)
+  if (templateResult.status === "ERROR" || !runtime.isAllowedHost) {
     return (
       <ControlledProvisioningError
         templateCode={templateResult.templateCode || runtime.templateCode}
@@ -1227,1367 +555,103 @@ export default function TenantStorefrontPage() {
     );
   }
 
+  // ── DYNAMIC VERTICAL TEMPLATE SWITCHER (Hermetic Isolation) ──
   switch (templateResult.templateCode) {
+    case "PUBLIC_SERVICE_V1":
+      return (
+        <TenantRuntimeProvider value={runtimeContextValue}>
+          <PublicServicePortalTemplate
+            context={runtime}
+            tenantSlug={tenantSlug}
+            storeName={storeName || displayName}
+            displayName={displayName}
+            tenant={tenant}
+            tenantMetadata={tenantMetadata}
+            storeLogoUrl={sanitizedActiveLogo}
+            storeProducts={storeProducts}
+            dynamicQuickReplies={dynamicQuickReplies}
+            chatEnabled={isChatEnabled}
+            onInitiateCheckout={(p) => {
+              trackInitiateCheckout(p.title, p.price);
+            }}
+            onOutboundClick={handleOutboundClick}
+          />
+        </TenantRuntimeProvider>
+      );
 
-    case 'DROP_V1':
-    case 'SHOP_V1': {
-      // ── SUB-VARIANT: PERSONAL (Authority / Personal Brand) ──
-      if (templateResult.subVariant === 'personal') {
+    case "DROP_V1":
+    case "SHOP_V1": {
+      if (templateResult.subVariant === "personal") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
-            <>
-              <PersonalAuthorityTemplate
-          tenantSlug={tenantSlug}
-          storeName={storeName}
-          displayName={displayName}
-          tenant={tenant}
-          tenantMetadata={tenantMetadata}
-          storeLogoUrl={sanitizedActiveLogo}
-          storeProducts={storeProducts}
-          dynamicQuickReplies={dynamicQuickReplies}
-          chatEnabled={isChatEnabled}
-          onInitiateCheckout={(p) => {
-            trackInitiateCheckout(p.title, p.price);
-            setProductForCheckout(p);
-            setIsCheckoutOpen(true);
-          }}
-          onOutboundClick={handleOutboundClick}
-        />
+            <PersonalAuthorityTemplate
+              tenantSlug={tenantSlug}
+              storeName={storeName}
+              displayName={displayName}
+              tenant={tenant}
+              tenantMetadata={tenantMetadata}
+              storeLogoUrl={sanitizedActiveLogo}
+              storeProducts={storeProducts}
+              dynamicQuickReplies={dynamicQuickReplies}
+              chatEnabled={isChatEnabled}
+              onInitiateCheckout={(p) => {
+                trackInitiateCheckout(p.title, p.price);
+              }}
+              onOutboundClick={handleOutboundClick}
+            />
+          </TenantRuntimeProvider>
+        );
+      }
 
-        {/* MODAL DETAIL LAYANAN */}
-        {selectedProduct && (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
-            <div className="bg-white max-w-lg w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-              <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
-                <X className="w-5 h-5" />
-              </button>
-              <StoreProductImage src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
-              <div>
-                <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-xl font-black text-blue-600">Rp {Number(selectedProduct.price ?? 0).toLocaleString("id-ID")}</span>
-                  {selectedProduct.originalPrice ? (
-                    <span className="text-xs text-slate-400 line-through">Rp {Number(selectedProduct.originalPrice).toLocaleString("id-ID")}</span>
-                  ) : null}
-                </div>
-                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
-              </div>
-
-              {selectedProduct.features && (
-                <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                  <span className="text-xs font-bold text-slate-700">Keunggulan &amp; Cakupan Layanan:</span>
-                  {selectedProduct.features.map((feat, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>{feat}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="border-t border-slate-100 pt-3">
-                {(() => {
-                  const extUrl = resolveProductExternalUrl(selectedProduct);
-                  const isExternal = Boolean(extUrl);
-                  const ctaLabel = resolveProductCtaLabel(selectedProduct, isExternal);
-
-                  if (isExternal && extUrl) {
-                    return (
-                      <a
-                        href={extUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => trackExternalInitiateCheckout(selectedProduct)}
-                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
-                      >
-                        <span>{ctaLabel}</span>
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    );
-                  }
-
-                  const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
-                  if (isPhysOrFood) {
-                    return (
-                      <div className="grid grid-cols-2 gap-2 w-full">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            addToCart(selectedProduct);
-                            setSelectedProduct(null);
-                          }}
-                          className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 font-black text-xs rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4 text-emerald-600" />
-                          <span>+ Keranjang</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
-                            setProductForCheckout({
-                              id: String(selectedProduct.id),
-                              title: selectedProduct.name,
-                              price: selectedProduct.price,
-                              download_url: selectedProduct.download_url,
-                              category: selectedProduct.category,
-                              type: selectedProduct.type,
-                              product_type: selectedProduct.product_type || 'PHYSICAL',
-                              requires_shipping: true,
-                              slug: selectedProduct.slug,
-                              metadata: selectedProduct.metadata,
-                            });
-                            setSelectedProduct(null);
-                            setIsCheckoutOpen(true);
-                          }}
-                          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-                          <span>Beli Langsung</span>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button
-                      onClick={() => {
-                        addToCart(selectedProduct);
-                        setSelectedProduct(null);
-                        setShowCartModal(true);
-                      }}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-                    </button>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
-        <CheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          tenantSlug={tenantSlug}
-          product={productForCheckout}
-        />
-        {/* Modal Barcode Scanner */}
-        {isScannerOpen && (
-          <BarcodeScannerModal
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={handleBarcodeDetected}
-          />
-        )}
-
-
-        {/* MODAL KERANJANG / PILIHAN LAYANAN */}
-        {showCartModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
-            <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-              <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
-                <X className="w-5 h-5" />
-              </button>
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan Pesanan Produk
-              </h2>
-              {cart.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">Belum ada produk yang dipilih.</p>
-              ) : (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {cart.map((item) => (
-                    <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <div className="flex-1 pr-2">
-                        <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
-                        <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                          <Minus className="w-3 h-3 text-slate-600" />
-                        </button>
-                        <span className="text-xs font-bold text-slate-800">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                          <Plus className="w-3 h-3 text-slate-600" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {cart.length > 0 && (
-                <div className="space-y-3 pt-2">
-                  <div className="flex justify-between items-center text-xs font-black text-slate-900">
-                    <span>Total Biaya</span>
-                    <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString('id-ID')}</span>
-                  </div>
-                  <button
-                    onClick={handleCartCheckout}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>Konfirmasi Pemesanan</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCartModal(false)}
-                    className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
-                  >
-                    + Pilih Produk Lain
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
-          <FloatingCartBar
-            totalCount={totalCartCount}
-            subtotal={totalCartPrice}
-            onOpenCart={() => setShowCartModal(true)}
-            onCheckout={() => setShowCartModal(true)}
-            className="bottom-4 sm:bottom-6"
-          />
-        )}
-      </>
-    </TenantRuntimeProvider>
-  );
-}
-
-      // ── SUB-VARIANT: MICROSITE (Bio-Funnel) ──
-      if (templateResult.subVariant === 'microsite') {
+      if (templateResult.subVariant === "microsite") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
-            <>
-              <MicrositeBioTemplate
-          tenantSlug={tenantSlug}
-          storeName={storeName}
-          displayName={displayName}
-          tenant={tenant}
-          tenantMetadata={tenantMetadata}
-          visualTheme={currentVisualTheme}
-          storeLogoUrl={sanitizedActiveLogo}
-          storeProducts={storeProducts}
-          dynamicQuickReplies={dynamicQuickReplies}
-          chatEnabled={isChatEnabled}
-          onInitiateCheckout={(p) => {
-            trackInitiateCheckout(p.title, p.price);
-            setProductForCheckout(p);
-            setIsCheckoutOpen(true);
-          }}
-          onOutboundClick={handleOutboundClick}
-          onAddToCart={(p, e) => addToCart(p, e)}
-        />
+            <MicrositeBioTemplate
+              tenantSlug={tenantSlug}
+              storeName={storeName}
+              displayName={displayName}
+              tenant={tenant}
+              tenantMetadata={tenantMetadata}
+              storeLogoUrl={sanitizedActiveLogo}
+              storeProducts={storeProducts}
+              dynamicQuickReplies={dynamicQuickReplies}
+              chatEnabled={isChatEnabled}
+              onInitiateCheckout={(p) => {
+                trackInitiateCheckout(p.title, p.price);
+              }}
+              onOutboundClick={handleOutboundClick}
+            />
+          </TenantRuntimeProvider>
+        );
+      }
 
-        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
-        <CheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          tenantSlug={tenantSlug}
-          product={productForCheckout}
-        />
-        {/* Modal Barcode Scanner */}
-        {isScannerOpen && (
-          <BarcodeScannerModal
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={handleBarcodeDetected}
-          />
-        )}
-
-
-        {/* MODAL KERANJANG / PILIHAN LAYANAN */}
-        {showCartModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
-            <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-              <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
-                <X className="w-5 h-5" />
-              </button>
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan Pesanan Produk
-              </h2>
-              {cart.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">Belum ada produk yang dipilih.</p>
-              ) : (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {cart.map((item) => (
-                    <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <div className="flex-1 pr-2">
-                        <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
-                        <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                          <Minus className="w-3 h-3 text-slate-600" />
-                        </button>
-                        <span className="text-xs font-bold text-slate-800">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                          <Plus className="w-3 h-3 text-slate-600" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {cart.length > 0 && (
-                <div className="space-y-3 pt-2">
-                  <div className="flex justify-between items-center text-xs font-black text-slate-900">
-                    <span>Total Biaya</span>
-                    <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString('id-ID')}</span>
-                  </div>
-                  <button
-                    onClick={handleCartCheckout}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>Konfirmasi Pemesanan</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCartModal(false)}
-                    className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
-                  >
-                    + Pilih Produk Lain
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
-          <FloatingCartBar
-            totalCount={totalCartCount}
-            subtotal={totalCartPrice}
-            onOpenCart={() => setShowCartModal(true)}
-            onCheckout={() => setShowCartModal(true)}
-            className="bottom-4 sm:bottom-6"
-          />
-        )}
-      </>
-    </TenantRuntimeProvider>
-  );
-}
-
-      // ── SUB-VARIANT: STOREFRONT (Standard Retail / Drop) ──
-      if (templateResult.subVariant === 'storefront') {
+      if (templateResult.subVariant === "storefront") {
         return (
           <TenantRuntimeProvider value={runtimeContextValue}>
-            <StorefrontTemplate context={runtime}>
-    <div className={`min-h-[100dvh] ${defaultThemeConfig.wrapper} font-sans flex flex-col antialiased transition-colors duration-200`}>
-      <header className={`${defaultThemeConfig.header} border-b sticky top-0 z-30 shadow-xs transition-colors duration-200`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo-master.png" && displayAvatar !== "/logo.png" ? (
-              <img
-                src={displayAvatar}
-                alt={storeName || displayName}
-                className="w-9 h-9 rounded-xl object-contain shadow-sm border border-slate-100 bg-white"
-              />
-            ) : (
-              <img
-                src="/logo-master.png"
-                alt="BoonTrack"
-                className="w-9 h-9 object-contain"
-              />
-            )}
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={`font-black ${defaultThemeConfig.headerTitle} capitalize tracking-tight text-base sm:text-lg`}>
-                  {storeName || displayName}
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Buka
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                {tenantMetadata?.category ? `${tenantMetadata.category} • Official Store` : "BoonTrack Official Store"}
-              </p>
-            </div>
-          </div>
+            <StorefrontTemplate
+              context={runtime}
+              tenantSlug={tenantSlug}
+              storeName={storeName || displayName}
+              displayName={displayName}
+              tenant={tenant}
+              tenantMetadata={tenantMetadata}
+              storeProducts={storeProducts}
+              dynamicQuickReplies={dynamicQuickReplies}
+              chatEnabled={isChatEnabled}
+              onOutboundClick={handleOutboundClick}
+            />
+          </TenantRuntimeProvider>
+        );
+      }
 
-          <div className="flex items-center gap-3">
-            {storefrontSections.operating_hours?.is_active !== false && (
-              <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-                <Clock className="w-3.5 h-3.5 text-slate-400" /> Layanan Cepat 24 Jam
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowCartModal(true)}
-              className={`relative ${defaultThemeConfig.headerCta} px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">{headerCtaText}</span>
-              {totalCartCount > 0 && (
-                <span className="bg-white text-blue-600 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shadow-xs">
-                  {totalCartCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* 2-COLUMN VIEW: KATALOG DI KIRI (lg:col-span-7), CHAT ASISTEN DI KANAN (lg:col-span-5) */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
-        {/* KOLOM KIRI: KATALOG LAYANAN DARI SUPABASE (Posisi Baru di Sisi Kiri) */}
-        {storefrontSections.catalog?.is_active !== false && (
-          <section className={`${(isChatEnabled && storefrontSections.floating_chat?.is_active !== false) ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-5 order-1`}>
-          <div className={`${defaultThemeConfig.categoryBar} p-1.5 rounded-2xl border shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold transition-colors`}>
-            {/* Tombol Scan Barcode / QR */}
-            <button
-              type="button"
-              onClick={() => setIsScannerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-xl shadow-sm transition active:scale-95 shrink-0"
-              title="Scan Barcode / QR Produk"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              <span>Scan</span>
-            </button>
-            <button
-              onClick={() => setActiveCategory("all")}
-              className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${activeCategory === "all" ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
-                }`}
-            >
-              Semua ({(storeProducts || []).length})
-            </button>
-            {(uniqueCategories || []).map((cat) => {
-              const catClean = String(cat || "").trim();
-              if (!catClean) return null;
-              return (
-                <button
-                  key={catClean}
-                  onClick={() => setActiveCategory(catClean.toLowerCase())}
-                  className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
-                    }`}
-                >
-                  {catClean}
-                </button>
-              );
-            })}
-          </div>
-
-          {filteredProducts.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100">
-                <PackageOpen className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-800">
-                  {headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')
-                    ? 'Informasi Layanan Siap Melayani'
-                    : 'Belum Ada Produk atau Layanan'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  {headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')
-                    ? `Layanan untuk ${storeName || displayName} dapat dikonsultasikan langsung melalui asisten percakapan kami.`
-                    : `Etalase katalog untuk ${storeName || displayName} saat ini belum memiliki item aktif.`}
-                </p>
-              </div>
-              {!(headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')) && (
-                <Link
-                  href={`/${tenantSlug}/dashboard?tab=products`}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition shadow-xs mt-2"
-                >
-                  <span>Kelola Katalog Toko</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {(filteredProducts || []).map((p, idx) => (
-                <div
-                  key={p?.id !== undefined && p?.id !== null ? String(p.id) : `prod-${idx}`}
-                  onClick={() => {
-                    if (p) {
-                      try {
-                        trackViewContent(p);
-                      } catch { }
-                      setSelectedProduct(p);
-                    }
-                  }}
-                  className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
-                >
-                  <div>
-                    <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video flex items-center justify-center p-1.5">
-                      <StoreProductImage
-                        src={p?.image_url || p?.image}
-                        alt={p?.name || "Layanan"}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      />
-                      {p?.badge && (
-                        <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                          {p.badge}
-                        </span>
-                      )}
-                      {p?.promo && p.promo !== p.badge && (
-                        <span className="absolute top-2.5 right-2.5 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
-                          {p.promo}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-black text-slate-900 text-sm sm:text-base leading-snug mb-1 group-hover:text-blue-600 transition-colors">
-                      {p?.name || `Layanan ${idx + 1}`}
-                    </h3>
-                    <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-3">{p?.description || ""}</p>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div>
-                      {p?.originalPrice ? <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {Number(p.originalPrice).toLocaleString("id-ID")}</span> : null}
-                      <span className="text-sm font-black text-blue-600">{Number(p?.price) === 0 ? 'GRATIS' : `Rp ${Number(p?.price ?? 0).toLocaleString("id-ID")}`}</span>
-                    </div>
-                    {(() => {
-                      const extUrl = resolveProductExternalUrl(p);
-                      const isExternal = Boolean(extUrl);
-                      const ctaLabel = resolveProductCtaLabel(p, isExternal);
-
-                      if (isExternal && extUrl) {
-                        return (
-                          <a
-                            href={extUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              trackExternalInitiateCheckout(p);
-                              window.open(extUrl, "_blank", "noopener,noreferrer");
-                            }}
-                            className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
-                          >
-                            <span>{ctaLabel}</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        );
-                      }
-
-                      const isPhysOrFood = isPhysicalOrFoodProduct(p, tenantMetadata?.category || tenantCategory || tenant?.category);
-                      if (isPhysOrFood) {
-                        return (
-                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            {/* Tombol Utama: [+ Keranjang] */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                if (p) {
-                                  addToCart(p, e);
-                                }
-                              }}
-                              title="Tambah ke Keranjang"
-                              className="bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
-                            >
-                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>+ Keranjang</span>
-                            </button>
-
-                            {/* Tombol Cepat: [Beli Langsung / Pesan] */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (p) {
-                                  trackInitiateCheckout(p.name, p.price);
-                                  setProductForCheckout({
-                                    id: String(p.id),
-                                    title: p.name,
-                                    price: p.price,
-                                    download_url: p.download_url,
-                                    category: p.category,
-                                    type: p.type,
-                                    product_type: p.product_type || 'PHYSICAL',
-                                    requires_shipping: true,
-                                    slug: p.slug,
-                                    metadata: p.metadata,
-                                  });
-                                  setIsCheckoutOpen(true);
-                                }
-                              }}
-                              title="Beli Langsung / Pesan"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
-                            >
-                              <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                              <span>Beli Langsung</span>
-                            </button>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              if (p) {
-                                addToCart(p, e);
-                              }
-                            }}
-                            title="Tambah ke Keranjang"
-                            className="bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
-                          >
-                            <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>+ Keranjang</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (p) {
-                                trackInitiateCheckout(p.name, p.price);
-                                setProductForCheckout({
-                                  id: String(p.id),
-                                  title: p.name,
-                                  price: p.price,
-                                  download_url: p.download_url,
-                                  category: p.category,
-                                  type: p.type,
-                                  product_type: p.product_type || 'DIGITAL',
-                                  requires_shipping: false,
-                                  slug: p.slug,
-                                  metadata: p.metadata,
-                                });
-                                setIsCheckoutOpen(true);
-                              }
-                            }}
-                            title="Pesan Langsung"
-                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer whitespace-nowrap"
-                          >
-                            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                            <span>Pesan Langsung</span>
-                          </button>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* KOLOM KANAN: ASSISTANT CHAT BOT SIMULATOR (Desktop Only: lg ke atas) */}
-        {isChatEnabled && storefrontSections.floating_chat?.is_active !== false && (
-          <section className="hidden lg:flex lg:col-span-5 flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24 order-2">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>
-              </div>
-              <span className="text-[11px] text-slate-400 font-medium">Asisten Otomatis</span>
-            </div>
-
-            <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
-              {messages.map((msg, index) => {
-                const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
-
-                return (
-                  <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                    <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                      }`}>
-                      <p className="whitespace-pre-line">{msg.text}</p>
-
-                      {/* Kartu Rekomendasi Layanan Interaktif */}
-                      {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
-                        <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
-                          <div className="flex items-start gap-3">
-                            <StoreProductImage
-                              src={msg.product.image_url || msg.product.image}
-                              alt={msg.product.name}
-                              className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
-                            />
-                            <div className="flex-1 min-w-0">
-                              {msg.product.badge && (
-                                <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
-                                  {msg.product.badge}
-                                </span>
-                              )}
-                              <h4 className="font-black text-xs text-slate-900 line-clamp-1">
-                                {msg.product.name}
-                              </h4>
-                              <div className="flex items-baseline gap-1.5 mt-0.5">
-                                <span className="font-black text-blue-600 text-xs">
-                                  Rp {Number(msg.product.price || 0).toLocaleString("id-ID")}
-                                </span>
-                                {msg.product.originalPrice && (
-                                  <span className="text-[10px] text-slate-400 line-through">
-                                    Rp {Number(msg.product.originalPrice).toLocaleString("id-ID")}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {msg.product.description && (
-                            <p className="text-[11px] text-slate-500 line-clamp-2 leading-normal">
-                              {msg.product.description}
-                            </p>
-                          )}
-
-                          {(() => {
-                            const isProdAffiliate = Boolean(
-                              msg.product.external_url ||
-                              (msg.product as any)?.metadata?.external_url ||
-                              msg.product.checkout_type === 'external'
-                            );
-                            const prodExternalUrl =
-                              msg.product.external_url ||
-                              (msg.product as any)?.metadata?.external_url ||
-                              '';
-                            const prodCtaText =
-                              msg.product.cta_label ||
-                              (msg.product as any)?.metadata?.cta_label ||
-                              'Beli Sekarang';
-
-                            if (isProdAffiliate && prodExternalUrl) {
-                              return (
-                                <div className="pt-1 border-t border-slate-200/70">
-                                  <a
-                                    href={prodExternalUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => trackExternalInitiateCheckout(msg.product)}
-                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer text-center"
-                                  >
-                                    <span>{prodCtaText}</span>
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!msg.product) return;
-                                    trackInitiateCheckout(msg.product.name, msg.product.price);
-                                    const isMsgPhysOrFood = isPhysicalOrFoodProduct(msg.product, tenantMetadata?.category || tenantCategory || tenant?.category);
-                                    setProductForCheckout({
-                                      id: String(msg.product.id),
-                                      title: msg.product.name,
-                                      price: msg.product.price,
-                                      download_url: msg.product.download_url,
-                                      type: msg.product.type,
-                                      category: msg.product.category,
-                                      product_type: (msg.product as any)?.product_type || (isMsgPhysOrFood ? 'PHYSICAL' : 'DIGITAL'),
-                                      requires_shipping: isMsgPhysOrFood,
-                                    });
-                                    setIsCheckoutOpen(true);
-                                  }}
-                                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
-                                >
-                                  <QrCode className="w-3.5 h-3.5" />
-                                  <span>Pesan Langsung</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!msg.product) return;
-                                    addToCart({
-                                      id: msg.product.id,
-                                      name: msg.product.name,
-                                      category: msg.product.category || "service",
-                                      price: msg.product.price,
-                                      originalPrice: msg.product.originalPrice,
-                                      image: msg.product.image_url || msg.product.image || "",
-                                      description: msg.product.description || "",
-                                      badge: msg.product.badge
-                                    });
-                                    setShowCartModal(true);
-                                  }}
-                                  className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                                  title="Tambah ke Pilihan"
-                                >
-                                  <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
-                                </button>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-
-                      <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
-                        {msg.time}
-                      </span>
-                    </div>
-
-                    {/* Dynamic Quick Action Chips */}
-                    {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
-                        {msg.quick_actions.slice(0, 4).map((chip, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => !isBotTyping && sendChatMessage(chip)}
-                            disabled={isBotTyping}
-                            className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {chip}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {isBotTyping && (
-                <div className="flex flex-col items-start">
-                  <div className="bg-white border border-slate-200/80 rounded-2xl rounded-bl-xs px-4 py-3 shadow-xs flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></span>
-                    <span className="text-[11px] text-slate-400 ml-1 font-medium">Asisten sedang merespon...</span>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-
-            <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                disabled={isBotTyping}
-                placeholder={
-                  isBotTyping
-                    ? "Sedang menunggu respon..."
-                    : resolvedCategory.toUpperCase().includes('PUBLIC_SERVICE') || resolvedCategory.toUpperCase().includes('PELAYANAN')
-                      ? "Tulis permohonan surat atau pertanyaan warga..."
-                      : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
-                        ? "Tulis pertanyaan, konsultasi, atau brief..."
-                        : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
-                          ? "Tulis pertanyaan atau jadwal servis..."
-                          : "Tulis pertanyaan atau informasi pesanan..."
-                }
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={isBotTyping || !inputMessage.trim()}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          </section>
-        )}
-      </main>
-
-      {/* MODAL DETAIL LAYANAN */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
-          <div className="bg-white max-w-lg w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
-              <X className="w-5 h-5" />
-            </button>
-            <div className="rounded-2xl overflow-hidden border border-slate-100">
-              <StoreProductImage
-                src={selectedProduct.image_url || selectedProduct.image}
-                alt={selectedProduct.name}
-                className="w-full h-56 object-cover"
-              />
-            </div>
-            <div>
-              <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-xl font-black text-blue-600">Rp {Number(selectedProduct.price ?? 0).toLocaleString("id-ID")}</span>
-                {selectedProduct.originalPrice ? (
-                  <span className="text-xs text-slate-400 line-through">Rp {Number(selectedProduct.originalPrice).toLocaleString("id-ID")}</span>
-                ) : null}
-              </div>
-              <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
-            </div>
-
-            {selectedProduct.features && (
-              <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                <span className="text-xs font-bold text-slate-700">Keunggulan & Cakupan Layanan:</span>
-                {selectedProduct.features.map((feat, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
-                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span>{feat}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-slate-100 pt-3">
-              {(() => {
-                const extUrl = resolveProductExternalUrl(selectedProduct);
-                const isExternal = Boolean(extUrl);
-                const ctaLabel = resolveProductCtaLabel(selectedProduct, isExternal);
-
-                if (isExternal && extUrl) {
-                  return (
-                    <a
-                      href={extUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => trackExternalInitiateCheckout(selectedProduct)}
-                      className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
-                    >
-                      <span>{ctaLabel}</span>
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  );
-                }
-
-                const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
-                if (isPhysOrFood) {
-                  return (
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          addToCart(selectedProduct);
-                          setSelectedProduct(null);
-                        }}
-                        className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 font-black text-xs rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4 text-emerald-600" />
-                        <span>+ Keranjang</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
-                          setProductForCheckout({
-                            id: String(selectedProduct.id),
-                            title: selectedProduct.name,
-                            price: selectedProduct.price,
-                            download_url: selectedProduct.download_url,
-                            category: selectedProduct.category,
-                            type: selectedProduct.type,
-                            product_type: selectedProduct.product_type || 'PHYSICAL',
-                            requires_shipping: true,
-                            slug: selectedProduct.slug,
-                            metadata: selectedProduct.metadata,
-                          });
-                          setSelectedProduct(null);
-                          setIsCheckoutOpen(true);
-                        }}
-                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-                        <span>Beli Langsung</span>
-                      </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <button
-                    onClick={() => {
-                      addToCart(selectedProduct);
-                      setSelectedProduct(null);
-                      setShowCartModal(true);
-                    }}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL KERANJANG / PILIHAN LAYANAN */}
-      {showCartModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
-          <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-            <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan {headerCtaText.includes('Layanan') ? 'Pesanan Layanan' : 'Pesanan Produk'}
-            </h2>
-
-            {cart.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Belum ada {headerCtaText.includes('Layanan') ? 'layanan' : 'produk'} yang dipilih.</p>
-            ) : (
-              <div className="space-y-3 max-h-60 overflow-y-auto">
-                {cart.map((item) => (
-                  <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <div className="flex-1 pr-2">
-                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
-                      <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString("id-ID")}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                        <Minus className="w-3 h-3 text-slate-600" />
-                      </button>
-                      <span className="text-xs font-bold text-slate-800">{item.qty}</span>
-                      <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
-                        <Plus className="w-3 h-3 text-slate-600" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {cart.length > 0 && (
-              <div className="space-y-3 pt-2">
-                <div className="flex justify-between items-center text-xs font-black text-slate-900">
-                  <span>Total Biaya</span>
-                  <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString("id-ID")}</span>
-                </div>
-                <button
-                  onClick={handleCartCheckout}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Konfirmasi Pemesanan</span>
-                </button>
-                {/* Tombol Sekunder Adaptif: tutup modal agar pelanggan bisa pilih item lain */}
-                <button
-                  type="button"
-                  onClick={() => setShowCartModal(false)}
-                  className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
-                >
-                  {headerCtaText.includes('Layanan')
-                    ? '+ Pilih Layanan Lain'
-                    : '+ Pilih Produk Lain'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
-      <CheckoutModal
-        isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
-        tenantSlug={tenantSlug}
-        product={productForCheckout}
-      />
-      {/* Modal Barcode Scanner */}
-      {isScannerOpen && (
-        <BarcodeScannerModal
-          isOpen={isScannerOpen}
-          onClose={() => setIsScannerOpen(false)}
-          onScanSuccess={handleBarcodeDetected}
+      return (
+        <ControlledProvisioningError
+          templateCode={templateResult.templateCode}
+          tenantSlug={tenantSlug}
+          errorMessage={`Sub-varian template '${templateResult.subVariant}' tidak didukung atau korup.`}
         />
-      )}
-
-      {/* MOBILE FLOATING CHAT BUTTON & INTERACTIVE DRAWER (Mobile Viewport: < lg) */}
-      {isChatEnabled && storefrontSections.floating_chat?.is_active !== false && (
-        <div className="lg:hidden">
-          {/* Floating Pill Button */}
-          {!isMobileChatOpen && (
-            <button
-              type="button"
-              onClick={() => setIsMobileChatOpen(true)}
-              className="fixed bottom-5 right-5 z-40 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-full shadow-xl shadow-blue-600/30 flex items-center gap-2.5 transition-all active:scale-95 cursor-pointer border border-white/40 ring-4 ring-blue-600/20"
-              aria-label={chatCtaLabel}
-            >
-              <div className="relative">
-                <Send className="w-4 h-4 rotate-[-10deg]" />
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-white animate-pulse" />
-              </div>
-              <span className="text-xs font-black tracking-tight">{chatCtaLabel}</span>
-            </button>
-          )}
-
-          {/* Bottom Sheet Modal / Drawer */}
-          {isMobileChatOpen && (
-            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex flex-col justify-end p-0 animate-in fade-in duration-200">
-              <div className="bg-white w-full max-h-[85dvh] h-[85dvh] rounded-t-[32px] border-t border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-300">
-                {/* Drawer Header */}
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2.5">
-                    {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo-master.png" && displayAvatar !== "/logo.png" ? (
-                      <img
-                        src={displayAvatar}
-                        alt={storeName || displayName}
-                        className="w-8 h-8 rounded-xl object-contain shadow-xs border border-slate-100 bg-white"
-                      />
-                    ) : (
-                      <img
-                        src="/logo-master.png"
-                        alt="BoonTrack"
-                        className="w-8 h-8 object-contain"
-                      />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-medium">Asisten Otomatis Online</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsMobileChatOpen(false)}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Drawer Messages Body */}
-                <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#F8FAFC]">
-                  {messages.map((msg, index) => {
-                    const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
-
-                    return (
-                      <div key={`mob-${msg.id}`} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                        <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs ${msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                          }`}>
-                          <p className="whitespace-pre-line">{msg.text}</p>
-
-                          {/* Interactive Product Card */}
-                          {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
-                            <div className="mt-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 text-slate-900 space-y-2">
-                              <div className="flex items-start gap-2.5">
-                                <StoreProductImage
-                                  src={msg.product.image_url || msg.product.image}
-                                  alt={msg.product.name}
-                                  className="w-12 h-12 object-cover rounded-xl shrink-0 border border-slate-200"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  {msg.product.badge && (
-                                    <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
-                                      {msg.product.badge}
-                                    </span>
-                                  )}
-                                  <h4 className="font-black text-xs text-slate-900 line-clamp-1">
-                                    {msg.product.name}
-                                  </h4>
-                                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                                    <span className="font-black text-blue-600 text-xs">
-                                      Rp {Number(msg.product.price || 0).toLocaleString("id-ID")}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {(() => {
-                                const isProdAffiliate = Boolean(
-                                  msg.product.external_url ||
-                                  (msg.product as any)?.metadata?.external_url ||
-                                  msg.product.checkout_type === 'external' ||
-                                  (msg.product as any)?.metadata?.checkout_type === 'external'
-                                );
-                                const prodExternalUrl =
-                                  msg.product.external_url ||
-                                  (msg.product as any)?.metadata?.external_url ||
-                                  '';
-                                const prodCtaText =
-                                  msg.product.cta_label ||
-                                  (msg.product as any)?.metadata?.cta_label ||
-                                  (Number(msg.product.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang');
-
-                                if (isProdAffiliate && prodExternalUrl) {
-                                  return (
-                                    <div className="pt-1 border-t border-slate-200/60">
-                                      <a
-                                        href={prodExternalUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          trackExternalInitiateCheckout(msg.product);
-                                        }}
-                                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer text-center"
-                                      >
-                                        <span>{prodCtaText}</span>
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                      </a>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200/60">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (!msg.product) return;
-                                        trackInitiateCheckout(msg.product.name, msg.product.price);
-                                        const isMobPhysOrFood = isPhysicalOrFoodProduct(msg.product, tenantMetadata?.category || tenantCategory || tenant?.category);
-                                        setProductForCheckout({
-                                          id: String(msg.product.id),
-                                          title: msg.product.name,
-                                          price: msg.product.price,
-                                          download_url: msg.product.download_url,
-                                          type: msg.product.type,
-                                          category: msg.product.category,
-                                          product_type: (msg.product as any)?.product_type || (isMobPhysOrFood ? 'PHYSICAL' : 'DIGITAL'),
-                                          requires_shipping: isMobPhysOrFood,
-                                        });
-                                        setIsMobileChatOpen(false);
-                                        setIsCheckoutOpen(true);
-                                      }}
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs"
-                                    >
-                                      <QrCode className="w-3.5 h-3.5" />
-                                      <span>Pesan Langsung</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (!msg.product) return;
-                                        addToCart({
-                                          id: msg.product.id,
-                                          name: msg.product.name,
-                                          category: msg.product.category || "service",
-                                          price: msg.product.price,
-                                          originalPrice: msg.product.originalPrice,
-                                          image: msg.product.image_url || msg.product.image || "",
-                                          description: msg.product.description || "",
-                                          badge: msg.product.badge
-                                        });
-                                        setIsMobileChatOpen(false);
-                                        setShowCartModal(true);
-                                      }}
-                                      className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-1.5 px-2 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                                    >
-                                      <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
-                                      <span>Pilihan</span>
-                                    </button>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          )}
-
-                          <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
-                            {msg.time}
-                          </span>
-                        </div>
-
-                        {/* Quick action chips */}
-                        {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
-                            {msg.quick_actions.slice(0, 4).map((chip, idx) => (
-                              <button
-                                key={`mob-chip-${idx}`}
-                                type="button"
-                                onClick={() => !isBotTyping && sendChatMessage(chip)}
-                                disabled={isBotTyping}
-                                className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {chip}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {isBotTyping && (
-                    <div className="flex flex-col items-start">
-                      <div className="bg-white border border-slate-200/80 rounded-2xl rounded-bl-xs px-4 py-3 shadow-xs flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></span>
-                        <span className="text-[11px] text-slate-400 ml-1 font-medium">Asisten sedang merespon...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={mobileMessagesEndRef} />
-                </div>
-
-                {/* Drawer Input Form */}
-                <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0">
-                  <input
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    disabled={isBotTyping}
-                    placeholder={
-                      isBotTyping
-                        ? "Menunggu respon..."
-                        : resolvedCategory.toUpperCase().includes('PUBLIC_SERVICE') || resolvedCategory.toUpperCase().includes('PELAYANAN')
-                          ? "Tulis permohonan surat atau pertanyaan warga..."
-                          : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
-                            ? "Tulis pertanyaan, konsultasi, atau brief..."
-                            : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
-                              ? "Tulis pertanyaan atau jadwal servis..."
-                              : "Tulis pertanyaan atau informasi pesanan..."
-                    }
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isBotTyping || !inputMessage.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-      {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
-        <FloatingCartBar
-          totalCount={totalCartCount}
-          subtotal={totalCartPrice}
-          onOpenCart={() => setShowCartModal(true)}
-          onCheckout={() => setShowCartModal(true)}
-          className="bottom-4 sm:bottom-6"
-        />
-      )}
-
-      <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
-        <div className="max-w-4xl mx-auto space-y-3">
-          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-slate-400 font-medium">
-            <Link href="/terms" className="hover:text-white transition">Ketentuan Layanan</Link>
-            <span>•</span>
-            <Link href="/privacy" className="hover:text-white transition">Kebijakan Privasi</Link>
-            <span>•</span>
-            <Link href="/acceptable-use" className="hover:text-white transition">Kebijakan Penggunaan</Link>
-            <span>•</span>
-            <Link href="/refund" className="hover:text-white transition">Pengembalian Dana</Link>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            © 2026 PT BOONTRACK INOVASI DIGITAL. All rights reserved. • Layanan Resmi {(storeName || displayName).toUpperCase()}
-          </p>
-          <p className="text-[11px] text-slate-500">
-            Alamat Operasional: PT BOONTRACK INOVASI DIGITAL, Bandung, Jawa Barat.
-          </p>
-        </div>
-      </footer>
-          </div>
-        </StorefrontTemplate>
-      </TenantRuntimeProvider>
-    );
-  }
-
-  // Fail-closed for unknown sub-variants under SHOP_V1 / DROP_V1
-  return (
-    <ControlledProvisioningError
-      templateCode={templateResult.templateCode}
-      tenantSlug={tenantSlug}
-      errorMessage={`Sub-varian template '${templateResult.subVariant}' tidak didukung atau korup.`}
-    />
-  );
-}
+      );
+    }
 
     default:
       return (
