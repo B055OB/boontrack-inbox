@@ -3,7 +3,7 @@
 **Versi**: 1.0.0 (MVP)  
 **Tanggal**: 05 Oktober 2026  
 **Status**: Approved (Mandat CTO)  
-**Dokumen Rujukan**: `ARCHITECTURE.md`, `docs/knowledge/02_tenant_dr_harys.md`
+**Dokumen Rujukan**: `ARCHITECTURE.md`, `docs/tenants/ziad-medika-consultation.md`
 
 ---
 

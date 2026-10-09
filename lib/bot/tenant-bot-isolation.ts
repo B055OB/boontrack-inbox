@@ -4,6 +4,7 @@ import { isValidUuid } from '@/lib/uuid-guard';
 import {
   isClinicConsultationTenant,
   buildDoctorTeamLabel,
+  resolveClinicDoctorTeam,
   resolveClinicPaymentAccount,
   CLINIC_OFFICIAL_SCREENING_URL,
 } from '@/lib/funnel/consultation-lead-funnel';
@@ -454,24 +455,46 @@ export async function routeTenantInboundMessage(params: {
 
   if (isClinicTenant) {
     const clinicDocLabel = buildDoctorTeamLabel(treeConfig.metadata);
+    const clinicDoctorTeam = resolveClinicDoctorTeam(treeConfig.metadata);
     const clinicPaymentAcct = resolveClinicPaymentAccount(treeConfig.metadata);
     const screeningUrl = treeConfig.metadata?.screening_url || CLINIC_OFFICIAL_SCREENING_URL;
     const checkoutDomain = treeConfig.metadata?.custom_domain || `shop.boontrack.com/${treeConfig.tenant_slug}`;
+    const clinicSchedule =
+      treeConfig.metadata?.schedule ||
+      treeConfig.metadata?.operational_hours ||
+      'Senin – Jumat: 08.00 – 11.30 WIB';
+    const clinicOrgName =
+      treeConfig.metadata?.clinic_name ||
+      treeConfig.metadata?.organization_name ||
+      (treeConfig.store_name.toLowerCase().includes('klinik')
+        ? treeConfig.store_name
+        : `Klinik ${treeConfig.store_name}`);
+    const clinicTeamTitle =
+      treeConfig.metadata?.team_title ||
+      `Tim Dokter ${clinicOrgName}`;
+
+    // Build dynamic doctor names regex pattern
+    const docNameMatches = clinicDoctorTeam.map((d) => d.doctor_name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const docNameRegexPart = docNameMatches.length > 0 ? `|${docNameMatches.join('|')}` : '';
 
     // Nutrition / Feeding / GTM Route (Locks to EAT & GROW)
-    if (
-      /gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\. harys|eat & grow|eat and grow/i.test(combinedSignal) ||
+    const isNutritionIntent =
+      new RegExp(
+        `gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\\. harys|eat & grow|eat and grow${docNameRegexPart}`,
+        'i'
+      ).test(combinedSignal) ||
       interactiveReply?.id === 'opt_gtm_nutrition' ||
       cleanMsg === '3' ||
-      cleanMsg.startsWith('3.')
-    ) {
+      cleanMsg.startsWith('3.');
+
+    if (isNutritionIntent) {
       await updateBotSessionState(tenantIdOrSlug, senderPhone, {
         current_step: 'NUTRITION_CONSULT',
         last_menu_id: 'menu_tumbuh_kembang',
       }, supabaseClient);
 
       const replyText =
-        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM - EAT & GROW (${clinicDocLabel} / Tim Dokter Klinik Tumbuh Kembang Anak)*\n\n` +
+        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM - EAT & GROW (${clinicDocLabel} / ${clinicTeamTitle})*\n\n` +
         `Halo Ayah & Bunda! Masalah makan seperti Gerakan Tutup Mulut (GTM), durasi makan terlalu lama / anak mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret/stuck, sensitivitas tekstur MPASI, hingga pilih-pilih makan (picky eater) memerlukan pendekatan terstruktur tanpa paksaan trauma.\n\n` +
         `📋 *Fokus Pendampingan EAT & GROW (${clinicDocLabel}):*\n` +
         `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards) serta penanganan BB seret/stuck.\n` +
@@ -479,7 +502,7 @@ export async function routeTenantInboundMessage(params: {
         `3. Evaluasi oromotor pada kebiasaan mengemut/makan lama & penyesuaian tekstur MPASI bertahap.\n` +
         `4. Pencegahan sensory food aversion & penanganan defisiensi mikronutrien (zat besi & zinc).\n\n` +
         `💰 *Paket Layanan:* *EAT & GROW - Chat Consultation (Rp 150.000)* atau *Google Meet (Rp 250.000)*\n` +
-        `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
+        `📅 *Jadwal Praktik:* ${clinicSchedule}\n\n` +
         `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
         `👉 *Daftar Sesi Konsultasi Nutrisi:* https://${checkoutDomain}\n\n` +
         `Ayah/Bunda bisa langsung melengkapi form skrining resmi di atas atau ceritakan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
@@ -501,12 +524,16 @@ export async function routeTenantInboundMessage(params: {
     }
 
     // Screening / Speech Delay / Stimulation Route (Locks to KONSULTASI KLINIK)
-    if (
-      /periksa fisik|periksa langsung|ke klinik|di klinik|kunjungan klinik|tatap muka|speech delay|bicara|terapi|sensori|stimulasi|motorik|evaluasi perkembangan|tes mandiri|skrining|tumbuh kembang|dr azizah|dr\. azizah/i.test(combinedSignal) ||
+    const isScreeningIntent =
+      new RegExp(
+        `periksa fisik|periksa langsung|ke klinik|di klinik|kunjungan klinik|tatap muka|speech delay|bicara|terapi|sensori|stimulasi|motorik|evaluasi perkembangan|tes mandiri|skrining|tumbuh kembang|dr azizah|dr\\. azizah${docNameRegexPart}`,
+        'i'
+      ).test(combinedSignal) ||
       interactiveReply?.id === 'opt_screening' ||
       cleanMsg === '4' ||
-      cleanMsg.startsWith('4.')
-    ) {
+      cleanMsg.startsWith('4.');
+
+    if (isScreeningIntent) {
       await updateBotSessionState(tenantIdOrSlug, senderPhone, {
         current_step: 'SCREENING_CONSULT',
         last_menu_id: 'menu_tumbuh_kembang',
@@ -521,7 +548,7 @@ export async function routeTenantInboundMessage(params: {
         `3. Sensori Integrasi & Regulasi Emosi (tantrum berlebih, sensitif tekstur/suara).\n` +
         `4. Pemeriksaan antropometri & buku rapor evaluasi perkembangan anak.\n\n` +
         `💰 *Paket Layanan:* *Konsultasi Klinik / Screening Tumbuh Kembang (Rp 250.000)*\n` +
-        `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
+        `📅 *Jadwal Praktik:* ${clinicSchedule}\n\n` +
         `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
         `👉 *Pesan Sesi Screening Tumbuh Kembang:* https://${checkoutDomain}\n\n` +
         `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil melalui form skrining resmi di atas sebelum sesi konsultasi dimulai.\n\n` +
@@ -592,9 +619,9 @@ export async function routeTenantInboundMessage(params: {
       }, supabaseClient);
 
       const replyText =
-        `📅 *JADWAL KONSULTASI DOKTER KLINIK TUMBUH KEMBANG ANAK*\n\n` +
+        `📅 *JADWAL KONSULTASI DOKTER ${clinicOrgName.toUpperCase()}*\n\n` +
         `👨‍⚕️ *${clinicDocLabel}*:\n` +
-        `• Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
+        `• ${clinicSchedule}\n\n` +
         `📋 *Alur Reservasi Konsultasi:*\n` +
         `1. Pilih jadwal dan paket di website resmi: https://${checkoutDomain}\n` +
         `2. Lakukan konfirmasi pembayaran melalui QRIS otomatis atau transfer ${clinicPaymentAcct.bank_name}.\n` +
@@ -627,7 +654,7 @@ export async function routeTenantInboundMessage(params: {
 
       const replyText =
         `👋 *MENGHUBUNGKAN DENGAN TIM PENDAFTARAN KLINIK*\n\n` +
-        `Pesan Ayah/Bunda telah diteruskan ke admin pendaftaran Klinik Tumbuh Kembang Anak.\n\n` +
+        `Pesan Ayah/Bunda telah diteruskan ke admin pendaftaran ${clinicOrgName}.\n\n` +
         `Bot asisten otomatis telah dijeda khusus untuk percakapan ini agar admin kami dapat melayani secara personal.\n\n` +
         `Silakan ketikkan detail keluhan atau nama ananda dan tanggal lahir di sini. Tim admin kami akan segera membalas.\n\n` +
         `_(Ketik *menu* kapan saja untuk mengaktifkan kembali bot asisten)_`;

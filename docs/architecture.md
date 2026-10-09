@@ -1,221 +1,229 @@
-# BoonTrack Architecture Documentation
-
-This document serves as the permanent reference for BoonTrack core architecture and specialized sub-engines.
+# BoonTrack Core Architecture Contracts
+**Document Version:** 2.0.0 (Core Engine Freeze)  
+**Status:** Canonical Reference (CTO Approved with Guardrails)  
+**Target Domain:** Multi-Tenant Platform Core Runtime & Infrastructure  
 
 ---
 
-## BoonPilot Bot Architecture & Persona Engine (WhatsApp & Telegram)
+## Executive Overview & Architectural North Star
 
-### 1. Executive Summary & Multi-Provider Gateway
-BoonPilot is the unified conversational AI assistant and onboarding specialist across the BoonTrack commerce ecosystem. It operates concurrently through two official messaging gateways:
-- **WhatsApp Gateway**: Official Platform Number `081215567168` (`+6281215567168`), routed via Evolution API / WhatsApp Cloud API webhooks (`lib/whatsapp/evolution-webhook-handler.ts`).
-- **Telegram Gateway**: Official Platform Bot `@boonshop_bot`, routed via Telegram Bot webhook (`lib/telegram/boonpilot-telegram.ts`).
-
-Both gateways route into the unified entrypoint `processBoonPilotPlatformChat()` (`lib/boonpilot/platform-engine.ts`), which coordinates dynamic sender identity resolution, multi-role recognition, persona prompt compilation, LLM execution (Gemini 3.8 Flash), and deterministic fallbacks.
+BoonTrack operates as a high-performance, strictly isolated multi-tenant commerce and conversation platform. The Core Architecture is composed of five foundational contracts:
 
 ```mermaid
-flowchart TD
-    WA[WhatsApp Incoming Message<br/>081215567168] --> WA_WH[evolution-webhook-handler.ts]
-    TELE[Telegram Incoming Message<br/>@boonshop_bot] --> TELE_WH[boonpilot-telegram.ts]
+graph TD
+    subgraph Core Contracts
+        C1[1. Tenant Runtime]
+        C2[2. State Machine Engine]
+        C3[3. Tenant Isolation & Security]
+        C4[4. Conversation Engine]
+        C5[5. Adapter Pattern]
+    end
 
-    WA_WH --> CE[ConversationEngine.process]
-    TELE_WH --> CE
-
-    CE --> BP_CORE[processBoonPilotPlatformChat]
-    BP_CORE --> RES[resolveBoonPilotSender]
-
-    RES --> DB[(Supabase tenants & channel_bindings)]
-    DB --> ROLES{Sender Role & Status}
-
-    ROLES -->|Multi-Role Affiliate + Merchant| ROLE_MULTI[Multi-Role Greeting & Dual Intent]
-    ROLES -->|Expired Subscription| ROLE_EXP[Subscription Gating & Friendly Edu]
-    ROLES -->|Active Merchant - Incomplete| ROLE_MERCH_INC[Onboarding Guidance]
-    ROLES -->|Active Merchant - Complete| ROLE_MERCH_READY[Strategic Consulting]
-    ROLES -->|Unregistered Guest| ROLE_GUEST[Persuasive Onboarding & Dynamic Pitch]
-
-    ROLE_MULTI --> LLM[Gemini 3.8 Flash LLM]
-    ROLE_EXP --> LLM
-    ROLE_MERCH_INC --> LLM
-    ROLE_MERCH_READY --> LLM
-    ROLE_GUEST --> LLM
-
-    LLM --> SANITIZE[Guardrail Sanitizer<br/>Single Bubble & Asterisk-Free URLs]
-    LLM -.->|API Failure / Offline| FALLBACK[Deterministic Fallback Engine]
-    FALLBACK --> SANITIZE
-    SANITIZE --> OUT[Outbound Chat Response]
+    C1 --> C4
+    C2 --> C4
+    C3 --> C1
+    C3 --> C4
+    C5 --> C4
+    C5 --> C2
 ```
 
----
-
-### 2. Identity Resolution & Lifecycle Engine (`lib/boonpilot/sender-resolver.ts`)
-
-BoonPilot enforces **Zero Hardcoding** and relies on Supabase as the **Single Source of Truth**:
-1. **Dynamic Phone & Telegram Matching**:
-   - Resolves sender phone across `phone`, `whatsapp_number`, and `wa_verified_phone` (normalized to international `62...` format).
-   - Resolves Telegram users via `telegram_chat_id` column and `metadata->>telegram_chat_id`.
-2. **Setup Completeness Evaluation (`isTenantSetupComplete`)**:
-   - Evaluates whether the merchant's store is ready for commerce:
-     - Explicit flags: `tenant.isSetupComplete`, `metadata.setup_completed`, `metadata.is_ready`.
-     - Runtime state: Presence of active catalog products AND configured payment method (QRIS or bank account).
-3. **Subscription Lifecycle Evaluation (`isTenantSubscriptionExpired`)**:
-   - Checks `tenant.subscription_status === 'expired'` or `tenant.status === 'expired'`.
-   - Checks expiration timestamp: `tenant.plan_expires_at && new Date(tenant.plan_expires_at) < new Date()`.
+1. **Tenant Runtime**: Resolves runtime context, domain boundaries, capabilities, and dynamic templates with zero hardcoding.
+2. **Deterministic State Machine**: Governs financial mutations, human/AI handovers, and multi-step conversation triage.
+3. **Tenant Isolation**: Guarantees zero cross-tenant data leakage across 7 isolation gates and composite session keys.
+4. **Conversation Engine**: Coordinates gateway routing, pre-LLM deterministic interception, LLM execution, and guardrail sanitization.
+5. **Adapter Pattern**: Decouples external protocols (WABA, WAHA, Telegram, QRIS, Webhooks) from internal domain services.
 
 ---
 
-### 3. Multi-Role Recognition (Affiliate Leader + Merchant)
+## 1. Tenant Runtime Contract (`lib/types/tenant-runtime.ts`)
 
-Affiliate Leaders often manage their own merchant storefront while simultaneously leading downline communities:
-- **Detection Criteria**:
-  - The sender matches a registered tenant in `tenants`.
-  - The sender holds an affiliate leader relationship in `channel_bindings` or designated slug (e.g. `buzzerukm` / Kang Sakti).
-- **Private DM Greeting (Japri)**:
-  ```text
-  "Halo Kang/Kak {nama_owner}! Mau cek performa referral komunitas {affiliate_id/nama_komunitas}, diskusi strategi toko {nama_toko}, atau ada hal lain yang mau diobrolkan?"
-  ```
-- **Dual Intent Routing**:
-  - **Community / Referral Inquiry**: BoonPilot summarizes referral performance, pool registration link, and demo store attribution.
-  - **Personal Store Inquiry**: BoonPilot redirects to `{nama_toko}` analytics, conversion metrics, and dashboard management (`https://dashboard.boontrack.com`).
-  - **General Inquiries**: Seamlessly answered with high-value e-commerce knowledge.
+### 1.1 Tenant Runtime Context & Boundary Resolution
+Every incoming request (HTTP, Webhook, WebSocket) is resolved into an immutable `TenantRuntimeContext`:
 
----
-
-### 4. Tenant Expired Lifecycle & Feature Gating
-
-When a merchant's plan expires:
-- **Operational Gating**:
-  - Store management operations (orders, catalog, courier setup, QRIS settlement, dashboard navigation) are gated.
-  - Sapaan & Gating Message:
-    ```text
-    "Halo Kak {nama_owner}! Masa aktif operasional toko {nama_toko} saat ini sudah berakhir nih. Agar otomatisasi WhatsApp, penerimaan pesanan, dan asisten toko bisa langsung jalan kembali, silakan login ke dashboard toko Kakak di https://dashboard.boontrack.com lalu klik tombol Upgrade / Perpanjangan ya!"
-    ```
-- **Educational Exemption Guardrail**:
-  - General e-commerce inquiries, product feature explanations (Single-Page Checkout, Dynamic QRIS 0% MDR, Meta CAPI), and business questions are **still answered informatively and warmly**.
-  - The bot **never refuses rigidly** to answer non-dashboard educational questions.
-
----
-
-### 5. Merchant Reguler & Onboarding Personas
-
-- **Scenario A: Setup Incomplete (Belum Selesai)**:
-  ```text
-  "Halo Kak {nama_owner}, toko {nama_toko} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!"
-  ```
-- **Scenario B: Store Ready (Siap Tempur)**:
-  ```text
-  "Halo Kak {nama_owner}, toko {nama_toko} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?"
-  ```
-- **Invariant**: Registered merchants are **strictly never pitched** to create a new store or shown registration links.
-
----
-
-### 6. Unregistered Guest & Community Attribution
-
-- **Store / Dashboard Analysis Request**:
-  When an unregistered user asks BoonPilot to audit or analyze their store/dashboard:
-  ```text
-  "Wah saya bisa bantu analisa kak, tapi kalau Kakak sudah jadi seller di BoonTrack Shop pasti saya bantu bedah sampai tuntas! Yuk aktifkan toko Kakak dulu di sini: {registration_url}"
-  ```
-- **Dynamic Registration URL Attribution**:
-  - **Kang Sakti (Buzzer UKM)**: `https://buzzerukm.boontrack.com`
-  - **Other Affiliates**: `https://shop.boontrack.com/?ref={code}`
-  - **Direct / Generic Fallback**: `https://boontrack.com`
-
----
-
-### 7. Canonical URL Standardization & Strict Guardrails
-
-| Destination | Canonical URL | Usage Context |
-| :--- | :--- | :--- |
-| **Merchant Dashboard** | `https://dashboard.boontrack.com` | Store management, order processing, settings, upgrade |
-| **Demo Storefront** | `https://shop.boontrack.com/boon` | Single-page checkout & QRIS demonstration |
-| **Kang Sakti Landing** | `https://buzzerukm.boontrack.com` | Community referral & registration for Buzzer UKM |
-| **Affiliate Referral** | `https://shop.boontrack.com/?ref={code}` | Downline community registration |
-| **Platform Homepage** | `https://boontrack.com` | Generic platform fallback |
-
-#### Communication Guardrails
-1. **Single Chat Bubble**:
-   - `maxOutputTokens` is tuned (2048 tokens).
-   - Responses are structured compactly so they are always delivered in a single chat bubble without truncation.
-2. **Asterisk-Free URLs**:
-   - Markdown asterisks (`*`) wrapping URLs (e.g. `*https://...*`) cause rendering anomalies and broken links across mobile messaging clients.
-   - An automated sanitizer strips asterisks from URLs in both AI responses and fallback messages:
-     ```typescript
-     cleanReply = cleanReply.replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1');
-     ```
----
-
-## Store Reseller V1 Commercial & Entitlement Contract
-
-### 1. Nomenklatur Resmi & Commercial Tiers
-Pemisahan tegas antara paket dasar gratis, add-on berbayar, dan paket enterprise:
-
-| Tier / Add-on | Kuota Reseller Aktif (`max_active_resellers`) | Biaya Langganan | Target & Peruntukan |
-| :--- | :---: | :--- | :--- |
-| **FREE TIER** | **5** | Rp 0 (Gratis) | Default merchant terverifikasi untuk uji coba pasukan penjualan kecil |
-| **STARTER ADD-ON** | **25** | Rp 79.000 / bulan | Bisnis berkembang yang mulai merekrut tim reseller terstruktur |
-| **SCALE ADD-ON** | **100** | Rp 149.000 / bulan | Brand dengan pasukan distributor/reseller aktif + laporan ekspor |
-| **UNLIMITED** | **999.999** | Rp 249.000 / bulan | Termasuk gratis pada paket Enterprise / Annual Pro Scale |
-
-### 2. Entitlement Model & Deterministic Evaluation
-Arsitektur entitlement mengikuti relasi deterministik satu arah:
-`Plan / Add-on -> Entitlement -> Capability -> Reseller Quota`
-
-1. **Plan / Add-on**:
-   - Didefinisikan di level database Supabase (`tenants.tier` dan `tenants.metadata.reseller_settings.tier` atau `tenants.metadata.addons`).
-   - Single source of truth murni dari database tanpa hardcoding nama slug tenant.
-2. **Entitlement Engine (`resolveResellerEntitlement`)**:
-   - Dijalankan di server-side gateway (`app/api/v1/tenants/[slug]/reseller/members/route.ts` dan `lib/store-reseller.ts`).
-   - Memetakan paket aktif merchant ke objek entitlement resmi yang memuat batas kuota, pesan edukatif, dan URL upgrade terarah.
-3. **Capability**:
-   - Kemampuan untuk merekrut, mengaktifkan, dan men-generate tautan rujukan toko bagi mitra reseller (`CAN_RECRUIT_STORE_RESELLERS`).
-4. **Reseller Quota & Server-Side Deterministic Rejection**:
-   - Perhitungan kuota **hanya menghitung mitra berstatus ACTIVE** (`status = 'ACTIVE'`, `is_active = true`, dan bukan `FROZEN`).
-   - Mitra dengan status `FROZEN`, `INACTIVE`, atau `SUSPENDED` **tidak memotong kuota aktif**.
-   - Jika penambahan atau aktivasi reseller baru melebihi kuota aktif (misalnya mitra ke-6 pada Free Tier), gateway menolak mutasi secara deterministik dengan respons HTTP 403 / 422:
-
-```mermaid
-flowchart LR
-    A["Merchant / Tenant"] --> B["Supabase tenants.tier & metadata"]
-    B --> C["resolveResellerEntitlement()"]
-    C --> D{"Active Quota Limit<br/>(FREE: 5, STARTER: 25, SCALE: 100, UNL: 999k)"}
-    D -->|Quota Exceeded| E["HTTP 403 Forbidden<br/>RESELLER_LIMIT_REACHED"]
-    D -->|Within Quota| F["Mutasi Disetujui (ACTIVE)"]
-```
-
-#### Deterministic Rejection Response Payload (HTTP 403)
-Ketika kuota reseller aktif telah tercapai, mutasi penambahan atau aktivasi reseller ditolak deterministik dengan payload:
-```json
-{
-  "success": false,
-  "error": "RESELLER_LIMIT_REACHED",
-  "message": "Batas kuota mitra reseller aktif telah tercapai. Upgrade ke Starter Add-on untuk menambah hingga 25 reseller.",
-  "current_quota": 5,
-  "upgrade_url": "/dashboard/billing?feature=reseller_starter"
+```typescript
+export interface TenantRuntimeContext {
+  host: string;
+  tenantSlug: string;
+  tenantId?: string;
+  tenantKind: TenantKind;          // 'SAAS' | 'CUSTOM_APP' | 'INTERNAL'
+  businessType: BusinessType;      // 'RETAIL' | 'FNB' | 'PUBLIC_SERVICE' | 'CLINIC' | ...
+  templateCode: TemplateCode;      // 'SHOP_V1' | 'DROP_V1' | 'PUBLIC_SERVICE_V1' | ...
+  capabilities: TenantCapabilities;
+  hardeningPolicy: HardeningPolicy;// 'HARDENING_V0' | 'HARDENING_V1'
+  tenant: TenantRecord;
+  isAllowedHost: boolean;
+  error?: 'HOST_MISMATCH' | 'TEMPLATE_NOT_COMPATIBLE' | 'UNKNOWN_TEMPLATE' | 'TENANT_NOT_FOUND' | 'CORRUPT_CONFIG';
 }
 ```
 
-### 3. Guardrails Downgrade-Safe & Status `FROZEN`
-Untuk menjaga integritas ledger dan keadilan finansial mitra:
-1. **Zero Hard Delete Policy (Proteksi Retensi Data & Integritas Financial Ledger)**:
-   - Dilarang keras melakukan operasi `DELETE` fisik terhadap record di `store_resellers` maupun buku besar komisi `reseller_commissions` saat tenant menurunkan paket (*downgrade*) atau membatalkan add-on langganan.
-   - Endpoint `DELETE` HTTP diubah menjadi operasi *soft-deactivation* (`status: 'INACTIVE'`) guna mempertahankan audit trail keuangan.
-2. **Status Transition (`FROZEN`)**:
-   - Jika tenant mengalami downgrade (misal: Starter 25 mitra turun ke Free 5 mitra), sistem menandai reseller ke-6 dan seterusnya dengan status `FROZEN` (read-only).
-   - Reseller tertua (berdasarkan `created_at ASC` / FIFO) tetap berstatus `ACTIVE` sejumlah limit kuota baru.
-   - Mitra berstatus `FROZEN` bersifat **read-only**: parameter komisi dan profilnya tidak dapat dimutasi kecuali paket tenant ditingkatkan kembali.
-3. **Proteksi Finansial & Non-Blocking Checkout**:
-   - Pada link atribusi toko (`?r=KODE`), jika reseller target berstatus `FROZEN`:
-     * Checkout pelanggan **tetap diproses 100% normal tanpa kendala sebagai pesanan reguler toko**.
-     * Sistem **tidak mencatatkan komisi baru** pada buku besar `reseller_commissions` untuk reseller yang sedang beku guna melindungi merchant dari kewajiban komisi di luar paket aktif.
-4. **Self-Healing Auto-Thaw saat Upgrade**:
-   - Saat merchant meng-upgrade paket kembali, sistem secara otomatis merekonsiliasi dan memulihkan reseller tertua berstatus `FROZEN` kembali ke `ACTIVE` hingga batas kuota tier baru.
+### 1.2 Capability Matrix (`TenantCapabilities`)
+Features are enabled via capability flags rather than static slug checks:
+- **Commerce Capabilities**: `catalog`, `cart`, `checkout`, `shopping_bag`, `promo`, `price_badge`, `payment`, `order`, `sales_assistant`.
+- **Public & Service Capabilities**: `service_catalog`, `citizen_request`, `complaint`, `announcement`, `public_information`, `ai_public_service_assistant`.
+- **Studio & Intelligence Capabilities**: `viral_trends_radar`, `paid_ads_intelligence`.
 
-### 4. Anti-Farming Policy
-Untuk mencegah penyalahgunaan kuota Free Tier (5 reseller) melalui pembuatan akun toko dummy massal (*multi-tenant dummy farming*):
-1. **Verified Merchant Identity Binding**:
-   - Hak kuota Free Tier diikat secara ketat ke identitas terverifikasi pemilik bisnis (*verified merchant identity*: nomor WhatsApp terverifikasi, nomor rekening bank settlement, atau riwayat transaksi toko).
-2. **Deteksi Anomali Multi-Tenant Farming**:
-   - Tenant yang terdeteksi berbagi nomor WhatsApp owner atau rekening penampung yang sama tidak dapat mengklaim kuota Free Tier berulang kali pada storefront tiruan.
-   - Pelanggaran terdeteksi akan menonaktifkan fitur kemitraan pada seluruh etalase terkait hingga proses verifikasi bisnis diselesaikan.
+### 1.3 Template Resolution Contract
+- Template code resolution (`resolveTemplateConfig`) inspects `tenant.template_code` and binds permitted UI layouts and slot-filling components.
+- Unknown or corrupted template configurations trigger a deterministic fail-safe error state (`UNKNOWN_TEMPLATE` or `CORRUPT_CONFIG`), never a mock storefront.
 
+---
+
+## 2. Deterministic State Machine Contract
+
+BoonTrack mandates **deterministic state machines** for all critical domain workflows. Non-deterministic probabilistic models (LLMs) are forbidden from directly mutating state.
+
+```mermaid
+stateDiagram-v2
+    [*] --> STEP_1_GREETING
+    STEP_1_GREETING --> STEP_2_ANAMNESIS: User shares complaint / child info
+    STEP_2_ANAMNESIS --> STEP_3_SCREENING: Anamnesis captured
+    STEP_3_SCREENING --> STEP_4_CLOSING: Screening submitted / Payment requested
+    STEP_4_CLOSING --> WAITING_PAYMENT: Invoice & Dynamic QRIS issued
+    WAITING_PAYMENT --> STEP_5_POST_PAYMENT: Payment confirmed
+    STEP_5_POST_PAYMENT --> [*]: Intake form (KIDMAP) completed
+
+    STEP_1_GREETING --> HUMAN_TAKEOVER: Admin/CS requested
+    STEP_2_ANAMNESIS --> HUMAN_TAKEOVER: Admin/CS requested
+    STEP_3_SCREENING --> HUMAN_TAKEOVER: Admin/CS requested
+    HUMAN_TAKEOVER --> STEP_1_GREETING: User resumes via 'menu' or 120min timeout
+```
+
+### 2.1 Financial & Order State Machine
+1. `ORDER_CREATED` $\rightarrow$ Generates unique amount & dynamic QRIS with CRC16.
+2. `PAYMENT_PENDING` $\rightarrow$ Awaits payment gateway webhook or manual transfer proof verification.
+3. `PAYMENT_CONFIRMED` $\rightarrow$ Canonical financial authority event. Locks order totals, triggers downstream ledger entries, and initiates fulfillment.
+4. `ORDER_FULFILLED` / `SETTLED` $\rightarrow$ Terminal state.
+
+### 2.2 Handover State Machine (`AI_ACTIVE` $\leftrightarrow$ `HUMAN_ACTIVE`)
+- **Pause Trigger**: When a customer requests human assistance or sends explicit triggers (`admin`, `cs`, `operator`, `bicara dengan orang`), the bot enters `HUMAN_ACTIVE` / `HUMAN_TAKEOVER`.
+- **Isolation Scope**: The pause applies exclusively to the composite conversation key `${tenant_id}:${sender_phone}`.
+- **Auto-Expiry**: Sessions pause for a bounded duration (default `120 minutes`).
+- **Deterministic Resume**: An incoming command (`menu`, `bot`, `aktifkan bot`, `pilihan`) immediately transitions state back to `AI_ACTIVE`.
+
+### 2.3 Conversation Funnel State Machine & Anti-Loop Guard
+- **Greeting Invariant**: An initial greeting is emitted strictly **once per customer conversation cycle**.
+- **Anti-Looping Verification**: When `hasPreviousGreeting` is true or session history already contains prior assistant turns, re-greeting is strictly suppressed, advancing immediately to intake extraction or triage routing.
+
+---
+
+## 3. Tenant Isolation & Security Contract
+
+### 3.1 The 7 Isolation Gates
+Every tenant's operational data and execution boundary is protected across seven gates:
+
+| Gate | Mechanism | Enforcement Level |
+| :--- | :--- | :--- |
+| **1. Gateway Gate** | Multi-tenant URL / Webhook host verification | Edge Router / Middleware |
+| **2. Database Gate (RLS)** | Supabase Row-Level Security scoped by `tenant_id` | Database Engine |
+| **3. Composite Session Gate** | In-memory & DB composite key `${tenantId}:${senderPhone}` | Memory Cache & Session Store |
+| **4. Catalog & Product Gate** | Queries strictly filtered by `tenant_id` foreign key | Application Service Layer |
+| **5. Asset & Media Gate** | Storage buckets scoped to `/tenants/{slug}/*` | Object Storage Policies |
+| **6. Configuration Gate** | Zod runtime schema validation (`.strict()`) | Configuration Loader |
+| **7. Zero-Hardcode Gate** | Zero hardcoded slugs, mock stores, or static fallbacks | CI / Lint / Architecture Policy |
+
+### 3.2 Composite Key Isolation
+In-memory and persistent session states are keyed by:
+```typescript
+const compositeKey = `${canonicalTenantIdOrSlug}:${canonicalE164Phone}`;
+```
+A phone number paused in Tenant A **remains completely active and unpaused** in Tenant B.
+
+### 3.3 Zero Hardcoding & Single Source of Truth
+- **Supabase as Ground Truth**: All tenant information (operating hours, doctor lists, payment accounts, catalog products, custom domains) is read from `tenants` and `products`.
+- **Absolute Ban on Static Slugs**: Code constructs such as `if (slug === 'demo')` or hardcoded clinic registries in route handlers are architectural violations.
+
+---
+
+## 4. Conversation Engine Contract
+
+The Conversation Engine coordinates the processing of inbound omnichannel messages through deterministic and probabilistic pipelines:
+
+```mermaid
+flowchart TD
+    MSG[Inbound Customer Message] --> AUTH[1. Tenant Resolution & Isolation Gate]
+    AUTH --> CHK_PAUSE{2. Is Bot Paused for this Phone?}
+    CHK_PAUSE -->|Yes, Human Active| DROP[Silent Drop / Human CS Queue]
+    CHK_PAUSE -->|No, AI Active| INTERCEPT[3. Pre-LLM Deterministic Interceptor]
+
+    INTERCEPT -->|Match: Campaign Route| RES_CAMPAIGN[Campaign Route Response]
+    INTERCEPT -->|Match: Slot-Filling / Triage| RES_TRIAGE[State Machine Step Response]
+    INTERCEPT -->|Match: Ground Truth FAQ| RES_FAQ[Direct FAQ Answer]
+    INTERCEPT -->|Pass-Through| PROMPT[4. Prompt Compiler & Context Builder]
+
+    PROMPT --> LLM[5. LLM Gateway: Gemini 3.8 Flash]
+    LLM --> SANITIZE[6. Guardrail Sanitizer]
+    RES_CAMPAIGN --> SANITIZE
+    RES_TRIAGE --> SANITIZE
+    RES_FAQ --> SANITIZE
+
+    SANITIZE --> OUT[7. Outbound Message Dispatcher]
+```
+
+### 4.1 Pre-LLM Deterministic Interception
+Before invoking an LLM, the engine evaluates deterministic rules:
+1. **Campaign & CTWA Trigger Matcher**: Evaluates keyword triggers and advertising campaign IDs.
+2. **Clinical & Administrative Triage Matcher**: Validates patient slots (parent name, child age, complaint), rejects invalid child names (complaint adjectives), and locks appropriate services.
+3. **FAQ Ground Truth Matcher**: Matches customer questions against verified `ai_knowledge` items.
+
+### 4.2 LLM Gateway & Prompt Compilation
+When deterministic rules pass through:
+- Context is bounded to active catalog items and verified tenant metadata.
+- System prompt is compiled dynamically via `TenantBotConfig`.
+- Temperature is locked to low variance (`0.1 - 0.2`) for reproducible factual responses.
+
+### 4.3 Guardrail Sanitizer
+All outbound messages undergo strict normalization:
+1. **Single Bubble Output**: Bounded to compact formats under 2048 tokens.
+2. **Asterisk-Free URLs**: Strips Markdown formatting around links (`replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1')`) to guarantee mobile messaging client link clickability.
+3. **Medical Emergency Protection**: Detects critical symptom terms and prepends official emergency clinical disclaimers.
+
+---
+
+## 5. Adapter Pattern Contract
+
+The platform decouples business logic from external protocols through uniform interface adapters:
+
+```mermaid
+classDiagram
+    class InboundMessageAdapter {
+        <<interface>>
+        +parsePayload(rawPayload: unknown) CanonicalInboundMessage
+        +validateSignature(headers: Headers) boolean
+    }
+    class OutboundMessageAdapter {
+        <<interface>>
+        +sendTextMessage(recipientPhone: string, text: string) Promise~DeliveryResult~
+        +sendInteractiveMessage(recipientPhone: string, menu: InteractiveMenu) Promise~DeliveryResult~
+        +sendMediaMessage(recipientPhone: string, mediaUrl: string, caption: string) Promise~DeliveryResult~
+    }
+    class PaymentGatewayAdapter {
+        <<interface>>
+        +generateDynamicQris(payload: QrisPayload) string
+        +verifyWebhookSignature(headers: Headers, body: unknown) boolean
+        +parsePaymentEvent(body: unknown) CanonicalPaymentEvent
+    }
+
+    InboundMessageAdapter <|.. WabaInboundAdapter
+    InboundMessageAdapter <|.. WahaInboundAdapter
+    InboundMessageAdapter <|.. TelegramInboundAdapter
+
+    OutboundMessageAdapter <|.. WabaOutboundAdapter
+    OutboundMessageAdapter <|.. WahaOutboundAdapter
+    OutboundMessageAdapter <|.. TelegramOutboundAdapter
+
+    PaymentGatewayAdapter <|.. QrisAggregatorAdapter
+    PaymentGatewayAdapter <|.. DirectBankAdapter
+```
+
+### 5.1 Omnichannel Messaging Adapters
+- **WhatsApp Cloud API (WABA)**: Handles official Cloud API webhooks and interactive list/button payloads.
+- **Evolution API (WAHA)**: Handles self-hosted instance webhooks and formatted text menus.
+- **Telegram Bot API**: Handles `@boonshop_bot` webhook updates and inline keyboard markups.
+
+### 5.2 Payment Gateway Adapters
+- **Dynamic QRIS Aggregator**: Injects dynamic transaction amount into merchant static QRIS string and computes canonical EMVCo CRC16 checksum.
+- **Direct Bank Settlement**: Formats verified bank account numbers and payment instructions.
+
+### 5.3 Storage & Event Adapters
+- **Adtech Server-Side Events**: Dispatches single canonical `Purchase` event to Meta Conversions API (CAPI) and TikTok Events API with tenant-scoped attribution metadata.
+- **Webhook Subscriptions**: Dispatches tamper-proof HMAC-signed events to tenant external ERP/CRM endpoints.

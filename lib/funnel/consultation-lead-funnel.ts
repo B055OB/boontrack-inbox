@@ -824,7 +824,7 @@ export async function processConsultationLeadFunnel(
   const products: any[] = Array.isArray(meta.products) ? meta.products : [];
 
   // =========================================================================
-  // SPECIALIZED FLOW: CLINIC & PEDIATRIC GTM CONSULTATION (dr. Harys)
+  // SPECIALIZED FLOW: CLINIC & PEDIATRIC NUTRITION CONSULTATION
   // Warm empathetic tone, strict medical boundary (administrative triage),
   // progressive slot filling (Parent, Child, Complaint), and hybrid QRIS checkout.
   // =========================================================================
@@ -885,9 +885,8 @@ export async function processConsultationLeadFunnel(
     const clinicIntake = extractClinicIntakeData(rawMsg, existingIntake);
     const rawIntent = clinicIntake.data.intent || detectPediatricTriageIntent(rawMsg) || 'FEEDING_GTM_BB';
     const lockedProduct = resolveTriageLockedProduct(rawIntent, products, meta);
-    const domain = hardeningPolicy === 'HARDENING_V1'
-      ? 'konsul.littlebitefeeding.com'
-      : (meta.custom_domain || 'konsul.littlebitefeeding.com');
+    const fallbackDomain = tenant.slug ? `shop.boontrack.com/${tenant.slug}` : 'shop.boontrack.com';
+    const domain = meta.custom_domain || fallbackDomain;
     const priceNumber = Number(lockedProduct.price || lockedProduct.promo_price || 150000);
     const priceStr = `Rp ${priceNumber.toLocaleString('id-ID')}`;
 
@@ -938,9 +937,12 @@ export async function processConsultationLeadFunnel(
       }
     };
 
-    // ── Initial greeting (STEP 1) — dynamic doctor label, no product pitch ─
+    // ── Initial greeting (STEP 1) — dynamic doctor label & store name ─
+    const clinicStoreName = tenant.name || meta.store_name || 'Layanan Tumbuh Kembang & Nutrisi Anak';
     const initialGreeting =
-      `Halo Ayah/Bunda! Selamat datang di Layanan Tumbuh Kembang & Nutrisi Anak (${clinicDoctorLabel}). 😊\n\n` +
+      meta.greeting_message ||
+      meta.custom_greeting_message ||
+      `Halo Ayah/Bunda! Selamat datang di ${clinicStoreName} (${clinicDoctorLabel}). 😊\n\n` +
       `Boleh kami tahu sedang terhubung dengan Ayah/Bunda siapa, dan si kecil usianya berapa bulan/tahun ya?`;
 
     // STEP 1: GREETING — hanya dikirim jika user belum pernah disapa sebelumnya
@@ -1050,10 +1052,19 @@ export async function processConsultationLeadFunnel(
       const encodedParent = encodeURIComponent(clinicIntake.data.parentName || 'Ayah/Bunda');
       const encodedPhone = encodeURIComponent(senderPhone || '');
       const fullCheckoutUrl = `https://${domain}/checkout/${orderId}?name=${encodedParent}&phone=${encodedPhone}`;
+      const clinicOrganizationName =
+        meta?.clinic_name ||
+        meta?.organization_name ||
+        (tenant.name
+          ? (tenant.name.toLowerCase().includes('klinik') ? tenant.name : `Klinik ${tenant.name}`)
+          : (tenant.slug ? `Klinik ${tenant.slug.replace(/[-_]/g, ' ')}` : 'Klinik Kami'));
+      const clinicTeamTitle =
+        meta?.team_title ||
+        `Tim Dokter ${clinicOrganizationName}`;
       const childDisplay = clinicIntake.data.childInfo || `${clinicIntake.data.childName || 'Si Kecil'} (${clinicIntake.data.childAge || 'Balita'})`.trim();
 
       const companionReply =
-        `📋 *INVOICE REGISTRASI KONSULTASI (Tim Dokter Klinik Tumbuh Kembang Anak)*\n` +
+        `📋 *INVOICE REGISTRASI KONSULTASI (${clinicTeamTitle})*\n` +
         `No. Pesanan: #${orderId}\n` +
         `Layanan: *${lockedProduct.name || 'Konsultasi Chat Tumbuh Kembang Anak'}*\n` +
         `Biaya Konsultasi: *${priceStr}*\n\n` +
