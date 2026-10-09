@@ -269,6 +269,33 @@ describe('3. Studio Token Webhook Integration Suite', () => {
     expect(json.message).toContain('Top-up skipped');
     expect(StudioCreditService.topUpCredits).not.toHaveBeenCalled();
   });
+
+  it('handles duplicate webhook callbacks idempotently without double crediting', async () => {
+    (StudioCreditService.topUpCredits as jest.Mock).mockResolvedValue({
+      success: true,
+      newBalance: 51,
+      commissionRecorded: false,
+      isExisting: true,
+    });
+
+    const payload = {
+      external_id: 'TOPUP-STUDIO-warungkreatif-50-1788194898',
+      tenant_slug: 'warungkreatif',
+      credits: 50,
+      amount: 99000,
+      status: 'PAID',
+    };
+
+    const req = createWebhookRequest(payload);
+    const res = await handlePaymentWebhook(req, '/api/webhooks/payment');
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.already_processed).toBe(true);
+    expect(json.credits_added).toBe(0);
+    expect(json.message).toContain('already processed previously');
+  });
 });
 
 describe('4. Studio Registration Activation & Ledger Pipeline Suite', () => {

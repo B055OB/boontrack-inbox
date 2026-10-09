@@ -524,15 +524,19 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       paymentChannel: detectedApp || rawBody.payment_channel || rawBody.payment_method || 'XENDIT',
     });
 
+    const isIdempotentDuplicate = Boolean(topupResult.isExisting);
     const tokenResponse = {
       success: topupResult.success,
       message: topupResult.success
-        ? `Studio token top-up for order #${potentialTokenOrderId} successfully processed (+${studioCredits} credits).`
+        ? (isIdempotentDuplicate
+            ? `Studio token order #${potentialTokenOrderId} was already processed previously (idempotent duplicate).`
+            : `Studio token top-up for order #${potentialTokenOrderId} successfully processed (+${studioCredits} credits).`)
         : `Studio token top-up error: ${topupResult.message}`,
       order_id: potentialTokenOrderId,
       tenant_slug: studioTenantSlug,
-      credits_added: studioCredits,
+      credits_added: isIdempotentDuplicate ? 0 : studioCredits,
       new_balance: topupResult.newBalance,
+      already_processed: isIdempotentDuplicate,
       commission_recorded: topupResult.commissionRecorded,
       commission_amount: topupResult.commissionAmount,
       log_id: logId,
@@ -549,7 +553,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       detectedApp,
       tenantSlug: studioTenantSlug,
       matchedOrderId: potentialTokenOrderId,
-      matchStrategy: 'studio_token_topup',
+      matchStrategy: isIdempotentDuplicate ? 'studio_token_topup_idempotent' : 'studio_token_topup',
       resultStatus: topupResult.success ? 200 : 400,
       resultBody: tokenResponse,
     });

@@ -418,6 +418,7 @@ export class StudioCreditService {
     newBalance: number;
     commissionRecorded: boolean;
     commissionAmount?: number;
+    isExisting?: boolean;
     message?: string;
   }> {
     const tenant = await this.resolveTenant(params.tenantIdOrSlug);
@@ -427,6 +428,33 @@ export class StudioCreditService {
     if (!supabase) return { success: false, newBalance: 0, commissionRecorded: false, message: 'Database client tidak tersedia.' };
 
     const entitlements = await this.getEntitlements(tenant.id);
+
+    // 0. Idempotency Guard: Check if transactionId has already been recorded in tenant_credit_ledger
+    if (params.transactionId) {
+      try {
+        const { data: existingLedger } = await supabase
+          .from('tenant_credit_ledger')
+          .select('id, amount, balance_after, description')
+          .eq('tenant_id', tenant.id)
+          .ilike('description', `%${params.transactionId}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingLedger) {
+          console.log(`[StudioCreditService] Transaction ${params.transactionId} already processed (idempotent duplicate). Skipping credit increment.`);
+          return {
+            success: true,
+            newBalance: existingLedger.balance_after ?? (entitlements?.credits_remaining ?? 0),
+            commissionRecorded: false,
+            isExisting: true,
+            message: `Transaction ${params.transactionId} already processed previously (idempotent).`,
+          };
+        }
+      } catch (checkErr) {
+        console.warn('[StudioCreditService] Idempotency check warning:', checkErr);
+      }
+    }
+
     const currentBalance = entitlements?.credits_remaining ?? 0;
     const newBalance = currentBalance + params.credits;
 

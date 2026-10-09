@@ -258,7 +258,7 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
       metadata: updatedMeta,
     })
     .eq('id', tenant.id)
-    .select('id, slug, name, metadata')
+    .select('id, slug, name, is_active, status, metadata')
     .single();
 
   if (updateError) {
