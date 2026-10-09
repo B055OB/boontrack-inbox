@@ -6,6 +6,7 @@ export interface StudioRegistrationInput {
   email: string;
   whatsapp: string;
   password: string;
+  referral_code?: string | null;
 }
 
 export function generateStudioActivationToken(): string {
@@ -49,6 +50,28 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
   const baseSlug = input.name.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 20);
   const uniqueSlug = `studio-${baseSlug || 'user'}-${token.toLowerCase()}`;
 
+  // Resolve affiliate referral if code exists (Cross-Domain Referral Engine)
+  const cleanRef = (input.referral_code || '').trim().toLowerCase();
+  let matchedAffiliateId: string | null = null;
+  let matchedAffiliateName: string | null = null;
+
+  if (cleanRef && cleanRef !== '1' && cleanRef !== 'null') {
+    try {
+      const { data: affData } = await supabase
+        .from('affiliates')
+        .select('id, name, referral_code')
+        .ilike('referral_code', cleanRef)
+        .maybeSingle();
+
+      if (affData) {
+        matchedAffiliateId = affData.id;
+        matchedAffiliateName = affData.name;
+      }
+    } catch (lookupErr) {
+      console.warn('[Studio Auth] Affiliate lookup error:', lookupErr);
+    }
+  }
+
   const metadata = {
     full_name: input.name.trim(),
     email: normalizedEmail,
@@ -58,6 +81,11 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
     token_expires_at: expiresAt,
     verification_status: 'PENDING',
     phone_verified: false,
+    referral_code: cleanRef || undefined,
+    affiliate_code: cleanRef || undefined,
+    affiliate_id: matchedAffiliateId || undefined,
+    referrer_id: matchedAffiliateId || undefined,
+    referrer_name: matchedAffiliateName || undefined,
     studio_workspace: {
       render_credits: 1,
       max_concurrent_jobs: 1,
@@ -100,6 +128,20 @@ export async function initiateStudioRegistration(input: StudioRegistrationInput)
   if (error || !tenant) {
     console.error('[Studio Auth] Failed to insert tenant:', error);
     throw new Error(error?.message || 'Gagal membuat draf akun Studio.');
+  }
+
+  // Record attribution to attributions table if affiliate matched
+  if (matchedAffiliateId && tenant?.id) {
+    try {
+      await supabase.from('attributions').insert({
+        tenant_id: tenant.id,
+        affiliate_id: matchedAffiliateId,
+        referral_code: cleanRef,
+        created_at: new Date().toISOString(),
+      });
+    } catch (attrErr) {
+      console.warn('[Studio Auth] Attribution insert note:', attrErr);
+    }
   }
 
   const waNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '6285181830080';

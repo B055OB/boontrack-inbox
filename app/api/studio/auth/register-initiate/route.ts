@@ -5,6 +5,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, email, whatsapp, password } = body;
+    const referralCode = (body.referral_code || body.referralCode || body.ref || null)?.toString().trim() || null;
 
     // Validation
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       email: email.trim(),
       whatsapp: cleanWa,
       password,
+      referral_code: referralCode,
     });
 
     return NextResponse.json({

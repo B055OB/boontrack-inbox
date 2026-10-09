@@ -398,4 +398,88 @@ export class StudioCreditService {
       return [];
     }
   }
+
+  /**
+   * Top-up / purchase credits for a tenant with affiliate commission trigger.
+   * - Credits are added to tenant_entitlements
+   * - Audit log written to tenant_credit_ledger (action: 'TOPUP')
+   * - If status === 'PAID' or 'SETTLED', calculates and records affiliate commission (product_type: 'STUDIO')
+   */
+  static async topUpCredits(params: {
+    tenantIdOrSlug: string;
+    credits: number;
+    amountPaid: number;
+    transactionId: string;
+    paymentStatus?: 'PAID' | 'SETTLED' | string;
+    affiliateCode?: string | null;
+    paymentChannel?: string;
+  }): Promise<{
+    success: boolean;
+    newBalance: number;
+    commissionRecorded: boolean;
+    commissionAmount?: number;
+    message?: string;
+  }> {
+    const tenant = await this.resolveTenant(params.tenantIdOrSlug);
+    if (!tenant) return { success: false, newBalance: 0, commissionRecorded: false, message: 'Tenant tidak ditemukan.' };
+
+    const supabase = getSupabaseAdmin() || getSupabase();
+    if (!supabase) return { success: false, newBalance: 0, commissionRecorded: false, message: 'Database client tidak tersedia.' };
+
+    const entitlements = await this.getEntitlements(tenant.id);
+    const currentBalance = entitlements?.credits_remaining ?? 0;
+    const newBalance = currentBalance + params.credits;
+
+    // 1. Update entitlements
+    await supabase
+      .from('tenant_entitlements')
+      .upsert({
+        tenant_id: tenant.id,
+        credits_remaining: entitlements?.is_unlimited ? 999999 : newBalance,
+        is_unlimited: entitlements?.is_unlimited ?? false,
+        tier: entitlements?.tier ?? tenant.tier ?? 'PRO_SCALE',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id' });
+
+    // 2. Insert into tenant_credit_ledger
+    const desc = `Top-up +${params.credits} Render Credits (Rp ${params.amountPaid.toLocaleString('id-ID')}) - Ref: ${params.transactionId}`;
+    try {
+      await supabase.from('tenant_credit_ledger').insert({
+        tenant_id: tenant.id,
+        amount: params.credits,
+        balance_after: entitlements?.is_unlimited ? 999999 : newBalance,
+        action: 'TOPUP',
+        description: desc,
+      });
+    } catch (err) {
+      console.warn('[StudioCreditService] Ledger error:', err);
+    }
+
+    // 3. Process Affiliate Commission if status is PAID or SETTLED
+    let commissionRecorded = false;
+    let commissionAmount = 0;
+    const rawStatus = (params.paymentStatus || 'PAID').toUpperCase();
+
+    if ((rawStatus === 'PAID' || rawStatus === 'SETTLED') && params.amountPaid > 0) {
+      const { recordStudioTokenCommission } = await import('@/lib/affiliate-notification-service');
+      const commResult = await recordStudioTokenCommission({
+        orderId: params.transactionId,
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        grossAmount: params.amountPaid,
+        tokenCount: params.credits,
+        affiliateCode: params.affiliateCode || tenant.metadata?.affiliate_code || tenant.metadata?.referral_code,
+        paymentStatus: rawStatus,
+      });
+      commissionRecorded = commResult.success;
+      commissionAmount = commResult.commissionAmount;
+    }
+
+    return {
+      success: true,
+      newBalance,
+      commissionRecorded,
+      commissionAmount,
+    };
+  }
 }

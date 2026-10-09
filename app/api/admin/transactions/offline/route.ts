@@ -152,6 +152,23 @@ export async function POST(req: NextRequest) {
       console.warn('[Offline Transaction] Warning recording shop subscription:', subErr);
     }
 
+    // 6. Non-blocking: Pemicu Komisi Afiliasi jika Tenant Terdaftar di Bawah Jaringan Mitra
+    try {
+      const { sendOrderCommissionAlert } = await import('@/lib/affiliate-notification-service');
+      const isStudio = tenant.metadata?.business_type === 'studio' || tenant.metadata?.tenant_kind === 'studio' || (tenant as any).tenant_kind === 'studio';
+      sendOrderCommissionAlert({
+        orderId: cleanRefNo,
+        tenantSlug: tenant.slug,
+        tenantId: tenant.id,
+        productTitle: `Pembayaran Offline (${cat}) - ${tenant.name}`,
+        grossAmount: numericAmount,
+        customerName: tenant.name,
+        productType: isStudio ? 'STUDIO' : 'SHOP',
+      }).catch((commErr) => {
+        console.warn('[Offline Transaction] Affiliate commission note:', commErr);
+      });
+    } catch (_) {}
+
     return NextResponse.json({
       success: true,
       message: `Pembayaran offline Rp ${numericAmount.toLocaleString('id-ID')} untuk ${tenant.name} berhasil dicatat (SETTLED).`,

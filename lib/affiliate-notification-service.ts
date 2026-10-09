@@ -908,7 +908,17 @@ export async function sendOrderCommissionAlert(params: {
   customerEmail?: string;
   affiliateCode?: string | null;
   directCommission?: number;
-}): Promise<{ success: boolean; dispatchedTo: string[] }> {
+  productType?: 'SHOP' | 'STUDIO';
+}): Promise<{
+  success: boolean;
+  dispatchedTo: string[];
+  commissionAmount?: number;
+  directCommission?: number;
+  amOverrideAmount?: number;
+  affiliateId?: string;
+  parentAmId?: string;
+  productType?: 'SHOP' | 'STUDIO';
+}> {
     const {
       orderId,
       tenantSlug,
@@ -918,6 +928,7 @@ export async function sendOrderCommissionAlert(params: {
       customerName,
       affiliateCode,
       directCommission,
+      productType = 'SHOP',
     } = params;
 
     const dispatchedTo: string[] = [];
@@ -950,7 +961,7 @@ export async function sendOrderCommissionAlert(params: {
       if (affByOrderCode) recruiterAffiliate = affByOrderCode;
     }
 
-    // 2. Resolve by tenant's attribution or metadata (Jaringan Toko Rekrutan)
+    // 2. Resolve by tenant's attribution or metadata (Jaringan Toko / Studio Rekrutan)
     if (!recruiterAffiliate && (tenantSlug || tenantId)) {
       let tQuery = supabase.from('tenants').select('id, slug, name, metadata');
       if (tenantId) {
@@ -1016,7 +1027,7 @@ export async function sendOrderCommissionAlert(params: {
       timeStyle: 'short',
     });
 
-    // Calculate Direct Commission
+    // Calculate Direct Commission (Skema persentase seragam)
     const rawRate = Number(recruiterAffiliate.commission_rate) || 25;
     const directRatePercent = rawRate <= 1 ? Math.round(rawRate * 100) : Math.round(rawRate);
     const calculatedCommission = directCommission && directCommission > 0
@@ -1026,7 +1037,8 @@ export async function sendOrderCommissionAlert(params: {
     // A. Dispatch to Direct Affiliate
     const affEmail = recruiterAffiliate.email || recruiterAffiliate.metadata?.email;
     if (affEmail && affEmail.includes('@')) {
-      const subject = `[BoonTrack Affiliate] 💰 Komisi Masuk: Pesanan #${orderId} Telah Lunas (${formatRupiah(calculatedCommission)})`;
+      const brandPillarLabel = productType === 'STUDIO' ? 'BoonTrack Studio' : 'BoonTrack Affiliate';
+      const subject = `[${brandPillarLabel}] 💰 Komisi Masuk: Pesanan #${orderId} Telah Lunas (${formatRupiah(calculatedCommission)})`;
       const html = buildCommissionAlertHtml({
         recipientName: recruiterAffiliate.name || 'Mitra Affiliate',
         isAmOverride: false,
@@ -1058,7 +1070,7 @@ export async function sendOrderCommissionAlert(params: {
       }
     }
 
-    // Record direct commission into affiliate_commissions table
+    // Record direct commission into affiliate_commissions table (with product_type)
     try {
       await supabase.from('affiliate_commissions').insert({
         order_id: String(orderId),
@@ -1067,6 +1079,7 @@ export async function sendOrderCommissionAlert(params: {
         order_amount: grossAmount,
         amount: calculatedCommission,
         status: 'PENDING',
+        product_type: productType,
         created_at: new Date().toISOString(),
       });
     } catch (commErr) {
@@ -1075,6 +1088,7 @@ export async function sendOrderCommissionAlert(params: {
 
     // B. Dispatch AM 5% Override (if recruiter has a parent AM)
     const parentAmId = recruiterAffiliate.parent_am_id;
+    let amOverrideAmount = 0;
     if (parentAmId && parentAmId !== recruiterAffiliate.id) {
       const { data: parentAm } = await supabase
         .from('affiliates')
@@ -1083,11 +1097,12 @@ export async function sendOrderCommissionAlert(params: {
         .maybeSingle();
 
       if (parentAm) {
-        const amOverrideAmount = Math.round(grossAmount * 0.05); // 5% AM Override
+        amOverrideAmount = Math.round(grossAmount * 0.05); // 5% AM Override
         const amEmail = parentAm.email || parentAm.metadata?.email;
 
         if (amEmail && amEmail.includes('@') && amEmail !== affEmail) {
-          const amSubject = `[BoonTrack Affiliate] 💰 Komisi Override AM Masuk: Pesanan #${orderId} (${formatRupiah(amOverrideAmount)})`;
+          const brandPillarLabel = productType === 'STUDIO' ? 'BoonTrack Studio' : 'BoonTrack Affiliate';
+          const amSubject = `[${brandPillarLabel}] 💰 Komisi Override AM Masuk: Pesanan #${orderId} (${formatRupiah(amOverrideAmount)})`;
           const amHtml = buildCommissionAlertHtml({
             recipientName: parentAm.name || 'Affiliate Manager',
             isAmOverride: true,
@@ -1119,7 +1134,7 @@ export async function sendOrderCommissionAlert(params: {
           }
         }
 
-        // Record override commission
+        // Record override commission (with product_type)
         try {
           await supabase.from('affiliate_commissions').insert({
             order_id: String(orderId),
@@ -1128,6 +1143,7 @@ export async function sendOrderCommissionAlert(params: {
             order_amount: grossAmount,
             amount: amOverrideAmount,
             status: 'PENDING',
+            product_type: productType,
             created_at: new Date().toISOString(),
           });
         } catch (commErr) {
@@ -1136,11 +1152,98 @@ export async function sendOrderCommissionAlert(params: {
       }
     }
 
-    return { success: true, dispatchedTo };
+    return {
+      success: true,
+      dispatchedTo,
+      commissionAmount: calculatedCommission,
+      directCommission: calculatedCommission,
+      amOverrideAmount: amOverrideAmount > 0 ? amOverrideAmount : undefined,
+      affiliateId: recruiterAffiliate.id,
+      parentAmId: recruiterAffiliate.parent_am_id,
+      productType,
+    };
   } catch (err) {
     console.warn('[OrderCommissionAlert] Non-fatal commission alert error:', err);
     return { success: false, dispatchedTo };
   }
+}
+
+/**
+ * TRIGGER 2B: Studio Token / Render Credit Purchase Commission
+ * Menghitung dan mencatat komisi afiliasi untuk transaksi token Studio yang berstatus PAID / SETTLED.
+ * - Skema persentase komisi seragam (persentase sama dengan komisi subscription Shop: default 25% direct + 5% AM override).
+ * - product_type dicatat sebagai 'STUDIO' pada tabel affiliate_commissions.
+ */
+export async function recordStudioTokenCommission(params: {
+  orderId: string;
+  tenantId?: string;
+  tenantSlug?: string;
+  grossAmount: number;
+  tokenCount?: number;
+  productTitle?: string;
+  affiliateCode?: string | null;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  paymentStatus?: 'PAID' | 'SETTLED' | string;
+}): Promise<{
+  success: boolean;
+  commissionAmount: number;
+  amOverrideAmount?: number;
+  affiliateId?: string;
+  parentAmId?: string;
+  dispatchedTo: string[];
+}> {
+  const {
+    orderId,
+    tenantId,
+    tenantSlug,
+    grossAmount,
+    tokenCount,
+    productTitle,
+    affiliateCode,
+    customerName,
+    customerPhone,
+    customerEmail,
+    paymentStatus = 'PAID',
+  } = params;
+
+  const rawStatus = (paymentStatus || '').trim().toUpperCase();
+  if (rawStatus !== 'PAID' && rawStatus !== 'SETTLED') {
+    console.warn(`[StudioTokenCommission] Transaksi ${orderId} diabaikan: status bukan PAID/SETTLED (${rawStatus})`);
+    return { success: false, commissionAmount: 0, dispatchedTo: [] };
+  }
+
+  if (!grossAmount || grossAmount <= 0) {
+    console.warn(`[StudioTokenCommission] Transaksi ${orderId} diabaikan: grossAmount <= 0 (${grossAmount})`);
+    return { success: false, commissionAmount: 0, dispatchedTo: [] };
+  }
+
+  const title =
+    productTitle ||
+    (tokenCount ? `Pembelian ${tokenCount} Token Render Video Studio` : 'Pembelian Token Render Video Studio');
+
+  const alertResult = await sendOrderCommissionAlert({
+    orderId,
+    tenantId,
+    tenantSlug,
+    grossAmount,
+    productTitle: title,
+    affiliateCode,
+    customerName,
+    customerPhone,
+    customerEmail,
+    productType: 'STUDIO',
+  });
+
+  return {
+    success: alertResult.success,
+    commissionAmount: alertResult.commissionAmount || 0,
+    amOverrideAmount: alertResult.amOverrideAmount,
+    affiliateId: alertResult.affiliateId,
+    parentAmId: alertResult.parentAmId,
+    dispatchedTo: alertResult.dispatchedTo,
+  };
 }
 
 /**

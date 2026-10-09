@@ -45,10 +45,11 @@ export default function StudioRegisterPage() {
   // Success State (State 3)
   const [isSuccess, setIsSuccess] = useState(false);
   const [successSlug, setSuccessSlug] = useState('');
+  const [referralCode, setReferralCode] = useState('');
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Resume token if present in URL query params
+  // Resume token & detect cross-domain referral cookie (.boontrack.com)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -58,6 +59,24 @@ export default function StudioRegisterPage() {
         setToken(cleanT);
         setWaLink(`https://wa.me/6285181830080?text=AKTIFKAN%20STUDIO%20${encodeURIComponent(cleanT)}`);
         setIsVerifying(true);
+      }
+
+      // Referral resolution from URL query, wildcard cookie, or localStorage
+      const refParam = (urlParams.get('ref') || urlParams.get('r') || '').trim().toLowerCase();
+      const cookieMatch = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+      const cookieRef = cookieMatch ? decodeURIComponent(cookieMatch[1]).trim().toLowerCase() : '';
+      const localRef = (localStorage.getItem('boontrack_referral_code') || '').trim().toLowerCase();
+
+      const resolvedRef = refParam || cookieRef || localRef;
+      if (resolvedRef && resolvedRef !== '1' && resolvedRef !== 'null') {
+        setReferralCode(resolvedRef);
+        try {
+          localStorage.setItem('boontrack_referral_code', resolvedRef);
+          const isBoonTrack = window.location.hostname.endsWith('boontrack.com') || window.location.hostname === 'boontrack.com';
+          const domainStr = isBoonTrack ? '; domain=.boontrack.com' : '';
+          document.cookie = `boontrack_referral_code=${encodeURIComponent(resolvedRef)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+          document.cookie = `ref=${encodeURIComponent(resolvedRef)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+        } catch (_) {}
       }
     }
   }, []);
@@ -214,6 +233,7 @@ export default function StudioRegisterPage() {
           email: email.trim(),
           whatsapp: cleanPhone,
           password,
+          referral_code: referralCode || undefined,
         }),
       });
 

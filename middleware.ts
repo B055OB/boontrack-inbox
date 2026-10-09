@@ -360,10 +360,9 @@ function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
   return Boolean(merchantStore || merchantSession || btTenant);
 }
 
-export async function middleware(req: NextRequest) {
+async function handleRouting(req: NextRequest, hostClean: string) {
   const pathname = req.nextUrl.pathname;
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
-  const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
 
   // ── CACHE FLUSH TRIGGER (Flush All Shared Memory Caches on Demand) ──
   if (
@@ -1276,6 +1275,35 @@ export async function middleware(req: NextRequest) {
     url.pathname = `/${subdomain}${pathname}`;
     return NextResponse.rewrite(url);
   }
+}
+
+export async function middleware(req: NextRequest) {
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
+
+  const res = await handleRouting(req, hostClean);
+
+  // ── ATTACH CROSS-DOMAIN WILDCARD REFERRAL COOKIE (.boontrack.com) ──
+  // Menjamin jika request membawa ?ref= atau ?r= (pada shop.boontrack.com, studio.boontrack.com, dll.),
+  // cookie referral otomatis terpasang dengan domain='.boontrack.com' sehingga session konsisten di seluruh pilar.
+  const refCode = (
+    req.nextUrl.searchParams.get('ref') ||
+    req.nextUrl.searchParams.get('r') ||
+    ''
+  ).trim().toLowerCase();
+
+  if (
+    refCode &&
+    refCode !== '1' &&
+    refCode !== 'null' &&
+    res &&
+    !req.nextUrl.pathname.startsWith('/api') &&
+    !req.nextUrl.pathname.startsWith('/_next')
+  ) {
+    setReferralCookies(res, refCode, hostClean);
+  }
+
+  return res;
 }
 
 export const config = {
