@@ -33,6 +33,7 @@ import {
   Users,
 } from 'lucide-react';
 import ResellerComplianceModal from '../ResellerComplianceModal';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface BankAccount {
@@ -105,6 +106,7 @@ export interface SettingsTabProps {
   onSavedSuccess?: () => void;
   isSubscriptionExpired?: boolean;
   onUpgrade?: () => void;
+  customDomain?: string | null;
 }
 
 export default function SettingsTab({
@@ -135,6 +137,7 @@ export default function SettingsTab({
   onSavedSuccess,
   isSubscriptionExpired = false,
   onUpgrade,
+  customDomain,
 }: SettingsTabProps) {
   const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping' | 'security' | 'reseller'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
@@ -639,16 +642,16 @@ export default function SettingsTab({
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://shop.boontrack.com/${tenantSlug}`}
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(getStorefrontUrl(tenantSlug, customDomain))}`}
             alt="QR Toko"
             className="w-16 h-16 rounded-xl border border-slate-200 bg-white p-1 shrink-0"
           />
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] text-slate-500 truncate">
-              URL Toko: <span className="font-semibold text-indigo-600">shop.boontrack.com/{tenantSlug}</span>
+              URL Toko: <span className="font-semibold text-indigo-600">{customDomain ? customDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}</span>
             </p>
             <a
-              href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://shop.boontrack.com/${tenantSlug}`}
+              href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(getStorefrontUrl(tenantSlug, customDomain))}`}
               download={`qr-${tenantSlug}.png`}
               target="_blank"
               rel="noopener noreferrer"

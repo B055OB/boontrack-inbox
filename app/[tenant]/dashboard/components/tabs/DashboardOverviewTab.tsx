@@ -66,7 +66,7 @@ interface DashboardOverviewTabProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onNavigateTab: (tab: any) => void;
   onSavedFeedback?: (msg: string) => void;
-
+  customDomain?: string | null;
 }
 
 export default function DashboardOverviewTab({
@@ -95,13 +95,14 @@ export default function DashboardOverviewTab({
   onApplyPitch,
   onNavigateTab,
   onSavedFeedback,
+  customDomain,
 }: DashboardOverviewTabProps) {
   const [hasCopiedUrl, setHasCopiedUrl] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<'default' | 'microsite' | 'personal'>('default');
   const [isUpdatingTemplate, setIsUpdatingTemplate] = useState(false);
 
   const activeStoreName = storeDisplayName || displayName;
-  const storePublicUrl = getStorefrontUrl(tenantSlug);
+  const storePublicUrl = getStorefrontUrl(tenantSlug, customDomain);
 
   // Time of day greeting
   const timeGreeting = useMemo(() => {
@@ -800,7 +801,7 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
       <AiSessionQuotaMeter tenantSlug={tenantSlug} tierName={tierLabel} />
 
       {/* WIDGET PENGELOLAAN TAUTAN BIO RESMI TOKO */}
-      <StoreBioLinkWidget tenantSlug={tenantSlug} />
+      <StoreBioLinkWidget tenantSlug={tenantSlug} customDomain={customDomain} />
 
       {/* ── BAGIAN B: RINGKASAN ANALITIK 7 HARI TERAKHIR (LAST 7 DAYS) ── */}
       <section className="space-y-3 sm:space-y-4">

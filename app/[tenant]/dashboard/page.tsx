@@ -226,9 +226,15 @@ export default function TenantDashboardPage() {
     handleProcessWithdraw,
   } = useTenantDashboard();
 
+  const customDomain = React.useMemo(() => {
+    return tenantData?.custom_domain || tenantData?.metadata?.custom_domain || null;
+  }, [tenantData]);
+
   const tenant = React.useMemo(() => ({
+    ...(tenantData || {}),
     tier: tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER'),
-  }), [tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale]);
+    custom_domain: customDomain,
+  }), [tenantData, tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale, customDomain]);
 
   const isCrmEnabled = React.useMemo(() => {
     return isTeamScale || hasTierAccess(tenantData, 'crm');
@@ -429,6 +435,7 @@ export default function TenantDashboardPage() {
               className="w-full h-full border-r-0 static"
               tenant={tenant}
               tenantSlug={tenantSlug}
+              customDomain={customDomain}
               displayName={displayName}
               storeDisplayName={storeDisplayName}
               storeLogoUrl={storeLogoUrl}
@@ -477,6 +484,7 @@ export default function TenantDashboardPage() {
         className="hidden lg:flex"
         tenant={tenant}
         tenantSlug={tenantSlug}
+        customDomain={customDomain}
         displayName={displayName}
         storeDisplayName={storeDisplayName}
         storeLogoUrl={storeLogoUrl}
@@ -681,6 +689,7 @@ export default function TenantDashboardPage() {
       {(activeTab === 'dashboard' || activeTab === 'overview') && (
         <DashboardOverviewTab
           tenantSlug={tenantSlug}
+          customDomain={customDomain}
           displayName={displayName}
           storeDisplayName={storeDisplayName}
           storeBio={storeBio}
@@ -854,6 +863,7 @@ export default function TenantDashboardPage() {
         <ProductsTab
           products={products}
           tenantSlug={tenantSlug}
+          customDomain={customDomain}
           isSubscriptionExpired={isSubscriptionExpired}
           onUpgrade={() => handleUpgradeTier('ads_performance')}
           openNewProductModal={openNewProductModal}
@@ -873,6 +883,7 @@ export default function TenantDashboardPage() {
       {(activeTab === 'microsite' || activeTab === 'links') && (
         <MicrositeTab
           tenantSlug={tenantSlug}
+          customDomain={customDomain}
           displayName={displayName}
           products={products}
           isTeamScale={isTeamScale}
@@ -1018,6 +1029,7 @@ export default function TenantDashboardPage() {
       {activeTab === 'settings' && (
         <SettingsTab
           tenantSlug={tenantSlug}
+          customDomain={customDomain}
           storeDisplayName={storeDisplayName}
           setStoreDisplayName={setStoreDisplayName}
           storeBio={storeBio}
@@ -1402,6 +1414,7 @@ export default function TenantDashboardPage() {
         editingProductId={editingProductId}
         storeCategory={storeCategory}
         tenantSlug={tenantSlug}
+        customDomain={customDomain}
         isCheckoutLite={isCheckoutLite}
         activeProductsCount={activeProductsCount}
       />
@@ -1422,6 +1435,7 @@ export default function TenantDashboardPage() {
       {isStoreSettingsOpen && (
         <SettingsTab
           tenantSlug={tenantSlug}
+          customDomain={customDomain}
           storeDisplayName={storeDisplayName}
           setStoreDisplayName={setStoreDisplayName}
           storeBio={storeBio}

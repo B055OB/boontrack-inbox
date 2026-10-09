@@ -57,6 +57,7 @@ interface MicrositeTabProps {
     featuredProductIds?: string[];
   }) => void;
   onNavigateTab?: (tab: string) => void;
+  customDomain?: string | null;
 }
 
 const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.ElementType; color: string }[] = [
@@ -74,6 +75,7 @@ export default function MicrositeTab({
   onSaved,
   products = [],
   isTeamScale = false,
+  customDomain,
   onLivePreviewUpdate,
   onNavigateTab,
 }: MicrositeTabProps) {
@@ -353,7 +355,7 @@ export default function MicrositeTab({
 
         <div className="flex items-center gap-2">
           <a
-            href={getStorefrontUrl(tenantSlug)}
+            href={getStorefrontUrl(tenantSlug, customDomain)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0"

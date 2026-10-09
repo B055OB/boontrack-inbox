@@ -6,14 +6,15 @@ import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 interface StoreBioLinkWidgetProps {
   tenantSlug: string;
+  customDomain?: string | null;
 }
 
-export default function StoreBioLinkWidget({ tenantSlug }: StoreBioLinkWidgetProps) {
+export default function StoreBioLinkWidget({ tenantSlug, customDomain }: StoreBioLinkWidgetProps) {
   const [copied, setCopied] = useState(false);
 
   if (!tenantSlug) return null;
 
-  const bioShortlink = getStorefrontUrl(tenantSlug);
+  const bioShortlink = getStorefrontUrl(tenantSlug, customDomain);
   const storefrontUrl = bioShortlink;
 
   const handleCopy = async () => {

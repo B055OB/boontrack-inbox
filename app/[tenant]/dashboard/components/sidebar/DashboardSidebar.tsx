@@ -39,6 +39,7 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
 import { hasTierAccess } from '@/lib/subscription-tiers';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 import PwaInstallPrompt from '../PwaInstallPrompt';
 
 function getVerticalMenuConfig(storeCategory?: string) {
@@ -241,6 +242,7 @@ interface DashboardSidebarProps {
   } | null;
   isCrmEnabled?: boolean;
   isAiBotAllowed?: boolean;
+  customDomain?: string | null;
   onOpenStoreSettings: () => void;
   onOpenUpgradeModal: () => void;
   onCloseMobileDrawer?: () => void;
@@ -275,11 +277,14 @@ export default function DashboardSidebar({
   capabilities,
   isCrmEnabled = false,
   isAiBotAllowed,
+  customDomain,
   onOpenStoreSettings,
   onOpenUpgradeModal,
   onCloseMobileDrawer,
   className = '',
 }: DashboardSidebarProps) {
+  const effectiveCustomDomain = customDomain || tenant?.custom_domain || tenant?.metadata?.custom_domain || null;
+  const storefrontUrl = getStorefrontUrl(tenantSlug, effectiveCustomDomain);
   const currentTier = String(tenant?.tier || '').toUpperCase();
   const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
   const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
@@ -456,7 +461,7 @@ export default function DashboardSidebar({
             <div className="px-3 py-2 border-b border-slate-100">
               <p className="text-xs font-black text-slate-900 truncate">{nameToShow}</p>
               <p className="text-[10px] font-semibold text-slate-400 truncate">
-                shop.boontrack.com/{tenantSlug}
+                {effectiveCustomDomain ? effectiveCustomDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}
               </p>
             </div>
 
@@ -538,7 +543,7 @@ export default function DashboardSidebar({
         {/* Quick Action: Lihat Tampilan Toko */}
         <div className="mt-2">
           <Link
-            href={`https://shop.boontrack.com/${tenantSlug}`}
+            href={storefrontUrl}
             target="_blank"
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-2xs"
           >

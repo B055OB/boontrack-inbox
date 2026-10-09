@@ -5,10 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Store, ExternalLink, ArrowUpRight } from 'lucide-react';
 import { PlanTier } from '../../hooks/useDashboardData';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 interface TopNavBarProps {
   tenantSlug: string;
   displayName: string;
+  customDomain?: string | null;
   planTier: PlanTier;
   isGrant?: boolean;
   grantDaysLeft?: number | null;
@@ -24,6 +26,7 @@ interface TopNavBarProps {
 export default function TopNavBar({
   tenantSlug,
   displayName,
+  customDomain,
   planTier,
   isGrant = false,
   grantDaysLeft = null,
@@ -56,7 +59,7 @@ export default function TopNavBar({
         </div>
 
         <Link
-          href={`https://shop.boontrack.com/${tenantSlug}`}
+          href={getStorefrontUrl(tenantSlug, customDomain)}
           target="_blank"
           className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs shrink-0"
         >

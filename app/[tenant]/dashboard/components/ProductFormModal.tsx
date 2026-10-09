@@ -19,6 +19,7 @@ import {
   isDomOrReactFiber,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
+import { getProductPageUrl } from '@/lib/utils/storefrontUrl';
 import { ModularProductFormDispatcher, resolveDomainVertical } from './modules';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -146,6 +147,7 @@ export interface ProductFormModalProps {
   editingProductId: number | string | null;
   storeCategory?: string;
   tenantSlug?: string;
+  customDomain?: string | null;
   isCheckoutLite?: boolean;
   activeProductsCount?: number;
 }
@@ -159,6 +161,7 @@ export default function ProductFormModal({
   editingProductId,
   storeCategory,
   tenantSlug,
+  customDomain,
   isCheckoutLite = false,
   activeProductsCount = 0,
 }: ProductFormModalProps) {
@@ -806,7 +809,9 @@ export default function ProductFormModal({
               </button>
             </div>
             <div className="flex items-center gap-1 font-mono text-xs">
-              <span className="text-slate-400 shrink-0 font-medium">/{tenantSlug || 'store'}/p/</span>
+              <span className="text-slate-400 shrink-0 font-medium">
+                {customDomain ? `/${customDomain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')}/p/` : `/${tenantSlug || 'store'}/p/`}
+              </span>
               <input
                 type="text"
                 required
@@ -826,7 +831,7 @@ export default function ProductFormModal({
               />
             </div>
             <p className="text-[10px] text-slate-400 font-sans">
-              Akses publik: <code className="text-blue-600 font-bold font-mono">https://shop.boontrack.com/{tenantSlug || 'store'}/p/{productForm.slug || slugify(productForm.name || 'produk')}</code>
+              Akses publik: <code className="text-blue-600 font-bold font-mono">{getProductPageUrl(tenantSlug || 'store', productForm.slug || slugify(productForm.name || 'produk'), customDomain)}</code>
             </p>
           </div>
 

@@ -50,6 +50,7 @@ function ProductCardImage({ src, alt }: { src?: string; alt: string }) {
 export interface ProductsTabProps {
   products: ProductItem[];
   tenantSlug: string;
+  customDomain?: string | null;
   openNewProductModal: () => void;
   openEditProductModal: (p: ProductItem) => void;
   handleDeleteProduct: (id: number | string) => void;
@@ -67,6 +68,7 @@ export interface ProductsTabProps {
 export default function ProductsTab({
   products,
   tenantSlug,
+  customDomain,
   openNewProductModal,
   openEditProductModal,
   handleDeleteProduct,
@@ -564,7 +566,7 @@ export default function ProductsTab({
                         type="button"
                         onClick={() => {
                           const productSlug = p.slug || slugify(p.name);
-                          const url = getProductPageUrl(tenantSlug, productSlug);
+                          const url = getProductPageUrl(tenantSlug, productSlug, customDomain);
                           navigator.clipboard.writeText(url);
                           setCopiedSlugId(p.id);
                           setTimeout(() => setCopiedSlugId(null), 2500);
@@ -586,7 +588,7 @@ export default function ProductsTab({
                       </button>
 
                       <a
-                        href={getProductPageUrl(tenantSlug, p.slug || slugify(p.name))}
+                        href={getProductPageUrl(tenantSlug, p.slug || slugify(p.name), customDomain)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
@@ -602,7 +604,7 @@ export default function ProductsTab({
                   <div className="pt-2 px-1 flex items-center gap-1.5 text-[11px] text-slate-500 font-mono truncate">
                     <span className="text-slate-400 font-sans font-medium shrink-0">URL Salespage:</span>
                     <span className="text-blue-600 font-semibold truncate font-mono">
-                      shop.boontrack.com/{tenantSlug}/p/{p.slug || slugify(p.name)}
+                      {getProductPageUrl(tenantSlug, p.slug || slugify(p.name), customDomain).replace(/^https?:\/\//i, '')}
                     </span>
                   </div>
 
