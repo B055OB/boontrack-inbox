@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { StudioCreditService } from '@/lib/services/studio-credit.service';
 
 export const runtime = 'nodejs';
 
@@ -43,36 +44,29 @@ export async function POST(req: Request) {
     const supabase = getSupabaseAdmin();
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
 
-    // Credit deduction safeguard
+    // Credit deduction safeguard via StudioCreditService
     let remainingCredits = 1;
-    if (tenant && supabase) {
-      const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
-      const currentCredits = currentMeta.studio_workspace?.render_credits ?? 1;
+    let isUnlimited = false;
 
-      if (currentCredits < 1) {
+    if (tenant) {
+      const creditRes = await StudioCreditService.reserveCredits(
+        tenant.id,
+        1,
+        `Render storyboard 9-scene: ${product_name || 'UGC Video'}`
+      );
+
+      if (!creditRes.success) {
         return NextResponse.json(
           {
             success: false,
-            message: 'Render Credits Anda tidak mencukupi (0 Credits). Silakan lakukan top-up kredit.',
+            message: creditRes.message || 'Render Credits Anda tidak mencukupi (0 Credits). Silakan lakukan top-up kredit.',
           },
           { status: 403 }
         );
       }
 
-      remainingCredits = currentCredits - 1;
-
-      const updatedMeta = {
-        ...currentMeta,
-        studio_workspace: {
-          ...(currentMeta.studio_workspace || {}),
-          render_credits: remainingCredits,
-        },
-      };
-
-      await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta })
-        .eq('id', tenant.id);
+      remainingCredits = creditRes.credits_remaining ?? 0;
+      isUnlimited = Boolean(creditRes.is_unlimited);
     }
 
     const renderPayload = {

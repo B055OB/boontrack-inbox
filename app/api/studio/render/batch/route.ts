@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { StudioCreditService } from '@/lib/services/studio-credit.service';
 
 export const runtime = 'nodejs';
 
@@ -83,36 +84,26 @@ export async function POST(req: Request) {
       };
     });
 
-    if (tenant && supabase) {
-      const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
-      const currentCredits = currentMeta.studio_workspace?.render_credits ?? 1;
+    if (tenant) {
+      const creditRes = await StudioCreditService.reserveCredits(
+        tenant.id,
+        requiredCredits,
+        `Batch render FCD (${requiredCredits} variasi): ${product_name || 'Campaign'}`
+      );
 
-      if (currentCredits < requiredCredits) {
+      if (!creditRes.success) {
         return NextResponse.json(
           {
             success: false,
-            message: `Kredit render tidak mencukupi (Butuh ${requiredCredits} Credits, Tersedia: ${currentCredits}). Silakan lakukan top-up kredit.`,
+            message: creditRes.message || `Kredit render tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
             required_credits: requiredCredits,
-            available_credits: currentCredits,
+            available_credits: creditRes.credits_remaining,
           },
           { status: 403 }
         );
       }
 
-      remainingCredits = currentCredits - requiredCredits;
-
-      const updatedMeta = {
-        ...currentMeta,
-        studio_workspace: {
-          ...(currentMeta.studio_workspace || {}),
-          render_credits: remainingCredits,
-        },
-      };
-
-      await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta })
-        .eq('id', tenant.id);
+      remainingCredits = creditRes.credits_remaining ?? 0;
 
       // Insert each variation into studio_jobs with standardized filename
       const defaultVideoCdn = 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';

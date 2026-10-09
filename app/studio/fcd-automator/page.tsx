@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Film,
@@ -68,6 +68,8 @@ export default function FCDAutomatorPage() {
   // Session & Workspace Context
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
   const [renderCredits, setRenderCredits] = useState<number>(1);
+  const [isUnlimited, setIsUnlimited] = useState<boolean>(false);
+  const [tenantTier, setTenantTier] = useState<string>('FREE');
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
   // Panel 1: Matrix Inputs
@@ -167,6 +169,31 @@ export default function FCDAutomatorPage() {
       }
     }
   }, []);
+
+  // Real-time Entitlement Sync from Database
+  const refreshEntitlements = useCallback(async (slug: string) => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/tenants/${encodeURIComponent(slug)}/entitlements`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const ent = json.data;
+          setRenderCredits(ent.credits_remaining ?? 0);
+          setIsUnlimited(Boolean(ent.is_unlimited || ent.tier === 'FOUNDER'));
+          setTenantTier(ent.tier || 'FREE');
+        }
+      }
+    } catch (e) {
+      console.warn('[FCDAutomator] Failed to fetch entitlements:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tenantSlug) {
+      refreshEntitlements(tenantSlug);
+    }
+  }, [tenantSlug, refreshEntitlements]);
 
   // Helper to generate 6 variations (3 Hook x 1 Body x 2 CTA)
   const buildMatrix = () => {
@@ -330,7 +357,7 @@ export default function FCDAutomatorPage() {
 
   const selectedVariations = variations.filter(v => v.selected);
   const requiredCredits = selectedVariations.length;
-  const hasSufficientCredits = renderCredits >= requiredCredits && requiredCredits > 0;
+  const hasSufficientCredits = isUnlimited || (renderCredits >= requiredCredits && requiredCredits > 0);
 
   // Dispatch Batch Render Queue
   const handleDispatchBatch = async () => {
@@ -391,6 +418,7 @@ export default function FCDAutomatorPage() {
           } catch {}
         }
       }
+      refreshEntitlements(tenantSlug);
 
       // Simulate Batch FFmpeg Pipeline
       setBatchJobStatus('PROCESSING');
@@ -527,11 +555,19 @@ export default function FCDAutomatorPage() {
               <span className="font-bold text-white font-mono">{tenantSlug}</span>
             </div>
 
-            {/* Credit Pill */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
-              <Zap className="w-3.5 h-3.5 text-violet-400" />
-              <span>{renderCredits} Credit{renderCredits === 1 ? ' (Trial)' : 's'}</span>
-            </div>
+            {/* Credit Pill / Founder Unlimited Badge */}
+            {isUnlimited || tenantTier === 'FOUNDER' ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-bold text-amber-300 shadow-sm shadow-amber-500/10">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Founder / Unlimited</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
+                <Zap className="w-3.5 h-3.5 text-violet-400" />
+                <span>{renderCredits} Credit{renderCredits === 1 ? '' : 's'}</span>
+              </div>
+            )}
 
             {/* Top Up Button */}
             <button
