@@ -1113,6 +1113,11 @@ export default function TeamChatTab({
 
     // Optimistic update
     currentConversation.isBotActive = newBotState;
+    if (inbox.setConversations) {
+      inbox.setConversations((prev) =>
+        prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: newBotState } : c))
+      );
+    }
 
     try {
       const supabase = getSupabase();
