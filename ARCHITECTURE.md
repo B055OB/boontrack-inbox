@@ -4696,3 +4696,208 @@ Setiap rekaman sinyal wajib membawa metadata masa berlaku (*freshness status*):
 ### 54.4 Isolasi Beban Kerja & Zero Contamination Core
 - Antrean pekerja penarikan/normalisasi data berjalan pada antrean Redis/worker terisolasi (`intelligence_ingestion_worker`).
 - Dilarang keras membebani database utama transaksi Shop, alur QRIS, maupun bot WhatsApp. Latensi checkout toko wajib tetap berada di level sub-detik tanpa regresi (Gate 3 Compliance).
+
+---
+
+## § 55. STANDARISASI ASET BRANDING 4 PILAR EKOSISTEM (ADR §55)
+
+> **Architectural Status**: 🔒 **APPROVED & FROZEN (CTO MANDATE)**  
+> **Core Principle**: *"One Ecosystem, Four Distinct Pillars, Zero Asset Collision."*
+
+### 55.1 Latar Belakang & Masalah
+Sebelum standardisasi, aset identitas visual (logo, favicon, touch icons, webmanifest) tersebar secara ad-hoc di root `public/` dan sub-folder yang tidak seragam (seperti `public/app-portal/`, `boonshop.png`, `app-brand/`). Hal ini berpotensi menimbulkan tabrakan path aset (*path collisions*), duplikasi file, dan inkonsistensi metadata icon pada edge rewrite antar subdomain.
+
+### 55.2 Struktur Direktori Fisik Terpusat (`public/branding/`)
+Seluruh aset branding dikonsolidasikan secara eksklusif dan permanen ke dalam direktori terpusat `public/branding/` dengan pembagian 4 pilar yang saling terisolasi:
+
+```
+public/branding/
+├── shop/                    # Pilar 1: E-Commerce & Storefront Engine
+│   ├── logo.png             # Master brand logo (Shop)
+│   ├── icon.png             # Standard 32x32 / square icon
+│   ├── favicon.ico          # Favicon multi-resolusi
+│   ├── favicon-16x16.png
+│   ├── favicon-32x32.png
+│   ├── apple-touch-icon.png
+│   ├── android-chrome-192x192.png
+│   ├── android-chrome-512x512.png
+│   ├── boonshop.png         # Legacy compatibility alias
+│   ├── boonshop.jpg
+│   ├── icon-shop.png
+│   ├── og-shop.png
+│   ├── manifest.json
+│   └── site.webmanifest
+├── studio/                  # Pilar 2: Video & Creative Production Engine
+│   ├── logo.png             # Master brand logo (Studio)
+│   ├── icon.png
+│   ├── favicon.ico
+│   ├── favicon-16x16.png
+│   ├── favicon-32x32.png
+│   ├── apple-touch-icon.png
+│   ├── android-chrome-192x192.png
+│   ├── android-chrome-512x512.png
+│   ├── manifest.json
+│   └── site.webmanifest
+├── creator/                 # Pilar 3: Talent Showcase & Public Bio Engine
+│   ├── logo.png             # Master brand logo (Creator)
+│   ├── icon.png
+│   ├── favicon.ico
+│   ├── favicon-16x16.png
+│   ├── favicon-32x32.png
+│   ├── apple-touch-icon.png
+│   ├── android-chrome-192x192.png
+│   ├── android-chrome-512x512.png
+│   ├── manifest.json
+│   └── site.webmanifest
+└── app/                     # Pilar 4: Orchestration & Application Portal
+    ├── logo-512.png         # Primary app portal icon (512x512)
+    ├── logo.png             # Master app portal logo
+    ├── logo-master.png
+    ├── logo-boontrack-app.png
+    ├── icon.png
+    ├── favicon.ico
+    ├── favicon-16x16.png
+    ├── favicon-32x32.png
+    ├── apple-icon.png
+    ├── apple-touch-icon.png
+    ├── android-chrome-192x192.png
+    ├── android-chrome-512x512.png
+    ├── og-image-banner-backup.png
+    ├── manifest.json
+    └── site.webmanifest
+```
+
+### 55.3 Kontrak Konfigurasi Terpusat (`lib/config/branding.ts`)
+Komponen antarmuka (Next.js layout, header, footer, favicon metadata tags) dilarang melakukan hardcode string path aset secara manual. Seluruh pemetaan wajib mengonsumsi kontrak konfigurasi `BRANDING_ASSETS` dan helper `getBrandingConfig()`:
+
+```ts
+export type BrandingPillar = 'shop' | 'studio' | 'creator' | 'app';
+
+export interface PillarBrandingConfig {
+  name: string;
+  shortName?: string;
+  logo: string;
+  favicon: string;
+  icon?: string;
+  appleTouchIcon?: string;
+  manifest?: string;
+  domain?: string;
+}
+
+export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
+  shop: {
+    name: 'BoonTrack Shop',
+    logo: '/branding/shop/logo.png',
+    favicon: '/branding/shop/favicon.ico',
+    icon: '/branding/shop/icon.png',
+    appleTouchIcon: '/branding/shop/apple-touch-icon.png',
+    manifest: '/branding/shop/manifest.json',
+    domain: 'https://shop.boontrack.com',
+  },
+  studio: {
+    name: 'BoonTrack Studio',
+    logo: '/branding/studio/logo.png',
+    favicon: '/branding/studio/favicon.ico',
+    icon: '/branding/studio/icon.png',
+    appleTouchIcon: '/branding/studio/apple-touch-icon.png',
+    manifest: '/branding/studio/manifest.json',
+    domain: 'https://studio.boontrack.com',
+  },
+  creator: {
+    name: 'BoonTrack Creator',
+    logo: '/branding/creator/logo.png',
+    favicon: '/branding/creator/favicon.ico',
+    icon: '/branding/creator/icon.png',
+    appleTouchIcon: '/branding/creator/apple-touch-icon.png',
+    manifest: '/branding/creator/manifest.json',
+    domain: 'https://creator.boontrack.com',
+  },
+  app: {
+    name: 'BoonTrack App Portal',
+    logo: '/branding/app/logo-512.png',
+    favicon: '/branding/app/favicon.ico',
+    icon: '/branding/app/icon.png',
+    appleTouchIcon: '/branding/app/apple-touch-icon.png',
+    manifest: '/branding/app/manifest.json',
+    domain: 'https://app.boontrack.com',
+  },
+};
+```
+
+### 55.4 Edge Delivery & Middleware Rewrites
+Middleware (`middleware.ts`) memetakan request static metadata (`/favicon.ico`, `/apple-touch-icon.png`, `/manifest.json`, `/site.webmanifest`) berdasarkan host secara deterministik:
+- `hostClean === 'app.boontrack.com'` $\rightarrow$ rewrite `/branding/app/*`
+- `hostClean === 'studio.boontrack.com'` $\rightarrow$ rewrite `/branding/studio/*`
+- `hostClean === 'creator.boontrack.com'` $\rightarrow$ rewrite `/branding/creator/*`
+- `hostClean === 'shop.boontrack.com'` $\rightarrow$ rewrite `/branding/shop/*`
+
+---
+
+## § 56. ARSITEKTUR AFFILIATE MULTI-PILAR: CROSS-DOMAIN TRACKING & STUDIO TOKEN COMMISSION (ADR §56)
+
+> **Architectural Status**: 🔒 **APPROVED & FROZEN (CTO & CFO CONSENSUS)**  
+> **Core Principle**: *"One Unified Network, Cross-Pillar Attribution, Uniform Commission Economics."*
+
+### 56.1 Filosofi & Desain Sistem Multi-Pilar
+Program Afiliasi BoonTrack diperluas untuk mencakup monetisasi lintas pilar ekosistem (Shop & Studio) dengan menjaga keutuhan single financial authority dan konsistensi bagi seluruh mitra:
+1. **Satu Kode Referral untuk Seluruh Ekosistem**: Kode referral mitra (misalnya `buzzerukm` milik Kang Sakti atau mitra lainnya) berlaku universal di `shop.boontrack.com` dan `studio.boontrack.com`.
+2. **Kesesuaian Jenis Transaksi**:
+   - Di **Shop**: Berbasis langganan toko (*store SaaS subscription*).
+   - Di **Studio**: Berbasis pembelian kuota/token render video (*render credits purchase*).
+
+### 56.2 Skema Database: Kolom `product_type` (`affiliate_commissions`)
+Tabel `public.affiliate_commissions` diperluas dengan kolom partisi produk (*expand-only pattern*):
+- Kolom: `product_type VARCHAR(20) NOT NULL DEFAULT 'SHOP'`
+- Validasi: `CHECK (product_type IN ('SHOP', 'STUDIO'))`
+- Indeks Performa: `idx_aff_comm_product_type ON public.affiliate_commissions(product_type)`
+- RLS Policy: Strictly `service_role` (Zero Public Access).
+
+```sql
+ALTER TABLE public.affiliate_commissions
+ADD COLUMN IF NOT EXISTS product_type VARCHAR(20) NOT NULL DEFAULT 'SHOP'
+CHECK (product_type IN ('SHOP', 'STUDIO'));
+
+CREATE INDEX IF NOT EXISTS idx_aff_comm_product_type 
+ON public.affiliate_commissions(product_type);
+```
+
+### 56.3 Aturan Finansial: Persentase Komisi Seragam
+Untuk menjaga keadilan dan transparansi kompensasi mitra, persentase komisi Studio disamakan persis dengan Shop:
+- **Direct Commission**: `recruiterAffiliate.commission_rate` (default **25%** dari `grossAmount`).
+- **Affiliate Manager (AM) Override**: **5%** dari `grossAmount` jika mitra perekrut memiliki `parent_am_id`.
+- **Syarat Mutlak Pembukuan (Invariant § 16)**:
+  - Transaksi WAJIB berstatus `PAID` atau `SETTLED`.
+  - Transaksi dengan nominal $\le 0$ atau berstatus `PENDING` / `FAILED` / `FREE_TRIAL` dilarang keras membukukan komisi (`grossAmount > 0`).
+
+Formula Pembukuan Komisi:
+$$\text{Direct Commission} = \text{grossAmount} \times \left(\frac{\text{commission\_rate}}{100}\right)$$
+$$\text{AM Override} = \text{grossAmount} \times 0.05 \quad (\text{jika } \text{parent\_am\_id} \neq \text{null})$$
+
+### 56.4 Mekanisme Cross-Domain Tracking (Wildcard Root Domain Cookie)
+Pelacakan referral bekerja tanpa hambatan antar-subdomain melalui koordinasi edge middleware dan client storage:
+1. **Edge Cookie Attachment**:
+   - Ketika pengunjung membuka link referral di subdomain manapun (misal `https://shop.boontrack.com/?ref=kodesakti` atau `https://studio.boontrack.com/?ref=kodesakti`), `middleware.ts` secara otomatis memasang cookie:
+     ```ts
+     cookieOptions = {
+       domain: '.boontrack.com', // Wildcard subdomains
+       path: '/',
+       maxAge: 30 * 24 * 60 * 60, // 30 hari (2.592.000 detik)
+       sameSite: 'lax',
+       secure: process.env.NODE_ENV === 'production',
+     };
+     ```
+   - Cookie yang dipasang: `ref`, `boontrack_referral_code`, dan `boontrack_merchant_ref`.
+2. **Inter-Pillar Sharing**:
+   - Karena berakar di `.boontrack.com`, browser otomatis mengirimkan cookie referral saat user yang sama berpindah dari toko ke studio atau sebaliknya.
+3. **Studio Registration & Token Attribution**:
+   - Form registrasi Studio (`app/studio/register/page.tsx`) mendeteksi `boontrack_referral_code` dan meneruskannya ke backend registrasi (`initiateStudioRegistration`).
+   - Relasi mitra dicatat pada `tenants.metadata.affiliate_code`, `tenants.metadata.affiliate_id`, dan tabel `public.attributions`.
+   - Ketika transaksi token lunas (`PAID` / `SETTLED`), `StudioCreditService.topUpCredits()` atau webhook memanggil `recordStudioTokenCommission()`, mencatatkan baris komisi dengan `product_type: 'STUDIO'`.
+
+### 56.5 Status Antarmuka Dashboard Afiliasi: UI Dormant
+- **Prinsip Produk**: Fitur backend dan database disiapkan secara lengkap dan teruji terlebih dahulu (*backend-ready*).
+- **UI Dormant State**:
+  - Halaman antarmuka mitra di `affiliate.boontrack.com` (**TETAP DORMANT**).
+  - Dashboard mitra **tidak menampilkan** tab atau link promosi `studio.boontrack.com?ref=` saat ini.
+  - UI 100% mempertahankan fokus pada promosi toko `shop.boontrack.com`.
+  - Generator link Studio baru akan diaktifkan di antarmuka mitra setelah modul self-serve checkout token video render beroperasi stabil di produksi.
