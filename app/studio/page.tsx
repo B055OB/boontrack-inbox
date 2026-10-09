@@ -247,10 +247,13 @@ export default function StudioWorkspaceDashboard() {
             </div>
 
             {/* Card 3: Media Render Jobs & Telemetry */}
-            <div className="lg:col-span-3 p-6 rounded-3xl bg-[#111624] border border-white/10 hover:border-purple-500/40 transition-all flex flex-col justify-between shadow-lg">
+            <Link
+              href="/studio/jobs"
+              className="lg:col-span-3 p-6 rounded-3xl bg-[#111624] border border-white/10 hover:border-emerald-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
+            >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
                     <Cpu className="w-5 h-5" />
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
@@ -259,7 +262,9 @@ export default function StudioWorkspaceDashboard() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-white">Media Render Jobs & Telemetry</h3>
+                  <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">
+                    Media Render Jobs & Telemetry
+                  </h3>
                   <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
                     Antrean status render otomatis video FCD (FFmpeg queue status) & pipeline konversi video iklan performa tinggi.
                   </p>
@@ -278,10 +283,10 @@ export default function StudioWorkspaceDashboard() {
               </div>
 
               <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-emerald-400 font-semibold">
-                <span>Telemetry Status: Normal</span>
-                <Activity className="w-4 h-4" />
+                <span>Buka Telemetri Render →</span>
+                <Activity className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-            </div>
+            </Link>
           </div>
         </section>
 

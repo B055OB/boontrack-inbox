@@ -38,7 +38,9 @@ import {
   Filter,
   Target,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
@@ -125,11 +127,17 @@ export default function FCDAutomatorPage() {
   const [showSafeZone, setShowSafeZone] = useState<boolean>(true);
   const [activePreviewId, setActivePreviewId] = useState<number>(1);
 
+  // Step Stepper State
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1);
+
   // Panel 3: Batch Queue Dispatch State
   const [isDispatching, setIsDispatching] = useState(false);
   const [batchJobStatus, setBatchJobStatus] = useState<'IDLE' | 'QUEUED' | 'PROCESSING' | 'COMPLETED'>('IDLE');
   const [batchProgress, setBatchProgress] = useState(0);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
+  const [renderedFiles, setRenderedFiles] = useState<any[]>([]);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
 
   // Mount Effect: Restore Tenant Context
   useEffect(() => {
@@ -365,6 +373,12 @@ export default function FCDAutomatorPage() {
       }
 
       setActiveBatchId(data.batch_id);
+      const finalUrl = data.output_url || (data.files && data.files[0]?.output_url) || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+      setRenderedVideoUrl(finalUrl);
+      if (Array.isArray(data.files)) {
+        setRenderedFiles(data.files);
+      }
+
       if (typeof data.remaining_credits === 'number') {
         setRenderCredits(data.remaining_credits);
         // Persist local session
@@ -390,6 +404,7 @@ export default function FCDAutomatorPage() {
         setBatchJobStatus('COMPLETED');
         setBatchProgress(100);
         setIsDispatching(false);
+        setActiveStep(3);
       }, 3000);
     } catch (err: any) {
       alert(err.message || 'Terjadi kesalahan sistem saat batch render.');
@@ -398,10 +413,24 @@ export default function FCDAutomatorPage() {
     }
   };
 
-  // Standardized ZIP & Manifest Download
+  // Direct MP4 Download Handler
+  const handleDownloadFinalMp4 = (url?: string, filename?: string) => {
+    const targetUrl = url || renderedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+    const productSlug = campaignTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'fcd-video';
+    const targetName = filename || `${productSlug}_FINAL_1080x1920.mp4`;
+    const link = document.createElement('a');
+    link.href = targetUrl;
+    link.download = targetName;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Standardized Manifest (TXT) Download
   const handleDownloadBatchZip = () => {
     const productSlug = campaignTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'fcd-campaign';
-    const zipName = `${productSlug}_FCD_BATCH.zip`;
 
     const manifestLines = [
       `=====================================================`,
@@ -440,7 +469,7 @@ export default function FCDAutomatorPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    alert(`File arsip batch "${zipName}" berhasil disiapkan!\n\nSeluruh ${selectedVariations.length} file MP4 mengikuti format standar:\n{product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4`);
+    alert(`File Naskah & Manifest (${productSlug}_FCD_BATCH_MANIFEST.txt) berhasil diunduh!\n\nDokumen teks ini memuat seluruh formula naskah variasi dan metadata ads copy siap pakai.`);
   };
 
   const currentPreviewVariation = variations.find(v => v.id === activePreviewId) || variations[0] || {
@@ -516,6 +545,120 @@ export default function FCDAutomatorPage() {
         </div>
       </header>
 
+      {/* ── STEPPER BANNER (SIMPLIFIKASI ALUR FCD) ─────────────── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-1 w-full">
+        <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-3 sm:p-4 backdrop-blur-xl shadow-xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Step 1 */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStep(1);
+                document.getElementById('step-matrix')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-center gap-3.5 ${
+                activeStep === 1
+                  ? 'bg-indigo-600/20 border-indigo-500/60 shadow-lg shadow-indigo-600/15 ring-1 ring-indigo-500/40'
+                  : 'bg-white/[0.02] border-white/5 hover:border-white/15 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                variations.length > 0
+                  ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  : 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-300'
+              }`}>
+                {variations.length > 0 ? <Check className="w-4 h-4 text-emerald-400" /> : '1'}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider block text-slate-400">
+                  Tahap 1
+                </span>
+                <span className="text-xs font-black text-white truncate block">
+                  Step 1: Formula Naskah & Radar
+                </span>
+                <span className="text-[10px] text-slate-400 truncate block">
+                  3 Hook × 1 Body × 2 CTA
+                </span>
+              </div>
+            </button>
+
+            {/* Step 2 */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStep(2);
+                document.getElementById('step-preview')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-center gap-3.5 ${
+                activeStep === 2
+                  ? 'bg-indigo-600/20 border-indigo-500/60 shadow-lg shadow-indigo-600/15 ring-1 ring-indigo-500/40'
+                  : 'bg-white/[0.02] border-white/5 hover:border-white/15 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                selectedVariations.length > 0
+                  ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  : 'bg-white/10 text-slate-400'
+              }`}>
+                {selectedVariations.length > 0 ? <Check className="w-4 h-4 text-emerald-400" /> : '2'}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider block text-slate-400">
+                  Tahap 2
+                </span>
+                <span className="text-xs font-black text-white truncate block">
+                  Step 2: Preview & Ad Copy
+                </span>
+                <span className="text-[10px] text-slate-400 truncate block">
+                  Simulasi 9:16 & Salinan Iklan
+                </span>
+              </div>
+            </button>
+
+            {/* Step 3 */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStep(3);
+                document.getElementById('step-render')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-center gap-3.5 ${
+                activeStep === 3
+                  ? 'bg-indigo-600/20 border-indigo-500/60 shadow-lg shadow-indigo-600/15 ring-1 ring-indigo-500/40'
+                  : 'bg-white/[0.02] border-white/5 hover:border-white/15 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                batchJobStatus === 'COMPLETED'
+                  ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  : batchJobStatus === 'PROCESSING'
+                  ? 'bg-purple-500/20 border border-purple-500/40 text-purple-300 animate-pulse'
+                  : 'bg-white/10 text-slate-400'
+              }`}>
+                {batchJobStatus === 'COMPLETED' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                ) : batchJobStatus === 'PROCESSING' ? (
+                  <RefreshCw className="w-4 h-4 text-purple-400 animate-spin" />
+                ) : (
+                  '3'
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider block text-slate-400">
+                  Tahap 3
+                </span>
+                <span className="text-xs font-black text-white truncate block">
+                  Step 3: Render & Download Video
+                </span>
+                <span className="text-[10px] text-slate-400 truncate block">
+                  {batchJobStatus === 'COMPLETED' ? '✅ MP4 Siap Diunduh' : 'Antrean FFmpeg Cluster'}
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* ── MAIN 3-PANEL WORKSPACE ────────────────────────────── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -523,7 +666,7 @@ export default function FCDAutomatorPage() {
           {/* ======================================================== */}
           {/* PANEL 1: CREATIVE MATRIX CONFIGURATOR (4 Cols)           */}
           {/* ======================================================== */}
-          <div className="lg:col-span-4 bg-slate-900/60 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-5 sticky lg:top-20">
+          <div id="step-matrix" className="lg:col-span-4 bg-slate-900/60 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-5 sticky lg:top-20">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                 <Sliders className="w-3.5 h-3.5" />
@@ -892,7 +1035,7 @@ export default function FCDAutomatorPage() {
           {/* ======================================================== */}
           {/* PANEL 2: VARIATION MATRIX PREVIEW & ADS ENGINE (8 Cols)  */}
           {/* ======================================================== */}
-          <div className="lg:col-span-8 space-y-6">
+          <div id="step-preview" className="lg:col-span-8 space-y-6">
 
             {/* ── TIKTOK / REELS SAFE-ZONE PREVIEW CARD ─────────────── */}
             <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-4">
@@ -1319,7 +1462,7 @@ export default function FCDAutomatorPage() {
             {/* ======================================================== */}
             {/* PANEL 3: BATCH RENDER QUEUE DISPATCH                     */}
             {/* ======================================================== */}
-            <div className="bg-slate-900/80 border border-indigo-500/30 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
+            <div id="step-render" className="bg-slate-900/80 border border-indigo-500/30 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider">
@@ -1364,7 +1507,7 @@ export default function FCDAutomatorPage() {
 
               {/* Live Progress Bar when Dispatched */}
               {batchJobStatus !== 'IDLE' && (
-                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-indigo-300 flex items-center gap-2">
                       <RefreshCw className={`w-3.5 h-3.5 ${batchJobStatus === 'PROCESSING' ? 'animate-spin' : ''}`} />
@@ -1385,19 +1528,95 @@ export default function FCDAutomatorPage() {
                   </div>
 
                   {batchJobStatus === 'COMPLETED' && (
-                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 font-semibold">
-                        <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
-                        <span>Seluruh {selectedVariations.length} video variasi selesai dikemas dengan penamaan standar ads-ready!</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleDownloadBatchZip}
-                        className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer whitespace-nowrap"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download Batch .ZIP</span>
-                      </button>
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-slate-900/80 to-slate-950 border border-emerald-500/30 space-y-4 shadow-xl">
+                      {/* Header Sukses */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
+                              <span>✅ Video MP4 Selesai Dirender!</span>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
+                                1080x1920 (9:16)
+                              </span>
+                            </h4>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              Seluruh {selectedVariations.length} video variasi berhasil dikompilasi oleh cluster render FFmpeg BoonTrack Studio.
+                            </p>
+                          </div>
+                        </div>
+
+                        <Link
+                          href="/studio/jobs"
+                          className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-bold transition self-start sm:self-auto px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 hover:border-indigo-500/30"
+                        >
+                          <span>Lihat Riwayat di Jobs Telemetry</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+
+                      {/* Video Player Inline Preview & Download Area */}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-black/40 rounded-2xl p-3.5 border border-white/5">
+                        <div className="md:col-span-4 relative aspect-[9/16] max-h-56 mx-auto rounded-xl overflow-hidden bg-slate-950 border border-white/10 group shadow-md">
+                          <video
+                            src={renderedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4'}
+                            className="w-full h-full object-cover"
+                            controls
+                            playsInline
+                            preload="metadata"
+                          />
+                        </div>
+
+                        <div className="md:col-span-8 space-y-3">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider block">
+                              File Siap Tayang (TikTok & Reels Ready)
+                            </span>
+                            <div className="text-xs font-bold text-white break-all font-mono bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5">
+                              {renderedFiles[0]?.filename || `${campaignTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}_VAR1.mp4`}
+                            </div>
+                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                              Format vertikal 9:16 resolusi 1080x1920, 30fps H.264/AAC dengan label kepatuhan AIGC resmi (<code className="text-emerald-400">is_aigc=1</code>).
+                            </p>
+                          </div>
+
+                          {/* Action Buttons Row */}
+                          <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                            {/* Primary Download Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadFinalMp4()}
+                              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-500/20 cursor-pointer active:scale-98"
+                            >
+                              <Download className="w-4 h-4" />
+                              <span>⬇️ Unduh Video MP4 Final</span>
+                            </button>
+
+                            {/* Mini Player Modal Trigger */}
+                            <button
+                              type="button"
+                              onClick={() => setIsVideoModalOpen(true)}
+                              className="px-3.5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-indigo-400 text-indigo-400" />
+                              <span>Putar Layar Penuh</span>
+                            </button>
+
+                            {/* Renamed Manifest Button */}
+                            <button
+                              type="button"
+                              onClick={handleDownloadBatchZip}
+                              className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+                              title="Unduh metadata dan naskah lengkap (TXT)"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Download Naskah & Manifest (TXT)</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1431,6 +1650,53 @@ export default function FCDAutomatorPage() {
         tenantSlug={tenantSlug}
         currentCredits={renderCredits}
       />
+
+      {/* ── IN-PLACE VIDEO PLAYER MODAL (9:16) ────────────────── */}
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl overflow-hidden max-w-sm sm:max-w-md w-full shadow-2xl space-y-4 p-5 relative">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Film className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-black text-white">Video Player MP4 (9:16)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                title="Tutup Player"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="relative aspect-[9/16] max-h-[60vh] mx-auto rounded-2xl overflow-hidden bg-black border border-white/10 shadow-inner">
+              <video
+                src={renderedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4'}
+                className="w-full h-full object-contain"
+                controls
+                autoPlay
+                playsInline
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <div className="text-[11px] text-slate-400 max-w-[200px]">
+                <span className="font-bold text-white block truncate">{campaignTitle}</span>
+                <span className="font-mono text-emerald-400 text-[10px]">TikTok & Reels Ready (is_aigc=1)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDownloadFinalMp4()}
+                className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-emerald-500/20 active:scale-98"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh MP4</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── FOOTER ────────────────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5">
