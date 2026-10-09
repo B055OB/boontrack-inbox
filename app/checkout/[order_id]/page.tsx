@@ -717,16 +717,16 @@ export default function CheckoutPage({ params }: Props) {
   };
 
   const fallbackQrisString =
+    tenant?.qris_payload ||
+    tenant?.metadata?.qris_payload ||
+    tenant?.qris_static_string ||
+    tenant?.metadata?.qris_static_string ||
+    tenant?.qris_content ||
+    tenant?.metadata?.qris_content ||
     tenant?.metadata?.payment_settings?.qris_raw ||
     tenant?.metadata?.payment_settings?.raw_qris_string ||
     tenant?.metadata?.qris_raw ||
     tenant?.metadata?.raw_qris_string ||
-    tenant?.qris_content ||
-    tenant?.qris_payload ||
-    tenant?.qris_static_string ||
-    tenant?.metadata?.qris_content ||
-    tenant?.metadata?.qris_payload ||
-    tenant?.metadata?.qris_static_string ||
     tenant?.metadata?.qris?.static_qr ||
     tenant?.metadata?.payment_config?.qris_content ||
     tenant?.metadata?.payment_config?.raw_qris_string ||
@@ -751,7 +751,10 @@ export default function CheckoutPage({ params }: Props) {
   const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
 
   // Dynamic QRIS: pastikan selalu dinamis jika ada payload string EMVCo (000201...)
-  const candidateQris = (order?.qr_string && order.qr_string.startsWith('000201')) ? order.qr_string : fallbackQrisString;
+  // Prioritaskan payload milik tenant jika tersedia
+  const candidateQris = (fallbackQrisString && fallbackQrisString.startsWith('000201'))
+    ? fallbackQrisString
+    : ((order?.qr_string && order.qr_string.startsWith('000201')) ? order.qr_string : fallbackQrisString);
   const rawQrisValue = candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '';
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||

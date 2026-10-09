@@ -437,16 +437,16 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               }
 
               const staticQris =
+                (data as any)?.qris_payload ||
+                data?.metadata?.qris_payload ||
+                (data as any)?.qris_static_string ||
+                data?.metadata?.qris_static_string ||
+                (data as any)?.qris_content ||
+                data?.metadata?.qris_content ||
                 data?.metadata?.payment_settings?.qris_raw ||
                 data?.metadata?.payment_settings?.raw_qris_string ||
                 data?.metadata?.qris_raw ||
                 data?.metadata?.raw_qris_string ||
-                (data as any)?.qris_content ||
-                (data as any)?.qris_payload ||
-                (data as any)?.qris_static_string ||
-                data?.metadata?.qris_content ||
-                data?.metadata?.qris_payload ||
-                data?.metadata?.qris_static_string ||
                 data?.metadata?.qris?.static_qr ||
                 data?.metadata?.payment_config?.qris_content ||
                 data?.metadata?.payment_config?.raw_qris_string ||
@@ -705,6 +705,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         adminFee,
         uniqueCode: currentUniqueCode,
         paymentMethod,
+        tenantStaticQris: tenantStaticQris || undefined,
         affiliateCommission: 0,
         customerName,
         customerPhone,
@@ -1162,9 +1163,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               }
 
               // QRIS Rendering
-              const candidateQris = (paymentData.qr_string?.startsWith('000201') || paymentData.qrString?.startsWith('000201'))
-                ? (paymentData.qr_string || paymentData.qrString)
-                : tenantStaticQris;
+              const candidateQris = (tenantStaticQris && tenantStaticQris.startsWith('000201'))
+                ? tenantStaticQris
+                : ((paymentData.qr_string?.startsWith('000201') || paymentData.qrString?.startsWith('000201'))
+                    ? (paymentData.qr_string || paymentData.qrString)
+                    : tenantStaticQris);
               const candidateQrImage =
                 paymentData.qrCodeUrl ||
                 paymentData.qr_code_url ||

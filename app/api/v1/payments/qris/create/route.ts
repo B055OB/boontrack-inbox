@@ -85,117 +85,111 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin() || getSupabase();
     let resolvedTenantId: string | null = tenant_id || metadata?.tenant_id || null;
     let targetTenantSlug = cleanSlug;
+    let tenantRow: any = null;
 
     // Resolusi data tenant & tenant_id dari Supabase
     if (supabase && cleanSlug) {
       try {
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-        let tQuery = supabase.from('tenants').select('id, slug, metadata');
+        let tQuery = supabase.from('tenants').select('*');
         if (isUuid(cleanSlug)) {
           tQuery = tQuery.or(`slug.eq.${cleanSlug},id.eq.${cleanSlug}`);
         } else {
           tQuery = tQuery.eq('slug', cleanSlug);
         }
-        const { data: tenantData } = await tQuery.maybeSingle();
-        if (tenantData) {
-          resolvedTenantId = tenantData.id || resolvedTenantId;
-          targetTenantSlug = tenantData.slug || targetTenantSlug;
+        const { data: tData } = await tQuery.maybeSingle();
+        if (tData) {
+          tenantRow = tData;
+          resolvedTenantId = tData.id || resolvedTenantId;
+          targetTenantSlug = tData.slug || targetTenantSlug;
         }
       } catch (tErr) {
         console.warn('[Payments API] Supabase tenant resolution note:', tErr);
       }
     }
 
-    // 1. Coba delegasikan ke Backend Core Railway / Production jika aktif
     let qrString = '';
     let qrCodeUrl = '';
 
-    try {
-      const coreEndpoint = getBackendApiUrl('/api/v1/payments/qris/create');
-      const coreRes = await fetch(coreEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': targetTenantSlug || 'default'
-        },
-        body: JSON.stringify({
-          ...body,
-          external_id: orderId,
-          order_id: orderId,
-          amount: numAmount,
-          total_amount: numAmount,
-          unique_code: uniqueCode,
-          tenant_slug: targetTenantSlug,
-          tenant_id: resolvedTenantId,
-        }),
-        cache: 'no-store'
-      });
+    // 1. Dynamic EMVCo QRIS Payload Generator dari Merchant Supabase / Client Payload (Single Source of Truth)
+    // Sesuai ARCHITECTURE.md Bagian 14
+    const pcfg = tenantRow?.metadata?.payment_config;
+    const tenantStaticQris =
+      body.tenant_static_qris ||
+      body.tenantStaticQris ||
+      body.qris_payload ||
+      (tenantRow as any)?.qris_payload ||
+      tenantRow?.metadata?.qris_payload ||
+      (tenantRow as any)?.qris_static_string ||
+      tenantRow?.metadata?.qris_static_string ||
+      (tenantRow as any)?.qris_content ||
+      tenantRow?.metadata?.qris_content ||
+      tenantRow?.metadata?.payment_settings?.qris_raw ||
+      tenantRow?.metadata?.payment_settings?.raw_qris_string ||
+      tenantRow?.metadata?.qris_raw ||
+      tenantRow?.metadata?.raw_qris_string ||
+      tenantRow?.metadata?.qris?.static_qr ||
+      pcfg?.qris_content ||
+      pcfg?.raw_qris_string ||
+      pcfg?.static_qris_payload ||
+      tenantRow?.metadata?.static_qris_payload ||
+      '';
 
-      if (coreRes.ok) {
-        const coreData = await coreRes.json();
-        const candidateQr = coreData.qr_string || coreData.qr_content || '';
-        // Hindari mock LinkAja dari gateway sandbox eksternal
-        if (candidateQr && !candidateQr.includes('ID.LINKAJA.WWW')) {
-          qrString = candidateQr;
-          qrCodeUrl = coreData.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M` : '');
-        }
+    if (tenantStaticQris && tenantStaticQris.startsWith('000201')) {
+      qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
+      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M`;
+    } else {
+      const tenantQrisImageUrl =
+        (tenantRow as any)?.qris_image_url ||
+        (tenantRow as any)?.qris_url ||
+        (tenantRow as any)?.qris_image ||
+        tenantRow?.metadata?.qris_image_url ||
+        tenantRow?.metadata?.qris_url ||
+        tenantRow?.metadata?.qris_image ||
+        tenantRow?.metadata?.payment_settings?.qris ||
+        pcfg?.qris_image_url ||
+        pcfg?.manual_config?.qris_image_url ||
+        '';
+      if (tenantQrisImageUrl) {
+        qrString = tenantQrisImageUrl;
+        qrCodeUrl = tenantQrisImageUrl;
       }
-    } catch (coreErr) {
-      console.warn('[Payments API] Core backend QRIS forwarding note:', coreErr);
     }
 
-    // 2. Dynamic EMVCo QRIS Payload Generator dari Merchant Supabase (Single Source of Truth)
-    // Sesuai ARCHITECTURE.md Bagian 14
-    if (!qrString && supabase && targetTenantSlug) {
+    // 2. Jika tenant belum mengonfigurasi QRIS statis sendiri, delegasikan ke Backend Core / Gateway eksternal
+    if (!qrString) {
       try {
-        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-        let tQuery = supabase.from('tenants').select('*');
-        if (isUuid(targetTenantSlug)) {
-          tQuery = tQuery.or(`slug.eq.${targetTenantSlug},id.eq.${targetTenantSlug}`);
-        } else {
-          tQuery = tQuery.eq('slug', targetTenantSlug);
-        }
-        const { data: tenantData } = await tQuery.maybeSingle();
+        const coreEndpoint = getBackendApiUrl('/api/v1/payments/qris/create');
+        const coreRes = await fetch(coreEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': targetTenantSlug || 'default'
+          },
+          body: JSON.stringify({
+            ...body,
+            external_id: orderId,
+            order_id: orderId,
+            amount: numAmount,
+            total_amount: numAmount,
+            unique_code: uniqueCode,
+            tenant_slug: targetTenantSlug,
+            tenant_id: resolvedTenantId,
+          }),
+          cache: 'no-store'
+        });
 
-        const pcfg = tenantData?.metadata?.payment_config;
-        const tenantStaticQris =
-          tenantData?.metadata?.payment_settings?.qris_raw ||
-          tenantData?.metadata?.payment_settings?.raw_qris_string ||
-          tenantData?.metadata?.qris_raw ||
-          tenantData?.metadata?.raw_qris_string ||
-          (tenantData as any)?.qris_content ||
-          (tenantData as any)?.qris_payload ||
-          (tenantData as any)?.qris_static_string ||
-          tenantData?.metadata?.qris_content ||
-          tenantData?.metadata?.qris_payload ||
-          tenantData?.metadata?.qris_static_string ||
-          tenantData?.metadata?.qris?.static_qr ||
-          pcfg?.qris_content ||
-          pcfg?.raw_qris_string ||
-          pcfg?.static_qris_payload ||
-          tenantData?.metadata?.static_qris_payload ||
-          '';
-
-        if (tenantStaticQris && tenantStaticQris.startsWith('000201')) {
-          qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
-        } else {
-          const tenantQrisImageUrl =
-            tenantData?.metadata?.payment_settings?.qris ||
-            (tenantData as any)?.qris_image_url ||
-            (tenantData as any)?.qris_url ||
-            (tenantData as any)?.qris_image ||
-            tenantData?.metadata?.qris_image_url ||
-            tenantData?.metadata?.qris_url ||
-            tenantData?.metadata?.qris_image ||
-            pcfg?.qris_image_url ||
-            pcfg?.manual_config?.qris_image_url ||
-            '';
-          if (tenantQrisImageUrl) {
-            qrString = tenantQrisImageUrl;
+        if (coreRes.ok) {
+          const coreData = await coreRes.json();
+          const candidateQr = coreData.qr_string || coreData.qr_content || '';
+          // Hindari mock LinkAja dari gateway sandbox eksternal
+          if (candidateQr && !candidateQr.includes('ID.LINKAJA.WWW')) {
+            qrString = candidateQr;
+            qrCodeUrl = coreData.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M` : '');
           }
         }
-      } catch (dbErr) {
-        console.warn('[Payments API] Supabase tenant QRIS resolution note:', dbErr);
+      } catch (coreErr) {
+        console.warn('[Payments API] Core backend QRIS forwarding note:', coreErr);
       }
     }
 

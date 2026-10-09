@@ -54,7 +54,7 @@ export function generateDynamicQRIS(staticQris: string, amount: number): string 
     raw = raw.substring(0, checksumTagIdx);
   }
 
-  // b) Bersihkan tag 54 lama yang mungkin sudah ada sebelum Tag 58
+  // b) Bersihkan tag 54 lama yang mungkin sudah ada sebelum Tag 58 (antara Tag 53 dan Tag 58)
   let tag58Idx = raw.indexOf('5802ID');
   if (tag58Idx === -1) {
     tag58Idx = raw.indexOf('5802');
@@ -63,7 +63,17 @@ export function generateDynamicQRIS(staticQris: string, amount: number): string 
   if (tag58Idx !== -1) {
     let before58 = raw.substring(0, tag58Idx);
     const after58 = raw.substring(tag58Idx);
-    before58 = before58.replace(/54\d{2}[0-9]+/, '');
+    // HANYA bersihkan Tag 54 yang berada di antara Tag 53 dan Tag 58 (atau tepat sebelum Tag 58)
+    // JANGAN menghapus substring '54' di dalam Tag 26 / Tag 51 (seperti ID NMID merchant)
+    const tag53Idx = before58.lastIndexOf('5303');
+    if (tag53Idx !== -1) {
+      const before53End = before58.substring(0, tag53Idx + 7);
+      let between53And58 = before58.substring(tag53Idx + 7);
+      between53And58 = between53And58.replace(/54\d{2}[0-9]+/, '');
+      before58 = before53End + between53And58;
+    } else {
+      before58 = before58.replace(/54\d{2}[0-9]+$/, '');
+    }
     raw = before58 + after58;
   }
 

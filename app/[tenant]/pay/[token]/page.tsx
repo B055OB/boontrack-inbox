@@ -301,16 +301,21 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
 
   // QRIS calculation
   const rawStaticQris =
+    tenant?.qris_payload ||
+    tenant?.metadata?.qris_payload ||
+    tenant?.qris_static_string ||
+    tenant?.metadata?.qris_static_string ||
     tenant?.metadata?.payment_config?.raw_qris_string ||
     tenant?.metadata?.emvco_qris?.raw_string ||
     tenant?.metadata?.raw_qris_string ||
-    tenant?.metadata?.qris_static_string ||
-    tenant?.metadata?.qris_payload ||
-    tenant?.qris_payload ||
+    tenant?.qris_content ||
+    tenant?.metadata?.qris_content ||
     '';
 
   const orderQrString = order?.qr_string || '';
-  const candidateQris = (orderQrString && orderQrString.startsWith('000201')) ? orderQrString : rawStaticQris;
+  const candidateQris = (rawStaticQris && rawStaticQris.startsWith('000201'))
+    ? rawStaticQris
+    : ((orderQrString && orderQrString.startsWith('000201')) ? orderQrString : rawStaticQris);
   const rawQrisValue = candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '';
   const orderQrImageUrl = order?.qr_code_url || (orderQrString && orderQrString.startsWith('http') ? orderQrString : '');
 

@@ -78,6 +78,7 @@ export interface CreateOrderPayload {
     variantName?: string | null;
     selectedModifiers?: any[];
   }>;
+  tenantStaticQris?: string;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -90,11 +91,15 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let resolvedTenantId: string | null = null;
   let tenantRowData: any = null;
   try {
-    const { data: tenantRow } = await supabase
-      .from('tenants')
-      .select('*')
-      .eq('slug', payload.tenantSlug)
-      .maybeSingle();
+    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    const tIdentifier = (payload.tenantSlug || "").trim();
+    let tQuery = supabase.from('tenants').select('*');
+    if (isUuid(tIdentifier)) {
+      tQuery = tQuery.or(`slug.eq.${tIdentifier},id.eq.${tIdentifier}`);
+    } else {
+      tQuery = tQuery.eq('slug', tIdentifier);
+    }
+    const { data: tenantRow } = await tQuery.maybeSingle();
     tenantRowData = tenantRow;
     resolvedTenantId = tenantRow?.id || null;
   } catch (tenantResolveErr) {
@@ -516,135 +521,125 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let invoiceUrl = `/checkout/${orderId}`;
 
   if (paymentMethod === 'qris') {
-    const appBaseUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-    const paymentEndpoints = [
-      getBackendApiUrl("/api/v1/payments/qris/create"),
-      `${appBaseUrl}/api/v1/payments/qris/create`,
-      "https://api.boontrack.com/api/v1/payments/qris/create"
-    ].filter(Boolean);
+    // 1. Prioritas Utama: Konfigurasi QRIS langsung dari data Tenant Supabase / Client Payload (Single Source of Truth)
+    const pcfg = tenantRowData?.metadata?.payment_config;
+    let tenantStaticQris =
+      payload.tenantStaticQris ||
+      (tenantRowData as any)?.qris_payload ||
+      tenantRowData?.metadata?.qris_payload ||
+      (tenantRowData as any)?.qris_static_string ||
+      tenantRowData?.metadata?.qris_static_string ||
+      (tenantRowData as any)?.qris_content ||
+      tenantRowData?.metadata?.qris_content ||
+      tenantRowData?.metadata?.payment_settings?.qris_raw ||
+      tenantRowData?.metadata?.payment_settings?.raw_qris_string ||
+      tenantRowData?.metadata?.qris_raw ||
+      tenantRowData?.metadata?.raw_qris_string ||
+      tenantRowData?.metadata?.qris?.static_qr ||
+      pcfg?.qris_content ||
+      pcfg?.raw_qris_string ||
+      pcfg?.static_qris_payload ||
+      tenantRowData?.metadata?.static_qris_payload ||
+      "";
 
-    const requestBody = JSON.stringify({
-      external_id: orderId,
-      order_id: orderId,
-      amount: grossAmount,
-      total_amount: grossAmount,
-      unique_code: uniqueCode,
-      tenant_slug: payload.tenantSlug,
-      tenant_id: resolvedTenantId,
-      customer_phone: payload.customerPhone,
-      customer_name: payload.customerName,
-      customer_email: payload.customerEmail || "",
-      product_id: resolvedProductId,
-      product_name: payload.productTitle,
-      payment_method: 'QRIS',
-      payment_status: 'PENDING',
-      order_status: 'PENDING',
-      metadata: {
-        customer_email: payload.customerEmail || null,
-        affiliate_code: payload.affiliateCode || null,
-        payment_method: paymentMethod,
-        base_price: basePrice,
-        product_discount: productDiscount,
-        net_product_price: netProductPrice,
-        shipping_cost: shippingCost,
-        shipping_subsidy: shippingSubsidy,
-        net_shipping_cost: netShippingCost,
-        voucher_code: payload.voucherCode || null,
-        admin_fee: adminFee,
+    let tenantQrisImageUrl =
+      (tenantRowData as any)?.qris_image_url ||
+      (tenantRowData as any)?.qris_url ||
+      (tenantRowData as any)?.qris_image ||
+      tenantRowData?.metadata?.qris_image_url ||
+      tenantRowData?.metadata?.qris_url ||
+      tenantRowData?.metadata?.qris_image ||
+      tenantRowData?.metadata?.payment_settings?.qris ||
+      pcfg?.qris_image_url ||
+      pcfg?.manual_config?.qris_image_url ||
+      "";
+
+    if (tenantStaticQris && tenantStaticQris.startsWith("000201")) {
+      // Injeksi nominal (Tag 54) + hitung ulang CRC16 menggunakan base string QRIS merchant langsung
+      qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
+      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+    } else if (tenantQrisImageUrl) {
+      qrString = tenantQrisImageUrl;
+      qrCodeUrl = tenantQrisImageUrl;
+    }
+
+    // 2. Jika tenant belum memiliki QRIS statis toko sendiri, panggil Payment Gateway / Backend Core
+    if (!qrString && !qrCodeUrl) {
+      const appBaseUrl = typeof window !== 'undefined'
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+      const paymentEndpoints = [
+        getBackendApiUrl("/api/v1/payments/qris/create"),
+        `${appBaseUrl}/api/v1/payments/qris/create`,
+        "https://api.boontrack.com/api/v1/payments/qris/create"
+      ].filter(Boolean);
+
+      const requestBody = JSON.stringify({
+        external_id: orderId,
+        order_id: orderId,
+        amount: grossAmount,
+        total_amount: grossAmount,
         unique_code: uniqueCode,
-        affiliate_commission: affiliateCommission,
-        order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
-        tracking: payload.tracking || {},
-        tracking_context: resolvedTrackingContext
-      }
-    });
-
-    for (const endpoint of paymentEndpoints) {
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: requestBody
-        });
-
-        if (res.ok) {
-          const paymentResult = await res.json();
-          qrString = paymentResult.qr_string || paymentResult.qr_content || "";
-          qrCodeUrl = paymentResult.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H` : "");
-          const remoteInvoice = paymentResult.invoice_url || paymentResult.payment_url || "";
-          if (remoteInvoice) invoiceUrl = remoteInvoice;
-          if (qrString || qrCodeUrl) break;
+        tenant_slug: payload.tenantSlug,
+        tenant_id: resolvedTenantId,
+        tenant_static_qris: tenantStaticQris || undefined,
+        customer_phone: payload.customerPhone,
+        customer_name: payload.customerName,
+        customer_email: payload.customerEmail || "",
+        product_id: resolvedProductId,
+        product_name: payload.productTitle,
+        payment_method: 'QRIS',
+        payment_status: 'PENDING',
+        order_status: 'PENDING',
+        metadata: {
+          customer_email: payload.customerEmail || null,
+          affiliate_code: payload.affiliateCode || null,
+          payment_method: paymentMethod,
+          base_price: basePrice,
+          product_discount: productDiscount,
+          net_product_price: netProductPrice,
+          shipping_cost: shippingCost,
+          shipping_subsidy: shippingSubsidy,
+          net_shipping_cost: netShippingCost,
+          voucher_code: payload.voucherCode || null,
+          admin_fee: adminFee,
+          unique_code: uniqueCode,
+          affiliate_commission: affiliateCommission,
+          order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
+          tracking: payload.tracking || {},
+          tracking_context: resolvedTrackingContext
         }
-      } catch (apiErr) {
-        console.warn(`[Checkout Service] Error calling ${endpoint}:`, apiErr);
+      });
+
+      for (const endpoint of paymentEndpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody
+          });
+
+          if (res.ok) {
+            const paymentResult = await res.json();
+            qrString = paymentResult.qr_string || paymentResult.qr_content || "";
+            qrCodeUrl = paymentResult.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H` : "");
+            const remoteInvoice = paymentResult.invoice_url || paymentResult.payment_url || "";
+            if (remoteInvoice) invoiceUrl = remoteInvoice;
+            if (qrString || qrCodeUrl) break;
+          }
+        } catch (apiErr) {
+          console.warn(`[Checkout Service] Error calling ${endpoint}:`, apiErr);
+        }
       }
     }
 
     if (!qrString && !qrCodeUrl) {
-      // Coba ambil konfigurasi QRIS merchant langsung dari Supabase
-      let tenantStaticQris = "";
-      let tenantQrisImageUrl = "";
-      try {
-        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-        const tIdentifier = (payload.tenantSlug || "").trim();
-        let tQuery = supabase.from("tenants").select("*");
-        if (isUuid(tIdentifier)) {
-          tQuery = tQuery.or(`slug.eq.${tIdentifier},id.eq.${tIdentifier}`);
-        } else {
-          tQuery = tQuery.eq("slug", tIdentifier);
-        }
-        const { data: tenantData } = await tQuery.maybeSingle();
-
-        const pcfg = tenantData?.metadata?.payment_config;
-        tenantStaticQris =
-          tenantData?.metadata?.payment_settings?.qris_raw ||
-          tenantData?.metadata?.payment_settings?.raw_qris_string ||
-          tenantData?.metadata?.qris_raw ||
-          tenantData?.metadata?.raw_qris_string ||
-          (tenantData as any)?.qris_content ||
-          (tenantData as any)?.qris_payload ||
-          (tenantData as any)?.qris_static_string ||
-          tenantData?.metadata?.qris_content ||
-          tenantData?.metadata?.qris_payload ||
-          tenantData?.metadata?.qris_static_string ||
-          tenantData?.metadata?.qris?.static_qr ||
-          pcfg?.qris_content ||
-          pcfg?.raw_qris_string ||
-          pcfg?.static_qris_payload ||
-          tenantData?.metadata?.static_qris_payload ||
-          "";
-        tenantQrisImageUrl =
-          (tenantData as any)?.qris_image_url ||
-          (tenantData as any)?.qris_url ||
-          (tenantData as any)?.qris_image ||
-          tenantData?.metadata?.qris_image_url ||
-          tenantData?.metadata?.qris_url ||
-          tenantData?.metadata?.qris_image ||
-          tenantData?.metadata?.payment_settings?.qris ||
-          pcfg?.qris_image_url ||
-          pcfg?.manual_config?.qris_image_url ||
-          "";
-      } catch (tErr) {
-        console.warn("[Checkout Service] Failed to fetch tenant QRIS:", tErr);
-      }
-
-      if (tenantStaticQris) {
-        qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
-        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
-      } else if (tenantQrisImageUrl) {
-        // Fallback otomatis: jika tenant mengunggah gambar QRIS statis toko langsung
-        qrString = tenantQrisImageUrl;
-        qrCodeUrl = tenantQrisImageUrl;
-      } else {
-        // Controlled Walkthrough / Mock Sandbox Provider Simulator
-        const sandboxMockQris =
-          process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
-          '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
-        qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
-        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
-      }
+      // Mock Sandbox Provider Simulator fallback jika tidak ada konfigurasi sama sekali
+      const sandboxMockQris =
+        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
+        '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+      qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
+      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     } else if (qrString) {
       if (qrString.startsWith("000201")) {
         // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid

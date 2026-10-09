@@ -1239,11 +1239,13 @@ export default function TeamChatTab({
 
       // 1. Ekstraksi string static QRIS tenant & konversi ke Dynamic QRIS terkunci angka pas
       const rawStaticQris =
+        tenantPaymentData?.qris_payload ||
+        tenantPaymentData?.metadata?.qris_payload ||
+        tenantPaymentData?.qris_static_string ||
+        tenantPaymentData?.metadata?.qris_static_string ||
         tenantPaymentData?.metadata?.payment_config?.raw_qris_string ||
         tenantPaymentData?.metadata?.emvco_qris?.raw_string ||
         tenantPaymentData?.metadata?.raw_qris_string ||
-        tenantPaymentData?.metadata?.qris_static_string ||
-        tenantPaymentData?.metadata?.qris_payload ||
         '';
 
       if (!rawStaticQris) {

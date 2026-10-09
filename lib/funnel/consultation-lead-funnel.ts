@@ -1222,7 +1222,7 @@ export async function processConsultationLeadFunnel(
           orderId = orderRes.orderId;
         }
 
-        const staticQris = meta.qris_payload || meta.qris_static_string || '';
+        const staticQris = (tenant as any)?.qris_payload || meta?.qris_payload || (tenant as any)?.qris_static_string || meta?.qris_static_string || '';
         if (staticQris) {
           const dynamicQris = generateDynamicQRIS(staticQris, priceNumber);
           qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(dynamicQris)}&size=400&ecLevel=H`;
@@ -1231,7 +1231,7 @@ export async function processConsultationLeadFunnel(
         }
       } catch (orderErr) {
         console.warn('[ConsultationFunnel] Order creation fallback:', orderErr);
-        const staticQris = meta.qris_payload || meta.qris_static_string || '';
+        const staticQris = (tenant as any)?.qris_payload || meta?.qris_payload || (tenant as any)?.qris_static_string || meta?.qris_static_string || '';
         if (staticQris) {
           const dynamicQris = generateDynamicQRIS(staticQris, priceNumber);
           qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(dynamicQris)}&size=400&ecLevel=H`;
