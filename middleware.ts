@@ -396,7 +396,7 @@ export async function middleware(req: NextRequest) {
     if (pathname === '/favicon.ico') {
       if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
         const url = req.nextUrl.clone();
-        url.pathname = '/app-brand/favicon.ico';
+        url.pathname = '/branding/app/favicon.ico';
         return NextResponse.rewrite(url);
       }
       if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
@@ -411,6 +411,11 @@ export async function middleware(req: NextRequest) {
       }
     }
     if (pathname === '/apple-touch-icon.png') {
+      if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/branding/app/apple-touch-icon.png';
+        return NextResponse.rewrite(url);
+      }
       if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
         const url = req.nextUrl.clone();
         url.pathname = '/branding/creator/icon.png';
@@ -435,7 +440,7 @@ export async function middleware(req: NextRequest) {
       }
       if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
         const url = req.nextUrl.clone();
-        url.pathname = '/app-portal/site.webmanifest';
+        url.pathname = '/branding/app/site.webmanifest';
         return NextResponse.rewrite(url);
       }
     }
@@ -977,17 +982,17 @@ export async function middleware(req: NextRequest) {
     // Favicon & Icons
     if (pathname === '/favicon.ico') {
       const url = req.nextUrl.clone();
-      url.pathname = '/app-portal/favicon.ico';
+      url.pathname = '/branding/app/favicon.ico';
       return NextResponse.rewrite(url);
     }
     if (pathname === '/apple-touch-icon.png' || pathname === '/apple-icon.png') {
       const url = req.nextUrl.clone();
-      url.pathname = '/app-portal/apple-icon.png';
+      url.pathname = '/branding/app/apple-icon.png';
       return NextResponse.rewrite(url);
     }
     if (pathname === '/icon.png') {
       const url = req.nextUrl.clone();
-      url.pathname = '/app-portal/icon.png';
+      url.pathname = '/branding/app/icon.png';
       return NextResponse.rewrite(url);
     }
 
