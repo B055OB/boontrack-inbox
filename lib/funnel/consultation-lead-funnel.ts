@@ -1053,7 +1053,8 @@ export async function processConsultationLeadFunnel(
     const rawIntent = clinicIntake.data.intent || detectPediatricTriageIntent(rawMsg) || 'FEEDING_GTM_BB';
     const lockedProduct = resolveTriageLockedProduct(rawIntent, products, meta);
     const fallbackDomain = tenant.slug ? `shop.boontrack.com/${tenant.slug}` : 'shop.boontrack.com';
-    const domain = meta.custom_domain || fallbackDomain;
+    const tenantCustomDomain = (tenant.custom_domain || meta.custom_domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const domain = tenantCustomDomain || fallbackDomain;
     const priceNumber = Number(lockedProduct.price || lockedProduct.promo_price || 150000);
     const priceStr = `Rp ${priceNumber.toLocaleString('id-ID')}`;
 
@@ -1439,10 +1440,15 @@ export async function processConsultationLeadFunnel(
   });
 
   if (!checkoutUrl) {
+    const tenantCustomDomain = (tenant.custom_domain || meta.custom_domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const baseStoreUrl = tenantCustomDomain
+      ? `https://${tenantCustomDomain}`
+      : `https://shop.boontrack.com/${tenant.slug || tenant.id}`;
+
     if (consultProduct?.slug) {
-      checkoutUrl = `https://shop.boontrack.com/${tenant.slug || tenant.id}/p/${consultProduct.slug}`;
+      checkoutUrl = `${baseStoreUrl}/p/${consultProduct.slug}`;
     } else {
-      checkoutUrl = `https://shop.boontrack.com/${tenant.slug || tenant.id}`;
+      checkoutUrl = baseStoreUrl;
     }
   }
 
@@ -1644,7 +1650,7 @@ export async function processConsultationLeadFunnel(
     /^(halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|tes|test)\b/i.test(normalizedMsg);
 
   if (isShortGreeting) {
-    const rawSlug = (checkoutUrl || '').replace('https://shop.boontrack.com/', '').split('/')[0];
+    const rawSlug = (checkoutUrl || '').replace(/^https?:\/\/[^\/]+\//, '').split('/')[0];
     const isSlugUuid = Boolean(rawSlug && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(rawSlug));
     const cleanCheckoutUrl = !isSlugUuid && checkoutUrl ? checkoutUrl : '';
 

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
-import { getTenantCheckoutUrl, getTenantActionUrl, getTenantBaseUrl } from '@/lib/checkout-link';
+import { getTenantActionUrl } from '@/lib/checkout-link';
+import { getProductPageUrl } from '@/lib/storefront-urls';
 import {
   InteractiveMenu,
   InteractiveMenuOption,
@@ -677,7 +678,7 @@ export async function processZeroAiMessage(
   const isUuid = isValidUuid(slug);
   let tenantQuery = supabase
     .from('tenants')
-    .select('id, slug, name, category, business_type, tier, metadata');
+    .select('id, slug, name, category, business_type, tier, custom_domain, metadata');
   if (isUuid) {
     if (typeof (tenantQuery as any).or === 'function') {
       tenantQuery = tenantQuery.or(`id.eq.${slug},slug.eq.${slug}`);
@@ -823,9 +824,15 @@ export async function processZeroAiMessage(
     primaryProduct = { id: meta.product.id, slug: meta.product.slug };
   }
 
+  const tenantCustomDomain =
+    tenant.custom_domain ||
+    tenant.metadata?.custom_domain ||
+    meta.custom_domain ||
+    null;
+
   const tenantDomainInfo = {
     slug: tenant.slug,
-    custom_domain: tenant.metadata?.custom_domain || null,
+    custom_domain: tenantCustomDomain,
     category,
     business_type: tenant.business_type,
   };
@@ -1003,17 +1010,20 @@ export async function processZeroAiMessage(
         const priceNum = Number(p.promo_price || p.price || 0);
         const priceStr = `Rp ${priceNum.toLocaleString('id-ID')}`;
         const desc = p.description ? ` - ${p.description.slice(0, 80)}` : '';
-        return `*${idx + 1}.* *${p.title || p.name}*\n   💵 Harga: *${priceStr}*${desc}`;
+        const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
+        return `*${idx + 1}.* *${p.title || p.name}*\n   💵 Harga: *${priceStr}*${desc}\n   🔗 Link: ${pUrl}`;
       });
     } else if (Array.isArray(meta.products) && meta.products.length > 0) {
       productLines = meta.products.map((p: any, idx: number) => {
         const priceNum = Number(p.promo_price || p.price || 0);
-        return `*${idx + 1}.* *${p.name || p.title}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*`;
+        const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
+        return `*${idx + 1}.* *${p.name || p.title}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*\n   🔗 Link: ${pUrl}`;
       });
     } else if (meta.product?.name) {
       const p = meta.product;
       const priceNum = Number(p.price || 0);
-      productLines.push(`*1.* *${p.name}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*`);
+      const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
+      productLines.push(`*1.* *${p.name}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*\n   🔗 Link: ${pUrl}`);
     }
 
     let replyText = '';

@@ -1643,11 +1643,11 @@ Sesuai dengan ketentuan layanan Google Analytics & Google Tag Manager (Terms of 
 1. **Larangan Mutlak Halusinasi Tautan**:
    - Model AI/LLM dilarang keras mengarang, mereka-reka, atau memprediksi URL eksternal fiktif (contoh terlarang: `https://[tenant].com/...` atau URL website yang tidak terdaftar di database).
    - Seluruh URL toko/produk yang dikirimkan ke pembeli **WAJIB** bersumber 100% dari Single Source of Truth (Database Supabase: tabel `tenants` dan `products`).
-2. **Deterministic Context Injection**:
-   - Context engine WhatsApp & AI Gateway wajib menyuntikkan URL resmi produk secara terstruktur ke dalam prompt grounding:
-     - Format resmi: `https://shop.boontrack.com/{tenant_slug}/p/{product_slug}`
+2. **Deterministic Context Injection & Hierarki Domain Toko (§25.3 / §52)**:
+   - Context engine WhatsApp & AI Gateway wajib menyuntikkan URL resmi produk secara terstruktur ke dalam prompt grounding.
+   - **Format resmi wajib menggunakan hierarki**: jika tenant memiliki `custom_domain` aktif, gunakan `https://{custom_domain}/p/{product_slug}`. Jika tidak, fallback ke `https://shop.boontrack.com/{tenant_slug}/p/{product_slug}` (sesuai helper resmi `getProductPageUrl(tenant.slug, product.slug, tenant.custom_domain)` dari `lib/storefront-urls.ts`).
    - Aturan sistem (System Prompt Guardrail):
-     > "JANGAN PERNAH mengarang link checkout atau domain sendiri. Hanya gunakan URL resmi dari katalog: `https://shop.boontrack.com/{tenant_slug}/p/{product_slug}`."
+     > "JANGAN PERNAH mengarang link checkout atau domain sendiri. Hanya gunakan URL resmi dari katalog yang telah digrounding oleh sistem (mengikuti hierarki custom domain jika ada, atau fallback platform domain resmi)."
 
 ### 21.2 Native Lead Collection & Closing State Machine (Zero "Hello hijau" Bug)
 1. **Deteksi Niat Beli (Purchase Intent)**:

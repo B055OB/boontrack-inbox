@@ -42,6 +42,7 @@ export interface CampaignRouteRule {
 export interface TenantDecisionTreeConfig {
   tenant_id: string;
   tenant_slug: string;
+  custom_domain?: string | null;
   store_name: string;
   category: string;
   business_type?: string;
@@ -318,7 +319,7 @@ export async function getTenantDecisionTree(
   if (!supabase) return null;
 
   const isUuid = isValidUuid(cleanId);
-  let query = supabase.from('tenants').select('id, slug, name, category, business_type, metadata');
+  let query = supabase.from('tenants').select('id, slug, name, category, business_type, custom_domain, metadata');
   if (isUuid) {
     query = query.or(`id.eq.${cleanId},slug.eq.${cleanId}`);
   } else {
@@ -352,6 +353,7 @@ export async function getTenantDecisionTree(
   return {
     tenant_id: tenant.id,
     tenant_slug: tenant.slug,
+    custom_domain: tenant.custom_domain || meta.custom_domain || null,
     store_name: storeName,
     category,
     business_type: tenant.business_type,
@@ -458,7 +460,12 @@ export async function routeTenantInboundMessage(params: {
     const clinicDoctorTeam = resolveClinicDoctorTeam(treeConfig.metadata);
     const clinicPaymentAcct = resolveClinicPaymentAccount(treeConfig.metadata);
     const screeningUrl = treeConfig.metadata?.screening_url || CLINIC_OFFICIAL_SCREENING_URL;
-    const checkoutDomain = treeConfig.metadata?.custom_domain || `shop.boontrack.com/${treeConfig.tenant_slug}`;
+    const checkoutDomain =
+      (treeConfig.custom_domain || treeConfig.metadata?.custom_domain || '')
+        .trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/+$/, '') ||
+      `shop.boontrack.com/${treeConfig.tenant_slug}`;
     const clinicSchedule =
       treeConfig.metadata?.schedule ||
       treeConfig.metadata?.operational_hours ||

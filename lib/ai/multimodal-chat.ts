@@ -151,7 +151,7 @@ export async function processMultimodalChat(
       if (isIdUuid) {
         const { data: tById } = await supabase
           .from('tenants')
-          .select('id, slug, name, category, business_type, metadata')
+          .select('id, slug, name, category, business_type, custom_domain, metadata')
           .eq('id', slug)
           .maybeSingle();
         if (tById?.id || tById?.slug) {
@@ -162,7 +162,7 @@ export async function processMultimodalChat(
       if (!t) {
         const { data: tBySlug } = await supabase
           .from('tenants')
-          .select('id, slug, name, category, business_type, metadata')
+          .select('id, slug, name, category, business_type, custom_domain, metadata')
           .eq('slug', slug)
           .maybeSingle();
         if (tBySlug?.id || tBySlug?.slug) {
@@ -190,7 +190,7 @@ export async function processMultimodalChat(
 
       tenantDomainInfo = {
         slug: t?.slug || slug,
-        custom_domain: t?.metadata?.custom_domain || null,
+        custom_domain: t?.custom_domain || t?.metadata?.custom_domain || null,
       };
       tenantMetadata = t?.metadata || {};
       tenantProducts = Array.isArray(tenantMetadata.products)
@@ -786,13 +786,27 @@ export async function processMultimodalChat(
       let productCatalogText = '';
       const metaProducts: any[] = tenantProducts;
 
+      const tenantCustomDomain =
+        (t as any)?.custom_domain ||
+        tenantMetadata?.custom_domain ||
+        tenantDomainInfo.custom_domain ||
+        null;
+
+      const cleanCustomDomain = tenantCustomDomain
+        ? String(tenantCustomDomain).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+        : null;
+
+      const baseStoreUrl = cleanCustomDomain
+        ? `https://${cleanCustomDomain}`
+        : `https://shop.boontrack.com/${slug}`;
+
       if (metaProducts.length > 0) {
         productCatalogText = metaProducts
           .map((p: any) => {
             const pSlug = p.slug || p.id || '';
             const pUrl = pSlug
-              ? `https://shop.boontrack.com/${slug}/p/${pSlug}`
-              : `https://shop.boontrack.com/${slug}`;
+              ? `${baseStoreUrl}/p/${pSlug}`
+              : baseStoreUrl;
             return `• ${p.name || p.title || 'Paket'}: Rp ${Number(
               p.promo_price || p.price || 0
             ).toLocaleString('id-ID')}${
@@ -815,8 +829,8 @@ export async function processMultimodalChat(
                 .map((p: any) => {
                   const pSlug = p.slug || p.id || '';
                   const pUrl = pSlug
-                    ? `https://shop.boontrack.com/${slug}/p/${pSlug}`
-                    : `https://shop.boontrack.com/${slug}`;
+                    ? `${baseStoreUrl}/p/${pSlug}`
+                    : baseStoreUrl;
                   return `• ${p.title || p.name || 'Paket'}: Rp ${Number(
                     p.promo_price || p.price || 0
                   ).toLocaleString('id-ID')}${
@@ -948,7 +962,7 @@ ${guards ? `\nStrict Guardrails (ATURAN MUTLAK):\n- ${guards}\n` : ''}
 ${greetingMessage ? `\nSalam Pembuka Standar Toko: "${greetingMessage}"\n` : ''}
 
 INFORMASI RESMI TOKO & TAUTAN WEB:
-- Website Toko Resmi: https://shop.boontrack.com/${slug}
+- Website Toko Resmi: ${baseStoreUrl}
 - Link Checkout Utama: ${checkoutUrl}
 
 Katalog Produk & Layanan RESMI:

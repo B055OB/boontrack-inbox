@@ -1,3 +1,5 @@
+import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
+
 export interface VoucherConfig {
   code: string;
   discount_type: 'nominal' | 'percentage';
@@ -1358,6 +1360,61 @@ export function safeJsonStringify(val: any, indent?: number): string {
       indent
     );
   }
+}
+
+/**
+ * Resolves the dynamic canonical public URL for a product or storefront based on tenant custom domain.
+ * ADR §54 & §21.1 / §25.3 Compliant.
+ */
+export function resolveTenantProductUrl(
+  tenant: { slug: string; custom_domain?: string | null; metadata?: any },
+  product?: { slug?: string; id?: string | number } | null
+): string {
+  const customDomain =
+    tenant.custom_domain ||
+    tenant.metadata?.custom_domain ||
+    null;
+
+  const productSlug = product?.slug || (product?.id ? String(product.id) : '');
+  if (productSlug) {
+    return getProductPageUrl(tenant.slug, productSlug, customDomain);
+  }
+  return getStorefrontUrl(tenant.slug, customDomain);
+}
+
+/**
+ * Generates the structured catalog grounding text for AI bot knowledge injection.
+ * Ensures all product links dynamically adhere to tenant custom domain hierarchy (§21.1 / §25.3).
+ */
+export function formatProductCatalogForBotKnowledge(
+  tenant: { slug: string; custom_domain?: string | null; metadata?: any },
+  products: any[]
+): string {
+  if (!Array.isArray(products) || products.length === 0) return '';
+
+  const customDomain =
+    tenant.custom_domain ||
+    tenant.metadata?.custom_domain ||
+    null;
+
+  const cleanDomain = customDomain
+    ? String(customDomain).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+    : null;
+
+  const baseUrl = cleanDomain
+    ? `https://${cleanDomain}`
+    : `https://shop.boontrack.com/${tenant.slug}`;
+
+  return products
+    .map((p: any) => {
+      const pSlug = p.slug || p.id || '';
+      const fullUrl = pSlug ? `${baseUrl}/p/${pSlug}` : baseUrl;
+      const priceNum = Number(p.promo_price || p.price || 0);
+      const priceStr = priceNum > 0 ? `Rp ${priceNum.toLocaleString('id-ID')}` : 'Gratis';
+      const desc = p.description ? ` — ${p.description}` : '';
+      return `• ${p.name || p.title || 'Paket'}: ${priceStr}${desc}\n  Link Checkout Resmi: ${fullUrl}`;
+    })
+    .join('\n\n');
 }
 
 

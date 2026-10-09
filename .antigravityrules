@@ -1,0 +1,22 @@
+# ANTIGRAVITY MULTI-TENANT ARCHITECTURE & GOVERNANCE RULES
+
+## 1. BARREL EXPORT PROHIBITION (ANTI-TDZ)
+- DILARANG KERAS menggunakan barrel export sapu jagat (`@/components/index`, `@/lib/index`, `**/components/index`, `**/lib/index`).
+- Selalu import langsung dari file modul spesifik (contoh: `import { getProductPageUrl } from '@/lib/storefront-urls'`).
+- Mencegah siklus sirkular (Circular Dependency) dan Turbopack Temporal Dead Zone (TDZ: "Cannot access 'n' before initialization").
+
+## 2. HERMETIC DYNAMIC IMPORTS
+- Seluruh template halaman storefront (`PersonalAuthorityTemplate`, `PublicServicePortalTemplate`, `MicrositeBioTemplate`, `StorefrontTemplate`) dan modal berat (CheckoutModal, BuilderModal, Studio, dsb.) WAJIB diimpor menggunakan `next/dynamic` dengan `{ ssr: false }`.
+- Widget turunan dalam template (seperti `ScheduleBookingWidget`, `InstagramVisualGrid`, `FloatingWebchat`) WAJIB diimpor secara dinamis (`dynamic(..., { ssr: false })`).
+- Dilarang menempatkan deklarasi variabel modul (`const`, `let`, objek) di atas atau di antara static `import` statements. Semua `import` statis wajib berada di posisi paling atas file.
+
+## 3. DYNAMIC TENANT DOMAIN RESOLVER (RULE 2 & §25.3 / §52)
+- DILARANG melakukan hardcoding platform domain `https://shop.boontrack.com` untuk produk atau storefront jika tenant memiliki custom domain.
+- Selalu gunakan resolver resmi hierarki custom domain:
+  - Jika tenant memiliki `custom_domain` aktif: gunakan `https://${tenant.custom_domain}/p/${product.slug}`
+  - Fallback jika tidak ada custom domain: `https://shop.boontrack.com/${tenant.slug}/p/${product.slug}`
+- Gunakan helper resmi: `getProductPageUrl(tenant.slug, product.slug, tenant.custom_domain)` dari `@/lib/storefront-urls`.
+
+## 4. ZERO HARDCODING POLICY
+- DILARANG KERAS membuat pengecekan statis berbasis nama slug (contoh terlarang: `if (slug === 'tumbuh-kembang-anak')` atau `if (slug === 'buzzerukm')`).
+- Seluruh konfigurasi dan data tenant wajib 100% dinamis bersumber dari database Supabase (`tenants`).
