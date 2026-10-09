@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Upload,
   ArrowRight,
+  ArrowLeft,
   RefreshCw,
   Sliders,
   ShieldCheck,
@@ -519,70 +520,80 @@ export default function FCDAutomatorPage() {
       <div className="absolute top-0 right-1/4 w-[750px] h-[450px] bg-gradient-to-b from-indigo-600/15 via-purple-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
       <div className="absolute bottom-1/4 left-0 w-96 h-96 bg-indigo-700/10 rounded-full blur-[130px] pointer-events-none -z-10" />
 
-      {/* ── HEADER WORKSPACE ──────────────────────────────────── */}
-      <header className="border-b border-white/10 bg-[#0B0F17]/90 backdrop-blur-xl sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/studio/desk"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition flex items-center justify-center cursor-pointer"
-              title="Kembali ke Studio Desk"
-            >
-              <Boxes className="w-4 h-4 text-indigo-400" />
-            </Link>
+      {/* ── STUDIO APP HEADER (RAMPING ~52PX - FOCUS CANVAS MODE) ── */}
+      <header className="h-[52px] border-b border-white/10 bg-[#0B0F17]/95 backdrop-blur-xl sticky top-0 z-50 flex items-center px-3 sm:px-6 justify-between gap-3 shrink-0">
+        {/* Left: [← Kembali ke Dashboard Studio] + Nama Kampanye Inline + Autosave Badge */}
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href="/studio"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-bold border border-white/10 hover:border-white/20 transition shrink-0 cursor-pointer"
+            title="Kembali ke Dashboard Studio"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Kembali ke Dashboard Studio</span>
+            <span className="sm:hidden">Dashboard</span>
+          </Link>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white">boontrack</span>
-                <span className="text-xs font-black tracking-widest bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent uppercase">
-                  FCD AUTOMATOR
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold">
-                  gemini-3.8-flash
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 font-mono">
-                Flexible Creative Delivery: 3 Hook x 1 Body x 2 CTA Combinator & Safe-Zone Engine
-              </p>
-            </div>
+          <span className="hidden sm:inline-block w-px h-5 bg-white/10 shrink-0" />
+
+          {/* Inline Campaign Name & Autosave Indicator */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-black text-white truncate max-w-[160px] sm:max-w-[280px] md:max-w-[420px] tracking-tight">
+              {campaignTitle || 'Untitled Campaign'}
+            </span>
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-mono font-bold text-emerald-400 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Draft Tersimpan</span>
+            </span>
           </div>
+        </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Active Workspace Badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-mono text-slate-400">Workspace:</span>
-              <span className="font-bold text-white font-mono">{tenantSlug}</span>
+        {/* Right: Dynamic Credit Quota & Render Button */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {/* Credit Indicator */}
+          {isUnlimited || tenantTier === 'FOUNDER' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-bold text-amber-300 shadow-sm shadow-amber-500/10">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] font-mono">Founder Unlimited</span>
             </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
+              <Zap className="w-3.5 h-3.5 text-violet-400" />
+              <span className="text-[11px] font-mono">{renderCredits} Kredit</span>
+              <button
+                type="button"
+                onClick={() => setIsPaywallOpen(true)}
+                className="ml-1 px-1.5 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/40 text-[10px] text-violet-200 transition font-mono cursor-pointer"
+              >
+                +Top Up
+              </button>
+            </div>
+          )}
 
-            {/* Credit Pill / Founder Unlimited Badge */}
-            {isUnlimited || tenantTier === 'FOUNDER' ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-bold text-amber-300 shadow-sm shadow-amber-500/10">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Founder / Unlimited</span>
-              </div>
+          {/* Tombol Render Cepat */}
+          <button
+            type="button"
+            onClick={handleDispatchBatch}
+            disabled={isDispatching}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-extrabold text-xs shadow-md shadow-violet-600/30 transition cursor-pointer disabled:opacity-50 active:scale-98"
+          >
+            {isDispatching ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Rendering ({batchProgress}%)...</span>
+              </>
             ) : (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
-                <Zap className="w-3.5 h-3.5 text-violet-400" />
-                <span>{renderCredits} Credit{renderCredits === 1 ? '' : 's'}</span>
-              </div>
+              <>
+                <Film className="w-3.5 h-3.5" />
+                <span>Render Video {selectedVariations.length > 0 ? `(${selectedVariations.length})` : ''}</span>
+              </>
             )}
-
-            {/* Top Up Button */}
-            <button
-              type="button"
-              onClick={() => setIsPaywallOpen(true)}
-              className="py-1.5 px-3 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/40 text-violet-300 hover:text-white font-bold text-xs transition cursor-pointer"
-            >
-              + Top Up
-            </button>
-          </div>
+          </button>
         </div>
       </header>
 
       {/* ── STEPPER BANNER (SIMPLIFIKASI ALUR FCD) ─────────────── */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-1 w-full">
+      <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-6 pt-4 pb-1">
         <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-3 sm:p-4 backdrop-blur-xl shadow-xl">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Step 1 */}
@@ -696,13 +707,13 @@ export default function FCDAutomatorPage() {
       </div>
 
       {/* ── MAIN 3-PANEL WORKSPACE ────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
+      <main className="w-full max-w-[1720px] mx-auto px-3 sm:px-6 py-4 flex-1 space-y-5">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* ======================================================== */}
-          {/* PANEL 1: CREATIVE MATRIX CONFIGURATOR (4 Cols)           */}
+          {/* PANEL 1: CREATIVE MATRIX CONFIGURATOR (5 Cols)           */}
           {/* ======================================================== */}
-          <div id="step-matrix" className="lg:col-span-4 bg-slate-900/60 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-5 sticky lg:top-20">
+          <div id="step-matrix" className="lg:col-span-5 bg-slate-900/60 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-5 sticky lg:top-20">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                 <Sliders className="w-3.5 h-3.5" />
@@ -1069,9 +1080,9 @@ export default function FCDAutomatorPage() {
           </div>
 
           {/* ======================================================== */}
-          {/* PANEL 2: VARIATION MATRIX PREVIEW & ADS ENGINE (8 Cols)  */}
+          {/* PANEL 2: VARIATION MATRIX PREVIEW & ADS ENGINE (7 Cols)  */}
           {/* ======================================================== */}
-          <div id="step-preview" className="lg:col-span-8 space-y-6">
+          <div id="step-preview" className="lg:col-span-7 space-y-6">
 
             {/* ── TIKTOK / REELS SAFE-ZONE PREVIEW CARD ─────────────── */}
             <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-5 sm:p-6 backdrop-blur-xl shadow-xl space-y-4">
