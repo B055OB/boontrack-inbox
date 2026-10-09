@@ -96,4 +96,40 @@ describe('Open Graph & Preview Card Metadata (1200x630 Custom Domain)', () => {
     const twitter = meta.twitter as any;
     expect(twitter.card).toBe('summary_large_image');
   });
+
+  it('6. ensures product card thumbnail and title in PersonalAuthorityTemplate link to custom domain salespage (/p/[slug])', async () => {
+    const templatePath = path.join(process.cwd(), 'app', '[tenant]', 'components', 'templates', 'PersonalAuthorityTemplate.tsx');
+    const content = fs.readFileSync(templatePath, 'utf8');
+
+    // 1. Must import Link and getProductPageUrl
+    expect(content).toContain("import Link from 'next/link';");
+    expect(content).toContain("import { getProductPageUrl } from '@/lib/storefront-urls';");
+
+    // 2. Both Main Product and Catalog Items must wrap thumbnail and title with Link
+    const normalized = content.replace(/\r\n/g, '\n');
+    expect(normalized).toContain('<Link\n              href={mainProductUrl}');
+    expect(normalized).toContain('<Link\n                  href={mainProductUrl}');
+    expect(normalized).toContain('<Link\n                        href={itemUrl}');
+    expect(normalized).toContain('<Link\n                            href={itemUrl}');
+
+    // 3. Helper getProductPageUrl must resolve custom domain correctly
+    const { getProductPageUrl } = await import('@/lib/storefront-urls');
+    const customDomainUrl = getProductPageUrl(
+      'tumbuh-kembang-anak',
+      'eat-and-grow-konsultasi-chat-gtm-anak',
+      'konsul.littlebitefeeding.com'
+    );
+    expect(customDomainUrl).toBe(
+      'https://konsul.littlebitefeeding.com/p/eat-and-grow-konsultasi-chat-gtm-anak'
+    );
+
+    const fallbackUrl = getProductPageUrl(
+      'tumbuh-kembang-anak',
+      'eat-and-grow-konsultasi-chat-gtm-anak',
+      null
+    );
+    expect(fallbackUrl).toBe(
+      'https://shop.boontrack.com/tumbuh-kembang-anak/p/eat-and-grow-konsultasi-chat-gtm-anak'
+    );
+  });
 });

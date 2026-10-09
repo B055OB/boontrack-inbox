@@ -21,8 +21,10 @@ import {
   AlertCircle,
   Check,
 } from 'lucide-react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import type { Product } from '@/app/[tenant]/types';
+import { getProductPageUrl } from '@/lib/storefront-urls';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 import { resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
@@ -581,22 +583,29 @@ export function FeaturedCatalogSection({
   setProductImgError,
   onInitiateCheckout,
   onOutboundClick,
+  customDomain,
 }: {
   sectionConfig?: StorefrontSectionConfig;
   activeName: string;
   badgeText: string;
   titleText: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mainProduct: any;
   storeProducts: Product[];
   tenantSlug: string;
   isServiceBusiness: boolean;
   productImgError: boolean;
   setProductImgError: (v: boolean) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onInitiateCheckout: (p: any) => void;
   onOutboundClick: (url: string, label: string) => void;
+  customDomain?: string | null;
 }) {
   if (!sectionConfig?.is_active) return null;
   if (!mainProduct) return null;
+
+  const mainProductSlug = mainProduct.slug || String(mainProduct.id || '');
+  const mainProductUrl = getProductPageUrl(tenantSlug, mainProductSlug, customDomain);
 
   return (
     <section className="py-16 px-4 sm:px-6 bg-slate-50/50">
@@ -613,17 +622,20 @@ export function FeaturedCatalogSection({
         {/* Featured Product Card */}
         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-md p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-5 space-y-4">
-            <div className="relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center p-2">
+            <Link
+              href={mainProductUrl}
+              className="block relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center p-2 cursor-pointer group"
+            >
               <img
                 src={(!productImgError && mainProduct.image) ? sanitizeImageUrl(mainProduct.image) : "/placeholder-product.png"}
                 alt={mainProduct.name}
                 onError={() => setProductImgError(true)}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
               />
               <span className="absolute top-3 left-3 bg-purple-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-xs uppercase tracking-wider">
                 {mainProduct.badge || 'Pilihan Utama'}
               </span>
-            </div>
+            </Link>
           </div>
 
           <div className="lg:col-span-7 space-y-5">
@@ -632,7 +644,12 @@ export function FeaturedCatalogSection({
                 {mainProduct.category || 'Penawaran Resmi'}
               </span>
               <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-snug">
-                {mainProduct.name}
+                <Link
+                  href={mainProductUrl}
+                  className="hover:text-purple-600 transition-colors cursor-pointer"
+                >
+                  {mainProduct.name}
+                </Link>
               </h3>
             </div>
 
@@ -676,7 +693,7 @@ export function FeaturedCatalogSection({
                     Boolean(mainProduct.single_page_config) ||
                     Boolean((mainProduct as any).single_page_enabled);
                   const dedicatedPageUrl = hasDedicatedPage && mainProduct.slug
-                    ? `/${tenantSlug}/p/${mainProduct.slug}`
+                    ? getProductPageUrl(tenantSlug, mainProduct.slug, customDomain)
                     : null;
 
                   const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(mainProduct) : null;
@@ -761,128 +778,141 @@ export function FeaturedCatalogSection({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {storeProducts.slice(1).map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
-                >
-                  <div className="space-y-3">
-                    <div className="relative aspect-[4/3] sm:aspect-video rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
-                      <img
-                        src={(item.image && sanitizeImageUrl(item.image)) || "/placeholder-product.png"}
-                        alt={item.name}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
-                        }}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      />
-                      {item.badge && (
-                        <span className="absolute top-2.5 left-2.5 bg-white/95 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
+              {storeProducts.slice(1).map((item) => {
+                const itemSlug = item.slug || String(item.id || '');
+                const itemUrl = getProductPageUrl(tenantSlug, itemSlug, customDomain);
 
-                    <div>
-                      <h4 className="font-black text-slate-900 text-sm leading-snug group-hover:text-purple-600 transition-colors line-clamp-2">
-                        {item.name}
-                      </h4>
-                      {item.description ? (
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                          {item.description}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                  >
+                    <div className="space-y-3">
+                      <Link
+                        href={itemUrl}
+                        className="block relative aspect-[4/3] sm:aspect-video rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2 cursor-pointer"
+                      >
+                        <img
+                          src={(item.image && sanitizeImageUrl(item.image)) || "/placeholder-product.png"}
+                          alt={item.name}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+                          }}
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        />
+                        {item.badge && (
+                          <span className="absolute top-2.5 left-2.5 bg-white/95 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
 
-                  <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div>
-                      {item.originalPrice ? (
-                        <span className="text-[10px] text-slate-400 line-through block font-medium">
-                          Rp {Number(item.originalPrice).toLocaleString('id-ID')}
-                        </span>
-                      ) : null}
-                      <span className="text-sm font-black text-purple-700">
-                        {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
-                      </span>
-                    </div>
-
-                    {(() => {
-                      const hasDedicatedPage =
-                        (item.slug && item.slug === 'ctwa-mastery-7day') ||
-                        Boolean(item.single_page_config) ||
-                        Boolean((item as any).single_page_enabled);
-                      const dedicatedPageUrl = hasDedicatedPage && item.slug
-                        ? `/${tenantSlug}/p/${item.slug}`
-                        : null;
-
-                      const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(item) : null;
-                      const isExternal = Boolean(extUrl);
-                      const ctaLabel = item.slug === 'ctwa-mastery-7day'
-                        ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
-                        : resolveProductCtaLabel(item, isExternal);
-
-                      if (dedicatedPageUrl) {
-                        return (
-                          <a
-                            href={dedicatedPageUrl}
-                            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                          <Link
+                            href={itemUrl}
+                            className="hover:text-purple-600 transition-colors cursor-pointer"
                           >
-                            <span>{ctaLabel}</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </a>
-                        );
-                      }
+                            {item.name}
+                          </Link>
+                        </h4>
+                        {item.description ? (
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                            {item.description}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
 
-                      if (isExternal && extUrl) {
+                    <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div>
+                        {item.originalPrice ? (
+                          <span className="text-[10px] text-slate-400 line-through block font-medium">
+                            Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+                          </span>
+                        ) : null}
+                        <span className="text-sm font-black text-purple-700">
+                          {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const hasDedicatedPage =
+                          (item.slug && item.slug === 'ctwa-mastery-7day') ||
+                          Boolean(item.single_page_config) ||
+                          Boolean((item as any).single_page_enabled);
+                        const dedicatedPageUrl = hasDedicatedPage && item.slug
+                          ? getProductPageUrl(tenantSlug, item.slug, customDomain)
+                          : null;
+
+                        const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(item) : null;
+                        const isExternal = Boolean(extUrl);
+                        const ctaLabel = item.slug === 'ctwa-mastery-7day'
+                          ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
+                          : resolveProductCtaLabel(item, isExternal);
+
+                        if (dedicatedPageUrl) {
+                          return (
+                            <a
+                              href={dedicatedPageUrl}
+                              className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>{ctaLabel}</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </a>
+                          );
+                        }
+
+                        if (isExternal && extUrl) {
+                          return (
+                            <a
+                              href={extUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                                  try {
+                                    (window as any).fbq("track", "InitiateCheckout", {
+                                      content_name: (item as any).title || item.name,
+                                      content_ids: [item.id || (item as any).slug],
+                                      content_type: "product",
+                                      value: Number(item.price) || 0,
+                                      currency: "IDR"
+                                    });
+                                  } catch (_) {}
+                                }
+                                onOutboundClick?.(extUrl, ctaLabel);
+                              }}
+                              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>{ctaLabel}</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          );
+                        }
+
                         return (
-                          <a
-                            href={extUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                                try {
-                                  (window as any).fbq("track", "InitiateCheckout", {
-                                    content_name: (item as any).title || item.name,
-                                    content_ids: [item.id || (item as any).slug],
-                                    content_type: "product",
-                                    value: Number(item.price) || 0,
-                                    currency: "IDR"
-                                  });
-                                } catch (_) {}
-                              }
-                              onOutboundClick?.(extUrl, ctaLabel);
-                            }}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onInitiateCheckout({
+                                id: String(item.id),
+                                title: item.name,
+                                price: Number(item.price),
+                              })
+                            }
                             className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
                           >
-                            <span>{ctaLabel}</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                          </button>
                         );
-                      }
-
-                      return (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onInitiateCheckout({
-                              id: String(item.id),
-                              title: item.name,
-                              price: Number(item.price),
-                            })
-                          }
-                          className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
-                        </button>
-                      );
-                    })()}
+                      })()}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1082,6 +1112,12 @@ export default function PersonalAuthorityTemplate({
   onOutboundClick,
 }: PersonalAuthorityTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
+  const customDomain: string | null =
+    tenant?.custom_domain ||
+    tenant?.metadata?.custom_domain ||
+    tenantMetadata?.custom_domain ||
+    null;
+
   // Official Tenant Logo (for Navbar, Brand headers, Footer)
   const rawLogo =
     storeLogoUrl ||
@@ -1533,6 +1569,7 @@ export default function PersonalAuthorityTemplate({
         setProductImgError={setProductImgError}
         onInitiateCheckout={onInitiateCheckout}
         onOutboundClick={onOutboundClick}
+        customDomain={customDomain}
       />
 
       {/* 5. INTERACTIVE SCHEDULE BOOKING SECTION */}
