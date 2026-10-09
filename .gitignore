@@ -45,3 +45,13 @@ next-env.d.ts
 .env*
 
 scratch/
+
+# media & studio render artifacts
+*.mp4
+*.mov
+*.avi
+*.webm
+public/renders/
+public/videos/
+public/*.mp4
+temp/
