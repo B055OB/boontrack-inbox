@@ -19,7 +19,7 @@ import {
   AlertCircle,
   ExternalLink,
 } from 'lucide-react';
-import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/page';
+import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/types';
 import { getIndustryQuickReplies } from '@/lib/zero-ai-engine';
 import { toE164 } from '@/lib/crm/phone-utils';
 

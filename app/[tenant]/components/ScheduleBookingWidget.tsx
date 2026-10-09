@@ -14,7 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { ScheduleDaySlots, ScheduleSlotItem } from '@/lib/schedule-slot-service';
-import type { Product } from '@/app/[tenant]/page';
+import type { Product } from '@/app/[tenant]/types';
 import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
 
 interface ScheduleBookingWidgetProps {

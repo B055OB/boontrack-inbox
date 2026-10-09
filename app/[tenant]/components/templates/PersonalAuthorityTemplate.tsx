@@ -21,7 +21,7 @@ import {
   AlertCircle,
   Check,
 } from 'lucide-react';
-import type { Product } from '@/app/[tenant]/page';
+import type { Product } from '@/app/[tenant]/types';
 import FloatingWebchat from './FloatingWebchat';
 import InstagramVisualGrid from './InstagramVisualGrid';
 import ScheduleBookingWidget from '../ScheduleBookingWidget';

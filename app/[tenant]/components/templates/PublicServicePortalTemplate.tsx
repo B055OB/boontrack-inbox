@@ -30,7 +30,7 @@ import {
   QrCode,
   Share2
 } from 'lucide-react';
-import type { Product, StoreChatMessage } from '@/app/[tenant]/page';
+import type { Product, StoreChatMessage } from '@/app/[tenant]/types';
 
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
 

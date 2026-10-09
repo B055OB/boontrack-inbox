@@ -1,6 +1,6 @@
 import { getSupabase } from '../lib/supabaseClient';
 import { sanitizeImageUrl } from '../lib/image-utils';
-import { formatCategoryBadge } from '../app/[tenant]/page';
+import { formatCategoryBadge } from '../app/[tenant]/types';
 
 async function testLoadTenantAndCatalog(tenantSlug: string) {
   console.log(`[TEST] Starting loadTenantAndCatalog for: ${tenantSlug}`);

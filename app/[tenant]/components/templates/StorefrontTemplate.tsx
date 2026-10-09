@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Plus, QrCode } from 'lucide-react';
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
-import type { Product } from '@/app/[tenant]/page';
+import type { Product } from '@/app/[tenant]/types';
 import { resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
 import InstagramVisualGrid from './InstagramVisualGrid';
 import FloatingWebchat from './FloatingWebchat';

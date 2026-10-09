@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink, Plus } from 'lucide-react';
-import type { Product } from '@/app/[tenant]/page';
+import type { Product } from '@/app/[tenant]/types';
 import FloatingWebchat from './FloatingWebchat';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import {

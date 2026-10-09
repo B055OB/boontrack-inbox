@@ -265,6 +265,7 @@ export function resolveTenantRuntime(
     tenant.metadata?.business_type ||
     tenant.category ||
     tenant.metadata?.category ||
+    tenant.metadata?.vertical ||
     ''
   ).toUpperCase().trim();
 
@@ -273,6 +274,20 @@ export function resolveTenantRuntime(
     tenant.metadata?.tenant_kind ||
     ''
   ).toUpperCase().trim();
+
+  const isPublicServiceVertical =
+    rawBusinessType === 'PUBLIC_SERVICE' ||
+    rawBusinessType === 'B2G' ||
+    rawBusinessType === 'DESA' ||
+    rawBusinessType === 'COMMUNITY' ||
+    rawBusinessType === 'PELAYANAN_PUBLIK' ||
+    tenantSlug === 'margasari' ||
+    tenantSlug === 'kelurahan-margasari' ||
+    tenantSlug === 'pelayanan-publik' ||
+    String(tenant.metadata?.vertical || '').toLowerCase() === 'public_service' ||
+    String(tenant.metadata?.vertical || '').toLowerCase() === 'desa' ||
+    String(tenant.metadata?.vertical || '').toLowerCase() === 'community' ||
+    String(tenant.metadata?.portal_type || '').toLowerCase() === 'public_service';
 
   // 1. Resolve Template Code with Strict NO SILENT FALLBACK
   let templateCode: TemplateCode = 'SHOP_V1';
@@ -299,7 +314,7 @@ export function resolveTenantRuntime(
     templateCode = 'UNKNOWN_TEMPLATE';
   } else {
     // Deduce canonical template from business_type / category if not explicitly specified
-    if (rawBusinessType === 'PUBLIC_SERVICE' || rawBusinessType === 'B2G') {
+    if (isPublicServiceVertical) {
       templateCode = 'PUBLIC_SERVICE_V1';
     } else if (rawBusinessType === 'CORPORATE') {
       templateCode = 'CORPORATE_V1';
@@ -322,7 +337,7 @@ export function resolveTenantRuntime(
   let businessType: BusinessType = 'RETAIL';
   if (rawBusinessType) {
     businessType = rawBusinessType;
-  } else if (templateCode === 'PUBLIC_SERVICE_V1') {
+  } else if (templateCode === 'PUBLIC_SERVICE_V1' || isPublicServiceVertical) {
     businessType = 'PUBLIC_SERVICE';
   } else if (templateCode === 'CORPORATE_V1') {
     businessType = 'CORPORATE';
@@ -467,7 +482,15 @@ export function resolveTemplate(context: TenantRuntimeContext): ResolvedTemplate
 
   // 2. Strict Business Type Compatibility Boundaries
   // Case A: PUBLIC_SERVICE / B2G business type MUST use PUBLIC_SERVICE_V1
-  const isPublicServiceBiz = rawBusinessType === 'PUBLIC_SERVICE' || rawBusinessType === 'B2G';
+  const isPublicServiceBiz =
+    rawBusinessType === 'PUBLIC_SERVICE' ||
+    rawBusinessType === 'B2G' ||
+    rawBusinessType === 'DESA' ||
+    rawBusinessType === 'COMMUNITY' ||
+    rawBusinessType === 'PELAYANAN_PUBLIK' ||
+    context.tenantSlug === 'margasari' ||
+    context.tenantSlug === 'kelurahan-margasari' ||
+    context.tenantSlug === 'pelayanan-publik';
   if (isPublicServiceBiz && templateCode !== 'PUBLIC_SERVICE_V1') {
     return {
       status: 'ERROR',

@@ -25,6 +25,7 @@ import dynamic from 'next/dynamic';
 
 const BarcodeScannerModal = dynamic(() => import('./dashboard/components/BarcodeScannerModal'), {
   ssr: false,
+  loading: () => null,
 });
 import CheckoutModal from "@/app/components/CheckoutModal";
 import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
@@ -47,6 +48,21 @@ import { sanitizeImageUrl } from "@/lib/image-utils";
 import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
 import { resolveProductExternalUrl, resolveProductCtaLabel } from "@/lib/product-catalog";
 import { getTenantConfig, normalizeTenantSlug } from "@/lib/tenant-config";
+import type { Product, StoreChatMessage } from "./types";
+import {
+  formatCategoryBadge,
+  getStoreChatGreeting,
+  isPhysicalOrFoodProduct,
+  isPublicServiceTenant,
+} from "./types";
+
+export type { Product, StoreChatMessage };
+export {
+  formatCategoryBadge,
+  getStoreChatGreeting,
+  isPhysicalOrFoodProduct,
+  isPublicServiceTenant,
+};
 
 function StoreProductImage({
   src,
@@ -81,195 +97,6 @@ function StoreProductImage({
   );
 }
 
-export interface Product {
-  id: number | string;
-  name: string;
-  category: string;
-  price: number;
-  originalPrice?: number;
-  image: string;
-  image_url?: string;
-  description: string;
-  badge?: string;
-  promo?: string;
-  custom_badge?: string;
-  modules?: string[];
-  features?: string[];
-  promo_price?: number;
-  download_url?: string;
-  stock?: number;
-  sku?: string;
-  type?: string;
-  product_type?: string;
-  requires_shipping?: boolean;
-  external_url?: string;
-  affiliate_url?: string;
-  cta_label?: string;
-  checkout_type?: string;
-  slug?: string;
-  single_page_config?: any;
-  single_page_enabled?: boolean;
-  metadata?: Record<string, any>;
-  is_active?: boolean;
-}
-
-export interface StoreChatMessage {
-  id: string | number;
-  sender: "user" | "bot";
-  time: string;
-  text: string;
-  action?: string;
-  type?: string;
-  product?: {
-    id: number | string;
-    name: string;
-    category?: string;
-    price: number;
-    originalPrice?: number;
-    image?: string;
-    image_url?: string;
-    description?: string;
-    badge?: string;
-    modules?: string[];
-    features?: string[];
-    download_url?: string;
-    type?: string;
-    external_url?: string;
-    cta_label?: string;
-    checkout_type?: string;
-    metadata?: Record<string, any>;
-  };
-  quick_actions?: string[];
-}
-
-// Helper to format category label for badges & display
-export function formatCategoryBadge(category?: string, productType?: string, customBadge?: string): string {
-  if (customBadge && typeof customBadge === "string" && customBadge.trim()) {
-    return customBadge.trim();
-  }
-  if (category && typeof category === "string" && category.trim()) {
-    const trimmed = category.trim();
-    const lower = trimmed.toLowerCase();
-    if (lower === "field_service" || lower === "service" || lower === "jasa" || lower === "local_service" || lower === "jasa lapangan") {
-      return "Jasa Lapangan";
-    }
-    if (lower === "pro_service" || lower === "konsultasi" || lower === "professional_service" || lower === "professional") {
-      return "Konsultasi";
-    }
-    if (lower === "creator_agency" || lower === "agency & kreator" || lower === "agency") {
-      return "Agency & Kreator";
-    }
-    if (lower === "fnb" || lower === "kuliner & f&b" || lower === "kuliner" || lower === "food") {
-      return "Kuliner & F&B";
-    }
-    if (lower === "digital" || lower === "digital_product") {
-      return "Digital";
-    }
-    if (lower === "retail_physical" || lower === "fisik" || lower === "physical") {
-      return "Fisik";
-    }
-    // Preserve custom merchant category (e.g. "E-Course", "Fashion", "Buku")
-    return trimmed;
-  }
-  const pt = typeof productType === "string" ? productType.toUpperCase() : "";
-  if (pt === "FIELD_SERVICE" || pt === "SERVICE") return "Jasa Lapangan";
-  if (pt === "PROFESSIONAL_SERVICE") return "Konsultasi";
-  if (pt === "AGENCY") return "Agency & Kreator";
-  if (pt === "FOOD") return "Kuliner & F&B";
-  if (pt === "DIGITAL") return "Digital";
-  if (pt === "PHYSICAL") return "Fisik";
-  return "Fisik";
-}
-
-// Helper to generate dynamic, category-aware bot greeting for storefront chat widget
-export function getStoreChatGreeting(category: string, activeName: string): string {
-  const cat = (category || "").toUpperCase().trim();
-  if (
-    cat === "PUBLIC_SERVICE" ||
-    cat === "B2G" ||
-    cat === "PELAYANAN_PUBLIK" ||
-    cat.includes("PUBLIC_SERVICE") ||
-    cat.includes("PELAYANAN") ||
-    cat.includes("KELURAHAN") ||
-    cat.includes("WARGA")
-  ) {
-    return `Sampurasun! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar aktivasi IKD, surat pengantar KTP/KK, surat domisili, atau layanan administrasi warga lainnya hari ini?`;
-  }
-  if (
-    cat === "PROFESSIONAL_SERVICE" ||
-    cat === "PRO_SERVICE" ||
-    cat === "PROFESSIONAL" ||
-    cat.includes("PROFESSIONAL") ||
-    cat.includes("CONSULT") ||
-    cat.includes("AGENCY_PRO") ||
-    cat.includes("LEGAL") ||
-    cat.includes("KLINIK") ||
-    cat.includes("PRO")
-  ) {
-    return `Halo! Selamat datang di ${activeName} 👋 Kami siap mendampingi kebutuhan konsultasi & audit profesional Anda. Ada yang bisa kami bantu seputar booking konsultasi, paket layanan, atau jadwal audit hari ini?`;
-  }
-  if (
-    cat === "FIELD_SERVICE" ||
-    cat === "SERVICE" ||
-    cat.includes("FIELD") ||
-    cat.includes("TEKNISI") ||
-    cat.includes("TOREN") ||
-    cat.includes("REPARASI") ||
-    cat.includes("SERVIS") ||
-    cat.includes("BENGKEL")
-  ) {
-    return `Halo! Selamat datang di layanan ${activeName} 👋 Ada yang bisa kami bantu seputar booking teknisi, estimasi pengerjaan, atau area layanan hari ini?`;
-  }
-  if (
-    cat === "FOOD" ||
-    cat.includes("FOOD") ||
-    cat.includes("FNB") ||
-    cat.includes("CULINARY") ||
-    cat.includes("RESTO") ||
-    cat.includes("KULINER")
-  ) {
-    return `Halo! Selamat datang di ${activeName} 👋 Mau pesan antar (delivery), ambil di resto (takeaway), atau cek menu favorit hari ini?`;
-  }
-  if (
-    cat === "DIGITAL" ||
-    cat.includes("DIGITAL") ||
-    cat.includes("COURSE") ||
-    cat.includes("SOFTWARE") ||
-    cat.includes("EBOOK") ||
-    cat.includes("KELAS")
-  ) {
-    return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar akses unduh materi, lisensi software, atau informasi produk digital kami?`;
-  }
-  if (
-    cat === "CREATOR_AGENCY" ||
-    cat.includes("CREATOR") ||
-    cat.includes("TALENT") ||
-    cat.includes("ENDORSE") ||
-    cat.includes("INFLUENCER")
-  ) {
-    return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar rate card endorse, jadwal live talent, atau pengiriman brief kerjasama?`;
-  }
-  return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar katalog produk, promo, atau informasi belanja hari ini?`;
-}
-
-// Helper to detect physical or food products requiring shipping / local delivery
-export function isPhysicalOrFoodProduct(p?: Partial<Product> | any, tenantCategory?: string): boolean {
-  if (!p) return false;
-  if (p.requires_shipping === true || p.requiresShipping === true) return true;
-  const pType = String(p.product_type || p.type || '').toUpperCase();
-  const pCat = String(p.category || '').toUpperCase();
-  const tCat = String(tenantCategory || '').toUpperCase();
-  if (pType === 'FOOD' || pType === 'PHYSICAL' || pType.includes('FOOD') || pType.includes('PHYSICAL') || pType.includes('FISIK')) {
-    return true;
-  }
-  if (pCat === 'FOOD' || pCat.includes('FOOD') || pCat.includes('KULINER') || pCat.includes('FISIK') || pCat.includes('PHYSICAL')) {
-    return true;
-  }
-  if (tCat === 'FOOD' || tCat.includes('FOOD') || tCat.includes('KULINER')) {
-    return true;
-  }
-  return false;
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
@@ -371,11 +198,8 @@ export default function TenantStorefrontPage() {
   const tenantSlug = normalizedSlug || rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
 
-  const initialConfig = getTenantConfig(tenantSlug);
-  const isInitialPublicService = Boolean(
-    initialConfig &&
-    (initialConfig.category === 'public_service' || initialConfig.slug === 'margasari' || tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari')
-  );
+  const initialConfig = getTenantConfig(tenantSlug) || (tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari' ? getTenantConfig('margasari') : null);
+  const isInitialPublicService = isPublicServiceTenant(initialConfig, (initialConfig as any)?.metadata, tenantSlug);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
@@ -659,9 +483,9 @@ export default function TenantStorefrontPage() {
             console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
           }
 
-          // Fallback lokal untuk tenant B2G/public service (margasari)
-          const fallbackConfig = getTenantConfig(tenantSlug);
-          if (fallbackConfig && (fallbackConfig.category === 'public_service' || fallbackConfig.slug === 'margasari')) {
+          // Fallback lokal untuk tenant B2G/public service/desa/community (margasari)
+          const fallbackConfig = getTenantConfig(tenantSlug) || (tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari' || tenantSlug === 'pelayanan-publik' ? getTenantConfig('margasari') : null);
+          if (fallbackConfig && isPublicServiceTenant(fallbackConfig, (fallbackConfig as any)?.metadata, tenantSlug)) {
             if (isMounted) {
               setTenant(fallbackConfig);
               setStoreName(fallbackConfig.name || displayName);
@@ -671,7 +495,8 @@ export default function TenantStorefrontPage() {
                 subtitle: fallbackConfig.subtitle,
                 lurah: fallbackConfig.lurah,
                 address: fallbackConfig.address,
-                business_type: fallbackConfig.business_type,
+                business_type: fallbackConfig.business_type || 'PUBLIC_SERVICE',
+                category: fallbackConfig.category || 'public_service',
                 products: fallbackConfig.pricing?.custom_packages || [],
               });
               setTenantCategory('public_service');
@@ -718,6 +543,30 @@ export default function TenantStorefrontPage() {
           }
 
           if (isMounted) {
+            // Guard: Never set public service tenants to not_found!
+            if (isPublicServiceTenant(null, null, tenantSlug)) {
+              const defConfig = getTenantConfig('margasari');
+              if (defConfig) {
+                setTenant(defConfig);
+                setStoreName(defConfig.name || displayName);
+                setTenantMetadata({
+                  ...defConfig,
+                  business_type: 'PUBLIC_SERVICE',
+                  category: 'public_service',
+                  products: defConfig.pricing?.custom_packages || [],
+                });
+                setTenantCategory('public_service');
+                const customPkgs = defConfig.pricing?.custom_packages || [];
+                setStoreProducts(
+                  customPkgs.map((p: any, idx: number) => mapProductItemToStoreProduct({
+                    ...p,
+                    category: 'Layanan Publik',
+                  }, idx))
+                );
+                setStoreStatus("active");
+                return;
+              }
+            }
             setTenant(null);
             setStoreStatus("not_found");
           }
@@ -1265,6 +1114,43 @@ export default function TenantStorefrontPage() {
     return null;
   }
 
+  const runtimeContextValue = {
+    runtime,
+    templateResult,
+    tenantId: tenant?.id || null,
+    tenantSlug,
+  };
+
+  // ── TENANT TYPE DETECTION & PUBLIC SERVICE ROUTING (ADR §50 & §54) ──
+  const isPublicServiceMode =
+    templateResult.templateCode === 'PUBLIC_SERVICE_V1' ||
+    isPublicServiceTenant(tenant, tenantMetadata, tenantSlug);
+
+  if (isPublicServiceMode) {
+    return (
+      <TenantRuntimeProvider value={runtimeContextValue}>
+        <PublicServicePortalTemplate
+          context={runtime}
+          tenantSlug={tenantSlug}
+          storeName={storeName || displayName}
+          displayName={displayName}
+          tenant={tenant}
+          tenantMetadata={tenantMetadata}
+          storeLogoUrl={sanitizedActiveLogo}
+          storeProducts={storeProducts}
+          dynamicQuickReplies={dynamicQuickReplies}
+          chatEnabled={isChatEnabled}
+          onInitiateCheckout={(p) => {
+            trackInitiateCheckout(p.title, p.price);
+            setProductForCheckout(p);
+            setIsCheckoutOpen(true);
+          }}
+          onOutboundClick={handleOutboundClick}
+        />
+      </TenantRuntimeProvider>
+    );
+  }
+
   // ── STORE STATUS CHECKS ──
   if (storeStatus === "checking") {
     return (
@@ -1341,37 +1227,7 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  const runtimeContextValue = {
-    runtime,
-    templateResult,
-    tenantId: tenant?.id || null,
-    tenantSlug,
-  };
-
   switch (templateResult.templateCode) {
-    case 'PUBLIC_SERVICE_V1':
-      return (
-        <TenantRuntimeProvider value={runtimeContextValue}>
-          <PublicServicePortalTemplate
-            context={runtime}
-            tenantSlug={tenantSlug}
-            storeName={storeName}
-            displayName={displayName}
-            tenant={tenant}
-            tenantMetadata={tenantMetadata}
-            storeLogoUrl={sanitizedActiveLogo}
-            storeProducts={storeProducts}
-            dynamicQuickReplies={dynamicQuickReplies}
-            chatEnabled={isChatEnabled}
-            onInitiateCheckout={(p) => {
-              trackInitiateCheckout(p.title, p.price);
-              setProductForCheckout(p);
-              setIsCheckoutOpen(true);
-            }}
-            onOutboundClick={handleOutboundClick}
-          />
-        </TenantRuntimeProvider>
-      );
 
     case 'DROP_V1':
     case 'SHOP_V1': {
@@ -1824,18 +1680,26 @@ export default function TenantStorefrontPage() {
                 <PackageOpen className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-slate-800">Belum Ada Produk atau Layanan</h3>
+                <h3 className="text-sm font-black text-slate-800">
+                  {headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')
+                    ? 'Informasi Layanan Siap Melayani'
+                    : 'Belum Ada Produk atau Layanan'}
+                </h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  Etalase katalog untuk <span className="font-semibold text-slate-600">{storeName || displayName}</span> saat ini belum memiliki item aktif.
+                  {headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')
+                    ? `Layanan untuk ${storeName || displayName} dapat dikonsultasikan langsung melalui asisten percakapan kami.`
+                    : `Etalase katalog untuk ${storeName || displayName} saat ini belum memiliki item aktif.`}
                 </p>
               </div>
-              <Link
-                href={`/${tenantSlug}/dashboard?tab=products`}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition shadow-xs mt-2"
-              >
-                <span>Kelola Katalog Toko</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              {!(headerCtaText.includes('Layanan') || resolvedCategory.includes('SERVICE') || resolvedCategory.includes('JASA') || resolvedCategory.includes('PRO')) && (
+                <Link
+                  href={`/${tenantSlug}/dashboard?tab=products`}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition shadow-xs mt-2"
+                >
+                  <span>Kelola Katalog Toko</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

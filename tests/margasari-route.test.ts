@@ -1,5 +1,5 @@
 import { normalizeTenantSlug, getTenantConfig } from '../lib/tenant-config';
-import { getStoreChatGreeting } from '../app/[tenant]/page';
+import { getStoreChatGreeting } from '../app/[tenant]/types';
 import { getIndustryQuickReplies } from '../lib/zero-ai-engine';
 
 jest.mock('next/navigation', () => ({
