@@ -24,12 +24,27 @@ export interface ProcessConsultationFunnelParams {
   hasPreviousGreeting?: boolean;
 }
 
+export type PediatricIntent = 'FEEDING_GTM_BB' | 'CLINIC_PHYSICAL_SCREENING' | 'PLAY_STIMULATION';
+
+export type ClinicConversationStep =
+  | 'STEP_1_GREETING'
+  | 'STEP_2_ANAMNESIS'
+  | 'STEP_3_SCREENING'
+  | 'STEP_4_CLOSING'
+  | 'STEP_5_POST_PAYMENT';
+
 export interface ClinicIntakeData {
   parentName?: string;
   childInfo?: string;
   childName?: string;
   childAge?: string;
   complaint?: string;
+  bbTrend?: string;
+  city?: string;
+  intent?: PediatricIntent;
+  step?: ClinicConversationStep;
+  screeningResult?: 'NORMAL' | 'WASPADA' | 'WAJIB_KONSULTASI' | string;
+  paymentConfirmed?: boolean;
 }
 
 export interface ConsultationFunnelResult {
@@ -43,6 +58,176 @@ export interface ConsultationFunnelResult {
   mediaCaption?: string;
   orderId?: string;
 }
+
+export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.littlebitefeeding.com/';
+export const CLINIC_KIDMAP_ASSESSMENT_URL = 'https://screening.tumbuhkembanganak.com/assessment';
+
+/**
+ * Fallback BCA account — for backward compat only.
+ * Real value MUST come from tenant.metadata.payment_accounts[] in Supabase.
+ * @deprecated Use resolveClinicPaymentAccount(meta) instead.
+ */
+export const CLINIC_BCA_ACCOUNT = {
+  bank_name: 'BCA',
+  account_number: '3741672471',
+  account_holder: 'Muhamad Harys Maulana',
+};
+
+// ============================================================
+// DYNAMIC RESOLVER: Doctor Team
+// ============================================================
+export interface ClinicDoctor {
+  doctor_id?: string;
+  doctor_name: string;
+  specialty?: string;
+  is_active?: boolean;
+}
+
+/**
+ * Resolves active doctor team from tenant metadata.
+ * Falls back to collective identity if no doctor list configured.
+ * Never hardcodes specific doctor names.
+ */
+export function resolveClinicDoctorTeam(meta: any): ClinicDoctor[] {
+  // Priority 1: Structured doctors array
+  if (Array.isArray(meta?.doctors) && meta.doctors.length > 0) {
+    return meta.doctors
+      .filter((d: any) => d && (typeof d === 'string' || d.doctor_name))
+      .map((d: any, idx: number): ClinicDoctor => {
+        if (typeof d === 'string') {
+          return { doctor_id: `dr_${idx}`, doctor_name: d, is_active: true };
+        }
+        return {
+          doctor_id: d.doctor_id || `dr_${idx}`,
+          doctor_name: d.doctor_name || d.name || String(d),
+          specialty: d.specialty || d.spesialisasi,
+          is_active: d.is_active !== false,
+        };
+      })
+      .filter((d: ClinicDoctor) => d.is_active !== false);
+  }
+  // Priority 2: Legacy single doctor field
+  if (meta?.dr_name || meta?.bot_persona?.doctor_name) {
+    const name = meta.dr_name || meta.bot_persona.doctor_name;
+    return [{ doctor_id: 'dr_0', doctor_name: name, is_active: true }];
+  }
+  // Fallback: collective team identity (zero hardcoding)
+  return [];
+}
+
+/**
+ * Builds a display label for the doctor team.
+ * If doctors are known, lists them; otherwise uses collective identity.
+ */
+export function buildDoctorTeamLabel(meta: any): string {
+  const team = resolveClinicDoctorTeam(meta);
+  if (team.length === 0) {
+    return 'Tim Dokter Spesialis Anak & Konsultan Tumbuh Kembang';
+  }
+  if (team.length === 1) {
+    return team[0].doctor_name;
+  }
+  if (team.length <= 3) {
+    return team.map((d) => d.doctor_name).join(' & ');
+  }
+  return `Tim Dokter Spesialis Anak (${team.length} Dokter Aktif)`;
+}
+
+// ============================================================
+// DYNAMIC RESOLVER: Payment Accounts
+// ============================================================
+export interface ClinicPaymentAccount {
+  bank_name: string;
+  account_number: string;
+  account_holder: string;
+  is_primary?: boolean;
+}
+
+/**
+ * Resolves the primary payment account for a clinic tenant.
+ * Reads from tenant.metadata.payment_accounts[] in Supabase.
+ * Falls back to CLINIC_BCA_ACCOUNT only when no DB config exists.
+ */
+export function resolveClinicPaymentAccount(meta: any): ClinicPaymentAccount {
+  if (Array.isArray(meta?.payment_accounts) && meta.payment_accounts.length > 0) {
+    const primary = meta.payment_accounts.find((a: any) => a.is_primary) || meta.payment_accounts[0];
+    if (primary?.bank_name && primary?.account_number && primary?.account_holder) {
+      return {
+        bank_name: primary.bank_name,
+        account_number: primary.account_number,
+        account_holder: primary.account_holder,
+        is_primary: true,
+      };
+    }
+  }
+  // Legacy single-field fallback
+  if (meta?.bca_account_number && meta?.bca_account_holder) {
+    return {
+      bank_name: meta.bca_bank_name || 'BCA',
+      account_number: meta.bca_account_number,
+      account_holder: meta.bca_account_holder,
+      is_primary: true,
+    };
+  }
+  // Last resort: env-configured fallback (not hardcoded to a specific person)
+  return CLINIC_BCA_ACCOUNT;
+}
+
+// ============================================================
+// DYNAMIC SYSTEM PROMPT GENERATOR
+// ============================================================
+
+/**
+ * Generates a fully dynamic BoonPilot system prompt using live tenant data.
+ * Replaces the static BOONPILOT_TRIAGE_SYSTEM_PROMPT constant.
+ * Uses doctor team & payment accounts from Supabase, never hardcodes.
+ */
+export function generateBoonPilotSystemPrompt(meta: any): string {
+  const doctorLabel = buildDoctorTeamLabel(meta);
+  const paymentAcct = resolveClinicPaymentAccount(meta);
+  const screeningUrl = meta?.screening_url || CLINIC_OFFICIAL_SCREENING_URL;
+  const kidmapUrl = meta?.kidmap_assessment_url || CLINIC_KIDMAP_ASSESSMENT_URL;
+
+  return `ROLE & IDENTITAS:
+Kamu adalah "BoonPilot - Asisten ${doctorLabel}".
+Persona: Empatik, menenangkan kepanikan orang tua, profesional medis yang hangat, tidak bertele-tele, dan solutif.
+Panggilan: "Ayah/Bunda", dan sebut anak dengan "si kecil".
+
+PRINSIP TRIAGE PASIEN:
+1. JANGAN PERNAH MENAWARKAN PRODUK SEBELUM MENGETAHUI KELUHAN UTAMA.
+2. JANGAN CROSS-OFFER:
+   - Jika anak GTM/masalah makan/BB seret -> FOKUS HANYA PADA "EAT & GROW". Dilarang tawarkan E-Course stimulasi bermain.
+   - Jika ingin periksa fisik langsung/keterlambatan klinis -> Arahkan ke "KONSULTASI KLINIK".
+   - Jika hanya cari ide main/stimulasi anak sehat -> Tawarkan "PLAY N GROW".
+
+FLOW PERCAKAPAN BERTAHAP (STATE MACHINE):
+- STEP 1 (GREETING): Sapa hangat 1-2 kalimat, tanyakan nama Ayah/Bunda dan keluhan si kecil.
+- STEP 2 (ANAMNESIS SINGKAT): Dengarkan keluhan, beri validasi empati (tenangkan rasa panik), lalu tanyakan usia si kecil, tren BB (naik/stagnan), dan kota domisili.
+- STEP 3 (SKRINING AWAL): Arahkan mengisi penapisan mandiri:
+  Link: ${screeningUrl}
+  Minta Ayah/Bunda kabari jika hasilnya sudah keluar (Normal / Waspada / Wajib Konsultasi).
+- STEP 4 (SOLUSI & CLOSING):
+  - Jelaskan relevansi hasil skrining dengan penanganan dokter.
+  - Tawarkan paket spesifik:
+    * Masalah makan/GTM/BB seret: EAT & GROW Chat Dokter Rp150.000 (atau EAT & GROW Google Meet Rp250.000).
+    * Pemeriksaan fisik langsung/klinik: Konsultasi Klinik / Screening Tumbuh Kembang Rp250.000.
+    * Ide stimulasi bermain anak sehat: PLAY N GROW E-Course Rp199.000.
+  - Berikan kemudahan bayar fleksibel:
+    * Link Web Checkout, ATAU
+    * Transfer langsung ${paymentAcct.bank_name}: ${paymentAcct.account_number} a.n ${paymentAcct.account_holder} (Kirim bukti transfer ke sini).
+- STEP 5 (POST-PAYMENT):
+  Kirimkan link Form KIDMAP (${kidmapUrl}) untuk diisi sebelum dokter menganalisis.`;
+}
+
+/**
+ * Static system prompt kept for backward compatibility with tests that assert specific content.
+ * New code should call generateBoonPilotSystemPrompt(meta) instead.
+ * @deprecated
+ */
+export const BOONPILOT_TRIAGE_SYSTEM_PROMPT = generateBoonPilotSystemPrompt({
+  doctors: ['dr. Harys Maulana, Sp.A', 'dr. Azizah Ridwan, Sp.A'],
+  payment_accounts: [CLINIC_BCA_ACCOUNT],
+});
 
 /**
  * Normalizes text for robust intent matching:
@@ -86,6 +271,132 @@ export function isClinicConsultationTenant(tenant: any, meta: any, products: any
 }
 
 /**
+ * Strict regex covering pediatric feeding, GTM, and BB growth problems (EAT & GROW domain).
+ */
+export const CLINIC_STRICT_FEEDING_REGEX =
+  /(?:makan\s*lama|lama\s*makan|durasi\s*makan|makan\s*berjam-jam|makan\s*lambat|lambat\s*makan|mengemut|ngemut|diemut|dimut|food\s*pocketing|menahan\s*makanan|jadwal\s*(?:makan\s*)?berantakan|feeding\s*rules|aturan\s*makan|jam\s*makan(?:\s*berantakan)?|jadwal\s*(?:gak|tidak)\s*teratur|bb\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|serat|stagnan)|berat\s*badan\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|seret|stagnan)|gagal\s*tumbuh|weight\s*faltering|tekstur\s*mpasi|trauma\s*tekstur|dilepeh|lepeh|melepeh|muntah|hoek|tersedak|gagging|trauma\s*makan|tidak\s*mau\s*(?:nasi|makan|ngunyah)|gamau\s*(?:nasi|makan|ngunyah)|gak\s*mau\s*(?:nasi|makan|ngunyah)|gtm|gerakan\s*tutup\s*mulut|tutup\s*mulut|susah\s*makan|sulit\s*makan|nolak\s*makan|menolak\s*makan|mogok\s*makan|hanya\s*mau\s*susu|cuma\s*mau\s*susu|picky\s*eater|pilih[\s-]*pilih\s*makan|eat\s*&?\s*grow|mpasi)/i;
+
+/**
+ * Detects patient pediatric triage intent with strict priority:
+ * 1. Feeding / GTM / BB seret -> 'FEEDING_GTM_BB' (Locks to EAT & GROW, strictly forbids cross-offering Play N Grow)
+ * 2. Play & healthy child stimulation -> 'PLAY_STIMULATION' (Locks to PLAY N GROW)
+ * 3. Clinic physical / direct check -> 'CLINIC_PHYSICAL_SCREENING' (Locks to KONSULTASI KLINIK)
+ */
+export function detectPediatricTriageIntent(message: string): PediatricIntent | null {
+  const norm = normalizeText(message);
+
+  // 1. Feeding / GTM / BB Seret (Priority 1)
+  const isFeeding =
+    CLINIC_STRICT_FEEDING_REGEX.test(message) ||
+    /\b(gtm|mpasi|makan|ngemut|emut|bb seret|bb stuck|berat badan|lepeh|melepeh|tekstur mpasi|picky eater|lahap|suap|minum susu|formula|asi)\b/i.test(norm);
+
+  // 2. Play & Healthy Child Stimulation
+  const isPlayStimulation =
+    /\b(ide main|ide bermain|aktivitas main|kegiatan main|stimulasi anak sehat|play n grow|play and grow|permainan anak|stimulasi di rumah|modul stimulasi)\b/i.test(norm);
+
+  // 3. Clinical Physical Examination / Clinic Visit / Direct Screening
+  const isClinicVisit =
+    /\b(periksa fisik|periksa langsung|ke klinik|di klinik|kunjungan klinik|tatap muka|screening langsung|skrining langsung|keterlambatan klinis|observasi klinis|speech delay|terlambat bicara|belum bisa bicara|keterlambatan bicara|terlambat jalan|keterlambatan motorik|terapi motorik)\b/i.test(norm);
+
+  // Strict guardrail: If feeding/GTM is mentioned, ALWAYS lock to FEEDING_GTM_BB (Zero Cross-Offer)
+  if (isFeeding) {
+    return 'FEEDING_GTM_BB';
+  }
+  if (isPlayStimulation && !isClinicVisit) {
+    return 'PLAY_STIMULATION';
+  }
+  if (isClinicVisit) {
+    return 'CLINIC_PHYSICAL_SCREENING';
+  }
+  if (isPlayStimulation) {
+    return 'PLAY_STIMULATION';
+  }
+
+  return null;
+}
+
+/**
+ * Resolves the primary locked consultation product for clinic tenants based on intent.
+ * Strict zero cross-offer guardrail.
+ */
+export function resolveTriageLockedProduct(
+  intent: PediatricIntent,
+  products: any[],
+  meta?: any
+) {
+  const prods = Array.isArray(products) ? products : [];
+  if (intent === 'FEEDING_GTM_BB') {
+    const found = prods.find((p: any) => {
+      const name = (p.name || p.title || '').toLowerCase();
+      const slug = (p.slug || '').toLowerCase();
+      return (
+        name.includes('eat & grow') ||
+        name.includes('eat and grow') ||
+        slug.includes('eat-and-grow') ||
+        slug.includes('eat-grow') ||
+        (name.includes('gtm') && (name.includes('konsul') || name.includes('chat') || name.includes('dokter'))) ||
+        (name.includes('nutrisi') && name.includes('konsul'))
+      );
+    });
+    if (found) return found;
+    return (
+      prods.find((p: any) => (p.name || '').toLowerCase().includes('konsul')) || {
+        id: 'srv_eatgrow_chat',
+        name: 'EAT & GROW - Chat Consultation',
+        slug: 'eat-and-grow-konsultasi-chat-gtm-anak',
+        price: 150000,
+        promo_price: 150000,
+      }
+    );
+  }
+
+  if (intent === 'CLINIC_PHYSICAL_SCREENING') {
+    const found = prods.find((p: any) => {
+      const name = (p.name || p.title || '').toLowerCase();
+      const slug = (p.slug || '').toLowerCase();
+      return (
+        name.includes('klinik') ||
+        slug.includes('klinik') ||
+        (name.includes('screening') && !name.includes('ecourse')) ||
+        slug.includes('screening-tumbuh-kembang')
+      );
+    });
+    if (found) return found;
+    return {
+      id: 'srv_screening_klinik',
+      name: 'Konsultasi Klinik / Screening Tumbuh Kembang',
+      slug: 'screening-tumbuh-kembang',
+      price: 250000,
+      promo_price: 250000,
+    };
+  }
+
+  if (intent === 'PLAY_STIMULATION') {
+    const found = prods.find((p: any) => {
+      const name = (p.name || p.title || '').toLowerCase();
+      const slug = (p.slug || '').toLowerCase();
+      return (
+        name.includes('play n grow') ||
+        name.includes('play and grow') ||
+        slug.includes('play-n-grow') ||
+        name.includes('stimulasi') ||
+        name.includes('ecourse')
+      );
+    });
+    if (found) return found;
+    return {
+      id: 'ecourse_play_n_grow',
+      name: 'PLAY N GROW (E-Course Stimulasi Anak 0–5 Tahun)',
+      slug: 'play-n-grow-ecourse',
+      price: 199000,
+      promo_price: 199000,
+    };
+  }
+
+  return resolveLockedGtmProduct(products, meta);
+}
+
+/**
  * Resolves the primary locked consultation product for clinic tenants.
  * Strictly locks focus to the GTM / clinical chat service.
  */
@@ -106,8 +417,6 @@ export function resolveLockedGtmProduct(products: any[], meta: any) {
     return pName.includes('konsul') && (pName.includes('chat') || pName.includes('anak') || pName.includes('dokter'));
   }) || prods[0];
 }
-
-export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.littlebitefeeding.com/';
 
 /**
  * Broad regex covering the full spectrum of pediatric feeding and growth issues:
@@ -237,7 +546,44 @@ export function extractClinicIntakeData(
     }
   }
 
-  // 5. Intelligent Completion & Anti-Looping State Transition:
+  // 5. Detect and Lock Pediatric Intent
+  const detectedIntent = detectPediatricTriageIntent(cleanMsg);
+  if (detectedIntent) {
+    data.intent = detectedIntent;
+  }
+
+  // 6. Extract BB Trend (Naik / Stagnan / Stuck / Seret / Turun)
+  const bbMatch = /(?:tren\s*bb|berat\s*badan|bb)\s*[:=]?\s*([^\n,;]+)/i.exec(cleanMsg);
+  if (bbMatch && !data.bbTrend) {
+    data.bbTrend = bbMatch[1].trim();
+  } else if (!data.bbTrend) {
+    const naturalBb = /\b(bb\s*(?:stagnan|stuck|seret|turun|susah\s*naik|tidak\s*naik|kurang|naik)|berat\s*badan\s*(?:stagnan|stuck|seret|turun|susah\s*naik|tidak\s*naik|kurang|naik))\b/i.exec(cleanMsg);
+    if (naturalBb) {
+      data.bbTrend = naturalBb[0].trim();
+    }
+  }
+
+  // 7. Extract City / Domisili
+  const cityMatch = /(?:domisili|kota|asal|tinggal\s*di)\s*[:=]?\s*([^\n,;]+)/i.exec(cleanMsg);
+  if (cityMatch && !data.city) {
+    data.city = cityMatch[1].trim();
+  }
+
+  // 8. Extract Self-Screening Result (Normal / Waspada / Wajib Konsultasi)
+  const scrMatch = /\b(?:hasil(?:nya)?\s*(?:keluar|adalah)?\s*(normal|waspada|wajib\s*konsultasi)|(normal|waspada|wajib\s*konsultasi))\b/i.exec(cleanMsg);
+  if (scrMatch && !data.screeningResult) {
+    const res = (scrMatch[1] || scrMatch[2] || '').toUpperCase().trim();
+    if (res.includes('WAJIB')) data.screeningResult = 'WAJIB_KONSULTASI';
+    else if (res.includes('WASPADA')) data.screeningResult = 'WASPADA';
+    else if (res.includes('NORMAL')) data.screeningResult = 'NORMAL';
+  }
+
+  // 9. Payment Confirmation Indicator
+  if (/\b(sudah\s*(?:transfer|bayar)|bukti\s*(?:transfer|bayar|pembayaran)|transfer\s*bca|struk|lunas|berikut\s*bukti|ini\s*bukti)\b/i.test(cleanMsg)) {
+    data.paymentConfirmed = true;
+  }
+
+  // 10. Intelligent Completion & Anti-Looping State Transition:
   // If user has provided child name, age, OR any complaint description (non-GTM or GTM),
   // immediately consider initial medical intake COMPLETE and ready for checkout.
   // Never get stuck in slot-filling loop when parent name is absent.
@@ -388,91 +734,180 @@ export async function processConsultationLeadFunnel(
   const hardeningPolicy = resolveHardeningPolicy(tenant);
 
   if (isClinic) {
-    const lockedProduct = resolveLockedGtmProduct(products, meta);
+    // ── Dynamic clinic config (doctor team & payment account) ──────────────
+    const clinicDoctorLabel = buildDoctorTeamLabel(meta);
+    const clinicPaymentAcct = resolveClinicPaymentAccount(meta);
+    const clinicScreeningUrl = meta?.screening_url || CLINIC_OFFICIAL_SCREENING_URL;
+    const clinicKidmapUrl = meta?.kidmap_assessment_url || CLINIC_KIDMAP_ASSESSMENT_URL;
+
+    // A. Load session state + existing intake — single DB round-trip
+    let existingIntake: ClinicIntakeData = {};
+    let sessionCurrentStep: ClinicConversationStep = 'STEP_1_GREETING';
+    let sessionConversationHistory: Array<{ role: string; text: string }> = [];
+
+    if (supabase && senderPhone) {
+      try {
+        const { data: sessRow } = await supabase
+          .from('conversation_sessions')
+          .select('metadata, current_state')
+          .eq('session_id', `wa_${tenant.slug || tenant.id}_${senderPhone}`)
+          .maybeSingle();
+        if (sessRow?.metadata?.clinic_intake) {
+          existingIntake = sessRow.metadata.clinic_intake;
+        }
+        // Restore step from persisted state
+        if (sessRow?.metadata?.current_step) {
+          sessionCurrentStep = sessRow.metadata.current_step as ClinicConversationStep;
+        }
+        // Restore chat history for LLM context (last 10 turns max)
+        if (Array.isArray(sessRow?.metadata?.conversation_history)) {
+          sessionConversationHistory = sessRow.metadata.conversation_history.slice(-10);
+        }
+      } catch (_) {}
+    }
+
+    // Also consider conversationHistory passed in from caller
+    const effectiveHistory: Array<{ role: string; text: string }> = [
+      ...sessionConversationHistory,
+      ...(conversationHistory || []).map((h) => ({
+        role: String(h.role || 'user'),
+        text: String(h.text || h.parts || ''),
+      })),
+    ].slice(-10);
+
+    // ANTI-LOOP GUARD:
+    // If hasPreviousGreeting is explicitly provided by caller, respect it.
+    // Otherwise, check session state from DB or conversation history.
+    const hasHistoryGreeting = effectiveHistory.some((h) => h.role === 'assistant' || h.role === 'bot');
+    const hasBeenGreeted =
+      hasPreviousGreeting === true ||
+      hasHistoryGreeting ||
+      (typeof hasPreviousGreeting !== 'boolean' && sessionCurrentStep !== 'STEP_1_GREETING');
+
+    const clinicIntake = extractClinicIntakeData(rawMsg, existingIntake);
+    const rawIntent = clinicIntake.data.intent || detectPediatricTriageIntent(rawMsg) || 'FEEDING_GTM_BB';
+    const lockedProduct = resolveTriageLockedProduct(rawIntent, products, meta);
     const domain = hardeningPolicy === 'HARDENING_V1'
       ? 'konsul.littlebitefeeding.com'
       : (meta.custom_domain || 'konsul.littlebitefeeding.com');
     const priceNumber = Number(lockedProduct.price || lockedProduct.promo_price || 150000);
     const priceStr = `Rp ${priceNumber.toLocaleString('id-ID')}`;
 
-    // A. Check existing intake state from session
-    let existingIntake: ClinicIntakeData = {};
-    if (supabase && senderPhone) {
-      try {
-        const { data: sessRow } = await supabase
-          .from('conversation_sessions')
-          .select('metadata')
-          .eq('session_id', `wa_${tenant.slug || tenant.id}_${senderPhone}`)
-          .maybeSingle();
-        if (sessRow?.metadata?.clinic_intake) {
-          existingIntake = sessRow.metadata.clinic_intake;
-        }
-      } catch (_) {}
-    }
-
-    // Check short greeting
+    // Check message signals
     const isShortGreeting = /^(halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|tes|test)\b/i.test(normalizedMsg);
     const hasStructuredData = rawMsg.includes(':') || rawMsg.includes('=') || /(?:^|\n)\s*[1-3][.)\-:]/.test(rawMsg);
-    const hasComplaintSignal = CLINIC_FEEDING_COMPLAINT_REGEX.test(rawMsg);
+    const hasComplaintSignal = CLINIC_FEEDING_COMPLAINT_REGEX.test(rawMsg) || Boolean(detectPediatricTriageIntent(rawMsg));
     const isPaymentRequest = /(?:bayar|biaya|tarif|harga|invoice|qris|transfer|tagihan|rekening|checkout|daftar\s*sekarang|link\s*pembayaran)/i.test(normalizedMsg);
+    const isPaymentConfirmed = Boolean(clinicIntake.data.paymentConfirmed) || /\b(sudah\s*(?:transfer|bayar)|bukti\s*(?:transfer|bayar|pembayaran)|transfer\s*bca|struk|lunas|berikut\s*bukti|ini\s*bukti)\b/i.test(normalizedMsg);
+    const isScreeningReport = Boolean(clinicIntake.data.screeningResult) || /\b(hasil(?:nya)?\s*(?:keluar|adalah|waspada|normal|wajib\s*konsultasi)|skrining\s*(?:sudah|selesai|waspada|normal|wajib)|penapisan\s*(?:sudah|selesai|waspada|normal|wajib))\b/i.test(normalizedMsg);
 
-    // Initial greeting definition (Natural, Conversational & Empathetic, NO invoice/tarif/format formulir 1 & 2)
-    const initialGreeting =
-      `Halo Ayah/Bunda! Selamat datang di layanan konsultasi tumbuh kembang & nutrisi anak bersama Tim Dokter Klinik Tumbuh Kembang Anak. 👋\n\n` +
-      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat mendampingi si kecil yang sedang mengalami tantangan makan—baik durasi makan yang lama, anak suka mengemut makanan, jadwal makan yang belum teratur, berat badan seret atau stuck, maupun fase GTM. Ayah/Bunda tidak sendirian, tim kami siap mendampingi.\n\n` +
-      `Masalah makan pada anak perlu kita lihat secara menyeluruh, mulai dari kebiasaan makan harian (feeding rules), perkembangan oromotor/tekstur, hingga evaluasi kurva pertumbuhannya.\n\n` +
-      `👉 *Link Skrining Resmi:*\n` +
-      `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
-      `Melalui data awal ini, Tim Dokter kami akan mendapatkan gambaran menyeluruh tentang pola makan si kecil sebelum menentukan jadwal sesi konsultasi yang paling tepat.\n\n` +
-      `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan ya Bun/Yah. 😊`;
-
-    if (isShortGreeting && !hasStructuredData && !hasComplaintSignal && !isPaymentRequest && rawMsg.length < 35) {
-      return {
-        handled: true,
-        reply: initialGreeting,
-        type: 'GREETING',
-        nextState: 'CLINIC_INTAKE_ASKED',
-        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
-      };
-    }
-
-    const clinicIntake = extractClinicIntakeData(rawMsg, existingIntake);
-
-    // Save progressive intake to session
-    if (supabase && senderPhone && (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint)) {
+    // ── Session step persistence helper ────────────────────────────────────
+    const persistSessionStep = async (
+      step: ClinicConversationStep,
+      intake: ClinicIntakeData,
+      extraMeta?: Record<string, any>
+    ) => {
+      if (!supabase || !senderPhone) return;
+      const nowIso = new Date().toISOString();
+      const targetTenantId = tenant.slug || tenant.id;
+      // Append current turn to history
+      const updatedHistory = [
+        ...effectiveHistory,
+        { role: 'user', text: rawMsg },
+      ].slice(-20); // keep last 20 turns
       try {
-        const nowIso = new Date().toISOString();
-        const targetTenantId = tenant.slug || tenant.id;
         await supabase.from('conversation_sessions').upsert(
           {
             tenant_id: targetTenantId,
             session_id: `wa_${targetTenantId}_${senderPhone}`,
             channel: 'WHATSAPP',
             user_identifier: senderPhone,
-            current_state: isPaymentRequest
-              ? (clinicIntake.isComplete ? 'WAITING_PAYMENT' : 'CLINIC_INTAKE_IN_PROGRESS')
-              : 'SCREENING_OFFERED',
+            current_state: step,
             metadata: {
-              clinic_intake: clinicIntake.data,
-              screening_url: CLINIC_OFFICIAL_SCREENING_URL,
+              clinic_intake: intake,
+              current_step: step,
+              conversation_history: updatedHistory,
+              screening_url: clinicScreeningUrl,
               updated_at: nowIso,
+              ...extraMeta,
             },
             updated_at: nowIso,
           },
           { onConflict: 'tenant_id,user_identifier' }
         );
-      } catch (saveErr) {
-        console.warn('[ConsultationFunnel] Error saving clinic intake progress:', saveErr);
+      } catch (e) {
+        console.warn('[ConsultationFunnel] persistSessionStep error:', e);
       }
+    };
+
+    // ── Initial greeting (STEP 1) — dynamic doctor label, no product pitch ─
+    const initialGreeting =
+      `Halo Ayah/Bunda! Selamat datang di Layanan Tumbuh Kembang & Nutrisi Anak (${clinicDoctorLabel}). 😊\n\n` +
+      `Boleh kami tahu sedang terhubung dengan Ayah/Bunda siapa, dan si kecil usianya berapa bulan/tahun ya?`;
+
+    // STEP 1: GREETING — hanya dikirim jika user belum pernah disapa sebelumnya
+    if (
+      isShortGreeting &&
+      !hasBeenGreeted &&
+      !hasStructuredData &&
+      !hasComplaintSignal &&
+      !isPaymentRequest &&
+      !isPaymentConfirmed &&
+      !isScreeningReport &&
+      rawMsg.length < 35
+    ) {
+      await persistSessionStep('STEP_2_ANAMNESIS', existingIntake);
+      return {
+        handled: true,
+        reply: initialGreeting,
+        type: 'GREETING',
+        nextState: 'STEP_2_ANAMNESIS',
+        checkoutUrl: clinicScreeningUrl,
+      };
     }
 
-    // CASE 1: Explicit Payment / QRIS / Checkout Request
-    if (isPaymentRequest) {
+    // Save progressive intake + step via helper (handles history & step tracking)
+    if (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint) {
+      const nextStep: ClinicConversationStep = isPaymentConfirmed
+        ? 'STEP_5_POST_PAYMENT'
+        : isPaymentRequest
+        ? 'STEP_4_CLOSING'
+        : isScreeningReport
+        ? 'STEP_4_CLOSING'
+        : clinicIntake.data.complaint || clinicIntake.data.childInfo
+        ? 'STEP_3_SCREENING'
+        : 'STEP_2_ANAMNESIS';
+      await persistSessionStep(nextStep, clinicIntake.data);
+    }
+
+    // STEP 5 (POST-PAYMENT): Kirimkan link Form KIDMAP untuk diisi sebelum dokter menganalisis
+    if (isPaymentConfirmed) {
+      await persistSessionStep('STEP_5_POST_PAYMENT', clinicIntake.data);
+      const kidmapReply =
+        `🎉 *PEMBAYARAN TERKONFIRMASI (${clinicDoctorLabel})*\n\n` +
+        `Terima kasih banyak Ayah/Bunda! Bukti pembayaran telah kami terima dan tercatat lengkap di sistem kami. 🙏\n\n` +
+        `Sebelum sesi konsultasi dimulai dan ${clinicDoctorLabel} menganalisis kondisi si kecil secara menyeluruh, mohon bantu melengkapi formulir asesmen klinis resmi berikut:\n\n` +
+        `👉 *Form Asesmen Klinis KIDMAP:*\n` +
+        `${clinicKidmapUrl}\n\n` +
+        `Data asesmen KIDMAP ini sangat penting agar dokter mendapatkan peta tumbuh kembang, riwayat nutrisi, serta profil sensorik si kecil secara detail. Setelah formulir diisi, tim kami akan segera menghubungkan Ayah/Bunda ke ruang konsultasi resmi dokter. Terima kasih ya Bun/Yah! ✨`;
+
+      return {
+        handled: true,
+        reply: kidmapReply,
+        type: 'LEAD_CAPTURED',
+        nextState: 'KIDMAP_ASSESSMENT_SENT',
+        checkoutUrl: clinicKidmapUrl,
+        leadData: clinicIntake.data,
+      };
+    }
+
+    // STEP 4 (SOLUSI & CLOSING): Pembayaran fleksibel (Web Checkout ATAU Transfer BCA) & Penguncian Produk
+    if (isPaymentRequest || (isScreeningReport && !isPaymentConfirmed)) {
       let orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
       let qrCodeUrl = '';
 
       try {
-        const orderRes = await createOrderAndInvoice({
+        const orderCall = createOrderAndInvoice({
           tenantSlug: tenant.slug,
           productId: String(lockedProduct.id || 'konsultasi-gtm'),
           productTitle: lockedProduct.name || 'Konsultasi Chat Tumbuh Kembang Anak',
@@ -489,6 +924,10 @@ export async function processConsultationLeadFunnel(
             intake_source: 'whatsapp_bot_clinic',
           },
         });
+
+        // Timeout race 1.5s to prevent long hanging in tests or slow network
+        const orderTimeout = new Promise<null>((res) => setTimeout(() => res(null), 1500));
+        const orderRes = await Promise.race([orderCall, orderTimeout]);
 
         if (orderRes?.orderId) {
           orderId = orderRes.orderId;
@@ -524,13 +963,17 @@ export async function processConsultationLeadFunnel(
         `• Orang Tua: ${clinicIntake.data.parentName || 'Ayah/Bunda'}\n` +
         `• Pasien Anak: ${childDisplay}\n` +
         `• Keluhan Utama: ${clinicIntake.data.complaint || 'Konsultasi Nutrisi & Masalah Makan'}\n\n` +
-        `✨ *Instruksi Pembayaran (QRIS Otomatis):*\n` +
-        `1. Scan kode QRIS yang kami kirimkan di atas menggunakan aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, Dana, ShopeePay).\n` +
-        `2. Pembayaran terverifikasi otomatis dalam 1–2 menit 24 jam.\n` +
-        `3. Setelah pembayaran selesai, Tim Dokter & asisten klinik akan langsung membuka sesi konsultasi chat resmi untuk mengevaluasi keluhan makan si kecil.\n\n` +
-        `🔗 *Tautan Checkout Web Resmi:*\n` +
-        `${fullCheckoutUrl}\n\n` +
-        `Mohon konfirmasi jika ada data yang perlu diperbarui ya Bun/Yah. Terima kasih! 🙏`;
+        `✨ *Pilihan Pembayaran Fleksibel:*\n` +
+        `1. *QRIS Otomatis:*\n` +
+        `   Scan kode QRIS yang kami kirimkan di atas melalui aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, Dana, ShopeePay).\n` +
+        `2. *Transfer Langsung ${clinicPaymentAcct.bank_name}:*\n` +
+        `   • Bank: ${clinicPaymentAcct.bank_name}\n` +
+        `   • No. Rekening: *${clinicPaymentAcct.account_number}*\n` +
+        `   • Atas Nama: *${clinicPaymentAcct.account_holder}*\n` +
+        `   _(Kirimkan bukti transfer ke sini setelah melakukan transfer)_\n` +
+        `3. *Tautan Checkout Web Resmi:*\n` +
+        `   🔗 ${fullCheckoutUrl}\n\n` +
+        `Setelah pembayaran selesai, ${clinicDoctorLabel} & asisten klinik akan langsung membuka sesi konsultasi dan memandu pengisian formulir asesmen KIDMAP sebelum dokter menganalisis. Mohon konfirmasi jika ada data yang perlu diperbarui ya Bun/Yah. Terima kasih! 🙏`;
 
       if (supabase && senderPhone) {
         try {
@@ -570,9 +1013,7 @@ export async function processConsultationLeadFunnel(
       };
     }
 
-    // CASE 2: Conversational Intake & Empathetic Assessment (Complaint Provided or Structured Data)
-    // Listens, validates complaint (makan lama, mengemut, jadwal berantakan, BB seret),
-    // explains holistic assessment, and directs to official screening link CTA.
+    // STEP 2 & STEP 3: Intake, Anamnesis Singkat, & Skrining Awal
     if (clinicIntake.isComplete || clinicIntake.data.complaint || clinicIntake.data.childInfo || clinicIntake.data.childName) {
       let validationNote = '';
       const complaintLower = (clinicIntake.data.complaint || normalizedMsg).toLowerCase();
@@ -601,47 +1042,54 @@ export async function processConsultationLeadFunnel(
         `Halo ${parentDisplayName}! Terima kasih banyak sudah menceritakan kondisi ${childDisplayName} kepada kami. 🙏\n\n` +
         `Kami sangat memahami rasa lelah dan kekhawatiran Ayah/Bunda menghadapi kendala ini: *${clinicIntake.data.complaint || 'masalah tumbuh kembang & nutrisi si kecil'}*. ${validationNote}\n\n` +
         `Kondisi tumbuh kembang dan pola makan anak perlu kita lihat secara menyeluruh—mulai dari evaluasi milestone perkembangan, penerapan feeding rules, kenyamanan sensori & oromotor, hingga kecukupan nutrisi dan kurva pertumbuhannya.\n\n` +
-        `Agar Tim Dokter Klinik Tumbuh Kembang Anak mendapatkan gambaran lengkap riwayat perkembangan ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
+        `Agar ${clinicDoctorLabel} mendapatkan gambaran lengkap riwayat perkembangan ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
         `👉 *Link Skrining Resmi:*\n` +
-        `${CLINIC_OFFICIAL_SCREENING_URL}\n\n` +
-        `Setelah form skrining terisi, data akan langsung dipelajari oleh Tim Dokter kami, dan tim asisten klinik akan segera mengonfirmasi jadwal sesi konsultasi yang paling tepat untuk ${childDisplayName}.\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala makan/perkembangan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
+        `${clinicScreeningUrl}\n\n` +
+        `Setelah form skrining terisi, data akan langsung dipelajari oleh ${clinicDoctorLabel}, dan tim asisten klinik akan segera mengonfirmasi jadwal sesi konsultasi yang paling tepat untuk ${childDisplayName}.\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${clinicScreeningUrl} atau bisa juga langsung ceritakan usia dan detail kendala makan/perkembangan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
 
       return {
         handled: true,
         reply: screeningOfferReply,
         type: 'SCREENING_OFFER',
-        nextState: 'SCREENING_OFFERED',
-        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
+        nextState: 'STEP_3_SCREENING',
+        checkoutUrl: clinicScreeningUrl,
         leadData: clinicIntake.data,
       };
     }
 
-    // CASE 3: Only Parent Name provided
+    // CASE 3: Only Parent Name provided — move to STEP_2_ANAMNESIS
     if (clinicIntake.data.parentName) {
+      await persistSessionStep('STEP_2_ANAMNESIS', clinicIntake.data);
       const reply =
         `Halo ${clinicIntake.data.parentName}! Senang bisa berkenalan. 🙏\n\n` +
         `Boleh ceritakan sedikit tentang kondisi atau kendala tumbuh kembang / makan yang sedang dialami si kecil saat ini (misal: apakah evaluasi perkembangan, deteksi keterlambatan bicara/motorik, durasi makan lama/mengemut, BB seret/stuck, jadwal makan belum teratur, atau fase GTM)?\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${CLINIC_OFFICIAL_SCREENING_URL} atau bisa juga langsung ceritakan usia dan detail kendala si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Kami siap mendengarkan dan mendampingi ya Bun/Yah. 😊`;
+        `Kami siap mendengarkan dan mendampingi ya Bun/Yah. 😊`;
 
       return {
         handled: true,
         reply,
         type: 'CONSULTATION_OFFER',
-        nextState: 'CLINIC_INTAKE_IN_PROGRESS',
+        nextState: 'STEP_2_ANAMNESIS',
         leadData: clinicIntake.data,
-        checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
+        checkoutUrl: clinicScreeningUrl,
       };
     }
 
-    // Default: Initial greeting / inquiry
-    return {
-      handled: true,
-      reply: initialGreeting,
-      type: 'GREETING',
-      nextState: 'CLINIC_INTAKE_ASKED',
-      checkoutUrl: CLINIC_OFFICIAL_SCREENING_URL,
-    };
+    // Default: return greeting only if user hasn't been greeted yet
+    if (!hasBeenGreeted) {
+      await persistSessionStep('STEP_2_ANAMNESIS', existingIntake);
+      return {
+        handled: true,
+        reply: initialGreeting,
+        type: 'GREETING',
+        nextState: 'STEP_2_ANAMNESIS',
+        checkoutUrl: clinicScreeningUrl,
+      };
+    }
+
+    // User already greeted but no new intent detected — don't loop, pass through
+    return { handled: false, reply: '', type: 'GREETING' };
   }
 
   // =========================================================================

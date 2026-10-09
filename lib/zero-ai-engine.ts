@@ -15,6 +15,7 @@ import {
   resumeBotForConversation,
   routeTenantInboundMessage,
 } from '@/lib/bot/tenant-bot-isolation';
+import { isClinicConsultationTenant } from '@/lib/funnel/consultation-lead-funnel';
 
 export type CanonicalIndustryCategory =
   | 'PHYSICAL'
@@ -723,9 +724,9 @@ export async function processZeroAiMessage(
     sessionState.bot_paused = false;
   }
 
-  // 2b. Check specialized tenant decision tree & campaign routing (e.g. Tumbuh Kembang Anak clinic standard)
+  // 2b. Check specialized tenant decision tree & campaign routing (e.g. Clinic Pediatric Triage)
   const isSpecializedClinic =
-    tenant.slug === 'tumbuh-kembang-anak' ||
+    isClinicConsultationTenant(tenant, meta, meta?.products || []) ||
     tenant.category === 'CLINIC' ||
     tenant.category === 'KLINIK_KONSULTASI';
 

@@ -32,7 +32,7 @@ import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
 import PublicServicePortalTemplate from './components/templates/PublicServicePortalTemplate';
 import StorefrontTemplate from './components/templates/StorefrontTemplate';
 import ControlledProvisioningError from '@/components/ControlledProvisioningError';
-import { resolveTenantRuntime, resolveTemplate, executeStorefrontRuntimePipeline } from '@/lib/resolvers/tenant-runtime-resolver';
+import { resolveTenantRuntime, resolveTemplate, executeStorefrontRuntimePipeline, resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
 import { TenantRuntimeProvider } from '@/lib/context/tenant-runtime-context';
 import {
   captureAffiliateReferral,
@@ -1221,6 +1221,9 @@ export default function TenantStorefrontPage() {
     currentTheme.chat_enabled;
   const isChatEnabled = rawChatEnabled !== false && rawChatEnabled !== 'false';
 
+  const storefrontSections = resolveStorefrontSections(tenantMetadata || tenant?.metadata);
+  const storefrontCopy = resolveStorefrontCopy(tenantMetadata || tenant?.metadata, storeName || displayName);
+
   // Resolusi logo toko dengan prioritas terlengkap
   const activeLogo =
     tenant?.metadata?.logo_url ||
@@ -1752,9 +1755,11 @@ export default function TenantStorefrontPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-              <Clock className="w-3.5 h-3.5 text-slate-400" /> Layanan Cepat 24 Jam
-            </div>
+            {storefrontSections.operating_hours?.is_active !== false && (
+              <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                <Clock className="w-3.5 h-3.5 text-slate-400" /> Layanan Cepat 24 Jam
+              </div>
+            )}
 
             <button
               onClick={() => setShowCartModal(true)}
@@ -1775,7 +1780,8 @@ export default function TenantStorefrontPage() {
       {/* 2-COLUMN VIEW: KATALOG DI KIRI (lg:col-span-7), CHAT ASISTEN DI KANAN (lg:col-span-5) */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
         {/* KOLOM KIRI: KATALOG LAYANAN DARI SUPABASE (Posisi Baru di Sisi Kiri) */}
-        <section className={`${isChatEnabled ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-5 order-1`}>
+        {storefrontSections.catalog?.is_active !== false && (
+          <section className={`${(isChatEnabled && storefrontSections.floating_chat?.is_active !== false) ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-5 order-1`}>
           <div className={`${defaultThemeConfig.categoryBar} p-1.5 rounded-2xl border shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold transition-colors`}>
             {/* Tombol Scan Barcode / QR */}
             <button
@@ -2002,9 +2008,10 @@ export default function TenantStorefrontPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* KOLOM KANAN: ASSISTANT CHAT BOT SIMULATOR (Desktop Only: lg ke atas) */}
-        {isChatEnabled && (
+        {isChatEnabled && storefrontSections.floating_chat?.is_active !== false && (
           <section className="hidden lg:flex lg:col-span-5 flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24 order-2">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -2417,7 +2424,7 @@ export default function TenantStorefrontPage() {
       )}
 
       {/* MOBILE FLOATING CHAT BUTTON & INTERACTIVE DRAWER (Mobile Viewport: < lg) */}
-      {isChatEnabled && (
+      {isChatEnabled && storefrontSections.floating_chat?.is_active !== false && (
         <div className="lg:hidden">
           {/* Floating Pill Button */}
           {!isMobileChatOpen && (

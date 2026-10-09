@@ -96,3 +96,58 @@ export interface ResolvedTemplateResult {
   statusCode?: number;
 }
 
+// ── STOREFRONT MODULAR SECTIONS & COPY TYPES (CTO Mandate / Zero-Hardcoding) ──
+
+export interface StorefrontSectionConfig {
+  is_active?: boolean;
+  [key: string]: any;
+}
+
+export interface StorefrontSectionsConfig {
+  hero?: StorefrontSectionConfig;
+  intake_form?: StorefrontSectionConfig;
+  benefits?: StorefrontSectionConfig;
+  floating_chat?: StorefrontSectionConfig;
+  featured_catalog?: StorefrontSectionConfig;
+  operating_hours?: StorefrontSectionConfig;
+  testimonials?: StorefrontSectionConfig;
+  instagram_feed?: StorefrontSectionConfig;
+  media_gallery?: StorefrontSectionConfig;
+  client_logos?: StorefrontSectionConfig;
+  problem_solution?: StorefrontSectionConfig;
+  offer_bonus?: StorefrontSectionConfig;
+  faq?: StorefrontSectionConfig;
+  payment_voucher?: StorefrontSectionConfig;
+  [key: string]: StorefrontSectionConfig | undefined;
+}
+
+export interface StorefrontCopyConfig {
+  headline?: string;
+  subheadline?: string;
+  hero_badge?: string;
+  cta_primary_label?: string;
+  cta_secondary_label?: string;
+  cta_label?: string;
+  notice_bar_text?: string;
+  intake_badge?: string;
+  intake_title?: string;
+  intake_subtitle?: string;
+  intake_submit_label?: string;
+  benefits_badge?: string;
+  benefits_title?: string;
+  benefits?: string[];
+  pillars?: Array<{ title: string; description: string; [key: string]: any }>;
+  catalog_badge?: string;
+  catalog_title?: string;
+  operating_hours_badge?: string;
+  operating_hours_title?: string;
+  booking_title?: string;
+  booking_subtitle?: string;
+  booking_topics?: string[];
+  testimonials_badge?: string;
+  testimonials_title?: string;
+  visual_feed_title?: string;
+  visual_feed_subtitle?: string;
+  [key: string]: any;
+}
+

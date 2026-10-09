@@ -23,6 +23,8 @@ import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/
 import { getIndustryQuickReplies } from '@/lib/zero-ai-engine';
 import { toE164 } from '@/lib/crm/phone-utils';
 
+import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
+
 interface FloatingWebchatProps {
   tenantSlug: string;
   storeName: string;
@@ -31,6 +33,7 @@ interface FloatingWebchatProps {
   chatCtaLabel?: string;
   dynamicQuickReplies?: string[];
   initialTopic?: string | null;
+  sectionConfig?: StorefrontSectionConfig;
   onInitiateCheckout?: (product: { id: string; title: string; price: number }) => void;
   onAddToCart?: (product: Product) => void;
 }
@@ -50,14 +53,25 @@ export default function FloatingWebchat({
   chatCtaLabel,
   dynamicQuickReplies = [],
   initialTopic,
+  sectionConfig,
   onInitiateCheckout,
   onAddToCart,
 }: FloatingWebchatProps) {
+  if (sectionConfig && !sectionConfig.is_active) {
+    return null;
+  }
+
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [messages, setMessages] = useState<StoreChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const isClinicOrPediatric = Boolean(
+    category === 'KLINIK_KONSULTASI' ||
+    category === 'CLINIC' ||
+    category === 'PEDIATRIC'
+  );
 
   const activeName = storeName || displayName.toUpperCase();
   const effectiveQuickReplies =
@@ -259,7 +273,9 @@ export default function FloatingWebchat({
         text:
           data.reply ||
           data.response ||
-          'Terima kasih atas pesannya. Tim medis & CS kami siap membantu kebutuhan si kecil.',
+          (isClinicOrPediatric
+            ? 'Terima kasih atas pesannya. Tim medis & CS kami siap membantu kebutuhan si kecil.'
+            : `Terima kasih atas pesannya. Tim customer service ${activeName} siap membantu kebutuhan Anda.`),
         action: data.action,
         type: data.type || 'TEXT',
         product: data.product,
@@ -273,7 +289,9 @@ export default function FloatingWebchat({
           id: `bot-${Date.now()}`,
           sender: 'bot',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Halo Ayah/Bunda! Layanan ${activeName} siap mendampingi. Silakan pilih opsi di bawah atau hubungi WhatsApp pendaftaran langsung jika memerlukan jadwal segera.`,
+          text: isClinicOrPediatric
+            ? `Halo Ayah/Bunda! Layanan ${activeName} siap mendampingi. Silakan pilih opsi di bawah atau hubungi WhatsApp pendaftaran langsung jika memerlukan jadwal segera.`
+            : `Halo! Layanan resmi ${activeName} siap membantu. Silakan pilih opsi di bawah atau tanyakan langsung kebutuhan Anda kepada tim kami.`,
           type: 'TEXT',
           quick_actions: effectiveQuickReplies,
         },
@@ -415,7 +433,7 @@ export default function FloatingWebchat({
               </div>
 
               <div className="pt-2 text-center text-[10px] text-slate-400">
-                🔒 Data Ayah &amp; Bunda aman dan terlindungi privasinya.
+                🔒 {isClinicOrPediatric ? 'Data Ayah & Bunda aman dan terlindungi privasinya.' : `Data privasi Anda aman dan terenkripsi bersama ${activeName}.`}
               </div>
             </div>
           ) : (

@@ -128,16 +128,14 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
         tenant: mockClinicTenant,
         tenantSlug: 'tumbuh-kembang-anak',
         message: 'Halo selamat pagi',
-        senderPhone: '62899990001',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}0`,
+        hasPreviousGreeting: false,
       });
 
       expect(result.handled).toBe(true);
       expect(result.type).toBe('GREETING');
-      expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
-      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
-      expect(result.reply).toContain('secara menyeluruh');
+      expect(result.reply).toContain('Ayah/Bunda');
+      expect(result.reply).toContain('si kecil');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
       expect(result.reply).not.toContain('1. *Nama Orang Tua*:');
@@ -154,9 +152,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('CONSULTATION_OFFER');
       expect(result.reply).toContain('Bunda Maya');
-      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
+      expect(result.reply).toContain('kondisi atau kendala');
       expect(result.reply).not.toContain('INVOICE');
     });
 
@@ -171,7 +167,7 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('Arka');
-      expect(result.reply).toContain('Tim Dokter Klinik Tumbuh Kembang Anak');
+      expect(result.reply).toContain('dr. Harys Maulana, Sp.A');
       expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
       expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
       expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');

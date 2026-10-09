@@ -531,7 +531,10 @@ export class ConversationEngine {
         tenantSlug: tenantDomainInfo.slug,
         message: cleanMsg,
         senderPhone: user_identifier || session_id,
-        hasPreviousGreeting: session.current_state !== 'GREETING',
+        hasPreviousGreeting: session.current_state !== 'GREETING' && session.current_state !== 'STEP_1_GREETING',
+        conversationHistory: Array.isArray(entities?.conversation_history)
+          ? entities.conversation_history
+          : undefined,
       });
 
       if (consultFunnelRes.handled && consultFunnelRes.reply) {

@@ -15,6 +15,9 @@ export interface ScheduleSlotItem {
   bookedCount: number;
   quota: number;
   bookings: { id: string; customerName: string; phone: string }[];
+  doctor_id?: string;
+  doctor_name?: string;
+  specialty?: string;
 }
 
 export interface ScheduleDaySlots {
@@ -35,6 +38,9 @@ export interface AvailableSlotOption {
   displayDate: string;
   timeSlot: string;
   label: string; // e.g. "Besok (Selasa, 15 Sep) - 09:00 WIB"
+  doctor_id?: string;
+  doctor_name?: string;
+  specialty?: string;
 }
 
 export const DEFAULT_SCHEDULE_SETTINGS: ScheduleSettings = {
@@ -147,6 +153,8 @@ export async function get7DaySlotsAvailability(
     timeSlot: string;
     status: string;
   }[] = [];
+  let fetchedDbSlots: any[] = [];
+  let clinicDoctors: any[] = [];
 
   if (sb) {
     try {
@@ -183,6 +191,10 @@ export async function get7DaySlotsAvailability(
         .eq('slug', cleanSlug)
         .maybeSingle();
 
+      if (Array.isArray(tenantRow?.metadata?.doctors)) {
+        clinicDoctors = tenantRow.metadata.doctors;
+      }
+
       const metaBookings: any[] = Array.isArray(tenantRow?.metadata?.bookings) ? tenantRow.metadata.bookings : [];
       for (const mb of metaBookings) {
         if (mb.status !== 'CANCELLED' && !activeBookings.some((ab) => ab.id === mb.id)) {
@@ -204,6 +216,7 @@ export async function get7DaySlotsAvailability(
         .eq('tenant_slug', cleanSlug);
 
       if (Array.isArray(dbSlots)) {
+        fetchedDbSlots = dbSlots;
         for (const bs of dbSlots) {
           if (bs.status === 'BOOKED' || bs.status === 'BLOCKED') {
             const timeStr = bs.start_time ? bs.start_time.substring(0, 5) : '';
@@ -283,6 +296,21 @@ export async function get7DaySlotsAvailability(
           ? 'FULL'
           : 'AVAILABLE';
 
+        const matchedDbSlot = fetchedDbSlots.find(
+          (bs) =>
+            bs.slot_date === dateStr &&
+            (extractHourMinute(bs.start_time) === slotTimeKey || bs.time_slot === tSlot)
+        );
+        const slotDoctor = matchedDbSlot?.doctor_id
+          ? { id: matchedDbSlot.doctor_id, name: matchedDbSlot.doctor_name, specialty: matchedDbSlot.specialty }
+          : clinicDoctors.length > 0
+          ? clinicDoctors[i % clinicDoctors.length]
+          : undefined;
+
+        const slotDoctorName = typeof slotDoctor === 'string' ? slotDoctor : slotDoctor?.name || slotDoctor?.doctor_name;
+        const slotDoctorId = slotDoctor?.id || slotDoctor?.doctor_id;
+        const slotSpecialty = slotDoctor?.specialty;
+
         const slotItem: ScheduleSlotItem = {
           id: slotId,
           timeSlot: tSlot,
@@ -294,12 +322,16 @@ export async function get7DaySlotsAvailability(
             customerName: b.customerName,
             phone: b.phone,
           })),
+          doctor_id: slotDoctorId,
+          doctor_name: slotDoctorName,
+          specialty: slotSpecialty,
         };
 
         daySlots.push(slotItem);
 
         if (status === 'AVAILABLE') {
-          const label = `${relativeLabel} (${dayName}, ${dateFormatted}) - Jam ${tSlot}`;
+          const docSuffix = slotDoctorName ? ` (${slotDoctorName})` : '';
+          const label = `${relativeLabel} (${dayName}, ${dateFormatted}) - Jam ${tSlot}${docSuffix}`;
           availableList.push({
             id: slotId,
             optionIndex: optionCounter++,
@@ -307,6 +339,9 @@ export async function get7DaySlotsAvailability(
             displayDate: `${dayName}, ${dateFormatted}`,
             timeSlot: tSlot,
             label,
+            doctor_id: slotDoctorId,
+            doctor_name: slotDoctorName,
+            specialty: slotSpecialty,
           });
         }
       }

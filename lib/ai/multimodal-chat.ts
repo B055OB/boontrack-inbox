@@ -10,7 +10,14 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantActionUrl } from '@/lib/checkout-link';
 import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
-import { processConsultationLeadFunnel } from '@/lib/funnel/consultation-lead-funnel';
+import {
+  processConsultationLeadFunnel,
+  isClinicConsultationTenant,
+  generateBoonPilotSystemPrompt,
+  CLINIC_OFFICIAL_SCREENING_URL,
+  CLINIC_KIDMAP_ASSESSMENT_URL,
+  CLINIC_BCA_ACCOUNT,
+} from '@/lib/funnel/consultation-lead-funnel';
 import {
   InteractiveMenu,
   findMenuResponseAcrossMenus,
@@ -917,6 +924,9 @@ ATURAN TAUTAN & RUJUKAN:
 1. Hanya rujuk ke Portal Resmi: https://app.boontrack.com/margasari
 2. DILARANG KERAS membagikan tautan yang mengandung "shop.boontrack.com" atau "checkout".`;
         modelGreeting = `Sampurasun! Selamat datang Bapak/Ibu Warga di layanan Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung. Ada yang bisa kami bantu seputar pelayanan administrasi kependudukan atau pengurusan surat?`;
+      } else if (isClinicConsultationTenant(t, tenantMetadata, metaProducts)) {
+        systemPrompt = `${generateBoonPilotSystemPrompt(tenantMetadata)}\n\nKATALOG LAYANAN RESMI:\n${productCatalogText}\n`;
+        modelGreeting = `Halo Ayah/Bunda! Selamat datang di Layanan Tumbuh Kembang & Nutrisi Anak. 😊 Boleh kami tahu sedang terhubung dengan Ayah/Bunda siapa, dan si kecil usianya berapa bulan/tahun ya?`;
       } else {
         systemPrompt = `Anda adalah "${botPersona}", representasi customer service resmi untuk "${storeName}" (Kategori: ${category}).
 Gaya Komunikasi / Tone: ${botTone}.

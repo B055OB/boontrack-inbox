@@ -24,6 +24,8 @@ function InstagramIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
+import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
+
 export interface VisualFeedItem {
   id: string;
   image_url: string;
@@ -39,6 +41,7 @@ interface InstagramVisualGridProps {
   tenantSlug: string;
   storeName: string;
   tenantMetadata?: any;
+  sectionConfig?: StorefrontSectionConfig;
   onSelectTopic?: (topic: string) => void;
 }
 
@@ -46,8 +49,13 @@ export default function InstagramVisualGrid({
   tenantSlug,
   storeName,
   tenantMetadata,
+  sectionConfig,
   onSelectTopic,
 }: InstagramVisualGridProps) {
+  if (sectionConfig && !sectionConfig.is_active) {
+    return null;
+  }
+
   const [activeItem, setActiveItem] = useState<VisualFeedItem | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
@@ -65,11 +73,13 @@ export default function InstagramVisualGrid({
 
   const sectionTitle =
     tenantMetadata?.visual_feed_title ||
-    'Galeri & Feed Edukasi Klinis';
+    tenantMetadata?.storefront_copy?.visual_feed_title ||
+    `Galeri & Feed ${storeName}`;
 
   const sectionSubtitle =
     tenantMetadata?.visual_feed_subtitle ||
-    `Dokumentasi aktivitas, panduan edukasi, dan informasi resmi dari ${storeName}`;
+    tenantMetadata?.storefront_copy?.visual_feed_subtitle ||
+    `Dokumentasi aktivitas, portofolio karya, dan informasi resmi dari ${storeName}`;
 
   const igHandle =
     tenantMetadata?.visual_feed_handle ||

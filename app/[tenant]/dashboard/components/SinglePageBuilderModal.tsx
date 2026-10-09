@@ -444,16 +444,29 @@ export default function SinglePageBuilderModal({
 
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">
-                    URL Media Banner Hero Utama
+                    Label Tombol CTA Utama
                   </label>
                   <input
-                    type="url"
-                    value={singlePageForm.banner_url}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
-                    placeholder="https://..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                    type="text"
+                    value={singlePageForm.cta_label || ''}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, cta_label: e.target.value }))}
+                    placeholder="Contoh: Pesan Sekarang (QRIS) / Klaim Akses"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  URL Media Banner Hero Utama
+                </label>
+                <input
+                  type="url"
+                  value={singlePageForm.banner_url}
+                  onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
               </div>
 
               {singlePageForm.banner_url && (

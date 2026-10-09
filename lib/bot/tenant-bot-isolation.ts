@@ -2,6 +2,12 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { toE164 } from '@/lib/crm/phone-utils';
 import { isValidUuid } from '@/lib/uuid-guard';
 import {
+  isClinicConsultationTenant,
+  buildDoctorTeamLabel,
+  resolveClinicPaymentAccount,
+  CLINIC_OFFICIAL_SCREENING_URL,
+} from '@/lib/funnel/consultation-lead-funnel';
+import {
   InteractiveMenu,
   InteractiveMenuOption,
   formatWabaInteractive,
@@ -37,6 +43,8 @@ export interface TenantDecisionTreeConfig {
   tenant_slug: string;
   store_name: string;
   category: string;
+  business_type?: string;
+  metadata?: any;
   interactive_menus: InteractiveMenu[];
   campaign_routes: CampaignRouteRule[];
   default_greeting: string;
@@ -345,6 +353,8 @@ export async function getTenantDecisionTree(
     tenant_slug: tenant.slug,
     store_name: storeName,
     category,
+    business_type: tenant.business_type,
+    metadata: meta,
     interactive_menus: interactiveMenus,
     campaign_routes: campaignRoutes,
     default_greeting: defaultGreeting,
@@ -434,11 +444,23 @@ export async function routeTenantInboundMessage(params: {
     }
   }
 
-  // 3b. Built-In Specialized Decision Tree for Tumbuh Kembang Anak (Strict Tenant Isolation)
-  if (treeConfig.tenant_slug === 'tumbuh-kembang-anak') {
-    // Nutrition / Feeding / GTM Route (dr. Harys Maulana)
+  // 3b. Built-In Specialized Decision Tree for Clinic & Pediatric Triage (Dynamic Tenant Resolution)
+  const isClinicTenant =
+    isClinicConsultationTenant(treeConfig, treeConfig.metadata, treeConfig.metadata?.products) ||
+    treeConfig.category === 'CLINIC' ||
+    treeConfig.category === 'KLINIK_KONSULTASI' ||
+    treeConfig.business_type === 'CLINIC' ||
+    Boolean(treeConfig.metadata?.doctors?.length);
+
+  if (isClinicTenant) {
+    const clinicDocLabel = buildDoctorTeamLabel(treeConfig.metadata);
+    const clinicPaymentAcct = resolveClinicPaymentAccount(treeConfig.metadata);
+    const screeningUrl = treeConfig.metadata?.screening_url || CLINIC_OFFICIAL_SCREENING_URL;
+    const checkoutDomain = treeConfig.metadata?.custom_domain || `shop.boontrack.com/${treeConfig.tenant_slug}`;
+
+    // Nutrition / Feeding / GTM Route (Locks to EAT & GROW)
     if (
-      /gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\. harys/i.test(combinedSignal) ||
+      /gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\. harys|eat & grow|eat and grow/i.test(combinedSignal) ||
       interactiveReply?.id === 'opt_gtm_nutrition' ||
       cleanMsg === '3' ||
       cleanMsg.startsWith('3.')
@@ -449,19 +471,18 @@ export async function routeTenantInboundMessage(params: {
       }, supabaseClient);
 
       const replyText =
-        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM (Tim Dokter Klinik Tumbuh Kembang Anak)*\n\n` +
+        `🥣 *KONSULTASI NUTRISI, MASALAH MAKAN & GTM - EAT & GROW (${clinicDocLabel} / Tim Dokter Klinik Tumbuh Kembang Anak)*\n\n` +
         `Halo Ayah & Bunda! Masalah makan seperti Gerakan Tutup Mulut (GTM), durasi makan terlalu lama / anak mengemut makanan, jadwal makan (feeding rules) yang belum teratur, berat badan seret/stuck, sensitivitas tekstur MPASI, hingga pilih-pilih makan (picky eater) memerlukan pendekatan terstruktur tanpa paksaan trauma.\n\n` +
-        `📋 *Fokus Pendampingan Tim Dokter Spesialis Anak:*\n` +
-        `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards) serta strategi penanganan BB seret/stuck.\n` +
-        `2. Pembentukan jadwal makan disiplin & penerapan responsive feeding rules (Happy Eating).\n` +
+        `📋 *Fokus Pendampingan EAT & GROW (${clinicDocLabel}):*\n` +
+        `1. Evaluasi kurva pertumbuhan & status nutrisi anak (WHO Child Growth Standards) serta penanganan BB seret/stuck.\n` +
+        `2. Pembentukan jadwal makan disiplin & responsive feeding rules (Happy Eating).\n` +
         `3. Evaluasi oromotor pada kebiasaan mengemut/makan lama & penyesuaian tekstur MPASI bertahap.\n` +
         `4. Pencegahan sensory food aversion & penanganan defisiensi mikronutrien (zat besi & zinc).\n\n` +
-        `📅 *Jadwal Praktik Konsultasi:*\n` +
-        `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
-        `• Sesi: Chat WhatsApp Intensif & Video Call Google Meet 45 Menit\n\n` +
-        `📝 *Form Skrining Resmi:* https://screening.littlebitefeeding.com/\n` +
-        `👉 *Daftar Sesi Konsultasi Nutrisi:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/\n` +
+        `💰 *Paket Layanan:* *EAT & GROW - Chat Consultation (Rp 150.000)* atau *Google Meet (Rp 250.000)*\n` +
+        `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
+        `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
+        `👉 *Daftar Sesi Konsultasi Nutrisi:* https://${checkoutDomain}\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${screeningUrl}\n` +
         `atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
         `_Ketik *5* atau *admin* untuk terhubung langsung dengan pendaftaran klinik._`;
 
@@ -480,9 +501,9 @@ export async function routeTenantInboundMessage(params: {
       };
     }
 
-    // Screening / Speech Delay / Stimulation Route (Tim Dokter Spesialis Anak)
+    // Screening / Speech Delay / Stimulation Route (Locks to KONSULTASI KLINIK)
     if (
-      /speech delay|bicara|terapi|sensori|stimulasi|motorik|evaluasi perkembangan|tes mandiri|skrining|tumbuh kembang|dr azizah|dr\. azizah/i.test(combinedSignal) ||
+      /periksa fisik|periksa langsung|ke klinik|di klinik|kunjungan klinik|tatap muka|speech delay|bicara|terapi|sensori|stimulasi|motorik|evaluasi perkembangan|tes mandiri|skrining|tumbuh kembang|dr azizah|dr\. azizah/i.test(combinedSignal) ||
       interactiveReply?.id === 'opt_screening' ||
       cleanMsg === '4' ||
       cleanMsg.startsWith('4.')
@@ -493,19 +514,18 @@ export async function routeTenantInboundMessage(params: {
       }, supabaseClient);
 
       const replyText =
-        `🩺 *SCREENING STIMULASI & EVALUASI TUMBUH KEMBANG (Tim Dokter Spesialis Anak)*\n\n` +
-        `Deteksi dini keterlambatan perkembangan anak sangat krusial pada 1.000 Hari Pertama Kehidupan. Evaluasi menyeluruh membantu anak mengejar ketertinggalan milestone tepat waktu.\n\n` +
-        `📋 *Aspek Evaluasi Tim Dokter:*\n` +
+        `🩺 *KONSULTASI KLINIK / SCREENING STIMULASI & EVALUASI TUMBUH KEMBANG (${clinicDocLabel})*\n\n` +
+        `Deteksi dini keterlambatan perkembangan anak sangat krusial pada 1.000 Hari Pertama Kehidupan. Pemeriksaan langsung di klinik memastikan milestone perkembangan dan pemeriksaan fisik terobservasi akurat.\n\n` +
+        `📋 *Aspek Pemeriksaan Langsung (${clinicDocLabel}):*\n` +
         `1. Perkembangan Bahasa & Bicara (Speech Delay, kontak mata, interaksi 2 arah).\n` +
         `2. Motorik Kasar & Motorik Halus (merangkak, berjalan, koordinasi tangan).\n` +
         `3. Sensori Integrasi & Regulasi Emosi (tantrum berlebih, sensitif tekstur/suara).\n` +
-        `4. Panduan stimulasi mandiri terukur untuk Ayah & Bunda di rumah.\n\n` +
-        `📅 *Jadwal Sesi Screening:*\n` +
-        `• Senin – Jumat: 08.00 – 11.30 WIB\n` +
-        `• Format: Video Call 1-on-1 & Observasi Klinis\n\n` +
-        `📝 *Form Skrining Resmi:* https://screening.littlebitefeeding.com/\n` +
-        `👉 *Pesan Sesi Screening Tumbuh Kembang:* https://shop.boontrack.com/tumbuh-kembang-anak\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/\n\n` +
+        `4. Pemeriksaan antropometri & buku rapor evaluasi perkembangan anak.\n\n` +
+        `💰 *Paket Layanan:* *Konsultasi Klinik / Screening Tumbuh Kembang (Rp 250.000)*\n` +
+        `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
+        `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
+        `👉 *Pesan Sesi Screening Tumbuh Kembang:* https://${checkoutDomain}\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${screeningUrl}\n\n` +
         `_Ketik *5* atau *admin* untuk chat tim pendaftaran klinik._`;
 
       return {
@@ -518,6 +538,43 @@ export async function routeTenantInboundMessage(params: {
           '📅 Jadwal Screening Dokter',
           '🥣 Konsultasi Nutrisi & GTM',
           '💰 Paket Layanan',
+          '💬 Chat Pendaftaran',
+        ],
+      };
+    }
+
+    // Play Ideas / Healthy Child Stimulation Route (Locks to PLAY N GROW)
+    if (
+      /ide main|ide bermain|aktivitas main|kegiatan main|stimulasi anak sehat|play n grow|play and grow|permainan anak|stimulasi di rumah|modul stimulasi/i.test(combinedSignal) ||
+      interactiveReply?.id === 'opt_play_stimulation'
+    ) {
+      await updateBotSessionState(tenantIdOrSlug, senderPhone, {
+        current_step: 'PLAY_STIMULATION',
+        last_menu_id: 'menu_tumbuh_kembang',
+      }, supabaseClient);
+
+      const replyText =
+        `🧩 *PLAY N GROW - E-COURSE STIMULASI ANAK 0–5 TAHUN (${clinicDocLabel})*\n\n` +
+        `Panduan lengkap video stimulasi anak usia 0–5 tahun berbasis aktivitas bermain edukatif untuk mengoptimalkan kecerdasan dan motorik buah hati di rumah.\n\n` +
+        `📋 *Fitur & Fasilitas Modul Play N Grow:*\n` +
+        `1. Akses seumur hidup modul video stimulasi bermain di rumah.\n` +
+        `2. Lembar kerja aktivitas bermain harian (Printable Worksheet).\n` +
+        `3. Panduan red flags perkembangan usia 0–5 tahun.\n` +
+        `4. Grup sharing & panduan stimulasi terukur.\n\n` +
+        `💰 *Investasi Modul:* *PLAY N GROW E-Course (Rp 199.000)*\n` +
+        `💳 *Kemudahan Pembayaran:* Web Checkout Resmi atau Transfer ${clinicPaymentAcct.bank_name} (${clinicPaymentAcct.account_number} a.n ${clinicPaymentAcct.account_holder}).\n\n` +
+        `_Ketik *5* atau *admin* untuk bantuan pendaftaran langsung via admin._`;
+
+      return {
+        handled: true,
+        reply: replyText,
+        type: 'TEXT',
+        intent_key: 'PLAY_STIMULATION',
+        node_id: 'opt_play_stimulation',
+        quick_actions: [
+          '🥣 Konsultasi Nutrisi & GTM',
+          '🩺 Screening Stimulasi',
+          '💰 Biaya & Paket',
           '💬 Chat Pendaftaran',
         ],
       };
@@ -537,13 +594,11 @@ export async function routeTenantInboundMessage(params: {
 
       const replyText =
         `📅 *JADWAL KONSULTASI DOKTER KLINIK TUMBUH KEMBANG ANAK*\n\n` +
-        `👨‍⚕️ *Tim Dokter Konsultan Nutrisi & GTM* (Dokter Spesialis Anak):\n` +
-        `• Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
-        `👩‍⚕️ *Tim Dokter Konsultan Screening & Stimulasi* (Dokter Spesialis Anak):\n` +
+        `👨‍⚕️ *${clinicDocLabel}*:\n` +
         `• Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
         `📋 *Alur Reservasi Konsultasi:*\n` +
-        `1. Pilih jadwal dan paket di website resmi: https://shop.boontrack.com/tumbuh-kembang-anak\n` +
-        `2. Lakukan konfirmasi pembayaran melalui QRIS otomatis.\n` +
+        `1. Pilih jadwal dan paket di website resmi: https://${checkoutDomain}\n` +
+        `2. Lakukan konfirmasi pembayaran melalui QRIS otomatis atau transfer ${clinicPaymentAcct.bank_name}.\n` +
         `3. Link Google Meet atau konfirmasi sesi WhatsApp akan dikirimkan otomatis ke nomor ini.\n\n` +
         `_Ketik *5* atau *admin* untuk bantuan pendaftaran langsung via admin._`;
 

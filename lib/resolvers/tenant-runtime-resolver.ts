@@ -21,6 +21,9 @@ import {
   HardeningPolicy,
   ResolvedTemplateResult,
   TemplateResolutionStatus,
+  StorefrontSectionConfig,
+  StorefrontSectionsConfig,
+  StorefrontCopyConfig,
 } from '@/lib/types/tenant-runtime';
 import { getTenantConfig } from '@/lib/tenant-config';
 
@@ -629,5 +632,172 @@ export function executeStorefrontRuntimePipeline(params: {
     templateResult,
     isReady,
     error: isReady ? undefined : (templateResult.errorMessage || runtime.errorMessage),
+  };
+}
+
+// ── STOREFRONT MODULAR SECTIONS & DYNAMIC COPY RESOLVERS (CTO Mandate) ──────
+
+/**
+ * Resolves modular section configs for storefronts (Zero Hardcoding Policy).
+ * Enforces dynamic toggling: if a section is deactivated (is_active: false),
+ * the component will return null with zero vertical placeholder leakage.
+ */
+export function resolveStorefrontSections(
+  metadata?: Record<string, any> | null
+): StorefrontSectionsConfig {
+  const meta = metadata || {};
+  const rawSections = meta.sections || meta.storefront_sections || {};
+
+  const normalizeSection = (
+    keys: string[],
+    legacyToggleKeys: string[] = [],
+    defaultActive = true
+  ): StorefrontSectionConfig => {
+    // 1. Direct key under sections / storefront_sections
+    for (const k of keys) {
+      const direct = rawSections[k];
+      if (direct !== undefined) {
+        if (typeof direct === 'boolean') {
+          return { is_active: direct };
+        }
+        if (direct && typeof direct === 'object') {
+          return {
+            ...direct,
+            is_active: direct.is_active !== undefined ? Boolean(direct.is_active) : defaultActive,
+          };
+        }
+      }
+    }
+
+    // 2. Legacy boolean metadata flags (e.g. enable_hero, chat_enabled)
+    for (const legacyKey of legacyToggleKeys) {
+      if (meta[legacyKey] !== undefined) {
+        const val = meta[legacyKey];
+        if (typeof val === 'boolean') return { is_active: val };
+        if (val === 'false' || val === false) return { is_active: false };
+        if (val === 'true' || val === true) return { is_active: true };
+      }
+    }
+
+    // Also check theme.chat_enabled for chat toggles
+    if (keys.includes('floating_chat') || keys.includes('chat')) {
+      if (meta.theme?.chat_enabled !== undefined) {
+        const cVal = meta.theme.chat_enabled;
+        if (typeof cVal === 'boolean') return { is_active: cVal };
+        if (cVal === 'false' || cVal === false) return { is_active: false };
+        if (cVal === 'true' || cVal === true) return { is_active: true };
+      }
+    }
+
+    return { is_active: defaultActive };
+  };
+
+  const heroSec = normalizeSection(['hero'], ['enable_hero']);
+  const intakeSec = normalizeSection(['intake_form', 'lead_form'], ['enable_intake_form', 'enable_lead_form', 'show_intake_form']);
+  const benefitsSec = normalizeSection(['benefits', 'authority_checklist'], ['enable_benefits', 'enable_us_vs_them', 'enable_authority_checklist']);
+  const chatSec = normalizeSection(['floating_chat', 'chat', 'webchat'], ['chat_enabled', 'is_chat_enabled', 'enable_floating_chat', 'enable_chat']);
+  const catalogSec = normalizeSection(['featured_catalog', 'catalog', 'products'], ['enable_catalog', 'enable_featured_catalog', 'show_catalog']);
+  const hoursSec = normalizeSection(['operating_hours', 'booking', 'schedule'], ['enable_operating_hours', 'enable_booking', 'enable_schedule']);
+  const testiSec = normalizeSection(['testimonials', 'reviews'], ['enable_testimonials']);
+  const visualSec = normalizeSection(['instagram_feed', 'visual_feed', 'gallery'], ['enable_instagram_feed', 'enable_instagram', 'enable_visual_feed']);
+
+  return {
+    hero: heroSec,
+    lead_form: intakeSec,
+    intake_form: intakeSec,
+    benefits: benefitsSec,
+    floating_chat: chatSec,
+    chat: chatSec,
+    catalog: catalogSec,
+    featured_catalog: catalogSec,
+    operating_hours: hoursSec,
+    testimonials: testiSec,
+    visual_feed: visualSec,
+    instagram_feed: visualSec,
+    media_gallery: normalizeSection(['media_gallery'], ['enable_media_gallery']),
+    client_logos: normalizeSection(['client_logos'], ['enable_client_logos'], false),
+    problem_solution: normalizeSection(['problem_solution'], ['enable_problem_solution']),
+    offer_bonus: normalizeSection(['offer_bonus'], ['enable_offer']),
+    faq: normalizeSection(['faq'], ['enable_faq'], false),
+    payment_voucher: normalizeSection(['payment_voucher'], ['enable_payment']),
+    ...rawSections,
+  };
+}
+
+/**
+ * Checks whether a section is active.
+ * Used for strict conditional guard: if (!isSectionActive(sections, key)) return null;
+ * Or directly on section config: if (!isSectionActive(sectionConfig)) return null;
+ */
+export function isSectionActive(
+  sectionOrSections: StorefrontSectionConfig | StorefrontSectionsConfig | undefined,
+  keyOrFallback?: string | boolean,
+  fallback = true
+): boolean {
+  if (!sectionOrSections) return typeof keyOrFallback === 'boolean' ? keyOrFallback : fallback;
+
+  // Case 1: isSectionActive(sectionConfig) or isSectionActive(sectionConfig, fallbackBoolean)
+  if (typeof keyOrFallback !== 'string') {
+    const defaultVal = typeof keyOrFallback === 'boolean' ? keyOrFallback : fallback;
+    const cfg = sectionOrSections as StorefrontSectionConfig;
+    if (cfg.is_active !== undefined) return Boolean(cfg.is_active);
+    return defaultVal;
+  }
+
+  // Case 2: isSectionActive(sections, 'hero', fallback)
+  const cfg = (sectionOrSections as Record<string, any>)[keyOrFallback];
+  if (!cfg) return fallback;
+  if (typeof cfg === 'boolean') return cfg;
+  if (typeof cfg === 'object' && cfg.is_active !== undefined) return Boolean(cfg.is_active);
+  return fallback;
+}
+
+/**
+ * Resolves dynamic promotional copy and text content (Zero Hardcoding Policy).
+ * Falls back strictly to tenant metadata and never embeds hardcoded vertical claims.
+ */
+export function resolveStorefrontCopy(
+  metadata?: Record<string, any> | null,
+  fallbackStoreName?: string
+): StorefrontCopyConfig {
+  const meta = metadata || {};
+  const copy = meta.storefront_copy || meta.copy || {};
+
+  return {
+    headline: copy.headline || meta.headline || meta.hero_headline || meta.title || fallbackStoreName || '',
+    subheadline: copy.subheadline || meta.subheadline || meta.description || meta.bio || '',
+    hero_badge: copy.hero_badge || copy.badge || meta.authority_label || meta.hero_badge || meta.category || '',
+    cta_primary_label: copy.cta_primary_label || copy.cta_label || meta.header_cta_label || meta.cta_button_text || meta.consultation_label || '',
+    cta_secondary_label: copy.cta_secondary_label || 'Tanya via WhatsApp',
+    cta_label: copy.cta_label || copy.cta_primary_label || '',
+    notice_bar_text: copy.notice_bar_text || meta.announcement || meta.notice_bar || '',
+    intake_badge: copy.intake_badge || meta.form_schema?.badge || 'Respon Cepat • Konsultasi Terarah',
+    intake_title: copy.intake_title || meta.form_schema?.title || '',
+    intake_subtitle: copy.intake_subtitle || meta.form_schema?.subtitle || '',
+    intake_submit_label: copy.intake_submit_label || meta.form_schema?.submit_label || '',
+    benefits_badge: copy.benefits_badge || 'Keunggulan • Terpercaya • Profesional',
+    benefits_title: copy.benefits_title || copy.pillars_title || (fallbackStoreName ? `Pilar Layanan ${fallbackStoreName}` : 'Pilar Layanan'),
+    benefits: Array.isArray(copy.benefits) && copy.benefits.length > 0
+      ? copy.benefits
+      : (Array.isArray(meta.trust_checkpoints) && meta.trust_checkpoints.length > 0
+        ? meta.trust_checkpoints
+        : (Array.isArray(meta.features) && meta.features.length > 0 ? meta.features.slice(0, 4) : [])),
+    pillars: Array.isArray(copy.pillars) && copy.pillars.length > 0
+      ? copy.pillars
+      : (Array.isArray(meta.pillars) && meta.pillars.length > 0 ? meta.pillars : []),
+    catalog_badge: copy.catalog_badge || 'Produk / Layanan Unggulan',
+    catalog_title: copy.catalog_title || (fallbackStoreName ? `Pilihan Terbaik dari ${fallbackStoreName}` : 'Pilihan Terbaik'),
+    operating_hours_badge: copy.operating_hours_badge || 'Layanan Cepat & Terverifikasi',
+    operating_hours_title: copy.operating_hours_title || 'Jam Operasional & Jadwal',
+    booking_title: copy.booking_title || (fallbackStoreName ? `Jadwalkan Sesi Konsultasi ${fallbackStoreName}` : 'Pilih Jadwal Sesi Konsultasi'),
+    booking_subtitle: copy.booking_subtitle || '',
+    booking_topics: Array.isArray(copy.booking_topics) && copy.booking_topics.length > 0
+      ? copy.booking_topics
+      : (Array.isArray(meta.inquiry_topics) ? meta.inquiry_topics.map((t: any) => typeof t === 'string' ? t : t.title).filter(Boolean) : []),
+    testimonials_badge: copy.testimonials_badge || 'Ulasan & Pengalaman',
+    testimonials_title: copy.testimonials_title || 'Testimonial Pelanggan',
+    visual_feed_title: copy.visual_feed_title || meta.visual_feed_title || (fallbackStoreName ? `Galeri & Feed ${fallbackStoreName}` : 'Galeri & Aktivitas'),
+    visual_feed_subtitle: copy.visual_feed_subtitle || meta.visual_feed_subtitle || '',
+    ...copy,
   };
 }

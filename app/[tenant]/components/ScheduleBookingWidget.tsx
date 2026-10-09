@@ -15,12 +15,17 @@ import {
 } from 'lucide-react';
 import type { ScheduleDaySlots, ScheduleSlotItem } from '@/lib/schedule-slot-service';
 import type { Product } from '@/app/[tenant]/page';
+import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
 
 interface ScheduleBookingWidgetProps {
   tenantSlug: string;
   storeName: string;
   whatsappNumber?: string;
   consultingProducts?: Product[];
+  sectionConfig?: StorefrontSectionConfig;
+  title?: string;
+  subtitle?: string;
+  topicSuggestions?: string[];
   onSelectSlotAndCheckout?: (payload: {
     product: { id: string; title: string; price: number; product_type?: string };
     slot: {
@@ -33,21 +38,20 @@ interface ScheduleBookingWidgetProps {
   onOutboundClick?: (url: string, label: string) => void;
 }
 
-const TOPIC_SUGGESTIONS = [
-  'Audit Funnel & Sistem Penjualan',
-  'Scale-Up Meta Ads & TikTok Ads',
-  'Otomasi Chat & Customer Service',
-  'Struktur Tim & SOP Operasional',
-];
-
 export default function ScheduleBookingWidget({
   tenantSlug,
   storeName,
   whatsappNumber,
   consultingProducts = [],
+  sectionConfig,
+  title,
+  subtitle,
+  topicSuggestions = [],
   onSelectSlotAndCheckout,
   onOutboundClick,
 }: ScheduleBookingWidgetProps) {
+  if (sectionConfig && !sectionConfig.is_active) return null;
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState<ScheduleDaySlots[]>([]);
@@ -159,10 +163,10 @@ export default function ScheduleBookingWidget({
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                Pilih Jadwal Sesi Konsultasi
+                {title || 'Pilih Jadwal Sesi Konsultasi'}
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 font-normal mt-1 max-w-xl">
-                Setiap sesi berdurasi 60 menit intensif 1-on-1 via Google Meet / Zoom. Slot diperbarui secara real-time langsung dari ketersediaan mentor.
+                {subtitle || `Pilih tanggal dan jam ketersediaan yang sesuai untuk terhubung langsung dengan tim resmi ${storeName}.`}
               </p>
             </div>
 
@@ -388,20 +392,22 @@ export default function ScheduleBookingWidget({
                     placeholder="Contoh: Optimasi landing page, perbaikan CPA iklan, sistem leads WhatsApp"
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition"
                   />
-                  {/* Quick Suggestion Chips */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    <span className="text-[10px] text-slate-400 font-medium">Contoh Cepat:</span>
-                    {TOPIC_SUGGESTIONS.map((topic, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setBusinessTopic(topic)}
-                        className="text-[10px] bg-slate-900 hover:bg-slate-800 text-slate-300 px-2 py-0.5 rounded-lg border border-slate-800 transition cursor-pointer"
-                      >
-                        {topic}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Quick Suggestion Chips (Dynamic from Tenant Metadata) */}
+                  {Array.isArray(topicSuggestions) && topicSuggestions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <span className="text-[10px] text-slate-400 font-medium">Contoh Cepat:</span>
+                      {topicSuggestions.map((topic, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setBusinessTopic(topic)}
+                          className="text-[10px] bg-slate-900 hover:bg-slate-800 text-slate-300 px-2 py-0.5 rounded-lg border border-slate-800 transition cursor-pointer"
+                        >
+                          {topic}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Two Action Buttons: Direct Checkout (QRIS) & WhatsApp Direct */}

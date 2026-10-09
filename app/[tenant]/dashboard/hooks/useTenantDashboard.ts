@@ -2113,11 +2113,32 @@ export function useTenantDashboard() {
 
             const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
             const cleanUpdatedConfig = sanitizeProductPayload(updatedConfig);
+
+            const existingCopy = tenantRow.metadata?.storefront_copy || {};
+            const updatedCopy = {
+              ...existingCopy,
+              headline: cleanSpForm.headline || existingCopy.headline,
+              subheadline: cleanSpForm.subheadline || existingCopy.subheadline,
+              cta_label: cleanSpForm.cta_label || existingCopy.cta_label,
+              cta_primary_label: cleanSpForm.cta_label || existingCopy.cta_primary_label,
+            };
+
+            const existingSections = tenantRow.metadata?.storefront_sections || tenantRow.metadata?.sections || {};
+            const updatedSections = {
+              ...existingSections,
+              hero: { ...existingSections.hero, is_active: cleanSpForm.enable_hero ?? true },
+              testimonials: { ...existingSections.testimonials, is_active: cleanSpForm.enable_testimonials ?? true },
+              catalog: { ...existingSections.catalog, is_active: cleanSpForm.enable_offer ?? true },
+              benefits: { ...existingSections.benefits, is_active: cleanSpForm.enable_problem_solution ?? true },
+            };
+
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
               products: cleanFinalMerged,
               product: cleanFinalMerged[0] || sanitizeProductPayload(targetProd),
               single_page_config: cleanUpdatedConfig,
+              storefront_copy: updatedCopy,
+              storefront_sections: updatedSections,
             };
 
             await supabase
