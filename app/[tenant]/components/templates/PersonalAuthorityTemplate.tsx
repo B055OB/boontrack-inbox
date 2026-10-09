@@ -23,16 +23,15 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { Product } from '@/app/[tenant]/types';
-
-const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
-const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr: false });
-const ScheduleBookingWidget = dynamic(() => import('../ScheduleBookingWidget'), { ssr: false });
-
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
-import { toE164 } from '@/lib/crm/phone-utils';
 import { resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
 import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
+
+// ── ISOLATED DYNAMIC CHILD WIDGETS (Anti-TDZ Boundary) ──
+const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
+const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr: false });
+const ScheduleBookingWidget = dynamic(() => import('../widgets/ScheduleBookingWidget'), { ssr: false });
 
 interface PersonalAuthorityTemplateProps {
   tenantSlug: string;
@@ -1221,7 +1220,7 @@ export default function PersonalAuthorityTemplate({
     } else if (!rawPhone.startsWith('62')) {
       rawPhone = '62' + rawPhone;
     }
-    const canonicalPhone = toE164(rawPhone) || (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`);
+    const canonicalPhone = rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`;
 
     setIsIntakeSubmitting(true);
 

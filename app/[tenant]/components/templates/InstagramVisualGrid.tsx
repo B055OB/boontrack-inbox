@@ -14,6 +14,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
+
 function InstagramIcon({ className = 'w-4 h-4' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -23,8 +25,6 @@ function InstagramIcon({ className = 'w-4 h-4' }: { className?: string }) {
     </svg>
   );
 }
-
-import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
 
 export interface VisualFeedItem {
   id: string;

@@ -20,10 +20,36 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/types';
-import { getIndustryQuickReplies } from '@/lib/zero-ai-engine';
-import { toE164 } from '@/lib/crm/phone-utils';
-
 import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
+
+function getFallbackIndustryQuickReplies(rawCategory?: string): string[] {
+  const cat = String(rawCategory || '').toUpperCase();
+  if (cat.includes('KLINIK') || cat.includes('CLINIC') || cat.includes('PEDIATRIC') || cat.includes('PROFESSIONAL')) {
+    return ['Jadwalkan Konsultasi', 'Paket & Tarif Layanan', 'Portofolio / Brief', 'Hubungi Konsultan'];
+  }
+  if (cat.includes('FIELD') || cat.includes('SERVIS')) {
+    return ['📅 Jadwalkan Servis/Teknisi', '💰 Tarif & Area Layanan', '🛠️ Konsultasi CS'];
+  }
+  if (cat.includes('FOOD')) {
+    return ['🛵 Pesan Antar (Delivery)', '🥡 Ambil di Resto (Takeaway)', '📍 Lokasi & Jam Dapur'];
+  }
+  if (cat.includes('DIGITAL')) {
+    return ['⚡ Akses Download & Materi', '🔑 Kendala Akun & Lisensi', '📚 Kurikulum Produk'];
+  }
+  if (cat.includes('CREATOR')) {
+    return ['📊 Rate Card & Paket Endorse', '📦 Kirim Brief/Sampel', '📅 Jadwal Live Talent'];
+  }
+  return ['📦 Cek Katalog & Promo', '🚚 Cek Ongkir & Resi', '💬 Hubungi Live CS'];
+}
+
+function normalizePhoneE164(raw: string): string {
+  let digits = raw.trim().replace(/[^0-9+]/g, '');
+  if (digits.startsWith('+')) return digits;
+  if (digits.startsWith('0')) return '+62' + digits.slice(1);
+  if (digits.startsWith('62')) return '+' + digits;
+  if (digits.startsWith('8')) return '+62' + digits;
+  return '+' + digits;
+}
 
 interface FloatingWebchatProps {
   tenantSlug: string;
@@ -37,13 +63,6 @@ interface FloatingWebchatProps {
   onInitiateCheckout?: (product: { id: string; title: string; price: number }) => void;
   onAddToCart?: (product: Product) => void;
 }
-
-const DEFAULT_INTENT_OPTIONS = [
-  '💬 Tanya Informasi Layanan',
-  '💰 Cek Harga & Paket',
-  '📅 Jadwal & Pemesanan',
-  '👤 Hubungi Tim Admin',
-];
 
 export default function FloatingWebchat({
   tenantSlug,
@@ -77,15 +96,21 @@ export default function FloatingWebchat({
   const effectiveQuickReplies =
     Array.isArray(dynamicQuickReplies) && dynamicQuickReplies.length > 0
       ? dynamicQuickReplies
-      : getIndustryQuickReplies(category);
+      : getFallbackIndustryQuickReplies(category);
 
   const availableIntents = React.useMemo(() => {
+    const defaultIntents = [
+      '💬 Tanya Informasi Layanan',
+      '💰 Cek Harga & Paket',
+      '📅 Jadwal & Pemesanan',
+      '👤 Hubungi Tim Admin',
+    ];
     const base =
       Array.isArray(dynamicQuickReplies) && dynamicQuickReplies.length > 0
         ? dynamicQuickReplies.slice(0, 4)
         : (effectiveQuickReplies && effectiveQuickReplies.length > 0
           ? effectiveQuickReplies.slice(0, 4)
-          : DEFAULT_INTENT_OPTIONS);
+          : defaultIntents);
     if (initialTopic && !base.some((b) => b.includes(initialTopic))) {
       return [`📌 ${initialTopic}`, ...base.slice(0, 3)];
     }
@@ -96,7 +121,7 @@ export default function FloatingWebchat({
   const [isLeadCaptured, setIsLeadCaptured] = useState(false);
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
-  const [selectedIntent, setSelectedIntent] = useState(() => availableIntents[0] || DEFAULT_INTENT_OPTIONS[0]);
+  const [selectedIntent, setSelectedIntent] = useState(() => availableIntents[0] || '💬 Tanya Informasi Layanan');
   const [leadError, setLeadError] = useState<string | null>(null);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
 
@@ -174,7 +199,7 @@ export default function FloatingWebchat({
       return;
     }
 
-    const canonical = toE164(parentPhone.trim());
+    const canonical = normalizePhoneE164(parentPhone.trim());
     if (!canonical) {
       setLeadError('Format nomor WhatsApp tidak valid. Gunakan format e.g. 08123456789.');
       return;
