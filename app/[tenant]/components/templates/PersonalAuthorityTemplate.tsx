@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Sparkles,
   Award,
@@ -113,55 +113,97 @@ export default function PersonalAuthorityTemplate({
       ? tenant.metadata.doctors
       : [];
 
-  // Mini Intake Form State (Positive Friction Lead Capture)
-  const [intakeParentName, setIntakeParentName] = useState('');
-  const [intakeParentPhone, setIntakeParentPhone] = useState('');
-  const [intakeChildAge, setIntakeChildAge] = useState('');
-  const [intakeComplaint, setIntakeComplaint] = useState(
-    '🥣 Masalah Makan / Gerakan Tutup Mulut (GTM)'
+  // Dynamic Form Schema & Strict Category Isolation
+  const isClinicTenant = Boolean(
+    tenantMetadata?.category === 'KLINIK_KONSULTASI' ||
+    tenantMetadata?.category === 'CLINIC' ||
+    tenantMetadata?.category === 'PEDIATRIC' ||
+    (Array.isArray(doctorsList) && doctorsList.length > 0)
   );
+
+  const formSchema =
+    tenantMetadata?.form_schema ||
+    tenant?.metadata?.form_schema ||
+    tenantMetadata?.intake_form ||
+    tenant?.metadata?.intake_form ||
+    null;
+
+  // Mini Intake Form State (Positive Friction Lead Capture)
+  const [intakeCustomerName, setIntakeCustomerName] = useState('');
+  const [intakeCustomerPhone, setIntakeCustomerPhone] = useState('');
+  const [intakeDetail, setIntakeDetail] = useState('');
+  const [intakeTopic, setIntakeTopic] = useState('');
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [intakeSuccess, setIntakeSuccess] = useState(false);
   const [isIntakeSubmitting, setIsIntakeSubmitting] = useState(false);
 
-  const COMPLAINT_OPTIONS = [
-    {
-      id: 'gtm',
-      title: '🥣 Masalah Makan / Gerakan Tutup Mulut (GTM)',
-      desc: 'Solusi berat badan seret, pilih makanan (picky eater), feeding rules dr. Harys',
-    },
-    {
-      id: 'speech',
-      title: '🗣️ Keterlambatan Bicara (Speech Delay)',
-      desc: 'Evaluasi artikulasi, kontak mata, & stimulasi komunikasi 2 arah dr. Azizah',
-    },
-    {
-      id: 'sensori',
-      title: '🧩 Sensori & Motorik',
-      desc: 'Regulasi emosi, tantrum berlebih, sensitif tekstur/suara, koordinasi gerak',
-    },
-    {
-      id: 'umum',
-      title: '🩺 Konsultasi Perkembangan Umum',
-      desc: 'Pemantauan milestone lengkap 1.000 Hari Pertama Kehidupan & skrining',
-    },
-  ];
+  // Dynamic Topics from Form Schema or Metadata
+  const dynamicTopics = useMemo(() => {
+    if (Array.isArray(formSchema?.options) && formSchema.options.length > 0) {
+      return formSchema.options;
+    }
+    if (Array.isArray(tenantMetadata?.inquiry_topics) && tenantMetadata.inquiry_topics.length > 0) {
+      return tenantMetadata.inquiry_topics;
+    }
+    if (isClinicTenant) {
+      return [
+        {
+          id: 'konsul-umum',
+          title: '🩺 Konsultasi Layanan & Praktisi',
+          desc: 'Evaluasi berkala dan penjadwalan sesi tatap muka / online',
+        },
+        {
+          id: 'skrining',
+          title: '📋 Skrining & Pemeriksaan Rutin',
+          desc: 'Pemantauan indikator berkala dan evaluasi terstruktur',
+        },
+      ];
+    }
+    return [
+      {
+        id: 'layanan-utama',
+        title: '📋 Informasi Layanan & Pemesanan',
+        desc: `Konsultasi kebutuhan dan penjadwalan layanan ${activeName}`,
+      },
+      {
+        id: 'estimasi-biaya',
+        title: '💰 Estimasi Biaya & Penawaran',
+        desc: 'Rincian paket harga dan cakupan pengerjaan',
+      },
+      {
+        id: 'jadwal-survey',
+        title: '📅 Booking Jadwal / Kunjungan',
+        desc: 'Penyesuaian waktu dan konfirmasi ketersediaan',
+      },
+      {
+        id: 'konsul-khusus',
+        title: '💬 Tanya Kebutuhan Khusus',
+        desc: 'Diskusi langsung dengan tim profesional kami',
+      },
+    ];
+  }, [formSchema, tenantMetadata, isClinicTenant, activeName]);
+
+  useEffect(() => {
+    if (dynamicTopics.length > 0 && !intakeTopic) {
+      setIntakeTopic(dynamicTopics[0].title);
+    }
+  }, [dynamicTopics, intakeTopic]);
 
   const handleIntakeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIntakeError(null);
 
-    if (!intakeParentName.trim()) {
-      setIntakeError('Nama Ayah / Bunda wajib diisi.');
+    if (!intakeCustomerName.trim()) {
+      setIntakeError('Nama lengkap wajib diisi.');
       return;
     }
 
-    if (!intakeParentPhone.trim()) {
+    if (!intakeCustomerPhone.trim()) {
       setIntakeError('Nomor WhatsApp aktif wajib diisi.');
       return;
     }
 
-    let rawPhone = intakeParentPhone.trim();
+    let rawPhone = intakeCustomerPhone.trim();
     if (rawPhone.startsWith('0')) {
       rawPhone = '62' + rawPhone.slice(1);
     } else if (rawPhone.startsWith('+62')) {
@@ -180,10 +222,10 @@ export default function PersonalAuthorityTemplate({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_slug: tenantSlug,
-          name: intakeParentName.trim(),
+          name: intakeCustomerName.trim(),
           phone: canonicalPhone,
-          intent: intakeComplaint,
-          notes: `Mini Intake Form: Usia Anak: ${intakeChildAge.trim() || 'Tidak disebutkan'} | Keluhan: ${intakeComplaint}`,
+          intent: intakeTopic,
+          notes: `Intake Form: Detail: ${intakeDetail.trim() || 'Tidak ada'} | Topik: ${intakeTopic}`,
         }),
       });
 
@@ -191,45 +233,51 @@ export default function PersonalAuthorityTemplate({
       try {
         localStorage.setItem(
           `boontrack_webchat_lead_${tenantSlug}`,
-          JSON.stringify({ name: intakeParentName.trim(), phone: canonicalPhone })
+          JSON.stringify({ name: intakeCustomerName.trim(), phone: canonicalPhone })
         );
       } catch {}
 
       setIntakeSuccess(true);
 
       // 3. Formulate direct WhatsApp message
-      const targetPhone = whatsappNumber || '6285129992305';
-      const cleanWaPhone = targetPhone.replace(/\D/g, '');
+      const targetPhone = (whatsappNumber || '').replace(/\D/g, '');
+      const doctorGreeting = (isClinicTenant && doctorsList.length > 0)
+        ? `Halo ${doctorsList.map((d: any) => d.name).join(' & ')} (${activeName})`
+        : `Halo ${activeName}`;
+
       const waMsg =
-        `Halo dr. Harys & dr. Azizah (${activeName}),\n\n` +
-        `Saya ingin konsultasi terarah untuk si kecil:\n` +
-        `• Nama Orang Tua: ${intakeParentName.trim()}\n` +
+        `${doctorGreeting},\n\n` +
+        `Saya ingin menanyakan informasi dan konsultasi seputar layanan Anda:\n` +
+        `• Nama: ${intakeCustomerName.trim()}\n` +
         `• Nomor WhatsApp: ${canonicalPhone}\n` +
-        `• Usia Si Kecil: ${intakeChildAge.trim() || 'Belum diisi'}\n` +
-        `• Keluhan Utama: ${intakeComplaint}\n\n` +
-        `Mohon arahan jadwal dan alur konsultasinya. Terima kasih!`;
+        (intakeDetail.trim() ? `• Detail Kebutuhan: ${intakeDetail.trim()}\n` : '') +
+        `• Kebutuhan / Topik: ${intakeTopic}\n\n` +
+        `Mohon arahan jadwal dan alur layanannya. Terima kasih!`;
 
-      const waUrl = `https://wa.me/${cleanWaPhone}?text=${encodeURIComponent(waMsg)}`;
-
-      // Open WhatsApp link
-      if (typeof window !== 'undefined') {
-        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      if (targetPhone) {
+        const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(waMsg)}`;
+        if (typeof window !== 'undefined') {
+          window.open(waUrl, '_blank', 'noopener,noreferrer');
+        }
+        onOutboundClick(waUrl, 'whatsapp_intake_submit');
       }
-      onOutboundClick(waUrl, 'whatsapp_intake_submit');
     } catch (err) {
-      console.warn('[MiniIntakeForm] Error submitting lead:', err);
-      const targetPhone = whatsappNumber || '6285129992305';
-      const cleanWaPhone = targetPhone.replace(/\D/g, '');
-      const waMsg =
-        `Halo dr. Harys & dr. Azizah (${activeName}),\n\n` +
-        `Saya ingin konsultasi terarah untuk si kecil:\n` +
-        `• Nama Orang Tua: ${intakeParentName.trim()}\n` +
-        `• Usia Si Kecil: ${intakeChildAge.trim() || 'Belum diisi'}\n` +
-        `• Keluhan Utama: ${intakeComplaint}\n\n` +
-        `Mohon arahan jadwal dan alur konsultasinya. Terima kasih!`;
-      const waUrl = `https://wa.me/${cleanWaPhone}?text=${encodeURIComponent(waMsg)}`;
-      if (typeof window !== 'undefined') {
-        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      console.warn('[IntakeForm] Error submitting lead:', err);
+      const targetPhone = (whatsappNumber || '').replace(/\D/g, '');
+      if (targetPhone) {
+        const doctorGreeting = (isClinicTenant && doctorsList.length > 0)
+          ? `Halo ${doctorsList.map((d: any) => d.name).join(' & ')} (${activeName})`
+          : `Halo ${activeName}`;
+        const waMsg =
+          `${doctorGreeting},\n\n` +
+          `Saya ingin konsultasi seputar layanan Anda:\n` +
+          `• Nama: ${intakeCustomerName.trim()}\n` +
+          `• Kebutuhan / Topik: ${intakeTopic}\n\n` +
+          `Mohon informasi jadwalnya. Terima kasih!`;
+        const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(waMsg)}`;
+        if (typeof window !== 'undefined') {
+          window.open(waUrl, '_blank', 'noopener,noreferrer');
+        }
       }
     } finally {
       setIsIntakeSubmitting(false);
@@ -388,42 +436,54 @@ export default function PersonalAuthorityTemplate({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
             {/* Sisi Kiri: Authority Content, Educational Sub-headline & Primary CTAs */}
             <div className="lg:col-span-7 space-y-6 text-left">
-              {/* Trust Badge: Medical Authority Label */}
+              {/* Trust Badge */}
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-50 text-purple-900 text-xs font-black border border-purple-200/90 shadow-2xs">
                 <Award className="w-4 h-4 text-purple-600 shrink-0" />
-                <span>Otoritas Medis Dokter Anak &bull; {tenantMetadata?.category === 'KLINIK_KONSULTASI' ? 'Klinik Tumbuh Kembang' : (tenantMetadata?.category || 'Klinik Resmi')}</span>
+                <span>
+                  {tenantMetadata?.authority_label ||
+                    (isClinicTenant
+                      ? `Otoritas Praktisi &bull; ${tenantMetadata?.category === 'KLINIK_KONSULTASI' ? 'Klinik Tumbuh Kembang' : 'Layanan Konsultasi'}`
+                      : (tenantMetadata?.category || 'Layanan Profesional Resmi'))}
+                </span>
               </div>
 
-              {/* Headline Medis yang Lugas & Berwibawa */}
+              {/* Headline */}
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.16]">
                 {headline}
               </h1>
 
-              {/* Sub-headline Edukatif Terkait Tumbuh Kembang & Nutrisi */}
+              {/* Sub-headline */}
               {subheadline ? (
                 <p className="text-sm sm:text-base md:text-lg text-slate-600 font-normal leading-relaxed max-w-xl">
                   {subheadline}
                 </p>
               ) : null}
 
-              {/* Clinical Trust Checkpoints */}
+              {/* Trust Checkpoints */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-xs font-semibold text-slate-700">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Pendampingan Dokter Spesialis &amp; Praktisi</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Metode Happy Eating Tanpa Trauma</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Screening Milestone 1.000 Hari Pertama</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Jadwal Praktik Senin–Jumat 08.00–11.30 WIB</span>
-                </div>
+                {(Array.isArray(tenantMetadata?.trust_checkpoints) && tenantMetadata.trust_checkpoints.length > 0
+                  ? tenantMetadata.trust_checkpoints
+                  : Array.isArray(tenantMetadata?.features) && tenantMetadata.features.length > 0
+                  ? tenantMetadata.features.slice(0, 4)
+                  : isClinicTenant
+                  ? [
+                      'Pendampingan Praktisi Berpengalaman',
+                      'Metode Terarah & Berkelanjutan',
+                      'Evaluasi Skrining Terstruktur',
+                      'Jadwal Konsultasi Terkonfirmasi',
+                    ]
+                  : [
+                      'Layanan Profesional & Berpengalaman',
+                      'Konsultasi Cepat via Tim Resmi',
+                      'Pengerjaan Rapi & Transparan',
+                      'Jadwal Fleksibel Sesuai Kebutuhan',
+                    ]
+                ).map((point: string, pIdx: number) => (
+                  <div key={pIdx} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{point}</span>
+                  </div>
+                ))}
               </div>
 
               {/* Main CTA Buttons */}
@@ -441,7 +501,7 @@ export default function PersonalAuthorityTemplate({
                   className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-purple-600/25 transition-all duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Mulai Konsultasi Terarah</span>
+                  <span>{customCtaLabel || (isClinicTenant ? 'Mulai Konsultasi Terarah' : (isServiceBusiness ? 'Pesan Layanan Sekarang' : 'Konsultasi Layanan'))}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
@@ -551,7 +611,7 @@ export default function PersonalAuthorityTemplate({
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* MINI INTAKE FORM (POSITIVE FRICTION LEAD FILTER)                    */}
+      {/* INTAKE / CONSULTATION SECTION (DYNAMIC & ISOLATED)                  */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <section id="intake-form-section" className="py-14 px-4 sm:px-6 bg-gradient-to-b from-purple-50/50 via-white to-slate-50/50 border-y border-purple-100">
         <div className="max-w-4xl mx-auto">
@@ -562,13 +622,13 @@ export default function PersonalAuthorityTemplate({
             <div className="text-center space-y-2 mb-8">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100/80 text-purple-800 text-[11px] font-black border border-purple-200">
                 <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                <span>Skrining Cepat &bull; Konsultasi Terarah</span>
+                <span>{formSchema?.badge || 'Respon Cepat &bull; Konsultasi Terarah'}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                Konsultasikan Kebutuhan Si Kecil Bersama Dokter Kami
+                {formSchema?.title || (isClinicTenant ? 'Konsultasikan Kebutuhan Bersama Tim Praktisi Kami' : `Konsultasi & Tanya Layanan ${activeName}`)}
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto leading-relaxed">
-                Isi formulir ringkas di bawah ini agar tim dokter dapat mempelajari riwayat &amp; memberikan respon yang tepat sasaran via WhatsApp.
+                {formSchema?.subtitle || (isClinicTenant ? 'Isi formulir ringkas di bawah ini agar tim kami dapat mempelajari riwayat & memberikan respon yang tepat sasaran via WhatsApp.' : `Isi formulir ringkas di bawah ini agar tim resmi ${activeName} dapat memberikan respon yang tepat sasaran via WhatsApp.`)}
               </p>
             </div>
 
@@ -579,31 +639,33 @@ export default function PersonalAuthorityTemplate({
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-lg font-black text-slate-900">
-                    Data Konsultasi Berhasil Dicatat!
+                    Data Permintaan Berhasil Dicatat!
                   </h3>
                   <p className="text-xs text-slate-600 max-w-md mx-auto">
-                    Tautan WhatsApp telah disiapkan dengan rangkuman informasi si kecil. Jika aplikasi WhatsApp tidak terbuka otomatis, silakan klik tombol di bawah:
+                    Tautan WhatsApp telah disiapkan dengan rangkuman informasi kebutuhan Anda. Jika aplikasi WhatsApp tidak terbuka otomatis, silakan klik tombol di bawah:
                   </p>
                 </div>
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <a
-                    href={`https://wa.me/${(whatsappNumber || '6285129992305').replace(/\D/g, '')}?text=${encodeURIComponent(
-                      `Halo dr. Harys & dr. Azizah (${activeName}),\n\nSaya ingin konsultasi terarah untuk si kecil:\n• Nama Orang Tua: ${intakeParentName}\n• Usia Si Kecil: ${intakeChildAge || 'Belum diisi'}\n• Keluhan Utama: ${intakeComplaint}\n\nMohon arahan jadwal dan alur konsultasinya. Terima kasih!`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
-                  >
-                    <HeartHandshake className="w-4 h-4" />
-                    <span>Buka Percakapan WhatsApp</span>
-                  </a>
+                  {whatsappNumber && (
+                    <a
+                      href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(
+                        `${(isClinicTenant && doctorsList.length > 0) ? `Halo ${doctorsList.map((d: any) => d.name).join(' & ')} (${activeName})` : `Halo ${activeName}`},\n\nSaya ingin konsultasi seputar layanan Anda:\n• Nama: ${intakeCustomerName}\n${intakeDetail ? `• Detail: ${intakeDetail}\n` : ''}• Topik: ${intakeTopic}\n\nMohon informasi jadwal dan ketersediaannya. Terima kasih!`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                    >
+                      <HeartHandshake className="w-4 h-4" />
+                      <span>Buka Percakapan WhatsApp</span>
+                    </a>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
                       setIntakeSuccess(false);
-                      setIntakeParentName('');
-                      setIntakeParentPhone('');
-                      setIntakeChildAge('');
+                      setIntakeCustomerName('');
+                      setIntakeCustomerPhone('');
+                      setIntakeDetail('');
                     }}
                     className="w-full sm:w-auto px-5 py-3 bg-white text-slate-700 hover:bg-slate-100 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
                   >
@@ -621,17 +683,17 @@ export default function PersonalAuthorityTemplate({
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Nama Orang Tua */}
+                  {/* Nama Lengkap */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-800">
-                      Nama Ayah / Bunda <span className="text-rose-500">*</span>
+                      Nama Lengkap <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
                       required
-                      value={intakeParentName}
-                      onChange={(e) => setIntakeParentName(e.target.value)}
-                      placeholder="Contoh: Bunda Sarah"
+                      value={intakeCustomerName}
+                      onChange={(e) => setIntakeCustomerName(e.target.value)}
+                      placeholder="Contoh: Budi Santoso"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
                     />
                   </div>
@@ -648,70 +710,74 @@ export default function PersonalAuthorityTemplate({
                       <input
                         type="tel"
                         required
-                        value={intakeParentPhone}
-                        onChange={(e) => setIntakeParentPhone(e.target.value.replace(/^[+0]/, ''))}
+                        value={intakeCustomerPhone}
+                        onChange={(e) => setIntakeCustomerPhone(e.target.value.replace(/^[+0]/, ''))}
                         placeholder="81234567890"
                         className="w-full pl-11 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
                       />
                     </div>
                   </div>
 
-                  {/* Usia Si Kecil */}
+                  {/* Detail / Catatan Singkat */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-800">
-                      Usia Si Kecil
+                      Detail / Catatan Kebutuhan
                     </label>
                     <input
                       type="text"
-                      value={intakeChildAge}
-                      onChange={(e) => setIntakeChildAge(e.target.value)}
-                      placeholder="Contoh: 18 Bulan / 2 Tahun"
+                      value={intakeDetail}
+                      onChange={(e) => setIntakeDetail(e.target.value)}
+                      placeholder={isClinicTenant ? 'Contoh: Usia / catatan keluhan' : 'Contoh: Lokasi / catatan layanan'}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
                     />
                   </div>
                 </div>
 
-                {/* Pilihan Keluhan Utama */}
-                <div className="space-y-2 pt-1">
-                  <label className="block text-xs font-bold text-slate-800">
-                    Pilih Keluhan Utama Si Kecil <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {COMPLAINT_OPTIONS.map((opt) => {
-                      const isSelected = intakeComplaint === opt.title;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setIntakeComplaint(opt.title)}
-                          className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 shadow-xs'
-                              : 'bg-slate-50/60 border-slate-200/90 hover:bg-slate-100 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-bold text-xs text-slate-900 leading-snug">
-                              {opt.title}
-                            </span>
-                            <span
-                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                                isSelected
-                                  ? 'border-purple-600 bg-purple-600 text-white'
-                                  : 'border-slate-300 bg-white'
-                              }`}
-                            >
-                              {isSelected ? <Check className="w-2.5 h-2.5" /> : null}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-slate-500 mt-1 leading-normal">
-                            {opt.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
+                {/* Pilihan Topik / Kebutuhan Utama */}
+                {dynamicTopics.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Pilih Topik atau Kebutuhan Utama <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {dynamicTopics.map((opt: any) => {
+                        const isSelected = intakeTopic === opt.title;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setIntakeTopic(opt.title)}
+                            className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 shadow-xs'
+                                : 'bg-slate-50/60 border-slate-200/90 hover:bg-slate-100 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-bold text-xs text-slate-900 leading-snug">
+                                {opt.title}
+                              </span>
+                              <span
+                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                                  isSelected
+                                    ? 'border-purple-600 bg-purple-600 text-white'
+                                    : 'border-slate-300 bg-white'
+                                }`}
+                              >
+                                {isSelected ? <Check className="w-2.5 h-2.5" /> : null}
+                              </span>
+                            </div>
+                            {opt.desc ? (
+                              <span className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                {opt.desc}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Tombol Aksi */}
                 <div className="pt-2">
@@ -725,13 +791,13 @@ export default function PersonalAuthorityTemplate({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 text-amber-300" />
-                        <span>Mulai Konsultasi Terarah</span>
+                        <span>{formSchema?.submit_label || (isClinicTenant ? 'Mulai Konsultasi Terarah' : 'Kirim Permintaan Konsultasi')}</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
                   </button>
                   <p className="text-[10px] text-slate-400 text-center mt-2.5">
-                    🔒 Data privasi aman &bull; Diteruskan langsung ke tim medis resmi {activeName} via WhatsApp.
+                    🔒 Data privasi aman &bull; Diteruskan langsung ke tim resmi {activeName} via WhatsApp.
                   </p>
                 </div>
               </form>
@@ -1179,6 +1245,7 @@ export default function PersonalAuthorityTemplate({
           storeName={storeName}
           displayName={displayName}
           category={tenant?.category || tenantMetadata?.category || tenantMetadata?.business_category || tenantMetadata?.vertical}
+          chatCtaLabel={customCtaLabel}
           dynamicQuickReplies={dynamicQuickReplies}
           initialTopic={selectedTopicForChat}
           onInitiateCheckout={onInitiateCheckout}

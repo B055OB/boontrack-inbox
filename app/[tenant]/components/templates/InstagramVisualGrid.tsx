@@ -197,10 +197,16 @@ export default function InstagramVisualGrid({
           <div className="space-y-1 text-center sm:text-left">
             <h4 className="text-sm sm:text-base font-black flex items-center justify-center sm:justify-start gap-2">
               <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Ingin Konsultasi Perkembangan Si Kecil Bersama Dokter?</span>
+              <span>
+                {String(tenantMetadata?.category || '').toUpperCase().includes('KLINIK')
+                  ? 'Ingin Konsultasi Langsung Bersama Tim Praktisi?'
+                  : `Ada Pertanyaan Seputar Layanan ${storeName}?`}
+              </span>
             </h4>
             <p className="text-xs text-purple-200 max-w-xl">
-              Gunakan widget webchat di pojok kanan bawah atau jadwalkan sesi tatap muka langsung di klinik {storeName}.
+              {String(tenantMetadata?.category || '').toUpperCase().includes('KLINIK')
+                ? `Gunakan widget webchat di pojok kanan bawah atau jadwalkan sesi tatap muka langsung di ${storeName}.`
+                : `Gunakan widget webchat di pojok kanan bawah atau hubungi tim customer service resmi ${storeName}.`}
             </p>
           </div>
 

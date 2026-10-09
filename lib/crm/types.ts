@@ -109,13 +109,13 @@ export const DEFAULT_FOLLOW_UP_RULES: FollowUpRules = {
   birthdayEnabled: true,
   retentionEnabled: true,
   h1Template:
-    'Halo Ayah/Bunda [nama], bagaimana perkembangan si kecil setelah sesi [hari] hari lalu di [toko]? Apakah ada keluhan atau respon perkembangan yang ingin dikonsultasikan kembali? Kami siap membantu evaluasi kondisinya 🙏',
+    'Halo Kak [nama], bagaimana pengalaman Anda setelah sesi [hari] hari lalu di [toko]? Jika ada pertanyaan atau butuh bantuan lebih lanjut, kami siap membantu dengan senang hati 🙏',
   h2Template:
-    'Halo Ayah/Bunda [nama], sudah 1 minggu ([hari] hari) sejak sesi kunjungan terakhir di [toko]. Untuk memastikan kemajuan stimulasi dan tumbuh kembang si kecil berjalan optimal, apakah ingin menjadwalkan sesi evaluasi lanjutan minggu ini? 😊',
+    'Halo Kak [nama], sudah [hari] hari sejak sesi kunjungan terakhir di [toko]. Kami ingin memastikan semua berjalan lancar. Apakah ada kebutuhan tambahan atau layanan lanjutan yang bisa kami bantu? 😊',
   birthdayTemplate:
-    'Halo Ayah/Bunda [nama], Selamat Ulang Tahun untuk si kecil! 🎂🎉 Semoga senantiasa sehat, tumbuh cerdas, dan penuh keceriaan. Kami dari [toko] selalu mendoakan yang terbaik. Spesial di hari bahagia ini, kami siapkan hadiah voucher spesial untuk sesi atau program tumbuh kembang bulan ini 🎁✨',
+    'Halo Kak [nama], Selamat Ulang Tahun! 🎂🎉 Semoga senantiasa sukses, sehat, dan bahagia selalu. Spesial di hari bahagia ini, [toko] menyiapkan penawaran istimewa untuk Anda 🎁✨',
   retentionTemplate:
-    'Halo Ayah/Bunda [nama], apa kabar si kecil? Sudah cukup lama sejak sesi kunjungan terakhir di [toko]. Jika memerlukan pendampingan stimulasi atau evaluasi baru, pintu klinik kami selalu terbuka untuk Ayah/Bunda 🙏',
+    'Halo Kak [nama], apa kabar? Sudah cukup lama sejak transaksi terakhir Anda di [toko]. Kami siap menyambut Anda kembali dengan promo dan pelayanan terbaik 🙏',
 };
 
 export interface FollowUpInfo {

@@ -88,19 +88,18 @@ const LIFECYCLE_FILTERS: { key: FilterStage; label: string; icon: React.ElementT
 const LIFECYCLE_BADGE: Record<string, { label: string; cls: string }> = {
   LEAD: { label: 'Lead', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   QUALIFIED: { label: 'Qualified', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  CUSTOMER: { label: 'Pasien Aktif', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  REPEAT_CUSTOMER: { label: 'Pasien Rutin', cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  CUSTOMER: { label: 'Pelanggan Aktif', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  REPEAT_CUSTOMER: { label: 'Pelanggan Setia', cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   INACTIVE: { label: 'Inactive', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
 };
 
 const SUGGESTED_TAGS = [
   'VIP',
-  'Terapi Wicara',
-  'Sensori Integrasi',
-  'Fisioterapi',
-  'Tumbuh Kembang',
-  'Konsultasi Dokter',
+  'Prioritas',
   'Walk-in',
+  'Follow Up',
+  'Pelanggan Baru',
+  'Pelanggan Setia',
   'Evaluasi H+3',
   'Evaluasi H+7',
 ];
@@ -340,7 +339,7 @@ export default function CustomerDatabaseTab({
           customerName,
           birthDate,
           lastVisitDate,
-          tenantName: tenantName || 'Tumbuh Kembang Anak',
+          tenantName: tenantName || 'Toko Resmi',
           rules: currentFollowUpRules,
         });
 
@@ -381,7 +380,7 @@ export default function CustomerDatabaseTab({
               customerName: existing.customerName,
               birthDate: existing.birthDate,
               lastVisitDate: conv.last_message_at,
-              tenantName: tenantName || 'Tumbuh Kembang Anak',
+              tenantName: tenantName || 'Toko Resmi',
               rules: currentFollowUpRules,
             });
           }
@@ -395,7 +394,7 @@ export default function CustomerDatabaseTab({
             customerName,
             birthDate: null,
             lastVisitDate,
-            tenantName: tenantName || 'Tumbuh Kembang Anak',
+            tenantName: tenantName || 'Toko Resmi',
             rules: currentFollowUpRules,
           });
 
@@ -426,7 +425,7 @@ export default function CustomerDatabaseTab({
             customerName,
             birthDate: null,
             lastVisitDate: stats.lastOrderDate,
-            tenantName: tenantName || 'Tumbuh Kembang Anak',
+            tenantName: tenantName || 'Toko Resmi',
             rules: currentFollowUpRules,
           });
 
@@ -1339,14 +1338,14 @@ export default function CustomerDatabaseTab({
                       setFollowUpMessageText(
                         formatFollowUpTemplate(followUpRules.h1Template, {
                           name: activeFollowUpCustomer.customerName,
-                          store: tenantName || 'Klinik Tumbuh Kembang',
+                          store: tenantName || 'Toko Resmi',
                           days: followUpRules.h1Days,
                         })
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
                   >
-                    Template H+{followUpRules.h1Days} (Evaluasi Kondisi)
+                    Template H+{followUpRules.h1Days} (Evaluasi Layanan)
                   </button>
 
                   <button
@@ -1355,14 +1354,14 @@ export default function CustomerDatabaseTab({
                       setFollowUpMessageText(
                         formatFollowUpTemplate(followUpRules.h2Template, {
                           name: activeFollowUpCustomer.customerName,
-                          store: tenantName || 'Klinik Tumbuh Kembang',
+                          store: tenantName || 'Toko Resmi',
                           days: followUpRules.h2Days,
                         })
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 cursor-pointer"
                   >
-                    Template H+{followUpRules.h2Days} (Sesi Lanjutan)
+                    Template H+{followUpRules.h2Days} (Follow Up Lanjutan)
                   </button>
 
                   {activeFollowUpCustomer.birthDate && (
@@ -1372,7 +1371,7 @@ export default function CustomerDatabaseTab({
                         setFollowUpMessageText(
                           formatFollowUpTemplate(followUpRules.birthdayTemplate, {
                             name: activeFollowUpCustomer.customerName,
-                            store: tenantName || 'Klinik Tumbuh Kembang',
+                            store: tenantName || 'Toko Resmi',
                           })
                         );
                       }}

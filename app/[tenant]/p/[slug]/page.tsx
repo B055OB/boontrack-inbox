@@ -4359,11 +4359,14 @@ function SingleProductContent() {
               case 'payment_voucher':
                 return config.enable_payment !== false ? (
                   <React.Fragment key="section-payment-voucher">
-                    {/* 7.5 Mini Intake Form (Positive Friction Filter untuk Konsultasi Medis & Screening) */}
+                    {/* 7.5 Mini Intake Form (Dynamic Lead Capture & Positive Friction Intake) */}
                     {config.intake_form_config?.enabled && (
                       <MiniIntakeForm
                         tenantSlug={tenant}
+                        storeName={tenantData?.name}
                         officialWaNumber={tenantWhatsAppNumber}
+                        formConfig={config.intake_form_config}
+                        isClinic={tenant === 'tumbuh-kembang-anak' || tenantCategory === 'KLINIK_KONSULTASI'}
                         onDirectCheckout={(data) => {
                           setBuyerName(data.parentName);
                           setBuyerPhone(data.whatsappPhone);

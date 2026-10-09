@@ -310,9 +310,8 @@ describe('MULTI-TENANT BOT ISOLATION & ZERO CROSS-TENANT LEAKAGE SPECIFICATION',
       expect(res.handled).toBe(true);
       expect(res.intent_key).toBe('SCREENING_CONSULT');
       expect(res.reply).toContain('SCREENING STIMULASI & EVALUASI TUMBUH KEMBANG');
-      expect(res.reply).toContain('dr. Azizah Ridwan');
       expect(res.reply).toContain('1.000 Hari Pertama Kehidupan');
-      expect(res.quick_actions).toContain('📅 Jadwal Sesi dr. Azizah');
+      expect(res.quick_actions).toContain('📅 Jadwal Screening Dokter');
     });
 
     it('routes doctor schedule inquiry to consultation schedule node', async () => {

@@ -29,7 +29,7 @@ export function calculateFollowUpInfo(params: {
   rules?: Partial<FollowUpRules> | null;
 }): FollowUpInfo {
   const { customerName, birthDate, lastVisitDate, tenantName, rules } = params;
-  const storeName = tenantName || 'Tumbuh Kembang Anak';
+  const storeName = tenantName || 'Toko Resmi';
   const now = new Date();
 
   const h1Days = Math.max(1, Math.floor(Number(rules?.h1Days ?? DEFAULT_FOLLOW_UP_RULES.h1Days)));

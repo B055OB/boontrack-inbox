@@ -288,11 +288,12 @@ export async function resumeBotForConversation(
 }
 
 /**
- * Clears in-memory session cache (useful for testing isolation).
+ * Clears in-memory session cache (useful for testing isolation & total cache flushes).
  */
-export function clearSessionCacheForTest(): void {
+export function clearAllBotSessionCache(): void {
   compositeSessionCache.clear();
 }
+export const clearSessionCacheForTest = clearAllBotSessionCache;
 
 /**
  * Retrieves the tenant's decision tree and campaign routes strictly scoped by tenant context.
@@ -433,8 +434,8 @@ export async function routeTenantInboundMessage(params: {
     }
   }
 
-  // 3b. Built-In Specialized Decision Tree for Tumbuh Kembang Anak (Clinic Standard)
-  if (treeConfig.tenant_slug === 'tumbuh-kembang-anak' || treeConfig.category === 'CLINIC' || treeConfig.category === 'KLINIK_KONSULTASI') {
+  // 3b. Built-In Specialized Decision Tree for Tumbuh Kembang Anak (Strict Tenant Isolation)
+  if (treeConfig.tenant_slug === 'tumbuh-kembang-anak') {
     // Nutrition / Feeding / GTM Route (dr. Harys Maulana)
     if (
       /gtm|mpasi|makan|mengemut|diemut|emut|makan lama|lama makan|durasi makan|tidak mau nasi|gamau nasi|gak mau nasi|berat badan|bb seret|bb stuck|susah naik|jadwal makan|feeding rules|aturan makan|tekstur|lepeh|melepeh|nutrisi|dr harys|dr\. harys/i.test(combinedSignal) ||

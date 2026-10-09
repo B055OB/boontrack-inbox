@@ -294,6 +294,16 @@ export async function middleware(req: NextRequest) {
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
   const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
 
+  // ── CACHE FLUSH TRIGGER (Flush All Shared Memory Caches on Demand) ──
+  if (
+    req.headers.get('x-purge-cache') === '1' ||
+    req.nextUrl.searchParams.get('purge_cache') === '1' ||
+    pathname === '/api/v1/cache/purge'
+  ) {
+    domainCache.clear();
+    affiliateSubdomainCache.clear();
+  }
+
   // ── 0. BYPASS API & STATIC LANGSUNG (/_next, /favicon.ico, /images, dll.) ──
   if (
     pathname.startsWith('/api/') ||
@@ -789,7 +799,13 @@ export async function middleware(req: NextRequest) {
         ? pathname
         : `/${slug}${pathname === '/' ? '' : pathname}`;
       url.pathname = cleanPath;
-      return NextResponse.rewrite(url);
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set('x-tenant-slug', slug);
+      return NextResponse.rewrite(url, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
     } else {
       const url = req.nextUrl.clone();
       url.pathname = '/404-store-not-found';
@@ -914,7 +930,17 @@ export async function middleware(req: NextRequest) {
   // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
   if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {
     const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
-    const res = NextResponse.next();
+    const segments = pathname.split('/').filter(Boolean);
+    const tenantSlug = segments[0]?.toLowerCase().trim();
+    const requestHeaders = new Headers(req.headers);
+    if (tenantSlug) {
+      requestHeaders.set('x-tenant-slug', tenantSlug);
+    }
+    const res = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
     if (refParam) {
       setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
     }

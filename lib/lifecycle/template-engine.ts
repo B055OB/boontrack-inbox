@@ -20,28 +20,26 @@ export function resolveTemplateVariables(
       return String(val);
     }
 
-    // Contextual intelligent fallbacks
+    // Contextual intelligent fallbacks (Strict Zero Hardcoding & Isolation)
     switch (key) {
       case 'customer_name':
-        return 'Ayah/Bunda';
+        return 'Pelanggan';
       case 'product_title':
-        return 'Konsultasi Tumbuh Kembang';
+        return 'Layanan';
       case 'doctor_name':
-        return 'dr. Harys Maulana & dr. Azizah Ridwan';
+        return '';
       case 'consultation_channel':
-        return 'Google Meet / Klinik';
+        return 'WhatsApp / Online';
       case 'consultation_time':
         return 'Sesuai Konfirmasi Admin';
       case 'session_link':
         return 'Akan dikirimkan oleh admin sebelum sesi dimulai';
       case 'kidmap_url':
-        return payload.order_number
-          ? `https://shop.boontrack.com/tumbuh-kembang-anak/kidmap?order=${encodeURIComponent(payload.order_number)}`
-          : 'https://shop.boontrack.com/tumbuh-kembang-anak';
+        return '';
       case 'upsell_url':
-        return 'https://shop.boontrack.com/tumbuh-kembang-anak/p/play-n-grow-ecourse';
+        return '';
       case 'promo_code':
-        return 'ALUMNIGROW';
+        return '';
       default:
         return '';
     }

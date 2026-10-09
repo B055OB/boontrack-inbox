@@ -194,8 +194,8 @@ export default function FollowUpRulesConfig({
     }));
   };
 
-  const currentStore = tenantDisplayName || 'Klinik Tumbuh Kembang';
-  const sampleCustomer = 'Bunda Sarah & Ananda Rayyan';
+  const currentStore = tenantDisplayName || 'Toko Resmi';
+  const sampleCustomer = 'Budi Santoso';
 
   const previewText = React.useMemo(() => {
     if (previewTab === 'birthday') {

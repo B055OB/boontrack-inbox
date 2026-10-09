@@ -28,6 +28,7 @@ interface FloatingWebchatProps {
   storeName: string;
   displayName: string;
   category?: string;
+  chatCtaLabel?: string;
   dynamicQuickReplies?: string[];
   initialTopic?: string | null;
   onInitiateCheckout?: (product: { id: string; title: string; price: number }) => void;
@@ -35,10 +36,10 @@ interface FloatingWebchatProps {
 }
 
 const DEFAULT_INTENT_OPTIONS = [
-  '🩺 Konsultasi Tumbuh Kembang',
-  '📅 Jadwal Terapi & Screening',
-  '💰 Tanya Paket & Biaya',
-  '🥣 Nutrisi & Masalah Makan (GTM)',
+  '💬 Tanya Informasi Layanan',
+  '💰 Cek Harga & Paket',
+  '📅 Jadwal & Pemesanan',
+  '👤 Hubungi Tim Admin',
 ];
 
 export default function FloatingWebchat({
@@ -46,6 +47,7 @@ export default function FloatingWebchat({
   storeName,
   displayName,
   category,
+  chatCtaLabel,
   dynamicQuickReplies = [],
   initialTopic,
   onInitiateCheckout,
@@ -67,12 +69,14 @@ export default function FloatingWebchat({
     const base =
       Array.isArray(dynamicQuickReplies) && dynamicQuickReplies.length > 0
         ? dynamicQuickReplies.slice(0, 4)
-        : DEFAULT_INTENT_OPTIONS;
+        : (effectiveQuickReplies && effectiveQuickReplies.length > 0
+          ? effectiveQuickReplies.slice(0, 4)
+          : DEFAULT_INTENT_OPTIONS);
     if (initialTopic && !base.some((b) => b.includes(initialTopic))) {
       return [`📌 ${initialTopic}`, ...base.slice(0, 3)];
     }
     return base;
-  }, [dynamicQuickReplies, initialTopic]);
+  }, [dynamicQuickReplies, effectiveQuickReplies, initialTopic]);
 
   // Lead Capture State
   const [isLeadCaptured, setIsLeadCaptured] = useState(false);
@@ -116,7 +120,10 @@ export default function FloatingWebchat({
 
     setMessages((prev) => {
       if (prev.length === 0) {
-        const greetingText = `Halo Ayah/Bunda ${parentName || ''}! 👋\n\nSelamat datang di layanan konsultasi resmi ${activeName}. Tim dokter dan asisten kami siap membantu evaluasi dan kebutuhan si kecil.\n\nSilakan tanyakan keluhan atau pilih opsi di bawah:`;
+        const greetingBase = getStoreChatGreeting(category || '', activeName);
+        const greetingText = parentName
+          ? `Halo ${parentName}! 👋\n\n${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`
+          : `${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`;
         return [
           {
             id: 'init-floating-1',
@@ -130,7 +137,7 @@ export default function FloatingWebchat({
       }
       return prev;
     });
-  }, [isLeadCaptured, activeName, parentName, effectiveQuickReplies]);
+  }, [isLeadCaptured, activeName, parentName, effectiveQuickReplies, category]);
 
   useEffect(() => {
     if (isOpen) {
@@ -189,9 +196,14 @@ export default function FloatingWebchat({
         id: `user-init-${Date.now()}`,
         sender: 'user',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Halo, saya ${parentName.trim()}. Saya ingin konsultasi seputar: ${selectedIntent}`,
+        text: `Halo, saya ${parentName.trim()}. Saya ingin bertanya seputar: ${selectedIntent}`,
         type: 'TEXT',
       };
+
+      const isClinic = String(category || '').toUpperCase().includes('KLINIK');
+      const botResponseText = isClinic
+        ? `Halo Bapak/Ibu ${parentName.trim()}! 🙏 Terima kasih telah menghubungi ${activeName}.\n\nKami telah mencatat ketertarikan Anda pada "${selectedIntent}". Tim kami siap menjawab pertanyaan seputar jadwal, alur konsultasi, atau biaya paket layanan.\n\nAda pertanyaan atau keluhan spesifik yang ingin dikonsultasikan saat ini?`
+        : `Halo ${parentName.trim()}! 🙏 Terima kasih telah menghubungi ${activeName}.\n\nKami telah mencatat ketertarikan Anda pada "${selectedIntent}". Tim kami siap menjawab pertanyaan seputar katalog, jadwal layanan, estimasi pengerjaan, atau biaya.\n\nAda yang bisa kami bantu seputar kebutuhan Anda hari ini?`;
 
       setMessages([
         firstUserMsg,
@@ -199,7 +211,7 @@ export default function FloatingWebchat({
           id: `bot-init-${Date.now() + 1}`,
           sender: 'bot',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Halo Ayah/Bunda ${parentName.trim()}! 🙏 Terima kasih telah menghubungi ${activeName}.\n\nKami telah mencatat ketertarikan Ayah/Bunda pada "${selectedIntent}". Asisten AI & tim medis kami siap menjawab pertanyaan seputar jadwal, tahapan stimulasi, atau biaya paket layanan.\n\nAda respon atau keluhan spesifik pada si kecil yang ingin dikonsultasikan saat ini?`,
+          text: botResponseText,
           type: 'TEXT',
           quick_actions: effectiveQuickReplies,
         },
@@ -322,21 +334,21 @@ export default function FloatingWebchat({
                     <span>Selamat Datang di {activeName} 👋</span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    Sebelum memulai sesi chat konsultasi, mohon isi data singkat Ayah/Bunda agar dokter &amp; tim medis kami dapat memberikan evaluasi yang tepat.
+                    Sebelum memulai percakapan, mohon isi data singkat Anda agar tim kami dapat memberikan respon dan bantuan yang tepat.
                   </p>
                 </div>
 
                 <form onSubmit={handleLeadSubmit} className="space-y-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nama Orang Tua (Ayah / Bunda) *
+                      Nama Lengkap *
                     </label>
                     <input
                       type="text"
                       required
                       value={parentName}
                       onChange={(e) => setParentName(e.target.value)}
-                      placeholder="Contoh: Bunda Sarah"
+                      placeholder="Contoh: Budi Santoso"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-500/20 transition"
                     />
                   </div>
@@ -528,19 +540,28 @@ export default function FloatingWebchat({
       )}
 
       {/* Floating Trigger Button */}
-      <button
-        type="button"
-        id="btn-floating-webchat"
-        onClick={() => setIsOpen(!isOpen)}
-        className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-xl shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap shrink-0 border border-white/20 select-none"
-        aria-label="Konsultasi Dokter"
-      >
-        <span className="relative flex items-center justify-center shrink-0">
-          <MessageSquare className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-purple-600 animate-pulse" />
-        </span>
-        <span className="font-bold text-xs tracking-tight whitespace-nowrap">Konsultasi Dokter</span>
-      </button>
+      {(() => {
+        const triggerLabel =
+          chatCtaLabel ||
+          (String(category || '').toUpperCase().includes('KLINIK')
+            ? 'Konsultasi Layanan'
+            : 'Tanya Layanan');
+        return (
+          <button
+            type="button"
+            id="btn-floating-webchat"
+            onClick={() => setIsOpen(!isOpen)}
+            className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-xl shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap shrink-0 border border-white/20 select-none"
+            aria-label={triggerLabel}
+          >
+            <span className="relative flex items-center justify-center shrink-0">
+              <MessageSquare className="w-5 h-5" />
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-purple-600 animate-pulse" />
+            </span>
+            <span className="font-bold text-xs tracking-tight whitespace-nowrap">{triggerLabel}</span>
+          </button>
+        );
+      })()}
     </div>
   );
 }

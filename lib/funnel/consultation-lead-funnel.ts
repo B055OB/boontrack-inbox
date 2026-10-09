@@ -65,18 +65,23 @@ export function isClinicConsultationTenant(tenant: any, meta: any, products: any
   const businessType = String(tenant?.business_type || meta?.business_type || meta?.vertical_type || '').toUpperCase();
   const customDomain = String(meta?.custom_domain || '').toLowerCase();
   const hasClinicDoctor = Boolean(meta?.doctors?.length || meta?.dr_name || meta?.bot_persona?.doctor_name);
-  const hasGtmProduct = (products || []).some((p: any) => {
+  const hasPediatricGtmProduct = (products || []).some((p: any) => {
     const pName = (p.name || p.title || '').toLowerCase();
-    return pName.includes('gtm') || pName.includes('konsultasi chat') || pName.includes('dokter anak');
+    return pName.includes('gtm') || (pName.includes('konsultasi') && (pName.includes('anak') || pName.includes('dokter') || pName.includes('feeding')));
   });
 
-  return (
+  const isClinicCategory =
+    category === 'CLINIC' ||
+    category === 'KLINIK' ||
+    category === 'KLINIK_KONSULTASI' ||
+    category === 'PEDIATRIC' ||
     category.includes('KLINIK') ||
-    category.includes('KONSULTASI') ||
-    businessType.includes('CLINIC') ||
+    businessType === 'CLINIC';
+
+  return (
     customDomain.includes('littlebitefeeding.com') ||
-    (hasClinicDoctor && hasGtmProduct) ||
-    hasGtmProduct
+    (isClinicCategory && (hasClinicDoctor || hasPediatricGtmProduct)) ||
+    (hasClinicDoctor && hasPediatricGtmProduct)
   );
 }
 
@@ -89,16 +94,17 @@ export function resolveLockedGtmProduct(products: any[], meta: any) {
   const gtm = prods.find((p: any) => {
     const pName = (p.name || p.title || '').toLowerCase();
     return (
-      (pName.includes('gtm') && pName.includes('harys')) ||
-      (pName.includes('gtm') && pName.includes('konsultasi')) ||
-      pName.includes('eat and grow') ||
+      (pName.includes('gtm') && (pName.includes('konsultasi') || pName.includes('chat') || pName.includes('dokter'))) ||
       p.slug === meta?.primary_product_slug ||
       p.id === meta?.primary_product_id
     );
   });
   if (gtm) return gtm;
 
-  return prods.find((p: any) => (p.name || '').toLowerCase().includes('konsul')) || prods[0];
+  return prods.find((p: any) => {
+    const pName = (p.name || '').toLowerCase();
+    return pName.includes('konsul') && (pName.includes('chat') || pName.includes('anak') || pName.includes('dokter'));
+  }) || prods[0];
 }
 
 export const CLINIC_OFFICIAL_SCREENING_URL = 'https://screening.littlebitefeeding.com/';
