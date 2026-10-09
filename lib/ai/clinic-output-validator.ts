@@ -20,7 +20,8 @@
 export type ClinicSafetyViolationType =
   | 'DEFINITIVE_DIAGNOSIS'
   | 'HARD_DRUG_PRESCRIPTION'
-  | 'UNAUTHORIZED_URL';
+  | 'UNAUTHORIZED_URL'
+  | 'THERAPY_OVERSTEPPING';
 
 export interface ClinicOutputValidationResult {
   isValid: boolean;
@@ -54,19 +55,24 @@ export const OFFICIAL_ALLOWED_HOSTNAMES = new Set([
   'quickchart.io',
 ]);
 
+// ── 4. PRESCRIPTIVE HOME THERAPY OVERSTEPPING REGEX ──────────────────────────
+export const THERAPY_OVERSTEPPING_REGEX =
+  /\b((?:lakukan|berikan)\s+(?:pijat|stimulasi)\s+(?:oral|mulut|lidah|gusi|sensorik)|latihan\s+(?:motorik\s+oral|oral\s+motor)\s+di\s+rumah|terapi\s+(?:wicara|fisik|sensori\s+integrasi)\s+mandiri|aturan\s+menaikkan\s+tekstur\s+(?:secara\s+mandiri|sendiri)|takaran\s+makan\s+medis\s+pasti)\b/i;
+
 const URL_EXTRACT_REGEX = /https?:\/\/[^\s"'<>()[\]]+/gi;
 
 /**
- * Builds safe, empathetic front-desk fallback message.
+ * Builds safe, empathetic front-desk fallback message adhering to Anti-Overstepping guardrails.
  */
 export function buildSafeFrontDeskFallback(meta?: any): string {
   const screeningUrl = meta?.screening_url || 'https://screening.littlebitefeeding.com/';
   return (
-    `Terima kasih atas pertanyaannya Ayah/Bunda. 🙏\n\n` +
-    `Sebagai asisten front-desk dan edukasi layanan tumbuh kembang, kami tidak berwenang menegakkan diagnosis medis pasti ataupun memberikan anjuran resep obat keras.\n\n` +
-    `Untuk evaluasi medis mendalam mengenai kondisi si kecil langsung oleh dokter spesialis kami, Ayah/Bunda dapat melakukan skrining awal resmi terlebih dahulu melalui tautan berikut:\n` +
+    `Memahami kekhawatiran Ayah/Bunda, kondisi dan fase adaptasi si kecil memang membutuhkan evaluasi teliti agar penanganannya tepat dan aman. 🙏\n\n` +
+    `Sebagai asisten front-desk dan edukasi layanan tumbuh kembang (asisten administrasi & navigasi, bukan dokter), kami tidak berwenang menegakkan diagnosis medis pasti, memberikan instruksi terapi teknis, ataupun anjuran resep obat keras.\n\n` +
+    `Karena kondisi setiap anak sangat unik, dokter kami menyediakan panduan terstruktur dan sesi evaluasi mendalam agar solusinya pas dengan kebutuhan si kecil.\n\n` +
+    `Ayah/Bunda dapat melakukan skrining awal resmi terlebih dahulu melalui tautan berikut:\n` +
     `👉 ${screeningUrl}\n\n` +
-    `Setelah mengisi formulir, tim kami akan segera membantu menjadwalkan sesi konsultasi resmi dokter. Tim kami siap mendampingi Ayah/Bunda. Tetap semangat ya Bun/Yah! 😊`
+    `Setelah mengisi formulir, tim kami akan segera membantu mengarahkan ke jadwal konsultasi resmi dokter spesialis atau modul panduan klinis terstruktur. Tetap semangat ya Bun/Yah! 😊`
   );
 }
 
@@ -102,7 +108,13 @@ export function validateClinicBotOutput(
     reasons.push('Output contains prescription or hard drug recommendation');
   }
 
-  // C. Check external URLs against whitelist
+  // C. Check prescriptive home therapy overstepping (oral massage, DIY motor exercises, etc.)
+  if (THERAPY_OVERSTEPPING_REGEX.test(text)) {
+    violations.push('THERAPY_OVERSTEPPING');
+    reasons.push('Output contains prescriptive home therapy/stimulation instructions exceeding assistant scope');
+  }
+
+  // D. Check external URLs against whitelist
   const meta = context?.meta || {};
   const tenant = context?.tenant || {};
 

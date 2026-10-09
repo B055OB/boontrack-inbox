@@ -96,11 +96,19 @@ Data rekening tersimpan di `tenants.metadata.payment_accounts`:
 ---
 
 ## 6. Alur Triage & Kebijakan Percakapan Bot (Conversation Policy)
-1. **Aturan Panggilan**: Sapa ramah dengan panggilan `"Ayah/Bunda"`, dan rujuk anak sebagai `"si kecil"`.
-2. **Larangan Ekstraksi Nama**: Kata keluhan seperti `"seret"`, `"susah"`, `"gtm"`, `"stunting"`, `"kurang"` dilarang keras dianggap sebagai nama anak.
-3. **Format Ringkas Anamnesis**: Pesan Step 3 / Anamnesis dibatasi maksimal 3–4 kalimat ringkas dengan link skrining tunggal tanpa duplikasi.
-4. **Anti-Cross-Offer**:
+1. **Aturan Utama Anti-Overstepping Medis (Asisten Front-Desk, Bukan Dokter)**:
+   - **Dilarang Keras**: Memberikan langkah terapi, instruksi stimulasi fisik/oral, atau solusi teknis medis di rumah (seperti latihan motorik oral, aturan menaikkan tekstur mandiri, takaran makan klinis, dll). Bot adalah **Asisten Administrasi & Navigasi**, bukan dokter.
+   - **Batas Perilaku**: Jangan pernah terlihat lebih pintar dari dokter; batasi peran sebagai asisten dokter front-desk yang ramah, hangat, dan suportif.
+   - **Alur Wajib Menjawab**:
+     a. Validasi keluhan dengan empati hangat (1–2 kalimat saja).
+     b. Jelaskan secara umum bahwa kondisi tersebut wajar dialami pada fase tumbuh kembang.
+     c. Langsung arahkan ke evaluasi dokter spesialis anak atau modul panduan klinis resmi agar anak mendapat penanganan yang tepat dan aman.
+2. **Aturan Panggilan**: Sapa ramah dengan panggilan `"Ayah/Bunda"`, dan rujuk anak sebagai `"si kecil"`.
+3. **Larangan Ekstraksi Nama**: Kata keluhan seperti `"seret"`, `"susah"`, `"gtm"`, `"stunting"`, `"kurang"` dilarang keras dianggap sebagai nama anak.
+4. **Format Ringkas Anamnesis**: Pesan Step 3 / Anamnesis dibatasi maksimal 3–4 kalimat ringkas dengan link skrining tunggal tanpa duplikasi.
+5. **Anti-Cross-Offer**:
    - Masalah makan / GTM / BB seret $\rightarrow$ Hanya tawarkan paket **EAT & GROW**.
    - Kunjungan fisik / evaluasi milestone $\rightarrow$ Arahkan ke **Konsultasi Klinik / Screening**.
    - Anak sehat / ide main $\rightarrow$ Tawarkan **PLAY N GROW E-Course**.
-5. **Human Handover**: Jika orang tua meminta bantuan admin / pendaftaran, bot otomatis dijeda selama 120 menit khusus untuk sesi nomor tersebut tanpa mempengaruhi tenant lain.
+6. **Human Handover**: Jika orang tua meminta bantuan admin / pendaftaran, bot otomatis dijeda selama 120 menit khusus untuk sesi nomor tersebut tanpa mempengaruhi tenant lain.
+

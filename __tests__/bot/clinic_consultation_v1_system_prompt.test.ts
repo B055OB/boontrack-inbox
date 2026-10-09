@@ -55,10 +55,15 @@ describe('CONSULTATION_V1: Clinic Bot System Prompt on Gemini 3.8 Flash', () => 
       expect(prompt).toContain('dr. Harys Maulana, Sp.A');
       expect(prompt).toContain('dr. Azizah Ridwan, Sp.A');
 
-      // Strict Medical Boundary
+      // Strict Medical Boundary & Anti-Overstepping
       expect(prompt).toContain('BUKAN DOKTER');
       expect(prompt).toContain('DILARANG KERAS memvonis atau mendiagnosis');
       expect(prompt).toContain('DILARANG MERESEPKAN OBAT-OBATAN KERAS / MEDIS');
+      expect(prompt).toContain('ATURAN UTAMA ASISTEN KLINIK (ANTI-OVERSTEPPING MEDIS - MUTLAK)');
+      expect(prompt).toContain('DILARANG KERAS memberikan langkah terapi, instruksi stimulasi fisik/oral');
+      expect(prompt).toContain('ASISTEN ADMINISTRASI & NAVIGASI, BUKAN DOKTER');
+      expect(prompt).toContain('JANGAN PERNAH TERLIHAT LEBIH PINTAR DARI DOKTER');
+      expect(prompt).toContain('Memahami kekhawatiran Ayah/Bunda, fase adaptasi tekstur');
 
       // Parent Greeting & Child reference
       expect(prompt).toContain('Ayah/Bunda');
@@ -358,6 +363,22 @@ describe('CONSULTATION_V1: Clinic Bot System Prompt on Gemini 3.8 Flash', () => 
       expect(validation.sanitizedReply).toContain('tidak berwenang');
       expect(validation.sanitizedReply).toContain('resep obat keras');
       expect(validation.sanitizedReply).not.toContain('amoxicillin');
+    });
+
+    it('blocks prescriptive home therapy or oral stimulation instructions ("lakukan pijat oral...") and returns safe fallback', () => {
+      const therapyOversteppingOutput =
+        'Untuk mengatasi GTM si kecil, Bunda bisa lakukan pijat oral pada gusi dan lidah si kecil setiap sebelum makan, lalu ikuti aturan menaikkan tekstur secara mandiri.';
+
+      const validation = validateClinicBotOutput(therapyOversteppingOutput, {
+        tenant: mockDynamicClinicTenant,
+        meta: mockClinicMetadata,
+      });
+
+      expect(validation.isValid).toBe(false);
+      expect(validation.violations).toContain('THERAPY_OVERSTEPPING');
+      expect(validation.sanitizedReply).toContain('Sebagai asisten front-desk dan edukasi');
+      expect(validation.sanitizedReply).toContain('instruksi terapi teknis');
+      expect(validation.sanitizedReply).not.toContain('pijat oral');
     });
 
     it('blocks unauthorized foreign URLs outside tenant and official screening whitelist', () => {
