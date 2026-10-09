@@ -16,7 +16,9 @@ import { z } from 'zod';
 
 export const KnownBlueprintCodeSchema = z.enum([
   'CLINIC_CONSULTATION',
+  'CONSULTATION_V1',
   'RETAIL_COMMERCE',
+  'RETAIL_COMMERCE_V1',
   'FIELD_SERVICE',
   'PLATFORM_ASSISTANT',
   'CREATIVE_AGENCY',
@@ -203,3 +205,76 @@ export function validateTenantBotConfig(data: unknown): TenantBotConfig {
 export function safeParseTenantBotConfig(data: unknown) {
   return TenantBotConfigSchema.safeParse(data);
 }
+
+// ============================================================================
+// 7. CONFIG LIFECYCLE & ROLLBACK ENGINE (CTO Mandate)
+// ============================================================================
+
+export interface ConfigLifecycleResolutionResult {
+  status: 'ACTIVE' | 'ROLLEDBACK' | 'INVALID_NO_FALLBACK';
+  effectiveConfig: TenantBotConfig | null;
+  activeVersion: string | null;
+  error?: string;
+  validationIssues?: z.ZodIssue[];
+}
+
+/**
+ * Resolves candidate configuration with automatic rollback to lastKnownGoodConfig
+ * if the candidate is invalid or fails schema contract (Fail-Closed Lifecycle).
+ */
+export function resolveConfigWithRollback(
+  candidateConfig: unknown,
+  lastKnownGoodConfig?: TenantBotConfig | unknown
+): ConfigLifecycleResolutionResult {
+  const parsedCandidate = TenantBotConfigSchema.safeParse(candidateConfig);
+
+  if (parsedCandidate.success) {
+    return {
+      status: 'ACTIVE',
+      effectiveConfig: parsedCandidate.data,
+      activeVersion: parsedCandidate.data.config_version,
+    };
+  }
+
+  // Candidate failed validation. Attempt rollback to last known good config if available.
+  if (lastKnownGoodConfig !== undefined && lastKnownGoodConfig !== null) {
+    const parsedFallback = TenantBotConfigSchema.safeParse(lastKnownGoodConfig);
+    if (parsedFallback.success) {
+      const candidateVer = (candidateConfig as any)?.config_version || 'unknown';
+      return {
+        status: 'ROLLEDBACK',
+        effectiveConfig: parsedFallback.data,
+        activeVersion: parsedFallback.data.config_version,
+        error: `Candidate configuration (version ${candidateVer}) is invalid: ${parsedCandidate.error.issues.map((i) => `${i.path.join('.') || 'root'}: ${i.message}`).join(', ')}. Rolled back to version ${parsedFallback.data.config_version}.`,
+        validationIssues: parsedCandidate.error.issues,
+      };
+    }
+  }
+
+  return {
+    status: 'INVALID_NO_FALLBACK',
+    effectiveConfig: null,
+    activeVersion: null,
+    error: `Candidate configuration is invalid and no valid fallback version exists: ${parsedCandidate.error.issues.map((i) => `${i.path.join('.') || 'root'}: ${i.message}`).join(', ')}`,
+    validationIssues: parsedCandidate.error.issues,
+  };
+}
+
+/**
+ * Evaluates whether newVersion is a strict SemVer progression (upgrade) over currentVersion.
+ */
+export function isSemverUpgrade(currentVersion: string, newVersion: string): boolean {
+  const semverRegex = /^(\d+)\.(\d+)\.(\d+)/;
+  const matchCurrent = currentVersion.match(semverRegex);
+  const matchNew = newVersion.match(semverRegex);
+  if (!matchCurrent || !matchNew) return false;
+
+  const [majC, minC, patC] = [parseInt(matchCurrent[1], 10), parseInt(matchCurrent[2], 10), parseInt(matchCurrent[3], 10)];
+  const [majN, minN, patN] = [parseInt(matchNew[1], 10), parseInt(matchNew[2], 10), parseInt(matchNew[3], 10)];
+
+  if (majN > majC) return true;
+  if (majN === majC && minN > minC) return true;
+  if (majN === majC && minN === minC && patN > patC) return true;
+  return false;
+}
+

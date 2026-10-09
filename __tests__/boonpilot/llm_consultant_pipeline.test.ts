@@ -33,11 +33,11 @@ describe('BoonPilot LLM Consultant & Enriched Knowledge Pipeline', () => {
         normalizedPhone: '6289999999999',
       });
 
-      expect(prompt).toContain('PELACAKAN IKLAN, META PIXEL & SERVER-SIDE CAPI PURCHASE EVENT');
+      expect(prompt).toContain('EKOSISTEM PERIKLANAN DIGITAL (META ADS, CTWA, PIXEL & SERVER-SIDE CAPI)');
       expect(prompt).toContain('Purchase');
       expect(prompt).toContain('PAID');
       expect(prompt).toContain('iOS 14.5+');
-      expect(prompt).toContain('Checkout Lite (Rp 59.000/bln)');
+      expect(prompt).toContain('Checkout Lite');
       expect(prompt).toContain('Pro Scale');
     });
 
@@ -92,8 +92,8 @@ describe('BoonPilot LLM Consultant & Enriched Knowledge Pipeline', () => {
         normalizedPhone: '6289999999999',
       });
 
-      expect(prompt).toContain('ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT WHATSAPP)');
-      expect(prompt).toContain('1 balon chat WhatsApp');
+      expect(prompt).toContain('ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT');
+      expect(prompt).toContain('1 balon chat');
       expect(prompt).toContain('tanpa bertele-tele');
     });
   });

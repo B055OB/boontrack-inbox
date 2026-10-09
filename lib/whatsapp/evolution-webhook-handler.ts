@@ -1611,7 +1611,7 @@ export async function processEvolutionWebhookEvent(
         resolvedApiKey
       );
 
-      const naturalDelayMs = Math.floor(Math.random() * 2000) + 3000; // 3000ms - 5000ms
+      const naturalDelayMs = process.env.NODE_ENV === 'test' ? 10 : Math.floor(Math.random() * 2000) + 3000; // 3000ms - 5000ms
       await new Promise((resolve) => setTimeout(resolve, naturalDelayMs));
 
       // Jika ada media QRIS dinamis (Hybrid Checkout), kirim gambar QRIS terlebih dahulu

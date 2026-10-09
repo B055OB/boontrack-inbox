@@ -55,7 +55,7 @@ jest.mock('@/lib/supabaseClient', () => ({
           or: jest.fn((orExpr: string) => ({
             maybeSingle: jest.fn(async () => {
               const matches = orExpr.match(/[0-9a-fA-F-]{36}/g);
-              const val = matches ? matches[0] : '';
+              const val = matches ? matches[0] : (orExpr.split(',')[0]?.split('.eq.')[1] || '');
               const found = mockTenantsDb[val] || null;
               return { data: found, error: null };
             }),
@@ -127,6 +127,20 @@ jest.mock('@/lib/supabaseClient', () => ({
 
 describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
   const UUID_REGEX = /[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}/i;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Not found' }),
+      text: async () => 'Not found',
+    })) as any;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
 
   it('uses tenant.name (Solusi Ads Agency) instead of raw UUID in multimodal chat fallback greeting', async () => {
     const result = await processMultimodalChat({

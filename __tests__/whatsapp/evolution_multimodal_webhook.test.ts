@@ -308,7 +308,13 @@ describe('WhatsApp Evolution API Multimodal Webhook Ingress', () => {
         }),
       });
 
-      // 3. Fetch sendText back to user mock
+      // 3. Fetch sendPresence typing simulation mock
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'success' }),
+      });
+
+      // 4. Fetch sendText back to user mock
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -340,11 +346,12 @@ describe('WhatsApp Evolution API Multimodal Webhook Ingress', () => {
       expect(result.success).toBe(true);
       expect(result.processed).toBe(1);
 
-      // Verifikasi 3 panggilan API berurutan:
+      // Verifikasi 4 panggilan API berurutan:
       // 1: getBase64FromMediaMessage
       // 2: Gemini API
-      // 3: sendText
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      // 3: sendPresence
+      // 4: sendText
+      expect(mockFetch).toHaveBeenCalledTimes(4);
 
       const [mediaCallUrl] = mockFetch.mock.calls[0];
       expect(mediaCallUrl).toContain('/chat/getBase64FromMediaMessage/boontrack-gateway');
@@ -352,7 +359,10 @@ describe('WhatsApp Evolution API Multimodal Webhook Ingress', () => {
       const [geminiCallUrl] = mockFetch.mock.calls[1];
       expect(geminiCallUrl).toContain('generativelanguage.googleapis.com');
 
-      const [sendTextUrl, sendTextOpts] = mockFetch.mock.calls[2];
+      const [presenceCallUrl] = mockFetch.mock.calls[2];
+      expect(presenceCallUrl).toContain('/chat/sendPresence/boontrack-gateway');
+
+      const [sendTextUrl, sendTextOpts] = mockFetch.mock.calls[3];
       expect(sendTextUrl).toContain('/message/sendText/boontrack-gateway');
       const sendTextBody = JSON.parse(sendTextOpts.body);
       expect(sendTextBody.number).toBe('6281298765432');

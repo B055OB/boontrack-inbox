@@ -436,19 +436,7 @@ export function assertTenantRuntimeAllowed(runtime: TenantRuntimeContext): void 
  * DILARANG KERAS fallback ke template lain jika template_code korup atau tidak sesuai.
  */
 export function resolveTemplate(context: TenantRuntimeContext): ResolvedTemplateResult {
-  // 1. Check if context already holds an unrecoverable error
-  if (!context.isAllowedHost || context.statusCode === 404 || context.error === 'TEMPLATE_NOT_COMPATIBLE') {
-    return {
-      status: 'ERROR',
-      templateCode: context.templateCode,
-      subVariant: 'unknown',
-      capabilities: context.capabilities,
-      error: 'TEMPLATE_INCOMPATIBLE',
-      errorMessage: context.errorMessage || 'Template tidak diizinkan pada host ini.',
-      statusCode: context.statusCode || 404,
-    };
-  }
-
+  // 1. UNKNOWN_TEMPLATE must always return UNKNOWN_TEMPLATE error (422) without silent fallback
   if (context.templateCode === 'UNKNOWN_TEMPLATE' || context.error === 'UNKNOWN_TEMPLATE') {
     return {
       status: 'ERROR',
@@ -458,6 +446,19 @@ export function resolveTemplate(context: TenantRuntimeContext): ResolvedTemplate
       error: 'UNKNOWN_TEMPLATE',
       errorMessage: context.errorMessage || `Template code '${context.tenant?.template_code}' tidak terdaftar atau konfigurasi korup.`,
       statusCode: 422,
+    };
+  }
+
+  // 2. Check if context already holds an unrecoverable host or compatibility error
+  if (!context.isAllowedHost || context.statusCode === 404 || context.error === 'TEMPLATE_NOT_COMPATIBLE') {
+    return {
+      status: 'ERROR',
+      templateCode: context.templateCode,
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'TEMPLATE_INCOMPATIBLE',
+      errorMessage: context.errorMessage || 'Template tidak diizinkan pada host ini.',
+      statusCode: context.statusCode || 404,
     };
   }
 
