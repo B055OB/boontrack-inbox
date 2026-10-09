@@ -28,6 +28,10 @@ import {
   Layers,
   ShoppingBag,
   History,
+  PlusCircle,
+  X,
+  Banknote,
+  FileText,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -35,7 +39,7 @@ const MASTER_PIN = '998877';
 
 interface LiveFeedEvent {
   id: string;
-  type: 'PAYMENT_XENDIT' | 'LEDGER_AUDIT' | 'MERCHANT_REGISTER' | 'AFFILIATE_REGISTER' | 'CREATOR_REGISTER';
+  type: 'PAYMENT_SETTLED' | 'LEDGER_AUDIT' | 'MERCHANT_REGISTER' | 'AFFILIATE_REGISTER' | 'CREATOR_REGISTER';
   title: string;
   description: string;
   timestamp: string;
@@ -54,11 +58,14 @@ export default function SuperAdminExecutiveCenter() {
 
   // Top Metrics
   const [totalRevenueIdr, setTotalRevenueIdr] = useState<number>(0);
+  const [onlineRevenueIdr, setOnlineRevenueIdr] = useState<number>(0);
+  const [offlineRevenueIdr, setOfflineRevenueIdr] = useState<number>(0);
   const [totalSpecialGrants, setTotalSpecialGrants] = useState<number>(0);
   const [population, setPopulation] = useState({
     shops: 0,
     studios: 0,
     creators: 0,
+    customApps: 0,
     affiliates: 0,
   });
 
@@ -75,6 +82,18 @@ export default function SuperAdminExecutiveCenter() {
   const [grantNotes, setGrantNotes] = useState('');
   const [isExecutingGrant, setIsExecutingGrant] = useState(false);
   const [grantFeedback, setGrantFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Offline / Direct Payment Modal State
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const [offlineTenantSearch, setOfflineTenantSearch] = useState('');
+  const [selectedTenantForOffline, setSelectedTenantForOffline] = useState<any | null>(null);
+  const [offlineAmount, setOfflineAmount] = useState<string>('');
+  const [offlineChannel, setOfflineChannel] = useState<'MANUAL_TRANSFER' | 'CASH'>('MANUAL_TRANSFER');
+  const [offlineCategory, setOfflineCategory] = useState<'SAAS_SUBSCRIPTION' | 'B2B_CUSTOM_APP' | 'SPECIAL_CASE'>('B2B_CUSTOM_APP');
+  const [offlineRefNo, setOfflineRefNo] = useState('');
+  const [offlineNotes, setOfflineNotes] = useState('');
+  const [isSubmittingOffline, setIsSubmittingOffline] = useState(false);
+  const [offlineFeedback, setOfflineFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Auth Initialization
   useEffect(() => {
@@ -177,50 +196,96 @@ export default function SuperAdminExecutiveCenter() {
 
       const finalStudioCount = Math.max(studioWorkspacesCount || 0, entStudioCount || 0);
 
-      // 4. Total Pendapatan Langganan (Xendit)
-      // Tarik query SUM(amount) dari tabel transaksi/invoices langganan yang berstatus PAID / SETTLED / COMPLETED
-      let computedRevenue = 0;
+      // Custom Apps / B2B: Jumlah instance solusi custom/enterprise yang terdaftar
+      // Termasuk client B2B/Civic/Enterprise di database + core app solutions di directory
+      const enterpriseOrB2bTenants = tenantRows.filter((t) => {
+        if (t.status === 'ARCHIVED' || t.metadata?.is_archived === true) return false;
+        const cat = (t.category || '').toLowerCase();
+        return (
+          t.tier === 'ENTERPRISE' ||
+          t.tier === 'B2B_CUSTOM' ||
+          cat.includes('public_service') ||
+          cat.includes('clinic') ||
+          cat.includes('b2b') ||
+          cat.includes('civic') ||
+          t.metadata?.is_b2b === true ||
+          t.metadata?.is_enterprise === true
+        );
+      });
+      const totalCustomB2bInstances = 6 + enterpriseOrB2bTenants.length;
+
+      // 4. Total Pendapatan Riil (Zero-Mock Policy & Breakdown)
+      // Tarik query SUM(amount) dari tabel transaksi/invoices yang berstatus PAID / SETTLED / COMPLETED
+      let computedTotalRev = 0;
+      let computedOnlineRev = 0;
+      let computedOfflineRev = 0;
+
       const { data: revenueData } = await supabase
         .from('credit_transactions')
-        .select('id, amount_idr, status, type, created_at, tenant_slug')
-        .in('status', ['COMPLETED', 'PAID', 'SETTLED']);
+        .select('id, amount_idr, status, type, created_at, tenant_slug, payment_channel, category, reference_no, notes')
+        .in('status', ['COMPLETED', 'PAID', 'SETTLED'])
+        .order('created_at', { ascending: false });
 
       if (revenueData && revenueData.length > 0) {
-        computedRevenue = revenueData.reduce((acc, curr) => acc + (Number(curr.amount_idr) || 0), 0);
+        revenueData.forEach((tx: any) => {
+          const amt = Number(tx.amount_idr) || 0;
+          computedTotalRev += amt;
+          if (tx.payment_channel === 'MANUAL_TRANSFER' || tx.payment_channel === 'CASH') {
+            computedOfflineRev += amt;
+          } else {
+            computedOnlineRev += amt;
+          }
+        });
       } else {
         const { data: subData } = await supabase
           .from('shop_subscriptions')
-          .select('amount, status, created_at, tenant_slug')
+          .select('amount_paid, amount, status, created_at, tenant_slug')
           .in('status', ['ACTIVE', 'PAID', 'SETTLED', 'COMPLETED']);
         if (subData && subData.length > 0) {
-          computedRevenue = subData.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+          subData.forEach((s: any) => {
+            const amt = Number(s.amount_paid || s.amount) || 0;
+            computedTotalRev += amt;
+            computedOnlineRev += amt;
+          });
         }
       }
 
       // Zero-mock policy: jika belum ada transaksi settlement yang masuk di database, tampilkan nilai sebenarnya: Rp 0
-      setTotalRevenueIdr(computedRevenue);
+      setTotalRevenueIdr(computedTotalRev);
+      setOnlineRevenueIdr(computedOnlineRev);
+      setOfflineRevenueIdr(computedOfflineRev);
       setTotalSpecialGrants(specialGrantCount);
       setPopulation({
         shops: merchantShops.length,
         studios: finalStudioCount,
         creators: creatorCount || 0,
+        customApps: totalCustomB2bInstances,
         affiliates: affiliateCount || 0,
       });
 
       // 5. Live Feed & Message Updates Riil dari Database
       const events: LiveFeedEvent[] = [];
 
-      // A. Riwayat transaksi riil (hanya jika ada transaksi masuk)
+      // A. Riwayat transaksi settlement riil (otomatis Xendit & manual offline)
       if (revenueData && revenueData.length > 0) {
-        revenueData.slice(0, 10).forEach((p: any) => {
+        revenueData.slice(0, 15).forEach((p: any) => {
+          const isManual = p.payment_channel === 'MANUAL_TRANSFER' || p.payment_channel === 'CASH';
+          const tMatch = tenantRows.find((t) => t.slug === p.tenant_slug);
+          const tName = tMatch ? tMatch.name : (p.tenant_slug || 'Klien');
+          const channelLabel = p.payment_channel === 'CASH' ? 'Tunai' : isManual ? 'Transfer Bank' : 'Xendit QRIS/VA';
+          const catLabel = p.category === 'B2B_CUSTOM_APP' ? 'B2B Custom App' : p.category === 'SPECIAL_CASE' ? 'Layanan Khusus' : 'Langganan Toko';
+          const refInfo = p.reference_no || p.invoice_id ? ` • Ref: ${p.reference_no || p.invoice_id}` : '';
+
           events.push({
             id: `pay_${p.id || Math.random()}`,
-            type: 'PAYMENT_XENDIT',
-            title: `Langganan Sukses: ${p.tenant_slug || 'Merchant'}`,
-            description: `Pembayaran Rp ${(Number(p.amount_idr) || 0).toLocaleString('id-ID')} via Xendit QRIS/VA terverifikasi otomatis.`,
+            type: 'PAYMENT_SETTLED',
+            title: isManual ? `Offline Settlement: ${tName}` : `Langganan Online: ${tName}`,
+            description: `Settlement Rp ${(Number(p.amount_idr) || 0).toLocaleString('id-ID')} via ${channelLabel} [${catLabel}]${refInfo}${p.notes ? ` • Note: ${p.notes}` : ''}`,
             timestamp: p.created_at || new Date().toISOString(),
-            badge: 'XENDIT SETTLED',
-            badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+            badge: isManual ? '[MANUAL SETTLED]' : '[XENDIT SETTLED]',
+            badgeColor: isManual
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
           });
         });
       }
@@ -235,19 +300,22 @@ export default function SuperAdminExecutiveCenter() {
       if (ledgerRows && ledgerRows.length > 0) {
         ledgerRows.forEach((l: any) => {
           const tMatch = tenantRows.find((t) => t.id === l.tenant_id);
-          const tLabel = tMatch ? `${tMatch.name} (/${tMatch.slug})` : l.tenant_id.slice(0, 8);
+          const tLabel = tMatch ? `${tMatch.name} (/${tMatch.slug})` : (l.tenant_id ? l.tenant_id.slice(0, 8) : 'Tenant');
           const isFounder = l.action === 'FOUNDER_BYPASS';
           const isReserve = l.action === 'RESERVE';
           const isAdjust = l.action === 'ADJUST_ADMIN';
+          const isOffline = l.action === 'OFFLINE_PAYMENT';
 
           events.push({
             id: `ledger_${l.id}`,
             type: 'LEDGER_AUDIT',
-            title: `Audit Ledger: ${tLabel}`,
+            title: isOffline ? `Audit Pembayaran: ${tLabel}` : `Audit Ledger: ${tLabel}`,
             description: `${l.description || 'Mutasi kuota'} • Amount: ${l.amount > 0 ? `+${l.amount}` : l.amount} • Saldo: ${l.balance_after}`,
             timestamp: l.created_at || new Date().toISOString(),
-            badge: isFounder ? 'FOUNDER BYPASS' : isReserve ? 'RENDER RESERVE' : isAdjust ? 'ADMIN ADJUST' : l.action,
-            badgeColor: isFounder
+            badge: isOffline ? '[OFFLINE SETTLED]' : isFounder ? 'FOUNDER BYPASS' : isReserve ? 'RENDER RESERVE' : isAdjust ? 'ADMIN ADJUST' : l.action,
+            badgeColor: isOffline
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              : isFounder
               ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
               : isReserve
               ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
@@ -404,8 +472,82 @@ export default function SuperAdminExecutiveCenter() {
         .slice(0, 5)
     : [];
 
+  // Filtered tenants for offline payment search autocomplete
+  const searchedOfflineTenants = offlineTenantSearch.trim()
+    ? allTenantsList
+        .filter(
+          (t) =>
+            t.name.toLowerCase().includes(offlineTenantSearch.toLowerCase()) ||
+            t.slug.toLowerCase().includes(offlineTenantSearch.toLowerCase())
+        )
+        .slice(0, 6)
+    : [];
+
+  // Handle Recording Offline / Direct Payment
+  const handleRecordOfflinePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTenantForOffline) {
+      setOfflineFeedback({ type: 'error', message: 'Pilih tenant / klien terlebih dahulu.' });
+      return;
+    }
+    const amountNum = Number(offlineAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setOfflineFeedback({ type: 'error', message: 'Nominal pembayaran harus lebih besar dari 0.' });
+      return;
+    }
+    if (!offlineRefNo.trim()) {
+      setOfflineFeedback({ type: 'error', message: 'Nomor invoice, SPK, atau referensi transfer wajib diisi.' });
+      return;
+    }
+
+    setIsSubmittingOffline(true);
+    setOfflineFeedback(null);
+
+    try {
+      const res = await fetch('/api/admin/transactions/offline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: selectedTenantForOffline.id,
+          amount_idr: amountNum,
+          payment_channel: offlineChannel,
+          category: offlineCategory,
+          reference_no: offlineRefNo.trim(),
+          notes: offlineNotes.trim(),
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Gagal mencatat pembayaran');
+      }
+
+      setOfflineFeedback({
+        type: 'success',
+        message: `Settlement Rp ${amountNum.toLocaleString('id-ID')} untuk "${selectedTenantForOffline.name}" berhasil dicatat (SETTLED) dan diaudit ke ledger!`,
+      });
+
+      setTimeout(() => {
+        setIsOfflineModalOpen(false);
+        setSelectedTenantForOffline(null);
+        setOfflineTenantSearch('');
+        setOfflineAmount('');
+        setOfflineRefNo('');
+        setOfflineNotes('');
+        setOfflineFeedback(null);
+      }, 1200);
+
+      fetchDashboardData();
+    } catch (err: any) {
+      setOfflineFeedback({ type: 'error', message: err.message || 'Terjadi kesalahan sistem.' });
+    } finally {
+      setIsSubmittingOffline(false);
+    }
+  };
+
   const filteredFeed = liveFeed.filter((item) => {
-    if (feedFilter === 'PAYMENT') return item.type === 'PAYMENT_XENDIT';
+    if (feedFilter === 'PAYMENT') return item.type === 'PAYMENT_SETTLED';
+    if (feedFilter === 'LEDGER') return item.type === 'LEDGER_AUDIT';
     if (feedFilter === 'MERCHANT') return item.type === 'MERCHANT_REGISTER';
     if (feedFilter === 'AFFILIATE') return item.type === 'AFFILIATE_REGISTER';
     if (feedFilter === 'CREATOR') return item.type === 'CREATOR_REGISTER';
@@ -729,24 +871,60 @@ export default function SuperAdminExecutiveCenter() {
 
         {/* ── 3. TOP GRID: FINANCIAL & POPULATION CARDS ─────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-          {/* Card 1: Total Pendapatan Langganan Otomatis */}
+          {/* Card 1: Total Pendapatan Riil (Zero-Mock Real Data & Breakdown) */}
           <div className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800/80 shadow-xl flex flex-col justify-between space-y-4 hover:border-slate-700 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Total Pendapatan Langganan
+                Total Pendapatan Riil
               </span>
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shadow-md shadow-emerald-500/10">
-                <DollarSign className="w-5 h-5" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOfflineModalOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-[10px] transition flex items-center gap-1 shadow-md shadow-emerald-600/20 cursor-pointer"
+                  title="Catat Pembayaran Masuk Offline / Direct B2B"
+                >
+                  <PlusCircle className="w-3 h-3" />
+                  <span>+ Catat Offline</span>
+                </button>
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shadow-md shadow-emerald-500/10 shrink-0">
+                  <DollarSign className="w-5 h-5" />
+                </div>
               </div>
             </div>
 
-            <div>
-              <span className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
-                Rp {totalRevenueIdr.toLocaleString('id-ID')}
-              </span>
-              <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-400 font-semibold">
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Otomatis via Webhook Xendit QRIS / VA</span>
+            <div className="space-y-3">
+              <div>
+                <span className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
+                  Rp {totalRevenueIdr.toLocaleString('id-ID')}
+                </span>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5 font-medium">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Agregasi Riil Transaksi SETTLED / PAID</span>
+                </div>
+              </div>
+
+              {/* Rincian ringkas: Online Gateway (Xendit) & Offline / B2B Direct Settlement */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                  <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="truncate">Online (Xendit)</span>
+                  </div>
+                  <div className="text-xs font-black font-mono text-emerald-400 mt-1">
+                    Rp {onlineRevenueIdr.toLocaleString('id-ID')}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                  <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="truncate">Offline / B2B Direct</span>
+                  </div>
+                  <div className="text-xs font-black font-mono text-amber-300 mt-1">
+                    Rp {offlineRevenueIdr.toLocaleString('id-ID')}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -776,41 +954,49 @@ export default function SuperAdminExecutiveCenter() {
           <div className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800/80 shadow-xl flex flex-col justify-between space-y-4 hover:border-slate-700 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Populasi Ekosistem
+                Populasi Ekosistem Riil
               </span>
               <div className="w-10 h-10 rounded-2xl bg-blue-500/15 text-blue-400 flex items-center justify-center shadow-md shadow-blue-500/10">
                 <Layers className="w-5 h-5" />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Store className="w-3 h-3 text-blue-400" />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate font-semibold">
+                  <Store className="w-3 h-3 text-blue-400 shrink-0" />
                   <span>Shop</span>
                 </div>
-                <span className="font-bold font-mono text-sm text-white">{population.shops}</span>
+                <span className="font-bold font-mono text-sm text-white block mt-0.5">{population.shops}</span>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Film className="w-3 h-3 text-purple-400" />
+              <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate font-semibold">
+                  <Film className="w-3 h-3 text-purple-400 shrink-0" />
                   <span>Studio</span>
                 </div>
-                <span className="font-bold font-mono text-sm text-white">{population.studios}</span>
+                <span className="font-bold font-mono text-sm text-white block mt-0.5">{population.studios}</span>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Users className="w-3 h-3 text-pink-400" />
+              <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate font-semibold">
+                  <Users className="w-3 h-3 text-pink-400 shrink-0" />
                   <span>Creator</span>
                 </div>
-                <span className="font-bold font-mono text-sm text-white">{population.creators}</span>
+                <span className="font-bold font-mono text-sm text-white block mt-0.5">{population.creators}</span>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-indigo-400" />
+              <div className="col-span-2 p-2 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 font-semibold">
+                  <Boxes className="w-3 h-3 text-orange-400 shrink-0" />
+                  <span>Custom Apps / B2B</span>
+                </div>
+                <span className="font-bold font-mono text-sm text-orange-300">{population.customApps}</span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between">
+                <div className="text-[10px] text-slate-400 flex items-center gap-1 font-semibold">
+                  <ShieldCheck className="w-3 h-3 text-indigo-400 shrink-0" />
                   <span>Mitra AM</span>
                 </div>
                 <span className="font-bold font-mono text-sm text-white">{population.affiliates}</span>
@@ -853,7 +1039,7 @@ export default function SuperAdminExecutiveCenter() {
                       feedFilter === 'PAYMENT' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    Xendit ({liveFeed.filter((f) => f.type === 'PAYMENT_XENDIT').length})
+                    Settlement ({liveFeed.filter((f) => f.type === 'PAYMENT_SETTLED').length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('LEDGER')}
@@ -882,10 +1068,10 @@ export default function SuperAdminExecutiveCenter() {
                       <>
                         <CreditCard className="w-6 h-6 text-slate-600 mb-1" />
                         <span className="font-semibold text-slate-400">
-                          Belum ada transaksi langganan tercatat hari ini
+                          Belum ada transaksi settlement tercatat di database
                         </span>
                         <span className="text-[10px] text-slate-600">
-                          Transaksi webhook Xendit yang berstatus PAID / SETTLED akan otomatis muncul di sini secara real-time.
+                          Transaksi gateway Xendit otomatis maupun pembayaran manual/offline yang dicatat Super Admin akan muncul di sini secara real-time.
                         </span>
                       </>
                     ) : feedFilter === 'LEDGER' ? (
@@ -1227,6 +1413,298 @@ export default function SuperAdminExecutiveCenter() {
             </Link>
           </div>
         </div>
+
+        {/* ── 6. MODAL: CATAT PEMBAYARAN MASUK (OFFLINE / DIRECT B2B) ── */}
+        {isOfflineModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl relative max-h-[92vh] overflow-y-auto space-y-5">
+              {/* Header Modal */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/10">
+                    <Banknote className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white">
+                      Catat Pembayaran Masuk (Offline / Direct)
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Settlement langsung kontrak B2B, transfer bank, atau tunai (seperti Tumbuh Kembang Anak)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOfflineModalOpen(false);
+                    setOfflineFeedback(null);
+                  }}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Feedback Alert */}
+              {offlineFeedback && (
+                <div
+                  className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${
+                    offlineFeedback.type === 'success'
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {offlineFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>{offlineFeedback.message}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleRecordOfflinePayment} className="space-y-4">
+                {/* 1. Pilih Tenant / Klien */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                    1. Pilih Tenant / Klien <span className="text-rose-400">*</span>
+                  </label>
+                  {selectedTenantForOffline ? (
+                    <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/30 flex items-center justify-between">
+                      <div>
+                        <div className="font-bold text-xs text-white flex items-center gap-2">
+                          <span>{selectedTenantForOffline.name}</span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                            /{selectedTenantForOffline.slug}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          Tier: <span className="text-slate-300 font-semibold">{selectedTenantForOffline.tier || 'FREE'}</span> • Kategori: <span className="text-slate-300 font-semibold">{selectedTenantForOffline.category || 'Shop'}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTenantForOffline(null);
+                          setOfflineTenantSearch('');
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
+                      >
+                        Ganti
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="Ketik slug atau nama, misal: tumbuh-kembang-anak..."
+                        value={offlineTenantSearch}
+                        onChange={(e) => setOfflineTenantSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                        required
+                      />
+
+                      {/* Search Results Autocomplete */}
+                      {searchedOfflineTenants.length > 0 && (
+                        <div className="mt-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl z-20 max-h-48 overflow-y-auto">
+                          {searchedOfflineTenants.map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedTenantForOffline(t);
+                                setOfflineTenantSearch(t.name);
+                              }}
+                              className="w-full p-2.5 text-left hover:bg-slate-800/80 transition flex items-center justify-between text-xs cursor-pointer border-b border-slate-900 last:border-b-0"
+                            >
+                              <div>
+                                <span className="font-bold text-white block">{t.name}</span>
+                                <span className="text-[10px] font-mono text-emerald-400">/{t.slug}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold">
+                                  {t.tier || 'FREE'}
+                                </span>
+                                <span className="text-[9px] text-slate-500 block uppercase font-mono mt-0.5">
+                                  {t.category || 'Shop'}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Nominal Pembayaran (Rp) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-300">
+                      2. Nominal Settlement (Rp) <span className="text-rose-400">*</span>
+                    </label>
+                    {offlineAmount && !isNaN(Number(offlineAmount)) && Number(offlineAmount) > 0 && (
+                      <span className="text-xs font-black font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                        Rp {Number(offlineAmount).toLocaleString('id-ID')}
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Contoh: 15000000"
+                    value={offlineAmount}
+                    onChange={(e) => setOfflineAmount(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-emerald-500"
+                    required
+                  />
+
+                  {/* Preset chips */}
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {[
+                      { label: '149 Rb (Pro 1 Bln)', val: '149000' },
+                      { label: '1.49 Jt (Pro 1 Thn)', val: '1490000' },
+                      { label: '5 Jt (Pilot B2B)', val: '5000000' },
+                      { label: '15 Jt (Kontrak Custom)', val: '15000000' },
+                    ].map((chip) => (
+                      <button
+                        key={chip.val}
+                        type="button"
+                        onClick={() => setOfflineAmount(chip.val)}
+                        className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[10px] font-bold text-slate-300 hover:text-white transition cursor-pointer"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Metode Pembayaran & Kategori Transaksi */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Metode Pembayaran */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      3. Metode Pembayaran
+                    </label>
+                    <div className="space-y-1.5">
+                      <label
+                        className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition ${
+                          offlineChannel === 'MANUAL_TRANSFER'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-white'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="offlineChannel"
+                          value="MANUAL_TRANSFER"
+                          checked={offlineChannel === 'MANUAL_TRANSFER'}
+                          onChange={() => setOfflineChannel('MANUAL_TRANSFER')}
+                          className="text-emerald-500 focus:ring-emerald-500"
+                        />
+                        <span className="text-xs font-bold">Transfer Bank Langsung</span>
+                      </label>
+
+                      <label
+                        className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition ${
+                          offlineChannel === 'CASH'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-white'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="offlineChannel"
+                          value="CASH"
+                          checked={offlineChannel === 'CASH'}
+                          onChange={() => setOfflineChannel('CASH')}
+                          className="text-emerald-500 focus:ring-emerald-500"
+                        />
+                        <span className="text-xs font-bold">Tunai / Direct Cash</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Kategori Transaksi */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      4. Kategori Transaksi
+                    </label>
+                    <select
+                      value={offlineCategory}
+                      onChange={(e) => setOfflineCategory(e.target.value as any)}
+                      className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="B2B_CUSTOM_APP">Kontrak Custom App / B2B</option>
+                      <option value="SAAS_SUBSCRIPTION">Langganan Toko (SaaS)</option>
+                      <option value="SPECIAL_CASE">Layanan Khusus / Pilot</option>
+                    </select>
+                    <div className="text-[10px] text-slate-500 mt-1.5">
+                      Kategori menentukan pembukuan dan alokasi layanan klien.
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Nomor Referensi / Nomor Kontrak SPK / Invoice */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    5. Nomor Referensi / Invoice / SPK <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: INV-2026/TKA-001 atau SPK/2026/B2B-10"
+                    value={offlineRefNo}
+                    onChange={(e) => setOfflineRefNo(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                    required
+                  />
+                </div>
+
+                {/* 6. Catatan Tambahan (Opsional) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    6. Catatan Internal / Keterangan
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Pembayaran termin 1 kontrak integrasi klinik Tumbuh Kembang Anak"
+                    value={offlineNotes}
+                    onChange={(e) => setOfflineNotes(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Otomatis tercatat ke audit log <code className="text-slate-400">tenant_credit_ledger</code>.
+                  </span>
+                </div>
+
+                {/* Tombol Aksi */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOfflineModalOpen(false);
+                      setOfflineFeedback(null);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingOffline || !selectedTenantForOffline}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {isSubmittingOffline ? 'Menyimpan Settlement...' : 'Simpan Transaksi (SETTLED) 💳'}
+                    </span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

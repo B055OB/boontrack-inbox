@@ -84,7 +84,10 @@ export interface RecordCreditTransactionParams {
   tier?: string;
   durationMonths?: number;
   invoiceId?: string;
-  paymentChannel?: string;
+  referenceNo?: string;
+  category?: 'SAAS_SUBSCRIPTION' | 'B2B_CUSTOM_APP' | 'SPECIAL_CASE' | string;
+  paymentChannel?: 'XENDIT' | 'MANUAL_TRANSFER' | 'CASH' | string;
+  status?: 'SETTLED' | 'COMPLETED' | 'PENDING' | 'FAILED' | 'REFUNDED' | string;
   notes?: string;
   metadata?: Record<string, unknown>;
 }
@@ -169,6 +172,7 @@ export async function recordCreditTransaction(
     }
 
     const supabase = getSupabaseAdmin();
+    const refNo = params.referenceNo ?? params.invoiceId ?? null;
     const { data, error } = await supabase
       .from('credit_transactions')
       .insert({
@@ -178,9 +182,11 @@ export async function recordCreditTransaction(
         amount_idr: params.amountIdr,
         tier: params.tier ?? null,
         duration_months: params.durationMonths ?? null,
-        invoice_id: params.invoiceId ?? null,
+        invoice_id: refNo,
+        reference_no: refNo,
+        category: params.category ?? 'SAAS_SUBSCRIPTION',
         payment_channel: params.paymentChannel ?? 'XENDIT',
-        status: 'COMPLETED',
+        status: params.status ?? 'SETTLED',
         notes: params.notes ?? null,
         metadata: params.metadata ?? {},
       })
