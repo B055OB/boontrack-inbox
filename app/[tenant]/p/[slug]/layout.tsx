@@ -1,6 +1,6 @@
 import React from 'react';
 import { Metadata } from 'next';
-import { getTenantStoreData } from '../../layout';
+import { getTenantStoreData } from '@/lib/tenant-store-data';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { resolveSinglePageProduct, slugify } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';

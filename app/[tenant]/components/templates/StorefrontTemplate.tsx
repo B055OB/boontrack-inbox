@@ -4,11 +4,14 @@ import React, { useState, useMemo } from 'react';
 import { ShoppingBag, Plus, Minus, X, QrCode } from 'lucide-react';
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
 import type { Product } from '@/app/[tenant]/types';
+import dynamic from 'next/dynamic';
 import { resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
-import InstagramVisualGrid from './InstagramVisualGrid';
-import FloatingWebchat from './FloatingWebchat';
+
+const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr: false });
+const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 import FloatingCartBar from '@/components/cart/FloatingCartBar';
-import CheckoutModal from '@/app/components/CheckoutModal';
+const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
+
 
 export interface StorefrontTemplateProps {
   context?: TenantRuntimeContext;

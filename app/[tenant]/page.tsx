@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ArrowRight, Layers } from "lucide-react";
-import ControlledProvisioningError from "@/components/ControlledProvisioningError";
 import {
   executeStorefrontRuntimePipeline,
   resolveStorefrontSections,
@@ -24,38 +23,37 @@ import {
 } from "./types";
 
 // ── HERMETIC DYNAMIC TEMPLATE CHUNKING (CTO Mandate) ──
-const ShopClaimSection = dynamic(
-  () => import("@/app/components/ShopClaimSection"),
-  { ssr: true }
+const ControlledProvisioningError = dynamic(
+  () => import("@/components/ControlledProvisioningError"),
+  { ssr: false }
 );
 
 const PublicServicePortalTemplate = dynamic(
   () => import("./components/templates/PublicServicePortalTemplate"),
-  { ssr: true }
+  { ssr: false }
 );
 
 const PersonalAuthorityTemplate = dynamic(
   () => import("./components/templates/PersonalAuthorityTemplate"),
-  { ssr: true }
+  { ssr: false }
 );
 
 const MicrositeBioTemplate = dynamic(
   () => import("./components/templates/MicrositeBioTemplate"),
-  { ssr: true }
+  { ssr: false }
 );
 
 const StorefrontTemplate = dynamic(
   () => import("./components/templates/StorefrontTemplate"),
-  { ssr: true }
+  { ssr: false }
 );
 
-export type { Product, StoreChatMessage };
-export {
-  formatCategoryBadge,
-  getStoreChatGreeting,
-  isPhysicalOrFoodProduct,
-  isPublicServiceTenant,
-};
+const ShopClaimSection = dynamic(
+  () => import("@/app/components/ShopClaimSection"),
+  { ssr: false }
+);
+
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {

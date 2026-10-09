@@ -21,10 +21,13 @@ import {
   AlertCircle,
   Check,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import type { Product } from '@/app/[tenant]/types';
-import FloatingWebchat from './FloatingWebchat';
-import InstagramVisualGrid from './InstagramVisualGrid';
-import ScheduleBookingWidget from '../ScheduleBookingWidget';
+
+const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
+const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr: false });
+const ScheduleBookingWidget = dynamic(() => import('../ScheduleBookingWidget'), { ssr: false });
+
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 import { toE164 } from '@/lib/crm/phone-utils';
