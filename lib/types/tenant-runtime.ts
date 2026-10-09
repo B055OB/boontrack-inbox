@@ -71,6 +71,7 @@ export interface TenantRecord {
 export interface TenantRuntimeContext {
   host: string;
   tenantSlug: string;
+  tenantId?: string;
   tenantKind: TenantKind;
   businessType: BusinessType;
   templateCode: TemplateCode;
@@ -78,7 +79,19 @@ export interface TenantRuntimeContext {
   hardeningPolicy: HardeningPolicy;
   tenant: TenantRecord;
   isAllowedHost: boolean;
-  error?: 'HOST_MISMATCH' | 'TEMPLATE_NOT_COMPATIBLE' | 'UNKNOWN_TEMPLATE' | 'TENANT_NOT_FOUND';
+  error?: 'HOST_MISMATCH' | 'TEMPLATE_NOT_COMPATIBLE' | 'UNKNOWN_TEMPLATE' | 'TENANT_NOT_FOUND' | 'TEMPLATE_INCOMPATIBLE' | 'CORRUPT_CONFIG';
+  errorMessage?: string;
+  statusCode?: number;
+}
+
+export type TemplateResolutionStatus = 'SUCCESS' | 'ERROR';
+
+export interface ResolvedTemplateResult {
+  status: TemplateResolutionStatus;
+  templateCode: TemplateCode;
+  subVariant: 'storefront' | 'personal' | 'microsite' | 'public_service' | 'corporate' | 'unknown';
+  capabilities: TenantCapabilities;
+  error?: 'UNKNOWN_TEMPLATE' | 'TEMPLATE_INCOMPATIBLE' | 'CORRUPT_CONFIG';
   errorMessage?: string;
   statusCode?: number;
 }

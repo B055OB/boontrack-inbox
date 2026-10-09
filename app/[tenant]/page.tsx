@@ -32,7 +32,8 @@ import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
 import PublicServicePortalTemplate from './components/templates/PublicServicePortalTemplate';
 import StorefrontTemplate from './components/templates/StorefrontTemplate';
 import ControlledProvisioningError from '@/components/ControlledProvisioningError';
-import { resolveTenantRuntime } from '@/lib/resolvers/tenant-runtime-resolver';
+import { resolveTenantRuntime, resolveTemplate, executeStorefrontRuntimePipeline } from '@/lib/resolvers/tenant-runtime-resolver';
+import { TenantRuntimeProvider } from '@/lib/context/tenant-runtime-context';
 import {
   captureAffiliateReferral,
   initSellerTracking,
@@ -1200,12 +1201,16 @@ export default function TenantStorefrontPage() {
     }
   }, []);
 
-  const runtime = resolveTenantRuntime({
+  const pipeline = executeStorefrontRuntimePipeline({
     host: host || (typeof window !== "undefined" ? window.location.host : ""),
-    tenant: tenant
+    tenantSlug,
+    tenantRecord: tenant
       ? { ...tenant, slug: tenantSlug, metadata: tenantMetadata }
-      : { slug: tenantSlug, metadata: tenantMetadata },
+      : null,
   });
+
+  const runtime = pipeline.runtime;
+  const templateResult = pipeline.templateResult;
 
   // Guard Web Chat Widget: strictly check toggle status (boolean / string)
   const rawChatEnabled =
@@ -1322,42 +1327,57 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── TEMPLATE ROUTING BOUNDARY: SWITCH CASE BERDASARKAN runtime.templateCode (CTO Mandate) ──
-  switch (runtime.templateCode) {
+  // ── TEMPLATE ROUTING BOUNDARY: FAIL-CLOSED RESOLVER (CTO Mandate) ──
+  if (templateResult.status === 'ERROR' || !runtime.isAllowedHost) {
+    return (
+      <ControlledProvisioningError
+        templateCode={templateResult.templateCode || runtime.templateCode}
+        tenantSlug={tenantSlug}
+        errorMessage={templateResult.errorMessage || runtime.errorMessage}
+      />
+    );
+  }
+
+  const runtimeContextValue = {
+    runtime,
+    templateResult,
+    tenantId: tenant?.id || null,
+    tenantSlug,
+  };
+
+  switch (templateResult.templateCode) {
     case 'PUBLIC_SERVICE_V1':
       return (
-        <PublicServicePortalTemplate
-          context={runtime}
-          tenantSlug={tenantSlug}
-          storeName={storeName}
-          displayName={displayName}
-          tenant={tenant}
-          tenantMetadata={tenantMetadata}
-          storeLogoUrl={sanitizedActiveLogo}
-          storeProducts={storeProducts}
-          dynamicQuickReplies={dynamicQuickReplies}
-          chatEnabled={isChatEnabled}
-          onInitiateCheckout={(p) => {
-            trackInitiateCheckout(p.title, p.price);
-            setProductForCheckout(p);
-            setIsCheckoutOpen(true);
-          }}
-          onOutboundClick={handleOutboundClick}
-        />
+        <TenantRuntimeProvider value={runtimeContextValue}>
+          <PublicServicePortalTemplate
+            context={runtime}
+            tenantSlug={tenantSlug}
+            storeName={storeName}
+            displayName={displayName}
+            tenant={tenant}
+            tenantMetadata={tenantMetadata}
+            storeLogoUrl={sanitizedActiveLogo}
+            storeProducts={storeProducts}
+            dynamicQuickReplies={dynamicQuickReplies}
+            chatEnabled={isChatEnabled}
+            onInitiateCheckout={(p) => {
+              trackInitiateCheckout(p.title, p.price);
+              setProductForCheckout(p);
+              setIsCheckoutOpen(true);
+            }}
+            onOutboundClick={handleOutboundClick}
+          />
+        </TenantRuntimeProvider>
       );
 
     case 'DROP_V1':
     case 'SHOP_V1': {
-      const selectedSubVariant =
-        tenantMetadata?.selected_template ||
-        tenantMetadata?.storefront_template ||
-        currentTheme.template;
-
       // ── SUB-VARIANT: PERSONAL (Authority / Personal Brand) ──
-      if (selectedSubVariant === 'personal') {
-    return (
-      <>
-        <PersonalAuthorityTemplate
+      if (templateResult.subVariant === 'personal') {
+        return (
+          <TenantRuntimeProvider value={runtimeContextValue}>
+            <>
+              <PersonalAuthorityTemplate
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
@@ -1575,14 +1595,16 @@ export default function TenantStorefrontPage() {
           />
         )}
       </>
-    );
-  }
+    </TenantRuntimeProvider>
+  );
+}
 
       // ── SUB-VARIANT: MICROSITE (Bio-Funnel) ──
-      if (selectedSubVariant === 'microsite') {
-    return (
-      <>
-        <MicrositeBioTemplate
+      if (templateResult.subVariant === 'microsite') {
+        return (
+          <TenantRuntimeProvider value={runtimeContextValue}>
+            <>
+              <MicrositeBioTemplate
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
@@ -1688,12 +1710,15 @@ export default function TenantStorefrontPage() {
           />
         )}
       </>
-    );
-  }
+    </TenantRuntimeProvider>
+  );
+}
 
-      // ── DEFAULT COMMERCE STOREFRONT (SHOP_V1) ──
-      return (
-        <StorefrontTemplate context={runtime}>
+      // ── SUB-VARIANT: STOREFRONT (Standard Retail / Drop) ──
+      if (templateResult.subVariant === 'storefront') {
+        return (
+          <TenantRuntimeProvider value={runtimeContextValue}>
+            <StorefrontTemplate context={runtime}>
     <div className={`min-h-[100dvh] ${defaultThemeConfig.wrapper} font-sans flex flex-col antialiased transition-colors duration-200`}>
       <header className={`${defaultThemeConfig.header} border-b sticky top-0 z-30 shadow-xs transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -2679,8 +2704,19 @@ export default function TenantStorefrontPage() {
       </footer>
           </div>
         </StorefrontTemplate>
-      );
-    }
+      </TenantRuntimeProvider>
+    );
+  }
+
+  // Fail-closed for unknown sub-variants under SHOP_V1 / DROP_V1
+  return (
+    <ControlledProvisioningError
+      templateCode={templateResult.templateCode}
+      tenantSlug={tenantSlug}
+      errorMessage={`Sub-varian template '${templateResult.subVariant}' tidak didukung atau korup.`}
+    />
+  );
+}
 
     default:
       return (

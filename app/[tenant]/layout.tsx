@@ -35,8 +35,8 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
     const [tenantRes, settingsRes] = await Promise.all([
       // next:{revalidate:60} → Vercel Data Cache caches this for 60s at the Edge
       fetch(
-        `${supabaseUrl}/rest/v1/tenants?slug=eq.${encodeURIComponent(cleanTenant)}&select=name,metadata&limit=1`,
-        { headers, next: { revalidate: 60 } }
+        `${supabaseUrl}/rest/v1/tenants?slug=eq.${encodeURIComponent(cleanTenant)}&select=id,name,slug,category,tier,status,business_type,template_code,metadata&limit=1`,
+        { headers, next: { revalidate: 60, tags: [`tenant-${cleanTenant}`] } }
       ),
       fetch(
         `${supabaseUrl}/rest/v1/tenant_settings?tenant_slug=eq.${encodeURIComponent(cleanTenant)}&select=ads_tracking_config&limit=1`,

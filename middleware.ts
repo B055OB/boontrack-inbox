@@ -10,10 +10,12 @@ import type { NextRequest } from 'next/server';
 // In-Memory Cache untuk Custom Domain Lookup (TTL 5 menit)
 interface DomainCacheEntry {
   slug: string | null;
+  tenantId?: string | null;
   timestamp: number;
 }
 
 const domainCache = new Map<string, DomainCacheEntry>();
+const tenantSlugToIdCache = new Map<string, { id: string | null; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
 // Known B2B Tenant Slugs (webchat + CS inbox engine)
@@ -85,14 +87,15 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
  * 2. Fetch ke Core Backend GET /api/v1/store/lookup-by-domain?domain={hostname} (revalidate 300s)
  * 3. Fallback ke Supabase REST jika Core Backend 404 / offline
  */
-async function lookupTenantByDomain(hostname: string): Promise<string | null> {
+async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | null; tenantId: string | null }> {
   const cached = domainCache.get(hostname);
   const now = Date.now();
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-    return cached.slug;
+    return { slug: cached.slug, tenantId: cached.tenantId || null };
   }
 
   let slug: string | null = null;
+  let tenantId: string | null = null;
   const coreApiUrl =
     process.env.CORE_API_URL ||
     process.env.NEXT_PUBLIC_CORE_API_URL ||
@@ -113,6 +116,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
       slug = data.tenant_slug || data.slug || data.tenant?.slug || null;
+      tenantId = data.tenant_id || data.id || data.tenant?.id || null;
     }
   } catch (err) {
     console.warn('[middleware] Core backend lookup error:', err);
@@ -124,7 +128,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (supabaseKey) {
-        const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=slug,metadata&metadata->>custom_domain=eq.${encodeURIComponent(hostname)}&limit=1`;
+        const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&metadata->>custom_domain=eq.${encodeURIComponent(hostname)}&limit=1`;
         const supaRes = await fetch(supaUrl, {
           headers: {
             apikey: supabaseKey,
@@ -137,6 +141,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
           const rows = await supaRes.json().catch(() => []);
           if (Array.isArray(rows) && rows.length > 0 && rows[0]?.slug) {
             slug = rows[0].slug;
+            tenantId = rows[0].id || null;
           }
         }
       }
@@ -146,8 +151,74 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
   }
 
   // Simpan ke in-memory cache
-  domainCache.set(hostname, { slug, timestamp: now });
-  return slug;
+  domainCache.set(hostname, { slug, tenantId, timestamp: now });
+  if (slug && tenantId) {
+    tenantSlugToIdCache.set(slug, { id: tenantId, timestamp: now });
+  }
+  return { slug, tenantId };
+}
+
+/**
+ * Resolves tenant_id for a given tenant slug using memory cache & Supabase REST.
+ */
+async function resolveTenantIdForSlug(slug: string): Promise<string | null> {
+  const cleanSlug = slug.toLowerCase().trim();
+  if (!cleanSlug) return null;
+  const cached = tenantSlugToIdCache.get(cleanSlug);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.id;
+  }
+  let id: string | null = null;
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (supabaseKey) {
+      const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
+      const supaRes = await fetch(supaUrl, {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        next: { revalidate: 300 },
+      });
+      if (supaRes.ok) {
+        const rows = await supaRes.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
+          id = rows[0].id;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[middleware] Failed to resolve tenant id for slug:', err);
+  }
+  tenantSlugToIdCache.set(cleanSlug, { id, timestamp: now });
+  return id;
+}
+
+/**
+ * Applies scoped cache key headers for tenant storefront isolation (CDN/Edge & browser).
+ */
+function applyStorefrontCacheHeaders(
+  res: NextResponse,
+  slug: string,
+  tenantId?: string | null
+): NextResponse {
+  if (slug) {
+    res.headers.set('x-tenant-slug', slug);
+    res.headers.set('Cache-Tag', `tenant-${slug}`);
+    res.headers.set('x-tenant-id', tenantId || slug);
+  }
+  return res;
+}
+
+/**
+ * Applies strict anti-caching headers for sensitive endpoints (APIs, checkout, admin, auth).
+ */
+function applySensitiveCacheHeaders(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.headers.set('Pragma', 'no-cache');
+  return res;
 }
 
 // In-Memory Cache untuk Affiliate Code Lookup (TTL 5 menit)
@@ -301,13 +372,19 @@ export async function middleware(req: NextRequest) {
     pathname === '/api/v1/cache/purge'
   ) {
     domainCache.clear();
+    tenantSlugToIdCache.clear();
     affiliateSubdomainCache.clear();
   }
 
-  // ── 0. BYPASS API & STATIC LANGSUNG (/_next, /favicon.ico, /images, dll.) ──
+  // ── 0a. SENSITIVE API ENDPOINTS & ZERO-LEAK CACHE GUARD (CTO Mandate) ──
+  if (pathname.startsWith('/api/') || pathname === '/api') {
+    const res = NextResponse.next();
+    applySensitiveCacheHeaders(res);
+    return res;
+  }
+
+  // ── 0b. BYPASS STATIC ASSETS LANGSUNG (/_next, /favicon.ico, /images, dll.) ──
   if (
-    pathname.startsWith('/api/') ||
-    pathname === '/api' ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/static') ||
     pathname.startsWith('/images') ||
@@ -608,7 +685,9 @@ export async function middleware(req: NextRequest) {
 
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
   if (pathname.startsWith('/admin')) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    applySensitiveCacheHeaders(res);
+    return res;
   }
 
   // ===========================================================================
@@ -791,7 +870,7 @@ export async function middleware(req: NextRequest) {
 
   // ── 1. CUSTOM DOMAIN LOOKUP & REWRITE ──
   if (!isSystemOrBoonTrackHost(hostClean) && hostClean.length > 0) {
-    const slug = await lookupTenantByDomain(hostClean);
+    const { slug, tenantId } = await lookupTenantByDomain(hostClean);
 
     if (slug) {
       const url = req.nextUrl.clone();
@@ -801,11 +880,14 @@ export async function middleware(req: NextRequest) {
       url.pathname = cleanPath;
       const requestHeaders = new Headers(req.headers);
       requestHeaders.set('x-tenant-slug', slug);
-      return NextResponse.rewrite(url, {
+      if (tenantId) requestHeaders.set('x-tenant-id', tenantId);
+      const res = NextResponse.rewrite(url, {
         request: {
           headers: requestHeaders,
         },
       });
+      applyStorefrontCacheHeaders(res, slug, tenantId);
+      return res;
     } else {
       const url = req.nextUrl.clone();
       url.pathname = '/404-store-not-found';
@@ -866,12 +948,26 @@ export async function middleware(req: NextRequest) {
     if (refParam) {
       setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
     }
+    const isSensitive =
+      pathname.startsWith('/checkout') ||
+      pathname.startsWith('/admin') ||
+      pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/manager') ||
+      pathname.startsWith('/login') ||
+      pathname.startsWith('/auth') ||
+      pathname.startsWith('/register') ||
+      pathname.startsWith('/daftar');
+    if (isSensitive) {
+      applySensitiveCacheHeaders(res);
+    }
     return res;
   }
 
   // ── 2b. /admin always resolves to Super Admin Panel ──
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    applySensitiveCacheHeaders(res);
+    return res;
   }
 
   // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
@@ -933,14 +1029,20 @@ export async function middleware(req: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const tenantSlug = segments[0]?.toLowerCase().trim();
     const requestHeaders = new Headers(req.headers);
+    let resolvedId: string | null = null;
     if (tenantSlug) {
+      resolvedId = await resolveTenantIdForSlug(tenantSlug);
       requestHeaders.set('x-tenant-slug', tenantSlug);
+      requestHeaders.set('x-tenant-id', resolvedId || tenantSlug);
     }
     const res = NextResponse.next({
       request: {
         headers: requestHeaders,
       },
     });
+    if (tenantSlug) {
+      applyStorefrontCacheHeaders(res, tenantSlug, resolvedId);
+    }
     if (refParam) {
       setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
     }
@@ -1173,6 +1275,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image).*)',
+    '/((?!_next/static|_next/image).*)',
   ],
 };

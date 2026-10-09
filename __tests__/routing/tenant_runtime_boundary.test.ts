@@ -16,10 +16,14 @@ import {
   resolveTenantRuntime,
   assertTenantRuntimeAllowed,
   getTemplateCapabilities,
+  resolveTemplate,
+  executeStorefrontRuntimePipeline,
   TemplateNotCompatibleError,
   UnknownTemplateError,
 } from '@/lib/resolvers/tenant-runtime-resolver';
 import type { TenantRecord } from '@/lib/types/tenant-runtime';
+import { middleware } from '@/middleware';
+import { NextRequest } from 'next/server';
 
 describe('P0 Architectural Routing Boundary - CTO Mandate Acceptance Matrix', () => {
 
@@ -371,6 +375,172 @@ describe('P0 Architectural Routing Boundary - CTO Mandate Acceptance Matrix', ()
       expect(runtime.statusCode).toBe(200);
       expect(runtime.capabilities.catalog).toBe(true);
       expect(runtime.capabilities.checkout).toBe(true);
+    });
+  });
+
+  // ── TEST 7: Fail-Closed Template Resolver (resolveTemplate) ───────────────
+  describe('Matrix 7: Fail-Closed Template Resolver (CTO Mandate)', () => {
+    it('rejects PUBLIC_SERVICE business when configured with SHOP_V1 (no silent fallback)', () => {
+      const runtime = resolveTenantRuntime({
+        host: 'app.boontrack.com',
+        tenant: {
+          slug: 'dinas-kesehatan',
+          business_type: 'PUBLIC_SERVICE',
+          template_code: 'SHOP_V1',
+        },
+      });
+
+      const result = resolveTemplate(runtime);
+      expect(result.status).toBe('ERROR');
+      expect(result.error).toBe('TEMPLATE_INCOMPATIBLE');
+      expect(result.statusCode).toBe(404);
+      expect(result.errorMessage).toContain('Inkompatibilitas arsitektur');
+    });
+
+    it('rejects RETAIL commerce business when configured with PUBLIC_SERVICE_V1', () => {
+      const runtime = resolveTenantRuntime({
+        host: 'app.boontrack.com',
+        tenant: {
+          slug: 'kuras-toren-karawang',
+          business_type: 'FIELD_SERVICE',
+          template_code: 'PUBLIC_SERVICE_V1',
+        },
+      });
+
+      const result = resolveTemplate(runtime);
+      expect(result.status).toBe('ERROR');
+      expect(result.error).toBe('TEMPLATE_INCOMPATIBLE');
+      expect(result.statusCode).toBe(404);
+      expect(result.errorMessage).toContain('Bisnis komersial');
+    });
+
+    it('rejects corrupt/unregistered sub-variant under SHOP_V1 with CORRUPT_CONFIG 422', () => {
+      const runtime = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'toko-abc',
+          business_type: 'RETAIL',
+          template_code: 'SHOP_V1',
+          metadata: {
+            selected_template: 'dr_anak_schema_leak',
+          },
+        },
+      });
+
+      const result = resolveTemplate(runtime);
+      expect(result.status).toBe('ERROR');
+      expect(result.error).toBe('CORRUPT_CONFIG');
+      expect(result.statusCode).toBe(422);
+      expect(result.errorMessage).toContain('Sub-varian template');
+    });
+
+    it('successfully resolves valid subvariants (storefront, personal, microsite)', () => {
+      const runtimeStore = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'store-1',
+          template_code: 'SHOP_V1',
+          metadata: { selected_template: 'storefront' },
+        },
+      });
+      expect(resolveTemplate(runtimeStore).status).toBe('SUCCESS');
+      expect(resolveTemplate(runtimeStore).subVariant).toBe('storefront');
+
+      const runtimePersonal = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'coach-andi',
+          template_code: 'SHOP_V1',
+          metadata: { selected_template: 'personal' },
+        },
+      });
+      expect(resolveTemplate(runtimePersonal).status).toBe('SUCCESS');
+      expect(resolveTemplate(runtimePersonal).subVariant).toBe('personal');
+
+      const runtimeMicro = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'bio-funnel',
+          template_code: 'SHOP_V1',
+          metadata: { selected_template: 'microsite' },
+        },
+      });
+      expect(resolveTemplate(runtimeMicro).status).toBe('SUCCESS');
+      expect(resolveTemplate(runtimeMicro).subVariant).toBe('microsite');
+    });
+  });
+
+  // ── TEST 8: Canonical Runtime Pipeline (executeStorefrontRuntimePipeline) ─
+  describe('Matrix 8: Canonical Runtime Pipeline Sequential Flow', () => {
+    it('executes Host ➔ Tenant Resolver ➔ TenantRuntimeContext ➔ TemplateResolver', () => {
+      const pipeline = executeStorefrontRuntimePipeline({
+        host: 'shop.boontrack.com',
+        tenantSlug: 'tokoberkah',
+        tenantRecord: {
+          id: 'tenant-uuid-12345',
+          slug: 'tokoberkah',
+          name: 'Toko Berkah',
+          business_type: 'RETAIL',
+          template_code: 'SHOP_V1',
+        },
+      });
+
+      expect(pipeline.isReady).toBe(true);
+      expect(pipeline.runtime.tenantId).toBe('tenant-uuid-12345');
+      expect(pipeline.runtime.templateCode).toBe('SHOP_V1');
+      expect(pipeline.templateResult.status).toBe('SUCCESS');
+      expect(pipeline.templateResult.subVariant).toBe('storefront');
+    });
+
+    it('fails closed when tenantRecord is null (tenant not in database)', () => {
+      const pipeline = executeStorefrontRuntimePipeline({
+        host: 'shop.boontrack.com',
+        tenantSlug: 'unregistered-store',
+        tenantRecord: null,
+      });
+
+      expect(pipeline.isReady).toBe(false);
+      expect(pipeline.runtime.statusCode).toBe(404);
+      expect(pipeline.templateResult.status).toBe('ERROR');
+      expect(pipeline.error).toContain('tidak ditemukan di database');
+    });
+  });
+
+  // ── TEST 9: Scoped Cache Key Header & Sensitive Anti-Cache Headers ───────
+  describe('Matrix 9: Scoped Cache Key Headers & Sensitive Anti-Cache', () => {
+    it('enforces private, no-store on sensitive API endpoints', async () => {
+      const req = new NextRequest('https://shop.boontrack.com/api/v1/orders/ORD-123', {
+        headers: { host: 'shop.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.headers.get('cache-control')).toBe('private, no-store, no-cache, must-revalidate');
+      expect(res.headers.get('pragma')).toBe('no-cache');
+    });
+
+    it('enforces private, no-store on checkout, admin, and dashboard routes', async () => {
+      const checkoutReq = new NextRequest('https://shop.boontrack.com/checkout/order-999', {
+        headers: { host: 'shop.boontrack.com' },
+      });
+      const checkoutRes = await middleware(checkoutReq);
+      expect(checkoutRes.headers.get('cache-control')).toBe('private, no-store, no-cache, must-revalidate');
+
+      const adminReq = new NextRequest('https://shop.boontrack.com/admin', {
+        headers: { host: 'shop.boontrack.com' },
+      });
+      const adminRes = await middleware(adminReq);
+      expect(adminRes.headers.get('cache-control')).toBe('private, no-store, no-cache, must-revalidate');
+    });
+
+    it('attaches x-tenant-slug, x-tenant-id, and Cache-Tag on shop.boontrack.com storefront requests', async () => {
+      const req = new NextRequest('https://shop.boontrack.com/tokoberkah', {
+        headers: { host: 'shop.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.headers.get('x-tenant-slug')).toBe('tokoberkah');
+      expect(res.headers.get('cache-tag')).toBe('tenant-tokoberkah');
+      expect(res.headers.get('x-tenant-id')).toBeDefined();
     });
   });
 });

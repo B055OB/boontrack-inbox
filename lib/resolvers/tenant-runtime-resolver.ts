@@ -19,6 +19,8 @@ import {
   TenantRecord,
   TenantRuntimeContext,
   HardeningPolicy,
+  ResolvedTemplateResult,
+  TemplateResolutionStatus,
 } from '@/lib/types/tenant-runtime';
 import { getTenantConfig } from '@/lib/tenant-config';
 
@@ -386,9 +388,12 @@ export function resolveTenantRuntime(
     return errorResult;
   }
 
+  const tenantId = tenantInput?.id || tenant?.id || undefined;
+
   return {
     host: hostInput,
     tenantSlug,
+    tenantId,
     tenantKind,
     businessType,
     templateCode,
@@ -420,4 +425,209 @@ export function assertTenantRuntimeAllowed(runtime: TenantRuntimeContext): void 
       runtime.statusCode || 403
     );
   }
+}
+
+/**
+ * Fail-Closed Template Resolver (CTO Mandate)
+ * Evaluates templateCode against registered catalog and ensures strict compatibility with businessType.
+ * DILARANG KERAS fallback ke template lain jika template_code korup atau tidak sesuai.
+ */
+export function resolveTemplate(context: TenantRuntimeContext): ResolvedTemplateResult {
+  // 1. Check if context already holds an unrecoverable error
+  if (!context.isAllowedHost || context.statusCode === 404 || context.error === 'TEMPLATE_NOT_COMPATIBLE') {
+    return {
+      status: 'ERROR',
+      templateCode: context.templateCode,
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'TEMPLATE_INCOMPATIBLE',
+      errorMessage: context.errorMessage || 'Template tidak diizinkan pada host ini.',
+      statusCode: context.statusCode || 404,
+    };
+  }
+
+  if (context.templateCode === 'UNKNOWN_TEMPLATE' || context.error === 'UNKNOWN_TEMPLATE') {
+    return {
+      status: 'ERROR',
+      templateCode: 'UNKNOWN_TEMPLATE',
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'UNKNOWN_TEMPLATE',
+      errorMessage: context.errorMessage || `Template code '${context.tenant?.template_code}' tidak terdaftar atau konfigurasi korup.`,
+      statusCode: 422,
+    };
+  }
+
+  const rawBusinessType = String(context.businessType || '').toUpperCase().trim();
+  const templateCode = context.templateCode;
+
+  // 2. Strict Business Type Compatibility Boundaries
+  // Case A: PUBLIC_SERVICE / B2G business type MUST use PUBLIC_SERVICE_V1
+  const isPublicServiceBiz = rawBusinessType === 'PUBLIC_SERVICE' || rawBusinessType === 'B2G';
+  if (isPublicServiceBiz && templateCode !== 'PUBLIC_SERVICE_V1') {
+    return {
+      status: 'ERROR',
+      templateCode,
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'TEMPLATE_INCOMPATIBLE',
+      errorMessage: `Inkompatibilitas arsitektur: Bisnis berjenis '${context.businessType}' tidak dapat menggunakan template '${templateCode}'. Harap gunakan 'PUBLIC_SERVICE_V1'.`,
+      statusCode: 404,
+    };
+  }
+
+  // Case B: Commerce businesses (RETAIL, FNB, DIGITAL, FIELD_SERVICE, PROFESSIONAL_SERVICE) CANNOT use PUBLIC_SERVICE_V1
+  const isCommerceBiz =
+    rawBusinessType === 'RETAIL' ||
+    rawBusinessType === 'FNB' ||
+    rawBusinessType === 'DIGITAL' ||
+    rawBusinessType === 'FIELD_SERVICE' ||
+    rawBusinessType === 'PROFESSIONAL_SERVICE' ||
+    rawBusinessType === 'ECOMMERCE';
+
+  if (isCommerceBiz && templateCode === 'PUBLIC_SERVICE_V1') {
+    return {
+      status: 'ERROR',
+      templateCode,
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'TEMPLATE_INCOMPATIBLE',
+      errorMessage: `Inkompatibilitas arsitektur: Bisnis komersial '${context.businessType}' tidak diizinkan menggunakan template 'PUBLIC_SERVICE_V1'.`,
+      statusCode: 404,
+    };
+  }
+
+  // Case C: CORPORATE_V1 compatibility
+  if (templateCode === 'CORPORATE_V1' && isPublicServiceBiz) {
+    return {
+      status: 'ERROR',
+      templateCode,
+      subVariant: 'unknown',
+      capabilities: context.capabilities,
+      error: 'TEMPLATE_INCOMPATIBLE',
+      errorMessage: `Inkompatibilitas arsitektur: Layanan publik tidak diizinkan menggunakan template 'CORPORATE_V1'.`,
+      statusCode: 404,
+    };
+  }
+
+  // 3. Resolve Sub-Variant for SHOP_V1 / DROP_V1
+  let subVariant: 'storefront' | 'personal' | 'microsite' | 'public_service' | 'corporate' | 'unknown' = 'storefront';
+
+  if (templateCode === 'PUBLIC_SERVICE_V1') {
+    subVariant = 'public_service';
+  } else if (templateCode === 'CORPORATE_V1') {
+    subVariant = 'corporate';
+  } else if (templateCode === 'SHOP_V1' || templateCode === 'DROP_V1') {
+    const rawSub = (
+      context.tenant?.metadata?.selected_template ||
+      context.tenant?.metadata?.storefront_template ||
+      context.tenant?.metadata?.theme?.template ||
+      'storefront'
+    ).toLowerCase().trim();
+
+    if (rawSub === 'personal') {
+      subVariant = 'personal';
+    } else if (rawSub === 'microsite') {
+      subVariant = 'microsite';
+    } else if (
+      rawSub === 'storefront' ||
+      rawSub === 'default' ||
+      rawSub === 'commerce_template' ||
+      rawSub === 'commerce' ||
+      rawSub === 'clean_commerce' ||
+      rawSub === ''
+    ) {
+      subVariant = 'storefront';
+    } else {
+      // Unrecognized sub-variant -> Fail-Closed!
+      return {
+        status: 'ERROR',
+        templateCode,
+        subVariant: 'unknown',
+        capabilities: context.capabilities,
+        error: 'CORRUPT_CONFIG',
+        errorMessage: `Sub-varian template '${rawSub}' tidak terdaftar atau korup pada katalog storefront.`,
+        statusCode: 422,
+      };
+    }
+  }
+
+  return {
+    status: 'SUCCESS',
+    templateCode,
+    subVariant,
+    capabilities: context.capabilities,
+    statusCode: 200,
+  };
+}
+
+/**
+ * Canonical Storefront Runtime Pipeline (CTO Mandate)
+ * Executes the strict pipeline:
+ * Host / Slug ➔ Tenant Resolver ➔ TenantRuntimeContext ➔ TemplateResolver ➔ Renderer Result
+ * Guarantees that tenant_id is verified from the database and prohibited from re-inference.
+ */
+export interface CanonicalPipelineResult {
+  runtime: TenantRuntimeContext;
+  templateResult: ResolvedTemplateResult;
+  isReady: boolean;
+  error?: string;
+}
+
+export function executeStorefrontRuntimePipeline(params: {
+  host: string;
+  tenantSlug: string;
+  tenantRecord: TenantRecord | null;
+}): CanonicalPipelineResult {
+  const { host, tenantSlug, tenantRecord } = params;
+
+  // 1. If tenantRecord is null, pipeline fails closed (not found)
+  if (!tenantRecord) {
+    const errorRuntime: TenantRuntimeContext = {
+      host,
+      tenantSlug,
+      tenantKind: 'SAAS',
+      businessType: 'RETAIL',
+      templateCode: 'UNKNOWN_TEMPLATE',
+      capabilities: getTemplateCapabilities('UNKNOWN_TEMPLATE'),
+      hardeningPolicy: 'HARDENING_V0',
+      tenant: { slug: tenantSlug },
+      isAllowedHost: false,
+      statusCode: 404,
+      error: 'TENANT_NOT_FOUND',
+      errorMessage: `Tenant '${tenantSlug}' tidak ditemukan di database.`,
+    };
+    return {
+      runtime: errorRuntime,
+      templateResult: {
+        status: 'ERROR',
+        templateCode: 'UNKNOWN_TEMPLATE',
+        subVariant: 'unknown',
+        capabilities: errorRuntime.capabilities,
+        error: 'UNKNOWN_TEMPLATE',
+        errorMessage: errorRuntime.errorMessage,
+        statusCode: 404,
+      },
+      isReady: false,
+      error: errorRuntime.errorMessage,
+    };
+  }
+
+  // 2. Tenant Resolver ➔ TenantRuntimeContext
+  const runtime = resolveTenantRuntime({
+    host,
+    tenant: tenantRecord,
+  });
+
+  // 3. TenantRuntimeContext ➔ TemplateResolver (Fail-Closed)
+  const templateResult = resolveTemplate(runtime);
+
+  const isReady = runtime.isAllowedHost && templateResult.status === 'SUCCESS';
+
+  return {
+    runtime,
+    templateResult,
+    isReady,
+    error: isReady ? undefined : (templateResult.errorMessage || runtime.errorMessage),
+  };
 }
