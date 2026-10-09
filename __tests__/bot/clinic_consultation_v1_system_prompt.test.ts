@@ -241,6 +241,41 @@ describe('CONSULTATION_V1: Clinic Bot System Prompt on Gemini 3.8 Flash', () => 
       expect(result.handled).toBe(false);
       expect(result.reply).toBe('');
     });
+
+    it('completely bypasses "Terima kasih infonya Ayah/Bunda. Masalah GTM" static template when skipConversationalTemplates is true', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockDynamicClinicTenant,
+        tenantSlug: mockDynamicClinicTenant.slug,
+        message: 'anak saya gtm susah makan usia 2 tahun bb seret',
+        senderPhone: '6281234567898',
+        skipConversationalTemplates: true,
+      });
+
+      expect(result.handled).toBe(false);
+      expect(result.reply).not.toContain('Terima kasih infonya Ayah/Bunda. Masalah GTM');
+      expect(result.reply).toBe('');
+    });
+
+    it('completely bypasses static template when tenant has blueprint_code CONSULTATION_V1', async () => {
+      const tenantWithBlueprint = {
+        ...mockDynamicClinicTenant,
+        metadata: {
+          ...mockDynamicClinicTenant.metadata,
+          blueprint_code: 'CONSULTATION_V1',
+        },
+      };
+
+      const result = await processConsultationLeadFunnel({
+        tenant: tenantWithBlueprint,
+        tenantSlug: tenantWithBlueprint.slug,
+        message: 'anak saya gtm susah makan',
+        senderPhone: '6281234567897',
+      });
+
+      expect(result.handled).toBe(false);
+      expect(result.reply).not.toContain('Terima kasih infonya Ayah/Bunda. Masalah GTM');
+      expect(result.reply).toBe('');
+    });
   });
 
   // ── TEST 6: PRE-LLM DETERMINISTIC EMERGENCY SAFETY GATE ───────────────────

@@ -411,6 +411,7 @@ export async function processMultimodalChat(
     (input as any).phone_number ||
     (input as any).from ||
     '';
+  const isClinicTenant = isClinicConsultationTenant(t, tenantMetadata, tenantProducts);
 
   // ── ORDER GATEKEEPER CHECK (MANUAL TRANSACTION INTERCEPTOR) ──────────────────
   // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
@@ -583,7 +584,6 @@ export async function processMultimodalChat(
 
       // 1.05. Pre-LLM Clinical Safety Gate (Acute Medical Danger Interceptor)
       const hardeningPolicy = resolveHardeningPolicy(t || { slug, metadata: tenantMetadata });
-      const isClinicTenant = isClinicConsultationTenant(t, tenantMetadata, tenantProducts);
       if (hardeningPolicy === 'HARDENING_V1' || isClinicTenant) {
         const clinicalGate = evaluateClinicalSafetyGate(message);
         if (clinicalGate.isEmergency) {
@@ -610,57 +610,66 @@ export async function processMultimodalChat(
         senderPhone,
         conversationHistory: input.conversation_history,
         hasPreviousGreeting: Boolean(input.context?.hasPreviousBotGreeting),
+        skipConversationalTemplates: isClinicTenant,
       });
 
       if (consultFunnelRes.handled && consultFunnelRes.reply) {
-        return {
-          success: true,
-          reply: consultFunnelRes.reply,
-          tenant_id: t?.id || slug,
-          tenant_slug: t?.slug || slug,
-          checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
-          media_url: consultFunnelRes.mediaUrl,
-          media_caption: consultFunnelRes.mediaCaption,
-          type: consultFunnelRes.type,
-          quick_actions: defaultQuickActions,
-          active_engine: activeEngine,
-          bot_paused: consultFunnelRes.type === 'EMERGENCY_ESCALATION' || consultFunnelRes.nextState === 'HANDOVER_TO_HUMAN',
-        };
-      }
-
-      // 2. Zero-AI Engine (Commerce Assistant)
-      const zeroAiRes = await processZeroAiMessage({
-        tenant_slug: slug,
-        message,
-        sender_phone: senderPhone,
-        interactive_reply: input.interactive_reply,
-        channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
-      });
-
-      if (zeroAiRes.handled) {
-        if (zeroAiRes.silent) {
+        // Double guard: Never hijack clinic conversational turns with static templates!
+        // Allow the conversation to proceed directly to Gemini 3.8 Flash.
+        if (isClinicTenant && (consultFunnelRes.type === 'SCREENING_OFFER' || consultFunnelRes.type === 'GREETING' || consultFunnelRes.type === 'CONSULTATION_OFFER')) {
+          // Bypass static template, forward directly to Gemini 3.8 Flash!
+        } else {
           return {
             success: true,
-            silent: true,
-            reply: '',
-            tenant_id: slug,
-            tenant_slug: slug,
-            type: 'HUMAN_TAKEOVER_SILENT',
+            reply: consultFunnelRes.reply,
+            tenant_id: t?.id || slug,
+            tenant_slug: t?.slug || slug,
+            checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
+            media_url: consultFunnelRes.mediaUrl,
+            media_caption: consultFunnelRes.mediaCaption,
+            type: consultFunnelRes.type,
+            quick_actions: defaultQuickActions,
+            active_engine: activeEngine,
+            bot_paused: consultFunnelRes.type === 'EMERGENCY_ESCALATION' || consultFunnelRes.nextState === 'HANDOVER_TO_HUMAN',
           };
         }
+      }
 
-        if (zeroAiRes.reply) {
-          return {
-            success: true,
-            reply: zeroAiRes.reply,
-            tenant_id: slug,
-            tenant_slug: slug,
-            checkout_url: checkoutUrl,
-            type: zeroAiRes.type,
-            interactive_payload: zeroAiRes.interactive_payload,
-            quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
-            active_engine: activeEngine,
-          };
+      // 2. Zero-AI Engine (Commerce Assistant) - Skipped for Clinic Tenants to ensure LLM flow
+      if (!isClinicTenant) {
+        const zeroAiRes = await processZeroAiMessage({
+          tenant_slug: slug,
+          message,
+          sender_phone: senderPhone,
+          interactive_reply: input.interactive_reply,
+          channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
+        });
+
+        if (zeroAiRes.handled) {
+          if (zeroAiRes.silent) {
+            return {
+              success: true,
+              silent: true,
+              reply: '',
+              tenant_id: slug,
+              tenant_slug: slug,
+              type: 'HUMAN_TAKEOVER_SILENT',
+            };
+          }
+
+          if (zeroAiRes.reply) {
+            return {
+              success: true,
+              reply: zeroAiRes.reply,
+              tenant_id: slug,
+              tenant_slug: slug,
+              checkout_url: checkoutUrl,
+              type: zeroAiRes.type,
+              interactive_payload: zeroAiRes.interactive_payload,
+              quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
+              active_engine: activeEngine,
+            };
+          }
         }
       }
     }
@@ -1073,6 +1082,7 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
         senderPhone,
         conversationHistory: input.conversation_history,
         hasPreviousGreeting: true,
+        skipConversationalTemplates: isClinicTenant,
       });
 
       const isCheckoutUrlUuid = /[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}/i.test(checkoutUrl);
@@ -1093,11 +1103,11 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
         } else {
           reply = `Sampurasun! Selamat datang Bapak/Ibu Warga di layanan resmi Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung.\n\n📍 *Kantor Kelurahan:* Jl. Cipagalo Girang No. 09, Margasari (Senin - Jumat, 08:00 - 15:00 WIB)\n👨‍💼 *Lurah Margasari:* Wahyu A. Affandi, S.IP., M.Si.\n🌐 *Portal Resmi:* https://app.boontrack.com/margasari\n\nSilakan sampaikan kebutuhan administrasi kependudukan atau surat pengantar Bapak/Ibu.`;
         }
-      } else if (fallbackFunnel.handled && fallbackFunnel.reply) {
-        reply = fallbackFunnel.reply;
       } else if (isClinicConsultationTenant(t, tenantMetadata, tenantProducts)) {
         const clinicStoreName = tenantMetadata.clinic_name || t?.name || 'Layanan Tumbuh Kembang & Nutrisi Anak';
         reply = `Halo Ayah/Bunda! Terima kasih sudah berbagi dengan kami di *${clinicStoreName}*. 😊\n\nKami sangat memahami kekhawatiran Ayah/Bunda. Tim kami siap mendampingi dan berdiskusi langsung di sini tanpa perlu khawatir. Boleh ceritakan lebih lanjut mengenai kondisi si kecil?`;
+      } else if (fallbackFunnel.handled && fallbackFunnel.reply) {
+        reply = fallbackFunnel.reply;
       } else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
         reply = `Pembayaran di *${storeName}* dapat dilakukan secara praktis dan otomatis melalui QRIS 24 jam.` +
           (cleanCheckoutUrl ? `\n\n👉 *Link Checkout Resmi:*\n${cleanCheckoutUrl}` : '');

@@ -19,7 +19,7 @@ import {
   isOfficialPlatformIdentifier,
 } from '@/lib/boonpilot/sender-resolver';
 import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
-import { processConsultationLeadFunnel } from '@/lib/funnel/consultation-lead-funnel';
+import { processConsultationLeadFunnel, isClinicConsultationTenant } from '@/lib/funnel/consultation-lead-funnel';
 
 function getEngineSupabase() {
   const existing = getSupabaseAdmin() || getSupabase();
@@ -525,6 +525,8 @@ export class ConversationEngine {
       const aiKnowledge = metadata.ai_knowledge || {};
       const salesPolicy = metadata.sales_policy || metadata.playbook || {};
 
+      const isClinic = isClinicConsultationTenant(tenant, metadata, products);
+
       // Check Consultation & Lead Filtering Funnel (Sales Flow & Order Gatekeeper)
       const consultFunnelRes = await processConsultationLeadFunnel({
         tenant,
@@ -535,18 +537,23 @@ export class ConversationEngine {
         conversationHistory: Array.isArray(entities?.conversation_history)
           ? entities.conversation_history
           : undefined,
+        skipConversationalTemplates: isClinic,
       });
 
       if (consultFunnelRes.handled && consultFunnelRes.reply) {
-        trace.push(`CONSULTATION_FUNNEL_${consultFunnelRes.type}`);
-        return {
-          reply: consultFunnelRes.reply,
-          next_state: consultFunnelRes.nextState || 'ACTIVE',
-          state_trace: trace,
-          entities: { ...entities, lead_data: consultFunnelRes.leadData },
-          is_booking_ready: false,
-          active_engine: 'SALES_REP_V1',
-        };
+        if (isClinic && (consultFunnelRes.type === 'SCREENING_OFFER' || consultFunnelRes.type === 'GREETING' || consultFunnelRes.type === 'CONSULTATION_OFFER')) {
+          // Bypass static template, forward directly to conversational flow / LLM
+        } else {
+          trace.push(`CONSULTATION_FUNNEL_${consultFunnelRes.type}`);
+          return {
+            reply: consultFunnelRes.reply,
+            next_state: consultFunnelRes.nextState || 'ACTIVE',
+            state_trace: trace,
+            entities: { ...entities, lead_data: consultFunnelRes.leadData },
+            is_booking_ready: false,
+            active_engine: 'SALES_REP_V1',
+          };
+        }
       }
 
       // 1. GREETING STATE (Sapaan Awal Ramah & Consultative)

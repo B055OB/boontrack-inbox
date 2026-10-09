@@ -29,6 +29,7 @@ export interface ProcessConsultationFunnelParams {
   senderPhone?: string;
   conversationHistory?: Array<{ role?: string; text?: string; parts?: string; [key: string]: any }>;
   hasPreviousGreeting?: boolean;
+  skipConversationalTemplates?: boolean;
 }
 
 export type PediatricIntent = 'FEEDING_GTM_BB' | 'CLINIC_PHYSICAL_SCREENING' | 'PLAY_STIMULATION';
@@ -872,7 +873,14 @@ export function isGaptekOrCasualMessage(text: string): boolean {
 export async function processConsultationLeadFunnel(
   params: ProcessConsultationFunnelParams
 ): Promise<ConsultationFunnelResult> {
-  const { tenantSlug, message, senderPhone, conversationHistory, hasPreviousGreeting } = params;
+  const {
+    tenantSlug,
+    message,
+    senderPhone,
+    conversationHistory,
+    hasPreviousGreeting,
+    skipConversationalTemplates,
+  } = params;
   const rawMsg = (message || '').trim();
   const normalizedMsg = normalizeText(rawMsg);
 
@@ -1084,16 +1092,22 @@ export async function processConsultationLeadFunnel(
       }
     };
 
-    // ── Gaptek or Casual Chat Bypass (Forward to Gemini 3.8 Flash) ──────────
-    // If the user says they are "gaptek", asks to chat/curhat casually first, or
-    // doesn't want to open links, DO NOT intercept with static screening templates!
+    const isConsultationV1 =
+      meta.blueprint_code === 'CONSULTATION_V1' ||
+      meta.blueprint === 'CONSULTATION_V1' ||
+      skipConversationalTemplates === true;
+
+    // ── Conversational Bypass for CONSULTATION_V1 & WhatsApp Chat ──────────
+    // Unblocks LLM interceptor: If the tenant uses CONSULTATION_V1 or skipConversationalTemplates is requested,
+    // or if the user is chatting casually / gaptek / discussing feeding complaints or other products,
+    // DO NOT return static template strings (screeningOfferReply / initialGreeting).
     // Forward the turn directly to Gemini 3.8 Flash with generateBoonPilotSystemPrompt.
     const isGaptekOrCasual = isGaptekOrCasualMessage(rawMsg);
-    if (isGaptekOrCasual && !isPaymentConfirmed && !isPaymentRequest) {
+    if ((isConsultationV1 || isGaptekOrCasual) && !isPaymentConfirmed && !isPaymentRequest && !isScreeningReport) {
       if (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint) {
         await persistSessionStep('STEP_2_ANAMNESIS', clinicIntake.data);
       }
-      return { handled: false, reply: '', type: 'GREETING' };
+      return { handled: false, reply: '', type: 'GREETING', leadData: clinicIntake.data };
     }
 
     // ── Initial greeting (STEP 1) — dynamic doctor label & store name ─
@@ -1115,6 +1129,9 @@ export async function processConsultationLeadFunnel(
       !isScreeningReport &&
       rawMsg.length < 35
     ) {
+      if (skipConversationalTemplates || isConsultationV1) {
+        return { handled: false, reply: '', type: 'GREETING', leadData: clinicIntake.data };
+      }
       await persistSessionStep('STEP_2_ANAMNESIS', existingIntake);
       return {
         handled: true,
@@ -1283,6 +1300,9 @@ export async function processConsultationLeadFunnel(
 
     // STEP 2 & STEP 3: Intake, Anamnesis Singkat, & Skrining Awal
     if (clinicIntake.isComplete || clinicIntake.data.complaint || clinicIntake.data.childInfo || clinicIntake.data.childName) {
+      if (skipConversationalTemplates || isConsultationV1) {
+        return { handled: false, reply: '', type: 'GREETING', leadData: clinicIntake.data };
+      }
       const parentDisplayName = clinicIntake.data.parentName || 'Ayah/Bunda';
       const validChildName =
         clinicIntake.data.childName && isValidChildName(clinicIntake.data.childName)
@@ -1346,6 +1366,9 @@ export async function processConsultationLeadFunnel(
 
     // CASE 3: Only Parent Name provided — move to STEP_2_ANAMNESIS
     if (clinicIntake.data.parentName) {
+      if (skipConversationalTemplates || isConsultationV1) {
+        return { handled: false, reply: '', type: 'GREETING', leadData: clinicIntake.data };
+      }
       await persistSessionStep('STEP_2_ANAMNESIS', clinicIntake.data);
       const reply =
         `Halo ${clinicIntake.data.parentName}! Senang bisa berkenalan. 🙏\n\n` +
