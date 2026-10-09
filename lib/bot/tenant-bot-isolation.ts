@@ -482,8 +482,7 @@ export async function routeTenantInboundMessage(params: {
         `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
         `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
         `👉 *Daftar Sesi Konsultasi Nutrisi:* https://${checkoutDomain}\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${screeningUrl}\n` +
-        `atau bisa juga langsung ceritakan usia dan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
+        `Ayah/Bunda bisa langsung melengkapi form skrining resmi di atas atau ceritakan detail kendala makan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter.\n\n` +
         `_Ketik *5* atau *admin* untuk terhubung langsung dengan pendaftaran klinik._`;
 
       return {
@@ -525,7 +524,7 @@ export async function routeTenantInboundMessage(params: {
         `📅 *Jadwal Praktik:* Senin – Jumat: 08.00 – 11.30 WIB\n\n` +
         `📝 *Form Skrining Resmi:* ${screeningUrl}\n` +
         `👉 *Pesan Sesi Screening Tumbuh Kembang:* https://${checkoutDomain}\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${screeningUrl}\n\n` +
+        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil melalui form skrining resmi di atas sebelum sesi konsultasi dimulai.\n\n` +
         `_Ketik *5* atau *admin* untuk chat tim pendaftaran klinik._`;
 
       return {

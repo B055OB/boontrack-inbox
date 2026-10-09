@@ -431,10 +431,53 @@ export const CLINIC_FEEDING_COMPLAINT_REGEX =
   /(?:makan\s*lama|lama\s*makan|durasi\s*makan|makan\s*berjam-jam|makan\s*lambat|lambat\s*makan|mengemut|ngemut|diemut|dimut|food\s*pocketing|menahan\s*makanan|jadwal\s*(?:makan\s*)?berantakan|feeding\s*rules|aturan\s*makan|jam\s*makan(?:\s*berantakan)?|jadwal\s*(?:gak|tidak)\s*teratur|bb\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|serat)|berat\s*badan\s*(?:susah|sulit|seret|stuck|turun|tidak\s*naik|kurang|seret|stagnan)|gagal\s*tumbuh|weight\s*faltering|tekstur|sensitivitas|sensori|dilepeh|lepeh|melepeh|muntah|hoek|tersedak|gagging|trauma\s*(?:makan|tekstur)|tidak\s*mau\s*(?:nasi|makan|ngunyah)|gamau\s*(?:nasi|makan|ngunyah)|gak\s*mau\s*(?:nasi|makan|ngunyah)|gtm|gerakan\s*tutup\s*mulut|tutup\s*mulut|susah\s*makan|sulit\s*makan|nolak\s*makan|menolak\s*makan|mogok\s*makan|hanya\s*mau\s*susu|cuma\s*mau\s*susu|picky\s*eater|pilih[\s-]*pilih\s*makan|stunting|nutrisi|bicara|speech\s*delay|terlambat\s*bicara|belum\s*bisa\s*bicara|keterlambatan\s*bicara|motorik|terlambat\s*jalan|keterlambatan\s*motorik|tumbuh\s*kembang|perkembangan|evaluasi\s*perkembangan|tes\s*mandiri|skrining|screening)/i;
 
 /**
+ * Validates whether a candidate string is a plausible child name.
+ * Strictly prevents complaints, symptoms, adjectives, health conditions, or common words
+ * (e.g. seret, susah, gtm, stunting, kurus) from being misidentified as child names.
+ */
+export function isValidChildName(name?: string | null): boolean {
+  if (!name) return false;
+  const clean = name.trim().replace(/^['"()]+|['"()]+$/g, '').toLowerCase();
+  if (!clean || clean.length < 2 || clean.length > 30) return false;
+
+  // Exact non-name conversational words and pronouns
+  const NON_NAME_EXACT = new Set([
+    'si kecil', 'sikecil', 'anak', 'anakku', 'anaknya', 'pasien', 'bayi', 'balita',
+    'saya', 'aku', 'kami', 'kita', 'dia', 'ia',
+    'bunda', 'ayah', 'ibu', 'mama', 'papa', 'ortu', 'orang tua',
+    'dok', 'dokter', 'asisten', 'admin', 'kak', 'kakak', 'om', 'tante',
+    'halo', 'hai', 'selamat', 'pagi', 'siang', 'sore', 'malam',
+    'usia', 'umur', 'tahun', 'thn', 'th', 'bulan', 'bln', 'minggu', 'mgg', 'hari',
+    'keluhan', 'kondisi', 'gejala', 'masalah', 'kendala', 'catatan',
+    'bb', 'tb', 'pb', 'berat badan', 'tinggi badan',
+    'konsul', 'konsultasi', 'skrining', 'screening', 'jadwal',
+    'info', 'infonya', 'tanya', 'tolong', 'bantu', 'bantuan',
+  ]);
+
+  if (NON_NAME_EXACT.has(clean)) return false;
+
+  // Indonesian / medical feeding & triage stop words:
+  // Must NOT match complaint words, symptoms, or adjectives
+  const INVALID_WORDS_PATTERN =
+    /\b(seret|stuck|stagnan|turun|kurang|susah|sulit|gtm|stunting|stunted|kurus|gemuk|pendek|gagal|tumbuh|kembang|perkembangan|weight|faltering|makan|ngemut|mengemut|diemut|dimut|pocketing|lepeh|melepeh|dilepeh|muntah|hoek|tersedak|gagging|nolak|menolak|mogok|picky|eater|lahap|suap|tekstur|sensori|oromotor|sensitif|alergi|batuk|pilek|demam|panas|diare|mencret|sembelit|konstipasi|bicara|speech|delay|telat|terlambat|motorik|jalan|merangkak|bb|tb|pb|berat|badan|tinggi|jadwal|aturan|feeding|rules|mpasi|susu|asi|sufor|formula|nasi|usia|umur|tahun|thn|bulan|bln|anak|anakku|anaknya|bayi|balita|pasien|bunda|ayah|ibu|mama|papa|dok|dokter|halo|hai|selamat|keluhan|kondisi|gejala|masalah|kendala|skrining|screening|belum|sudah|masih|terus|lagi|sedang|sering|selalu|pilih|pilih-pilih)\b/i;
+
+  if (INVALID_WORDS_PATTERN.test(clean)) {
+    return false;
+  }
+
+  // Must only contain letters, spaces, hyphens, and apostrophes
+  if (!/^[a-zA-Z\s'-]+$/.test(clean)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Checks and extracts progressive clinic intake data (Slot-filling).
  * Extracts:
  * - Nama Orang Tua (graceful fallback to 'Ayah/Bunda')
- * - Nama & Usia Anak
+ * - Nama & Usia Anak (with strict filtering against symptoms/complaints)
  * - Keluhan / Kondisi Utama (GTM & non-GTM feeding issues)
  */
 export function extractClinicIntakeData(
@@ -453,23 +496,41 @@ export function extractClinicIntakeData(
     data.parentName = parentMatch[1].trim();
   }
 
-  // Natural parent prefix fallback (e.g. "Saya Bunda Sinta", "Bunda Dewi:")
-  if (!data.parentName) {
-    const naturalParent = /^(?:saya\s+)?(?:bunda|ayah|ibu|mama|papa)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\b/i.exec(cleanMsg);
-    if (naturalParent && !/^(halo|dok|dokter|selamat)$/i.test(naturalParent[1].trim())) {
-      data.parentName = naturalParent[0].trim();
+  // Natural parent prefix fallback (e.g. "Saya Bunda Sinta", "Bunda Dewi:", "Halo, saya Bunda Rina")
+  if (!data.parentName || data.parentName === 'Ayah/Bunda') {
+    const naturalParent =
+      /\b(bunda|ayah|ibu|mama|papa)\s+([A-Za-z]+)\b/i.exec(cleanMsg);
+    if (naturalParent) {
+      const pRole = naturalParent[1].trim();
+      const pName = naturalParent[2].trim();
+      if (!/^(halo|dok|dokter|selamat|anak|bayi|pasien|dan|yang|di|ke|dari)$/i.test(pName)) {
+        data.parentName = `${pRole.charAt(0).toUpperCase() + pRole.slice(1).toLowerCase()} ${pName}`;
+      }
     }
   }
 
   const childMatch = /(?:nama\s*(?:dan|&)?\s*usia\s*anak|nama\s*anak|data\s*anak|pasien\s*anak|anak|si\s*kecil)\s*[:=]\s*([^\n;]+)/i.exec(cleanMsg);
   if (childMatch) {
-    data.childInfo = childMatch[1].trim();
-    const ageMatch = /([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(childMatch[1]);
-    if (ageMatch) {
-      data.childAge = ageMatch[1].trim();
-      data.childName = childMatch[1].replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
-    } else {
-      data.childName = childMatch[1].trim();
+    const rawVal = childMatch[1].trim();
+    const ageMatch = /([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(rawVal);
+    const candidateAge = ageMatch ? ageMatch[1].trim() : undefined;
+    const candidateName = ageMatch ? rawVal.replace(ageMatch[0], '').replace(/[(),]/g, '').trim() : rawVal;
+
+    if (candidateName && isValidChildName(candidateName)) {
+      data.childName = candidateName;
+      data.childInfo = rawVal;
+    }
+    if (candidateAge) {
+      data.childAge = candidateAge;
+    }
+    if (!data.childInfo) {
+      if (data.childName && data.childAge) {
+        data.childInfo = `${data.childName} (${data.childAge})`;
+      } else if (data.childName) {
+        data.childInfo = data.childName;
+      } else if (data.childAge) {
+        data.childInfo = `Si Kecil (${data.childAge})`;
+      }
     }
   }
 
@@ -489,15 +550,26 @@ export function extractClinicIntakeData(
       if (parsed) {
         const num = parsed[1];
         const val = parsed[2].trim();
-        if (num === '1' && !data.parentName) data.parentName = val;
+        if (num === '1' && (!data.parentName || data.parentName === 'Ayah/Bunda')) data.parentName = val;
         if (num === '2' && !data.childInfo) {
-          data.childInfo = val;
           const ageMatch = /([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(val);
-          if (ageMatch) {
-            data.childAge = ageMatch[1].trim();
-            data.childName = val.replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
-          } else {
-            data.childName = val;
+          const candidateAge = ageMatch ? ageMatch[1].trim() : undefined;
+          const candidateName = ageMatch ? val.replace(ageMatch[0], '').replace(/[(),]/g, '').trim() : val;
+          if (candidateName && isValidChildName(candidateName)) {
+            data.childName = candidateName;
+            data.childInfo = val;
+          }
+          if (candidateAge) {
+            data.childAge = candidateAge;
+          }
+          if (!data.childInfo) {
+            if (data.childName && data.childAge) {
+              data.childInfo = `${data.childName} (${data.childAge})`;
+            } else if (data.childName) {
+              data.childInfo = data.childName;
+            } else if (data.childAge) {
+              data.childInfo = `Si Kecil (${data.childAge})`;
+            }
           }
         }
         if (num === '3' && !data.complaint) data.complaint = val;
@@ -508,12 +580,12 @@ export function extractClinicIntakeData(
   // 3. Natural Language extraction for Child Name & Age if not set via key-value or list
   if (!data.childInfo && !data.childName) {
     const naturalChildPattern =
-      /(?:(?:anak\s*(?:saya)?|si\s*kecil|pasien)\s*(?:namanya\s*)?([A-Za-z]+(?:\s+[A-Za-z]+)?)|([A-Z][a-z]+))\s*[,]?\s*(?:usia|umur)?\s*([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(cleanMsg);
+      /(?:(?:anak\s*(?:saya)?|si\s*kecil|pasien)\s*(?:namanya\s*)?(?!usia\b|umur\b)([A-Za-z]+(?:\s+[A-Za-z]+)?)|([A-Z][a-z]+))\s*[,]?\s*(?:usia|umur)?\s*([0-9]+(?:[.,][0-9]+)?\s*(?:tahun|thn|th|bulan|bln|mgg|minggu))/i.exec(cleanMsg);
 
     if (naturalChildPattern) {
       const parsedName = (naturalChildPattern[1] || naturalChildPattern[2] || '').trim();
       const parsedAge = naturalChildPattern[3]?.trim();
-      if (parsedName && !/^(halo|hai|dok|dokter|selamat|bunda|ayah|ibu)$/i.test(parsedName)) {
+      if (parsedName && isValidChildName(parsedName)) {
         data.childName = parsedName;
       }
       if (parsedAge) {
@@ -531,6 +603,21 @@ export function extractClinicIntakeData(
       if (ageOnly) {
         data.childAge = ageOnly[1].trim();
         data.childInfo = `Si Kecil (${data.childAge})`;
+      }
+    }
+  }
+
+  // Fallback natural child name only (e.g. "Anak saya namanya Arka")
+  if (!data.childName) {
+    const naturalNameOnly =
+      /(?:anak\s*(?:saya)?|si\s*kecil|pasien)\s*(?:namanya\s+)([A-Za-z]+(?:\s+[A-Za-z]+)?)\b/i.exec(cleanMsg);
+    if (naturalNameOnly) {
+      const candidate = naturalNameOnly[1].trim();
+      if (isValidChildName(candidate)) {
+        data.childName = candidate;
+        if (!data.childInfo) {
+          data.childInfo = data.childAge ? `${data.childName} (${data.childAge})` : data.childName;
+        }
       }
     }
   }
@@ -607,6 +694,17 @@ export function extractClinicIntakeData(
     }
     if (!data.complaint) {
       data.complaint = 'Konsultasi masalah makan, feeding rules & tumbuh kembang anak';
+    }
+  }
+
+  // Safety sanitization guard: ensure invalid words never persist as childName or childInfo prefix
+  if (data.childName && !isValidChildName(data.childName)) {
+    delete data.childName;
+  }
+  if (data.childInfo) {
+    const rawInfoPrefix = data.childInfo.split(/[(,]/)[0].trim();
+    if (rawInfoPrefix && !isValidChildName(rawInfoPrefix) && rawInfoPrefix.toLowerCase() !== 'si kecil') {
+      data.childInfo = data.childAge ? `Si Kecil (${data.childAge})` : 'Si Kecil';
     }
   }
 
@@ -1015,38 +1113,56 @@ export async function processConsultationLeadFunnel(
 
     // STEP 2 & STEP 3: Intake, Anamnesis Singkat, & Skrining Awal
     if (clinicIntake.isComplete || clinicIntake.data.complaint || clinicIntake.data.childInfo || clinicIntake.data.childName) {
-      let validationNote = '';
+      const parentDisplayName = clinicIntake.data.parentName || 'Ayah/Bunda';
+      const validChildName =
+        clinicIntake.data.childName && isValidChildName(clinicIntake.data.childName)
+          ? clinicIntake.data.childName
+          : undefined;
+
+      const childContext = validChildName
+        ? (clinicIntake.data.childAge ? `pada ${validChildName} di usia ${clinicIntake.data.childAge}` : `pada ${validChildName}`)
+        : (clinicIntake.data.childAge ? `di usia ${clinicIntake.data.childAge}` : 'pada si kecil');
+
+      let validationSentence = '';
       const complaintLower = (clinicIntake.data.complaint || normalizedMsg).toLowerCase();
-      if (complaintLower.includes('ngemut') || complaintLower.includes('emut') || complaintLower.includes('makan lama') || complaintLower.includes('durasi')) {
-        validationNote = 'Kebiasaan makan lama dan mengemut makanan sering kali berkaitan dengan stimulasi oromotor, teknik menelan, maupun pembiasaan fokus saat jam makan.';
+
+      if (complaintLower.includes('bb') || complaintLower.includes('berat')) {
+        if (complaintLower.includes('pilih') || complaintLower.includes('picky') || complaintLower.includes('gtm') || complaintLower.includes('lepeh') || complaintLower.includes('makan') || complaintLower.includes('ngemut')) {
+          validationSentence = `Masalah BB seret dan pilih-pilih makan ${childContext} memang perlu evaluasi teliti terkait jadwal makan dan asupan nutrisinya.`;
+        } else {
+          validationSentence = `Masalah kenaikan BB yang seret atau stuck ${childContext} memang perlu evaluasi teliti terkait jadwal makan dan asupan nutrisinya.`;
+        }
+      } else if (complaintLower.includes('seret') || complaintLower.includes('stuck') || complaintLower.includes('susah naik')) {
+        validationSentence = `Masalah BB seret dan susah makan ${childContext} memang perlu evaluasi teliti terkait jadwal makan dan asupan nutrisinya.`;
+      } else if (complaintLower.includes('ngemut') || complaintLower.includes('emut') || complaintLower.includes('makan lama') || complaintLower.includes('durasi') || complaintLower.includes('lepeh')) {
+        validationSentence = `Masalah makan lama dan mengemut makanan ${childContext} memang perlu evaluasi teliti terkait jadwal makan dan stimulasi oromotornya.`;
       } else if (complaintLower.includes('jadwal') || complaintLower.includes('feeding rules') || complaintLower.includes('jam makan')) {
-        validationNote = 'Jadwal makan yang belum teratur dapat memengaruhi sinyal lapar alami si kecil, sehingga konsistensi jadwal (feeding rules) sangat penting untuk dibentuk secara bertahap.';
-      } else if (complaintLower.includes('bb') || complaintLower.includes('berat badan') || complaintLower.includes('stuck') || complaintLower.includes('seret') || complaintLower.includes('susah naik')) {
-        validationNote = 'Kenaikan berat badan yang seret atau stuck memerlukan evaluasi cermat terhadap kurva pertumbuhan WHO, asupan kalori efektif, dan penyerapan nutrisi si kecil.';
-      } else if (complaintLower.includes('tekstur') || complaintLower.includes('lepeh') || complaintLower.includes('muntah') || complaintLower.includes('sensitivitas')) {
-        validationNote = 'Sensitivitas tekstur atau refleks melepeh makanan bertekstur erat kaitannya dengan adaptasi sensori mulut dan tahapan kenaikan tekstur MPASI.';
+        validationSentence = `Masalah jadwal makan dan feeding rules ${childContext} memang perlu evaluasi teliti terkait pembentukan sinyal lapar dan pola makannya.`;
+      } else if (complaintLower.includes('gtm') || complaintLower.includes('susah makan') || complaintLower.includes('nolak') || complaintLower.includes('mogok') || complaintLower.includes('picky')) {
+        validationSentence = `Masalah GTM dan susah makan ${childContext} memang perlu evaluasi teliti terkait feeding rules dan variasi nutrisinya.`;
       } else if (complaintLower.includes('bicara') || complaintLower.includes('speech delay') || complaintLower.includes('ngomong') || complaintLower.includes('bahasa')) {
-        validationNote = 'Deteksi dini keterlambatan bicara (speech delay) dan evaluasi perkembangan komunikasi dua arah sangat penting dilakukan pada periode emas anak.';
+        validationSentence = `Kendala keterlambatan bicara ${childContext} memang perlu evaluasi teliti terkait stimulasi dan tahapan perkembangannya.`;
       } else if (complaintLower.includes('motorik') || complaintLower.includes('jalan') || complaintLower.includes('merangkak')) {
-        validationNote = 'Pemantauan tahapan milestone motorik kasar dan halus memastikan koordinasi gerak fisik si kecil berkembang optimal sesuai usianya.';
-      } else if (complaintLower.includes('tumbuh kembang') || complaintLower.includes('perkembangan') || complaintLower.includes('evaluasi') || complaintLower.includes('tes mandiri') || complaintLower.includes('skrining') || complaintLower.includes('screening')) {
-        validationNote = 'Evaluasi awal perkembangan anak secara berkala membantu orang tua mendeteksi potensi keterlambatan milestone sejak dini.';
+        validationSentence = `Kendala perkembangan motorik ${childContext} memang perlu evaluasi teliti terkait koordinasi gerak fisik dan stimulasinya.`;
       } else {
-        validationNote = 'Tantangan tumbuh kembang dan pola makan pada anak memerlukan penelusuran akar masalah secara menyeluruh dan suportif tanpa paksaan.';
+        validationSentence = `Kendala tumbuh kembang dan pola makan ${childContext} memang perlu evaluasi teliti terkait jadwal makan dan asupan nutrisinya.`;
       }
 
-      const parentDisplayName = clinicIntake.data.parentName || 'Ayah/Bunda';
-      const childDisplayName = clinicIntake.data.childName || (clinicIntake.data.childInfo ? clinicIntake.data.childInfo.split(/[(,]/)[0].trim() : 'si kecil');
+      const doctorTarget =
+        clinicDoctorLabel && !clinicDoctorLabel.startsWith('Tim Dokter')
+          ? `${clinicDoctorLabel} & tim dokter kami`
+          : 'tim dokter kami';
+
+      const closingCheer =
+        parentDisplayName.toLowerCase().startsWith('ayah') && !parentDisplayName.toLowerCase().includes('bunda')
+          ? 'Tetap semangat ya Yah! 😊'
+          : 'Tetap semangat ya Bun! 😊';
 
       const screeningOfferReply =
-        `Halo ${parentDisplayName}! Terima kasih banyak sudah menceritakan kondisi ${childDisplayName} kepada kami. 🙏\n\n` +
-        `Kami sangat memahami rasa lelah dan kekhawatiran Ayah/Bunda menghadapi kendala ini: *${clinicIntake.data.complaint || 'masalah tumbuh kembang & nutrisi si kecil'}*. ${validationNote}\n\n` +
-        `Kondisi tumbuh kembang dan pola makan anak perlu kita lihat secara menyeluruh—mulai dari evaluasi milestone perkembangan, penerapan feeding rules, kenyamanan sensori & oromotor, hingga kecukupan nutrisi dan kurva pertumbuhannya.\n\n` +
-        `Agar ${clinicDoctorLabel} mendapatkan gambaran lengkap riwayat perkembangan ${childDisplayName} sebelum menentukan jadwal sesi konsultasi, mohon bantu melengkapi form skrining singkat resmi berikut:\n\n` +
-        `👉 *Link Skrining Resmi:*\n` +
-        `${clinicScreeningUrl}\n\n` +
-        `Setelah form skrining terisi, data akan langsung dipelajari oleh ${clinicDoctorLabel}, dan tim asisten klinik akan segera mengonfirmasi jadwal sesi konsultasi yang paling tepat untuk ${childDisplayName}.\n\n` +
-        `Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: ${clinicScreeningUrl} atau bisa juga langsung ceritakan usia dan detail kendala makan/perkembangan si kecil di sini ya, biar tim kami bantu rangkumkan untuk Tim Dokter. Tetap semangat ya Bun/Yah, kita dampingi bersama-sama! 😊`;
+        `Terima kasih infonya ${parentDisplayName}. ${validationSentence}\n\n` +
+        `Agar ${doctorTarget} mendapatkan gambaran lengkap sebelum jadwal konsultasi, mohon bantu isi form skrining singkat berikut ya:\n` +
+        `👉 ${clinicScreeningUrl}\n\n` +
+        `Setelah diisi, tim kami akan segera bantu jadwalkan sesi konsultasinya. ${closingCheer}`;
 
       return {
         handled: true,

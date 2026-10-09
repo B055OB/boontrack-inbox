@@ -346,7 +346,7 @@ describe('BoonPilot Pediatric Child Development & Nutrition Triage Bot Specifica
       expect(result.reply).toContain(CLINIC_OFFICIAL_SCREENING_URL);
     });
 
-    it('Step 3 (Skrining Awal): Directs parent to official screening form', async () => {
+    it('Step 3 (Skrining Awal): Directs parent to official screening form (concise, single link)', async () => {
       const result = await processConsultationLeadFunnel({
         tenant: mockDynamicClinicTenant,
         tenantSlug: mockDynamicClinicTenant.slug,
@@ -357,7 +357,9 @@ describe('BoonPilot Pediatric Child Development & Nutrition Triage Bot Specifica
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain(CLINIC_OFFICIAL_SCREENING_URL);
-      expect(result.reply).toContain('evaluasi awal perkembangan');
+      expect(result.reply).toContain('jadwal konsultasi');
+      const screeningMatches = result.reply.match(new RegExp(CLINIC_OFFICIAL_SCREENING_URL, 'g'));
+      expect(screeningMatches?.length).toBe(1);
     });
 
     it('Step 4 (Solusi & Closing): Offers locked product with flexible payment (dynamic account)', async () => {

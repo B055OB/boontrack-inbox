@@ -120,6 +120,26 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.data.parentName).toBe('Bunda Maya');
       expect(result.data.childInfo).toBeUndefined();
     });
+
+    it('does NOT extract complaint words (seret, susah, gtm, stunting) as child name', () => {
+      const msg1 = 'Halo dokter, anak saya bb seret, usia 2 tahun';
+      const res1 = extractClinicIntakeData(msg1);
+      expect(res1.data.childName).toBeUndefined();
+      expect(res1.data.childAge).toBe('2 tahun');
+      expect(res1.data.childInfo).toBe('Si Kecil (2 tahun)');
+
+      const msg2 = 'anak saya seret dan gtm susah makan usia 18 bulan';
+      const res2 = extractClinicIntakeData(msg2);
+      expect(res2.data.childName).toBeUndefined();
+      expect(res2.data.childAge).toBe('18 bulan');
+      expect(res2.data.childInfo).toBe('Si Kecil (18 bulan)');
+
+      const msg3 = 'anak saya stunting usia 2 tahun';
+      const res3 = extractClinicIntakeData(msg3);
+      expect(res3.data.childName).toBeUndefined();
+      expect(res3.data.childAge).toBe('2 tahun');
+      expect(res3.data.childInfo).toBe('Si Kecil (2 tahun)');
+    });
   });
 
   describe('3. Consultation Lead Funnel Processing', () => {
@@ -169,9 +189,11 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.reply).toContain('Arka');
       expect(result.reply).toContain('dr. Harys Maulana, Sp.A');
       expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('biar tim kami bantu rangkumkan untuk Tim Dokter');
-      expect(result.reply).toContain('secara menyeluruh');
+      // Screening link must appear exactly once
+      const screeningMatches1 = result.reply.match(/https:\/\/screening\.littlebitefeeding\.com\//g);
+      expect(screeningMatches1?.length).toBe(1);
+      expect(result.reply).toContain('jadwal konsultasi');
+      expect(result.reply).toContain('Tetap semangat');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
       expect(result.checkoutUrl).toBe('https://screening.littlebitefeeding.com/');
@@ -188,7 +210,9 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
+      const screeningMatches2 = result.reply.match(/https:\/\/screening\.littlebitefeeding\.com\//g);
+      expect(screeningMatches2?.length).toBe(1);
+      expect(result.reply).toContain('form skrining singkat');
       expect(result.reply).not.toContain('INVOICE');
       expect(result.reply).not.toContain('Rp 150.000');
     });
@@ -204,8 +228,31 @@ describe('Klinik Tumbuh Kembang Anak (dr. Harys) - GTM Consultation Bot & Hybrid
       expect(result.handled).toBe(true);
       expect(result.type).toBe('SCREENING_OFFER');
       expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
-      expect(result.reply).toContain('Ayah/Bunda bisa melakukan evaluasi awal perkembangan si kecil secara mandiri melalui form skrining resmi kami di sini ya: https://screening.littlebitefeeding.com/');
+      const screeningMatches3 = result.reply.match(/https:\/\/screening\.littlebitefeeding\.com\//g);
+      expect(screeningMatches3?.length).toBe(1);
       expect(result.checkoutUrl).toBe('https://screening.littlebitefeeding.com/');
+    });
+
+    it('generates concise Step 3 response (max 3-4 sentences) without duplicate link or "kondisi seret"', async () => {
+      const result = await processConsultationLeadFunnel({
+        tenant: mockClinicTenant,
+        tenantSlug: 'tumbuh-kembang-anak',
+        message: 'Halo dokter, anak saya BB seret dan pilih-pilih makan usia 2 tahun',
+        senderPhone: `628999900${Date.now().toString().slice(-4)}9`,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.type).toBe('SCREENING_OFFER');
+      expect(result.reply).not.toContain('kondisi seret');
+      expect(result.reply).not.toContain('untuk seret');
+      expect(result.reply).toContain('Terima kasih infonya');
+      expect(result.reply).toContain('https://screening.littlebitefeeding.com/');
+      // Screening link must appear exactly once
+      const linkCount = (result.reply.match(/https:\/\/screening\.littlebitefeeding\.com\//g) || []).length;
+      expect(linkCount).toBe(1);
+      // Exactly 3 short paragraphs
+      const paragraphs = result.reply.trim().split('\n\n');
+      expect(paragraphs.length).toBe(3);
     });
 
     it('dispatches Hybrid Checkout QRIS when user explicitly asks for payment / invoice', async () => {
