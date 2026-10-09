@@ -4901,3 +4901,47 @@ Pelacakan referral bekerja tanpa hambatan antar-subdomain melalui koordinasi edg
   - Dashboard mitra **tidak menampilkan** tab atau link promosi `studio.boontrack.com?ref=` saat ini.
   - UI 100% mempertahankan fokus pada promosi toko `shop.boontrack.com`.
   - Generator link Studio baru akan diaktifkan di antarmuka mitra setelah modul self-serve checkout token video render beroperasi stabil di produksi.
+
+---
+
+## 57. STUDIO ADMINISTRATION, PRICING SSOT & TRANSACTION PIPELINE
+
+### 57.1 Single Source of Truth (SSOT) Paket Harga Studio (`lib/config/studio-pricing.ts`)
+Seluruh komponen UI Studio (modal paywall, tombol top-up) dan backend endpoint wajib merujuk ke SSOT ini:
+1. **Paket Starter (`starter`)**:
+   - Nominal: Rp 49.000 (One-time QRIS / VA)
+   - Kuota: 25 Render Credits Video Full HD 1080p
+   - Tipe Billing: `ONE_TIME`
+2. **Paket Creator (`creator`)** - *Recommended*:
+   - Nominal: Rp 99.000 (One-time QRIS / VA)
+   - Kuota: 50 Render Credits Video Full HD 1080p
+   - Fitur Unggulan: Antrean Render FFmpeg Prioritas
+   - Tipe Billing: `ONE_TIME`
+3. **Paket Langganan Studio Pro (`pro_monthly`)**:
+   - Nominal: Rp 149.000 / bulan
+   - Kuota: 100 Render Credits Video Full HD per bulan
+   - Fitur Unggulan: Antrean prioritas, Cloud storage, Clean commercial metadata
+   - Tipe Billing: `SUBSCRIPTION`
+
+### 57.2 Gateway Checkout Invoice Xendit (`/api/studio/billing/create-invoice`)
+- Endpoint POST mandiri untuk menerbitkan Invoice resmi Xendit (QRIS dinamis, Virtual Account, E-Wallet).
+- **Format External ID**: `TOPUP-STUDIO-{tenantSlug}-{credits}-{timestamp}` (memastikan resolusi otomatis pada Webhook).
+- **Zero Hardcoding**: Validasi tenant dilakukan langsung ke tabel `tenants` di Supabase. Menolak tenant yang tidak terdaftar (HTTP 404).
+- **Paywall UX**: `StudioPaywallModal.tsx` secara langsung memanggil endpoint ini dan me-redirect browser user ke `invoice_url` resmi Xendit tanpa alur manual WhatsApp.
+
+### 57.3 Pipa Webhook Pembayaran Otomatis (`lib/payment-webhook-service.ts`)
+- **Deteksi Order Token**: Setiap callback pembayaran dengan `order_id` atau `external_id` berawalan `TOPUP-STUDIO-` dideteksi sebagai transaksi token Studio.
+- **Bypass E-commerce Orders**: Menghindari lookup ke tabel `orders` produk fisik/digital toko.
+- **Status PAID / SETTLED**:
+  1. Menambah kuota render di `tenant_entitlements.credits_remaining`.
+  2. Mencatat mutasi audit di `tenant_credit_ledger` (`action: 'TOPUP'`).
+  3. Memanggil `recordStudioTokenCommission()` untuk membukukan komisi ke tabel `affiliate_commissions` (`product_type: 'STUDIO'`) dan mengirimkan notifikasi email ke mitra rekruter serta AM.
+- **Status Unpaid / Pending**: Melewati penambahan kredit dan mengembalikan respons HTTP 200 idempotent.
+
+### 57.4 Alur Registrasi & Aktivasi Studio Terpadu (`lib/studio/auth.ts`)
+Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
+1. **Aktivasi Tenant**: `tenants.is_active` diubah menjadi `true`.
+2. **Sinkronisasi Entitlements**: Row `tenant_entitlements` dibuat/di-upsert dengan `credits_remaining = 1, tier = 'free_trial'`.
+3. **Pencatatan Audit Ledger**: Audit log perdana dicatat di `tenant_credit_ledger` (`action: 'TRIAL_GRANT'`, `amount = 1`, `description = 'Aktivasi akun Studio - 1 Kredit Render Gratis'`).
+4. **Pemicu Notifikasi Afiliasi**: Jika tenant memiliki referral code atau terikat mitra, memicu `sendNewStoreReferralNotification` untuk memberitahu mitra rekruter dan Affiliate Manager.
+

@@ -8,8 +8,14 @@ import {
   Crown,
   QrCode,
   ArrowRight,
-  Flame
+  Flame,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import {
+  STUDIO_TOKEN_PACKAGES,
+  StudioPackageId,
+} from '@/lib/config/studio-pricing';
 
 interface StudioPaywallModalProps {
   isOpen: boolean;
@@ -24,31 +30,54 @@ export default function StudioPaywallModal({
   tenantSlug = 'studio',
   currentCredits = 0,
 }: StudioPaywallModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'creator' | 'pro'>('creator');
+  const [selectedPlan, setSelectedPlan] = useState<StudioPackageId>('creator');
+  const [loadingPlan, setLoadingPlan] = useState<StudioPackageId | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !loadingPlan) onClose();
     };
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, loadingPlan]);
 
   if (!isOpen) return null;
 
-  const handleCheckout = (planKey: 'starter' | 'creator' | 'pro') => {
-    const waNumber = '6285181830080';
-    let planName = 'Top-Up 50 Video (Paket Creator - Rp99.000)';
-    if (planKey === 'starter') planName = 'Top-Up 25 Video (Paket Starter - Rp49.000)';
-    if (planKey === 'pro') planName = 'Langganan Studio Pro Bulanan (Rp149.000/bln)';
+  const starterPkg = STUDIO_TOKEN_PACKAGES.starter;
+  const creatorPkg = STUDIO_TOKEN_PACKAGES.creator;
+  const proPkg = STUDIO_TOKEN_PACKAGES.pro_monthly;
 
-    const message = `Halo Admin BoonTrack Studio! Saya ingin checkout ${planName} untuk workspace ${tenantSlug}. Mohon QRIS pembayarannya.`;
-    const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+  const handleCheckout = async (planKey: StudioPackageId) => {
+    setLoadingPlan(planKey);
+    setErrorMessage(null);
 
-    window.open(waLink, '_blank');
+    try {
+      const res = await fetch('/api/studio/billing/create-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packageId: planKey,
+          tenantSlug,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.invoice_url) {
+        throw new Error(data.error || 'Gagal menerbitkan invoice pembayaran. Silakan coba lagi.');
+      }
+
+      // Redirect langsung ke URL checkout invoice Xendit resmi
+      window.location.href = data.invoice_url;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke payment gateway.';
+      setErrorMessage(msg);
+      setLoadingPlan(null);
+    }
   };
 
   return (
@@ -61,7 +90,8 @@ export default function StudioPaywallModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+          disabled={loadingPlan !== null}
+          className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           title="Tutup"
         >
           <X className="w-5 h-5" />
@@ -71,16 +101,24 @@ export default function StudioPaywallModal({
         <div className="space-y-2 text-center sm:text-left pr-8">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-[10px] font-black uppercase tracking-wider">
             <Zap className="w-3.5 h-3.5" />
-            <span>Kredit Render Habis / Upgrade Studio</span>
+            <span>Kredit Render: {currentCredits} Sisa / Upgrade Studio</span>
           </div>
 
           <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            Kredit Render Habis / Upgrade Studio
+            Top-Up Kredit Render Video Studio
           </h2>
           <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-            Pilih paket kredit fleksibel atau berlangganan Studio Pro untuk render video HD tanpa batas.
+            Pilih paket kredit fleksibel via QRIS instan atau berlangganan Studio Pro untuk render video HD tanpa batas.
           </p>
         </div>
+
+        {/* Error Alert Banner */}
+        {errorMessage && (
+          <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs animate-in fade-in">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" />
+            <span className="leading-relaxed">{errorMessage}</span>
+          </div>
+        )}
 
         {/* Modal Body: 2 Purchase Options */}
         <div className="space-y-4">
@@ -89,7 +127,7 @@ export default function StudioPaywallModal({
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-slate-300 flex items-center gap-1.5">
                 <QrCode className="w-3.5 h-3.5 text-violet-400" />
-                <span>Opsi A: Top-Up Instan (Sekali Beli via QRIS)</span>
+                <span>Opsi A: Top-Up Instan (Sekali Beli via QRIS / VA)</span>
               </span>
               <span className="text-[10px] text-slate-500 font-mono">Tanpa Langganan Otomatis</span>
             </div>
@@ -105,38 +143,46 @@ export default function StudioPaywallModal({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">Paket Starter</span>
+                  <span className="text-xs font-bold text-white">{starterPkg.name}</span>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
-                    25 Video HD
+                    {starterPkg.credits} Video HD
                   </span>
                 </div>
 
                 <div>
-                  <div className="text-xl font-black text-white">Rp49.000</div>
-                  <p className="text-[10px] text-slate-400">Sekali beli via QRIS • No Watermark</p>
+                  <div className="text-xl font-black text-white">{starterPkg.formattedPrice}</div>
+                  <p className="text-[10px] text-slate-400">{starterPkg.description}</p>
                 </div>
 
                 <ul className="text-[11px] text-slate-300 space-y-1">
-                  <li className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    <span>25 Render Credits Siap Pakai</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    <span>Resolusi 1080p Full HD</span>
-                  </li>
+                  {starterPkg.features.map((feature, idx) => (
+                    <li key={idx} className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
                 </ul>
 
                 <button
                   type="button"
+                  disabled={loadingPlan !== null}
                   onClick={e => {
                     e.stopPropagation();
                     handleCheckout('starter');
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span>Beli Paket Kredit</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  {loadingPlan === 'starter' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyiapkan Invoice...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Beli Paket Starter</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -150,44 +196,54 @@ export default function StudioPaywallModal({
                 }`}
               >
                 {/* Popular Badge */}
-                <div className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
-                  <Flame className="w-2.5 h-2.5" />
-                  <span>Paling Hemat</span>
-                </div>
+                {creatorPkg.badge && (
+                  <div className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
+                    <Flame className="w-2.5 h-2.5" />
+                    <span>{creatorPkg.badge}</span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">Paket Creator</span>
+                  <span className="text-xs font-bold text-white">{creatorPkg.name}</span>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300">
-                    50 Video HD
+                    {creatorPkg.credits} Video HD
                   </span>
                 </div>
 
                 <div>
-                  <div className="text-xl font-black text-white">Rp99.000</div>
-                  <p className="text-[10px] text-slate-400">Sekali beli via QRIS • No Watermark</p>
+                  <div className="text-xl font-black text-white">{creatorPkg.formattedPrice}</div>
+                  <p className="text-[10px] text-slate-400">{creatorPkg.description}</p>
                 </div>
 
                 <ul className="text-[11px] text-slate-300 space-y-1">
-                  <li className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    <span>50 Render Credits Siap Pakai</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    <span>Antrean Render FFmpeg Prioritas</span>
-                  </li>
+                  {creatorPkg.features.map((feature, idx) => (
+                    <li key={idx} className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
                 </ul>
 
                 <button
                   type="button"
+                  disabled={loadingPlan !== null}
                   onClick={e => {
                     e.stopPropagation();
                     handleCheckout('creator');
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-violet-600/30 cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-violet-600/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span>Beli Paket Kredit</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  {loadingPlan === 'creator' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyiapkan Invoice...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Beli Paket Creator</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -204,9 +260,9 @@ export default function StudioPaywallModal({
             </div>
 
             <div
-              onClick={() => setSelectedPlan('pro')}
+              onClick={() => setSelectedPlan('pro_monthly')}
               className={`p-5 rounded-2xl border transition cursor-pointer relative space-y-4 ${
-                selectedPlan === 'pro'
+                selectedPlan === 'pro_monthly'
                   ? 'bg-gradient-to-r from-violet-950/50 via-purple-950/40 to-slate-900 border-violet-400 shadow-xl shadow-violet-500/15'
                   : 'bg-white/[0.02] border-white/10 hover:border-white/20'
               }`}
@@ -214,52 +270,52 @@ export default function StudioPaywallModal({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-white">Langganan Studio Pro</span>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
-                      PRO PLAN
-                    </span>
+                    <span className="text-sm font-extrabold text-white">{proPkg.name}</span>
+                    {proPkg.badge && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
+                        {proPkg.badge}
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    Solusi lengkap untuk brand, merchant & kreator aktif
+                    {proPkg.description}
                   </p>
                 </div>
 
                 <div className="text-left sm:text-right">
                   <div className="text-2xl font-black text-white">
-                    Rp149.000 <span className="text-xs font-normal text-slate-400">/ bulan</span>
+                    {proPkg.formattedPrice} <span className="text-xs font-normal text-slate-400">{proPkg.periodLabel}</span>
                   </div>
                 </div>
               </div>
 
-              {/* 4 Fitur Utama Checklist */}
+              {/* Fitur Utama Checklist */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-200 pt-1 border-t border-white/5">
-                <div className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>50 Video 1080p Full HD per bulan</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>Antrean prioritas render FFmpeg</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>Penyimpanan cloud prioritas</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>Komersial clean metadata (is_aigc: 1)</span>
-                </div>
+                {proPkg.features.map((feature, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
               </div>
 
               <button
                 type="button"
+                disabled={loadingPlan !== null}
                 onClick={e => {
                   e.stopPropagation();
-                  handleCheckout('pro');
+                  handleCheckout('pro_monthly');
                 }}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Langganan Studio Pro ➔</span>
+                {loadingPlan === 'pro_monthly' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Menyiapkan Invoice Xendit...</span>
+                  </>
+                ) : (
+                  <span>Langganan Studio Pro ➔</span>
+                )}
               </button>
             </div>
           </div>
@@ -270,7 +326,8 @@ export default function StudioPaywallModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-slate-400 hover:text-white transition font-medium cursor-pointer"
+            disabled={loadingPlan !== null}
+            className="text-xs text-slate-400 hover:text-white transition font-medium cursor-pointer disabled:opacity-40"
           >
             Batal / Kembali ke Workspace
           </button>

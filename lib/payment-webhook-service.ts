@@ -462,6 +462,130 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     return NextResponse.json(skippedRes, { status: 200 });
   }
 
+  // ── SPECIAL HANDLER: STUDIO TOKEN TOP-UP (order_id / external_id starting with TOPUP-STUDIO-) ──
+  const potentialTokenOrderId = String(
+    rawBody.order_id ||
+    rawBody.external_id ||
+    rawBody.id ||
+    rawBody.invoice_id ||
+    rawBody.reference_id ||
+    rawBody.bill_no ||
+    directOrderId ||
+    searchParams.get('order_id') ||
+    ''
+  ).trim();
+
+  const isStudioTokenOrder =
+    potentialTokenOrderId.toUpperCase().startsWith('TOPUP-STUDIO-') ||
+    potentialTokenOrderId.toUpperCase().startsWith('TOPUP_STUDIO_');
+
+  if (isStudioTokenOrder && isDirectPaid) {
+    console.log(`[Webhook Reader ${logId}] Studio token payment detected for order #${potentialTokenOrderId}. Processing credit top-up...`);
+
+    const tokenTxId = String(
+      rawBody.external_id ||
+      rawBody.invoice_id ||
+      rawBody.id ||
+      potentialTokenOrderId
+    );
+
+    const tokenAmountPaid = explicitAmount > 0
+      ? explicitAmount
+      : (parsedAmount || Number(rawBody.amount || rawBody.gross_amount || rawBody.paid_amount || rawBody.total || 0));
+
+    // Resolve tenant slug & credits count
+    let studioTenantSlug = tenantSlug || rawBody.tenant_slug || rawBody.tenantSlug || rawBody.metadata?.tenant_slug || null;
+    let studioCredits = Number(rawBody.credits || rawBody.metadata?.credits || rawBody.token_count || 0);
+
+    if (!studioTenantSlug || !studioCredits) {
+      // Regex parsing: TOPUP-STUDIO-{tenantSlug}-{credits}-{timestamp}
+      const match = potentialTokenOrderId.match(/^TOPUP[-_]STUDIO[-_](.+)[-_](\d+)[-_](\d+)$/i);
+      if (match) {
+        if (!studioTenantSlug) studioTenantSlug = match[1];
+        if (!studioCredits) studioCredits = Number(match[2]);
+      }
+    }
+
+    const studioAffiliateCode =
+      rawBody.affiliate_code ||
+      rawBody.affiliateCode ||
+      rawBody.metadata?.affiliate_code ||
+      rawBody.metadata?.ref ||
+      null;
+
+    const { StudioCreditService } = await import('@/lib/services/studio-credit.service');
+    const topupResult = await StudioCreditService.topUpCredits({
+      tenantIdOrSlug: studioTenantSlug || 'studio',
+      credits: studioCredits || 50,
+      amountPaid: tokenAmountPaid,
+      transactionId: tokenTxId,
+      paymentStatus: 'PAID',
+      affiliateCode: studioAffiliateCode,
+      paymentChannel: detectedApp || rawBody.payment_channel || rawBody.payment_method || 'XENDIT',
+    });
+
+    const tokenResponse = {
+      success: topupResult.success,
+      message: topupResult.success
+        ? `Studio token top-up for order #${potentialTokenOrderId} successfully processed (+${studioCredits} credits).`
+        : `Studio token top-up error: ${topupResult.message}`,
+      order_id: potentialTokenOrderId,
+      tenant_slug: studioTenantSlug,
+      credits_added: studioCredits,
+      new_balance: topupResult.newBalance,
+      commission_recorded: topupResult.commissionRecorded,
+      commission_amount: topupResult.commissionAmount,
+      log_id: logId,
+    };
+
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount: tokenAmountPaid,
+      detectedApp,
+      tenantSlug: studioTenantSlug,
+      matchedOrderId: potentialTokenOrderId,
+      matchStrategy: 'studio_token_topup',
+      resultStatus: topupResult.success ? 200 : 400,
+      resultBody: tokenResponse,
+    });
+
+    return NextResponse.json(tokenResponse, {
+      status: topupResult.success ? 200 : 400,
+    });
+  } else if (isStudioTokenOrder) {
+    console.log(`[Webhook Reader ${logId}] Studio token order #${potentialTokenOrderId} received with status '${rawStatus || 'PENDING'}'. Top-up skipped.`);
+    const skippedRes = {
+      success: true,
+      message: `Studio token order #${potentialTokenOrderId} status is '${rawStatus || 'PENDING'}'. Top-up skipped.`,
+      order_id: potentialTokenOrderId,
+      status: rawStatus || 'PENDING',
+      log_id: logId,
+    };
+
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount,
+      detectedApp,
+      tenantSlug,
+      matchedOrderId: potentialTokenOrderId,
+      matchStrategy: 'studio_token_skipped_unpaid',
+      resultStatus: 200,
+      resultBody: skippedRes,
+    });
+
+    return NextResponse.json(skippedRes, { status: 200 });
+  }
+
   let matchedOrder: any = null;
   let matchStrategy = 'none';
 

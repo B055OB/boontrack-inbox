@@ -283,5 +283,59 @@ export async function activateStudioRegistrationByToken(token: string, senderPho
     console.warn('[Studio Auth] studio_workspaces table insert skipped (schema fallback):', err);
   }
 
+  // 1. Hubungkan & Sinkronisasi Saldo Awal ke tenant_entitlements (SSOT)
+  try {
+    await supabase.from('tenant_entitlements').upsert({
+      tenant_id: tenant.id,
+      credits_remaining: 1,
+      is_unlimited: false,
+      tier: 'free_trial',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+  } catch (entErr) {
+    console.warn('[Studio Auth] Failed to upsert tenant_entitlements:', entErr);
+  }
+
+  // 2. Catat Mutasi Audit Perdana ke tenant_credit_ledger (TRIAL_GRANT)
+  try {
+    await supabase.from('tenant_credit_ledger').insert({
+      tenant_id: tenant.id,
+      amount: 1,
+      balance_after: 1,
+      action: 'TRIAL_GRANT',
+      description: 'Aktivasi akun Studio - 1 Kredit Render Gratis',
+    });
+  } catch (ledgerErr) {
+    console.warn('[Studio Auth] Failed to insert initial tenant_credit_ledger log:', ledgerErr);
+  }
+
+  // 3. Picu Notifikasi Email Jaringan Affiliate & AM jika ada kode referral
+  const refCode = currentMeta.affiliate_code || currentMeta.referral_code;
+  const affId = currentMeta.affiliate_id;
+
+  if (refCode || affId) {
+    try {
+      const { sendNewStoreReferralNotification } = await import('@/lib/affiliate-notification-service');
+      sendNewStoreReferralNotification({
+        storeName: tenant.name || tenant.slug,
+        slug: tenant.slug,
+        merchantName: tenant.name || 'Studio Creator',
+        merchantPhone: currentMeta.whatsapp || senderPhone || '',
+        merchantEmail: currentMeta.email || undefined,
+        planTier: 'free_trial',
+        selectedPlan: 'Studio Free Trial (1 Kredit)',
+        isTrial: true,
+        referralCode: refCode || undefined,
+        affiliateId: affId || undefined,
+        tenantId: tenant.id,
+      }).catch((notifErr) => {
+        console.warn('[Studio Auth] Non-fatal affiliate network email alert error:', notifErr);
+      });
+    } catch (importErr) {
+      console.warn('[Studio Auth] Failed to dispatch referral notification:', importErr);
+    }
+  }
+
   return updatedTenant;
 }
+
