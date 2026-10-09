@@ -27,6 +27,7 @@ import {
   Lock,
   Layers,
   ShoppingBag,
+  History,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -34,7 +35,7 @@ const MASTER_PIN = '998877';
 
 interface LiveFeedEvent {
   id: string;
-  type: 'PAYMENT_XENDIT' | 'MERCHANT_REGISTER' | 'AFFILIATE_REGISTER' | 'CREATOR_REGISTER';
+  type: 'PAYMENT_XENDIT' | 'LEDGER_AUDIT' | 'MERCHANT_REGISTER' | 'AFFILIATE_REGISTER' | 'CREATOR_REGISTER';
   title: string;
   description: string;
   timestamp: string;
@@ -63,7 +64,7 @@ export default function SuperAdminExecutiveCenter() {
 
   // Live Feed
   const [liveFeed, setLiveFeed] = useState<LiveFeedEvent[]>([]);
-  const [feedFilter, setFeedFilter] = useState<'ALL' | 'PAYMENT' | 'MERCHANT' | 'AFFILIATE' | 'CREATOR'>('ALL');
+  const [feedFilter, setFeedFilter] = useState<'ALL' | 'PAYMENT' | 'LEDGER' | 'MERCHANT' | 'AFFILIATE' | 'CREATOR'>('ALL');
   const [loadingData, setLoadingData] = useState(true);
 
   // Quick Special Grant State
@@ -126,143 +127,182 @@ export default function SuperAdminExecutiveCenter() {
       const tenantRows = tenants || [];
       setAllTenantsList(tenantRows);
 
-      // Population Counts
+      // Population: Shop
       const merchantShops = tenantRows.filter((t) => {
         if (t.status === 'ARCHIVED' || t.metadata?.is_archived === true) return false;
         if (t.metadata?.is_internal === true || t.category === 'internal') return false;
         return true;
       });
 
-      const specialGrantTenants = tenantRows.filter((t) => {
-        const meta = t.metadata || {};
-        const isGranted =
-          meta.subscription?.type === 'granted' ||
-          meta.subscription_type === 'granted' ||
-          t.tier === 'FOUNDER' ||
-          t.tier === 'SPECIAL_GRANT';
-        return isGranted;
-      });
-
-      // 2. Fetch Creators
-      const { data: creatorRows, count: creatorCount } = await supabase
-        .from('creator_profiles')
-        .select('id, handle, bio, created_at', { count: 'exact' });
-
-      // 3. Fetch Affiliates
-      const { data: affiliateRows, count: affiliateCount } = await supabase
-        .from('affiliates')
-        .select('id, name, ref_slug, email, created_at', { count: 'exact' });
-
-      // 4. Fetch Studio Workspaces / Entitlements
-      const { data: studioRows, count: studioCount } = await supabase
+      // 2. Akun Manual / Special Grant
+      // Query COUNT riil dari tenant_entitlements di mana is_unlimited = true ATAU tier IN ('FOUNDER', 'SPECIAL_CASE', 'SPECIAL_GRANT')
+      let specialGrantCount = 0;
+      const { count: entSpecialCount, data: entSpecialData } = await supabase
         .from('tenant_entitlements')
-        .select('tenant_id, tier, is_unlimited', { count: 'exact' });
+        .select('tenant_id, is_unlimited, tier', { count: 'exact' })
+        .or('is_unlimited.eq.true,tier.eq.FOUNDER,tier.eq.SPECIAL_CASE,tier.eq.SPECIAL_GRANT');
 
-      // 5. Fetch Revenue from credit_transactions / shop_subscriptions
+      if (entSpecialCount !== null && entSpecialCount !== undefined) {
+        specialGrantCount = entSpecialCount;
+      } else if (entSpecialData) {
+        specialGrantCount = entSpecialData.length;
+      }
+
+      // Pastikan sinkron dengan data di tenants jika ada grant manual
+      const { count: tenantSpecialCount } = await supabase
+        .from('tenants')
+        .select('id', { count: 'exact', head: true })
+        .or('tier.eq.FOUNDER,tier.eq.SPECIAL_CASE,tier.eq.SPECIAL_GRANT');
+
+      if (tenantSpecialCount && tenantSpecialCount > specialGrantCount) {
+        specialGrantCount = tenantSpecialCount;
+      }
+
+      // 3. Populasi Ekosistem Riil (COUNT murni tanpa nilai hardcoded)
+      const { count: creatorCount } = await supabase
+        .from('creator_profiles')
+        .select('id', { count: 'exact', head: true });
+
+      const { count: affiliateCount } = await supabase
+        .from('affiliates')
+        .select('id', { count: 'exact', head: true });
+
+      const { count: studioWorkspacesCount } = await supabase
+        .from('studio_workspaces')
+        .select('id', { count: 'exact', head: true });
+
+      const { count: entStudioCount } = await supabase
+        .from('tenant_entitlements')
+        .select('tenant_id', { count: 'exact', head: true });
+
+      const finalStudioCount = Math.max(studioWorkspacesCount || 0, entStudioCount || 0);
+
+      // 4. Total Pendapatan Langganan (Xendit)
+      // Tarik query SUM(amount) dari tabel transaksi/invoices langganan yang berstatus PAID / SETTLED / COMPLETED
       let computedRevenue = 0;
       const { data: revenueData } = await supabase
         .from('credit_transactions')
-        .select('amount_idr, status, type, created_at, tenant_slug')
-        .eq('status', 'COMPLETED');
+        .select('id, amount_idr, status, type, created_at, tenant_slug')
+        .in('status', ['COMPLETED', 'PAID', 'SETTLED']);
 
       if (revenueData && revenueData.length > 0) {
         computedRevenue = revenueData.reduce((acc, curr) => acc + (Number(curr.amount_idr) || 0), 0);
       } else {
-        // Fallback calculation from shop_subscriptions
         const { data: subData } = await supabase
           .from('shop_subscriptions')
-          .select('amount, status, created_at, tenant_slug');
-        if (subData) {
+          .select('amount, status, created_at, tenant_slug')
+          .in('status', ['ACTIVE', 'PAID', 'SETTLED', 'COMPLETED']);
+        if (subData && subData.length > 0) {
           computedRevenue = subData.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
         }
       }
 
-      // If database is clean/sandbox, set a realistic baseline
-      if (computedRevenue === 0) {
-        computedRevenue = 48500000;
-      }
-
+      // Zero-mock policy: jika belum ada transaksi settlement yang masuk di database, tampilkan nilai sebenarnya: Rp 0
       setTotalRevenueIdr(computedRevenue);
-      setTotalSpecialGrants(specialGrantTenants.length);
+      setTotalSpecialGrants(specialGrantCount);
       setPopulation({
         shops: merchantShops.length,
-        studios: (studioCount || 0) > 0 ? (studioCount || 0) : tenantRows.length,
-        creators: creatorCount || 24,
-        affiliates: affiliateCount || 18,
+        studios: finalStudioCount,
+        creators: creatorCount || 0,
+        affiliates: affiliateCount || 0,
       });
 
-      // 6. Build Live Feed Events
+      // 5. Live Feed & Message Updates Riil dari Database
       const events: LiveFeedEvent[] = [];
 
-      // Payment events
+      // A. Riwayat transaksi riil (hanya jika ada transaksi masuk)
       if (revenueData && revenueData.length > 0) {
-        revenueData.slice(0, 5).forEach((p: any) => {
+        revenueData.slice(0, 10).forEach((p: any) => {
           events.push({
-            id: `pay_${Math.random()}`,
+            id: `pay_${p.id || Math.random()}`,
             type: 'PAYMENT_XENDIT',
             title: `Langganan Sukses: ${p.tenant_slug || 'Merchant'}`,
-            description: `Pembayaran Rp ${(Number(p.amount_idr) || 0).toLocaleString('id-ID')} via Xendit QRIS/Virtual Account terverifikasi otomatis.`,
+            description: `Pembayaran Rp ${(Number(p.amount_idr) || 0).toLocaleString('id-ID')} via Xendit QRIS/VA terverifikasi otomatis.`,
             timestamp: p.created_at || new Date().toISOString(),
             badge: 'XENDIT SETTLED',
             badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
           });
         });
-      } else {
-        events.push({
-          id: 'pay_mock_1',
-          type: 'PAYMENT_XENDIT',
-          title: 'Langganan Sukses: toko-organik-nusantara',
-          description: 'Pembayaran Rp 1.490.000 via Xendit QRIS Instant terverifikasi & kuota diperbarui.',
-          timestamp: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-          badge: 'XENDIT SETTLED',
-          badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-        });
-        events.push({
-          id: 'pay_mock_2',
-          type: 'PAYMENT_XENDIT',
-          title: 'Langganan Sukses: littlebitefeeding',
-          description: 'Pembayaran Rp 4.900.000 (Paket 12 Bulan Pro Scale) sukses via Xendit.',
-          timestamp: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-          badge: 'XENDIT SETTLED',
-          badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-        });
       }
 
-      // Merchant registrations
-      merchantShops.slice(0, 4).forEach((m: any) => {
-        events.push({
-          id: `merch_${m.id}`,
-          type: 'MERCHANT_REGISTER',
-          title: `Merchant Toko Baru: ${m.name}`,
-          description: `Toko online baru dibuat dengan slug /${m.slug}. Katalog & WhatsApp bot siap melayani.`,
-          timestamp: m.created_at || new Date().toISOString(),
-          badge: 'NEW SHOP',
-          badgeColor: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-        });
-      });
+      // B. Log audit dari tenant_credit_ledger (aktivitas grant kuota & reservasi render)
+      const { data: ledgerRows } = await supabase
+        .from('tenant_credit_ledger')
+        .select('id, tenant_id, amount, balance_after, action, description, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      // Creator registrations
-      if (creatorRows && creatorRows.length > 0) {
-        creatorRows.slice(0, 3).forEach((c: any) => {
+      if (ledgerRows && ledgerRows.length > 0) {
+        ledgerRows.forEach((l: any) => {
+          const tMatch = tenantRows.find((t) => t.id === l.tenant_id);
+          const tLabel = tMatch ? `${tMatch.name} (/${tMatch.slug})` : l.tenant_id.slice(0, 8);
+          const isFounder = l.action === 'FOUNDER_BYPASS';
+          const isReserve = l.action === 'RESERVE';
+          const isAdjust = l.action === 'ADJUST_ADMIN';
+
           events.push({
-            id: `creator_${c.id}`,
-            type: 'CREATOR_REGISTER',
-            title: `Kreator Baru Bergabung: @${c.handle}`,
-            description: `Profil kreator UGC aktif di creator.boontrack.com/@${c.handle}.`,
-            timestamp: c.created_at || new Date().toISOString(),
-            badge: 'UGC CREATOR',
-            badgeColor: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+            id: `ledger_${l.id}`,
+            type: 'LEDGER_AUDIT',
+            title: `Audit Ledger: ${tLabel}`,
+            description: `${l.description || 'Mutasi kuota'} • Amount: ${l.amount > 0 ? `+${l.amount}` : l.amount} • Saldo: ${l.balance_after}`,
+            timestamp: l.created_at || new Date().toISOString(),
+            badge: isFounder ? 'FOUNDER BYPASS' : isReserve ? 'RENDER RESERVE' : isAdjust ? 'ADMIN ADJUST' : l.action,
+            badgeColor: isFounder
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              : isReserve
+              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+              : 'bg-purple-500/15 text-purple-300 border-purple-500/30',
           });
         });
       }
 
-      // Affiliate registrations
-      if (affiliateRows && affiliateRows.length > 0) {
-        affiliateRows.slice(0, 3).forEach((a: any) => {
+      // C. Pendaftaran tenant baru (tenants.created_at)
+      merchantShops.slice(0, 8).forEach((m: any) => {
+        events.push({
+          id: `merch_${m.id}`,
+          type: 'MERCHANT_REGISTER',
+          title: `Pendaftaran Tenant: ${m.name}`,
+          description: `Tenant terdaftar dengan slug /${m.slug} (Kategori: ${m.category || 'Shop'}, Tier: ${m.tier || 'FREE'}).`,
+          timestamp: m.created_at || new Date().toISOString(),
+          badge: 'NEW TENANT',
+          badgeColor: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+        });
+      });
+
+      // D. Pendaftaran creator (jika ada)
+      const { data: recentCreators } = await supabase
+        .from('creator_profiles')
+        .select('id, handle, bio, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (recentCreators && recentCreators.length > 0) {
+        recentCreators.forEach((c: any) => {
+          events.push({
+            id: `creator_${c.id}`,
+            type: 'CREATOR_REGISTER',
+            title: `Kreator Baru: @${c.handle}`,
+            description: c.bio || 'Profil kreator UGC aktif di direktori creator.',
+            timestamp: c.created_at || new Date().toISOString(),
+            badge: 'UGC CREATOR',
+            badgeColor: 'bg-pink-500/15 text-pink-400 border-pink-500/30',
+          });
+        });
+      }
+
+      // E. Pendaftaran affiliate (jika ada)
+      const { data: recentAffiliates } = await supabase
+        .from('affiliates')
+        .select('id, name, ref_slug, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (recentAffiliates && recentAffiliates.length > 0) {
+        recentAffiliates.forEach((a: any) => {
           events.push({
             id: `aff_${a.id}`,
             type: 'AFFILIATE_REGISTER',
-            title: `Mitra Afiliasi Baru: ${a.name || a.ref_slug}`,
+            title: `Mitra Afiliasi: ${a.name || a.ref_slug}`,
             description: `Pendaftaran mitra afiliasi resmi dengan kode referral "${a.ref_slug}".`,
             timestamp: a.created_at || new Date().toISOString(),
             badge: 'AFFILIATE PARTNER',
@@ -805,7 +845,7 @@ export default function SuperAdminExecutiveCenter() {
                       feedFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    Semua
+                    Semua ({liveFeed.length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('PAYMENT')}
@@ -813,7 +853,15 @@ export default function SuperAdminExecutiveCenter() {
                       feedFilter === 'PAYMENT' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    Xendit
+                    Xendit ({liveFeed.filter((f) => f.type === 'PAYMENT_XENDIT').length})
+                  </button>
+                  <button
+                    onClick={() => setFeedFilter('LEDGER')}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                      feedFilter === 'LEDGER' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Audit Ledger ({liveFeed.filter((f) => f.type === 'LEDGER_AUDIT').length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('MERCHANT')}
@@ -821,15 +869,7 @@ export default function SuperAdminExecutiveCenter() {
                       feedFilter === 'MERCHANT' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    Toko
-                  </button>
-                  <button
-                    onClick={() => setFeedFilter('AFFILIATE')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                      feedFilter === 'AFFILIATE' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Afiliasi
+                    Tenant ({liveFeed.filter((f) => f.type === 'MERCHANT_REGISTER').length})
                   </button>
                 </div>
               </div>
@@ -837,8 +877,38 @@ export default function SuperAdminExecutiveCenter() {
               {/* Feed Items Container */}
               <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
                 {filteredFeed.length === 0 ? (
-                  <div className="py-12 text-center text-slate-500 text-xs">
-                    Tidak ada aktivitas pada filter ini.
+                  <div className="py-14 px-4 text-center text-slate-500 text-xs bg-slate-950/40 rounded-2xl border border-slate-800 flex flex-col items-center justify-center gap-2">
+                    {feedFilter === 'PAYMENT' ? (
+                      <>
+                        <CreditCard className="w-6 h-6 text-slate-600 mb-1" />
+                        <span className="font-semibold text-slate-400">
+                          Belum ada transaksi langganan tercatat hari ini
+                        </span>
+                        <span className="text-[10px] text-slate-600">
+                          Transaksi webhook Xendit yang berstatus PAID / SETTLED akan otomatis muncul di sini secara real-time.
+                        </span>
+                      </>
+                    ) : feedFilter === 'LEDGER' ? (
+                      <>
+                        <History className="w-6 h-6 text-slate-600 mb-1" />
+                        <span className="font-semibold text-slate-400">
+                          Belum ada aktivitas audit ledger kredit
+                        </span>
+                        <span className="text-[10px] text-slate-600">
+                          Aktivitas mutasi reservasi render dan penyesuaian hak akses admin akan dicatat di sini.
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="w-6 h-6 text-slate-600 mb-1" />
+                        <span className="font-semibold text-slate-400">
+                          Belum ada aktivitas pada kategori ini
+                        </span>
+                        <span className="text-[10px] text-slate-600">
+                          Seluruh event riil dari database Supabase akan tersinkronisasi di sini.
+                        </span>
+                      </>
+                    )}
                   </div>
                 ) : (
                   filteredFeed.map((item) => (
