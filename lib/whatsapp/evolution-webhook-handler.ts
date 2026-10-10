@@ -38,6 +38,8 @@ import {
 import { parsePaymentNotification } from '@/lib/payment-webhook-service';
 import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
 import { isDuplicateWebhookEvent } from '@/lib/hardening/deduplication';
+import { evaluateClinicalSafetyGate } from '@/lib/hardening/clinical-safety-gate';
+import { enqueueOutboxMessage } from '@/lib/outbox/enqueue';
 import {
   parseBotControlCommand,
   isAuthorizedBotController,
@@ -992,10 +994,10 @@ export async function processEvolutionWebhookEvent(
                 type: 'text',
                 text: { body: replyText, preview_url: false },
               },
-            }).catch((err) => console.warn('[Payment Notification Outbox] Enqueue warning:', err));
+            }).catch((err: any) => console.warn('[Payment Notification Outbox] Enqueue warning:', err));
 
             sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey)
-              .catch((err) => console.warn('[Payment Notification Async] Send warning:', err));
+              .catch((err: any) => console.warn('[Payment Notification Async] Send warning:', err));
           } else {
             await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
           }
