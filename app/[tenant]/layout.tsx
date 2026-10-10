@@ -69,6 +69,23 @@ export async function generateMetadata({
     // 3. Gambar produk pertama yang aktif
     // 4. Fallback default branding resmi BoonTrack 1200x630 (bukan gambar demo)
     // =========================================================================
+    const storeLogo =
+      metaObj.store_logo_url ||
+      store?.logo_url ||
+      metaObj.logo_url ||
+      metaObj.image ||
+      (store as any)?.store_logo_url ||
+      null;
+
+    const storeTitle = store?.name || metaObj.store_name || storeName;
+    const storeDesc =
+      metaObj.description ||
+      metaObj.bio ||
+      metaObj.tagline ||
+      `Selamat datang di toko resmi ${storeTitle}. Pemesanan online praktis, konfirmasi instan via WhatsApp, dan pembayaran aman terverifikasi.`;
+
+    // ── HIERARKI GAMBAR OPENGRAPH (og:image) ──
+    // Prioritaskan foto profil/logo resmi tenant, lalu banner kustom, lalu gambar produk, lalu /default-og.png
     const explicitOgImage =
       metaObj.og_image ||
       metaObj.og_image_url ||
@@ -80,14 +97,6 @@ export async function generateMetadata({
       metaObj.cover_url ||
       metaObj.hero_image ||
       null;
-
-    const logo =
-      metaObj.store_logo_url ||
-      store?.logo_url ||
-      metaObj.logo_url ||
-      metaObj.image ||
-      null;
-    const logoUrl = logo;
 
     let firstProductImage: string | null = null;
     const products = Array.isArray(metaObj.products) ? metaObj.products : [];
@@ -101,19 +110,17 @@ export async function generateMetadata({
       }
     }
 
-    const BOONTRACK_OFFICIAL_OG = 'https://shop.boontrack.com/og-shop.png';
-
-    const rawOgImage =
-      logo ||
-      explicitOgImage ||
-      bannerUrl ||
-      firstProductImage ||
-      BOONTRACK_OFFICIAL_OG;
+    const rawOgImage = storeLogo || explicitOgImage || bannerUrl || firstProductImage || '/default-og.png';
 
     // Normalisasi URL gambar ke Absolute URL kanonikal yang valid untuk bot crawler WhatsApp / Facebook
     let resolvedOgImage = rawOgImage;
     if (resolvedOgImage.startsWith('/')) {
       resolvedOgImage = `${canonicalBaseUrl}${resolvedOgImage}`;
+    }
+
+    let resolvedLogo = storeLogo;
+    if (resolvedLogo && resolvedLogo.startsWith('/')) {
+      resolvedLogo = `${canonicalBaseUrl}${resolvedLogo}`;
     }
 
     // Ekstraksi MIME type yang tepat untuk WhatsApp link preview
@@ -130,38 +137,54 @@ export async function generateMetadata({
       metaObj.category === 'public_service' ||
       metaObj.category === 'civic';
 
-    const pageTitle = `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
+    const pageTitle = `${storeTitle} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
 
     return {
       metadataBase: new URL(canonicalBaseUrl),
       title: pageTitle,
-      description,
+      description: storeDesc,
       icons: {
-        icon: logo || '/favicon.ico',
-        shortcut: logo || '/favicon.ico',
-        apple: logo || '/favicon.ico',
+        icon: resolvedLogo || '/favicon.ico',
+        shortcut: resolvedLogo || '/favicon.ico',
+        apple: resolvedLogo || '/favicon.ico',
       },
       openGraph: {
-        title: storeName,
-        description,
+        title: storeTitle,
+        description: storeDesc,
         url: canonicalUrl,
-        siteName: storeName,
+        siteName: storeTitle,
         locale: 'id_ID',
         type: 'website',
-        images: [logo || resolvedOgImage || '/images/default-og.png'],
+        images: [
+          {
+            url: resolvedOgImage,
+            width: 1200,
+            height: 630,
+            type: imageMimeType,
+            alt: storeTitle,
+          },
+        ],
       },
       twitter: {
         card: 'summary_large_image',
-        title: storeName,
-        description,
-        images: [logo || resolvedOgImage || '/images/default-og.png'],
+        title: storeTitle,
+        description: storeDesc,
+        images: [resolvedOgImage],
       },
     };
   } catch (err) {
     console.warn('[TenantStoreLayout] generateMetadata fallback triggered:', err);
     return {
-      title: 'BoonTrack Platform | Portal Layanan Resmi',
-      description: 'Layanan resmi terverifikasi pada BoonTrack Multi-Tenant Platform.',
+      title: 'Toko Resmi | Layanan Terverifikasi',
+      description: 'Layanan resmi toko terverifikasi.',
+      icons: {
+        icon: '/favicon.ico',
+        shortcut: '/favicon.ico',
+        apple: '/favicon.ico',
+      },
+      openGraph: {
+        images: ['/default-og.png'],
+      },
     };
   }
 }
