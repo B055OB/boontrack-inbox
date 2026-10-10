@@ -45,6 +45,7 @@ import {
   STUDIO_TOKEN_PACKAGES,
   StudioPackageId
 } from '@/lib/config/studio-pricing';
+import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
 
 // Contoh Variasi Pembuka (Hook) & Konten Manusiawi
 const CONTOH_KONTEN = {
@@ -763,9 +764,78 @@ export default function StudioLandingPage() {
             </Link>
           </div>
 
+          {/* Penawaran Upgrade Toko BoonTrack (Shop Cross-Benefit) */}
+          <div className="max-w-3xl mx-auto">
+            <ShopUpgradeBanner
+              isShopMember={false}
+              variant="banner"
+            />
+          </div>
+
+          {/* Aturan Konversi Info Box */}
+          <div className="max-w-2xl mx-auto p-3.5 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/25 text-fuchsia-200 text-xs sm:text-sm font-semibold text-center tracking-wide shadow-md">
+            <span>ℹ️ 1 Video Otomatis Jadi = 3 Kredit | 1 Panduan Naskah Asli = 1 Kredit</span>
+          </div>
+
           {/* 3 Pricing Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto items-stretch">
-            {/* Package 1: Starter */}
+            {/* Package 1: Ketengan (5 Kredit) */}
+            {(() => {
+              const pkg = STUDIO_TOKEN_PACKAGES.ketengan;
+              return (
+                <div className="p-7 rounded-3xl bg-[#111624] border border-white/10 flex flex-col justify-between space-y-6 hover:border-white/20 transition relative">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-white">{pkg.name}</h3>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-zinc-300">
+                          Uji Coba
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400">Bayar Sekali via QRIS • Uji Coba Cepat</p>
+                    </div>
+
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="text-3xl font-black text-white tracking-tight">
+                        {pkg.publicTier.formattedPrice}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-zinc-400 font-mono">
+                          ⚡ {pkg.credits} Kredit Video
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          Member: {pkg.memberTier.formattedPrice}
+                        </span>
+                      </div>
+                    </div>
+
+                    <ul className="space-y-2.5 pt-4 border-t border-white/5 text-xs text-zinc-300">
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span className="font-semibold text-white">🎬 Setara 1 Video Otomatis Jadi (+ 2 naskah) atau 5 Panduan Naskah Asli</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Resolusi 1080p Tajam & Bebas Watermark</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Masa Aktif Saldo 12 Bulan</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <Link
+                    href={`/studio/register?plan=${pkg.id}`}
+                    className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs text-center border border-white/10 transition block"
+                  >
+                    Beli Paket Ketengan
+                  </Link>
+                </div>
+              );
+            })()}
+
+            {/* Package 2: Starter (25 Kredit) */}
             {(() => {
               const pkg = STUDIO_TOKEN_PACKAGES.starter;
               return (
@@ -778,25 +848,34 @@ export default function StudioLandingPage() {
 
                     <div className="pt-2 border-t border-white/5">
                       <div className="text-3xl font-black text-white tracking-tight">
-                        {pkg.formattedPrice}
+                        {pkg.publicTier.formattedPrice}
                       </div>
-                      <span className="text-xs text-zinc-400 font-mono mt-1 block">
-                        ⚡ {pkg.credits} Kredit Video Siap Pakai
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-zinc-400 font-mono">
+                          ⚡ {pkg.credits} Kredit Video
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          Member: {pkg.memberTier.formattedPrice}
+                        </span>
+                      </div>
                     </div>
 
                     <ul className="space-y-2.5 pt-4 border-t border-white/5 text-xs text-zinc-300">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>25 Kredit Video Siap Pakai</span>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span className="font-semibold text-white">🎬 Setara hingga 8 Video Otomatis Jadi atau 25 Panduan Naskah Asli</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Resolusi 1080p Full HD Bersih</span>
+                        <span>Cocok untuk suplai konten rutin mingguan</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Akses Mode Video & Naskah Asli</span>
+                        <span>Resolusi 1080p Tajam & Bebas Watermark</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Masa Aktif Saldo 12 Bulan</span>
                       </li>
                     </ul>
                   </div>
@@ -811,7 +890,7 @@ export default function StudioLandingPage() {
               );
             })()}
 
-            {/* Package 2: Creator (Recommended) */}
+            {/* Package 3: Creator (50 Kredit - Recommended) */}
             {(() => {
               const pkg = STUDIO_TOKEN_PACKAGES.creator;
               return (
@@ -832,29 +911,34 @@ export default function StudioLandingPage() {
 
                     <div className="pt-2 border-t border-white/10">
                       <div className="text-3xl font-black text-white tracking-tight flex items-baseline gap-1">
-                        <span>{pkg.formattedPrice}</span>
+                        <span>{pkg.publicTier.formattedPrice}</span>
                       </div>
-                      <span className="text-xs text-fuchsia-300 font-mono mt-1 block font-bold">
-                        ⚡ {pkg.credits} Kredit Video Siap Pakai
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-fuchsia-300 font-mono font-bold">
+                          ⚡ {pkg.credits} Kredit Video
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          Member: {pkg.memberTier.formattedPrice}
+                        </span>
+                      </div>
                     </div>
 
                     <ul className="space-y-2.5 pt-4 border-t border-white/10 text-xs text-zinc-200">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>50 Kredit Video Siap Pakai</span>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span className="font-semibold text-white">🎬 Setara hingga 16 Video Otomatis Jadi atau 50 Panduan Naskah Asli</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Antrean Pemrosesan Prioritas</span>
+                        <span>Ideal untuk A/B testing materi iklan TikTok & Meta Ads</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Resolusi 1080p Full HD • Bebas Watermark</span>
+                        <span>Prioritas Pemrosesan & Render Cepat</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Akses Mode Video & Naskah Asli</span>
+                        <span>Masa Aktif Saldo 12 Bulan</span>
                       </li>
                     </ul>
                   </div>
@@ -864,58 +948,6 @@ export default function StudioLandingPage() {
                     className="w-full py-3.5 rounded-xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-xs text-center shadow-lg shadow-fuchsia-600/30 transition block active:scale-98"
                   >
                     Pilih Paket Creator (Rekomendasi)
-                  </Link>
-                </div>
-              );
-            })()}
-
-            {/* Package 3: Pro Monthly */}
-            {(() => {
-              const pkg = STUDIO_TOKEN_PACKAGES.pro_monthly;
-              return (
-                <div className="p-7 rounded-3xl bg-[#111624] border border-white/10 flex flex-col justify-between space-y-6 hover:border-white/20 transition relative">
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold text-white">{pkg.name}</h3>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                          PRO
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400">Solusi Rutin untuk Brand & Agensi Aktif</p>
-                    </div>
-
-                    <div className="pt-2 border-t border-white/5">
-                      <div className="text-3xl font-black text-white tracking-tight flex items-baseline gap-1">
-                        <span>{pkg.formattedPrice}</span>
-                        <span className="text-xs font-normal text-zinc-400">/ bulan</span>
-                      </div>
-                      <span className="text-xs text-zinc-400 font-mono mt-1 block">
-                        ⚡ {pkg.credits} Video 1080p Full HD per bulan
-                      </span>
-                    </div>
-
-                    <ul className="space-y-2.5 pt-4 border-t border-white/5 text-xs text-zinc-300">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>100 Video Full HD per bulan</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Antrean Prioritas Cepat</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Penyimpanan Cloud Prioritas</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <Link
-                    href={`/studio/register?plan=${pkg.id}`}
-                    className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs text-center border border-white/10 transition block"
-                  >
-                    Langganan Studio Pro
                   </Link>
                 </div>
               );

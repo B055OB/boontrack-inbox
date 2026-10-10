@@ -34,6 +34,7 @@ import {
   Compass
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
+import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
 
 export default function StudioDeskPage() {
   const router = useRouter();
@@ -42,6 +43,7 @@ export default function StudioDeskPage() {
   const [renderCredits, setRenderCredits] = useState<number>(1);
   const [isUnlimited, setIsUnlimited] = useState<boolean>(false);
   const [tenantTier, setTenantTier] = useState<string>('FREE');
+  const [isShopMember, setIsShopMember] = useState<boolean>(false);
   const [completedVideosCount, setCompletedVideosCount] = useState<number>(0);
   const [queuedJobsCount, setQueuedJobsCount] = useState<number>(0);
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
@@ -108,6 +110,7 @@ export default function StudioDeskPage() {
           setRenderCredits(ent.credits_remaining ?? 1);
           setIsUnlimited(Boolean(ent.is_unlimited || ent.tier === 'FOUNDER'));
           setTenantTier(ent.tier || 'FREE');
+          setIsShopMember(Boolean(ent.is_shop_member));
         }
       }
 
@@ -282,6 +285,12 @@ export default function StudioDeskPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── BANNER PENAWARAN UPGRADE TOKO (NON-MEMBER) ───────── */}
+        <ShopUpgradeBanner
+          isShopMember={isShopMember}
+          tenantSlug={tenantSlug}
+        />
 
         {/* ── 3. 4 KARTU METRIK RAMAH KREATOR ───────────────────── */}
         <section className="space-y-3">
@@ -645,6 +654,7 @@ export default function StudioDeskPage() {
         onClose={() => setIsPaywallOpen(false)}
         tenantSlug={tenantSlug}
         currentCredits={renderCredits}
+        isShopMember={isShopMember}
       />
 
       {/* ── FOOTER ───────────────────────────────────────────── */}

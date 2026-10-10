@@ -23,7 +23,9 @@ import {
   Loader2,
   Check,
   Printer,
+  Upload,
 } from 'lucide-react';
+import BulkImportOrdersModal from '@/components/orders/BulkImportOrdersModal';
 import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
 import GodPayButton, { OrderItem as GodPayOrderItem } from '../orders/GodPayButton';
 import { 
@@ -129,6 +131,7 @@ export default function OrdersTab({
   const [archiveFilter, setArchiveFilter] = useState<'ACTIVE' | 'ARCHIVED' | 'ALL'>('ACTIVE');
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Sync propOrders ke internalOrders secara reaktif
   useEffect(() => {
@@ -503,6 +506,29 @@ export default function OrdersTab({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* BULK IMPORT EXCEL / CSV ACTIONS */}
+          <a
+            href="/api/orders/bulk-import/template?format=xlsx"
+            download="template-import-pesanan-boontrack.xlsx"
+            id="orders-download-template-btn"
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+            title="Download format standar kolom pesanan (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>⬇️ Unduh Template Excel</span>
+          </a>
+
+          <button
+            type="button"
+            id="orders-import-excel-btn"
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+            title="Import pesanan massal dari file Excel (.xlsx) atau CSV"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>⬆️ Import Pesanan Excel/CSV</span>
+          </button>
+
           {/* BULK EXPORT: Lincah.id Mass Upload CSV */}
           <button
             type="button"
@@ -1401,6 +1427,16 @@ export default function OrdersTab({
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* BULK IMPORT ORDERS MODAL (CSV/XLSX)                       */}
+      {/* ======================================================== */}
+      <BulkImportOrdersModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        tenantSlug={tenantSlug}
+        onImportSuccess={() => fetchOrders()}
+      />
     </div>
   );
 }

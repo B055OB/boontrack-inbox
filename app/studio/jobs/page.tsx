@@ -132,6 +132,11 @@ export default function StudioJobsPage() {
 
   // Direct MP4 Download Helper
   const handleDownloadMp4 = (job: StudioJob) => {
+    // Lacak status unduhan ke server (Auto-Purge Tracker)
+    fetch(`/api/studio/renders/${encodeURIComponent(job.id)}/track-download`, {
+      method: 'POST',
+    }).catch(err => console.warn('[Auto-Purge Tracker Error]', err));
+
     const filename = job.payload?.filename || `render_${job.id.slice(0, 8)}.mp4`;
     const videoUrl = job.output_url || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
     
@@ -561,6 +566,12 @@ export default function StudioJobsPage() {
                 >
                   Tutup
                 </button>
+              </div>
+
+              {/* Label Peringatan Auto-Purge Storage */}
+              <div className="flex items-center gap-1.5 text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-xl font-medium">
+                <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Video otomatis dibersihkan dari server dalam 7 hari. Segera unduh ke perangkat Anda.</span>
               </div>
             </div>
 

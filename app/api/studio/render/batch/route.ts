@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
 
 export const runtime = 'nodejs';
 
@@ -45,8 +46,9 @@ async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
 
 /**
  * POST /api/studio/render/batch
- * Dispatches FCD (Flexible Creative Delivery) batch variations to FFmpeg render queue
+ * Dispatches FCD batch variations to FFmpeg render queue
  * Formats standardized MP4 naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
+ * Rule Konsumsi: Jalur A (Mode Video Otomatis / Render MP4) = 3 Kredit per video
  */
 export async function POST(req: Request) {
   try {
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const requiredCredits = variations.length;
+    const requiredCredits = variations.length * STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4;
     const supabase = getSupabaseAdmin();
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
 
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
       const creditRes = await StudioCreditService.reserveCredits(
         tenant.id,
         requiredCredits,
-        `Batch render FCD (${requiredCredits} variasi): ${product_name || 'Campaign'}`
+        `Batch render video MP4 otomatis (${variations.length} video x ${STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4} kredit): ${product_name || 'Campaign'}`
       );
 
       if (!creditRes.success) {

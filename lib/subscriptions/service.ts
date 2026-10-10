@@ -175,6 +175,8 @@ export async function activateShopSubscription(
   const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
   const updatedMetadata = {
     ...existingMeta,
+    is_shop_subscriber: true,
+    is_shop_member: true,
     subscription: {
       id: insertedSub.id,
       tier,
@@ -215,6 +217,18 @@ export async function activateShopSubscription(
       tenantSlug: tenant.slug,
       error: `Subscription recorded but tenant sync failed: ${updateTenantErr.message}`,
     };
+  }
+
+  // 7. Grant Studio Cross-Benefit Appreciation Bonus (+15 Credits & Member Lock)
+  try {
+    const { StudioCreditService } = await import('@/lib/services/studio-credit.service');
+    await StudioCreditService.grantShopActivationBonus({
+      tenantIdOrSlug: tenant.id,
+      subscriptionId: insertedSub.id,
+      invoiceId: invoiceId || undefined,
+    });
+  } catch (bonusErr) {
+    console.warn('[Subscription Service] Studio cross-benefit bonus trigger note:', bonusErr);
   }
 
   return {

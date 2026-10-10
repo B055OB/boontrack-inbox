@@ -6,6 +6,8 @@ import {
 } from '@/lib/entitlements/studio-guard';
 import { getFreshHookPatternInsights } from '@/lib/studio/intelligence/repository';
 import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
+import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
 
 export const runtime = 'nodejs';
 
@@ -61,10 +63,32 @@ export async function POST(req: Request) {
       isRadarEntitled = true;
     }
 
-    // Retrieve up to 3 FRESH hook pattern insights if entitled
+    // Retrieve up to 3 FRESH hook pattern insights if entitled (Sesi Riset Tren: Kuota ter-bundle / 0 kredit)
     let radarInsights: NormalizedInsight[] = [];
     if (isRadarEntitled) {
       radarInsights = await getFreshHookPatternInsights(category, 3);
+    }
+
+    // Jalur B (Mode Panduan Naskah Asli / UGC Script): Potong tepat 1 Kredit
+    let scriptRemainingCredits: number | undefined = undefined;
+    if (tenantIdentifier) {
+      const creditRes = await StudioCreditService.reserveCredits(
+        tenantIdentifier,
+        STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI,
+        `Panduan Naskah Asli: ${product_name}`
+      );
+
+      if (!creditRes.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: creditRes.message || `Kredit Studio Anda tidak mencukupi (Butuh ${STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI} Kredit). Silakan lakukan top-up kredit.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      scriptRemainingCredits = creditRes.credits_remaining;
     }
 
     const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
@@ -419,6 +443,8 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
       })) : undefined,
       scenes,
       ads_copy: finalAdsCopy,
+      remaining_credits: scriptRemainingCredits,
+      consumed_credits: tenantIdentifier ? STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI : 0,
     });
   } catch (err: any) {
     console.error('[Studio Script Generate API] Error:', err);

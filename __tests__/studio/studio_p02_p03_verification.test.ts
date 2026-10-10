@@ -440,7 +440,7 @@ describe('VERIFIKASI P0.3 — Transaksi Studio E2E Sandbox', () => {
     expect(invoiceJson.success).toBe(true);
     expect(invoiceJson.external_id).toMatch(/^TOPUP-STUDIO-warungkreatif-50-\d+$/);
     expect(invoiceJson.invoice_id).toBe('inv_xendit_sandbox_e2e_999');
-    expect(invoiceJson.amount).toBe(99000);
+    expect(invoiceJson.amount).toBe(89000); // Two-tier member price SSOT
     expect(invoiceJson.credits).toBe(50);
 
     const generatedExternalId = invoiceJson.external_id;
@@ -450,7 +450,7 @@ describe('VERIFIKASI P0.3 — Transaksi Studio E2E Sandbox', () => {
       id: 'inv_xendit_sandbox_e2e_999',
       external_id: generatedExternalId,
       status: 'PAID',
-      amount: 99000,
+      amount: 89000,
       payment_method: 'QRIS',
       payment_channel: 'SHOPEEPAY',
       paid_at: new Date().toISOString(),
@@ -474,7 +474,7 @@ describe('VERIFIKASI P0.3 — Transaksi Studio E2E Sandbox', () => {
     expect(webhookJson.credits_added).toBe(50);
     expect(webhookJson.new_balance).toBe(55); // Initial 5 + 50 = 55
     expect(webhookJson.commission_recorded).toBe(true);
-    expect(webhookJson.commission_amount).toBe(24750); // 25% of 99.000
+    expect(webhookJson.commission_amount).toBe(22250); // 25% of 89.000
 
     // ── STEP 3: VERIFY MUTASI DATABASE LEDGER ─────────────────────
     const ledgerEntry = dbLedger.find(l => l.description.includes(generatedExternalId));

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
 
 export const runtime = 'nodejs';
 
@@ -28,6 +29,7 @@ async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
 /**
  * POST /api/studio/render/dispatch
  * Dispatches a 9-scene storyboard to FFmpeg Level 1 render queue
+ * Rule Konsumsi: Jalur A (Mode Video Otomatis / Render MP4) = 3 Kredit
  */
 export async function POST(req: Request) {
   try {
@@ -44,22 +46,23 @@ export async function POST(req: Request) {
     const supabase = getSupabaseAdmin();
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
 
-    // Credit deduction safeguard via StudioCreditService
+    // Credit deduction safeguard via StudioCreditService (3 Kredit per video otomatis)
+    const requiredCredits = STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4;
     let remainingCredits = 1;
     let isUnlimited = false;
 
     if (tenant) {
       const creditRes = await StudioCreditService.reserveCredits(
         tenant.id,
-        1,
-        `Render storyboard 9-scene: ${product_name || 'UGC Video'}`
+        requiredCredits,
+        `Render video MP4 otomatis: ${product_name || 'UGC Video'}`
       );
 
       if (!creditRes.success) {
         return NextResponse.json(
           {
             success: false,
-            message: creditRes.message || 'Render Credits Anda tidak mencukupi (0 Credits). Silakan lakukan top-up kredit.',
+            message: creditRes.message || `Render Credits Anda tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
           },
           { status: 403 }
         );
@@ -108,7 +111,7 @@ export async function POST(req: Request) {
       job_id: jobId,
       status: 'QUEUED',
       remaining_credits: remainingCredits,
-      consumed_credits: 1,
+      consumed_credits: requiredCredits,
       estimated_duration_sec: 30,
       message: 'Job render berhasil masuk ke antrean FFmpeg Level 1.',
     });

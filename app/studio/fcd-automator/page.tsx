@@ -476,7 +476,7 @@ export default function FCDAutomatorPage() {
   };
 
   const selectedVariations = variations.filter(v => v.selected);
-  const requiredCredits = selectedVariations.length;
+  const requiredCredits = selectedVariations.length * 3; // Jalur A: Mode Video Otomatis = 3 Kredit per video
   const hasSufficientCredits = isUnlimited || tenantTier === 'FOUNDER' || renderCredits >= requiredCredits;
 
   // Dispatch Batch Render
@@ -555,6 +555,12 @@ export default function FCDAutomatorPage() {
   };
 
   const handleDownloadFinalMp4 = (url?: string, filename?: string) => {
+    // 1. Lacak status unduhan ke server (Auto-Purge Tracker)
+    const renderIdToTrack = activeBatchId || 'batch_render_latest';
+    fetch(`/api/studio/renders/${encodeURIComponent(renderIdToTrack)}/track-download`, {
+      method: 'POST',
+    }).catch(err => console.warn('[Auto-Purge Tracker] Warning tracking download:', err));
+
     const targetUrl =
       url ||
       renderedVideoUrl ||
@@ -1614,6 +1620,12 @@ export default function FCDAutomatorPage() {
                       <span>Putar Layar Penuh</span>
                     </button>
                   </div>
+
+                  {/* Label Peringatan Auto-Purge Storage */}
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs font-medium">
+                    <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>Video otomatis dibersihkan dari server dalam 7 hari. Segera unduh ke perangkat Anda.</span>
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs space-y-1">
@@ -2026,6 +2038,12 @@ export default function FCDAutomatorPage() {
                 <Download className="w-3.5 h-3.5" />
                 <span>Unduh MP4</span>
               </button>
+            </div>
+
+            {/* Label Peringatan Auto-Purge Storage */}
+            <div className="flex items-center gap-1.5 text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-xl font-medium">
+              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Video otomatis dibersihkan dari server dalam 7 hari. Segera unduh ke perangkat Anda.</span>
             </div>
           </div>
         </div>

@@ -5,23 +5,28 @@ import {
   X,
   Zap,
   Check,
-  Crown,
   QrCode,
   ArrowRight,
   Flame,
   Loader2,
   AlertCircle,
+  Sparkles,
+  Store,
+  ShieldCheck,
+  Calendar,
 } from 'lucide-react';
 import {
-  STUDIO_TOKEN_PACKAGES,
+  getStudioTokenPackage,
   StudioPackageId,
 } from '@/lib/config/studio-pricing';
+import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
 
 interface StudioPaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
   tenantSlug?: string;
   currentCredits?: number;
+  isShopMember?: boolean;
 }
 
 export default function StudioPaywallModal({
@@ -29,10 +34,45 @@ export default function StudioPaywallModal({
   onClose,
   tenantSlug = 'studio',
   currentCredits = 0,
+  isShopMember,
 }: StudioPaywallModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<StudioPackageId>('creator');
   const [loadingPlan, setLoadingPlan] = useState<StudioPackageId | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isMember, setIsMember] = useState<boolean>(Boolean(isShopMember));
+
+  // Sync prop or dynamically fetch entitlement from database SSOT
+  useEffect(() => {
+    if (typeof isShopMember === 'boolean') {
+      setIsMember(isShopMember);
+      return;
+    }
+
+    if (!tenantSlug || tenantSlug === 'studio') {
+      setIsMember(false);
+      return;
+    }
+
+    let isMounted = true;
+    async function checkMembership() {
+      try {
+        const res = await fetch(`/api/tenants/${encodeURIComponent(tenantSlug)}/entitlements`);
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json.success && json.data) {
+            setIsMember(Boolean(json.data.is_shop_member));
+          }
+        }
+      } catch {
+        // Fallback gracefully to public tier
+      }
+    }
+
+    checkMembership();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug, isShopMember]);
 
   // Close on Escape key
   useEffect(() => {
@@ -47,9 +87,12 @@ export default function StudioPaywallModal({
 
   if (!isOpen) return null;
 
-  const starterPkg = STUDIO_TOKEN_PACKAGES.starter;
-  const creatorPkg = STUDIO_TOKEN_PACKAGES.creator;
-  const proPkg = STUDIO_TOKEN_PACKAGES.pro_monthly;
+  // Resolve packages based on member status
+  const ketenganPkg = getStudioTokenPackage('ketengan', isMember)!;
+  const starterPkg = getStudioTokenPackage('starter', isMember)!;
+  const creatorPkg = getStudioTokenPackage('creator', isMember)!;
+
+  const packagesList = [ketenganPkg, starterPkg, creatorPkg];
 
   const handleCheckout = async (planKey: StudioPackageId) => {
     setLoadingPlan(planKey);
@@ -68,13 +111,13 @@ export default function StudioPaywallModal({
       const data = await res.json();
 
       if (!res.ok || !data.success || !data.invoice_url) {
-        throw new Error(data.error || 'Gagal menerbitkan invoice pembayaran. Silakan coba lagi.');
+        throw new Error(data.error || 'Gagal menerbitkan invoice pembayaran QRIS. Silakan coba lagi.');
       }
 
-      // Redirect langsung ke URL checkout invoice Xendit resmi
+      // Redirect langsung ke URL checkout invoice QRIS Instan resmi
       window.location.href = data.invoice_url;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke payment gateway.';
+      const msg = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke sistem pembayaran QRIS Instan.';
       setErrorMessage(msg);
       setLoadingPlan(null);
     }
@@ -83,7 +126,7 @@ export default function StudioPaywallModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-2xl bg-slate-950 border border-violet-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-violet-500/10 space-y-6 text-white my-8"
+        className="relative w-full max-w-4xl bg-slate-950 border border-violet-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-violet-500/10 space-y-6 text-white my-8"
         onClick={e => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -99,18 +142,39 @@ export default function StudioPaywallModal({
 
         {/* Modal Header */}
         <div className="space-y-2 text-center sm:text-left pr-8">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-[10px] font-black uppercase tracking-wider">
-            <Zap className="w-3.5 h-3.5" />
-            <span>Kredit Render: {currentCredits} Sisa / Upgrade Studio</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-[10px] font-black uppercase tracking-wider">
+              <Zap className="w-3.5 h-3.5" />
+              <span>Saldo Kredit: {currentCredits} Sisa</span>
+            </div>
+
+            {isMember ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-black tracking-wide uppercase">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Diskon Khusus Member Toko</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px] font-bold">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Masa aktif saldo kredit: 12 bulan</span>
+              </div>
+            )}
           </div>
 
           <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            Top-Up Kredit Render Video Studio
+            Top-Up Kredit Video Studio
           </h2>
-          <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-            Pilih paket kredit fleksibel via QRIS instan atau berlangganan Studio Pro untuk render video HD tanpa batas.
+          <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
+            Beli kredit fleksibel via QRIS Instan. Kredit langsung masuk ke akun toko Anda tanpa masa tunggu dan aktif hingga 12 bulan.
           </p>
         </div>
+
+        {/* Teaser Banner Penawaran Upgrade Toko untuk Akun Publik / Non-Member */}
+        <ShopUpgradeBanner
+          isShopMember={isMember}
+          tenantSlug={tenantSlug}
+          variant="compact"
+        />
 
         {/* Error Alert Banner */}
         {errorMessage && (
@@ -120,209 +184,127 @@ export default function StudioPaywallModal({
           </div>
         )}
 
-        {/* Modal Body: 2 Purchase Options */}
-        <div className="space-y-4">
-          {/* ── SECTION A: TOP-UP INSTAN VIA QRIS ── */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                <QrCode className="w-3.5 h-3.5 text-violet-400" />
-                <span>Opsi A: Top-Up Instan (Sekali Beli via QRIS / VA)</span>
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono">Tanpa Langganan Otomatis</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Paket Starter (25 Video) */}
-              <div
-                onClick={() => setSelectedPlan('starter')}
-                className={`p-4 rounded-2xl border transition cursor-pointer relative space-y-3 ${
-                  selectedPlan === 'starter'
-                    ? 'bg-violet-950/30 border-violet-400 shadow-lg shadow-violet-500/10'
-                    : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">{starterPkg.name}</span>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
-                    {starterPkg.credits} Video HD
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-xl font-black text-white">{starterPkg.formattedPrice}</div>
-                  <p className="text-[10px] text-slate-400">{starterPkg.description}</p>
-                </div>
-
-                <ul className="text-[11px] text-slate-300 space-y-1">
-                  {starterPkg.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <button
-                  type="button"
-                  disabled={loadingPlan !== null}
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleCheckout('starter');
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loadingPlan === 'starter' ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Menyiapkan Invoice...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Beli Paket Starter</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Paket Creator (50 Video) */}
-              <div
-                onClick={() => setSelectedPlan('creator')}
-                className={`p-4 rounded-2xl border transition cursor-pointer relative space-y-3 ${
-                  selectedPlan === 'creator'
-                    ? 'bg-violet-950/40 border-violet-400 shadow-lg shadow-violet-500/15'
-                    : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-                }`}
-              >
-                {/* Popular Badge */}
-                {creatorPkg.badge && (
-                  <div className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
-                    <Flame className="w-2.5 h-2.5" />
-                    <span>{creatorPkg.badge}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">{creatorPkg.name}</span>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300">
-                    {creatorPkg.credits} Video HD
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-xl font-black text-white">{creatorPkg.formattedPrice}</div>
-                  <p className="text-[10px] text-slate-400">{creatorPkg.description}</p>
-                </div>
-
-                <ul className="text-[11px] text-slate-300 space-y-1">
-                  {creatorPkg.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <button
-                  type="button"
-                  disabled={loadingPlan !== null}
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleCheckout('creator');
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-violet-600/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loadingPlan === 'creator' ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Menyiapkan Invoice...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Beli Paket Creator</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* ── SECTION B: STUDIO PRO (LANGGANAN BULANAN) ── */}
-          <div className="space-y-2.5 pt-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 text-amber-400" />
-                <span>Opsi B: Studio Pro (Langganan Bulanan)</span>
-              </span>
-              <span className="text-[10px] text-emerald-400 font-mono font-bold">Akses Unlimited Tools</span>
-            </div>
-
-            <div
-              onClick={() => setSelectedPlan('pro_monthly')}
-              className={`p-5 rounded-2xl border transition cursor-pointer relative space-y-4 ${
-                selectedPlan === 'pro_monthly'
-                  ? 'bg-gradient-to-r from-violet-950/50 via-purple-950/40 to-slate-900 border-violet-400 shadow-xl shadow-violet-500/15'
-                  : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-white">{proPkg.name}</span>
-                    {proPkg.badge && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
-                        {proPkg.badge}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    {proPkg.description}
-                  </p>
-                </div>
-
-                <div className="text-left sm:text-right">
-                  <div className="text-2xl font-black text-white">
-                    {proPkg.formattedPrice} <span className="text-xs font-normal text-slate-400">{proPkg.periodLabel}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Fitur Utama Checklist */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-200 pt-1 border-t border-white/5">
-                {proPkg.features.map((feature, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                    <span>{feature}</span>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                disabled={loadingPlan !== null}
-                onClick={e => {
-                  e.stopPropagation();
-                  handleCheckout('pro_monthly');
-                }}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingPlan === 'pro_monthly' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Menyiapkan Pembayaran QRIS...</span>
-                  </>
-                ) : (
-                  <span>Langganan Studio Pro ➔</span>
-                )}
-              </button>
-            </div>
-          </div>
+        {/* Section Header */}
+        <div className="flex items-center justify-between text-xs pt-1">
+          <span className="font-bold text-slate-300 flex items-center gap-1.5">
+            <QrCode className="w-3.5 h-3.5 text-violet-400" />
+            <span>Pilihan Paket Top-Up (Bayar via QRIS Instan)</span>
+          </span>
+          <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Masa aktif saldo kredit: 12 bulan</span>
+          </span>
         </div>
 
-        {/* Modal Footer: Close / Cancel */}
-        <div className="border-t border-white/5 pt-3 text-center">
+        {/* Aturan Konversi Pemakaian Kredit Info Box */}
+        <div className="flex items-center justify-center p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-200 text-xs font-semibold text-center tracking-wide">
+          <span>ℹ️ 1 Video Otomatis Jadi = 3 Kredit | 1 Panduan Naskah Asli = 1 Kredit</span>
+        </div>
+
+        {/* 3 Top-Up Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {packagesList.map(pkg => {
+            const isSelected = selectedPlan === pkg.id;
+            const isPopular = Boolean(pkg.isPopular);
+
+            return (
+              <div
+                key={pkg.id}
+                onClick={() => setSelectedPlan(pkg.id)}
+                className={`p-5 rounded-2xl border transition cursor-pointer relative flex flex-col justify-between space-y-4 ${
+                  isSelected
+                    ? 'bg-violet-950/40 border-violet-400 shadow-xl shadow-violet-500/15'
+                    : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+                }`}
+              >
+                {/* Popular / Fast Trial Badge */}
+                {pkg.badge && (
+                  <div
+                    className={`absolute -top-2.5 right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 ${
+                      isPopular
+                        ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white'
+                        : 'bg-emerald-600 text-white'
+                    }`}
+                  >
+                    {isPopular && <Flame className="w-2.5 h-2.5" />}
+                    <span>{pkg.badge}</span>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-extrabold text-white">{pkg.name}</span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-300">
+                      {pkg.credits} Kredit
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-2xl font-black text-white">{pkg.formattedPrice}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-medium text-emerald-400 font-mono">
+                        {pkg.formattedPricePerCredit}
+                      </span>
+                      {isMember && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          Member
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">{pkg.description}</p>
+                  </div>
+
+                  <div className="border-t border-white/5 pt-3">
+                    <ul className="text-xs text-slate-300 space-y-1.5">
+                      {pkg.features.map((feature, idx) => (
+                        <li key={idx} className="flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                          <span className="leading-snug">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={loadingPlan !== null}
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleCheckout(pkg.id);
+                    }}
+                    className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPopular || isSelected
+                        ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-600/30'
+                        : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                  >
+                    {loadingPlan === pkg.id ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Menyiapkan QRIS...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Beli via QRIS Instan</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Modal Footer: Keamanan & Info */}
+        <div className="border-t border-white/5 pt-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Pembayaran diverifikasi otomatis via QRIS Instan. Saldo kredit berlaku 12 bulan.</span>
+          </div>
+
           <button
             type="button"
             onClick={onClose}

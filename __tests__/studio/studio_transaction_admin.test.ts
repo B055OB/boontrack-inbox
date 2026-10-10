@@ -54,32 +54,48 @@ jest.mock('@/lib/affiliate-notification-service', () => {
 });
 
 describe('1. Studio Token Pricing SSOT Configuration Suite', () => {
-  it('defines 3 standard packages with exact IDR nominal and render credits', () => {
-    // Starter: 25 credits, Rp 49.000
+  it('defines 3 standard packages with exact two-tier IDR nominal and render credits', () => {
+    // Ketengan: 5 credits, Rp 20.000 (public) / Rp 15.000 (member)
+    expect(STUDIO_TOKEN_PACKAGES.ketengan).toBeDefined();
+    expect(STUDIO_TOKEN_PACKAGES.ketengan.credits).toBe(5);
+    expect(STUDIO_TOKEN_PACKAGES.ketengan.publicTier.price).toBe(20000);
+    expect(STUDIO_TOKEN_PACKAGES.ketengan.memberTier.price).toBe(15000);
+    expect(STUDIO_TOKEN_PACKAGES.ketengan.billingType).toBe('ONE_TIME');
+
+    // Starter: 25 credits, Rp 75.000 (public) / Rp 49.000 (member)
     expect(STUDIO_TOKEN_PACKAGES.starter).toBeDefined();
     expect(STUDIO_TOKEN_PACKAGES.starter.credits).toBe(25);
-    expect(STUDIO_TOKEN_PACKAGES.starter.price).toBe(49000);
+    expect(STUDIO_TOKEN_PACKAGES.starter.publicTier.price).toBe(75000);
+    expect(STUDIO_TOKEN_PACKAGES.starter.memberTier.price).toBe(49000);
     expect(STUDIO_TOKEN_PACKAGES.starter.billingType).toBe('ONE_TIME');
 
-    // Creator: 50 credits, Rp 99.000 (recommended)
+    // Creator: 50 credits, Rp 135.000 (public) / Rp 89.000 (member)
     expect(STUDIO_TOKEN_PACKAGES.creator).toBeDefined();
     expect(STUDIO_TOKEN_PACKAGES.creator.credits).toBe(50);
-    expect(STUDIO_TOKEN_PACKAGES.creator.price).toBe(99000);
+    expect(STUDIO_TOKEN_PACKAGES.creator.publicTier.price).toBe(135000);
+    expect(STUDIO_TOKEN_PACKAGES.creator.memberTier.price).toBe(89000);
     expect(STUDIO_TOKEN_PACKAGES.creator.isPopular).toBe(true);
     expect(STUDIO_TOKEN_PACKAGES.creator.billingType).toBe('ONE_TIME');
 
-    // Pro Monthly: 100 credits, Rp 149.000
+    // Pro Monthly: 100 credits, temporarily held (isActive: false)
     expect(STUDIO_TOKEN_PACKAGES.pro_monthly).toBeDefined();
     expect(STUDIO_TOKEN_PACKAGES.pro_monthly.credits).toBe(100);
-    expect(STUDIO_TOKEN_PACKAGES.pro_monthly.price).toBe(149000);
+    expect(STUDIO_TOKEN_PACKAGES.pro_monthly.isActive).toBe(false);
     expect(STUDIO_TOKEN_PACKAGES.pro_monthly.billingType).toBe('SUBSCRIPTION');
   });
 
-  it('resolves packages via getStudioTokenPackage with aliases', () => {
-    expect(getStudioTokenPackage('starter')?.id).toBe('starter');
-    expect(getStudioTokenPackage('creator')?.id).toBe('creator');
+  it('resolves packages via getStudioTokenPackage with two-tier pricing and aliases', () => {
+    // Public non-member tier
+    expect(getStudioTokenPackage('ketengan', false)?.price).toBe(20000);
+    expect(getStudioTokenPackage('starter', false)?.price).toBe(75000);
+    expect(getStudioTokenPackage('creator', false)?.price).toBe(135000);
+
+    // Active shop subscriber member tier
+    expect(getStudioTokenPackage('ketengan', true)?.price).toBe(15000);
+    expect(getStudioTokenPackage('starter', true)?.price).toBe(49000);
+    expect(getStudioTokenPackage('creator', true)?.price).toBe(89000);
+
     expect(getStudioTokenPackage('pro')?.id).toBe('pro_monthly');
-    expect(getStudioTokenPackage('pro_monthly')?.id).toBe('pro_monthly');
     expect(getStudioTokenPackage('non_existent')).toBeNull();
   });
 });
@@ -151,12 +167,13 @@ describe('2. Studio Xendit Create Invoice API Suite', () => {
     expect(json.error).toContain('tidak ditemukan');
   });
 
-  it('creates Xendit invoice successfully when tenant exists', async () => {
+  it('creates Xendit invoice successfully when tenant exists (Member Tier)', async () => {
     mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
       data: {
         id: '11111111-2222-3333-4444-555555555555',
         slug: 'warungkreatif',
         name: 'Warung Kreatif Studio',
+        tier: 'SOLO',
         metadata: {
           whatsapp: '081234567890',
           email: 'creator@example.com',
@@ -189,7 +206,7 @@ describe('2. Studio Xendit Create Invoice API Suite', () => {
     expect(json.invoice_id).toBe('inv_xendit_studio_123');
     expect(json.invoice_url).toBe('https://checkout.xendit.co/web/inv_xendit_studio_123');
     expect(json.credits).toBe(50);
-    expect(json.amount).toBe(99000);
+    expect(json.amount).toBe(89000); // Member price SSOT
     expect(json.external_id).toMatch(/^TOPUP-STUDIO-warungkreatif-50-\d+$/);
 
     // Verify payload sent to Xendit

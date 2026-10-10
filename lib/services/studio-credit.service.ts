@@ -11,6 +11,7 @@
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
+import { isTenantShopMember } from '@/lib/config/studio-pricing';
 
 export interface TenantEntitlement {
   tenant_id: string;
@@ -18,6 +19,7 @@ export interface TenantEntitlement {
   tier: 'FREE' | 'PRO' | 'AGENCY' | 'FOUNDER' | string;
   credits_remaining: number;
   is_unlimited: boolean;
+  is_shop_member?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -95,6 +97,7 @@ export class StudioCreditService {
         tier: entitlementRow.tier || tenant.tier || 'FREE',
         credits_remaining: isUnlimited ? 999999 : (entitlementRow.credits_remaining ?? 50),
         is_unlimited: isUnlimited,
+        is_shop_member: isTenantShopMember(tenant),
         created_at: entitlementRow.created_at,
         updated_at: entitlementRow.updated_at,
       };
@@ -131,6 +134,7 @@ export class StudioCreditService {
       tier: isFounderTier ? 'FOUNDER' : (tenant.tier || 'FREE'),
       credits_remaining: isUnlimited ? 999999 : initialCredits,
       is_unlimited: isUnlimited,
+      is_shop_member: isTenantShopMember(tenant),
     };
   }
 
@@ -553,4 +557,187 @@ export class StudioCreditService {
       commissionAmount,
     };
   }
+
+  /**
+   * Cross-Benefit: Shop Subscription Activation Bonus (+15 Credits)
+   * 
+   * When a tenant subscribes to or activates BoonTrack Shop:
+   * 1. Updates tenant status:
+   *    - sets is_shop_subscriber: true (in metadata and tenant row if column exists)
+   *    - upgrades tier to 'member' if currently FREE / trial
+   * 2. Grants appreciation bonus:
+   *    - adds +15 Studio Credits to tenant_entitlements (and tenant_studio_credits / metadata)
+   * 3. Records ledger mutation in tenant_credit_ledger:
+   *    - event / action: 'PROMO_SHOP_ACTIVATION_BONUS'
+   *    - amount: +15
+   *    - tipe: 'CREDIT_IN'
+   *    - note / description: 'Bonus langganan toko BoonTrack'
+   * 4. Idempotency Guard:
+   *    - Checks if PROMO_SHOP_ACTIVATION_BONUS has already been granted to this tenant.
+   *    - If already granted, returns existing state without adding double credits, ensuring status remains upgraded.
+   * 5. No Cash Refund Policy:
+   *    - Previously purchased credits remain intact and increase by +15.
+   *    - Subsequent purchases automatically locked to Member Toko rates.
+   */
+  static async grantShopActivationBonus(params: {
+    tenantIdOrSlug: string;
+    subscriptionId?: string;
+    invoiceId?: string;
+  }): Promise<{
+    success: boolean;
+    alreadyGranted?: boolean;
+    creditsGranted: number;
+    newBalance: number;
+    tenantTier: string;
+    isShopMember: boolean;
+    message?: string;
+  }> {
+    const tenant = await this.resolveTenant(params.tenantIdOrSlug);
+    if (!tenant) {
+      return {
+        success: false,
+        creditsGranted: 0,
+        newBalance: 0,
+        tenantTier: 'FREE',
+        isShopMember: false,
+        message: 'Tenant tidak ditemukan.',
+      };
+    }
+
+    const supabase = getSupabaseAdmin() || getSupabase();
+    if (!supabase) {
+      return {
+        success: false,
+        creditsGranted: 0,
+        newBalance: 0,
+        tenantTier: tenant.tier || 'FREE',
+        isShopMember: false,
+        message: 'Database client tidak tersedia.',
+      };
+    }
+
+    // 1. Idempotency Check: check if PROMO_SHOP_ACTIVATION_BONUS has already been recorded
+    try {
+      const { data: existingBonus } = await supabase
+        .from('tenant_credit_ledger')
+        .select('id, amount, balance_after')
+        .eq('tenant_id', tenant.id)
+        .eq('action', 'PROMO_SHOP_ACTIVATION_BONUS')
+        .limit(1)
+        .maybeSingle();
+
+      if (existingBonus) {
+        const ent = await this.getEntitlements(tenant.id);
+        return {
+          success: true,
+          alreadyGranted: true,
+          creditsGranted: 0,
+          newBalance: ent?.credits_remaining ?? existingBonus.balance_after,
+          tenantTier: ent?.tier || tenant.tier || 'member',
+          isShopMember: true,
+          message: 'Bonus langganan toko sudah pernah diberikan sebelumnya (idempotent).',
+        };
+      }
+    } catch (checkErr) {
+      console.warn('[StudioCreditService] Bonus idempotency check warning:', checkErr);
+    }
+
+    const currentEntitlements = await this.getEntitlements(tenant.id);
+    const currentBalance = currentEntitlements?.credits_remaining ?? 0;
+    const bonusCredits = 15;
+    const newBalance = currentBalance + bonusCredits;
+
+    // 2. Resolve upgraded tier
+    const rawTier = String(tenant.tier || '').toUpperCase();
+    const paidShopTiers = ['SOLO', 'PRO_SCALE', 'ADS_PERFORMANCE', 'ENTERPRISE', 'TEAM_SCALE', 'FOUNDER'];
+    const upgradedTier = paidShopTiers.includes(rawTier) ? tenant.tier : 'member';
+
+    // 3. Update tenants table
+    const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? { ...tenant.metadata } : {};
+    existingMeta.is_shop_subscriber = true;
+    existingMeta.is_shop_member = true;
+    existingMeta.shop_activation_bonus_granted = true;
+    existingMeta.shop_activation_bonus_granted_at = new Date().toISOString();
+    if (params.subscriptionId) existingMeta.shop_subscription_id = params.subscriptionId;
+    if (params.invoiceId) existingMeta.shop_activation_invoice_id = params.invoiceId;
+
+    try {
+      await supabase
+        .from('tenants')
+        .update({
+          tier: upgradedTier,
+          metadata: existingMeta,
+        })
+        .eq('id', tenant.id);
+    } catch (tenantUpdErr) {
+      console.warn('[StudioCreditService] Tenant update warning:', tenantUpdErr);
+    }
+
+    // 4. Update tenant_entitlements
+    const isUnlimited = Boolean(currentEntitlements?.is_unlimited || rawTier === 'FOUNDER');
+    await supabase
+      .from('tenant_entitlements')
+      .upsert({
+        tenant_id: tenant.id,
+        credits_remaining: isUnlimited ? 999999 : newBalance,
+        is_unlimited: isUnlimited,
+        tier: isUnlimited ? 'FOUNDER' : upgradedTier,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id' });
+
+    // Optional sync to tenant_studio_credits table
+    try {
+      await supabase
+        .from('tenant_studio_credits')
+        .upsert({
+          tenant_id: tenant.id,
+          credits: isUnlimited ? 999999 : newBalance,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tenant_id' });
+    } catch {}
+
+    // 5. Insert audit ledger into tenant_credit_ledger
+    const ledgerPayload = {
+      tenant_id: tenant.id,
+      amount: bonusCredits,
+      balance_after: isUnlimited ? 999999 : newBalance,
+      action: 'PROMO_SHOP_ACTIVATION_BONUS',
+      description: 'Bonus langganan toko BoonTrack',
+      event: 'PROMO_SHOP_ACTIVATION_BONUS',
+      type: 'CREDIT_IN',
+      note: 'Bonus langganan toko BoonTrack',
+    };
+
+    try {
+      const { error: ledgerErr } = await supabase
+        .from('tenant_credit_ledger')
+        .insert(ledgerPayload);
+
+      if (ledgerErr) {
+        // Fallback with standard columns
+        await supabase
+          .from('tenant_credit_ledger')
+          .insert({
+            tenant_id: tenant.id,
+            amount: bonusCredits,
+            balance_after: isUnlimited ? 999999 : newBalance,
+            action: 'PROMO_SHOP_ACTIVATION_BONUS',
+            description: 'Bonus langganan toko BoonTrack',
+          });
+      }
+    } catch (insertErr) {
+      console.warn('[StudioCreditService] Ledger mutation error:', insertErr);
+    }
+
+    return {
+      success: true,
+      alreadyGranted: false,
+      creditsGranted: bonusCredits,
+      newBalance: isUnlimited ? 999999 : newBalance,
+      tenantTier: upgradedTier,
+      isShopMember: true,
+      message: 'Bonus apresiasi 15 Kredit Studio berhasil diberikan.',
+    };
+  }
 }
+

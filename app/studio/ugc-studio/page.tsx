@@ -194,10 +194,15 @@ export default function UGCStudioPage() {
   // Calculate total duration
   const totalDuration = scenes.reduce((sum, s) => sum + (s.duration_sec || 0), 0);
 
-  // Generate Script via AI API
+  // Generate Script via AI API (Jalur B: Mode Panduan Naskah Asli = 1 Kredit)
   const handleGenerateScript = async () => {
     if (!productName.trim() || !painPoint.trim()) {
       setErrorMsg('Nama produk dan target masalah wajib diisi.');
+      return;
+    }
+
+    if (renderCredits < 1) {
+      setIsPaywallOpen(true);
       return;
     }
 
@@ -209,6 +214,7 @@ export default function UGCStudioPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenant_slug: tenantSlug,
           product_name: productName.trim(),
           pain_point: painPoint.trim(),
           hook_angle: hookAngle,
@@ -218,11 +224,17 @@ export default function UGCStudioPage() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
+        if (res.status === 403 || data.message?.includes('tidak mencukupi')) {
+          setIsPaywallOpen(true);
+        }
         throw new Error(data.message || 'Gagal generate naskah.');
       }
 
       if (Array.isArray(data.scenes)) {
         setScenes(data.scenes);
+      }
+      if (typeof data.remaining_credits === 'number') {
+        setRenderCredits(data.remaining_credits);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Terjadi kesalahan sistem.');
@@ -256,9 +268,9 @@ export default function UGCStudioPage() {
     handleSceneChange(sceneIndex, 'asset_name', undefined);
   };
 
-  // Dispatch to Render Queue
+  // Dispatch to Render Queue (Jalur A: Mode Video Otomatis / Render MP4 = 3 Kredit)
   const handleDispatchRender = async () => {
-    if (renderCredits < 1) {
+    if (renderCredits < 3) {
       setIsPaywallOpen(true);
       return;
     }

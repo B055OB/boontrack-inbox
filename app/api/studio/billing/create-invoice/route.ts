@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
-import { getStudioTokenPackage } from '@/lib/config/studio-pricing';
+import { getStudioTokenPackage, isTenantShopMember } from '@/lib/config/studio-pricing';
 
 /**
  * POST /api/studio/billing/create-invoice
@@ -31,13 +31,13 @@ export async function POST(req: NextRequest) {
       customerEmail,
     } = body;
 
-    // 1. Validasi Paket Harga dari SSOT
-    const pkg = getStudioTokenPackage(packageId);
-    if (!pkg) {
+    // 1. Validasi awal paket token (Fail-fast)
+    const initialPkgCheck = getStudioTokenPackage(packageId);
+    if (!initialPkgCheck || !initialPkgCheck.isActive) {
       return NextResponse.json(
         {
           success: false,
-          error: `Paket token '${packageId}' tidak valid. Pilihan tersedia: starter, creator, pro_monthly.`,
+          error: `Paket token '${packageId}' saat ini tidak aktif atau tidak valid. Pilihan tersedia: ketengan, starter, creator.`,
         },
         { status: 400 }
       );
@@ -66,16 +66,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data: tenant, error: tenantErr } = await supabase
+    const tenantResult = await supabase
       .from('tenants')
-      .select('id, slug, name, metadata')
+      .select('id, slug, name, tier, metadata')
       .eq('slug', rawSlug)
       .maybeSingle();
+
+    const tenant = tenantResult?.data;
+    const tenantErr = tenantResult?.error;
 
     if (tenantErr || !tenant) {
       return NextResponse.json(
         { success: false, error: `Tenant dengan slug '${rawSlug}' tidak ditemukan.` },
         { status: 404 }
+      );
+    }
+
+    // 4. Resolusi Paket Harga dari SSOT berdasarkan status Member Toko (Two-Tier Pricing)
+    const isShopMember = isTenantShopMember(tenant);
+    const pkg = getStudioTokenPackage(packageId, isShopMember);
+    if (!pkg || !pkg.isActive) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Paket token '${packageId}' saat ini tidak aktif atau tidak valid. Pilihan tersedia: ketengan, starter, creator.`,
+        },
+        { status: 400 }
       );
     }
 
