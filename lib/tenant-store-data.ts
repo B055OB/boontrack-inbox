@@ -12,11 +12,12 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
   }
 
   const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+  const currentKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    '';
+    (currentKey && !currentKey.startsWith('sb_secret_'))
+      ? currentKey
+      : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7');
 
   const headers: HeadersInit = {
     apikey: supabaseKey,

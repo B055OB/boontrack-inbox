@@ -24,7 +24,8 @@ export async function generateMetadata({
   params: Promise<{ tenant: string }>;
 }): Promise<Metadata> {
   try {
-    const { tenant } = await params;
+    const resolvedParams = await params;
+    const { tenant } = resolvedParams;
     const cleanTenant = normalizeTenantSlug((tenant || '').toLowerCase().trim());
 
     // Slug bawaan sistem agar tidak tertimpa
@@ -41,6 +42,12 @@ export async function generateMetadata({
 
     const storeName = store?.name || cleanTenant.replace(/[-_]/g, ' ').toUpperCase();
     const metaObj = (store?.metadata as Record<string, any>) || {};
+
+    console.log("DEBUG TENANT METADATA:", JSON.stringify({
+      slug: resolvedParams.tenant,
+      store,
+      metaObj,
+    }, null, 2));
 
     const description =
       metaObj.description ||
@@ -65,16 +72,31 @@ export async function generateMetadata({
     // HIERARKI GAMBAR OPENGRAPH (og:image):
     // 0. Dedicated OG image banner (metaObj.og_image / og_image_url) atau pilot banner
     // 1. tenant.metadata.banner_url / cover_url / hero_image
-    // 2. tenant.metadata.logo_url / store.logo_url / store_logo_url / image
+    // 2. tenant.metadata.logo_url / store.logo_url / store_logo_url / avatar_url / branding / customization
     // 3. Gambar produk pertama yang aktif
     // 4. Fallback default branding resmi BoonTrack 1200x630 (bukan gambar demo)
     // =========================================================================
     const storeLogo =
       metaObj.store_logo_url ||
-      store?.logo_url ||
       metaObj.logo_url ||
-      metaObj.image ||
+      metaObj.avatar_url ||
+      metaObj.logo ||
+      metaObj.branding?.logo_url ||
+      metaObj.branding?.logo ||
+      metaObj.customization?.logo ||
+      metaObj.customization?.logo_url ||
+      metaObj.settings?.logo_url ||
+      metaObj.settings?.logo ||
+      metaObj.profile?.logo_url ||
+      metaObj.profile?.avatar_url ||
+      (store as any)?.branding?.logo_url ||
+      (store as any)?.branding?.logo ||
+      (store as any)?.customization?.logo ||
+      (store as any)?.customization?.logo_url ||
+      store?.logo_url ||
       (store as any)?.store_logo_url ||
+      (store as any)?.avatar_url ||
+      metaObj.image ||
       null;
 
     const storeTitle = store?.name || metaObj.store_name || storeName;

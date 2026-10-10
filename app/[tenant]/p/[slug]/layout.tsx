@@ -50,10 +50,25 @@ export async function generateMetadata({
 
     const storeLogo =
       metaObj.store_logo_url ||
-      store?.logo_url ||
       metaObj.logo_url ||
-      metaObj.image ||
+      metaObj.avatar_url ||
+      metaObj.logo ||
+      metaObj.branding?.logo_url ||
+      metaObj.branding?.logo ||
+      metaObj.customization?.logo ||
+      metaObj.customization?.logo_url ||
+      metaObj.settings?.logo_url ||
+      metaObj.settings?.logo ||
+      metaObj.profile?.logo_url ||
+      metaObj.profile?.avatar_url ||
+      (store as any)?.branding?.logo_url ||
+      (store as any)?.branding?.logo ||
+      (store as any)?.customization?.logo ||
+      (store as any)?.customization?.logo_url ||
+      store?.logo_url ||
       (store as any)?.store_logo_url ||
+      (store as any)?.avatar_url ||
+      metaObj.image ||
       null;
 
     let resolvedLogo = storeLogo;
