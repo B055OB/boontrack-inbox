@@ -51,9 +51,25 @@ const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
   'https://evolution-api-production-abb7.up.railway.app';
 
-const EVOLUTION_API_KEY =
-  process.env.EVOLUTION_API_KEY ||
-  '4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e';
+/**
+ * Resolves EVOLUTION_API_KEY with strict fail-closed enforcement.
+ * ZERO hardcoded fallbacks allowed.
+ * Throws an Error immediately if process.env.EVOLUTION_API_KEY is not set or empty.
+ */
+export function getRequiredEvolutionApiKey(customApiKey?: string): string {
+  const custom = customApiKey?.trim();
+  if (custom) return custom;
+
+  const envKey = process.env.EVOLUTION_API_KEY?.trim();
+  if (!envKey) {
+    throw new Error(
+      '[SECURITY FATAL] EVOLUTION_API_KEY is not configured or empty in process.env. Fail-closed enforced.'
+    );
+  }
+  return envKey;
+}
+
+export const getEvolutionApiKey = getRequiredEvolutionApiKey;
 
 /**
  * Downloads Base64 media from Evolution API v2.
@@ -87,7 +103,7 @@ export async function getEvolutionMediaBase64(
 
   // 2. Unduh Base64 Media dari endpoint resmi Evolution API
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
-  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const apiKey = getRequiredEvolutionApiKey(customApiKey);
   const endpoint = `${baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`;
 
   try {
@@ -135,7 +151,7 @@ export async function sendEvolutionTextMessage(
   customApiKey?: string
 ): Promise<boolean> {
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
-  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const apiKey = getRequiredEvolutionApiKey(customApiKey);
   const endpoint = `${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
 
   let cleanNumber = (recipientPhone || '').trim();
@@ -202,7 +218,7 @@ export async function sendEvolutionPresence(
   customApiKey?: string
 ): Promise<boolean> {
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
-  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const apiKey = getRequiredEvolutionApiKey(customApiKey);
   const endpoint = `${baseUrl}/chat/sendPresence/${encodeURIComponent(instanceName)}`;
 
   let cleanNumber = (recipientPhone || '').trim();
@@ -248,7 +264,7 @@ export async function sendEvolutionMediaMessage(
   customApiKey?: string
 ): Promise<boolean> {
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
-  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const apiKey = getRequiredEvolutionApiKey(customApiKey);
   const endpoint = `${baseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
 
   let cleanNumber = (recipientPhone || '').trim();
@@ -350,7 +366,15 @@ export async function processEvolutionWebhookEvent(
   // 2. Resolve Tenant Identity from whatsapp_connections dynamically (Zero Hardcoding)
   let tenantId: string | null = null;
   let tenantSlug: string | null = null;
-  let resolvedApiKey = EVOLUTION_API_KEY;
+  let resolvedApiKey: string;
+  try {
+    resolvedApiKey = getRequiredEvolutionApiKey();
+  } catch (keyErr: any) {
+    console.error(
+      `[SECURITY_ALERT] Webhook aborted: ${keyErr?.message || 'EVOLUTION_API_KEY missing'}. Halting process (FAIL-CLOSED).`
+    );
+    throw keyErr;
+  }
 
   const botPhoneNumber =
     payload.owner ||

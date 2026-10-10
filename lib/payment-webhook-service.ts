@@ -35,8 +35,40 @@ export interface WebhookLogEntry {
 const recentWebhookLogs: WebhookLogEntry[] = [];
 const MAX_LOG_ENTRIES = 50;
 
+const SENSITIVE_HEADER_KEYS = new Set([
+  'authorization',
+  'x-callback-token',
+  'x-api-key',
+  'cookie',
+  'set-cookie',
+  'apikey',
+  'token',
+  'x-internal-secret',
+  'x-admin-key',
+  'authentication_api_key',
+]);
+
 export function addWebhookLog(entry: WebhookLogEntry) {
-  recentWebhookLogs.unshift(entry);
+  // Sanitasi PII dan kredensial sensitif sebelum disimpan ke log diagnostik publik
+  const sanitizedHeaders: Record<string, string> = {};
+  if (entry.headers && typeof entry.headers === 'object') {
+    for (const [k, v] of Object.entries(entry.headers)) {
+      if (SENSITIVE_HEADER_KEYS.has(k.toLowerCase())) {
+        sanitizedHeaders[k] = '[REDACTED]';
+      } else {
+        sanitizedHeaders[k] = v;
+      }
+    }
+  }
+
+  // Nonaktifkan logging raw body untuk mencegah kebocoran PII (Personal Identifiable Information)
+  const sanitizedEntry: WebhookLogEntry = {
+    ...entry,
+    headers: sanitizedHeaders,
+    rawBody: '[REDACTED_PII]',
+  };
+
+  recentWebhookLogs.unshift(sanitizedEntry);
   if (recentWebhookLogs.length > MAX_LOG_ENTRIES) {
     recentWebhookLogs.pop();
   }

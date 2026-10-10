@@ -94,21 +94,33 @@ export async function isAuthorizedBotController(params: {
         return senderVariants.has(str) || senderVariants.has(cleaned);
       };
 
+      const checkAllowlist = (list?: any) => {
+        if (!list) return false;
+        if (Array.isArray(list)) {
+          return list.some(matchesPhone);
+        } else if (typeof list === 'string') {
+          const parts = list.split(/[,;\s]+/);
+          return parts.some(matchesPhone);
+        }
+        return false;
+      };
+
       if (matchesPhone(tenantRow.phone)) return true;
       if (matchesPhone(tenantRow.whatsapp_number)) return true;
+      if (matchesPhone((tenantRow as any).admin_phone)) return true;
 
       const meta = tenantRow.metadata || {};
       if (matchesPhone(meta.owner_phone)) return true;
       if (matchesPhone(meta.phone)) return true;
       if (matchesPhone(meta.whatsapp_number)) return true;
+      if (matchesPhone(meta.admin_phone)) return true;
 
-      // Check admin_phones (array or comma/semicolon delimited)
-      if (Array.isArray(meta.admin_phones)) {
-        if (meta.admin_phones.some(matchesPhone)) return true;
-      } else if (typeof meta.admin_phones === 'string') {
-        const parts = meta.admin_phones.split(/[,;\s]+/);
-        if (parts.some(matchesPhone)) return true;
-      }
+      // Check admin_phones & explicit allowlist variations (array or delimited string)
+      if (checkAllowlist(meta.admin_phones)) return true;
+      if (checkAllowlist(meta.bot_control_allowlist)) return true;
+      if (checkAllowlist(meta.allowlist)) return true;
+      if (checkAllowlist(meta.authorized_phones)) return true;
+      if (checkAllowlist(meta.allowed_phones)) return true;
     }
 
     // 2. Check tenant_users table

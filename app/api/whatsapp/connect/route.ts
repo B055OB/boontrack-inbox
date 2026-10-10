@@ -6,9 +6,7 @@ export const dynamic = "force-dynamic";
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
   "https://evolution-api-production-abb7.up.railway.app";
-const EVOLUTION_API_KEY =
-  process.env.EVOLUTION_API_KEY ||
-  "4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 
 // Instance fallback gateway Baileys utama BoonTrack
 const EVOLUTION_GATEWAY_INSTANCE =

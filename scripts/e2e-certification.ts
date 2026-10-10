@@ -172,7 +172,7 @@ async function runCertification() {
   try {
     const evoUrl = 'https://evolution-api-production-abb7.up.railway.app/instance/connectionState/tenant_onlineboost';
     const evoRes = await fetch(evoUrl, {
-      headers: { apikey: '4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e' },
+      headers: { apikey: process.env.EVOLUTION_API_KEY || '' },
     });
     const evoData = await evoRes.json().catch(() => ({}));
     const evoStatus = evoRes.status;
