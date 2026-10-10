@@ -48,6 +48,19 @@ export async function generateMetadata({
       }
     }
 
+    const storeLogo =
+      metaObj.store_logo_url ||
+      store?.logo_url ||
+      metaObj.logo_url ||
+      metaObj.image ||
+      (store as any)?.store_logo_url ||
+      null;
+
+    let resolvedLogo = storeLogo;
+    if (resolvedLogo && resolvedLogo.startsWith('/')) {
+      resolvedLogo = `${canonicalBaseUrl}${resolvedLogo}`;
+    }
+
     if (product) {
       const productName = product.name || product.title || cleanSlug;
       const productDesc =
@@ -65,7 +78,8 @@ export async function generateMetadata({
         product.single_page_config?.hero_image ||
         metaObj.og_image ||
         (cleanTenant === 'tumbuh-kembang-anak' ? '/tenants/tumbuh-kembang-anak/og-image.png' : null) ||
-        'https://shop.boontrack.com/og-shop.png';
+        storeLogo ||
+        '/default-og.png';
 
       let resolvedProductImage = sanitizeImageUrl(rawProductImage) || rawProductImage;
       if (resolvedProductImage.startsWith('/')) {
@@ -85,6 +99,11 @@ export async function generateMetadata({
         metadataBase: new URL(canonicalBaseUrl),
         title: pageTitle,
         description: productDesc,
+        icons: {
+          icon: resolvedLogo || '/favicon.ico',
+          shortcut: resolvedLogo || '/favicon.ico',
+          apple: resolvedLogo || '/favicon.ico',
+        },
         openGraph: {
           title: pageTitle,
           description: productDesc,
@@ -116,12 +135,25 @@ export async function generateMetadata({
       metadataBase: new URL(canonicalBaseUrl),
       title: `${cleanSlug} | ${storeName}`,
       description: metaObj.description || `Layanan resmi ${storeName}.`,
+      icons: {
+        icon: resolvedLogo || '/favicon.ico',
+        shortcut: resolvedLogo || '/favicon.ico',
+        apple: resolvedLogo || '/favicon.ico',
+      },
     };
   } catch (err) {
     console.warn('[ProductLayout] generateMetadata error:', err);
     return {
-      title: 'Detail Produk | BoonTrack',
-      description: 'Layanan resmi terverifikasi BoonTrack.',
+      title: 'Detail Produk | Layanan Resmi',
+      description: 'Layanan resmi toko terverifikasi.',
+      icons: {
+        icon: '/favicon.ico',
+        shortcut: '/favicon.ico',
+        apple: '/favicon.ico',
+      },
+      openGraph: {
+        images: ['/default-og.png'],
+      },
     };
   }
 }

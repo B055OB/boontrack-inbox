@@ -335,10 +335,10 @@ export default function FloatingWebchat({
   };
 
   return (
-    <div className="fixed bottom-5 right-4 sm:right-6 z-40 flex flex-col items-end">
+    <div className="fixed bottom-5 right-4 sm:right-6 z-40 flex flex-col items-end pointer-events-none">
       {/* Floating Chat Modal Box */}
       {isOpen && (
-        <div className="w-[360px] sm:w-[400px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100dvh-6rem)] bg-white rounded-3xl border border-slate-200/90 shadow-2xl flex flex-col overflow-hidden mb-3 animate-in fade-in slide-in-from-bottom-3 duration-200 transition-all">
+        <div className="w-[360px] sm:w-[400px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100dvh-6rem)] bg-white rounded-3xl border border-slate-200/90 shadow-2xl flex flex-col overflow-hidden mb-3 animate-in fade-in slide-in-from-bottom-3 duration-200 transition-all pointer-events-auto">
           {/* Header */}
           <div className="px-5 py-4 bg-gradient-to-r from-purple-700 via-indigo-700 to-slate-900 text-white flex items-center justify-between shadow-xs shrink-0">
             <div className="flex items-center gap-3">
@@ -594,7 +594,7 @@ export default function FloatingWebchat({
             type="button"
             id="btn-floating-webchat"
             onClick={() => setIsOpen(!isOpen)}
-            className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-xl shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap shrink-0 border border-white/20 select-none"
+            className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-xl shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap shrink-0 border border-white/20 select-none pointer-events-auto"
             aria-label={triggerLabel}
           >
             <span className="relative flex items-center justify-center shrink-0">
