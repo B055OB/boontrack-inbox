@@ -2,52 +2,133 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
-import { executeBotControl, isAuthorizedBotController } from '@/lib/whatsapp/bot-control-service';
+import { executeBotControl } from '@/lib/whatsapp/bot-control-service';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Verifies whether the request is explicitly authorized to view or mutate tenant bot status.
+ * Verifikasi hak akses tenant menggunakan session token autentikasi resmi (Supabase auth / verifyUserSession).
  *
- * Authorization is GRANTED if:
- * 1. Admin/Service API credentials (Bearer SUPABASE_SERVICE_ROLE_KEY, x-internal-secret, or EVOLUTION_API_KEY).
- * 2. Active Merchant Session Cookie (merchant_store, merchant_session, bt_tenant) matching target tenant.
- * 3. Verified Phone Number (from body, headers, or query) that is an Admin, Owner, or in the allowlist
- *    via isAuthorizedBotController().
+ * Otorisasi DIBERIKAN jika:
+ * 1. Admin/Service API credentials (Bearer SUPABASE_SERVICE_ROLE_KEY atau x-internal-secret).
+ * 2. Supabase Auth session token resmi (Bearer <access_token>) di mana user terautentikasi adalah
+ *    owner dari tenant (user.id === tenant.user_id / owner_id, user.email === tenant.owner_email,
+ *    atau role 'owner' / 'admin' di tabel tenant_users).
+ *    - Jika token tidak valid / kedaluwarsa -> HTTP 401 Unauthorized.
+ *    - Jika user bukan owner / admin tenant tersebut -> HTTP 403 Forbidden.
+ * 3. Sesi login merchant resmi dari cookie (merchant_session, merchant_store, bt_tenant)
+ *    yang cocok 100% dengan target tenant slug atau ID.
+ *    - Jika cookie tidak cocok (cross-tenant) -> HTTP 403 Forbidden.
  *
- * If none of these match, authorization is DENIED (fail-closed).
+ * DILARANG KERAS:
+ * - Membaca identitas dari req.body.phone, header x-phone, atau query params phone (spoofing prevention).
+ *
+ * Jika tidak ada kredensial sesi yang sah -> HTTP 401 Unauthorized (fail-closed).
  */
-async function verifyBotControlAuthorization(
+export async function verifyUserSession(
   req: NextRequest,
   tenant: {
     id: string;
     slug: string;
-    phone?: string | null;
-    whatsapp_number?: string | null;
+    user_id?: string | null;
+    owner_id?: string | null;
+    email?: string | null;
+    owner_email?: string | null;
     metadata?: any;
   },
-  supabase: any,
-  providedPhone?: string | null
-): Promise<{ authorized: boolean; error?: string; status?: number }> {
-  // 1. Service / Admin Secret Header Check
+  supabase: any
+): Promise<{ authorized: boolean; error?: string; status?: number; user?: any; role?: string }> {
   const authHeader = req.headers.get('authorization')?.trim();
   const internalSecret = req.headers.get('x-internal-secret')?.trim();
-  const adminKey = req.headers.get('x-admin-key')?.trim();
-  const apiKeyHeader = req.headers.get('apikey')?.trim();
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const envInternalSecret = process.env.INTERNAL_API_SECRET?.trim();
-  const evoKey = process.env.EVOLUTION_API_KEY?.trim();
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
 
+  // 1. Service / Internal Admin Secret Check
   if (
-    (envInternalSecret && internalSecret === envInternalSecret) ||
-    (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) ||
-    (evoKey && (adminKey === evoKey || apiKeyHeader === evoKey))
+    (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
+    (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`)
   ) {
-    return { authorized: true };
+    return { authorized: true, role: 'internal_admin' };
   }
 
-  // 2. Merchant Dashboard Session Cookie Check
+  // 2. Supabase Auth Official Session Token Check (Bearer <JWT>)
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token) {
+      try {
+        const { data: authData, error: authErr } = await supabase.auth.getUser(token);
+        if (authErr || !authData?.user) {
+          return {
+            authorized: false,
+            status: 401,
+            error: 'Unauthorized: Sesi token autentikasi tidak valid atau kedaluwarsa.',
+          };
+        }
+
+        const user = authData.user;
+        const userId = user.id;
+        const userEmail = user.email?.toLowerCase().trim();
+
+        // Cek kepemilikan langsung di record tenant
+        const isOwnerDirect =
+          (tenant.user_id && tenant.user_id === userId) ||
+          (tenant.owner_id && tenant.owner_id === userId) ||
+          (tenant.metadata?.user_id && tenant.metadata.user_id === userId) ||
+          (tenant.metadata?.owner_id && tenant.metadata.owner_id === userId) ||
+          (userEmail && (
+            (tenant.email && tenant.email.toLowerCase().trim() === userEmail) ||
+            (tenant.owner_email && tenant.owner_email.toLowerCase().trim() === userEmail) ||
+            (tenant.metadata?.owner_email && tenant.metadata.owner_email.toLowerCase().trim() === userEmail)
+          ));
+
+        if (isOwnerDirect) {
+          return { authorized: true, user, role: 'owner' };
+        }
+
+        // Cek peran di tabel tenant_users
+        try {
+          const { data: userRecords } = await supabase
+            .from('tenant_users')
+            .select('user_id, email, role, is_active')
+            .or(`tenant_id.eq.${tenant.id},tenant_slug.eq.${tenant.slug}`)
+            .eq('is_active', true);
+
+          if (Array.isArray(userRecords)) {
+            const matchedUser = userRecords.find(
+              (u: any) =>
+                (u.user_id && u.user_id === userId) ||
+                (userEmail && u.email && u.email.toLowerCase().trim() === userEmail)
+            );
+
+            if (matchedUser) {
+              const role = String(matchedUser.role || '').toLowerCase();
+              if (['owner', 'admin', 'manager', 'superuser'].includes(role)) {
+                return { authorized: true, user, role };
+              }
+            }
+          }
+        } catch (dbErr) {
+          console.warn('[BotControl] Error checking tenant_users for user:', dbErr);
+        }
+
+        // User terautentikasi tetapi BUKAN owner / admin dari slug tenant ini -> 403 Forbidden
+        return {
+          authorized: false,
+          status: 403,
+          error: 'Forbidden: User bukan owner atau admin dari toko ini.',
+        };
+      } catch (err: any) {
+        return {
+          authorized: false,
+          status: 401,
+          error: 'Unauthorized: Gagal memverifikasi sesi token autentikasi.',
+        };
+      }
+    }
+  }
+
+  // 3. Merchant Dashboard Session Cookie Check
   const cleanCookie = (val?: string) => {
     if (!val) return '';
     try {
@@ -65,43 +146,24 @@ async function verifyBotControlAuthorization(
   const normalizedTargetSlug = (tenant.slug || '').toLowerCase().trim();
   const normalizedTargetId = (tenant.id || '').toLowerCase().trim();
 
-  if (cookieStore && (cookieStore === normalizedTargetSlug || cookieStore === normalizedTargetId)) {
-    return { authorized: true };
-  }
-
-  // 3. Sender Phone Authorization Check (Admin/Owner or in Allowlist)
-  const candidatePhone =
-    providedPhone?.trim() ||
-    req.headers.get('x-sender-phone')?.trim() ||
-    req.headers.get('x-phone')?.trim() ||
-    req.headers.get('x-sender')?.trim() ||
-    req.nextUrl.searchParams.get('phone')?.trim() ||
-    req.nextUrl.searchParams.get('sender_phone')?.trim();
-
-  if (candidatePhone) {
-    const isAuthorized = await isAuthorizedBotController({
-      senderPhone: candidatePhone,
-      tenantId: tenant.id,
-      tenantSlug: tenant.slug,
-      supabase,
-    });
-
-    if (isAuthorized) {
-      return { authorized: true };
+  if (cookieStore) {
+    if (cookieStore === normalizedTargetSlug || cookieStore === normalizedTargetId) {
+      return { authorized: true, role: 'merchant_cookie' };
     }
 
+    // Cookie ada tetapi milik toko lain (cross-tenant access attempt) -> 403 Forbidden
     return {
       authorized: false,
       status: 403,
-      error: 'Forbidden: Nomor telepon tidak memiliki otorisasi admin/owner atau tidak terdaftar dalam allowlist.',
+      error: 'Forbidden: Sesi merchant tidak memiliki izin akses untuk toko ini.',
     };
   }
 
-  // Fail-closed default:
+  // 4. Fail-closed: Tanpa autentikasi resmi
   return {
     authorized: false,
     status: 401,
-    error: 'Unauthorized: Sesi login merchant atau otorisasi admin/owner/allowlist diperlukan.',
+    error: 'Unauthorized: Sesi autentikasi resmi (Supabase auth / merchant session) diperlukan.',
   };
 }
 
@@ -120,7 +182,7 @@ export async function GET(
 
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('id, slug, phone, whatsapp_number, bot_paused, is_bot_active, metadata')
+      .select('id, slug, phone, whatsapp_number, bot_paused, is_bot_active, metadata, user_id, owner_id, email, owner_email')
       .or(`slug.eq.${slug},id.eq.${slug}`)
       .maybeSingle();
 
@@ -128,8 +190,8 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    // Explicit Authorization Check
-    const auth = await verifyBotControlAuthorization(req, tenant, supabase);
+    // Explicit Authorization Check via official session verification (Supabase auth / merchant session)
+    const auth = await verifyUserSession(req, tenant, supabase);
     if (!auth.authorized) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
@@ -172,7 +234,7 @@ export async function POST(
 
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('id, slug, phone, whatsapp_number, bot_paused, is_bot_active, metadata')
+      .select('id, slug, phone, whatsapp_number, bot_paused, is_bot_active, metadata, user_id, owner_id, email, owner_email')
       .or(`slug.eq.${slug},id.eq.${slug}`)
       .maybeSingle();
 
@@ -180,15 +242,9 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    const candidatePhone =
-      body.phone ||
-      body.sender_phone ||
-      body.sender ||
-      body.whatsapp_number ||
-      null;
-
-    // Explicit Authorization Check (Admin/Owner/Allowlist)
-    const auth = await verifyBotControlAuthorization(req, tenant, supabase, candidatePhone);
+    // Explicit Authorization Check via official session verification (Supabase auth / merchant session / internal secret)
+    // NOTE: candidatePhone extraction from body.phone, x-phone, or query params is REMOVED to prevent spoofing.
+    const auth = await verifyUserSession(req, tenant, supabase);
     if (!auth.authorized) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
@@ -211,7 +267,7 @@ export async function POST(
       action,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
-      senderPhone: candidatePhone || undefined,
+      senderPhone: auth.user?.phone || undefined,
       source: body.source || 'dashboard_toggle',
       supabase,
     });

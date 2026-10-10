@@ -48,6 +48,81 @@ const SENSITIVE_HEADER_KEYS = new Set([
   'authentication_api_key',
 ]);
 
+const PII_KEY_REGEX = /^(?:.*_)?(?:phone|telepon|hp|wa|whatsapp|msisdn|mobile|email|token|secret|password|card|rekening|account_number|nik|ktp|address|alamat|customer_name|buyer_name)(?:_.*)?$/i;
+const PHONE_PATTERN = /(?:\+?62|08)[0-9]{8,13}\b/g;
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+/**
+ * Sanitasi PII rekursif untuk menyensor nomor telepon, email, token, dan data pribadi menjadi [REDACTED_PII].
+ */
+export function sanitizePII(data: any): any {
+  if (data === null || data === undefined) return data;
+
+  if (typeof data === 'string') {
+    let text = data;
+    if (EMAIL_PATTERN.test(text)) {
+      text = text.replace(EMAIL_PATTERN, '[REDACTED_PII]');
+    }
+    if (PHONE_PATTERN.test(text)) {
+      text = text.replace(PHONE_PATTERN, '[REDACTED_PII]');
+    }
+    return text;
+  }
+
+  if (typeof data === 'number' || typeof data === 'boolean') {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizePII(item));
+  }
+
+  if (typeof data === 'object') {
+    const sanitized: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (PII_KEY_REGEX.test(key)) {
+        if (value === null || value === undefined) {
+          sanitized[key] = value;
+        } else if (typeof value === 'object' && !Array.isArray(value)) {
+          sanitized[key] = sanitizePII(value);
+        } else {
+          sanitized[key] = '[REDACTED_PII]';
+        }
+      } else {
+        sanitized[key] = sanitizePII(value);
+      }
+    }
+    return sanitized;
+  }
+
+  return data;
+}
+
+/**
+ * Verifikasi hak akses pembacaan diagnostic logs (?logs=true).
+ * HANYA izinkan ADMIN_INTERNAL_SECRET / INTERNAL_API_SECRET atau Supabase Service Role Key.
+ * XENDIT_CALLBACK_TOKEN atau EVOLUTION_API_KEY dicabut dan ditolak tegas.
+ */
+export function isAuthorizedWebhookLogViewer(req: NextRequest): boolean {
+  const authHeader = req.headers.get('authorization')?.trim();
+  const internalSecret = req.headers.get('x-internal-secret')?.trim();
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+
+  // Internal Secret Header Check
+  if (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) {
+    return true;
+  }
+
+  // Supabase Service Role Key Check
+  if (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
+    return true;
+  }
+
+  return false;
+}
+
 export function addWebhookLog(entry: WebhookLogEntry) {
   // Sanitasi PII dan kredensial sensitif sebelum disimpan ke log diagnostik publik
   const sanitizedHeaders: Record<string, string> = {};
@@ -61,11 +136,12 @@ export function addWebhookLog(entry: WebhookLogEntry) {
     }
   }
 
-  // Nonaktifkan logging raw body untuk mencegah kebocoran PII (Personal Identifiable Information)
+  // Nonaktifkan logging raw body dan sanitasi resultBody untuk mencegah kebocoran PII
   const sanitizedEntry: WebhookLogEntry = {
     ...entry,
     headers: sanitizedHeaders,
     rawBody: '[REDACTED_PII]',
+    resultBody: sanitizePII(entry.resultBody),
   };
 
   recentWebhookLogs.unshift(sanitizedEntry);

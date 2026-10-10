@@ -8,12 +8,16 @@
  *    - Resolves customApiKey when provided.
  *
  * 2. app/api/v1/tenants/[slug]/bot-control/route.ts:
- *    - Rejects unauthorized access with 401.
- *    - Rejects mismatched merchant session cookie with 401.
- *    - Rejects non-allowlisted / non-admin phone number with 403.
+ *    - Rejects unauthorized access with 401 when no session is present.
+ *    - Rejects with 401 when invalid or expired session token is provided.
+ *    - Rejects with 403 when session token belongs to a user who is not an owner/admin of the tenant.
+ *    - Rejects with 401 when unauthenticated caller supplies owner's phone in body (phone spoofing rejected).
+ *    - Rejects with 401 when unauthenticated caller supplies x-phone header.
+ *    - Rejects with 403 when accessed with mismatching merchant session cookie (cross-tenant rejected).
  *    - Allows access with matching merchant session cookie.
- *    - Allows access with authorized / allowlisted phone number.
- *    - Allows access with internal service secret or admin key.
+ *    - Allows access with valid Supabase Auth session token of tenant owner.
+ *    - Allows access with valid Supabase Auth session token of tenant admin.
+ *    - Allows access with internal service secret or service role key.
  */
 
 import { NextRequest } from 'next/server';
@@ -28,11 +32,16 @@ import { GET, POST, PUT } from '@/app/api/v1/tenants/[slug]/bot-control/route';
 const mockTenantData = {
   id: 'tenant-uuid-1234',
   slug: 'toko-sukses',
+  user_id: 'owner-uuid-1234',
+  owner_id: 'owner-uuid-1234',
+  email: 'owner@toko-sukses.com',
+  owner_email: 'owner@toko-sukses.com',
   phone: '6281234567890',
   whatsapp_number: '6281234567890',
   bot_paused: false,
   is_bot_active: true,
   metadata: {
+    owner_id: 'owner-uuid-1234',
     owner_phone: '6281234567890',
     admin_phones: ['628111111111', '08222222222'],
     bot_control_allowlist: ['628333333333'],
@@ -40,6 +49,50 @@ const mockTenantData = {
 };
 
 const mockSupabase = {
+  auth: {
+    getUser: jest.fn(async (token: string) => {
+      if (token === 'valid-owner-jwt-token') {
+        return {
+          data: {
+            user: {
+              id: 'owner-uuid-1234',
+              email: 'owner@toko-sukses.com',
+              phone: '6281234567890',
+            },
+          },
+          error: null,
+        };
+      }
+      if (token === 'valid-admin-jwt-token') {
+        return {
+          data: {
+            user: {
+              id: 'admin-uuid-5555',
+              email: 'admin@toko-sukses.com',
+              phone: '628555555555',
+            },
+          },
+          error: null,
+        };
+      }
+      if (token === 'valid-stranger-jwt-token') {
+        return {
+          data: {
+            user: {
+              id: 'stranger-uuid-9999',
+              email: 'stranger@otherdomain.com',
+              phone: '628999999999',
+            },
+          },
+          error: null,
+        };
+      }
+      return {
+        data: { user: null },
+        error: { message: 'Invalid or expired session token' },
+      };
+    }),
+  },
   from: jest.fn((table: string) => {
     if (table === 'tenants') {
       return {
@@ -65,19 +118,21 @@ const mockSupabase = {
     }
 
     if (table === 'tenant_users') {
-      return {
-        select: jest.fn(() => ({
-          or: jest.fn(() => ({
-            eq: jest.fn(async () => ({
-              data: [
-                { phone: '628555555555', role: 'admin', is_active: true },
-                { phone: '628777777777', role: 'customer', is_active: true },
-              ],
-              error: null,
-            })),
-          })),
+      const mockUsers = [
+        { user_id: 'admin-uuid-5555', email: 'admin@toko-sukses.com', role: 'admin', is_active: true },
+        { user_id: 'stranger-uuid-7777', email: 'customer@other.com', role: 'customer', is_active: true },
+      ];
+      const queryBuilder: any = {
+        then: (resolve: any) => resolve({ data: mockUsers, error: null }),
+        select: jest.fn(() => queryBuilder),
+        or: jest.fn(() => queryBuilder),
+        eq: jest.fn(() => queryBuilder),
+        maybeSingle: jest.fn(async () => ({
+          data: mockUsers[0],
+          error: null,
         })),
       };
+      return queryBuilder;
     }
 
     // Default table mock
@@ -150,7 +205,7 @@ describe('Security Remediation: EVOLUTION_API_KEY Fail-Closed Enforcement', () =
   });
 });
 
-describe('Security Remediation: Explicit Authorization on bot-control/route.ts', () => {
+describe('Security Remediation: Official Session Verification on bot-control/route.ts', () => {
   const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const originalInternalSecret = process.env.INTERNAL_API_SECRET;
 
@@ -165,7 +220,7 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
   });
 
   describe('Unauthenticated and Unauthorized Requests', () => {
-    it('1. Returns 401 Unauthorized when accessed without session cookies or authorization', async () => {
+    it('1. Returns 401 Unauthorized when accessed without session cookies or authorization headers', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,12 +235,12 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.error).toContain('Unauthorized');
     });
 
-    it('2. Returns 401 Unauthorized when accessed with mismatching merchant session cookie', async () => {
+    it('2. Returns 401 Unauthorized when invalid or expired Bearer token is provided', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_session=attacker-store; merchant_store=attacker-store',
+          authorization: 'Bearer expired-or-invalid-jwt-token',
         },
         body: JSON.stringify({ action: 'PAUSE' }),
       });
@@ -198,11 +253,14 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.error).toContain('Unauthorized');
     });
 
-    it('3. Returns 403 Forbidden when accessed with non-allowlisted phone number', async () => {
+    it('3. Returns 403 Forbidden when session token belongs to a stranger/non-owner of this tenant', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'PAUSE', phone: '628999999999' }), // unauthorized stranger phone
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer valid-stranger-jwt-token',
+        },
+        body: JSON.stringify({ action: 'PAUSE' }),
       });
 
       const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
@@ -213,15 +271,63 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.error).toContain('Forbidden');
     });
 
-    it('4. GET request returns 401 Unauthorized without session or credentials', async () => {
+    it('4. Rejects with 401 Unauthorized when caller supplies owner phone in body without valid session (Anti-Spoofing)', async () => {
+      // Attacker attempts to spoof owner by sending owner's phone in body
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'PAUSE', phone: '6281234567890' }), // owner phone spoof attempt
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(401);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Unauthorized');
+    });
+
+    it('5. Rejects with 401 Unauthorized when caller supplies x-phone header without valid session (Header Spoofing Blocked)', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-phone': '6281234567890',
+        },
+        body: JSON.stringify({ action: 'PAUSE' }),
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(401);
+    });
+
+    it('6. Returns 403 Forbidden when accessed with mismatching merchant session cookie', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_session=attacker-store; merchant_store=attacker-store',
+        },
+        body: JSON.stringify({ action: 'PAUSE' }),
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(403);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Forbidden');
+    });
+
+    it('7. GET request returns 401 Unauthorized without session or credentials', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control');
       const res = await GET(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
       expect(res.status).toBe(401);
     });
   });
 
-  describe('Authorized Requests', () => {
-    it('5. Allows mutation when caller has valid matching merchant session cookie', async () => {
+  describe('Authorized Requests via Official Sessions', () => {
+    it('8. Allows mutation when caller has valid matching merchant session cookie', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
@@ -239,12 +345,14 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.bot_paused).toBe(true);
     });
 
-    it('6. Allows mutation when caller provides an allowlisted admin/owner phone number', async () => {
-      // Phone from metadata.admin_phones
+    it('9. Allows mutation when caller provides valid Supabase session token of tenant owner', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'RESUME', phone: '628111111111' }),
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer valid-owner-jwt-token',
+        },
+        body: JSON.stringify({ action: 'RESUME' }),
       });
 
       const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
@@ -255,11 +363,14 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.bot_paused).toBe(false);
     });
 
-    it('7. Allows mutation when caller provides a phone from metadata.bot_control_allowlist', async () => {
+    it('10. Allows mutation when caller provides valid Supabase session token of tenant admin', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'PAUSE', phone: '628333333333' }),
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer valid-admin-jwt-token',
+        },
+        body: JSON.stringify({ action: 'PAUSE' }),
       });
 
       const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
@@ -270,22 +381,7 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.bot_paused).toBe(true);
     });
 
-    it('8. Allows mutation when caller provides tenant_users admin phone', async () => {
-      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'RESUME', phone: '628555555555' }),
-      });
-
-      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
-      expect(res.status).toBe(200);
-
-      const json = await res.json();
-      expect(json.success).toBe(true);
-      expect(json.bot_paused).toBe(false);
-    });
-
-    it('9. Allows access with x-internal-secret header', async () => {
+    it('11. Allows access with x-internal-secret header', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
@@ -302,7 +398,39 @@ describe('Security Remediation: Explicit Authorization on bot-control/route.ts',
       expect(json.success).toBe(true);
     });
 
-    it('10. PUT endpoint delegates to POST and enforces the same authorization', async () => {
+    it('12. Allows access with Supabase Service Role Key in Authorization header', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer test-service-role-secret',
+        },
+        body: JSON.stringify({ action: 'RESUME' }),
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+    });
+
+    it('13. GET endpoint returns 200 with bot status when caller has valid session', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        headers: {
+          cookie: 'merchant_session=toko-sukses',
+        },
+      });
+
+      const res = await GET(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.slug).toBe('toko-sukses');
+    });
+
+    it('14. PUT endpoint delegates to POST and enforces the exact same authorization', async () => {
       const unauthReq = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

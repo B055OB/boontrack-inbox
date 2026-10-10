@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { handlePaymentWebhook, getRecentWebhookLogs } from '@/lib/payment-webhook-service';
+import {
+  handlePaymentWebhook,
+  getRecentWebhookLogs,
+  isAuthorizedWebhookLogViewer,
+} from '@/lib/payment-webhook-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,13 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const showLogs = searchParams.get('logs') === 'true' || searchParams.get('view_logs') === '1';
+
+  if (showLogs && !isAuthorizedWebhookLogViewer(req)) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Diagnostic logs require internal admin authorization.' },
+      { status: 401 }
+    );
+  }
 
   return NextResponse.json({
     status: 'ONLINE',
