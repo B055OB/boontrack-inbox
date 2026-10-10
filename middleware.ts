@@ -346,6 +346,7 @@ function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
   const merchantStore = cleanCookie(req.cookies.get('merchant_store')?.value);
   const merchantSession = cleanCookie(req.cookies.get('merchant_session')?.value);
   const btTenant = cleanCookie(req.cookies.get('bt_tenant')?.value);
+  const studioSession = cleanCookie(req.cookies.get('studio_session')?.value);
 
   // Jika targetSlug ditentukan, cookie WAJIB cocok dengan targetSlug
   if (cleanTarget) {
@@ -357,7 +358,7 @@ function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
   }
 
   // Jika targetSlug tidak ditentukan (misal /dashboard umum), pastikan setidaknya salah satu cookie sesi merchant ada
-  return Boolean(merchantStore || merchantSession || btTenant);
+  return Boolean(merchantStore || merchantSession || btTenant || studioSession);
 }
 
 async function handleRouting(req: NextRequest, hostClean: string) {
@@ -645,10 +646,32 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
-    // 1. Root / -> rewrite ke /studio (Dashboard Workspace)
+    // Deteksi sesi login aktif Studio / Merchant
+    const hasStudioAuth =
+      hasValidTenantSession(req) ||
+      Boolean(req.cookies.get('studio_session')?.value);
+
+    // 1. Root / ->
+    //    - Jika pengguna sudah login: redirect ke /desk (Workspace Dashboard)
+    //    - Jika publik / guest: rewrite ke /studio (Landing Page Penawaran resmi)
     if (pathname === '/' || pathname === '') {
+      if (hasStudioAuth) {
+        url.pathname = '/desk';
+        return NextResponse.redirect(url);
+      }
       url.pathname = '/studio';
       return NextResponse.rewrite(url);
+    }
+
+    // 1b. Akses langsung /studio ->
+    //    - Jika pengguna sudah login: redirect ke /desk
+    //    - Jika publik / guest: pass-through ke Landing Page Penawaran
+    if (pathname === '/studio') {
+      if (hasStudioAuth) {
+        url.pathname = '/desk';
+        return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
     }
 
     // 2. /desk -> rewrite ke /studio/desk
@@ -662,6 +685,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     if (pathname === '/register' || pathname.startsWith('/register/')) {
       const regSubpath = pathname === '/register' ? '' : pathname.replace(/^\/register/, '');
       url.pathname = `/studio/register${regSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 3b. /login -> rewrite ke /login (Merchant / Studio Login Gateway)
+    if (pathname === '/login' || pathname.startsWith('/login/')) {
       return NextResponse.rewrite(url);
     }
 

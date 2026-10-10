@@ -140,6 +140,46 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/studio/fcd-automator');
     });
+
+    it('11. Redirects authenticated user with active session cookie from root / to /desk', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/', {
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: 'merchant_store=my-studio-brand; studio_session=true',
+        },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(307);
+      const location = res.headers.get('location');
+      expect(location).toBe('https://studio.boontrack.com/desk');
+    });
+
+    it('12. Redirects authenticated user visiting /studio to /desk', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/studio', {
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: 'merchant_session=my-studio-brand',
+        },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(307);
+      const location = res.headers.get('location');
+      expect(location).toBe('https://studio.boontrack.com/desk');
+    });
+
+    it('13. Rewrites /login to /login on studio.boontrack.com', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/login?redirectTo=/desk', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/login?redirectTo=/desk');
+    });
   });
 
   describe('B. Host-Aware 301 Legacy Redirect for UGC Studio on Creator Host', () => {

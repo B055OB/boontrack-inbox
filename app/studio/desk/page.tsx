@@ -1,35 +1,50 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
+  Sparkles,
+  ArrowRight,
+  ExternalLink,
   Film,
   Zap,
-  Sparkles,
-  Layers,
-  FolderKanban,
-  PlaySquare,
   Clock,
-  TrendingUp,
-  ShieldCheck,
-  CheckCircle2,
-  ChevronRight,
-  Plus,
-  Cpu,
   Video,
-  ExternalLink,
-  ArrowRight
+  CheckCircle2,
+  Sliders,
+  Smartphone,
+  ChevronRight,
+  Store,
+  Download,
+  BookOpen,
+  Layers,
+  Flame,
+  Check,
+  ShieldCheck,
+  Cpu,
+  FolderKanban,
+  Activity,
+  LogOut
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 
 export default function StudioDeskPage() {
+  const router = useRouter();
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
   const [sessionData, setSessionData] = useState<any>(null);
+  const [renderCredits, setRenderCredits] = useState<number>(1);
+  const [isUnlimited, setIsUnlimited] = useState<boolean>(false);
+  const [tenantTier, setTenantTier] = useState<string>('FREE');
+  const [completedVideosCount, setCompletedVideosCount] = useState<number>(0);
+  const [queuedJobsCount, setQueuedJobsCount] = useState<number>(0);
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
+  // Dynamic session resolution (Zero Hardcoding - Supabase SSOT)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant)=([^;]+)/);
+      const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant|studio_session)=([^;]+)/);
       const cookieVal = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim() : '';
       const localVal = (
         localStorage.getItem('merchant_store') ||
@@ -38,263 +53,594 @@ export default function StudioDeskPage() {
         ''
       ).replace(/^["']|["']$/g, '').trim();
 
-      const resolved = (localVal || cookieVal || '').toLowerCase();
+      const storedSession = localStorage.getItem('studio_session');
+      let parsedSession: any = null;
+      if (storedSession) {
+        try {
+          parsedSession = JSON.parse(storedSession);
+          setSessionData(parsedSession);
+          if (typeof parsedSession.render_credits === 'number') {
+            setRenderCredits(parsedSession.render_credits);
+          }
+        } catch {}
+      }
+
+      const resolved = (localVal || cookieVal || parsedSession?.slug || '').toLowerCase();
+
+      // Auth Guard: If neither cookies nor localStorage contain session, redirect to public landing
+      const hasAuth = Boolean(
+        (resolved && resolved !== 'null' && resolved !== 'undefined') ||
+        parsedSession
+      );
+
+      if (!hasAuth) {
+        const isStudioSubdomain = window.location.hostname.startsWith('studio.') || window.location.hostname === 'studio.boontrack.com';
+        if (isStudioSubdomain) {
+          window.location.href = '/';
+        } else {
+          router.replace('/studio');
+        }
+        return;
+      }
+
       if (resolved && resolved !== 'null' && resolved !== 'undefined') {
         setTenantSlug(resolved);
       }
+    }
+  }, [router]);
 
-      const storedSession = localStorage.getItem('studio_session');
-      if (storedSession) {
-        try {
-          setSessionData(JSON.parse(storedSession));
-        } catch {}
+  // Fetch real-time entitlements and jobs for creator dashboard
+  const fetchDashboardData = useCallback(async (slug: string) => {
+    setIsLoadingStats(true);
+    try {
+      // 1. Fetch entitlements
+      const entRes = await fetch(`/api/tenants/${encodeURIComponent(slug)}/entitlements`);
+      if (entRes.ok) {
+        const entJson = await entRes.json();
+        if (entJson.success && entJson.data) {
+          const ent = entJson.data;
+          setRenderCredits(ent.credits_remaining ?? 1);
+          setIsUnlimited(Boolean(ent.is_unlimited || ent.tier === 'FOUNDER'));
+          setTenantTier(ent.tier || 'FREE');
+        }
       }
+
+      // 2. Fetch jobs metrics
+      const jobsRes = await fetch(`/api/studio/jobs?tenant_id=${encodeURIComponent(slug)}&limit=100`);
+      if (jobsRes.ok) {
+        const jobsJson = await jobsRes.json();
+        if (jobsJson.success) {
+          if (jobsJson.telemetry) {
+            setCompletedVideosCount(jobsJson.telemetry.completed || 0);
+            setQueuedJobsCount((jobsJson.telemetry.queued || 0) + (jobsJson.telemetry.processing || 0));
+          } else if (Array.isArray(jobsJson.jobs)) {
+            const completed = jobsJson.jobs.filter((j: any) => j.status === 'COMPLETED').length;
+            const queued = jobsJson.jobs.filter((j: any) => j.status === 'QUEUED' || j.status === 'PROCESSING').length;
+            setCompletedVideosCount(completed);
+            setQueuedJobsCount(queued);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[StudioDesk] Failed to fetch dashboard metrics:', e);
+    } finally {
+      setIsLoadingStats(false);
     }
   }, []);
 
-  const currentCredits = sessionData?.render_credits ?? 1;
+  useEffect(() => {
+    if (tenantSlug && tenantSlug !== 'null') {
+      fetchDashboardData(tenantSlug);
+    }
+  }, [tenantSlug, fetchDashboardData]);
 
   const handleStartVideo = (e: React.MouseEvent) => {
-    if (currentCredits <= 0) {
+    if (!isUnlimited && tenantTier !== 'FOUNDER' && renderCredits <= 0) {
       e.preventDefault();
       setIsPaywallOpen(true);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden">
-      {/* Background Electric Studio Glow Mesh */}
-      <div className="absolute top-0 right-1/4 w-[700px] h-[450px] bg-gradient-to-b from-fuchsia-600/15 via-purple-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
-      <div className="absolute top-1/2 left-0 w-96 h-96 bg-purple-700/10 rounded-full blur-[120px] pointer-events-none -z-10" />
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('studio_session');
+      localStorage.removeItem('merchant_store');
+      localStorage.removeItem('merchant_session');
+      localStorage.removeItem('bt_tenant');
+      document.cookie = 'merchant_store=; path=/; max-age=0';
+      document.cookie = 'merchant_session=; path=/; max-age=0';
+      document.cookie = 'bt_tenant=; path=/; max-age=0';
+      document.cookie = 'studio_session=; path=/; max-age=0';
+      window.location.href = '/';
+    }
+  };
 
-      {/* ── HEADER ────────────────────────────────────────────── */}
+  return (
+    <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden flex flex-col">
+      {/* Background Electric Studio Glow Mesh */}
+      <div className="absolute top-0 right-1/4 w-[750px] h-[450px] bg-gradient-to-b from-indigo-600/15 via-fuchsia-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-1/2 left-0 w-96 h-96 bg-purple-700/10 rounded-full blur-[130px] pointer-events-none -z-10" />
+
+      {/* ── 1. HEADER & WORKSPACE IDENTITY ─────────────────────── */}
       <header className="border-b border-white/10 bg-[#0B0F17]/90 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Logo & Identity */}
           <div className="flex items-center gap-3">
             <Link href="/desk" className="flex items-center gap-2.5 group">
-              <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-fuchsia-500 to-purple-600 shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform">
+              <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-fuchsia-500 to-indigo-600 shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform">
                 <div className="w-full h-full bg-[#0B0F17] rounded-[11px] flex items-center justify-center overflow-hidden">
                   <Film className="w-4 h-4 text-fuchsia-400" />
                 </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-lg tracking-tight text-white">boontrack</span>
-                  <span className="text-xs font-black tracking-widest bg-gradient-to-r from-fuchsia-400 via-pink-400 to-purple-400 bg-clip-text text-transparent uppercase">
-                    STUDIO DESK
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-mono">
-                  Production Control Room & UGC Engine
-                </p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-extrabold text-lg tracking-tight text-white">boontrack</span>
+                <span className="text-xs font-black tracking-widest bg-gradient-to-r from-fuchsia-400 to-indigo-400 bg-clip-text text-transparent uppercase">
+                  STUDIO DESK
+                </span>
               </div>
             </Link>
 
-            <span className="hidden sm:inline-block w-px h-6 bg-white/10" />
+            {/* Tenant Context Pill */}
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-zinc-300 font-mono">
+              <Store className="w-3 h-3 text-fuchsia-400" />
+              <span>
+                Workspace: <strong className="text-white">@{tenantSlug}</strong>
+              </span>
+            </div>
 
-            {/* Active Workspace Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-mono text-slate-400">Workspace:</span>
-              <span className="font-bold text-white font-mono">{tenantSlug}</span>
+            {/* Creator Engine Status Pill */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Studio Engine: Siap Produksi</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Credit Pill */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
-              <Zap className="w-3.5 h-3.5 text-violet-400" />
-              <span>{currentCredits} Render Credit{currentCredits === 1 ? ' (Trial)' : 's'}</span>
-            </div>
+          {/* Quick Credit Action & Navigation Shortcuts */}
+          <div className="flex items-center gap-3 text-xs flex-wrap">
+            {/* Quick Credit Status */}
+            {isUnlimited || tenantTier === 'FOUNDER' ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-mono text-[11px]">Founder Unlimited</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPaywallOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 font-bold transition cursor-pointer"
+                title="Beli Kuota Token Render"
+              >
+                <Zap className="w-3.5 h-3.5 text-violet-400" />
+                <span className="font-mono text-[11px]">{renderCredits} Token{renderCredits === 1 ? ' (Trial)' : ''}</span>
+                <span className="px-1.5 py-0.5 rounded bg-violet-500/30 text-[10px] text-white font-mono ml-0.5">
+                  + Top Up
+                </span>
+              </button>
+            )}
 
-            {/* Top Up Button */}
-            <button
-              type="button"
-              onClick={() => setIsPaywallOpen(true)}
-              className="py-1.5 px-3 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/40 text-violet-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>+ Top Up Kredit</span>
-            </button>
-
-            {/* Buat Naskah UGC Link */}
             <Link
-              href="/studio/ugc-studio"
+              href="/studio/fcd-automator"
               onClick={handleStartVideo}
-              className="py-2 px-4 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 text-white font-extrabold text-xs shadow-lg shadow-fuchsia-500/20 flex items-center gap-1.5 transition active:scale-95"
+              className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 text-white font-extrabold text-xs shadow-lg shadow-fuchsia-500/20 flex items-center gap-1.5 transition active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Buat Naskah UGC</span>
+              <span>Editor FCD</span>
             </Link>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 border border-white/10 hover:border-rose-500/30 transition-colors"
+              title="Keluar dari Workspace"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* ── MAIN WORKSPACE CONTENT ────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        
-        {/* Welcome Verification Banner */}
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-fuchsia-950/40 border border-fuchsia-500/30 backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl">
-          <div className="space-y-1.5">
+      {/* ── MAIN WORKSPACE CONTENT ───────────────────────────── */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-10 flex-1 w-full">
+
+        {/* ── 2. HERO GREETING & VERIFIED BANNER ───────────────── */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-fuchsia-950/40 border border-fuchsia-500/30 backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl">
+          <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Workspace WhatsApp Terverifikasi</span>
+              <span>Workspace Studio Terverifikasi</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Selamat Datang di Studio Desk, {sessionData?.name || 'Kreator Brand'}!
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Selamat Datang di Studio Desk, {sessionData?.name || `@${tenantSlug}`}!
             </h1>
-            <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Ruang produksi konten Anda telah aktif. Gunakan Generator Naskah 9-Adegan berdaya AI untuk merancang hook, story, dan call-to-action video iklan performa tinggi.
+            <p className="text-xs sm:text-sm text-zinc-300 max-w-2xl leading-relaxed">
+              Ruang produksi konten Anda telah aktif. Gunakan FCD Automator untuk meracik variasi iklan multi-hook vertikal 9:16 dan Generator Naskah 9-Scene berbasis psikologi direct-response.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             <Link
-              href="/studio/ugc-studio"
+              href="/studio/fcd-automator"
               onClick={handleStartVideo}
-              className="py-3 px-5 rounded-2xl bg-white text-slate-900 hover:bg-slate-100 font-extrabold text-xs shadow-md transition flex items-center gap-2"
+              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition flex items-center gap-2 active:scale-95"
             >
-              <span>Mulai Buat Video</span>
-              <ArrowRight className="w-4 h-4" />
+              <Sliders className="w-4 h-4" />
+              <span>Buka FCD Automator →</span>
             </Link>
           </div>
         </div>
 
-        {/* 4 Stat Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Render Credits */}
-          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-violet-500/40 transition space-y-2">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-semibold">Render Credits</span>
-              <Zap className="w-4 h-4 text-violet-400" />
-            </div>
-            <div className="text-2xl font-black text-white font-mono flex items-baseline justify-between">
-              <div>
-                {currentCredits}
-                <span className="text-xs font-normal text-slate-400 ml-1.5">
-                  {currentCredits <= 1 ? '/ 1 Trial Kuota' : 'Credits'}
+        {/* ── 3. 4 KARTU METRIK RAMAH KREATOR ───────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Ringkasan Produksi Kreator</span>
+            </h2>
+            <span className="text-[11px] text-zinc-500 font-mono">Realtime Entitlement Stats</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Metric 1: Sisa Kuota Token */}
+            <div className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-violet-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-400">Sisa Kuota Token</span>
+                  <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-400 flex items-center justify-center">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
+                    {isUnlimited || tenantTier === 'FOUNDER' ? (
+                      <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
+                        Founder Unlimited
+                      </span>
+                    ) : (
+                      <>
+                        <span>{isLoadingStats ? '...' : renderCredits}</span>
+                        <span className="text-xs font-medium text-zinc-400 font-mono">
+                          {renderCredits === 1 ? 'Trial Kuota' : 'Token'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    {isUnlimited || tenantTier === 'FOUNDER'
+                      ? 'Render bebas batas kuota'
+                      : renderCredits > 0
+                        ? `Tersedia ${renderCredits} kredit render video resolusi Full HD`
+                        : 'Kredit habis. Top up sekarang untuk melanjutkan render.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10">
+                <button
+                  type="button"
+                  onClick={() => setIsPaywallOpen(true)}
+                  className="text-xs font-bold text-violet-400 hover:text-violet-300 inline-flex items-center gap-1 transition cursor-pointer"
+                >
+                  <span>+ Top Up Token</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] text-zinc-500 font-mono">
+                  {tenantTier}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsPaywallOpen(true)}
-                className="text-[11px] font-bold text-violet-400 hover:text-violet-300 underline cursor-pointer"
+            </div>
+
+            {/* Metric 2: Video Siap Unduh */}
+            <Link
+              href="/studio/jobs"
+              className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group cursor-pointer"
+            >
+              <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-600/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-400">Video Siap Unduh</span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Download className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
+                    <span>{isLoadingStats ? '...' : completedVideosCount}</span>
+                    <span className="text-xs font-medium text-zinc-400 font-mono">MP4</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Video vertikal 9:16 siap posting
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
+                <span>Buka Unduhan MP4</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Metric 3: Antrean Render */}
+            <div className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-sky-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-sky-600/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-400">Antrean Render</span>
+                  <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center justify-center">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
+                    {queuedJobsCount > 0 ? (
+                      <>
+                        <span className="text-amber-400">{queuedJobsCount}</span>
+                        <span className="text-xs font-medium text-amber-300/80 font-mono">Memproses</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>0</span>
+                        <span className="text-xs font-medium text-zinc-400 font-mono">Antrean</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    {queuedJobsCount > 0
+                      ? 'Sedang dikonversi ke MP4'
+                      : 'Mesin render siap memproses seketika'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10 text-xs">
+                <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Siap Diproses</span>
+                </span>
+                <Link href="/studio/jobs" className="text-sky-400 hover:text-sky-300 text-xs font-semibold">
+                  Status
+                </Link>
+              </div>
+            </div>
+
+            {/* Metric 4: Formula Naskah Tersimpan */}
+            <Link
+              href="/studio/ugc-studio"
+              className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-fuchsia-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group cursor-pointer"
+            >
+              <div className="absolute top-0 right-0 w-28 h-28 bg-fuchsia-600/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-400">Formula Naskah AI</span>
+                  <div className="w-8 h-8 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
+                    <span>9-Scene</span>
+                    <span className="text-xs font-medium text-zinc-400 font-mono">AI Generator</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Koleksi Hook & Naskah Viral Teruji
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10 text-xs font-bold text-fuchsia-400 group-hover:text-fuchsia-300">
+                <span>Editor Naskah UGC</span>
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+          </div>
+        </section>
+
+        {/* ── 4. HERO CARD DOMINAN: FCD AUTOMATOR ───────────────── */}
+        <section className="relative rounded-3xl p-7 sm:p-9 bg-gradient-to-br from-[#12162B] via-[#0E1322] to-[#0A0D18] border border-indigo-500/30 hover:border-indigo-500/50 shadow-2xl shadow-indigo-950/40 transition-all overflow-hidden group">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-600/25 transition-all duration-700" />
+          <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-fuchsia-600/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+            <div className="space-y-4 max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-indigo-500/20 to-fuchsia-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 shadow-sm">
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Modul Utama Studio</span>
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-white/5 text-zinc-300 border border-white/10">
+                  Fast Creative Delivery (FCD)
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  3 Hook × 1 Body × 2 CTA = 6 Iklan Unik
+                </span>
+              </div>
+
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
+                  FCD Automator: Matrix Multi-Iklan & Pratinjau 9:16 Safe-Zone
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-300 mt-2.5 leading-relaxed">
+                  Rakit 1 kampanye produk menjadi 6 variasi naskah iklan vertikal unik secara otomatis. 
+                  Dilengkapi canvas simulator rasio 9:16 dengan panduan Safe-Zone TikTok & Instagram Reels agar teks judul 
+                  dan visual hook tidak tertutup UI medsos, serta batch rendering instan.
+                </p>
+              </div>
+
+              {/* 3 Core Highlights */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
+                  <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold">
+                    <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Creative Matrix</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-snug">
+                    Otomatisasi 3 sudut hook & 2 CTA urgensi berbeda sekali susun.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
+                  <div className="flex items-center gap-2 text-fuchsia-300 text-xs font-bold">
+                    <Smartphone className="w-3.5 h-3.5 text-fuchsia-400" />
+                    <span>9:16 Safe-Zone</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-snug">
+                    Simulasi presisi bebas distorsi overlay tombol like & caption medsos.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
+                  <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold">
+                    <Film className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Batch MP4 Render</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-snug">
+                    Hemat waktu, langsung eksekusi seluruh variasi iklan ke antrean.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Dominant CTA Button */}
+            <div className="shrink-0 flex flex-col items-start lg:items-end gap-3">
+              <Link
+                href="/studio/fcd-automator"
+                onClick={handleStartVideo}
+                className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-sm tracking-wide shadow-xl shadow-indigo-600/35 hover:shadow-indigo-600/50 transition-all flex items-center justify-center gap-3 active:scale-98 group/cta cursor-pointer"
               >
-                Top Up
-              </button>
+                <span>Buka Studio Editor →</span>
+                <ArrowRight className="w-4 h-4 group-hover/cta:translate-x-1.5 transition-transform" />
+              </Link>
+              <span className="text-[11px] text-zinc-400 flex items-center gap-1.5 self-center lg:self-end">
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Tanpa batas draft • Siap pakai</span>
+              </span>
             </div>
-            <p className="text-[10px] text-slate-500">
-              {currentCredits > 0
-                ? `Tersedia ${currentCredits} kredit render video UGC resolusi Full HD`
-                : 'Kredit habis. Top up sekarang untuk melanjutkan render.'}
-            </p>
+          </div>
+        </section>
+
+        {/* ── 5. LAUNCHPAD MODUL STUDIO TAMBAHAN ────────────────── */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-fuchsia-400" />
+              <span>Modul Kreator Lainnya</span>
+            </h2>
+            <span className="text-[11px] text-zinc-500 font-mono">Pilar Produksi Konten</span>
           </div>
 
-          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-purple-500/40 transition space-y-2">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-semibold">Concurrent Jobs</span>
-              <Cpu className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="text-2xl font-black text-white font-mono">
-              0 <span className="text-xs font-normal text-slate-400">/ 1 Slot Antrean</span>
-            </div>
-            <p className="text-[10px] text-slate-500">
-              Antrean paralel pemrosesan video otomatis
-            </p>
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Module 1: UGC Script Studio */}
+            <Link
+              href="/studio/ugc-studio"
+              className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">
+                    9-Scene Engine
+                  </span>
+                </div>
 
-          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-pink-500/40 transition space-y-2">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-semibold">UGC Scripts</span>
-              <Film className="w-4 h-4 text-pink-400" />
-            </div>
-            <div className="text-2xl font-black text-white font-mono">
-              Ready <span className="text-xs font-normal text-slate-400">9-Scene AI</span>
-            </div>
-            <p className="text-[10px] text-slate-500">
-              Generator naskah iklan TikTok & Reels otomatis
-            </p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-emerald-500/40 transition space-y-2">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-semibold">Status Akun</span>
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-xl font-black text-emerald-400 flex items-center gap-1.5">
-              <span>AKTIF</span>
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] text-slate-500 font-mono">
-              WA: {sessionData?.whatsapp || 'Terhubung'}
-            </p>
-          </div>
-        </div>
-
-        {/* Studio Production Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Feature 1: UGC Script Studio */}
-          <Link
-            href="/studio/ugc-studio"
-            onClick={handleStartVideo}
-            className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/[0.04] transition group flex flex-col justify-between space-y-6"
-          >
-            <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/30 flex items-center justify-center text-fuchsia-400 group-hover:scale-110 transition-transform">
-                <Sparkles className="w-6 h-6" />
+                <div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-fuchsia-400 transition-colors">
+                    UGC Script Studio
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                    Generator naskah iklan direct-response 9-scene lengkap dengan teks layar, voiceover script, dan arahan visual kamera.
+                  </p>
+                </div>
               </div>
-              <h3 className="text-base font-bold text-white group-hover:text-fuchsia-400 transition-colors">
-                UGC Script Studio (9-Scene AI)
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Tulis naskah video viral berbasis formula Hook, Problem, Solution, dan Strong CTA dalam hitungan detik.
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-400">
-              <span>Buka Editor Naskah</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
 
-          {/* Feature 2: Storyboard & Asset Library */}
-          <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 opacity-90 flex flex-col justify-between space-y-6">
-            <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                <FolderKanban className="w-6 h-6" />
+              <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-fuchsia-400 font-semibold">
+                <span>Buka Studio Naskah →</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h3 className="text-base font-bold text-white">
-                Creative Asset Library
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Simpan footage B-roll produk, audio voiceover AI, dan grafis promosi untuk otomatisasi render cepat.
-              </p>
+            </Link>
+
+            {/* Module 2: Creative Asset Library */}
+            <div className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-purple-500/30 transition-all flex flex-col justify-between shadow-lg">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center">
+                    <FolderKanban className="w-5 h-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                    Asset Manager
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-white">Creative Asset Library</h3>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                    Kelola foto produk, footage B-roll, dan visual hook yang siap dirakit menjadi materi iklan video multi-format.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+                    <span className="text-zinc-400">Footage B-Roll</span>
+                    <span className="text-white font-mono font-bold">Siap Pakai</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+                    <span className="text-zinc-400">Audio Backsound</span>
+                    <span className="text-white font-mono font-bold">Bebas Royalti</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-purple-400 font-semibold">
+                <span>Manajemen Aset</span>
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-purple-400">
-              <span>Terintegrasi dengan Script</span>
-            </div>
+
+            {/* Module 3: Media Render Jobs & Telemetry */}
+            <Link
+              href="/studio/jobs"
+              className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-emerald-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Cpu className="w-5 h-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                    Worker Pool Standby
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">
+                    Media Render Jobs & Telemetry
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                    Antrean status render otomatis video FCD (FFmpeg queue status) & pipeline konversi video iklan performa tinggi.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2 text-xs font-mono">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+                    <span className="text-zinc-400 font-sans">Queue Status</span>
+                    <span className="text-emerald-400 font-bold">{queuedJobsCount} Pending</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+                    <span className="text-zinc-400 font-sans">CPU Thread</span>
+                    <span className="text-zinc-300">FFmpeg 7.x Active</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-emerald-400 font-semibold">
+                <span>Buka Telemetri Render →</span>
+                <Activity className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
           </div>
+        </section>
 
-          {/* Feature 3: Cloud Render Queue & FCD Automator */}
-          <Link
-            href="/studio/fcd-automator"
-            className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 hover:border-indigo-500/50 hover:bg-white/[0.04] transition group flex flex-col justify-between space-y-6"
-          >
-            <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
-                <Cpu className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-white group-hover:text-indigo-400 transition-colors">
-                Render Queue & FCD Automator
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Antrean batch render multi-variasi (3 Hook x 1 Body x 2 CTA) otomatis tingkat server FFmpeg siap ekspor untuk TikTok Ads & Meta CAPI.
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400">
-              <span>Buka FCD Automator</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-        </div>
       </main>
 
       {/* ── NATIVE STUDIO PAYWALL MODAL ───────────────────────── */}
@@ -302,12 +648,21 @@ export default function StudioDeskPage() {
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
         tenantSlug={tenantSlug}
-        currentCredits={currentCredits}
+        currentCredits={renderCredits}
       />
 
-      {/* ── FOOTER ────────────────────────────────────────────── */}
-      <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5">
-        <p>BoonTrack Studio • Production Control Room & Media Engine</p>
+      {/* ── FOOTER ───────────────────────────────────────────── */}
+      <footer className="border-t border-white/10 py-6 text-center text-xs text-zinc-500 bg-[#0B0F17] mt-auto">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© 2026 PT BOONTRACK INOVASI DIGITAL • BoonTrack Studio Desk Control Room</p>
+          <div className="flex items-center gap-4 text-zinc-400">
+            <Link href="/studio/fcd-automator" className="hover:text-white transition-colors">FCD Automator</Link>
+            <span>•</span>
+            <Link href="/studio/ugc-studio" className="hover:text-white transition-colors">UGC Script Studio</Link>
+            <span>•</span>
+            <Link href="/studio/jobs" className="hover:text-white transition-colors">Render Jobs</Link>
+          </div>
+        </div>
       </footer>
     </div>
   );
