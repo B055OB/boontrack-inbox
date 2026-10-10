@@ -463,9 +463,9 @@ export default function FCDAutomatorPage() {
 
     const manifestLines = [
       `=====================================================`,
-      `BOONTRACK STUDIO - FCD BATCH RENDER EXPORT MANIFEST`,
+      `BOONTRACK STUDIO - BATCH RENDER EXPORT MANIFEST`,
       `=====================================================`,
-      `Model Engine : gemini-3.8-flash`,
+      `Engine       : Asisten Konten Cerdas (Studio Engine)`,
       `Batch ID     : ${activeBatchId || 'fcd_live_batch'}`,
       `Campaign     : ${campaignTitle}`,
       `Total Files  : ${selectedVariations.length} video MP4 (9:16 Vertical 1080x1920)`,

@@ -25,7 +25,13 @@ import {
   Cpu,
   FolderKanban,
   Activity,
-  LogOut
+  LogOut,
+  UserCheck,
+  SplitSquareVertical,
+  Wrench,
+  Copy,
+  Send,
+  Compass
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 
@@ -67,7 +73,7 @@ export default function StudioDeskPage() {
 
       const resolved = (localVal || cookieVal || parsedSession?.slug || '').toLowerCase();
 
-      // Auth Guard: If neither cookies nor localStorage contain session, redirect to public landing
+      // Auth Guard: Jika tidak ada sesi aktif, alihkan ke landing page publik
       const hasAuth = Boolean(
         (resolved && resolved !== 'null' && resolved !== 'undefined') ||
         parsedSession
@@ -89,7 +95,7 @@ export default function StudioDeskPage() {
     }
   }, [router]);
 
-  // Fetch real-time entitlements and jobs for creator dashboard
+  // Fetch data real-time entitlements & antrean video
   const fetchDashboardData = useCallback(async (slug: string) => {
     setIsLoadingStats(true);
     try {
@@ -157,14 +163,14 @@ export default function StudioDeskPage() {
 
   return (
     <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden flex flex-col">
-      {/* Background Electric Studio Glow Mesh */}
+      {/* Background Studio Glow Mesh */}
       <div className="absolute top-0 right-1/4 w-[750px] h-[450px] bg-gradient-to-b from-indigo-600/15 via-fuchsia-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
       <div className="absolute top-1/2 left-0 w-96 h-96 bg-purple-700/10 rounded-full blur-[130px] pointer-events-none -z-10" />
 
-      {/* ── 1. HEADER & WORKSPACE IDENTITY ─────────────────────── */}
+      {/* ── 1. HEADER & IDENTITAS WORKSPACE ─────────────────────── */}
       <header className="border-b border-white/10 bg-[#0B0F17]/90 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Logo & Identity */}
+          {/* Logo & Identitas */}
           <div className="flex items-center gap-3">
             <Link href="/desk" className="flex items-center gap-2.5 group">
               <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-fuchsia-500 to-indigo-600 shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform">
@@ -188,16 +194,16 @@ export default function StudioDeskPage() {
               </span>
             </div>
 
-            {/* Creator Engine Status Pill */}
+            {/* Status Asisten Cerdas */}
             <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-400 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Studio Engine: Siap Produksi</span>
+              <span>Asisten Konten Cerdas: Siap Digunakan</span>
             </div>
           </div>
 
-          {/* Quick Credit Action & Navigation Shortcuts */}
+          {/* Quick Credit Action & Shortcuts */}
           <div className="flex items-center gap-3 text-xs flex-wrap">
-            {/* Quick Credit Status */}
+            {/* Status Kredit Video */}
             {isUnlimited || tenantTier === 'FOUNDER' ? (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -208,12 +214,12 @@ export default function StudioDeskPage() {
                 type="button"
                 onClick={() => setIsPaywallOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 font-bold transition cursor-pointer"
-                title="Beli Kuota Token Render"
+                title="Beli Kuota Token Render (QRIS Instan)"
               >
                 <Zap className="w-3.5 h-3.5 text-violet-400" />
-                <span className="font-mono text-[11px]">{renderCredits} Token{renderCredits === 1 ? ' (Trial)' : ''}</span>
+                <span className="font-mono text-[11px]">{renderCredits} Kredit Video{renderCredits === 1 ? ' (Trial)' : ''}</span>
                 <span className="px-1.5 py-0.5 rounded bg-violet-500/30 text-[10px] text-white font-mono ml-0.5">
-                  + Top Up
+                  + Top Up QRIS
                 </span>
               </button>
             )}
@@ -224,7 +230,7 @@ export default function StudioDeskPage() {
               className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 text-white font-extrabold text-xs shadow-lg shadow-fuchsia-500/20 flex items-center gap-1.5 transition active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Editor FCD</span>
+              <span>Studio Konten</span>
             </Link>
 
             <button
@@ -253,18 +259,26 @@ export default function StudioDeskPage() {
               Selamat Datang di Studio Desk, {sessionData?.name || `@${tenantSlug}`}!
             </h1>
             <p className="text-xs sm:text-sm text-zinc-300 max-w-2xl leading-relaxed">
-              Ruang produksi konten Anda telah aktif. Gunakan FCD Automator untuk meracik variasi iklan multi-hook vertikal 9:16 dan Generator Naskah 9-Scene berbasis psikologi direct-response.
+              Ruang produksi konten Anda telah aktif. Gunakan <strong>Asisten Konten Cerdas</strong> untuk memproduksi <strong>Mode Video Otomatis</strong> (video instan siap tayang) atau <strong>Mode Panduan Naskah Asli</strong> (konten manusiawi: testimoni, jasa kuras toren, unboxing nyata).
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
             <Link
               href="/studio/fcd-automator"
               onClick={handleStartVideo}
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition flex items-center gap-2 active:scale-95"
             >
-              <Sliders className="w-4 h-4" />
-              <span>Buka FCD Automator →</span>
+              <Video className="w-4 h-4" />
+              <span>Bikin Video Otomatis</span>
+            </Link>
+
+            <Link
+              href="/studio/ugc-studio"
+              className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 transition flex items-center gap-2"
+            >
+              <UserCheck className="w-4 h-4 text-purple-300" />
+              <span>Panduan Naskah Asli</span>
             </Link>
           </div>
         </div>
@@ -274,18 +288,18 @@ export default function StudioDeskPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Ringkasan Produksi Kreator</span>
+              <span>Ringkasan Produksi Konten</span>
             </h2>
             <span className="text-[11px] text-zinc-500 font-mono">Realtime Entitlement Stats</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Metric 1: Sisa Kuota Token */}
+            {/* Metric 1: Sisa Kuota Kredit */}
             <div className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-violet-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-28 h-28 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
               <div className="space-y-3 relative z-10">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-zinc-400">Sisa Kuota Token</span>
+                  <span className="text-xs font-medium text-zinc-400">Sisa Kuota Kredit</span>
                   <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-400 flex items-center justify-center">
                     <Zap className="w-4 h-4" />
                   </div>
@@ -300,7 +314,7 @@ export default function StudioDeskPage() {
                       <>
                         <span>{isLoadingStats ? '...' : renderCredits}</span>
                         <span className="text-xs font-medium text-zinc-400 font-mono">
-                          {renderCredits === 1 ? 'Trial Kuota' : 'Token'}
+                          {renderCredits === 1 ? 'Trial Kuota' : 'Kredit'}
                         </span>
                       </>
                     )}
@@ -309,7 +323,7 @@ export default function StudioDeskPage() {
                     {isUnlimited || tenantTier === 'FOUNDER'
                       ? 'Render bebas batas kuota'
                       : renderCredits > 0
-                        ? `Tersedia ${renderCredits} kredit render video resolusi Full HD`
+                        ? `Tersedia ${renderCredits} kredit video Full HD siap pakai`
                         : 'Kredit habis. Top up sekarang untuk melanjutkan render.'}
                   </p>
                 </div>
@@ -321,7 +335,7 @@ export default function StudioDeskPage() {
                   onClick={() => setIsPaywallOpen(true)}
                   className="text-xs font-bold text-violet-400 hover:text-violet-300 inline-flex items-center gap-1 transition cursor-pointer"
                 >
-                  <span>+ Top Up Token</span>
+                  <span>+ Top Up QRIS</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
                 <span className="text-[10px] text-zinc-500 font-mono">
@@ -349,7 +363,7 @@ export default function StudioDeskPage() {
                     <span className="text-xs font-medium text-zinc-400 font-mono">MP4</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1">
-                    Video vertikal 9:16 siap posting
+                    Video vertikal 9:16 bersih tanpa watermark
                   </p>
                 </div>
               </div>
@@ -360,7 +374,7 @@ export default function StudioDeskPage() {
               </div>
             </Link>
 
-            {/* Metric 3: Antrean Render */}
+            {/* Metric 3: Antrean Pemrosesan */}
             <div className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-sky-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-28 h-28 bg-sky-600/10 rounded-full blur-2xl pointer-events-none" />
               <div className="space-y-3 relative z-10">
@@ -386,8 +400,8 @@ export default function StudioDeskPage() {
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1">
                     {queuedJobsCount > 0
-                      ? 'Sedang dikonversi ke MP4'
-                      : 'Mesin render siap memproses seketika'}
+                      ? 'Sedang dikonversi ke format MP4'
+                      : 'Mesin pemroses siap menerima tugas'}
                   </p>
                 </div>
               </div>
@@ -395,7 +409,7 @@ export default function StudioDeskPage() {
               <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10 text-xs">
                 <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Siap Diproses</span>
+                  <span>Server Standby</span>
                 </span>
                 <Link href="/studio/jobs" className="text-sky-400 hover:text-sky-300 text-xs font-semibold">
                   Status
@@ -403,7 +417,7 @@ export default function StudioDeskPage() {
               </div>
             </div>
 
-            {/* Metric 4: Formula Naskah Tersimpan */}
+            {/* Metric 4: Panduan Naskah Asli */}
             <Link
               href="/studio/ugc-studio"
               className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-fuchsia-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group cursor-pointer"
@@ -411,31 +425,31 @@ export default function StudioDeskPage() {
               <div className="absolute top-0 right-0 w-28 h-28 bg-fuchsia-600/10 rounded-full blur-2xl pointer-events-none" />
               <div className="space-y-3 relative z-10">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-zinc-400">Formula Naskah AI</span>
+                  <span className="text-xs font-medium text-zinc-400">Panduan Naskah Asli</span>
                   <div className="w-8 h-8 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <BookOpen className="w-4 h-4" />
+                    <UserCheck className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
                   <div className="text-2xl font-black text-white tracking-tight flex items-baseline gap-2">
-                    <span>9-Scene</span>
-                    <span className="text-xs font-medium text-zinc-400 font-mono">AI Generator</span>
+                    <span>Manusiawi</span>
+                    <span className="text-xs font-medium text-zinc-400 font-mono">Anti-Kaku</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1">
-                    Koleksi Hook & Naskah Viral Teruji
+                    Panduan adegan syuting testimoni & aksi nyata
                   </p>
                 </div>
               </div>
 
               <div className="pt-3 mt-4 border-t border-white/5 flex items-center justify-between relative z-10 text-xs font-bold text-fuchsia-400 group-hover:text-fuchsia-300">
-                <span>Editor Naskah UGC</span>
+                <span>Buka Editor Naskah</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </div>
             </Link>
           </div>
         </section>
 
-        {/* ── 4. HERO CARD DOMINAN: FCD AUTOMATOR ───────────────── */}
+        {/* ── 4. HERO CARD UTAMA: ALUR KERJA TERARAH (NO-TIMELINE) ── */}
         <section className="relative rounded-3xl p-7 sm:p-9 bg-gradient-to-br from-[#12162B] via-[#0E1322] to-[#0A0D18] border border-indigo-500/30 hover:border-indigo-500/50 shadow-2xl shadow-indigo-950/40 transition-all overflow-hidden group">
           <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-600/25 transition-all duration-700" />
           <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-fuchsia-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -445,24 +459,22 @@ export default function StudioDeskPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-gradient-to-r from-indigo-500/20 to-fuchsia-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 shadow-sm">
                   <Flame className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Modul Utama Studio</span>
+                  <span>Alur 5 Langkah No-Timeline Editor</span>
                 </span>
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-white/5 text-zinc-300 border border-white/10">
-                  Fast Creative Delivery (FCD)
+                  Tanpa Garis Waktu Rumit
                 </span>
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  3 Hook × 1 Body × 2 CTA = 6 Iklan Unik
+                  1 Ide Menjadi 6 Variasi Video Iklan
                 </span>
               </div>
 
               <div>
                 <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
-                  FCD Automator: Matrix Multi-Iklan & Pratinjau 9:16 Safe-Zone
+                  Studio Konten: Video Otomatis & Panduan Rekam Asli
                 </h2>
                 <p className="text-xs sm:text-sm text-zinc-300 mt-2.5 leading-relaxed">
-                  Rakit 1 kampanye produk menjadi 6 variasi naskah iklan vertikal unik secara otomatis. 
-                  Dilengkapi canvas simulator rasio 9:16 dengan panduan Safe-Zone TikTok & Instagram Reels agar teks judul 
-                  dan visual hook tidak tertutup UI medsos, serta batch rendering instan.
+                  Pilih cara kerja yang paling pas untuk bisnis Anda: <strong>Bikin Video Otomatis</strong> untuk promosi instan siap posting, atau <strong>Bikin Panduan Rekam Asli</strong> agar kreator Anda bisa berbicara santai di depan kamera untuk konten testimoni dan bukti servis lapangan.
                 </p>
               </div>
 
@@ -470,66 +482,98 @@ export default function StudioDeskPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
                   <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold">
-                    <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Creative Matrix</span>
+                    <Compass className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Langkah 1 & 2</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 leading-snug">
-                    Otomatisasi 3 sudut hook & 2 CTA urgensi berbeda sekali susun.
+                    Riset tren & pilih mode otomatis atau panduan rekam asli.
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
                   <div className="flex items-center gap-2 text-fuchsia-300 text-xs font-bold">
                     <Smartphone className="w-3.5 h-3.5 text-fuchsia-400" />
-                    <span>9:16 Safe-Zone</span>
+                    <span>Langkah 3</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 leading-snug">
-                    Simulasi presisi bebas distorsi overlay tombol like & caption medsos.
+                    Hasil jadi seketika tanpa edit timeline (Aman 9:16 Medsos).
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-1">
                   <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold">
-                    <Film className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Batch MP4 Render</span>
+                    <SplitSquareVertical className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Langkah 4 & 5</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 leading-snug">
-                    Hemat waktu, langsung eksekusi seluruh variasi iklan ke antrean.
+                    Salin caption medsos & ekspor paket variasi split-test iklan.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Dominant CTA Button */}
+            {/* Action Buttons */}
             <div className="shrink-0 flex flex-col items-start lg:items-end gap-3">
               <Link
                 href="/studio/fcd-automator"
                 onClick={handleStartVideo}
                 className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-sm tracking-wide shadow-xl shadow-indigo-600/35 hover:shadow-indigo-600/50 transition-all flex items-center justify-center gap-3 active:scale-98 group/cta cursor-pointer"
               >
-                <span>Buka Studio Editor →</span>
+                <span>Buka Studio Konten →</span>
                 <ArrowRight className="w-4 h-4 group-hover/cta:translate-x-1.5 transition-transform" />
               </Link>
               <span className="text-[11px] text-zinc-400 flex items-center gap-1.5 self-center lg:self-end">
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Tanpa batas draft • Siap pakai</span>
+                <span>Tanpa batas draft • Pembayaran QRIS Instan</span>
               </span>
             </div>
           </div>
         </section>
 
-        {/* ── 5. LAUNCHPAD MODUL STUDIO TAMBAHAN ────────────────── */}
+        {/* ── 5. LAUNCHPAD DUA MODE PRODUKSI UTAMA ───────────────── */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
               <Layers className="w-4 h-4 text-fuchsia-400" />
-              <span>Modul Kreator Lainnya</span>
+              <span>Dua Mode Eksekusi Konten</span>
             </h2>
-            <span className="text-[11px] text-zinc-500 font-mono">Pilar Produksi Konten</span>
+            <span className="text-[11px] text-zinc-500 font-mono">Pilihan Fleksibel Sesuai Kebutuhan</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Module 1: UGC Script Studio */}
+            {/* Mode 1: Video Otomatis */}
+            <Link
+              href="/studio/fcd-automator"
+              onClick={handleStartVideo}
+              className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-indigo-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+                    Instan Siap Posting
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">
+                    Mode Video Otomatis
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                    Hasilkan video promosi instan vertikal 9:16 Full HD dari materi produk Anda, lengkap dengan variasi pembuka (hook) untuk uji iklan.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-indigo-400 font-semibold">
+                <span>Mulai Buat Video Otomatis →</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Mode 2: Panduan Naskah Asli */}
             <Link
               href="/studio/ugc-studio"
               className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
@@ -537,67 +581,30 @@ export default function StudioDeskPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="w-10 h-10 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <Sparkles className="w-5 h-5" />
+                    <UserCheck className="w-5 h-5" />
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25">
-                    9-Scene Engine
+                    Alami & Manusiawi
                   </span>
                 </div>
 
                 <div>
                   <h3 className="text-lg font-bold text-white group-hover:text-fuchsia-400 transition-colors">
-                    UGC Script Studio
+                    Mode Panduan Naskah Asli
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                    Generator naskah iklan direct-response 9-scene lengkap dengan teks layar, voiceover script, dan arahan visual kamera.
+                    Panduan urutan adegan yang mudah dibaca kreator di depan kamera: cocok untuk testimoni jujur, review unboxing, dan aksi nyata jasa kuras toren/servis.
                   </p>
                 </div>
               </div>
 
               <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-fuchsia-400 font-semibold">
-                <span>Buka Studio Naskah →</span>
+                <span>Buka Panduan Naskah →</span>
                 <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
 
-            {/* Module 2: Creative Asset Library */}
-            <div className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-purple-500/30 transition-all flex flex-col justify-between shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center">
-                    <FolderKanban className="w-5 h-5" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                    Asset Manager
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-white">Creative Asset Library</h3>
-                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                    Kelola foto produk, footage B-roll, dan visual hook yang siap dirakit menjadi materi iklan video multi-format.
-                  </p>
-                </div>
-
-                <div className="space-y-2 pt-2 text-xs">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-zinc-400">Footage B-Roll</span>
-                    <span className="text-white font-mono font-bold">Siap Pakai</span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-zinc-400">Audio Backsound</span>
-                    <span className="text-white font-mono font-bold">Bebas Royalti</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-purple-400 font-semibold">
-                <span>Manajemen Aset</span>
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-
-            {/* Module 3: Media Render Jobs & Telemetry */}
+            {/* Modul 3: Antrean Unduhan */}
             <Link
               href="/studio/jobs"
               className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-emerald-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
@@ -605,37 +612,26 @@ export default function StudioDeskPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <Cpu className="w-5 h-5" />
+                    <Download className="w-5 h-5" />
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                    Worker Pool Standby
+                    Siap Unduh
                   </span>
                 </div>
 
                 <div>
                   <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">
-                    Media Render Jobs & Telemetry
+                    Riwayat & Unduhan MP4
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                    Antrean status render otomatis video FCD (FFmpeg queue status) & pipeline konversi video iklan performa tinggi.
+                    Daftar seluruh video MP4 Full HD yang telah selesai diproses, siap langsung diunduh ke ponsel atau laptop Anda.
                   </p>
-                </div>
-
-                <div className="space-y-2 pt-2 text-xs font-mono">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-zinc-400 font-sans">Queue Status</span>
-                    <span className="text-emerald-400 font-bold">{queuedJobsCount} Pending</span>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
-                    <span className="text-zinc-400 font-sans">CPU Thread</span>
-                    <span className="text-zinc-300">FFmpeg 7.x Active</span>
-                  </div>
                 </div>
               </div>
 
               <div className="pt-4 mt-6 border-t border-white/5 flex items-center justify-between text-xs text-emerald-400 font-semibold">
-                <span>Buka Telemetri Render →</span>
-                <Activity className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <span>Buka Daftar Unduhan →</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
           </div>
@@ -643,7 +639,7 @@ export default function StudioDeskPage() {
 
       </main>
 
-      {/* ── NATIVE STUDIO PAYWALL MODAL ───────────────────────── */}
+      {/* ── PAYWALL MODAL (PEMBAYARAN QRIS INSTAN) ─────────────── */}
       <StudioPaywallModal
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
@@ -654,13 +650,13 @@ export default function StudioDeskPage() {
       {/* ── FOOTER ───────────────────────────────────────────── */}
       <footer className="border-t border-white/10 py-6 text-center text-xs text-zinc-500 bg-[#0B0F17] mt-auto">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 PT BOONTRACK INOVASI DIGITAL • BoonTrack Studio Desk Control Room</p>
+          <p>© 2026 PT BOONTRACK INOVASI DIGITAL • Studio Konten & Naskah Manusiawi</p>
           <div className="flex items-center gap-4 text-zinc-400">
-            <Link href="/studio/fcd-automator" className="hover:text-white transition-colors">FCD Automator</Link>
+            <Link href="/studio/fcd-automator" className="hover:text-white transition-colors">Video Otomatis</Link>
             <span>•</span>
-            <Link href="/studio/ugc-studio" className="hover:text-white transition-colors">UGC Script Studio</Link>
+            <Link href="/studio/ugc-studio" className="hover:text-white transition-colors">Panduan Naskah Asli</Link>
             <span>•</span>
-            <Link href="/studio/jobs" className="hover:text-white transition-colors">Render Jobs</Link>
+            <Link href="/studio/jobs" className="hover:text-white transition-colors">Unduhan MP4</Link>
           </div>
         </div>
       </footer>

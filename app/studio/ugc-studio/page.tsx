@@ -355,11 +355,11 @@ export default function UGCStudioPage() {
                 <div className="flex items-center gap-2">
                   <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">boontrack</span>
                   <span className="text-[11px] font-black tracking-widest bg-gradient-to-r from-fuchsia-400 via-pink-400 to-purple-400 bg-clip-text text-transparent uppercase">
-                    UGC SCRIPT STUDIO
+                    STUDIO PANDUAN NASKAH ASLI
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono">
-                  9-Scene Direct-Response Generator & Asset Assembler
+                  Panduan Adegan Video Manusiawi & Eksekusi Lapangan
                 </p>
               </div>
             </div>
@@ -417,11 +417,11 @@ export default function UGCStudioPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-400 uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Panel 1: Brief Produk & Formula AI</span>
+                <span>Langkah 1: Brief Produk & Asisten Cerdas</span>
               </div>
-              <h2 className="text-lg font-black text-white">Parameter Naskah UGC</h2>
+              <h2 className="text-lg font-black text-white">Parameter Panduan Naskah Asli</h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Formula copywriting teruji untuk iklan berbayar TikTok Ads, Shopee Video, dan Reels.
+                Formula penyusunan naskah teruji untuk konten testimoni, jasa nyata, dan iklan alami.
               </p>
             </div>
 
@@ -505,12 +505,12 @@ export default function UGCStudioPage() {
                 {generating ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Menyusun 9-Scene AI...</span>
+                    <span>Menyusun Panduan Adegan...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate Naskah 9-Scene AI ✨</span>
+                    <span>Racik Panduan Naskah Asli (Asisten Cerdas) ✨</span>
                   </>
                 )}
               </button>
@@ -526,10 +526,10 @@ export default function UGCStudioPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
               <div>
                 <span className="text-[11px] font-bold text-fuchsia-400 uppercase tracking-wider block">
-                  Panel 2: Struktur Storyboard
+                  Langkah 2: Struktur Panduan Syuting
                 </span>
                 <h3 className="text-base font-extrabold text-white">
-                  9 Kartu Adegan Berurutan (Editable)
+                  Daftar Urutan Adegan Siap Baca & Rekam (Editable)
                 </h3>
               </div>
 
@@ -788,7 +788,7 @@ export default function UGCStudioPage() {
 
       {/* ── FOOTER ────────────────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5 mt-12">
-        <p>BoonTrack Studio • UGC 9-Scene Generator & FFmpeg Assembly Workspace</p>
+        <p>BoonTrack Studio • Studio Panduan Naskah Asli & Pemroses Video</p>
       </footer>
     </div>
   );

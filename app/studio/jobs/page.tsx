@@ -194,13 +194,13 @@ export default function StudioJobsPage() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Quick Link to FCD Automator */}
+            {/* Quick Link to Studio Video Otomatis */}
             <Link
               href="/studio/fcd-automator"
               className="py-1.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Buka FCD Automator</span>
+              <span>Buka Studio Video Otomatis</span>
             </Link>
 
             {/* Credit Pill */}
@@ -332,7 +332,7 @@ export default function StudioJobsPage() {
             <div className="max-w-md mx-auto space-y-2">
               <h3 className="text-lg font-black text-white">Belum Ada Riwayat Pekerjaan Render</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Antrean render video Anda masih kosong. Mulai rakit kombinasi variasi iklan (3 Hook x 1 Body x 2 CTA) di FCD Automator dan kirim ke server render dalam 1 klik.
+                Antrean render video Anda masih kosong. Mulai rakit kombinasi variasi iklan (3 Hook x 1 Body x 2 CTA) di Studio Video Otomatis dan kirim ke server render dalam 1 klik.
               </p>
             </div>
 
@@ -342,7 +342,7 @@ export default function StudioJobsPage() {
                 className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer"
               >
                 <Sliders className="w-4 h-4" />
-                <span>Buat Iklan di FCD Automator 🚀</span>
+                <span>Buat Iklan di Studio Video Otomatis 🚀</span>
               </Link>
             </div>
           </div>
