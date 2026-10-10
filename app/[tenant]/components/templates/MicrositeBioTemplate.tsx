@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink, Plus } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/types';
 
@@ -367,6 +369,7 @@ export default function MicrositeBioTemplate({
   onAddToCart,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
+  const router = useRouter();
 
   // ── Deterministic Visual Theme Resolution ──
   const activeVisualTheme: VisualThemeType = (
@@ -524,6 +527,15 @@ export default function MicrositeBioTemplate({
     if (whatsappUrl) {
       btns.push({ id: 'whatsapp', label: 'Chat WhatsApp CS', url: whatsappUrl, icon: 'whatsapp', badge: 'Respon Cepat' });
     }
+    if (storeProducts && storeProducts.length > 0) {
+      btns.push({
+        id: 'catalog',
+        label: 'Katalog Produk & Promo',
+        url: '#products',
+        icon: 'link',
+        badge: `${storeProducts.length} Pilihan`,
+      });
+    }
     if (tenantMetadata?.links?.gofood) {
       btns.push({ id: 'gofood', label: 'Pesan via GoFood', url: tenantMetadata.links.gofood, icon: 'link' });
     }
@@ -547,7 +559,7 @@ export default function MicrositeBioTemplate({
     }
 
     return btns;
-  }, [tenantMetadata, whatsappUrl]);
+  }, [tenantMetadata, whatsappUrl, storeProducts]);
 
   // ── Flagship / Card Grid Mode Resolution ─────────────────────────────────
   const isCardGridLayout = Boolean(
@@ -625,6 +637,46 @@ export default function MicrositeBioTemplate({
           {dynamicButtons.length > 0 ? (
             dynamicButtons.map((btn: any) => {
               const isWhatsApp = btn.icon === 'whatsapp' || btn.id === 'whatsapp';
+              const isCatalog =
+                btn.id === 'catalog' ||
+                btn.id === 'products' ||
+                (typeof btn.label === 'string' && btn.label.toLowerCase().includes('katalog')) ||
+                (typeof btn.url === 'string' && (btn.url === '#products' || btn.url.includes('#products')));
+
+              if (isCatalog) {
+                return (
+                  <a
+                    key={btn.id}
+                    href="#products"
+                    onClick={(e) => {
+                      const el = document.getElementById('products');
+                      if (el) {
+                        e.preventDefault();
+                        el.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
+                    className={`${themeStyles.buttonStyle} w-full cursor-pointer`}
+                  >
+                    {/* Left: brand icon */}
+                    <span className="w-6 h-6 shrink-0 flex items-center justify-center">
+                      <ShoppingBag className="w-4 h-4" />
+                    </span>
+
+                    {/* Center: label */}
+                    <span className="flex-1 font-medium text-sm sm:text-base text-center px-3">
+                      {btn.label || btn.title || 'Katalog Produk & Promo'}
+                      {btn.badge && (
+                        <span className={`ml-2 ${themeStyles.buttonBadge}`}>
+                          {btn.badge}
+                        </span>
+                      )}
+                    </span>
+
+                    {/* Right: arrow */}
+                    <ArrowUpRight className={`w-4 h-4 shrink-0 ${themeStyles.buttonArrow}`} />
+                  </a>
+                );
+              }
 
               return (
                 <button
@@ -672,7 +724,7 @@ export default function MicrositeBioTemplate({
 
         {/* ── Product Catalog (Modern Cards or Compact List) ── */}
         {showProducts && visibleProducts.length > 0 && (
-          <div className="mt-8 w-full space-y-3">
+          <div id="products" className="mt-8 w-full space-y-3 scroll-mt-6">
             {/* Section header */}
             <div className="flex items-center gap-2 px-1">
               {isDigitalCatalog ? (
@@ -692,16 +744,12 @@ export default function MicrositeBioTemplate({
               /* Modern Product Cards: Grid 1 Kolom Mobile / 2 Kolom Desktop */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4.5 w-full mt-3">
                 {visibleProducts.map((item) => {
-                  const hasDedicatedPage =
-                    Boolean(item.slug) &&
-                    (Boolean(item.single_page_config) ||
-                     Boolean((item as any).single_page_enabled) ||
-                     Boolean((item as any).single_page));
-                  const dedicatedPageUrl = hasDedicatedPage && item.slug
-                    ? `/${tenantSlug}/p/${item.slug}`
+                  const productSlug = item.slug || (item as any).product_slug || item.id;
+                  const dedicatedPageUrl = productSlug
+                    ? `/${tenantSlug}/p/${productSlug}`
                     : null;
 
-                  const rawExternal = !hasDedicatedPage
+                  const rawExternal = !dedicatedPageUrl
                     ? (item.external_url ||
                        (item as any).affiliate_url ||
                        (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
@@ -745,7 +793,7 @@ export default function MicrositeBioTemplate({
                   const handleCardClick = (e: React.MouseEvent) => {
                     if (dedicatedPageUrl) {
                       e.stopPropagation();
-                      window.location.href = dedicatedPageUrl;
+                      router.push(dedicatedPageUrl);
                     } else if (isExternal && externalUrl) {
                       handleExternalClick(e);
                     }
@@ -806,14 +854,22 @@ export default function MicrositeBioTemplate({
 
                         {/* CTA Buttons: + Keranjang dan Pesan Langsung */}
                         {dedicatedPageUrl ? (
-                          <a
+                          <Link
                             href={dedicatedPageUrl}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
+                            className="w-full z-10 block"
                           >
-                            <span>{ctaLabel}</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </a>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(dedicatedPageUrl);
+                              }}
+                              className="w-full py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
+                            >
+                              <span>{ctaLabel || 'Pesan'}</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </Link>
                         ) : isExternal ? (
                           <a
                             href={externalUrl!}
@@ -856,10 +912,10 @@ export default function MicrositeBioTemplate({
                                   fulfillment_metadata: (item as any).fulfillment_metadata,
                                 });
                               }}
-                              className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
+                              className="py-2.5 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
                             >
                               <QrCode className="w-3.5 h-3.5" />
-                              <span>Pesan Langsung</span>
+                              <span>Pesan</span>
                             </button>
                           </div>
                         )}
@@ -871,16 +927,12 @@ export default function MicrositeBioTemplate({
             ) : (
               /* Compact horizontal cards layout for standard microsite theme */
               visibleProducts.map((item) => {
-                const hasDedicatedPage =
-                  Boolean(item.slug) &&
-                  (Boolean(item.single_page_config) ||
-                   Boolean((item as any).single_page_enabled) ||
-                   Boolean((item as any).single_page));
-                const dedicatedPageUrl = hasDedicatedPage && item.slug
-                  ? `/${tenantSlug}/p/${item.slug}`
+                const productSlug = item.slug || (item as any).product_slug || item.id;
+                const dedicatedPageUrl = productSlug
+                  ? `/${tenantSlug}/p/${productSlug}`
                   : null;
 
-                const rawExternal = !hasDedicatedPage
+                const rawExternal = !dedicatedPageUrl
                   ? (item.external_url ||
                      (item as any).affiliate_url ||
                      (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
@@ -924,7 +976,7 @@ export default function MicrositeBioTemplate({
                 const handleCardClick = (e: React.MouseEvent) => {
                   if (dedicatedPageUrl) {
                     e.stopPropagation();
-                    window.location.href = dedicatedPageUrl;
+                    router.push(dedicatedPageUrl);
                   } else if (isExternal && externalUrl) {
                     handleExternalClick(e);
                   }
@@ -955,16 +1007,23 @@ export default function MicrositeBioTemplate({
                     </div>
 
                     {dedicatedPageUrl ? (
-                      <a
+                      <Link
                         href={dedicatedPageUrl}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        className="rounded-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-[11px] font-black transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                        className="shrink-0 z-10 block"
                       >
-                        <span>{ctaLabel}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </a>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(dedicatedPageUrl);
+                          }}
+                          className="rounded-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <QrCode className="w-3 h-3" />
+                          <span>Pesan</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </Link>
                     ) : isExternal ? (
                       <a
                         href={externalUrl!}
@@ -1006,10 +1065,10 @@ export default function MicrositeBioTemplate({
                               fulfillment_metadata: (item as any).fulfillment_metadata,
                             });
                           }}
-                          className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
+                          className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-full font-bold text-[11px] shadow-md`}
                         >
                           <QrCode className="w-3 h-3" />
-                          <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                          <span>Pesan</span>
                         </button>
                       </div>
                     ) : (
@@ -1029,10 +1088,10 @@ export default function MicrositeBioTemplate({
                             fulfillment_metadata: (item as any).fulfillment_metadata,
                           });
                         }}
-                        className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
+                        className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-full font-bold text-[11px] shadow-md`}
                       >
                         {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                        <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
+                        <span>Pesan</span>
                       </button>
                     )}
                   </div>

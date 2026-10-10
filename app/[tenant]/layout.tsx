@@ -81,12 +81,13 @@ export async function generateMetadata({
       metaObj.hero_image ||
       null;
 
-    const logoUrl =
-      metaObj.logo_url ||
-      store?.logo_url ||
+    const logo =
       metaObj.store_logo_url ||
+      store?.logo_url ||
+      metaObj.logo_url ||
       metaObj.image ||
       null;
+    const logoUrl = logo;
 
     let firstProductImage: string | null = null;
     const products = Array.isArray(metaObj.products) ? metaObj.products : [];
@@ -103,9 +104,9 @@ export async function generateMetadata({
     const BOONTRACK_OFFICIAL_OG = 'https://shop.boontrack.com/og-shop.png';
 
     const rawOgImage =
+      logo ||
       explicitOgImage ||
       bannerUrl ||
-      logoUrl ||
       firstProductImage ||
       BOONTRACK_OFFICIAL_OG;
 
@@ -129,10 +130,6 @@ export async function generateMetadata({
       metaObj.category === 'public_service' ||
       metaObj.category === 'civic';
 
-    // Favicon dinamis per-tenant sesuai logo atau ikon netral
-    const resolvedFavicon = logoUrl || (isPublicService ? '/favicon.ico' : '/shopping-cart.svg');
-    const resolvedAppleIcon = logoUrl || (isPublicService ? '/favicon.ico' : '/shopping-cart.png');
-
     const pageTitle = `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
 
     return {
@@ -140,16 +137,9 @@ export async function generateMetadata({
       title: pageTitle,
       description,
       icons: {
-        icon: [
-          { url: resolvedFavicon, type: resolvedFavicon.endsWith('.svg') ? 'image/svg+xml' : 'image/png' },
-          ...(isPublicService ? [] : [
-            { url: '/shopping-cart.png', sizes: '512x512', type: 'image/png' },
-            { url: '/cart-icon.png', sizes: '192x192', type: 'image/png' },
-          ]),
-          { url: '/favicon.ico' },
-        ],
-        shortcut: resolvedFavicon,
-        apple: resolvedAppleIcon,
+        icon: logo || '/favicon.ico',
+        shortcut: logo || '/favicon.ico',
+        apple: logo || '/favicon.ico',
       },
       openGraph: {
         title: storeName,
@@ -158,21 +148,13 @@ export async function generateMetadata({
         siteName: storeName,
         locale: 'id_ID',
         type: 'website',
-        images: [
-          {
-            url: resolvedOgImage,
-            width: 1200,
-            height: 630,
-            type: imageMimeType,
-            alt: `${storeName} - ${metaObj.tagline || (isPublicService ? 'Portal Layanan Publik Resmi' : 'Konsultasi & Layanan Resmi')}`,
-          },
-        ],
+        images: [logo || resolvedOgImage || '/images/default-og.png'],
       },
       twitter: {
         card: 'summary_large_image',
         title: storeName,
         description,
-        images: [resolvedOgImage],
+        images: [logo || resolvedOgImage || '/images/default-og.png'],
       },
     };
   } catch (err) {
