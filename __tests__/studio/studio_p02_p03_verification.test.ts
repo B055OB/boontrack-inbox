@@ -161,6 +161,24 @@ jest.mock('@/lib/affiliate-notification-service', () => {
   };
 });
 
+// Mock Meta CAPI Outbox to simulate downstream failure recovery
+jest.mock('@/lib/capi-outbox', () => {
+  const actual = jest.requireActual('@/lib/capi-outbox');
+  return {
+    ...actual,
+    enqueueCAPIOutboxEvent: jest.fn().mockRejectedValue(new Error('Downstream Meta CAPI 500 Failure')),
+  };
+});
+
+// Mock WhatsApp Outbox to simulate downstream failure recovery
+jest.mock('@/lib/outbox/enqueue', () => {
+  const actual = jest.requireActual('@/lib/outbox/enqueue');
+  return {
+    ...actual,
+    enqueueOutboxMessage: jest.fn().mockRejectedValue(new Error('Downstream WhatsApp Outbox 500 Failure')),
+  };
+});
+
 // Helper to construct mock NextRequest
 function makeWebhookRequest(body: any): NextRequest {
   const jsonStr = JSON.stringify(body);
@@ -301,7 +319,7 @@ describe('VERIFIKASI P0.2 — Webhook Idempotency & Downstream Isolation', () =>
     expect(commissionCallsCount).toBe(1);
   });
 
-  it('P0.2.2: Downstream Failure Isolation — Credit Mutation & Payment Status Persist Even if Downstream Fails', async () => {
+  it('P0.2.2: Downstream Failure Recovery — Credit Mutation & Payment Status Persist (SETTLED) Even if Meta CAPI or Outbox Throws Error 500', async () => {
     const txId = `TOPUP-STUDIO-warungkreatif-25-1791569002`;
     const payload = {
       id: 'inv_xendit_downstream_fail_002',
@@ -316,9 +334,9 @@ describe('VERIFIKASI P0.2 — Webhook Idempotency & Downstream Isolation', () =>
       },
     };
 
-    // Simulate downstream affiliate notification throwing network error
+    // Simulate downstream notification / CAPI throwing error 500
     (affiliateService.recordStudioTokenCommission as jest.Mock)
-      .mockRejectedValueOnce(new Error('Downstream network timeout connecting to email SMTP server'));
+      .mockRejectedValueOnce(new Error('Downstream Meta CAPI / Outbox 500 Failure'));
 
     const res = await handlePaymentWebhook(makeWebhookRequest(payload), '/api/webhooks/payment');
     const json = await res.json();
