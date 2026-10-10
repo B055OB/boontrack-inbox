@@ -4945,3 +4945,29 @@ Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
 3. **Pencatatan Audit Ledger**: Audit log perdana dicatat di `tenant_credit_ledger` (`action: 'TRIAL_GRANT'`, `amount = 1`, `description = 'Aktivasi akun Studio - 1 Kredit Render Gratis'`).
 4. **Pemicu Notifikasi Afiliasi**: Jika tenant memiliki referral code atau terikat mitra, memicu `sendNewStoreReferralNotification` untuk memberitahu mitra rekruter dan Affiliate Manager.
 
+
+
+## SECTION 14. DYNAMIC CUSTOM DOMAIN & STOREFRONT GOVERNANCE (RULE 2 EXPANSION)
+
+### 14.1. Core Architectural Mandate
+Platform Boontrack (Core & Inbox Control Plane) melarang keras penggunaan domain/URL statis yang di-hardcode di service, prompt AI bot, knowledge base, maupun template pesan. Seluruh tautan yang merujuk ke etalase toko (Storefront), katalog, checkout konsultasi, maupun portal aplikasi (App) WAJIB di-resolve secara dinamis saat runtime berdasarkan profil dan metadata tenant.
+
+### 14.2. Resolusi Hirarki Domain (Canonical Domain Resolution)
+Setiap pembentukan URL melalui url_builder (Core) maupun resolver client (Inbox) wajib mengikuti resolusi berjenjang:
+1. Custom Domain (Cloudflare DNS Flattened / Custom Hostname):
+   - Diperiksa dari: tenant.metadata.get("custom_domain") atau tenant.metadata.get("custom_domains")[0].
+   - Menghasilkan: https://{custom_domain}{path} (contoh: https://konsul.littlebitefeeding.com/p/...).
+2. Platform Fallback (Zero Config / Unlinked):
+   - Jika custom_domain bernilai null atau kosong:
+   - Menghasilkan: {SHOP_URL}/{tenant_slug}{path} (default: https://shop.boontrack.com/{tenant_slug}/...).
+
+### 14.3. Implementasi Seragam: Shop vs App
+- Storefront / Catalog / Consultation Links (Shop Context):
+  - Seluruh generator grounding AI, modul knowledge_base.py, webhook outgoing, dan sales engine dilarang menyusun string URL manual.
+  - Wajib menggunakan build_product_url(tenant_slug, product_slug, custom_domain) atau membaca context runtime runtime_ctx.domain.
+- Portal & Dashboard Tenant (App Context):
+  - Domain app/control-plane disinkronkan melalui mapping tenant metadata (app_domain atau subdomain default app.boontrack.com/{tenant_slug}).
+
+### 14.4. Prosedur Onboarding Tenant Baru (Zero Manual Code Change)
+- Penambahan domain kustom baru (misalnya via Cloudflare CNAME flattening) hanya perlu mengisi field custom_domain pada metadata record tenant di database.
+- Dilarang keras melakukan commit atau perubahan kode (di Core maupun Inbox) hanya untuk menambahkan domain spesifik per tenant.

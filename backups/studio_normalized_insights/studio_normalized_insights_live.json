@@ -1,0 +1,512 @@
+{
+  "table": "public.studio_normalized_insights",
+  "exported_at": "2026-10-10T10:48:52.085283+00:00",
+  "total_records": 30,
+  "rls_secured": true,
+  "schema_columns": [
+    "id",
+    "category",
+    "sub_category",
+    "hook_pattern",
+    "raw_hook_example",
+    "target_audience",
+    "freshness_status",
+    "commercial_eligibility",
+    "confidence_score",
+    "metadata",
+    "created_at",
+    "updated_at"
+  ],
+  "data": [
+    {
+      "id": "2fd01203-5b9c-4a69-8d35-64539e14b4da",
+      "category": "problem-agitate",
+      "sub_category": "workflow-slow",
+      "hook_pattern": "Pola Proses Lambat",
+      "raw_hook_example": "Stop kirim link manual yang sering bikin pembeli kabur.",
+      "target_audience": "Creator",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.92,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "3d278a86-7fc2-457b-9a57-2f81dde2a4ac",
+      "category": "problem-agitate",
+      "sub_category": "trust-issue",
+      "hook_pattern": "Pola Anti Tipu-tipu",
+      "raw_hook_example": "Keliatannya sepele, tapi ini yang bikin banyak orang ketipu pas checkout.",
+      "target_audience": "Online Shopper",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.89,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "41eaa8c9-e031-4725-aa0c-87ab484d7150",
+      "category": "curiosity-gap",
+      "sub_category": "weird-trick",
+      "hook_pattern": "Pola Trik Ganjil",
+      "raw_hook_example": "Aneh tapi ampuh, trik 5 detik ini naikin konversi CTWA.",
+      "target_audience": "Digital Marketer",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.91,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "42846a67-734a-4a7d-8f6f-8dd456b298db",
+      "category": "curiosity-gap",
+      "sub_category": "odd-comparison",
+      "hook_pattern": "Pola Perbandingan Aneh",
+      "raw_hook_example": "Modal Rp 0 vs modal jutaan, hasilnya kok bisa sama?",
+      "target_audience": "Entrepreneur",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.9,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "45b7bc6f-d513-4a9d-8883-8402f4e4179d",
+      "category": "problem-agitate",
+      "sub_category": "operational-pain",
+      "hook_pattern": "Pola Chaos Operasional",
+      "raw_hook_example": "Chat numpuk tapi closingan minim? Ini biang keroknya.",
+      "target_audience": "Seller WhatsApp",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.94,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "555e6114-c132-4a2a-ada8-4e2ca5f322f8",
+      "category": "curiosity-gap",
+      "sub_category": "silent-winner",
+      "hook_pattern": "Pola Kuda Hitam",
+      "raw_hook_example": "Barang ini gak pernah diiklanin tapi selalu sold out, kok bisa?",
+      "target_audience": "Shopper",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.93,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "6055426c-4eb0-4a64-a216-ee47473893aa",
+      "category": "problem-agitate",
+      "sub_category": "time-sink",
+      "hook_pattern": "Pola Waktu Terbuang",
+      "raw_hook_example": "Berapa jam kamu habisin cuma buat rekap data tiap malam?",
+      "target_audience": "UMKM",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.92,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "8e5fb303-b794-4f79-a4ad-d87fe9bfb9e8",
+      "category": "problem-agitate",
+      "sub_category": "buyer-regret",
+      "hook_pattern": "Pola Penyesalan Telat Tahu",
+      "raw_hook_example": "Nyesel banget baru nemu barang ini pas mau habis...",
+      "target_audience": "Impulse Shopper",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.91,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "a96a2ad8-6b6a-4dfe-813e-cd57443e9aac",
+      "category": "problem-agitate",
+      "sub_category": "hidden-trap",
+      "hook_pattern": "Pola Kesalahan Fatal",
+      "raw_hook_example": "Kesalahan nomor 1 yang bikin konten affiliate kamu sepi klik.",
+      "target_audience": "Affiliate Creator",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.96,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "af7e3592-bcae-4a2c-8adc-6955f920f868",
+      "category": "problem-agitate",
+      "sub_category": "pain-point",
+      "hook_pattern": "Pola Solusi Frustrasi",
+      "raw_hook_example": "Buat yang udah capek boncos iklan, coba ubah 1 hal ini.",
+      "target_audience": "Media Buyer",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.93,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "cf62ef7a-cb50-43cd-b368-2de58d9ed4ea",
+      "category": "curiosity-gap",
+      "sub_category": "untold-truth",
+      "hook_pattern": "Pola Jarang Ada yang Tahu",
+      "raw_hook_example": "90% orang gak sadar fitur tersembunyi yang ada di HP mereka.",
+      "target_audience": "Tech User",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.88,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "d2abf759-5565-4ea0-985b-9fb0fbab8dc9",
+      "category": "problem-agitate",
+      "sub_category": "daily-struggle",
+      "hook_pattern": "Pola Capek Cara Lama",
+      "raw_hook_example": "Masih zaman ribet ngatur orderan manual satu-satu?",
+      "target_audience": "Business Owner",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.94,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "dc61754f-9af8-4dec-af96-b55cae524994",
+      "category": "problem-agitate",
+      "sub_category": "overprice",
+      "hook_pattern": "Pola Alternatif Murah",
+      "raw_hook_example": "Bandingin harga toko sebelah sama yang ini, bedanya jauh banget!",
+      "target_audience": "Budget Hunter",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.9,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "de84ae4d-eb5d-45b1-a480-27fab76a17b9",
+      "category": "curiosity-gap",
+      "sub_category": "behind-scenes",
+      "hook_pattern": "Pola Bocoran Orang Dalam",
+      "raw_hook_example": "Bocoran orang dalam: ini alasan kenapa produk ini viral terus.",
+      "target_audience": "Trend Seeker",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.9,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "e72158f8-34a1-4a52-8e14-271e4e321213",
+      "category": "curiosity-gap",
+      "sub_category": "unbelievable-result",
+      "hook_pattern": "Pola Hasil di Luar Nalar",
+      "raw_hook_example": "Dari sepi pembeli jadi kewalahan packing, cuma ganti alur ini.",
+      "target_audience": "Store Owner",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.94,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "e9499d68-f854-4022-a85a-713b815023d0",
+      "category": "curiosity-gap",
+      "sub_category": "mystery-item",
+      "hook_pattern": "Pola Tebak Barang",
+      "raw_hook_example": "Kirain barang receh, pas dateng kualitasnya bikin kaget...",
+      "target_audience": "Product Explorer",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.92,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "ed1cdbfa-385a-40ed-82ed-e63a0e6ddbec",
+      "category": "problem-agitate",
+      "sub_category": "financial-waste",
+      "hook_pattern": "Pola Jebakan Biaya",
+      "raw_hook_example": "Jangan beli ini sebelum kamu tahu cara hemat 50%!",
+      "target_audience": "Advertiser",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.95,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "eea7d635-6f7a-4585-82f1-065b30d76fa2",
+      "category": "curiosity-gap",
+      "sub_category": "counter-intuitive",
+      "hook_pattern": "Pola Berlawanan Logika",
+      "raw_hook_example": "Kenapa makin murah iklannya, makin banyak yang beli? Ini logikanya.",
+      "target_audience": "Advertiser",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.89,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "f2e7c7a6-341e-4aaf-b0c2-a6ae54a9c1d3",
+      "category": "curiosity-gap",
+      "sub_category": "hidden-feature",
+      "hook_pattern": "Pola Rahasia Tak Terduga",
+      "raw_hook_example": "Ternyata fungsi aslinya bukan cuma buat pajangan doang!",
+      "target_audience": "General",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.93,
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "fad6fa7a-e1bc-4d7d-9473-f2b466a69e0a",
+      "category": "curiosity-gap",
+      "sub_category": "secret-formula",
+      "hook_pattern": "Pola Formula Tertutup",
+      "raw_hook_example": "Cara brand besar dapet ribuan chat tiap hari tanpa admin lembur.",
+      "target_audience": "Brand Owner",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.95,
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00",
+      "updated_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "2825dceb-bea0-4ad3-8afc-e578b7e53c89",
+      "category": "ctwa-bot",
+      "sub_category": "seamless-human",
+      "hook_pattern": "Pola Handover Mulus",
+      "raw_hook_example": "Bot ramah standby 24 jam, kalau butuh dokter/admin tinggal panggil tanpa disconnect.",
+      "target_audience": "Pasien & Klien",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.95,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "37a3547c-a8bc-4003-bfca-1319f8623198",
+      "category": "ctwa-qris",
+      "sub_category": "checkout-speed",
+      "hook_pattern": "Pola Checkout Tanpa Aplikasi Bank",
+      "raw_hook_example": "Klik link WhatsApp, bot kirim QRIS, langsung bayar via Gopay/BCA/ShopeePay.",
+      "target_audience": "Mobile Shopper",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.96,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "494f75f8-2f86-4bf1-a182-2630355ed1c7",
+      "category": "ctwa-bot",
+      "sub_category": "human-touch",
+      "hook_pattern": "Pola Bot Natural Anti Kaku",
+      "raw_hook_example": "Chat bot tapi berasa ngobrol sama CS beneran, balesnya cuma 1 detik.",
+      "target_audience": "Calon Pembeli",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.97,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "614169a2-dc8a-4337-911b-1c58e96a7f38",
+      "category": "ctwa-qris",
+      "sub_category": "promo-trigger",
+      "hook_pattern": "Pola Flash Sale QRIS",
+      "raw_hook_example": "Khusus pembayaran via QRIS dinamis bot sekarang, diskon langsung terpotong!",
+      "target_audience": "Promo Hunter",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.97,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "61a1214d-edcb-4b79-8bbb-d09282600dc8",
+      "category": "ctwa-bot",
+      "sub_category": "frictionless-flow",
+      "hook_pattern": "Pola Alur Tanpa Form Ribet",
+      "raw_hook_example": "Gak usah isi form panjang di website, sebut pesanan di WA langsung diproses.",
+      "target_audience": "Direct Buyer",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.96,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "88040d94-62d6-4666-8596-557814b46db2",
+      "category": "ctwa-bot",
+      "sub_category": "closing-assist",
+      "hook_pattern": "Pola Konsultasi Ramah",
+      "raw_hook_example": "Bukan cuma robot broadcast, bot ini paham produk dan siap kasih rekomendasi.",
+      "target_audience": "Leads Konsultatif",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.96,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "9dbecbe7-ad95-4081-9d6a-159563a58e60",
+      "category": "ctwa-qris",
+      "sub_category": "instant-invoice",
+      "hook_pattern": "Pola Resi & Struk Instan",
+      "raw_hook_example": "Begitu QRIS discan, invoice resmi dan nomor resi langsung meluncur ke chat kamu.",
+      "target_audience": "Pembeli B2C",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.95,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "d3cc09aa-a784-4d16-8e3b-03a7b03535f1",
+      "category": "ctwa-qris",
+      "sub_category": "anti-fraud",
+      "hook_pattern": "Pola Verifikasi Nominal Unik",
+      "raw_hook_example": "Bebas salah nominal! QRIS otomatis pas angkanya sampai 3 digit unik.",
+      "target_audience": "Smart Buyer",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.94,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "d67b7ed8-82d2-4abe-802e-39405317160c",
+      "category": "ctwa-bot",
+      "sub_category": "zero-wait",
+      "hook_pattern": "Pola Anti Antre Balasan",
+      "raw_hook_example": "Tengah malam chat tetep dilayani ramah dan langsung dikasih invoice QRIS.",
+      "target_audience": "Night Shopper",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.95,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "24h_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "eef46d61-afb4-46b0-a03a-f675359c2e72",
+      "category": "ctwa-qris",
+      "sub_category": "instant-pay",
+      "hook_pattern": "Pola QRIS Dinamis Sekali Scan",
+      "raw_hook_example": "Gak perlu nunggu admin cek mutasi, scan QRIS dinamis langsung lunas otomatis!",
+      "target_audience": "Pembeli Online",
+      "freshness_status": "FRESH",
+      "commercial_eligibility": true,
+      "confidence_score": 0.98,
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00",
+      "updated_at": "2026-10-09T14:42:48.818139+00:00"
+    }
+  ]
+}

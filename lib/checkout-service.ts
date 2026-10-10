@@ -634,12 +634,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
 
     if (!qrString && !qrCodeUrl) {
-      // Mock Sandbox Provider Simulator fallback jika tidak ada konfigurasi sama sekali
-      const sandboxMockQris =
-        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
-        '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
-      qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
-      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      const sandboxMockQris = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS;
+      if (sandboxMockQris && sandboxMockQris.startsWith("000201")) {
+        qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
+        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      }
     } else if (qrString) {
       if (qrString.startsWith("000201")) {
         // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid

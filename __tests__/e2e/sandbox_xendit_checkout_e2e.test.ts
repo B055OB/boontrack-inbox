@@ -61,7 +61,7 @@ describe('Sandbox End-to-End Test: Checkout Xendit, Afiliasi, Entitlement, & CAP
   let productId: string;
   let testOrderId: string;
   let baselineCredits = 0;
-  let customerPhone = '6281299887711';
+  let customerPhone = '6288226098088';
   let customerEmail = 'budi.sandbox@testboontrack.id';
   let customerName = 'Budi Sandbox Tester';
 

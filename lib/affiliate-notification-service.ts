@@ -1034,6 +1034,22 @@ export async function sendOrderCommissionAlert(params: {
       ? directCommission
       : Math.round(grossAmount * (directRatePercent / 100));
 
+    // Record direct commission into affiliate_commissions table (with product_type)
+    try {
+      await supabase.from('affiliate_commissions').insert({
+        order_id: String(orderId),
+        tenant_id: resolvedTenantSlug || tenantId || 'platform',
+        affiliate_id: recruiterAffiliate.id,
+        order_amount: grossAmount,
+        amount: calculatedCommission,
+        status: 'PENDING',
+        product_type: productType,
+        created_at: new Date().toISOString(),
+      });
+    } catch (commErr) {
+      console.warn('[OrderCommissionAlert] Non-fatal commission record note:', commErr);
+    }
+
     // A. Dispatch to Direct Affiliate
     const affEmail = recruiterAffiliate.email || recruiterAffiliate.metadata?.email;
     if (affEmail && affEmail.includes('@')) {
@@ -1068,22 +1084,6 @@ export async function sendOrderCommissionAlert(params: {
       if (res.success) {
         dispatchedTo.push(affEmail);
       }
-    }
-
-    // Record direct commission into affiliate_commissions table (with product_type)
-    try {
-      await supabase.from('affiliate_commissions').insert({
-        order_id: String(orderId),
-        tenant_id: resolvedTenantSlug || tenantId || 'platform',
-        affiliate_id: recruiterAffiliate.id,
-        order_amount: grossAmount,
-        amount: calculatedCommission,
-        status: 'PENDING',
-        product_type: productType,
-        created_at: new Date().toISOString(),
-      });
-    } catch (commErr) {
-      console.warn('[OrderCommissionAlert] Non-fatal commission record note:', commErr);
     }
 
     // B. Dispatch AM 5% Override (if recruiter has a parent AM)

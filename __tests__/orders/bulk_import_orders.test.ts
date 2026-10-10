@@ -405,6 +405,22 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       expect(parsedRows[0].nama_pembeli || parsedRows[0].nama).toBeTruthy();
     });
 
+    it('memvalidasi 100% baris pada template-import-pesanan-boontrack.xlsx tanpa error', () => {
+      const buffer = OrderBulkImportService.generateTemplateExcel();
+      const parsedRows = OrderBulkImportService.parseBufferToRows(buffer);
+      const { valid, errors, totalRevenue } = OrderBulkImportService.validateRows(parsedRows);
+
+      expect(errors).toHaveLength(0);
+      expect(valid).toHaveLength(2);
+      expect(valid[0].customerName).toBe('Budi Santoso');
+      expect(valid[0].customerPhoneNormalized).toBe('6281234567890');
+      expect(valid[0].grossAmount).toBe(150000);
+      expect(valid[1].customerName).toBe('Siti Nurhaliza');
+      expect(valid[1].customerPhoneNormalized).toBe('6285712345678');
+      expect(valid[1].grossAmount).toBe(350000);
+      expect(totalRevenue).toBe(500000);
+    });
+
     it('menghasilkan teks CSV dengan header kolom pesanan yang sesuai', () => {
       const csv = OrderBulkImportService.generateTemplateCsv();
       expect(csv).toContain('Tanggal Transaksi');

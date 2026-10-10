@@ -121,7 +121,7 @@ async function runSandboxE2ETest() {
   const orderId = `ORD-SANDBOX-${Date.now()}`;
   const inkubasiGroupUrl = 'https://chat.whatsapp.com/InkubasiCTWABatch1Official';
   const customerName = 'Budi Sandbox Buyer';
-  const customerPhone = '6281288991122';
+  const customerPhone = '6288226098088';
   const customerEmail = 'budi.sandbox@testboontrack.id';
   const orderGrossAmount = 149000;
   const affiliateCommission = 35000;
@@ -273,10 +273,18 @@ async function runSandboxE2ETest() {
   console.log('   ✅ Assertion b PASSED: Saldo Studio bertambah +15 Kredit dan tier ter-upgrade menjadi member.');
 
   // c. Komisi afiliasi untuk referrer 'test' tercatat Rp 35.000 di buku besar afiliasi (affiliate_ledger)
-  const { data: affiliateComms } = await supabase
-    .from('affiliate_ledger')
-    .select('id, order_id, affiliate_id, amount, status, product_type')
-    .eq('order_id', orderId);
+  let affiliateComms = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data } = await supabase
+      .from('affiliate_ledger')
+      .select('id, order_id, affiliate_id, amount, status, product_type')
+      .eq('order_id', orderId);
+    if (data && data.length > 0) {
+      affiliateComms = data;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
 
   console.log('\n[ASSERTION c] Komisi Afiliasi di affiliate_ledger:');
   console.log(`   - Record count: ${affiliateComms?.length || 0}`);

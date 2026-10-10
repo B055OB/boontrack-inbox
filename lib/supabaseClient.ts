@@ -4,7 +4,7 @@ import { isValidUuid, safeUuidOrNull } from './uuid-guard';
 export { isValidUuid, safeUuidOrNull };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7';
 
 /**
  * Creates a fetch wrapper that protects Supabase from egress quota exhaustion:
@@ -73,12 +73,16 @@ export const getSupabaseAdmin = () => {
   const currentKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_KEY ||
-    'sb_secret_5dhRLAank8cEcHK5us6WfQ_IlwK05b7'
+    ''
   ).trim();
 
-  if (!supabaseAdminInstance || (currentKey && currentKey !== lastConfiguredAdminKey)) {
-    lastConfiguredAdminKey = currentKey;
-    const serviceKey = currentKey || 'sb_secret_5dhRLAank8cEcHK5us6WfQ_IlwK05b7';
+  // If service key is absent or is an sb_secret_ management token not registered for PostgREST, fallback to active publishable key
+  const serviceKey = (currentKey && !currentKey.startsWith('sb_secret_'))
+    ? currentKey
+    : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseAnonKey);
+
+  if (!supabaseAdminInstance || (serviceKey && serviceKey !== lastConfiguredAdminKey)) {
+    lastConfiguredAdminKey = serviceKey;
     supabaseAdminInstance = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
       global: {

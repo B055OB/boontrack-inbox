@@ -8,6 +8,7 @@ import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, Exte
 import type { Product } from '@/app/[tenant]/types';
 
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
+const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
 
 
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -370,6 +371,8 @@ export default function MicrositeBioTemplate({
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
   const router = useRouter();
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
   // ── Deterministic Visual Theme Resolution ──
   const activeVisualTheme: VisualThemeType = (
@@ -809,29 +812,68 @@ export default function MicrositeBioTemplate({
                     >
                       <div>
                         {/* Thumbnail Gambar Besar & Proporsional di Atas Kartu */}
-                        <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-white/10 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
-                          {safeImage ? (
-                            <img
-                              src={safeImage}
-                              alt={item.name}
-                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-slate-400">
-                              <ShoppingBag className="w-8 h-8" />
+                        {dedicatedPageUrl ? (
+                          <Link
+                            href={dedicatedPageUrl}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block group/thumb"
+                          >
+                            <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-white/10 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5 cursor-pointer">
+                              {safeImage ? (
+                                <img
+                                  src={safeImage}
+                                  alt={item.name}
+                                  className="w-full h-full object-contain group-hover/thumb:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                  <ShoppingBag className="w-8 h-8" />
+                                </div>
+                              )}
+                              {item.badge && (
+                                <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                                  {item.badge}
+                                </span>
+                              )}
                             </div>
-                          )}
-                          {item.badge && (
-                            <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                              {item.badge}
-                            </span>
-                          )}
-                        </div>
+                          </Link>
+                        ) : (
+                          <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-white/10 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
+                            {safeImage ? (
+                              <img
+                                src={safeImage}
+                                alt={item.name}
+                                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                <ShoppingBag className="w-8 h-8" />
+                              </div>
+                            )}
+                            {item.badge && (
+                              <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                        {/* Info Produk: Judul penuh tanpa truncate, deskripsi 2-3 baris, harga kontras */}
-                        <h3 className="font-bold text-sm sm:text-base leading-snug group-hover:text-blue-600 dark:group-hover:text-cyan-400 transition-colors">
-                          {item.name}
-                        </h3>
+                        {/* Info Produk: Judul penuh tanpa truncate, dibungkus Link jika ada dedicated page */}
+                        {dedicatedPageUrl ? (
+                          <Link
+                            href={dedicatedPageUrl}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block group/title"
+                          >
+                            <h3 className="font-bold text-sm sm:text-base leading-snug group-hover/title:text-blue-600 dark:group-hover/title:text-cyan-400 transition-colors">
+                              {item.name}
+                            </h3>
+                          </Link>
+                        ) : (
+                          <h3 className="font-bold text-sm sm:text-base leading-snug group-hover:text-blue-600 dark:group-hover:text-cyan-400 transition-colors">
+                            {item.name}
+                          </h3>
+                        )}
 
                         {item.description ? (
                           <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed mt-1.5">
@@ -852,25 +894,8 @@ export default function MicrositeBioTemplate({
                           ) : null}
                         </div>
 
-                        {/* CTA Buttons: + Keranjang dan Pesan Langsung */}
-                        {dedicatedPageUrl ? (
-                          <Link
-                            href={dedicatedPageUrl}
-                            className="w-full z-10 block"
-                          >
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(dedicatedPageUrl);
-                              }}
-                              className="w-full py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
-                            >
-                              <span>{ctaLabel || 'Pesan'}</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
-                          </Link>
-                        ) : isExternal ? (
+                        {/* CTA Buttons: Buka Popup / Modal Checkout */}
+                        {isExternal ? (
                           <a
                             href={externalUrl!}
                             target="_blank"
@@ -881,7 +906,7 @@ export default function MicrositeBioTemplate({
                             <ExternalLink className="w-3.5 h-3.5" />
                             <span>{ctaLabel}</span>
                           </a>
-                        ) : (
+                        ) : !isDigitalCatalog && onAddToCart ? (
                           <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
@@ -900,24 +925,73 @@ export default function MicrositeBioTemplate({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                                onInitiateCheckout({
+                                const checkoutProd = {
                                   id: String(item.id),
-                                  title: item.name,
-                                  price: Number(item.price),
+                                  title: item.name || (item as any).title,
+                                  price: Number(item.price || 0),
                                   download_url: item.download_url,
                                   link_digital: (item as any).link_digital,
                                   type: item.type,
                                   category: item.category,
+                                  requires_shipping: Boolean((item as any).requires_shipping),
+                                  slug: item.slug || (item as any).product_slug,
+                                  metadata: item.metadata,
                                   fulfillment_metadata: (item as any).fulfillment_metadata,
-                                });
+                                };
+
+                                try {
+                                  trackInitiateCheckout(checkoutProd.title, checkoutProd.price);
+                                } catch (_) {}
+
+                                try {
+                                  onInitiateCheckout?.(checkoutProd);
+                                } catch (_) {}
+
+                                setSelectedProduct(checkoutProd);
+                                setIsCheckoutOpen(true);
                               }}
                               className="py-2.5 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
                             >
                               <QrCode className="w-3.5 h-3.5" />
-                              <span>Pesan</span>
+                              <span>{ctaLabel || 'Pesan'}</span>
                             </button>
                           </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const checkoutProd = {
+                                id: String(item.id),
+                                title: item.name || (item as any).title,
+                                price: Number(item.price || 0),
+                                download_url: item.download_url,
+                                link_digital: (item as any).link_digital,
+                                type: item.type,
+                                category: item.category,
+                                requires_shipping: Boolean((item as any).requires_shipping),
+                                slug: item.slug || (item as any).product_slug,
+                                metadata: item.metadata,
+                                fulfillment_metadata: (item as any).fulfillment_metadata,
+                              };
+
+                              try {
+                                trackInitiateCheckout(checkoutProd.title, checkoutProd.price);
+                              } catch (_) {}
+
+                              try {
+                                onInitiateCheckout?.(checkoutProd);
+                              } catch (_) {}
+
+                              setSelectedProduct(checkoutProd);
+                              setIsCheckoutOpen(true);
+                            }}
+                            className="w-full py-2.5 px-3 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md z-10"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{ctaLabel || 'Pesan'}</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -990,10 +1064,30 @@ export default function MicrositeBioTemplate({
                       dedicatedPageUrl || isExternal ? 'cursor-pointer active:scale-[0.99]' : ''
                     }`}
                   >
-                    <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+                    {dedicatedPageUrl ? (
+                      <Link
+                        href={dedicatedPageUrl}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 group/thumb"
+                      >
+                        <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+                      </Link>
+                    ) : (
+                      <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+                    )}
 
                     <div className="flex-1 min-w-0 space-y-1">
-                      <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
+                      {dedicatedPageUrl ? (
+                        <Link
+                          href={dedicatedPageUrl}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline block"
+                        >
+                          <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
+                        </Link>
+                      ) : (
+                        <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
+                      )}
                       <div className="flex items-baseline gap-1 flex-wrap">
                         {item.originalPrice && item.originalPrice > item.price ? (
                           <span className="line-through opacity-50 text-xs mr-1">
@@ -1006,25 +1100,7 @@ export default function MicrositeBioTemplate({
                       </div>
                     </div>
 
-                    {dedicatedPageUrl ? (
-                      <Link
-                        href={dedicatedPageUrl}
-                        className="shrink-0 z-10 block"
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(dedicatedPageUrl);
-                          }}
-                          className="rounded-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
-                        >
-                          <QrCode className="w-3 h-3" />
-                          <span>Pesan</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </Link>
-                    ) : isExternal ? (
+                    {isExternal ? (
                       <a
                         href={externalUrl!}
                         target="_blank"
@@ -1040,7 +1116,9 @@ export default function MicrositeBioTemplate({
                         <button
                           type="button"
                           onClick={(e) => {
-                            onAddToCart(item, e);
+                            if (onAddToCart) {
+                              onAddToCart(item, e);
+                            }
                           }}
                           title="Tambah ke Keranjang"
                           className="bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-[inherit] text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
@@ -1053,22 +1131,35 @@ export default function MicrositeBioTemplate({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                            onInitiateCheckout({
+                            const checkoutProd = {
                               id: String(item.id),
-                              title: item.name,
-                              price: Number(item.price),
+                              title: item.name || (item as any).title,
+                              price: Number(item.price || 0),
                               download_url: item.download_url,
                               link_digital: (item as any).link_digital,
                               type: item.type,
                               category: item.category,
+                              requires_shipping: Boolean((item as any).requires_shipping),
+                              slug: item.slug || (item as any).product_slug,
+                              metadata: item.metadata,
                               fulfillment_metadata: (item as any).fulfillment_metadata,
-                            });
+                            };
+
+                            try {
+                              trackInitiateCheckout(checkoutProd.title, checkoutProd.price);
+                            } catch (_) {}
+
+                            try {
+                              onInitiateCheckout?.(checkoutProd);
+                            } catch (_) {}
+
+                            setSelectedProduct(checkoutProd);
+                            setIsCheckoutOpen(true);
                           }}
                           className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-full font-bold text-[11px] shadow-md`}
                         >
                           <QrCode className="w-3 h-3" />
-                          <span>Pesan</span>
+                          <span>{ctaLabel || 'Pesan'}</span>
                         </button>
                       </div>
                     ) : (
@@ -1076,22 +1167,36 @@ export default function MicrositeBioTemplate({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                          onInitiateCheckout({
+                          const checkoutProd = {
                             id: String(item.id),
-                            title: item.name,
-                            price: Number(item.price),
+                            title: item.name || (item as any).title,
+                            price: Number(item.price || 0),
                             download_url: item.download_url,
                             link_digital: (item as any).link_digital,
                             type: item.type,
                             category: item.category,
+                            requires_shipping: Boolean((item as any).requires_shipping),
+                            slug: item.slug || (item as any).product_slug,
+                            metadata: item.metadata,
                             fulfillment_metadata: (item as any).fulfillment_metadata,
-                          });
+                          };
+
+                          try {
+                            trackInitiateCheckout(checkoutProd.title, checkoutProd.price);
+                          } catch (_) {}
+
+                          try {
+                            onInitiateCheckout?.(checkoutProd);
+                          } catch (_) {}
+
+                          setSelectedProduct(checkoutProd);
+                          setIsCheckoutOpen(true);
                         }}
-                        className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-full font-bold text-[11px] shadow-md`}
+                        className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-full font-bold text-[11px] shadow-md z-10`}
                       >
-                        {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                        <span>Pesan</span>
+                        <QrCode className="w-3 h-3" />
+                        <span>{ctaLabel || 'Pesan'}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -1121,6 +1226,17 @@ export default function MicrositeBioTemplate({
           onInitiateCheckout={onInitiateCheckout}
         />
       )}
+
+      {/* Checkout Modal Popup */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => {
+          setIsCheckoutOpen(false);
+          setSelectedProduct(null);
+        }}
+        tenantSlug={tenantSlug}
+        product={selectedProduct}
+      />
     </div>
   );
 }

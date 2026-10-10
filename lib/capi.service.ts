@@ -367,7 +367,7 @@ export async function dispatchMetaCAPIPurchaseForOrder(
     }
 
     // 2. Ambil data tenant & kredensial pixel
-    let tenantQuery = supabase.from('tenants').select('id, slug, tier, plan, metadata');
+    let tenantQuery = supabase.from('tenants').select('id, slug, tier, metadata');
     if (tenantId) {
       tenantQuery = tenantQuery.eq('id', tenantId);
     } else {
@@ -579,7 +579,7 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
       return { success: false, skipped: true, reason: 'Missing tenant identifier on order' };
     }
 
-    let tenantQuery = supabase.from('tenants').select('id, slug, tier, plan, metadata');
+    let tenantQuery = supabase.from('tenants').select('id, slug, tier, metadata');
     if (tenantId) {
       tenantQuery = tenantQuery.eq('id', tenantId);
     } else {

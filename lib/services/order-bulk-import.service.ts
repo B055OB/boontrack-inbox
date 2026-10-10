@@ -174,13 +174,14 @@ export class OrderBulkImportService {
     const sheet = wb.Sheets[firstSheetName];
     const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
 
-    // Normalize keys to lowercase snake_case
+    // Normalize keys to lowercase snake_case & retain original keys
     return rawRows.map(row => {
       const normalizedRow: RawImportOrderRow = {};
       for (const [key, val] of Object.entries(row)) {
-        const cleanKey = key.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-        normalizedRow[cleanKey] = val;
-        // Keep original key as fallback
+        const lower = key.trim().toLowerCase();
+        normalizedRow[lower] = val;
+        normalizedRow[lower.replace(/[^a-z0-9]/g, '_')] = val;
+        normalizedRow[lower.replace(/\s+/g, '')] = val;
         normalizedRow[key] = val;
       }
       return normalizedRow;
@@ -254,12 +255,14 @@ export class OrderBulkImportService {
 
       // 1. Resolve Nama Pembeli
       const customerName = String(
-        row.nama_pembeli ||
-        row.nama ||
-        row.customer_name ||
-        row.nama_pelanggan ||
-        row.pembeli ||
-        row.name ||
+        row['Nama Pembeli'] ??
+        row['nama_pembeli'] ??
+        row.nama_pembeli ??
+        row.nama ??
+        row.customer_name ??
+        row.nama_pelanggan ??
+        row.pembeli ??
+        row.name ??
         ''
       ).trim();
 
@@ -272,18 +275,25 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 2. Resolve Nomor Telepon & Normalisasi E.164
-      const rawPhone = String(
-        row.nomor_whatsapp ||
-        row.no_hp ||
-        row.telepon ||
-        row.phone ||
-        row.whatsapp ||
-        row.no_wa ||
-        row.customer_phone ||
-        row.hp ||
+      // 2. Resolve Nomor Telepon & Normalisasi E.164 (otomatis sanitasi awalan 62)
+      let rawPhone = String(
+        row['Nomor WhatsApp'] ??
+        row['nomor_whatsapp'] ??
+        row['whatsapp'] ??
+        row['phone'] ??
+        row.nomor_whatsapp ??
+        row.no_hp ??
+        row.telepon ??
+        row.phone ??
+        row.whatsapp ??
+        row.no_wa ??
+        row.customer_phone ??
+        row.hp ??
         ''
-      ).trim();
+      ).trim().replace(/\D/g, '');
+
+      if (rawPhone.startsWith('0')) rawPhone = '62' + rawPhone.slice(1);
+      else if (rawPhone.startsWith('8')) rawPhone = '62' + rawPhone;
 
       const normalizedPhone = normalizePhone(rawPhone);
       if (!normalizedPhone) {
@@ -297,12 +307,14 @@ export class OrderBulkImportService {
 
       // 3. Resolve Nama Produk
       const productTitle = String(
-        row.nama_produk ||
-        row.produk ||
-        row.product_name ||
-        row.product_title ||
-        row.item ||
-        row.nama_barang ||
+        row['Nama Produk'] ??
+        row['nama_produk'] ??
+        row.nama_produk ??
+        row.produk ??
+        row.product_name ??
+        row.product_title ??
+        row.item ??
+        row.nama_barang ??
         ''
       ).trim();
 
@@ -315,8 +327,17 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 4. Resolve Nominal Transaksi
+      // 4. Resolve Nominal Transaksi (pencarian header kolom harga fleksibel case-insensitive & support spasi)
       const rawNominal =
+        row['Nominal (Rp)'] ??
+        row['nominal'] ??
+        row['Nominal'] ??
+        row['total'] ??
+        row['amount'] ??
+        row['nominal (rp)'] ??
+        row['nominal(rp)'] ??
+        row['nominal__rp_'] ??
+        row['nominal_rp'] ??
         row.nominal ??
         row.total_harga ??
         row.harga ??
@@ -326,7 +347,9 @@ export class OrderBulkImportService {
         row.total_amount ??
         0;
 
-      const grossAmount = this.parseNominal(rawNominal);
+      const parsedNominal = this.parseNominal(rawNominal);
+      const cleanAmount = parsedNominal > 0 ? parsedNominal : Number(String(rawNominal).replace(/[^0-9]/g, ''));
+      const grossAmount = cleanAmount;
       if (grossAmount <= 0) {
         errors.push({
           row: rowNum,

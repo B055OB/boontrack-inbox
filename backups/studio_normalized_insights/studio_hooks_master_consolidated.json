@@ -1,0 +1,1772 @@
+{
+  "catalog_title": "BoonTrack Studio Master Hook Intelligence Catalog",
+  "compiled_at": "2026-10-10T10:48:52.098284+00:00",
+  "summary": {
+    "total_consolidated_hooks": 90,
+    "live_supabase_records": 30,
+    "curated_seed_records": 60,
+    "categories": [
+      "ctwa-bot",
+      "ctwa-qris",
+      "curiosity-gap",
+      "fashion",
+      "fnb",
+      "gadget",
+      "general",
+      "problem-agitate",
+      "skincare"
+    ]
+  },
+  "hooks": [
+    {
+      "id": "2fd01203-5b9c-4a69-8d35-64539e14b4da",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "workflow-slow",
+      "hook_title": "Pola Proses Lambat",
+      "hook_formula_text": "Stop kirim link manual yang sering bikin pembeli kabur.",
+      "target_audience": "Creator",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "3d278a86-7fc2-457b-9a57-2f81dde2a4ac",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "trust-issue",
+      "hook_title": "Pola Anti Tipu-tipu",
+      "hook_formula_text": "Keliatannya sepele, tapi ini yang bikin banyak orang ketipu pas checkout.",
+      "target_audience": "Online Shopper",
+      "confidence_score": 0.89,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "41eaa8c9-e031-4725-aa0c-87ab484d7150",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "weird-trick",
+      "hook_title": "Pola Trik Ganjil",
+      "hook_formula_text": "Aneh tapi ampuh, trik 5 detik ini naikin konversi CTWA.",
+      "target_audience": "Digital Marketer",
+      "confidence_score": 0.91,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "42846a67-734a-4a7d-8f6f-8dd456b298db",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "odd-comparison",
+      "hook_title": "Pola Perbandingan Aneh",
+      "hook_formula_text": "Modal Rp 0 vs modal jutaan, hasilnya kok bisa sama?",
+      "target_audience": "Entrepreneur",
+      "confidence_score": 0.9,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "45b7bc6f-d513-4a9d-8883-8402f4e4179d",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "operational-pain",
+      "hook_title": "Pola Chaos Operasional",
+      "hook_formula_text": "Chat numpuk tapi closingan minim? Ini biang keroknya.",
+      "target_audience": "Seller WhatsApp",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "555e6114-c132-4a2a-ada8-4e2ca5f322f8",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "silent-winner",
+      "hook_title": "Pola Kuda Hitam",
+      "hook_formula_text": "Barang ini gak pernah diiklanin tapi selalu sold out, kok bisa?",
+      "target_audience": "Shopper",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "6055426c-4eb0-4a64-a216-ee47473893aa",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "time-sink",
+      "hook_title": "Pola Waktu Terbuang",
+      "hook_formula_text": "Berapa jam kamu habisin cuma buat rekap data tiap malam?",
+      "target_audience": "UMKM",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "8e5fb303-b794-4f79-a4ad-d87fe9bfb9e8",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "buyer-regret",
+      "hook_title": "Pola Penyesalan Telat Tahu",
+      "hook_formula_text": "Nyesel banget baru nemu barang ini pas mau habis...",
+      "target_audience": "Impulse Shopper",
+      "confidence_score": 0.91,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "a96a2ad8-6b6a-4dfe-813e-cd57443e9aac",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "hidden-trap",
+      "hook_title": "Pola Kesalahan Fatal",
+      "hook_formula_text": "Kesalahan nomor 1 yang bikin konten affiliate kamu sepi klik.",
+      "target_audience": "Affiliate Creator",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "af7e3592-bcae-4a2c-8adc-6955f920f868",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "pain-point",
+      "hook_title": "Pola Solusi Frustrasi",
+      "hook_formula_text": "Buat yang udah capek boncos iklan, coba ubah 1 hal ini.",
+      "target_audience": "Media Buyer",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "cf62ef7a-cb50-43cd-b368-2de58d9ed4ea",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "untold-truth",
+      "hook_title": "Pola Jarang Ada yang Tahu",
+      "hook_formula_text": "90% orang gak sadar fitur tersembunyi yang ada di HP mereka.",
+      "target_audience": "Tech User",
+      "confidence_score": 0.88,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "d2abf759-5565-4ea0-985b-9fb0fbab8dc9",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "daily-struggle",
+      "hook_title": "Pola Capek Cara Lama",
+      "hook_formula_text": "Masih zaman ribet ngatur orderan manual satu-satu?",
+      "target_audience": "Business Owner",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "dc61754f-9af8-4dec-af96-b55cae524994",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "overprice",
+      "hook_title": "Pola Alternatif Murah",
+      "hook_formula_text": "Bandingin harga toko sebelah sama yang ini, bedanya jauh banget!",
+      "target_audience": "Budget Hunter",
+      "confidence_score": 0.9,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "de84ae4d-eb5d-45b1-a480-27fab76a17b9",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "behind-scenes",
+      "hook_title": "Pola Bocoran Orang Dalam",
+      "hook_formula_text": "Bocoran orang dalam: ini alasan kenapa produk ini viral terus.",
+      "target_audience": "Trend Seeker",
+      "confidence_score": 0.9,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "e72158f8-34a1-4a52-8e14-271e4e321213",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "unbelievable-result",
+      "hook_title": "Pola Hasil di Luar Nalar",
+      "hook_formula_text": "Dari sepi pembeli jadi kewalahan packing, cuma ganti alur ini.",
+      "target_audience": "Store Owner",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "e9499d68-f854-4022-a85a-713b815023d0",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "mystery-item",
+      "hook_title": "Pola Tebak Barang",
+      "hook_formula_text": "Kirain barang receh, pas dateng kualitasnya bikin kaget...",
+      "target_audience": "Product Explorer",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "ed1cdbfa-385a-40ed-82ed-e63a0e6ddbec",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "problem-agitate",
+      "cluster_or_subcategory": "financial-waste",
+      "hook_title": "Pola Jebakan Biaya",
+      "hook_formula_text": "Jangan beli ini sebelum kamu tahu cara hemat 50%!",
+      "target_audience": "Advertiser",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "eea7d635-6f7a-4585-82f1-065b30d76fa2",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "counter-intuitive",
+      "hook_title": "Pola Berlawanan Logika",
+      "hook_formula_text": "Kenapa makin murah iklannya, makin banyak yang beli? Ini logikanya.",
+      "target_audience": "Advertiser",
+      "confidence_score": 0.89,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "f2e7c7a6-341e-4aaf-b0c2-a6ae54a9c1d3",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "hidden-feature",
+      "hook_title": "Pola Rahasia Tak Terduga",
+      "hook_formula_text": "Ternyata fungsi aslinya bukan cuma buat pajangan doang!",
+      "target_audience": "General",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "creator"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "fad6fa7a-e1bc-4d7d-9473-f2b466a69e0a",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "curiosity-gap",
+      "cluster_or_subcategory": "secret-formula",
+      "hook_title": "Pola Formula Tertutup",
+      "hook_formula_text": "Cara brand besar dapet ribuan chat tiap hari tanpa admin lembur.",
+      "target_audience": "Brand Owner",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "angle": "advertiser"
+      },
+      "created_at": "2026-10-09T14:39:43.122134+00:00"
+    },
+    {
+      "id": "2825dceb-bea0-4ad3-8afc-e578b7e53c89",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-bot",
+      "cluster_or_subcategory": "seamless-human",
+      "hook_title": "Pola Handover Mulus",
+      "hook_formula_text": "Bot ramah standby 24 jam, kalau butuh dokter/admin tinggal panggil tanpa disconnect.",
+      "target_audience": "Pasien & Klien",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "37a3547c-a8bc-4003-bfca-1319f8623198",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-qris",
+      "cluster_or_subcategory": "checkout-speed",
+      "hook_title": "Pola Checkout Tanpa Aplikasi Bank",
+      "hook_formula_text": "Klik link WhatsApp, bot kirim QRIS, langsung bayar via Gopay/BCA/ShopeePay.",
+      "target_audience": "Mobile Shopper",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "494f75f8-2f86-4bf1-a182-2630355ed1c7",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-bot",
+      "cluster_or_subcategory": "human-touch",
+      "hook_title": "Pola Bot Natural Anti Kaku",
+      "hook_formula_text": "Chat bot tapi berasa ngobrol sama CS beneran, balesnya cuma 1 detik.",
+      "target_audience": "Calon Pembeli",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "614169a2-dc8a-4337-911b-1c58e96a7f38",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-qris",
+      "cluster_or_subcategory": "promo-trigger",
+      "hook_title": "Pola Flash Sale QRIS",
+      "hook_formula_text": "Khusus pembayaran via QRIS dinamis bot sekarang, diskon langsung terpotong!",
+      "target_audience": "Promo Hunter",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "61a1214d-edcb-4b79-8bbb-d09282600dc8",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-bot",
+      "cluster_or_subcategory": "frictionless-flow",
+      "hook_title": "Pola Alur Tanpa Form Ribet",
+      "hook_formula_text": "Gak usah isi form panjang di website, sebut pesanan di WA langsung diproses.",
+      "target_audience": "Direct Buyer",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "88040d94-62d6-4666-8596-557814b46db2",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-bot",
+      "cluster_or_subcategory": "closing-assist",
+      "hook_title": "Pola Konsultasi Ramah",
+      "hook_formula_text": "Bukan cuma robot broadcast, bot ini paham produk dan siap kasih rekomendasi.",
+      "target_audience": "Leads Konsultatif",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "natural_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "9dbecbe7-ad95-4081-9d6a-159563a58e60",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-qris",
+      "cluster_or_subcategory": "instant-invoice",
+      "hook_title": "Pola Resi & Struk Instan",
+      "hook_formula_text": "Begitu QRIS discan, invoice resmi dan nomor resi langsung meluncur ke chat kamu.",
+      "target_audience": "Pembeli B2C",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "d3cc09aa-a784-4d16-8e3b-03a7b03535f1",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-qris",
+      "cluster_or_subcategory": "anti-fraud",
+      "hook_title": "Pola Verifikasi Nominal Unik",
+      "hook_formula_text": "Bebas salah nominal! QRIS otomatis pas angkanya sampai 3 digit unik.",
+      "target_audience": "Smart Buyer",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "d67b7ed8-82d2-4abe-802e-39405317160c",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-bot",
+      "cluster_or_subcategory": "zero-wait",
+      "hook_title": "Pola Anti Antre Balasan",
+      "hook_formula_text": "Tengah malam chat tetep dilayani ramah dan langsung dikasih invoice QRIS.",
+      "target_audience": "Night Shopper",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "24h_bot"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "eef46d61-afb4-46b0-a03a-f675359c2e72",
+      "source": "SUPABASE_LIVE_DB",
+      "category": "ctwa-qris",
+      "cluster_or_subcategory": "instant-pay",
+      "hook_title": "Pola QRIS Dinamis Sekali Scan",
+      "hook_formula_text": "Gak perlu nunggu admin cek mutasi, scan QRIS dinamis langsung lunas otomatis!",
+      "target_audience": "Pembeli Online",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "flow": "ctwa",
+        "feature": "dynamic_qris"
+      },
+      "created_at": "2026-10-09T14:42:48.818139+00:00"
+    },
+    {
+      "id": "seed-adr54-skin-01",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Skincare Formula",
+      "hook_formula_text": "Nyesel banget baru tau sekarang, ternyata pori-pori kesumbat bukan gara-gara salah cuci muka tapi karena cara double cleansing kamu salah total!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-02",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Skincare Formula",
+      "hook_formula_text": "Capek gak sih tiap bangun tidur kulit muka kilang minyak tapi pas dipegang rasanya kering ketarik? Jangan-jangan skin barrier kamu udah jebol!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-03",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Skincare Formula",
+      "hook_formula_text": "Stop buang duit beli serum jutaan kalau jerawat mendem kamu masih dipencet paksa tiap malam. Liat deh yang terjadi di bawah kulit kamu!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-04",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Skincare Formula",
+      "hook_formula_text": "Ada satu alasan kenapa cewek-cewek Korea kulitnya bisa glowing kaca pas cuaca panas, padahal mereka cuma nambahin 1 step simpel ini sebelum tidur!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-05",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Skincare Formula",
+      "hook_formula_text": "Dokter kulit pasti kaget kalau tau produk under 100 ribu ini punya kandungan active ingredient yang sama persis kayak brand high-end!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-06",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Skincare Formula",
+      "hook_formula_text": "Ternyata rahasia flek hitam gak balik lagi bukan di sunscreen tebel, tapi di timing layering 2 botol kecil ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-07",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Skincare Formula",
+      "hook_formula_text": "Fakta ngeri: 80% orang Indonesia salah urutan pakai retinol sampai mukanya merah iritasi, padahal kuncinya ada di teknik sandwich ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-08",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Skincare Formula",
+      "hook_formula_text": "Kalian tau gak kalau cuci muka pakai air hangat tiap hari itu justru bikin penuaan dini 2x lebih cepat? Ini bukti sainsnya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-09",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Skincare Formula",
+      "hook_formula_text": "Jangan pernah campur vitamin C sama bahan ini kalau gamau kulit kamu breakout semaleman! Simak penjelasannya.",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-10",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Skincare Formula",
+      "hook_formula_text": "POV: Lu baru nyadar selama ini muka kusam bukan karena kurang tidur, tapi karena belum pernah eksfoliasi pakai formula gentle ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-11",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Skincare Formula",
+      "hook_formula_text": "POV: Temen kantor ngira lu perawatan jutaan di klinik kecantikan, padahal cuma rutin pake combo serum 50 ribuan ini tiap malem!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-12",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "skincare",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Skincare Formula",
+      "hook_formula_text": "POV: Reaksi pacar pas liat muka lu mulus tanpa bekas jerawat setelah 2 minggu konsisten pakai ini: 'Kok beda banget?'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-13",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fashion Formula",
+      "hook_formula_text": "Lemari baju udah mau roboh tapi tiap mau berangkat selalu ngerasa 'gak punya baju'? Masalahnya bukan di jumlahnya, tapi di cuttingan ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-14",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fashion Formula",
+      "hook_formula_text": "Sering ngerasa saltum dan keliatan bantet pas pake kulot? Fix kamu salah pilih waistline dan bahan yang bikin siluet badan melebar!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-15",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fashion Formula",
+      "hook_formula_text": "Beli blazer mahal-mahal tapi pas dipake malah kayak pinjem baju orang tua? Jangan buru-buru dibuang, ini cara styling biar auto-fit!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-16",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fashion Formula",
+      "hook_formula_text": "Outfit 50 ribuan tapi vibes-nya Old Money? Rahasia cewek-cewek Jakarta Selatan ada di paduan palet warna 'Monochrome Muted' satu ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-17",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fashion Formula",
+      "hook_formula_text": "Jangan checkout kemeja linen sebelum kamu tau 3 trik kancing ini yang bikin look kamu langsung naik kelas kayak selebgram!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-18",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fashion Formula",
+      "hook_formula_text": "Kenapa celana satu ini bisa bikin kaki keliatan 10cm lebih jenjang tanpa perlu high heels? Cek ilusi optik cuttingannya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-19",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fashion Formula",
+      "hook_formula_text": "Fakta fashion: Baju warna gelap gak selalu bikin kamu keliatan kurus kalau kamu salah pilih tekstur kain yang nempel di lipatan tubuh!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-20",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fashion Formula",
+      "hook_formula_text": "Jangan pernah nyuci bahan knitwear digantung kalau gamau bajumu melar 2 kali lipat dalam seminggu! Tonton cara rawat yang bener.",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-21",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fashion Formula",
+      "hook_formula_text": "85% orang salah nentuin undertone kulit pas beli jilbab atau outfit, makanya wajah sering keliatan kuyu dan kusam di kamera!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-22",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fashion Formula",
+      "hook_formula_text": "POV: Lu pake outfit simpel ini ke acara keluarga terus tante-tante lu pada nanya: 'Beli di butik mana tuh, pasti mahal ya?'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-23",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fashion Formula",
+      "hook_formula_text": "POV: Lu ketemu mantan di mall pas lagi pake one-set ini, auto jalan ala model runway fashion week!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-24",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fashion",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fashion Formula",
+      "hook_formula_text": "POV: Pas checkout cuma abis 80 ribu, tapi pas dateng ke kondangan semua mata tertuju ke styling outfit lu!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-25",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fnb Formula",
+      "hook_formula_text": "Gue rela antre 1 jam demi menu ini, dan ternyata rasanya beneran di luar nalar—pantesan rame terus tiap sore sampai tumpah ke jalan!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-26",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fnb Formula",
+      "hook_formula_text": "Bosan gak sih jajan makanan viral tapi isinya cuma micin doang gak ada dagingnya? Sekali nyoba yang ini baru tau definisi kaya rempah sesungguhnya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-27",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Fnb Formula",
+      "hook_formula_text": "Lagi tanggal tua tapi ngidam makan steak melt-in-mouth juicy? Stop nelen ludah, gue nemu hidden gem yang porsinya bar-bar harganya ramah dompet!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-28",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fnb Formula",
+      "hook_formula_text": "Kenapa sambal di resto satu ini bisa bikin orang nagih sampe bungkus berliter-liter? Ternyata bumbu rahasianya diungkep selama 12 jam!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-29",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fnb Formula",
+      "hook_formula_text": "Minuman matcha 15 ribuan tapi rasanya bisa se-creamy cafe Jepang bintang lima? Rahasianya ada di cara whisking dan jenis susu ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-30",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Fnb Formula",
+      "hook_formula_text": "Ada satu menu legendaris di pojokan kota yang gak pernah pasang plang tapi selalu ludes dalam 2 jam pertama buka!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-31",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fnb Formula",
+      "hook_formula_text": "Fakta dapur: Minyak goreng yang dipake berulang kali itu bukan cuma bahaya, tapi bikin gorengan kamu bau tengik dan kehilangan kerenyahannya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-32",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fnb Formula",
+      "hook_formula_text": "Daging empuk tanpa presto? Cuma modal potongan nanas muda dan marinasi 15 menit, daging sapi alot langsung selembut tahu sutra!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-33",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Fnb Formula",
+      "hook_formula_text": "Satu mangkok dessert viral ini kalorinya lebih rendah dari sepiring nasi putih, tapi rasa manisnya dapet dari gula kelapa murni!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-34",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fnb Formula",
+      "hook_formula_text": "POV: Lu bawa camilan ini ke tongkrongan dan baru ditaruh di meja 3 detik langsung diserbu abis gak bersisa!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-35",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fnb Formula",
+      "hook_formula_text": "POV: Pertama kali nyobain kuah kaldunya pas lagi laper-lapernya tengah malam: 'Buset, ini enak banget gila!' (sound crunch)",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-36",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "fnb",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Fnb Formula",
+      "hook_formula_text": "POV: Ibu mertua nyicip masakan lu dan langsung minta resep rahasianya: 'Beli di mana bumbu selezat ini?'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-37",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Gadget Formula",
+      "hook_formula_text": "Baterai HP kamu bocor dan selalu drop pas lagi di luar rumah? Jangan langsung ganti HP, cek dulu kabel charger murah kamu yang ngerusak IC power!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-38",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Gadget Formula",
+      "hook_formula_text": "Telinga sakit dan panas gara-gara pakai TWS murahan berjam-jam? Upgrade ke earphone open-ear ini sebelum pendengaran kamu kena dampak permanen!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-39",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] Gadget Formula",
+      "hook_formula_text": "Capek memori HP internal merah terus tiap mau update aplikasi? Stop hapus foto kenangan, colokin flashdisk dual-type C ini langsung lega!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-40",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Gadget Formula",
+      "hook_formula_text": "Gadget 70 ribuan ini punya fungsi yang bikin smart watch sejutaan keliatan kemahalan. Liat sendiri fitur sensor kesehatannya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-41",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Gadget Formula",
+      "hook_formula_text": "Kenapa keyboard mekanikal satu ini suaranya se-thocky dan empuk banget padahal harganya cuma 100 ribuan? Cek modding bawaan pabriknya!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-42",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] Gadget Formula",
+      "hook_formula_text": "Ada satu settingan tersembunyi di Android yang bikin layar kamu 2x lebih smooth dan gak ada lag pas main game berat!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-43",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Gadget Formula",
+      "hook_formula_text": "Fakta teknis: Wireless charger abal-abal bisa bikin suhu baterai tembus 45 derajat Celsius dan nurunin battery health 20% dalam 3 bulan!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-44",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Gadget Formula",
+      "hook_formula_text": "Kalian tau gak kalau casing HP yang terlalu tebal tanpa ventilasi itu penyebab utama performa chipset HP kalian throttling dan lemot?",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-45",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] Gadget Formula",
+      "hook_formula_text": "Powerbank murah tanpa sertifikasi flight safety bisa meledak di kabin pesawat. Ini standar wajib yang harus kamu cek sebelum beli!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-46",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Gadget Formula",
+      "hook_formula_text": "POV: Temen lu masih ribet nyari colokan di kafe sementara lu tinggal tempel powerbank magsafe slim ini sambil santai ngopi!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-47",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Gadget Formula",
+      "hook_formula_text": "POV: Lu pamer setup meja kerja minimalis di TikTok terus kolom komentar isinya: 'Spill lampu monitor sama deskmat-nya bang!'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-48",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "gadget",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] Gadget Formula",
+      "hook_formula_text": "POV: Lu beli stabilizer gimbal 100 ribuan ini dan video jalan-jalan lu mendadak keliatan sinematik kayak hasil sewa videografer pro!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-49",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] General Formula",
+      "hook_formula_text": "Stop scroll dulu! Sumpah barang 20 ribuan ini bikin hidup aku 10 kali lebih gampang pas lagi beresin rumah yang berantakan!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-50",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] General Formula",
+      "hook_formula_text": "Pernah gak sih kalian kesel banget pas lagi buru-buru tapi barang penting malah nyelip gak ketemu? Solusinya cuma gantungan pintar sekecil ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-51",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Problem-Agitate",
+      "hook_title": "[Problem-Agitate] General Formula",
+      "hook_formula_text": "Udah rajin nabung tapi uang bulanan selalu habis tanpa jejak? Masalahnya kamu belum pakai dompet budgeting metode amplop pintar satu ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-52",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] General Formula",
+      "hook_formula_text": "Kalian wajib curiga kalau barang semurah ini fiturnya selengkap ini. Mari kita uji ketahanannya dibanting dari lantai 2!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-53",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] General Formula",
+      "hook_formula_text": "Ada satu barang sepele yang wajib ada di setiap tas anak kos, dan benda ini udah nyelametin gue berkali-kali dari momen darurat!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-54",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Curiosity Gap",
+      "hook_title": "[Curiosity Gap] General Formula",
+      "hook_formula_text": "Ternyata trik orang kaya biar rumahnya selalu wangi hotel mewah bintang 5 bukan pakai parfum semprot, tapi diffuser oil blend ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-55",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] General Formula",
+      "hook_formula_text": "Fakta kebersihan: Spon cuci piring yang dipake lebih dari sebulan itu nampung bakteri lebih banyak dari dudukan toilet! Wajib ganti spons antibakteri ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-56",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] General Formula",
+      "hook_formula_text": "Tidur 8 jam tapi bangun-bangun leher kaku dan badan pegal? Fix bantal tidur kamu gak punya lekukan ergonomis penopang servikal!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-57",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "Shocking Fact",
+      "hook_title": "[Shocking Fact] General Formula",
+      "hook_formula_text": "80% orang salah cara menyimpan bahan makanan di kulkas sampai cepet busuk. Cukup pakai wadah kedap vakum ini sayur awet sebulan!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-58",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] General Formula",
+      "hook_formula_text": "POV: Tetangga lu kepo nanya kenapa teras rumah lu bisa terang benderang tiap malam tanpa nambah tagihan listrik sepeserpun: 'Pake solar lamp bang!'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-59",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] General Formula",
+      "hook_formula_text": "POV: Lu nemu solusi hack rumah tangga di marketplace dan mikir: 'Kenapa gue gak tau benda ini dari 5 tahun lalu ya?!'",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-60",
+      "source": "ADR_54_CURATED_SEED",
+      "category": "general",
+      "cluster_or_subcategory": "POV Skit",
+      "hook_title": "[POV Skit] General Formula",
+      "hook_formula_text": "POV: Pas gajian langsung borong barang bermanfaat ini buat sekeluarga, dan semua orang sepakat ini belanjaan terbaik bulan ini!",
+      "target_audience": "Indonesian Social Commerce",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    }
+  ]
+}

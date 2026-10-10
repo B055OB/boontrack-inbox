@@ -1,0 +1,1220 @@
+{
+  "source_contract": "ADR § 54 (Sprint 2 Phase II)",
+  "migration_file": "supabase/migrations/20261009_seed_indonesian_hook_patterns.sql",
+  "total_records": 60,
+  "categories": [
+    "fashion",
+    "fnb",
+    "gadget",
+    "general",
+    "skincare"
+  ],
+  "clusters": [
+    "Curiosity Gap",
+    "POV Skit",
+    "Problem-Agitate",
+    "Shocking Fact"
+  ],
+  "data": [
+    {
+      "id": "seed-adr54-skin-01",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Nyesel banget baru tau sekarang, ternyata pori-pori kesumbat bukan gara-gara salah cuci muka tapi karena cara double cleansing kamu salah total!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-02",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Capek gak sih tiap bangun tidur kulit muka kilang minyak tapi pas dipegang rasanya kering ketarik? Jangan-jangan skin barrier kamu udah jebol!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-03",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Stop buang duit beli serum jutaan kalau jerawat mendem kamu masih dipencet paksa tiap malam. Liat deh yang terjadi di bawah kulit kamu!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-04",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ada satu alasan kenapa cewek-cewek Korea kulitnya bisa glowing kaca pas cuaca panas, padahal mereka cuma nambahin 1 step simpel ini sebelum tidur!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-05",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Dokter kulit pasti kaget kalau tau produk under 100 ribu ini punya kandungan active ingredient yang sama persis kayak brand high-end!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-06",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ternyata rahasia flek hitam gak balik lagi bukan di sunscreen tebel, tapi di timing layering 2 botol kecil ini!",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-07",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Fakta ngeri: 80% orang Indonesia salah urutan pakai retinol sampai mukanya merah iritasi, padahal kuncinya ada di teknik sandwich ini!",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-08",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kalian tau gak kalau cuci muka pakai air hangat tiap hari itu justru bikin penuaan dini 2x lebih cepat? Ini bukti sainsnya!",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-09",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Jangan pernah campur vitamin C sama bahan ini kalau gamau kulit kamu breakout semaleman! Simak penjelasannya.",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-10",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu baru nyadar selama ini muka kusam bukan karena kurang tidur, tapi karena belum pernah eksfoliasi pakai formula gentle ini!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-11",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Temen kantor ngira lu perawatan jutaan di klinik kecantikan, padahal cuma rutin pake combo serum 50 ribuan ini tiap malem!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-skin-12",
+      "source": "ADR_54_SEED",
+      "category": "skincare",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Reaksi pacar pas liat muka lu mulus tanpa bekas jerawat setelah 2 minggu konsisten pakai ini: 'Kok beda banget?'",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-13",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Lemari baju udah mau roboh tapi tiap mau berangkat selalu ngerasa 'gak punya baju'? Masalahnya bukan di jumlahnya, tapi di cuttingan ini!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-14",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Sering ngerasa saltum dan keliatan bantet pas pake kulot? Fix kamu salah pilih waistline dan bahan yang bikin siluet badan melebar!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-15",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Beli blazer mahal-mahal tapi pas dipake malah kayak pinjem baju orang tua? Jangan buru-buru dibuang, ini cara styling biar auto-fit!",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-16",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Outfit 50 ribuan tapi vibes-nya Old Money? Rahasia cewek-cewek Jakarta Selatan ada di paduan palet warna 'Monochrome Muted' satu ini!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-17",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Jangan checkout kemeja linen sebelum kamu tau 3 trik kancing ini yang bikin look kamu langsung naik kelas kayak selebgram!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-18",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kenapa celana satu ini bisa bikin kaki keliatan 10cm lebih jenjang tanpa perlu high heels? Cek ilusi optik cuttingannya!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-19",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Fakta fashion: Baju warna gelap gak selalu bikin kamu keliatan kurus kalau kamu salah pilih tekstur kain yang nempel di lipatan tubuh!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-20",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Jangan pernah nyuci bahan knitwear digantung kalau gamau bajumu melar 2 kali lipat dalam seminggu! Tonton cara rawat yang bener.",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-21",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "85% orang salah nentuin undertone kulit pas beli jilbab atau outfit, makanya wajah sering keliatan kuyu dan kusam di kamera!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-22",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu pake outfit simpel ini ke acara keluarga terus tante-tante lu pada nanya: 'Beli di butik mana tuh, pasti mahal ya?'",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-23",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu ketemu mantan di mall pas lagi pake one-set ini, auto jalan ala model runway fashion week!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fash-24",
+      "source": "ADR_54_SEED",
+      "category": "fashion",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Pas checkout cuma abis 80 ribu, tapi pas dateng ke kondangan semua mata tertuju ke styling outfit lu!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-25",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Gue rela antre 1 jam demi menu ini, dan ternyata rasanya beneran di luar nalar—pantesan rame terus tiap sore sampai tumpah ke jalan!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-26",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Bosan gak sih jajan makanan viral tapi isinya cuma micin doang gak ada dagingnya? Sekali nyoba yang ini baru tau definisi kaya rempah sesungguhnya!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-27",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Lagi tanggal tua tapi ngidam makan steak melt-in-mouth juicy? Stop nelen ludah, gue nemu hidden gem yang porsinya bar-bar harganya ramah dompet!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-28",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kenapa sambal di resto satu ini bisa bikin orang nagih sampe bungkus berliter-liter? Ternyata bumbu rahasianya diungkep selama 12 jam!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-29",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Minuman matcha 15 ribuan tapi rasanya bisa se-creamy cafe Jepang bintang lima? Rahasianya ada di cara whisking dan jenis susu ini!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-30",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ada satu menu legendaris di pojokan kota yang gak pernah pasang plang tapi selalu ludes dalam 2 jam pertama buka!",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-31",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Fakta dapur: Minyak goreng yang dipake berulang kali itu bukan cuma bahaya, tapi bikin gorengan kamu bau tengik dan kehilangan kerenyahannya!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-32",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Daging empuk tanpa presto? Cuma modal potongan nanas muda dan marinasi 15 menit, daging sapi alot langsung selembut tahu sutra!",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-33",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Satu mangkok dessert viral ini kalorinya lebih rendah dari sepiring nasi putih, tapi rasa manisnya dapet dari gula kelapa murni!",
+      "confidence_score": 0.92,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-34",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu bawa camilan ini ke tongkrongan dan baru ditaruh di meja 3 detik langsung diserbu abis gak bersisa!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-35",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Pertama kali nyobain kuah kaldunya pas lagi laper-lapernya tengah malam: 'Buset, ini enak banget gila!' (sound crunch)",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-fnb-36",
+      "source": "ADR_54_SEED",
+      "category": "fnb",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Ibu mertua nyicip masakan lu dan langsung minta resep rahasianya: 'Beli di mana bumbu selezat ini?'",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-37",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Baterai HP kamu bocor dan selalu drop pas lagi di luar rumah? Jangan langsung ganti HP, cek dulu kabel charger murah kamu yang ngerusak IC power!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-38",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Telinga sakit dan panas gara-gara pakai TWS murahan berjam-jam? Upgrade ke earphone open-ear ini sebelum pendengaran kamu kena dampak permanen!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-39",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Capek memori HP internal merah terus tiap mau update aplikasi? Stop hapus foto kenangan, colokin flashdisk dual-type C ini langsung lega!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-40",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Gadget 70 ribuan ini punya fungsi yang bikin smart watch sejutaan keliatan kemahalan. Liat sendiri fitur sensor kesehatannya!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-41",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kenapa keyboard mekanikal satu ini suaranya se-thocky dan empuk banget padahal harganya cuma 100 ribuan? Cek modding bawaan pabriknya!",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-42",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ada satu settingan tersembunyi di Android yang bikin layar kamu 2x lebih smooth dan gak ada lag pas main game berat!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-43",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Fakta teknis: Wireless charger abal-abal bisa bikin suhu baterai tembus 45 derajat Celsius dan nurunin battery health 20% dalam 3 bulan!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-44",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kalian tau gak kalau casing HP yang terlalu tebal tanpa ventilasi itu penyebab utama performa chipset HP kalian throttling dan lemot?",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-45",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Powerbank murah tanpa sertifikasi flight safety bisa meledak di kabin pesawat. Ini standar wajib yang harus kamu cek sebelum beli!",
+      "confidence_score": 0.98,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-46",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Temen lu masih ribet nyari colokan di kafe sementara lu tinggal tempel powerbank magsafe slim ini sambil santai ngopi!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-47",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu pamer setup meja kerja minimalis di TikTok terus kolom komentar isinya: 'Spill lampu monitor sama deskmat-nya bang!'",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gadg-48",
+      "source": "ADR_54_SEED",
+      "category": "gadget",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu beli stabilizer gimbal 100 ribuan ini dan video jalan-jalan lu mendadak keliatan sinematik kayak hasil sewa videografer pro!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-49",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Stop scroll dulu! Sumpah barang 20 ribuan ini bikin hidup aku 10 kali lebih gampang pas lagi beresin rumah yang berantakan!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-50",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Pernah gak sih kalian kesel banget pas lagi buru-buru tapi barang penting malah nyelip gak ketemu? Solusinya cuma gantungan pintar sekecil ini!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-51",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Problem-Agitate",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Udah rajin nabung tapi uang bulanan selalu habis tanpa jejak? Masalahnya kamu belum pakai dompet budgeting metode amplop pintar satu ini!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-52",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Kalian wajib curiga kalau barang semurah ini fiturnya selengkap ini. Mari kita uji ketahanannya dibanting dari lantai 2!",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-53",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ada satu barang sepele yang wajib ada di setiap tas anak kos, dan benda ini udah nyelametin gue berkali-kali dari momen darurat!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-54",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Curiosity Gap",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Ternyata trik orang kaya biar rumahnya selalu wangi hotel mewah bintang 5 bukan pakai parfum semprot, tapi diffuser oil blend ini!",
+      "confidence_score": 0.93,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-55",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Fakta kebersihan: Spon cuci piring yang dipake lebih dari sebulan itu nampung bakteri lebih banyak dari dudukan toilet! Wajib ganti spons antibakteri ini!",
+      "confidence_score": 0.97,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-56",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "Tidur 8 jam tapi bangun-bangun leher kaku dan badan pegal? Fix bantal tidur kamu gak punya lekukan ergonomis penopang servikal!",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-57",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "Shocking Fact",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "80% orang salah cara menyimpan bahan makanan di kulkas sampai cepet busuk. Cukup pakai wadah kedap vakum ini sayur awet sebulan!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-58",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Tetangga lu kepo nanya kenapa teras rumah lu bisa terang benderang tiap malam tanpa nambah tagihan listrik sepeserpun: 'Pake solar lamp bang!'",
+      "confidence_score": 0.96,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-59",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Lu nemu solusi hack rumah tangga di marketplace dan mikir: 'Kenapa gue gak tau benda ini dari 5 tahun lalu ya?!'",
+      "confidence_score": 0.95,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    },
+    {
+      "id": "seed-adr54-gene-60",
+      "source": "ADR_54_SEED",
+      "category": "general",
+      "cluster": "POV Skit",
+      "insight_type": "HOOK_PATTERN",
+      "pattern_template": "POV: Pas gajian langsung borong barang bermanfaat ini buat sekeluarga, dan semua orang sepakat ini belanjaan terbaik bulan ini!",
+      "confidence_score": 0.94,
+      "commercial_eligibility": true,
+      "freshness_status": "FRESH",
+      "metadata": {
+        "locale": "id-ID",
+        "platform": [
+          "tiktok",
+          "reels",
+          "shopee"
+        ]
+      },
+      "created_at": "2026-10-09T03:00:00Z"
+    }
+  ]
+}

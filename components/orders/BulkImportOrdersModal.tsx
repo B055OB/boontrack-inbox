@@ -76,25 +76,84 @@ export default function BulkImportOrdersModal({
       rawRows.forEach((row, idx) => {
         const rowNum = idx + 2;
 
-        // Normalisasi key
+        // Normalisasi key (case-insensitive & support spasi/karakter khusus)
         const norm: Record<string, any> = {};
         for (const [k, v] of Object.entries(row)) {
-          norm[k.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')] = v;
+          const lower = k.trim().toLowerCase();
+          norm[lower] = v;
+          norm[lower.replace(/[^a-z0-9]/g, '_')] = v;
+          norm[lower.replace(/\s+/g, '')] = v;
           norm[k] = v;
         }
 
-        const name = String(norm.nama_pembeli || norm.nama || norm.customer_name || norm.pembeli || '').trim();
-        const phone = String(norm.nomor_whatsapp || norm.no_hp || norm.telepon || norm.phone || norm.whatsapp || '').trim();
-        const product = String(norm.nama_produk || norm.produk || norm.product_name || norm.product_title || '').trim();
-        const rawNominal = norm.nominal ?? norm.total_harga ?? norm.harga ?? norm.total ?? norm.gross_amount ?? 0;
+        const name = String(
+          row['Nama Pembeli'] ??
+          row['nama_pembeli'] ??
+          row['nama'] ??
+          row['customer_name'] ??
+          row['pembeli'] ??
+          norm['nama pembeli'] ??
+          norm['nama_pembeli'] ??
+          norm['customer_name'] ??
+          norm['nama'] ??
+          ''
+        ).trim();
+
+        // Sanitize kolom telepon agar otomatis berawalan '62':
+        let phone = String(
+          row['Nomor WhatsApp'] ??
+          row['whatsapp'] ??
+          row['phone'] ??
+          norm['nomor whatsapp'] ??
+          norm['nomor_whatsapp'] ??
+          norm['whatsapp'] ??
+          norm['phone'] ??
+          norm['no_hp'] ??
+          norm['telepon'] ??
+          ''
+        ).replace(/\D/g, '');
+        if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+        else if (phone.startsWith('8')) phone = '62' + phone;
+
+        const product = String(
+          row['Nama Produk'] ??
+          row['nama_produk'] ??
+          row['produk'] ??
+          row['product_name'] ??
+          row['product_title'] ??
+          norm['nama produk'] ??
+          norm['nama_produk'] ??
+          norm['produk'] ??
+          norm['product_name'] ??
+          ''
+        ).trim();
+
+        // Pencarian header kolom harga fleksibel (case-insensitive & support spasi):
+        const rawNominal =
+          row['Nominal (Rp)'] ??
+          row['nominal'] ??
+          row['Nominal'] ??
+          row['total'] ??
+          row['amount'] ??
+          norm['nominal (rp)'] ??
+          norm['nominal(rp)'] ??
+          norm['nominal__rp_'] ??
+          norm['nominal_rp'] ??
+          norm['nominal'] ??
+          norm['total'] ??
+          norm['amount'] ??
+          norm['total_harga'] ??
+          norm['harga'] ??
+          norm['gross_amount'] ??
+          0;
+        const cleanAmount = Number(String(rawNominal).replace(/[^0-9]/g, ''));
 
         if (!name) {
           errors.push({ row: rowNum, reason: 'Nama pembeli kosong' });
           return;
         }
 
-        const cleanDigits = phone.replace(/\D/g, '');
-        if (!cleanDigits || cleanDigits.length < 8) {
+        if (!phone || phone.length < 8) {
           errors.push({ row: rowNum, reason: `Nomor WhatsApp '${phone || 'kosong'}' tidak valid` });
           return;
         }
@@ -104,27 +163,17 @@ export default function BulkImportOrdersModal({
           return;
         }
 
-        // Parse nominal
-        let nominalStr = String(rawNominal).replace(/rp\.?/gi, '').replace(/\s+/g, '');
-        if (nominalStr.includes('.') && nominalStr.includes(',')) {
-          nominalStr = nominalStr.replace(/\./g, '').replace(',', '.');
-        } else if (nominalStr.includes('.')) {
-          const parts = nominalStr.split('.');
-          if (parts[parts.length - 1].length === 3) nominalStr = nominalStr.replace(/\./g, '');
-        } else if (nominalStr.includes(',')) {
-          const parts = nominalStr.split(',');
-          if (parts[parts.length - 1].length === 3) nominalStr = nominalStr.replace(/,/g, '');
-          else nominalStr = nominalStr.replace(',', '.');
-        }
-        const parsedNominal = parseFloat(nominalStr.replace(/[^0-9.-]/g, ''));
-
-        if (isNaN(parsedNominal) || parsedNominal <= 0) {
+        if (isNaN(cleanAmount) || cleanAmount <= 0) {
           errors.push({ row: rowNum, reason: `Nominal '${rawNominal}' tidak valid` });
           return;
         }
 
-        validRows.push(row);
-        totalRevenue += parsedNominal;
+        validRows.push({
+          ...row,
+          'Nomor WhatsApp': phone,
+          'Nominal (Rp)': cleanAmount,
+        });
+        totalRevenue += cleanAmount;
       });
 
       setFile(selectedFile);

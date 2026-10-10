@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     // 1. Single Source of Truth: Ambil data tenant & konfigurasi pixel dari database
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('id, slug, tier, plan, metadata')
+      .select('id, slug, tier, metadata')
       .eq('slug', cleanSlug)
       .maybeSingle();
 
