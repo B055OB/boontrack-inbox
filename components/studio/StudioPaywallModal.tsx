@@ -311,7 +311,7 @@ export default function StudioPaywallModal({
                 {loadingPlan === 'pro_monthly' ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Menyiapkan Invoice Xendit...</span>
+                    <span>Menyiapkan Pembayaran QRIS...</span>
                   </>
                 ) : (
                   <span>Langganan Studio Pro ➔</span>
