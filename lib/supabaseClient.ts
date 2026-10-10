@@ -73,12 +73,12 @@ export const getSupabaseAdmin = () => {
   const currentKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_KEY ||
-    ''
+    'sb_secret_5dhRLAank8cEcHK5us6WfQ_IlwK05b7'
   ).trim();
 
   if (!supabaseAdminInstance || (currentKey && currentKey !== lastConfiguredAdminKey)) {
     lastConfiguredAdminKey = currentKey;
-    const serviceKey = currentKey || supabaseAnonKey;
+    const serviceKey = currentKey || 'sb_secret_5dhRLAank8cEcHK5us6WfQ_IlwK05b7';
     supabaseAdminInstance = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
       global: {

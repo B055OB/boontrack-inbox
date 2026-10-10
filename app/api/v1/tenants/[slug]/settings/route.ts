@@ -391,6 +391,8 @@ export async function PUT(
       name: effectiveStoreName || existing.name,
       category: category || existing.category,
       tier: updatedTier,
+      bot_paused: updatedMetadata.bot_paused,
+      is_bot_active: updatedMetadata.is_bot_active,
       metadata: updatedMetadata,
       updated_at: new Date().toISOString(),
     };
@@ -405,6 +407,23 @@ export async function PUT(
 
     if (updateError) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+    }
+
+    // Sync dual-level session and conversations if bot_paused or is_bot_active changed
+    if (bot_paused !== undefined || is_bot_active !== undefined) {
+      try {
+        const { executeBotControl } = await import('@/lib/whatsapp/bot-control-service');
+        const targetAction = updatedMetadata.bot_paused ? 'PAUSE' : 'RESUME';
+        await executeBotControl({
+          action: targetAction,
+          tenantId: existing.id || slug,
+          tenantSlug: slug,
+          source: 'settings_api',
+          supabase,
+        });
+      } catch (bErr) {
+        console.warn('[SettingsRoute] Bot control sync warning:', bErr);
+      }
     }
 
     // Sync ke bot_profiles table jika ada

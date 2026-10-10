@@ -2235,23 +2235,11 @@ export function useTenantDashboard() {
     const newState = !isTenantBotPaused;
     setIsTenantBotPaused(newState);
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-        const meta = tRow?.metadata || {};
-        meta.bot_paused = newState;
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: meta,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
-      }
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/bot-control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_paused: newState }),
+      });
     } catch (err) {
       console.warn('[Dashboard] Gagal sync bot_paused ke backend:', err);
     }

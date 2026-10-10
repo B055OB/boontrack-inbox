@@ -511,6 +511,19 @@ export async function persistOutboundMessage(
       recipientPhone: phone,
       text: messageBody,
     });
+
+    if (params.externalId && supabase) {
+      try {
+        Promise.resolve(
+          supabase.from('outbound_messages').insert({
+            tenant_id: String(tenantId),
+            wa_message_id: String(params.externalId),
+            recipient_jid: String(phone),
+            source: 'bot',
+          })
+        ).catch(() => {});
+      } catch (_) {}
+    }
   }
 
   const nowIso = new Date().toISOString();

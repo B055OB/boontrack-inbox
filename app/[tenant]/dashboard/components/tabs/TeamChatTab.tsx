@@ -380,48 +380,14 @@ export default function TeamChatTab({
     const newState = !isGlobalBotPaused;
     setIsGlobalBotPaused(newState);
     const targetSlug = resolvedTenant || tenantSlug;
-    const nowIso = new Date().toISOString();
 
     try {
-      const supabase = getSupabase();
-      if (supabase && targetSlug) {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .or(`slug.eq.${targetSlug},id.eq.${tenantId || targetSlug}`)
-          .maybeSingle();
-
-        const meta = tRow?.metadata || {};
-        meta.bot_paused = newState;
-        meta.is_bot_paused = newState;
-
-        await supabase
-          .from('tenants')
-          .update({ metadata: meta, updated_at: nowIso })
-          .or(`slug.eq.${targetSlug},id.eq.${tenantId || targetSlug}`);
-
-        if (!newState) {
-          const tId = tRow?.id || tenantId || targetSlug;
-          await supabase
-            .from('conversation_sessions')
-            .update({
-              is_paused: false,
-              paused_until: null,
-              current_state: 'ACTIVE',
-              updated_at: nowIso,
-            })
-            .or(`tenant_id.eq.${tId},tenant_id.eq.${targetSlug}`);
-
-          await supabase
-            .from('conversations')
-            .update({
-              bot_paused: false,
-              bot_mode: 'AI_ACTIVE',
-              status: 'active',
-              updated_at: nowIso,
-            })
-            .or(`tenant_id.eq.${tId},tenant_slug.eq.${targetSlug}`);
-        }
+      if (targetSlug) {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_paused: newState }),
+        });
       }
     } catch (err) {
       console.warn('[TeamChatTab] Error toggling master bot:', err);

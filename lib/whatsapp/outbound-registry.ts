@@ -139,6 +139,33 @@ export function pruneOutboundRegistry(now: number = Date.now()): void {
 }
 
 /**
+ * Checks whether an incoming fromMe = true event matches a recorded bot outbound message,
+ * checking in-memory registry first, then fallback to outbound_messages table in Supabase.
+ */
+export async function isBotOutboundAsync(params: {
+  messageId?: string | null;
+  recipientPhone?: string | null;
+  text?: string | null;
+  supabase?: any;
+}): Promise<boolean> {
+  if (isBotOutbound(params)) return true;
+
+  if (params.messageId && params.supabase) {
+    try {
+      const { data } = await params.supabase
+        .from('outbound_messages')
+        .select('id')
+        .eq('wa_message_id', String(params.messageId).trim())
+        .maybeSingle();
+
+      if (data?.id) return true;
+    } catch (_) {}
+  }
+
+  return false;
+}
+
+/**
  * Clears the registry (useful for unit tests)
  */
 export function clearOutboundRegistry(): void {

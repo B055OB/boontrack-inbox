@@ -583,6 +583,7 @@ export class StudioCreditService {
     tenantIdOrSlug: string;
     subscriptionId?: string;
     invoiceId?: string;
+    tier?: string;
   }): Promise<{
     success: boolean;
     alreadyGranted?: boolean;
@@ -616,13 +617,17 @@ export class StudioCreditService {
       };
     }
 
-    // 1. Idempotency Check: check if PROMO_SHOP_ACTIVATION_BONUS has already been recorded
+    const idempotencyKey = params.invoiceId
+      ? `BONUS_${tenant.id}_${params.invoiceId}`
+      : `BONUS_${tenant.id}_${params.subscriptionId || 'SHOP_ACTIVATION'}`;
+
+    // 1. Idempotency Check: check if bonus for this specific transaction has already been recorded
     try {
       const { data: existingBonus } = await supabase
         .from('tenant_credit_ledger')
         .select('id, amount, balance_after')
         .eq('tenant_id', tenant.id)
-        .eq('action', 'PROMO_SHOP_ACTIVATION_BONUS')
+        .eq('idempotency_key', idempotencyKey)
         .limit(1)
         .maybeSingle();
 
@@ -647,10 +652,9 @@ export class StudioCreditService {
     const bonusCredits = 15;
     const newBalance = currentBalance + bonusCredits;
 
-    // 2. Resolve upgraded tier
+    // 2. Resolve upgraded tier (default: 'member')
     const rawTier = String(tenant.tier || '').toUpperCase();
-    const paidShopTiers = ['SOLO', 'PRO_SCALE', 'ADS_PERFORMANCE', 'ENTERPRISE', 'TEAM_SCALE', 'FOUNDER'];
-    const upgradedTier = paidShopTiers.includes(rawTier) ? tenant.tier : 'member';
+    const upgradedTier = params.tier || 'member';
 
     // 3. Update tenants table
     const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? { ...tenant.metadata } : {};
@@ -662,12 +666,16 @@ export class StudioCreditService {
     if (params.invoiceId) existingMeta.shop_activation_invoice_id = params.invoiceId;
 
     try {
+      const tenantUpdatePayload: Record<string, any> = {
+        metadata: existingMeta,
+      };
+      const validTenantTiers = ['FREE', 'STARTER', 'PRO_SCALE', 'ENTERPRISE', 'CHECKOUT_LITE'];
+      if (validTenantTiers.includes(upgradedTier.toUpperCase())) {
+        tenantUpdatePayload.tier = upgradedTier.toUpperCase();
+      }
       await supabase
         .from('tenants')
-        .update({
-          tier: upgradedTier,
-          metadata: existingMeta,
-        })
+        .update(tenantUpdatePayload)
         .eq('id', tenant.id);
     } catch (tenantUpdErr) {
       console.warn('[StudioCreditService] Tenant update warning:', tenantUpdErr);
@@ -703,9 +711,12 @@ export class StudioCreditService {
       balance_after: isUnlimited ? 999999 : newBalance,
       action: 'PROMO_SHOP_ACTIVATION_BONUS',
       description: 'Bonus langganan toko BoonTrack',
-      event: 'PROMO_SHOP_ACTIVATION_BONUS',
-      type: 'CREDIT_IN',
-      note: 'Bonus langganan toko BoonTrack',
+      type: 'GRANT',
+      actor_id: 'SYSTEM_ACTIVATION',
+      actor_role: 'SYSTEM',
+      reason: 'Bonus langganan toko BoonTrack',
+      idempotency_key: idempotencyKey,
+      metadata: { invoiceId: params.invoiceId },
     };
 
     try {
@@ -714,19 +725,10 @@ export class StudioCreditService {
         .insert(ledgerPayload);
 
       if (ledgerErr) {
-        // Fallback with standard columns
-        await supabase
-          .from('tenant_credit_ledger')
-          .insert({
-            tenant_id: tenant.id,
-            amount: bonusCredits,
-            balance_after: isUnlimited ? 999999 : newBalance,
-            action: 'PROMO_SHOP_ACTIVATION_BONUS',
-            description: 'Bonus langganan toko BoonTrack',
-          });
+        console.warn('[StudioCreditService] Ledger mutation error:', ledgerErr);
       }
     } catch (insertErr) {
-      console.warn('[StudioCreditService] Ledger mutation error:', insertErr);
+      console.warn('[StudioCreditService] Ledger mutation exception:', insertErr);
     }
 
     return {

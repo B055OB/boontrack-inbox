@@ -122,7 +122,10 @@ class PaymentEventService {
     Promise.resolve(
       supabase
         .from('payment_events')
-        .insert(record)
+        .insert({
+          ...record,
+          event_id: record.id,
+        })
         .then(({ error }) => {
           if (error) {
             // Table may not exist yet — non-fatal during migration window

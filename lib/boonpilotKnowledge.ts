@@ -548,6 +548,55 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     text: `🤝 **Program Store Reseller Toko V1 (Sistem Kemitraan Penjualan):**\n\nSetiap merchant BoonTrack dapat merekrut mitra reseller untuk menyebarkan link toko (\`?r=KODE\`) dengan komisi otomatis:\n\n📦 **1. Struktur Kuota & Biaya Paket:**\n• **Free Tier (Gratis):** Kuota hingga 5 mitra reseller aktif (default untuk validasi tim penjualan pemula tanpa biaya).\n• **Starter Add-on (Rp 79.000 / bln):** Kuota hingga 25 mitra reseller aktif.\n• **Scale Add-on (Rp 149.000 / bln):** Kuota hingga 100 mitra reseller aktif + ekspor CSV komisi.\n• **Unlimited Add-on (Rp 249.000 / bln):** Kuota 999.999 mitra reseller tanpa batas (GRATIS/bundling jika langganan tahunan Pro Scale).\n\n💰 **2. Skema Komisi Fleksibel & Non-Custodial:**\n• Komisi otomatis dihitung per produk (Persentase % omzet) atau Flat (Rp per pesanan sukses).\n• Komisi hanya sah dicatat saat pesanan berstatus lunas (PAYMENT_CONFIRMED atau COD_SETTLED).\n• Non-Custodial: Hasil penjualan 100% langsung ke rekening/QRIS merchant (0% MDR). Pencairan komisi ditransfer manual oleh merchant lalu ditandai selesai di dashboard.\n\n❄️ **3. Guardrails Downgrade-Safe (Status FROZEN):**\n• Jika merchant turun paket, data mitra tidak pernah dihapus! Mitra di luar batas kuota hanya berstatus **FROZEN** (read-only).\n• Pesanan via link reseller FROZEN tetap diproses lancar sebagai pesanan reguler toko tanpa menghasilkan komisi baru sampai kuota aktif kembali.\n\n📱 **4. Portal Reseller Mandiri (Passwordless Magic Link):**\n• Mitra reseller mendapatkan portal akses mandiri berbasis nomor WhatsApp tanpa password (Magic Link) untuk menyalin tautan promosi unik, memantau jumlah klik, melacak pesanan, dan mengecek akumulasi saldo komisi secara transparan.\n\n👉 *Akses menu pengelolaan mitra di Dashboard Toko > Tab **Reseller**!*`,
     quick_actions: ['🤝 Info Program Reseller', '💎 Hubungi Tim Billing', '🧭 Mulai Tur Menu'],
   },
+  {
+    id: 'universal_bulk_import',
+    category: 'COMMERCE',
+    keywords: [
+      'bulk import',
+      'import excel',
+      'import csv',
+      'impor excel',
+      'impor csv',
+      'upload excel',
+      'upload csv',
+      'upload kontak',
+      'import kontak',
+      'import leads',
+      'import pesanan',
+      'impor pesanan',
+      'migrasi data',
+      'migrasi database',
+      'format excel',
+      'format csv',
+      'template import',
+      'template excel',
+      'upload massal',
+    ],
+    title: '📊 Fitur Universal Bulk Import Kontak, Pesanan & Leads (Excel / CSV)',
+    text: `📊 **Universal Bulk Import Kontak, Pesanan & Leads (Excel / CSV):**
+
+Fitur migrasi dan upload massal file .xlsx / .csv langsung ke dashboard BoonTrack untuk memindahkan database pelanggan lama tanpa ribet!
+
+🎯 **1. Target Pengguna:**
+• **Merchant Aktif:** Untuk impor rutin data pelanggan, kontak WhatsApp, dan riwayat pesanan.
+• **Calon Pengguna / Belum Register:** Sangat ramah migrasi dari toko/platform lama. Cukup siapkan file Excel-nya lalu daftar toko gratis di https://dashboard.boontrack.com/register untuk langsung mencoba import datanya.
+
+📋 **2. Format Header Spreadsheet yang Didukung:**
+• **Pelanggan / Leads:** nama, whatsapp / telepon, email, catatan / skrining, label / tag.
+• **Pesanan / Order:** order_number, nama_produk, nominal / total, status, tanggal.
+
+✨ **3. Keuntungan Utama:**
+• **Migrasi Cepat 1-Klik:** Bebas repot input manual satu per satu.
+• **Klasifikasi Otomatis Leads Hangat (Warm Leads):** Mengelompokkan kontak aktif agar admin/bot siap langsung menyapa pelanggan.
+• **Aman & Tervalidasi:** Sistem memvalidasi nomor telepon dan format kolom secara otomatis, serta menyediakan template spreadsheet (.xlsx / .csv) siap pakai di dashboard.
+
+💡 *Belum punya akun toko? Siapkan file Excel Anda dan daftar gratis di https://dashboard.boontrack.com/register sekarang!*`,
+    quick_actions: [
+      'Daftar Akun Gratis',
+      'Unduh Template Excel',
+      'Buka Tab Pelanggan',
+    ],
+  },
 ];
 
 export function searchPlatformKnowledge(query: string): KnowledgeItem | null {
@@ -662,4 +711,31 @@ export function getBoonPilotStoreResellerKnowledge(): string {
 5. PANDUAN MERCHANT & LOKASI MENU:
 - Menu Pengelolaan: Dashboard Toko > Tab Reseller (https://dashboard.boontrack.com).
 - Kepatuhan Regulasi: Sistem mematuhi regulasi penjualan langsung 1-tingkat (Anti-Piramida / Anti-MLM sesuai UU No. 7/2014 & Permendag No. 70/2019).`;
+}
+
+/**
+ * Structured Knowledge Base for Universal Bulk Import (Excel/CSV) in BoonTrack ecosystem.
+ * Injected into BoonPilot prompt context for intelligent AI Q&A across WhatsApp & Telegram.
+ */
+export function getBoonPilotBulkImportKnowledge(): string {
+  return `KNOWLEDGE BASE RESMI UNIVERSAL BULK IMPORT (EXCEL / CSV):
+
+1. DESKRIPSI FITUR:
+Fitur migrasi dan upload massal file spreadsheet (.xlsx / .csv) langsung ke dashboard BoonTrack untuk mempercepat impor kontak, leads, dan riwayat pesanan tanpa input manual.
+
+2. TARGET PENGGUNA:
+- Merchant Aktif: Import data rutin pelanggan harian/mingguan dan rekapitulasi pesanan masuk.
+- Calon Pengguna / Belum Register: Migrasi database lama dari Excel/marketplace/toko sebelumnya tanpa ribet.
+
+3. FORMAT HEADER YANG DIDUKUNG:
+- Pelanggan / Leads: nama, whatsapp / telepon, email, catatan / skrining, label / tag.
+- Pesanan / Order: order_number, nama_produk, nominal / total, status, tanggal.
+
+4. BENEFIT YANG DIJELASKAN BOT:
+- Migrasi cepat sekali klik tanpa repot input manual satu per satu.
+- Klasifikasi otomatis leads hangat (warm leads) agar admin CS atau bot WhatsApp siap langsung menyapa.
+- Aman, tervalidasi otomatis oleh sistem, dan disediakan template spreadsheet siap pakai langsung di dashboard.
+
+5. AKSI JIKA DITANYA BELUM REGISTER:
+Arahkan pengguna untuk menyiapkan file Excel/CSV datanya dan mendaftar toko gratis di https://dashboard.boontrack.com/register untuk langsung mencoba fitur import datanya.`;
 }

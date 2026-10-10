@@ -88,21 +88,24 @@ export async function enqueueCAPIOutboxEvent(
 
   try {
     // 1. Insert into dedicated `capi_outbox` table
+    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    const dbPayload: any = {
+      order_id: outboxRecord.order_id,
+      tenant_id: outboxRecord.tenant_id,
+      tenant_slug: params.tenantSlug || outboxRecord.tenant_id,
+      event_name: outboxRecord.event_name,
+      business_event_id: outboxRecord.business_event_id,
+      event_time: outboxRecord.event_time,
+      meta_status: outboxRecord.status,
+      payload: outboxRecord.payload,
+    };
+    if (isUuid(outboxRecord.id)) {
+      dbPayload.id = outboxRecord.id;
+    }
+
     const { error: insertErr } = await supabase
       .from('capi_outbox')
-      .insert({
-        id: outboxRecord.id,
-        order_id: outboxRecord.order_id,
-        tenant_id: outboxRecord.tenant_id,
-        event_name: outboxRecord.event_name,
-        business_event_id: outboxRecord.business_event_id,
-        event_time: outboxRecord.event_time,
-        status: outboxRecord.status,
-        retry_count: outboxRecord.retry_count,
-        max_retries: outboxRecord.max_retries,
-        payload: outboxRecord.payload,
-        created_at: outboxRecord.created_at,
-      });
+      .insert(dbPayload);
 
     if (insertErr) {
       console.debug('[CAPI Outbox] Note on table insert, persisting to orders.metadata outbox:', insertErr.message);

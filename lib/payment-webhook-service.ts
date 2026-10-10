@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import crypto from 'crypto';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { dispatchMetaCAPI, dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
+import { enqueueCAPIOutboxEvent } from '@/lib/capi-outbox';
 import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
 import { paymentEventService } from '@/lib/payment/payment-event-service';
 import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
@@ -848,6 +850,31 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
 
   console.log(`[Webhook Reader ${logId}] SUCCESS: Order #${orderId} diupdate menjadi PAID (Strategy: ${matchStrategy}).`);
 
+  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
+
+  // SHOP SUBSCRIPTION / BUNDLE CROSS-BENEFIT (e.g. ACADEMY_CTWA_BATCH1_B Scale Bundle)
+  const isScaleBundleOrMemberProduct =
+    matchedOrder.sku === 'ACADEMY_CTWA_BATCH1_B' ||
+    matchedOrder.metadata?.sku === 'ACADEMY_CTWA_BATCH1_B' ||
+    matchedOrder.product_id === 'b2c00572-c74a-4b01-8902-000000000002' ||
+    Boolean(matchedOrder.product_title?.toLowerCase().includes('scale bundle')) ||
+    Boolean(matchedOrder.description?.toLowerCase().includes('status member toko')) ||
+    Boolean(matchedOrder.metadata?.grant_shop_bonus) ||
+    Boolean(matchedOrder.metadata?.is_membership);
+
+  if (isScaleBundleOrMemberProduct) {
+    try {
+      const { StudioCreditService } = await import('@/lib/services/studio-credit.service');
+      await StudioCreditService.grantShopActivationBonus({
+        tenantIdOrSlug: targetTenantSlug || matchedOrder.tenant_id || 'onlineboost',
+        invoiceId: String(orderId),
+      });
+      console.log(`[Webhook Reader ${logId}] Granted +15 Studio Credits & member tier for bundle order #${orderId}`);
+    } catch (bonusErr) {
+      console.warn(`[Webhook Reader ${logId}] Non-fatal: Studio activation bonus error:`, bonusErr);
+    }
+  }
+
   // KIRIM WHATSAPP AUTO-FULFILLMENT
   const customerPhone =
     matchedOrder.customer_phone ||
@@ -884,7 +911,6 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   const resolvedInstructions =
     matchedOrder.fulfillment_metadata?.instructions || '';
 
-  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
   const hardeningPolicy = resolveHardeningPolicy(matchedOrder?.tenant || { slug: targetTenantSlug, metadata: matchedOrder?.metadata });
 
   if (customerPhone) {
@@ -894,19 +920,21 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       tenant_slug: targetTenantSlug,
     });
     // Async worker / outbox dispatch ensures PENDING -> PAID DB status mutation and HTTP 200 response are never blocked
-    sendOrderFulfillmentNotification({
-      phone: customerPhone,
-      customerName,
-      orderId: String(orderId),
-      itemsSummary,
-      totalAmount,
-      productType: resolvedProductType,
-      accessUrl: resolvedAccessUrl,
-      instructions: resolvedInstructions,
-      tenantId: targetTenantSlug || 'platform',
-    }).catch((waErr) => {
+    try {
+      await sendOrderFulfillmentNotification({
+        phone: customerPhone,
+        customerName,
+        orderId: String(orderId),
+        itemsSummary,
+        totalAmount,
+        productType: resolvedProductType,
+        accessUrl: resolvedAccessUrl,
+        instructions: resolvedInstructions,
+        tenantId: targetTenantSlug || 'platform',
+      });
+    } catch (waErr) {
       console.warn(`[Webhook Reader ${logId}] Error dispatching WhatsApp fulfillment (non-fatal):`, waErr);
-    });
+    }
   }
 
   // DUAL EMAIL FULFILLMENT DISPATCH (Buyer Invoice + Merchant Alert)
@@ -928,8 +956,36 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     console.warn(`[Webhook Reader ${logId}] Non-fatal email fulfillment dispatch error:`, emailErr);
   });
 
-  // META CAPI DISPATCH (Event Match Quality EMQ 8.0+ Optimization)
+  // META CAPI TRANSACTIONAL OUTBOX & DIRECT DISPATCH (EMQ Score 8.0+ & Deduplication Authority)
   if (orderId) {
+    const hashSha256 = (val?: string | null) => {
+      if (!val) return undefined;
+      const clean = String(val).trim().toLowerCase();
+      return crypto.createHash('sha256').update(clean).digest('hex');
+    };
+
+    try {
+      await enqueueCAPIOutboxEvent({
+        orderId: String(orderId),
+        tenantId: matchedOrder.tenant_id || targetTenantSlug || 'onlineboost',
+        tenantSlug: targetTenantSlug,
+        eventName: 'Purchase',
+        grossAmount: totalAmount,
+        currency: 'IDR',
+        customPayload: {
+          value: totalAmount,
+          currency: 'IDR',
+          customer_name: customerName,
+          customer_phone_hash: hashSha256(customerPhone),
+          customer_email_hash: hashSha256(matchedOrder.customer_email),
+          product_title: itemsSummary,
+          deduplication_key: `PURCHASE_${orderId}`,
+        },
+      }, supabase);
+    } catch (outboxErr) {
+      console.warn(`[Webhook Reader ${logId}] Non-fatal: CAPI outbox enqueue error:`, outboxErr);
+    }
+
     dispatchMetaCAPIPurchaseForOrder(String(orderId), supabase)
       .then((capiRes) => {
         if (capiRes.success) {
@@ -943,21 +999,30 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       });
   }
 
-  // DISPATCH AFFILIATE & AM COMMISSION NOTIFICATION (Non-blocking)
-  sendOrderCommissionAlert({
-    orderId: String(orderId),
-    tenantSlug: targetTenantSlug,
-    tenantId: matchedOrder.tenant_id,
-    productTitle: itemsSummary,
-    grossAmount: totalAmount,
-    customerName,
-    customerPhone: customerPhone || undefined,
-    customerEmail: matchedOrder.customer_email || undefined,
-    affiliateCode: matchedOrder.affiliate_code || matchedOrder.metadata?.affiliate_code || null,
-    directCommission: Number(matchedOrder.affiliate_commission) || undefined,
-  }).catch((notifErr) => {
+  // DISPATCH AFFILIATE & AM COMMISSION NOTIFICATION
+  const resolvedAffiliateCode =
+    matchedOrder.affiliate_code ||
+    matchedOrder.metadata?.affiliate_code ||
+    matchedOrder.metadata?.ref ||
+    matchedOrder.ref ||
+    null;
+
+  try {
+    await sendOrderCommissionAlert({
+      orderId: String(orderId),
+      tenantSlug: targetTenantSlug,
+      tenantId: matchedOrder.tenant_id,
+      productTitle: itemsSummary,
+      grossAmount: totalAmount,
+      customerName,
+      customerPhone: customerPhone || undefined,
+      customerEmail: matchedOrder.customer_email || undefined,
+      affiliateCode: resolvedAffiliateCode,
+      directCommission: Number(matchedOrder.affiliate_commission || matchedOrder.metadata?.affiliate_commission) || undefined,
+    });
+  } catch (notifErr) {
     console.warn(`[Webhook Reader ${logId}] Non-fatal: affiliate commission alert error:`, notifErr);
-  });
+  }
 
   const successRes = {
     success: true,
