@@ -40,6 +40,8 @@ export interface CreditLedgerEntry {
 }
 
 export class StudioCreditService {
+  private static inFlightTopups = new Map<string, Promise<any>>();
+
   /**
    * Helper: Resolve tenant record by ID or slug
    */
@@ -421,6 +423,43 @@ export class StudioCreditService {
     isExisting?: boolean;
     message?: string;
   }> {
+    const txKey = params.transactionId ? `${params.tenantIdOrSlug || ''}:${params.transactionId}` : null;
+    if (txKey && this.inFlightTopups.has(txKey)) {
+      try {
+        await this.inFlightTopups.get(txKey);
+      } catch {}
+    }
+
+    const execution = this._executeTopUpCredits(params);
+    if (txKey) {
+      this.inFlightTopups.set(txKey, execution);
+    }
+
+    try {
+      return await execution;
+    } finally {
+      if (txKey) {
+        this.inFlightTopups.delete(txKey);
+      }
+    }
+  }
+
+  private static async _executeTopUpCredits(params: {
+    tenantIdOrSlug: string;
+    credits: number;
+    amountPaid: number;
+    transactionId: string;
+    paymentStatus?: 'PAID' | 'SETTLED' | string;
+    affiliateCode?: string | null;
+    paymentChannel?: string;
+  }): Promise<{
+    success: boolean;
+    newBalance: number;
+    commissionRecorded: boolean;
+    commissionAmount?: number;
+    isExisting?: boolean;
+    message?: string;
+  }> {
     const tenant = await this.resolveTenant(params.tenantIdOrSlug);
     if (!tenant) return { success: false, newBalance: 0, commissionRecorded: false, message: 'Tenant tidak ditemukan.' };
 
@@ -483,24 +522,28 @@ export class StudioCreditService {
       console.warn('[StudioCreditService] Ledger error:', err);
     }
 
-    // 3. Process Affiliate Commission if status is PAID or SETTLED
+    // 3. Process Affiliate Commission if status is PAID or SETTLED (Downstream Isolated)
     let commissionRecorded = false;
     let commissionAmount = 0;
     const rawStatus = (params.paymentStatus || 'PAID').toUpperCase();
 
     if ((rawStatus === 'PAID' || rawStatus === 'SETTLED') && params.amountPaid > 0) {
-      const { recordStudioTokenCommission } = await import('@/lib/affiliate-notification-service');
-      const commResult = await recordStudioTokenCommission({
-        orderId: params.transactionId,
-        tenantId: tenant.id,
-        tenantSlug: tenant.slug,
-        grossAmount: params.amountPaid,
-        tokenCount: params.credits,
-        affiliateCode: params.affiliateCode || tenant.metadata?.affiliate_code || tenant.metadata?.referral_code,
-        paymentStatus: rawStatus,
-      });
-      commissionRecorded = commResult.success;
-      commissionAmount = commResult.commissionAmount;
+      try {
+        const { recordStudioTokenCommission } = await import('@/lib/affiliate-notification-service');
+        const commResult = await recordStudioTokenCommission({
+          orderId: params.transactionId,
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          grossAmount: params.amountPaid,
+          tokenCount: params.credits,
+          affiliateCode: params.affiliateCode || tenant.metadata?.affiliate_code || tenant.metadata?.referral_code,
+          paymentStatus: rawStatus,
+        });
+        commissionRecorded = commResult.success;
+        commissionAmount = commResult.commissionAmount;
+      } catch (commErr) {
+        console.warn('[StudioCreditService] Downstream affiliate notification isolated warning:', commErr);
+      }
     }
 
     return {

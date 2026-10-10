@@ -329,14 +329,11 @@ export async function POST(req: NextRequest) {
 
       // 2. Direct Official Xendit Invoice API jika Core Backend offline/tidak menyediakan invoice URL
       if (!invoiceUrl) {
-        const xenditKey = (
-          process.env.XENDIT_API_KEY ||
-          process.env.XENDIT_SECRET_KEY ||
-          'xnd_development_2itAoTg8FOAdr8Vk7jKpU0MksgDSAjaWzlLHzEMkPuHcRyf5IUxfvO7MG1KPe'
-        ).trim();
-        const xenditApiUrl = (process.env.XENDIT_API_URL || 'https://api.xendit.co').replace(/\/$/, '');
-        const authHeader = `Basic ${Buffer.from(`${xenditKey}:`).toString('base64')}`;
-        const appDomain = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
+        const xenditKey = (process.env.XENDIT_SECRET_KEY || process.env.XENDIT_API_KEY || '').trim();
+        if (xenditKey) {
+          const xenditApiUrl = (process.env.XENDIT_API_URL || 'https://api.xendit.co').replace(/\/$/, '');
+          const authHeader = `Basic ${Buffer.from(`${xenditKey}:`).toString('base64')}`;
+          const appDomain = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
 
         try {
           const xenditPayload: Record<string, any> = {
@@ -375,6 +372,7 @@ export async function POST(req: NextRequest) {
           console.warn('[Onboard] Direct Xendit invoice creation note:', xenditErr);
         }
       }
+    }
 
       // 3. Fallback URL jika Xendit API unreachable
       if (!invoiceUrl) {

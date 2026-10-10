@@ -190,11 +190,14 @@ export async function POST(
     }
 
     // 2. Direct Official Xendit Invoice API Integration (PT BoonTrack Inovasi Digital)
-    const xenditKey = (
-      process.env.XENDIT_API_KEY ||
-      process.env.XENDIT_SECRET_KEY ||
-      'xnd_development_2itAoTg8FOAdr8Vk7jKpU0MksgDSAjaWzlLHzEMkPuHcRyf5IUxfvO7MG1KPe'
-    ).trim();
+    const xenditKey = (process.env.XENDIT_SECRET_KEY || process.env.XENDIT_API_KEY || '').trim();
+    if (!xenditKey) {
+      console.error('[AiQuota] Payment gateway configuration is missing on server: XENDIT_SECRET_KEY or XENDIT_API_KEY is not set');
+      return NextResponse.json(
+        { error: 'Payment gateway configuration is missing on server' },
+        { status: 500 }
+      );
+    }
 
     const xenditApiUrl = (process.env.XENDIT_API_URL || 'https://api.xendit.co').replace(/\/$/, '');
     const externalId = `TOPUP-${slug}-${additionalSessions}-${Date.now()}`;
