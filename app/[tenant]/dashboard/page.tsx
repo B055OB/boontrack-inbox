@@ -74,6 +74,7 @@ import { useTenantDashboard } from './hooks/useTenantDashboard';
 export default function TenantDashboardPage() {
   const {
     tenantSlug,
+    tenantId,
     tenantData,
     isAuthenticated,
     displayName,
@@ -1214,6 +1215,7 @@ export default function TenantDashboardPage() {
             ) : (
               <WhatsAppBroadcastManager
                 tenantSlug={tenantSlug}
+                tenantId={tenantId}
                 displayName={displayName}
                 onSaved={(msg) => {
                   setSaveFeedback(msg);

@@ -71,13 +71,22 @@ export async function GET(
       // Lanjut ke Supabase database murni
     }
 
-    // 2. Query murni ke Supabase Database
+    // 2. Query murni ke Supabase Database (Flexible UUID or slug lookup)
     const supabase = getSupabase();
-    const { data: tenantRow, error: dbError } = await supabase
-      .from('tenants')
-      .select('*')
-      .eq('slug', slug)
-      .maybeSingle();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+    let tenantRow: any = null;
+    let dbError: any = null;
+
+    if (isUuid) {
+      const res = await supabase.from('tenants').select('*').eq('id', slug).maybeSingle();
+      tenantRow = res.data;
+      dbError = res.error;
+    }
+    if (!tenantRow && !dbError) {
+      const res = await supabase.from('tenants').select('*').eq('slug', slug).maybeSingle();
+      tenantRow = res.data;
+      dbError = res.error;
+    }
 
     if (dbError) {
       return NextResponse.json({ success: false, error: dbError.message }, { status: 500 });
@@ -86,6 +95,39 @@ export async function GET(
     if (!tenantRow) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
+
+    // 2b. Dynamic Gateway Config from whatsapp_connections
+    let gatewayConfig: any = {
+      instance_name: tenantRow.slug,
+      provider: 'EVOLUTION',
+      status: 'open',
+      is_connected: true,
+      phone_number: tenantRow.metadata?.phone || null,
+      mode: 'DEDICATED',
+    };
+    try {
+      const orGw = [`tenant_slug.eq.${tenantRow.slug}`];
+      if (tenantRow.id) orGw.push(`tenant_id.eq.${tenantRow.id}`);
+      const { data: gwData } = await supabase
+        .from('whatsapp_connections')
+        .select('*')
+        .or(orGw.join(','))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (gwData) {
+        gatewayConfig = {
+          instance_name: gwData.instance_name || tenantRow.slug,
+          provider: gwData.provider || 'EVOLUTION',
+          status: gwData.status || 'open',
+          is_connected: gwData.is_connected !== undefined ? gwData.is_connected : true,
+          phone_number: gwData.phone_number || tenantRow.metadata?.phone || null,
+          channel_type: gwData.channel_type || 'BAILEYS',
+          mode: gwData.metadata?.mode || 'DEDICATED',
+          metadata: gwData.metadata || {},
+        };
+      }
+    } catch {}
 
     // 3. Resolusi murni dari kolom DB & metadata JSONB
     const metadata = tenantRow.metadata || {};
@@ -181,6 +223,9 @@ export async function GET(
         telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
         telegram_group_config: metadata.telegram_group_config || null,
         followup_rules: metadata.followup_rules || null,
+        gateway_config: gatewayConfig,
+        whatsapp_connection: gatewayConfig,
+        whatsapp_instance: gatewayConfig.instance_name,
       },
     });
   } catch (err: unknown) {

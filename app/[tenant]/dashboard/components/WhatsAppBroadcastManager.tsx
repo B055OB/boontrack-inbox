@@ -38,6 +38,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { getStorefrontUrl } from '@/lib/storefront-urls';
 
 interface WhatsAppBroadcastManagerProps {
+  tenantId?: string;
   tenantSlug: string;
   displayName: string;
   onSaved?: (msg: string) => void;
@@ -73,6 +74,7 @@ export interface BroadcastHistoryItem {
 }
 
 export default function WhatsAppBroadcastManager({
+  tenantId,
   tenantSlug,
   displayName,
   onSaved,
@@ -99,6 +101,9 @@ export default function WhatsAppBroadcastManager({
   const [selectedTagFilter, setSelectedTagFilter] = useState('all');
   const [selectedSegmentFilter, setSelectedSegmentFilter] = useState('all');
 
+  // Composer State
+  const [customTag, setCustomTag] = useState('');
+
   // Real Dynamic Audience Segment Counts (Zero Mock)
   const hotLeadsCount = useMemo(() => contacts.filter((c) => c.quality === 'HOT').length, [contacts]);
   const abandonedCartCount = useMemo(() => contacts.filter((c) => c.quality === 'WARM' || (Array.isArray(c.tags) && c.tags.includes('Abandoned Cart'))).length, [contacts]);
@@ -106,10 +111,8 @@ export default function WhatsAppBroadcastManager({
   const allContactsCount = useMemo(() => contacts.length, [contacts]);
   const customTagCount = useMemo(() => customTag ? contacts.filter((c) => Array.isArray(c.tags) && c.tags.some((t) => t.toLowerCase().includes(customTag.toLowerCase()))).length : contacts.length, [contacts, customTag]);
 
-  // Composer State
   const [campaignTitle, setCampaignTitle] = useState('Promo Spesial Weekend');
   const [targetAudience, setTargetAudience] = useState<'all' | 'hot' | 'abandoned' | 'customers' | 'custom'>('hot');
-  const [customTag, setCustomTag] = useState('');
   const [messageTemplate, setMessageTemplate] = useState(
     `Halo Kak {nama} 👋\n\nKami melihat Kakak tertarik dengan produk *{produk}* di toko ${displayName}.\n\nKhusus hari ini, ada voucher potongan spesial *Rp 50.000* dengan kode: *{voucher}*.\n\nKlik link di bawah ini untuk klaim dan checkout instan via QRIS:\n👉 {link_toko}\n\nStok terbatas ya Kak! Terima kasih 🙏`
   );
@@ -212,13 +215,13 @@ export default function WhatsAppBroadcastManager({
     } catch {
       setIsWabaConfigured(false);
     }
-  }, [tenantSlug]);
+  }, [tenantSlug, tenantId]);
 
   useEffect(() => {
     checkWabaConfiguration();
   }, [checkWabaConfiguration]);
 
-  // Load real CRM contacts from API endpoint (GET /api/v1/crm/contacts?tenant_id=...)
+  // Load real CRM contacts from API endpoint and Supabase (WHERE tenant_id = UUID OR tenant_slug = slug)
   const syncAudienceFromDatabase = async () => {
     try {
       if (!tenantSlug) {
@@ -226,22 +229,86 @@ export default function WhatsAppBroadcastManager({
         return;
       }
       setIsLoadingContacts(true);
-      const res = await fetch(`/api/v1/crm/contacts?tenant_id=${encodeURIComponent(tenantSlug)}`);
-      if (res.ok) {
-        const json = await res.json();
-        const contactList: ContactItem[] = Array.isArray(json.contacts)
-          ? json.contacts
-          : Array.isArray(json.data)
-            ? json.data
-            : [];
-        setContacts(contactList);
-        if (Array.isArray(json.tags)) {
-          setAvailableTags(json.tags);
+
+      let contactList: ContactItem[] = [];
+      let tagList: string[] = [];
+
+      // 1. Try API Gateway (dual-clause)
+      try {
+        const targetTenantKey = tenantId || tenantSlug;
+        const res = await fetch(`/api/v1/crm/contacts?tenant_id=${encodeURIComponent(targetTenantKey)}&tenant_slug=${encodeURIComponent(tenantSlug)}`);
+        if (res.ok) {
+          const json = await res.json();
+          contactList = Array.isArray(json.contacts)
+            ? json.contacts
+            : Array.isArray(json.data)
+              ? json.data
+              : [];
+          if (Array.isArray(json.tags)) {
+            tagList = json.tags;
+          }
         }
-        if (onSaved) onSaved(`✅ Berhasil menyinkronkan ${contactList.length} data audiens dari CRM!`);
-      } else {
-        setContacts([]);
+      } catch (apiErr) {
+        console.warn('[Broadcast Sync] API fetch failed, trying direct Supabase fallback:', apiErr);
       }
+
+      // 2. Fallback direct query to Supabase: WHERE tenant_id = UUID OR tenant_slug = slug
+      if (contactList.length === 0) {
+        const supabase = getSupabase();
+        if (supabase) {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantSlug);
+          let tenantRow: any = null;
+          if (isUuid) {
+            const res = await supabase.from('tenants').select('id, slug').eq('id', tenantSlug).maybeSingle();
+            tenantRow = res.data;
+          } else {
+            const res = await supabase.from('tenants').select('id, slug').eq('slug', tenantSlug).maybeSingle();
+            tenantRow = res.data;
+          }
+
+          const tUuid = tenantId || tenantRow?.id;
+          const tSlug = tenantRow?.slug || tenantSlug;
+
+          const orTokens: string[] = [];
+          if (tUuid) orTokens.push(`tenant_id.eq.${tUuid}`);
+          if (tSlug) orTokens.push(`tenant_slug.eq.${tSlug}`);
+
+          const { data: dbContacts } = await supabase
+            .from('contacts')
+            .select('id, tenant_id, tenant_slug, phone_e164, name, email, contact_status, lifecycle_stage, metadata, last_interaction_at, created_at')
+            .or(orTokens.join(','))
+            .order('created_at', { ascending: false })
+            .limit(2000);
+
+          if (Array.isArray(dbContacts) && dbContacts.length > 0) {
+            contactList = dbContacts.map((c: any) => {
+              const metaTags = Array.isArray(c.metadata?.tags) ? c.metadata.tags : [];
+              const isCust = c.lifecycle_stage === 'CUSTOMER';
+              const score = c.metadata?.lead_score || (isCust ? 100 : 80);
+              return {
+                id: c.id,
+                name: c.name || c.phone_e164 || 'Kontak',
+                phone: c.phone_e164 || '',
+                tags: metaTags,
+                productInterest: c.metadata?.product_interest || 'Katalog Toko',
+                leadScore: score,
+                quality: (isCust ? 'CUSTOMER' : score >= 85 ? 'HOT' : 'WARM') as any,
+                utmSource: c.metadata?.utm_source || 'organic',
+                totalOrders: c.metadata?.total_orders || 0,
+                totalSpend: c.metadata?.total_spend || 0,
+                createdAt: c.created_at ? new Date(c.created_at).toLocaleDateString('id-ID') : 'Baru Saja',
+                lastContacted: c.last_interaction_at ? new Date(c.last_interaction_at).toLocaleDateString('id-ID') : undefined,
+              };
+            });
+          }
+        }
+      }
+
+      setContacts(contactList);
+      if (tagList.length > 0) {
+        setAvailableTags(tagList);
+      }
+      if (onSaved) onSaved(`✅ Berhasil menyinkronkan ${contactList.length} data audiens dari CRM!`);
     } catch (err) {
       console.warn('[Broadcast Sync] Error fetching CRM contacts:', err);
       setContacts([]);
@@ -252,7 +319,7 @@ export default function WhatsAppBroadcastManager({
 
   useEffect(() => {
     syncAudienceFromDatabase();
-  }, [tenantSlug]);
+  }, [tenantSlug, tenantId]);
 
   // Pull unique tags directly from database / CRM response (including 'alumni-cpm')
   const uniqueTags = useMemo(() => {
