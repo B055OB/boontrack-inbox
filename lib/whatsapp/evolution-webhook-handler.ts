@@ -45,6 +45,7 @@ import {
   isAuthorizedBotController,
   executeBotControl,
   checkRuntimeBotDecisionGate,
+  setRuntimeSessionCache,
 } from '@/lib/whatsapp/bot-control-service';
 
 const EVOLUTION_API_URL =
@@ -588,6 +589,7 @@ export async function processEvolutionWebhookEvent(
             if (typeof convTable?.update === 'function') {
               let uQ = convTable.update({
                 bot_paused: true,
+                is_paused: true,
                 is_bot_paused: true,
                 is_bot_active: false,
                 bot_mode: 'HUMAN_ACTIVE',
@@ -605,6 +607,15 @@ export async function processEvolutionWebhookEvent(
                 await uQ.eq('customer_phone', senderPhone);
               }
             }
+
+            setRuntimeSessionCache({
+              tenantId: tenantUuid,
+              userIdentifier: senderPhone,
+              isPaused: true,
+              botStatus: 'HUMAN_PAUSED',
+              pausedUntil: pausedUntilIso,
+              pausedBy: 'cs_mobile_outbound',
+            });
 
             if (textBodyEarly) {
               await persistOutboundMessage({
@@ -1341,7 +1352,7 @@ export async function processEvolutionWebhookEvent(
         if (!isSessionExpired) {
           let convQuery: any = supabase
             .from('conversations')
-            .select('id, bot_paused, bot_mode, status');
+            .select('id, bot_paused, is_paused, is_bot_paused, is_bot_active, bot_mode, status');
 
           if (typeof convQuery?.or === 'function') {
             convQuery = convQuery.or(convOrClause);
@@ -1359,6 +1370,7 @@ export async function processEvolutionWebhookEvent(
           if (Array.isArray(convData) && convData.length > 0) {
             const pausedConv = convData.find((c: any) =>
               c.bot_paused === true ||
+              c.is_paused === true ||
               c.is_bot_paused === true ||
               c.is_bot_active === false ||
               c.bot_mode === 'HUMAN_ACTIVE' ||
@@ -1369,16 +1381,19 @@ export async function processEvolutionWebhookEvent(
 
             if (pausedConv) {
               isConvPaused = true;
-              convPauseReason = `conversations table (id: ${pausedConv.id}, bot_paused: ${pausedConv.bot_paused}, bot_mode: ${pausedConv.bot_mode}, status: ${pausedConv.status})`;
+              convPauseReason = `conversations table (id: ${pausedConv.id}, bot_paused: ${pausedConv.bot_paused}, is_paused: ${pausedConv.is_paused}, bot_mode: ${pausedConv.bot_mode}, status: ${pausedConv.status})`;
             }
           }
         } else {
-          // Jika session sudah expired / auto-resumed, sinkronkan conversations table agar bot_paused = false
+          // Jika session sudah expired / auto-resumed, sinkronkan conversations table agar bot_paused & is_paused = false
           try {
             const cUpdate = supabase
               .from('conversations')
               .update({
                 bot_paused: false,
+                is_paused: false,
+                is_bot_paused: false,
+                is_bot_active: true,
                 bot_mode: 'AI_ACTIVE',
                 status: 'active',
                 updated_at: new Date().toISOString(),
@@ -1389,6 +1404,15 @@ export async function processEvolutionWebhookEvent(
             } else if (typeof cQ?.eq === 'function') {
               await cQ.eq('customer_phone', senderPhone);
             }
+
+            setRuntimeSessionCache({
+              tenantId,
+              userIdentifier: senderPhone,
+              isPaused: false,
+              botStatus: 'BOT_ACTIVE',
+              pausedUntil: null,
+              pausedBy: null,
+            });
           } catch (_) {}
         }
 

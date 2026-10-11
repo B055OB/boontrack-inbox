@@ -60,30 +60,32 @@ export async function GET(req: NextRequest) {
     let tenantUuid: string | null = null;
     let tenantSlug: string | null = null;
 
+    let tenantRow: any = null;
     if (isUuid) {
-      tenantUuid = tenantQuery;
-      const { data: tenantRow } = await supabase
+      const { data } = await supabase
         .from('tenants')
         .select('id, slug')
-        .eq('id', tenantUuid)
+        .eq('id', tenantQuery)
         .maybeSingle();
-      if (tenantRow?.slug) tenantSlug = tenantRow.slug;
+      tenantRow = data;
     } else {
-      tenantSlug = tenantQuery;
-      const { data: tenantRow } = await supabase
+      const { data } = await supabase
         .from('tenants')
         .select('id, slug')
-        .eq('slug', tenantSlug)
+        .eq('slug', tenantQuery)
         .maybeSingle();
-      if (tenantRow?.id) tenantUuid = tenantRow.id;
+      tenantRow = data;
     }
 
-    if (!tenantUuid && !tenantSlug) {
+    if (!tenantRow) {
       return NextResponse.json(
         { success: false, error: `Tenant tidak ditemukan untuk: ${tenantQuery}` },
         { status: 404 }
       );
     }
+
+    tenantUuid = tenantRow.id;
+    tenantSlug = tenantRow.slug || null;
 
     // 1. Fetch all contacts — dual-clause: WHERE tenant_id = UUID OR tenant_slug = slug
     const orTokens: string[] = [];
