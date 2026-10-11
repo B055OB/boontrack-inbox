@@ -190,6 +190,8 @@ export default function TenantDashboardPage() {
     waConnectionMode,
     qrCodeUrl,
     setQrCodeUrl,
+    qrImgError,
+    setQrImgError,
     isQrLoading,
     waErrorMessage,
     connectedPhone,
@@ -1139,6 +1141,8 @@ export default function TenantDashboardPage() {
               waConnectionMode={waConnectionMode}
               qrCodeUrl={qrCodeUrl}
               setQrCodeUrl={setQrCodeUrl}
+              qrImgError={qrImgError}
+              setQrImgError={setQrImgError}
               isQrLoading={isQrLoading}
               waErrorMessage={waErrorMessage}
               connectedPhone={connectedPhone}

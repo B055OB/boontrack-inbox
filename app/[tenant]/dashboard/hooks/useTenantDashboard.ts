@@ -315,6 +315,7 @@ export function useTenantDashboard() {
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrImgError, setQrImgError] = useState(false);
   const [waStatus, setWaStatus] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'DEGRADED'>('DISCONNECTED');
   const [waErrorMessage, setWaErrorMessage] = useState<string | null>(null);
   const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
@@ -2586,20 +2587,26 @@ export function useTenantDashboard() {
         setWaStatus('CONNECTED');
         setConnectedPhone(rawPhone || null);
         setQrCodeUrl(null);
+        setQrImgError(false);
         setWaErrorMessage(null);
       } else {
-        // Hanya set CONNECTING jika bukan status CONNECTED
         if (data.status !== 'CONNECTED') {
           setWaStatus('CONNECTING');
         }
-        // Tangkap string gambar base64 murni dari respons BoonTrack WhatsApp Engine
-        const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
-        if (qr) {
-          // Validasi minimal: base64 QR harus berupa data URI atau raw base64
-          const normalizedQr = qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
-          setQrCodeUrl(normalizedQr);
-        }
         setWaErrorMessage(null);
+
+        // Tangani parsing kembalian base64 QR dari Evolution API secara fleksibel
+        const rawBase64 = data?.base64 || data?.qrcode?.base64 || data?.qr || data?.code;
+        if (rawBase64 && typeof rawBase64 === 'string') {
+          const clean = rawBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+          if (!clean.startsWith('2@')) {
+            setQrCodeUrl(`data:image/png;base64,${clean}`);
+          } else {
+            setQrCodeUrl(rawBase64);
+          }
+          setQrImgError(false);
+        }
+        // Pastikan qrCodeUrl TIDAK dikosongkan jika koneksi sedang proses pairing (belum open)
       }
     } catch (err) {
       setWaStatus('DISCONNECTED');
@@ -2665,14 +2672,19 @@ export function useTenantDashboard() {
           setWaStatus('CONNECTED');
           setConnectedPhone(rawPhone || null);
           setQrCodeUrl(null);
+          setQrImgError(false);
           setWaErrorMessage(null);
           clearInterval(pollInterval);
-        } else if (data.status === 'CONNECTING') {
-          const rawQr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
-          if (rawQr) {
-            const normalizedQr = rawQr.startsWith('data:') ? rawQr : `data:image/png;base64,${rawQr}`;
-            if (normalizedQr !== qrCodeUrl) setQrCodeUrl(normalizedQr);
+        } else {
+          setWaStatus('CONNECTING');
+          const rawBase64 = data?.base64 || data?.qrcode?.base64 || data?.qr || data?.code;
+          if (rawBase64 && typeof rawBase64 === 'string') {
+            const clean = rawBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+            const nextQr = !clean.startsWith('2@') ? `data:image/png;base64,${clean}` : rawBase64;
+            setQrCodeUrl((prev) => (prev !== nextQr ? nextQr : prev));
+            setQrImgError(false);
           }
+          // Pastikan qrCodeUrl TIDAK dikosongkan jika koneksi sedang proses pairing (belum open)
         }
       } catch (err) {
         consecutiveErrors++;
@@ -2820,6 +2832,8 @@ export function useTenantDashboard() {
     setWaConnectionMode,
     qrCodeUrl,
     setQrCodeUrl,
+    qrImgError,
+    setQrImgError,
     isQrLoading,
     waErrorMessage,
     connectedPhone,
