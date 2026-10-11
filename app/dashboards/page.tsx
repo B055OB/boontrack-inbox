@@ -69,7 +69,7 @@ const STORE = {
   initial: 'B',
   tier: 'Paket Scale',
   tierBadge: 'Scale • Unlimited',
-  bioUrl: 'https://shop.boontrack.com/buzzerukm',
+  bioUrl: 'https://boontrack.com/buzzerukm',
 };
 
 // ─────────────────────────────────────────────────────────────

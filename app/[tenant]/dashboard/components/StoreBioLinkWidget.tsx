@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Share2, Copy, Check, ExternalLink, Globe } from 'lucide-react';
-import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 interface StoreBioLinkWidgetProps {
   tenantSlug: string;
@@ -12,18 +11,27 @@ interface StoreBioLinkWidgetProps {
 export default function StoreBioLinkWidget({ tenantSlug, customDomain }: StoreBioLinkWidgetProps) {
   const [copied, setCopied] = useState(false);
 
-  if (!tenantSlug) return null;
+  // Resolusi tautan bio toko:
+  // - Jika tenant punya custom domain: https://${custom_domain}
+  // - Jika tidak ada custom domain: https://boontrack.com/${slug}
+  const bioLink = useMemo(() => {
+    if (customDomain) {
+      const cleanDomain = customDomain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      if (cleanDomain) return `https://${cleanDomain}`;
+    }
+    const cleanSlug = (tenantSlug || '').trim().toLowerCase();
+    return `https://boontrack.com/${cleanSlug}`;
+  }, [tenantSlug, customDomain]);
 
-  const bioShortlink = getStorefrontUrl(tenantSlug, customDomain);
-  const storefrontUrl = bioShortlink;
+  if (!tenantSlug) return null;
 
   const handleCopy = async () => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(bioShortlink);
+        await navigator.clipboard.writeText(bioLink);
       } else {
         const textArea = document.createElement('textarea');
-        textArea.value = bioShortlink;
+        textArea.value = bioLink;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand('copy');
@@ -32,7 +40,7 @@ export default function StoreBioLinkWidget({ tenantSlug, customDomain }: StoreBi
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy bio shortlink:', err);
+      console.error('Failed to copy bio link:', err);
     }
   };
 
@@ -64,7 +72,7 @@ export default function StoreBioLinkWidget({ tenantSlug, customDomain }: StoreBi
           {/* High Contrast Mono Display URL */}
           <div className="bg-slate-950/90 border border-slate-700/70 rounded-xl px-3.5 py-2 flex items-center gap-2 font-mono text-xs sm:text-[13px] text-emerald-400 shadow-inner select-all min-w-0 overflow-hidden">
             <Globe className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span className="truncate select-all">{bioShortlink}</span>
+            <span className="truncate select-all">{bioLink}</span>
           </div>
 
           {/* Action Buttons */}
@@ -94,7 +102,7 @@ export default function StoreBioLinkWidget({ tenantSlug, customDomain }: StoreBi
 
             {/* Visit Store Button */}
             <a
-              href={storefrontUrl}
+              href={bioLink}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 active:scale-95 cursor-pointer shrink-0"
