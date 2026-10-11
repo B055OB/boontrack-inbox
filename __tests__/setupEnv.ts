@@ -23,6 +23,6 @@ loadEnvFile(path.resolve(process.cwd(), '.env'));
 loadEnvFile(path.resolve(process.cwd(), '.env.local'));
 
 if (process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('sb_secret_')) {
-  process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 }
 

@@ -4,7 +4,7 @@ import { isValidUuid, safeUuidOrNull } from './uuid-guard';
 export { isValidUuid, safeUuidOrNull };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 /**
  * Creates a fetch wrapper that protects Supabase from egress quota exhaustion:
@@ -73,13 +73,14 @@ export const getSupabaseAdmin = () => {
   const currentKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     ''
   ).trim();
 
-  // If service key is absent or is an sb_secret_ management token not registered for PostgREST, fallback to active publishable key
+  // Ensure credentials 100% resolve from environment variables
   const serviceKey = (currentKey && !currentKey.startsWith('sb_secret_'))
     ? currentKey
-    : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseAnonKey);
+    : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
 
   if (!supabaseAdminInstance || (serviceKey && serviceKey !== lastConfiguredAdminKey)) {
     lastConfiguredAdminKey = serviceKey;

@@ -154,7 +154,7 @@ async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | 
       const supabaseKey =
         (currentKey && !currentKey.startsWith('sb_secret_'))
           ? currentKey
-          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7');
+          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
       if (supabaseKey) {
         const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&or=(metadata->>custom_domain.eq.${encodeURIComponent(hostname)},metadata->custom_domains.cs.["${encodeURIComponent(hostname)}"])&limit=1`;
         const supaRes = await fetch(supaUrl, {

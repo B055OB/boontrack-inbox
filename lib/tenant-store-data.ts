@@ -17,7 +17,7 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
   const supabaseKey =
     (currentKey && !currentKey.startsWith('sb_secret_'))
       ? currentKey
-      : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7');
+      : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
 
   const headers: HeadersInit = {
     apikey: supabaseKey,

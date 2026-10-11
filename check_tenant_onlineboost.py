@@ -3,8 +3,8 @@ import os
 import json
 from supabase import create_client
 
-url = "https://mpluzajlzpregmjwpjqr.supabase.co"
-key = "sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7"
+url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "https://mpluzajlzpregmjwpjqr.supabase.co")
+key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", os.environ.get("SUPABASE_SERVICE_ROLE_KEY", ""))
 
 client = create_client(url, key)
 
