@@ -184,6 +184,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             isBotActive: c.bot_paused === true ? false : (c.bot_mode === 'HUMAN_ACTIVE' ? false : true),
             tag: c.unread_count > 0 ? 'Pesan Baru' : 'WhatsApp',
             unreadCount: c.unread_count || 0,
+            channelType: c.channel_type || (phone.startsWith('webchat_') ? 'WEBCHAT' : 'BAILEYS'),
+            channelConnectionId: c.channel_connection_id || null,
             messages: [],
           });
         }
@@ -366,6 +368,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
                         unreadCount: updated.unread_count ?? c.unreadCount,
                         isBotActive: updated.bot_paused === true ? false : (updated.bot_mode === 'HUMAN_ACTIVE' ? false : true),
                         status: updated.status === 'resolved' ? 'offline' : 'online',
+                        channelType: updated.channel_type ?? c.channelType,
+                        channelConnectionId: updated.channel_connection_id ?? c.channelConnectionId,
                       }
                     : c
                 );
@@ -532,18 +536,31 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           }
         }
 
-        // 4c. Outbound dispatch via Evolution API if instance exists
+        // 4c. Outbound dispatch via Outbound Lock Gateway with Idempotency Key
+        const idempotencyKey = `idemp_${activeConversation.id}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         try {
-          const { data: conn } = await supabase
-            .from('whatsapp_connections')
-            .select('instance_name, credential_ref')
-            .or(`tenant_id.eq.${effectiveTenantId},tenant_slug.eq.${effectiveTenantSlug},tenant_id.eq.${effectiveTenantSlug}`)
-            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
-            .maybeSingle();
-
-          if (conn?.instance_name) {
-            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
-            await sendEvolutionTextMessage(conn.instance_name, customerPhone, body, conn.credential_ref);
+          const sendRes = await fetch('/api/inbox/messages/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Idempotency-Key': idempotencyKey,
+            },
+            body: JSON.stringify({
+              tenant_id: effectiveTenantId || effectiveTenantSlug,
+              conversation_id: activeConversation.id,
+              text: body,
+              phone_number: customerPhone,
+              idempotency_key: idempotencyKey,
+            }),
+          });
+          const sendData = await sendRes.json();
+          if (!sendRes.ok || sendData.success === false) {
+            const errorMsg = sendData.detail || sendData.error || 'Gagal mengirim pesan melalui kanal tujuan.';
+            console.warn('[useTenantInbox] Outbound send note:', errorMsg);
+            if (sendRes.status === 422 || sendRes.status === 403) {
+              alert(errorMsg);
+              return false;
+            }
           }
         } catch (sendErr) {
           console.warn('[useTenantInbox] WhatsApp dispatch warning:', sendErr);

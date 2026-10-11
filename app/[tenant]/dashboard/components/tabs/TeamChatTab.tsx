@@ -120,6 +120,8 @@ export interface ChatConversation {
   isBotActive?: boolean;
   tag?: 'Hot Lead' | 'Repeat Buyer' | 'Konfirmasi Bayar' | 'Tanya Produk' | 'Keluhan' | string;
   unreadCount?: number;
+  channelType?: string;
+  channelConnectionId?: string | null;
   crm?: {
     totalOrders: number;
     lifetimeValue: number;
@@ -168,6 +170,54 @@ export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
   TEAM_SCALE: 5,
   ENTERPRISE: 5,
 };
+
+export function ChannelBadge({
+  channelType,
+  customerPhone,
+  className = '',
+}: {
+  channelType?: string;
+  customerPhone?: string;
+  className?: string;
+}) {
+  const raw = (channelType || '').toUpperCase();
+  const isWebchat = raw === 'WEBCHAT' || (customerPhone && customerPhone.startsWith('webchat_'));
+  const isWaba = raw === 'WABA' || raw === 'META_API';
+
+  if (isWebchat) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-2xs whitespace-nowrap ${className}`}
+        title="Kanal Webchat (Widget Toko)"
+      >
+        <MessageSquare className="w-2.5 h-2.5 text-sky-600 shrink-0" />
+        <span>Webchat</span>
+      </span>
+    );
+  }
+
+  if (isWaba) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap ${className}`}
+        title="Kanal WhatsApp Business API (Meta Cloud API)"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+        <span>WABA</span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs whitespace-nowrap ${className}`}
+      title="Kanal BoonTrack WhatsApp Engine (Nomor Pairing)"
+    >
+      <Zap className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+      <span>BoonTrack Engine</span>
+    </span>
+  );
+}
 
 export default function TeamChatTab({
   initialTenant,
@@ -259,12 +309,95 @@ export default function TeamChatTab({
 
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'followup' | 'paused' | 'mine' | 'unassigned'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'waba' | 'engine' | 'webchat'>('all');
   const [localReplyText, setLocalReplyText] = useState('');
   const [displayLimit, setDisplayLimit] = useState(60);
 
   useEffect(() => {
     setDisplayLimit(60);
-  }, [searchKeyword, filterTab]);
+  }, [searchKeyword, filterTab, channelFilter]);
+
+  // Load active channel connections for the tenant from Supabase
+  const [tenantConnections, setTenantConnections] = useState<any[]>([]);
+  useEffect(() => {
+    let isMounted = true;
+    async function loadConnections() {
+      const supabase = getSupabase();
+      if (!supabase || (!tenantId && !resolvedTenant)) return;
+      try {
+        const { data } = await supabase
+          .from('whatsapp_connections')
+          .select('id, provider, channel_type, status, is_connected')
+          .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`);
+        if (data && isMounted) {
+          setTenantConnections(data);
+        }
+      } catch (err) {
+        console.debug('[TeamChatTab] loadConnections error:', err);
+      }
+    }
+    loadConnections();
+    return () => { isMounted = false; };
+  }, [tenantId, resolvedTenant]);
+
+  // Dynamic active channels detection (Single Source of Truth: DB & Conversations)
+  const activeChannels = useMemo(() => {
+    // 1. WABA: tampilkan jika tenant memiliki nomor Meta Cloud API aktif
+    const hasWabaFromConn = tenantConnections.some(
+      (c) =>
+        (c.provider === 'META_API' || (c.channel_type || '').toUpperCase() === 'WABA') &&
+        (c.is_connected === true || ['CONNECTED', 'OPEN', 'ACTIVE'].includes(String(c.status || '').toUpperCase()))
+    );
+    const hasWabaFromConv = conversationsList.some((c) => (c.channelType || '').toUpperCase() === 'WABA');
+    const hasWabaFromMetadata = Boolean(initialTenant?.metadata?.waba_active || initialTenant?.metadata?.waba_phone_number_id);
+    const hasWaba = hasWabaFromConn || hasWabaFromConv || hasWabaFromMetadata;
+
+    // 2. BoonTrack Engine: tampilkan jika tenant mengaktifkan nomor pairing
+    const hasEngineFromConn = tenantConnections.some(
+      (c) =>
+        (c.provider !== 'META_API' && (c.channel_type || '').toUpperCase() !== 'WABA') &&
+        (c.is_connected === true || ['CONNECTED', 'OPEN', 'ACTIVE', 'CONNECTING'].includes(String(c.status || '').toUpperCase()))
+    );
+    const hasEngineFromConv = conversationsList.some(
+      (c) =>
+        (c.channelType || '').toUpperCase() === 'BAILEYS' ||
+        (c.channelType || '').toUpperCase() === 'ENGINE' ||
+        (!c.channelType && !c.customerPhone.startsWith('webchat_'))
+    );
+    const hasEngineFromMetadata = Boolean(initialTenant?.metadata?.whatsapp_pairing_active || initialTenant?.metadata?.engine_active);
+    const hasEngine = hasEngineFromConn || hasEngineFromConv || hasEngineFromMetadata;
+
+    // 3. Webchat: hanya render jika modul/add-on webchat aktif
+    const hasWebchatFromConv = conversationsList.some(
+      (c) => (c.channelType || '').toUpperCase() === 'WEBCHAT' || c.customerPhone.startsWith('webchat_')
+    );
+    const hasWebchatFromMetadata = Boolean(
+      initialTenant?.metadata?.features?.webchat ||
+      initialTenant?.metadata?.addons?.webchat ||
+      initialTenant?.metadata?.webchat_enabled
+    );
+    const hasWebchat = hasWebchatFromConv || hasWebchatFromMetadata;
+
+    return { hasWaba, hasEngine, hasWebchat };
+  }, [tenantConnections, conversationsList, initialTenant]);
+
+  // Counts per channel for filter tabs
+  const channelCounts = useMemo(() => {
+    let waba = 0;
+    let engine = 0;
+    let webchat = 0;
+    for (const c of conversationsList) {
+      const raw = (c.channelType || '').toUpperCase();
+      if (raw === 'WABA') {
+        waba++;
+      } else if (raw === 'WEBCHAT' || c.customerPhone.startsWith('webchat_')) {
+        webchat++;
+      } else {
+        engine++;
+      }
+    }
+    return { all: conversationsList.length, waba, engine, webchat };
+  }, [conversationsList]);
 
   // Dynamic Tier & CS Seat Entitlement Quota
   const effectiveTier = useMemo(() => {
@@ -1014,6 +1147,19 @@ export default function TeamChatTab({
         if (c.assignedTo && c.assignedTo !== 'unassigned') return false;
       }
 
+      // Filter by omnichannel channel
+      if (channelFilter === 'waba') {
+        const isWaba = (c.channelType || '').toUpperCase() === 'WABA';
+        if (!isWaba) return false;
+      } else if (channelFilter === 'engine') {
+        const raw = (c.channelType || '').toUpperCase();
+        const isEngine = raw === 'BAILEYS' || raw === 'ENGINE' || (!raw && !c.customerPhone.startsWith('webchat_'));
+        if (!isEngine) return false;
+      } else if (channelFilter === 'webchat') {
+        const isWebchat = (c.channelType || '').toUpperCase() === 'WEBCHAT' || c.customerPhone.startsWith('webchat_');
+        if (!isWebchat) return false;
+      }
+
       // Filter by search keyword
       if (searchKeyword.trim()) {
         const query = searchKeyword.toLowerCase();
@@ -1025,7 +1171,7 @@ export default function TeamChatTab({
 
       return true;
     });
-  }, [conversationsList, filterTab, searchKeyword]);
+  }, [conversationsList, filterTab, channelFilter, searchKeyword]);
 
   const visibleConversations = useMemo(() => {
     return filteredConversations.slice(0, displayLimit);
@@ -2345,6 +2491,98 @@ export default function TeamChatTab({
               />
             </div>
 
+            {/* Omnichannel Channel Filter Pills (Horizontal) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar scroll-smooth">
+              <button
+                type="button"
+                onClick={() => setChannelFilter('all')}
+                className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                  channelFilter === 'all'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-extrabold'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+                title="Semua kanal percakapan"
+              >
+                <span>Semua</span>
+                <span
+                  className={`text-[9px] px-1 rounded-full ${
+                    channelFilter === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {channelCounts.all}
+                </span>
+              </button>
+
+              {activeChannels.hasWaba && (
+                <button
+                  type="button"
+                  onClick={() => setChannelFilter('waba')}
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                    channelFilter === 'waba'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-extrabold'
+                      : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                  }`}
+                  title="Filter kanal resmi WABA (Meta Cloud API)"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span>WABA</span>
+                  <span
+                    className={`text-[9px] px-1 rounded-full ${
+                      channelFilter === 'waba' ? 'bg-emerald-700 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {channelCounts.waba}
+                  </span>
+                </button>
+              )}
+
+              {activeChannels.hasEngine && (
+                <button
+                  type="button"
+                  onClick={() => setChannelFilter('engine')}
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                    channelFilter === 'engine'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
+                      : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                  }`}
+                  title="Filter kanal BoonTrack WhatsApp Engine (Nomor Pairing)"
+                >
+                  <Zap className="w-2.5 h-2.5 text-current shrink-0" />
+                  <span>BoonTrack Engine</span>
+                  <span
+                    className={`text-[9px] px-1 rounded-full ${
+                      channelFilter === 'engine' ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-800'
+                    }`}
+                  >
+                    {channelCounts.engine}
+                  </span>
+                </button>
+              )}
+
+              {activeChannels.hasWebchat && (
+                <button
+                  type="button"
+                  onClick={() => setChannelFilter('webchat')}
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                    channelFilter === 'webchat'
+                      ? 'bg-sky-600 text-white border-sky-600 shadow-2xs font-extrabold'
+                      : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
+                  }`}
+                  title="Filter kanal Webchat (Widget Toko)"
+                >
+                  <MessageSquare className="w-2.5 h-2.5 text-current shrink-0" />
+                  <span>Webchat</span>
+                  <span
+                    className={`text-[9px] px-1 rounded-full ${
+                      channelFilter === 'webchat' ? 'bg-sky-700 text-sky-100' : 'bg-sky-100 text-sky-800'
+                    }`}
+                  >
+                    {channelCounts.webchat}
+                  </span>
+                </button>
+              )}
+            </div>
+
             {/* Filter Tabs Pills (Semua, Belum Dibaca, Follow-up, Paused) */}
             <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
               <button
@@ -2532,6 +2770,9 @@ export default function TeamChatTab({
 
                         {/* Status Badges Row */}
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                          {/* Channel Badge (WABA / BoonTrack Engine / Webchat) */}
+                          <ChannelBadge channelType={c.channelType} customerPhone={c.customerPhone} />
+
                           {/* Visual Robot vs Admin Icon */}
                           {c.isBotActive !== false && !isGlobalBotPaused && c.status !== 'HUMAN_PAUSED' && c.status !== 'paused' ? (
                             <span className="px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold flex items-center gap-1" title="Bot AI sedang melayani nomor ini">
@@ -2623,6 +2864,10 @@ export default function TeamChatTab({
                       <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
                         • {currentConversation.customerPhone}
                       </span>
+                      <ChannelBadge
+                        channelType={currentConversation.channelType}
+                        customerPhone={currentConversation.customerPhone}
+                      />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
