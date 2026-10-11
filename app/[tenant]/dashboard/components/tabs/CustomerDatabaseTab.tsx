@@ -28,6 +28,7 @@ import {
   Plus,
   HeartHandshake,
   CalendarClock,
+  Upload,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ContactService } from '@/lib/crm/contact.service';
@@ -41,6 +42,7 @@ import {
   DEFAULT_FOLLOW_UP_RULES,
 } from '@/lib/crm/types';
 import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
+import BulkImportCustomersModal from '../modals/BulkImportCustomersModal';
 
 // -------------------------------------------------------------------
 // Types
@@ -166,9 +168,10 @@ export default function CustomerDatabaseTab({
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
 
   // -------------------------------------------------------------------
-  // Modal State: Tambah Pelanggan / Pasien
+  // Modal State: Tambah Pelanggan & Bulk Import
   // -------------------------------------------------------------------
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
@@ -748,6 +751,18 @@ export default function CustomerDatabaseTab({
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>+ Tambah Pelanggan / Pasien</span>
+            </button>
+
+            {/* Button Import CSV/Excel (Meta CA) */}
+            <button
+              type="button"
+              id="btn-import-customers-ca"
+              onClick={() => setIsBulkImportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95"
+              title="Import CSV/Excel untuk sinkronisasi Custom Audience Meta"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>📥 Import CSV/Excel (Meta CA)</span>
             </button>
 
             {/* Button Aturan Follow-Up Dinamis */}
@@ -1486,6 +1501,17 @@ export default function CustomerDatabaseTab({
           </div>
         </div>
       )}
+
+      {/* MODAL: IMPORT DAFTAR PELANGGAN (META CUSTOM AUDIENCE) */}
+      <BulkImportCustomersModal
+        isOpen={isBulkImportModalOpen}
+        onClose={() => setIsBulkImportModalOpen(false)}
+        tenantSlug={tenantSlug}
+        onSuccess={(summary) => {
+          setToastMessage(`✅ Berhasil mengimpor ${summary.total_success} kontak pelanggan (Meta CA).`);
+          fetchCustomers();
+        }}
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   hashEmail,
   parseName,
 } from '@/lib/tracking/meta-capi';
+import { CustomerBulkImportService } from '@/lib/services/customer-bulk-import.service';
 
 export interface RawImportOrderRow {
   tanggal_transaksi?: string | number | Date;
@@ -25,6 +26,8 @@ export interface RawImportOrderRow {
   nama_pembeli?: string;
   nomor_whatsapp?: string;
   email?: string;
+  kota?: string;
+  city?: string;
   nama_produk?: string;
   jumlah?: string | number;
   nominal?: string | number;
@@ -42,6 +45,7 @@ export interface ValidatedImportOrder {
   customerPhone: string;
   customerPhoneNormalized: string;
   customerEmail?: string;
+  city?: string;
   productTitle: string;
   quantity: number;
   grossAmount: number;
@@ -87,6 +91,7 @@ export class OrderBulkImportService {
       'Nama Pembeli',
       'Nomor WhatsApp',
       'Email (Opsional)',
+      'Kota (Opsional)',
       'Nama Produk',
       'Jumlah',
       'Nominal (Rp)',
@@ -99,8 +104,9 @@ export class OrderBulkImportService {
         '2026-10-10',
         'INV-OFFLINE-001',
         'Budi Santoso',
-        '081234567890',
+        '6281234567890',
         'budi@gmail.com',
+        'Jakarta Selatan',
         'Paket Glow Skincare 30ml',
         1,
         150000,
@@ -111,8 +117,9 @@ export class OrderBulkImportService {
         '2026-10-10',
         'INV-OFFLINE-002',
         'Siti Nurhaliza',
-        '085712345678',
+        '6285712345678',
         'siti@gmail.com',
+        'Bandung',
         'Gamis Silk Premium M',
         2,
         350000,
@@ -128,6 +135,7 @@ export class OrderBulkImportService {
       { wch: 22 },
       { wch: 18 },
       { wch: 22 },
+      { wch: 20 },
       { wch: 28 },
       { wch: 10 },
       { wch: 16 },
@@ -150,6 +158,7 @@ export class OrderBulkImportService {
       'Nama Pembeli',
       'Nomor WhatsApp',
       'Email (Opsional)',
+      'Kota (Opsional)',
       'Nama Produk',
       'Jumlah',
       'Nominal (Rp)',
@@ -157,8 +166,8 @@ export class OrderBulkImportService {
       'Catatan / Alamat',
     ].join(',');
 
-    const sample1 = '2026-10-10,INV-OFFLINE-001,Budi Santoso,081234567890,budi@gmail.com,Paket Glow Skincare 30ml,1,150000,Transfer Bank,Pelanggan offline toko';
-    const sample2 = '2026-10-10,INV-OFFLINE-002,Siti Nurhaliza,085712345678,siti@gmail.com,Gamis Silk Premium M,2,350000,QRIS Dinamis,Pesanan langsung via WhatsApp';
+    const sample1 = '2026-10-10,INV-OFFLINE-001,Budi Santoso,6281234567890,budi@gmail.com,Jakarta Selatan,Paket Glow Skincare 30ml,1,150000,Transfer Bank,Pelanggan offline toko';
+    const sample2 = '2026-10-10,INV-OFFLINE-002,Siti Nurhaliza,6285712345678,siti@gmail.com,Bandung,Gamis Silk Premium M,2,350000,QRIS Dinamis,Pesanan langsung via WhatsApp';
 
     return `${headers}\n${sample1}\n${sample2}\n`;
   }
@@ -275,8 +284,8 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 2. Resolve Nomor Telepon & Normalisasi E.164 (otomatis sanitasi awalan 62)
-      let rawPhone = String(
+      // 2. Resolve Nomor Telepon & Auto-Sanitizer (E.164: jika 08 -> 628, jika 8 -> 628, hapus non-digit)
+      const rawPhoneVal =
         row['Nomor WhatsApp'] ??
         row['nomor_whatsapp'] ??
         row['whatsapp'] ??
@@ -289,23 +298,42 @@ export class OrderBulkImportService {
         row.no_wa ??
         row.customer_phone ??
         row.hp ??
-        ''
-      ).trim().replace(/\D/g, '');
+        '';
 
-      if (rawPhone.startsWith('0')) rawPhone = '62' + rawPhone.slice(1);
-      else if (rawPhone.startsWith('8')) rawPhone = '62' + rawPhone;
-
-      const normalizedPhone = normalizePhone(rawPhone);
-      if (!normalizedPhone) {
+      const phoneResult = CustomerBulkImportService.sanitizePhoneNumber(rawPhoneVal);
+      if (!phoneResult.normalized) {
         errors.push({
           row: rowNum,
-          reason: `Nomor telepon '${rawPhone || 'kosong'}' tidak valid. Gunakan format misal 0812xxx atau 628xxx.`,
+          reason: `Nomor telepon '${rawPhoneVal || 'kosong'}' tidak valid (${phoneResult.error || 'format salah'}). Gunakan format misal 0812xxx atau 628xxx.`,
           data: row,
         });
         return;
       }
+      const rawPhone = phoneResult.rawDigits;
+      const normalizedPhone = phoneResult.normalized;
 
-      // 3. Resolve Nama Produk
+      // 3. Resolve Kota / Kabupaten (mendukung alias: kota, city, kabupaten, kab_kota)
+      const city = String(
+        row['Kota (Opsional)'] ??
+        row['Kota'] ??
+        row['kota'] ??
+        row['City'] ??
+        row['city'] ??
+        row['Kabupaten'] ??
+        row['kabupaten'] ??
+        row['kab_kota'] ??
+        row['kab/kota'] ??
+        row['kabkota'] ??
+        row['kota_kabupaten'] ??
+        row['city_name'] ??
+        row.kota ??
+        row.city ??
+        row.kabupaten ??
+        row.kab_kota ??
+        ''
+      ).trim() || undefined;
+
+      // 4. Resolve Nama Produk
       const productTitle = String(
         row['Nama Produk'] ??
         row['nama_produk'] ??
@@ -327,7 +355,7 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 4. Resolve Nominal Transaksi (pencarian header kolom harga fleksibel case-insensitive & support spasi)
+      // 5. Resolve Nominal Transaksi (pencarian header kolom harga fleksibel case-insensitive & support spasi)
       const rawNominal =
         row['Nominal (Rp)'] ??
         row['nominal'] ??
@@ -359,7 +387,7 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 5. Resolve Quantity & Date & Invoice
+      // 6. Resolve Quantity & Date & Invoice
       const rawQty = row.jumlah ?? row.qty ?? row.quantity ?? 1;
       const quantity = Math.max(1, parseInt(String(rawQty), 10) || 1);
 
@@ -392,6 +420,7 @@ export class OrderBulkImportService {
         customerPhone: rawPhone,
         customerPhoneNormalized: normalizedPhone,
         customerEmail,
+        city,
         productTitle,
         quantity,
         grossAmount,
@@ -486,6 +515,7 @@ export class OrderBulkImportService {
           source: 'bulk_import',
           batch_id: batchId,
           payment_method: o.paymentMethod,
+          city: o.city || null,
           notes: o.notes,
           synced_meta_capi: Boolean(options.syncMetaCapi),
         },
@@ -514,6 +544,7 @@ export class OrderBulkImportService {
       created_at: o.transactionDate,
       metadata: {
         batch_id: batchId,
+        city: o.city || null,
         notes: o.notes,
       },
     }));
@@ -533,11 +564,16 @@ export class OrderBulkImportService {
           o.customerName
         );
         if (contact && contact.id) {
+          const contactMeta = {
+            ...(contact.metadata || {}),
+            ...(o.city ? { city: o.city } : {}),
+          };
           await supabase
             .from('contacts')
             .update({
               lifecycle_stage: 'CUSTOMER',
               name: o.customerName,
+              metadata: contactMeta,
               updated_at: new Date().toISOString(),
             })
             .eq('id', contact.id);
@@ -553,6 +589,7 @@ export class OrderBulkImportService {
             tenant_id: tenant.id,
             name: o.customerName,
             phone: o.customerPhoneNormalized,
+            ...(o.city ? { city: o.city } : {}),
             updated_at: new Date().toISOString(),
           }, { onConflict: 'tenant_id,phone' });
       } catch {}

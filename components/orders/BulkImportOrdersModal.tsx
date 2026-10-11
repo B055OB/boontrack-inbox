@@ -99,7 +99,7 @@ export default function BulkImportOrdersModal({
           ''
         ).trim();
 
-        // Sanitize kolom telepon agar otomatis berawalan '62':
+        // Auto-Sanitizer: 08... -> 628..., 8... -> 628..., hapus karakter non-digit
         let phone = String(
           row['Nomor WhatsApp'] ??
           row['whatsapp'] ??
@@ -112,8 +112,25 @@ export default function BulkImportOrdersModal({
           norm['telepon'] ??
           ''
         ).replace(/\D/g, '');
-        if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+        if (phone.startsWith('08')) phone = '628' + phone.slice(2);
+        else if (phone.startsWith('0')) phone = '62' + phone.slice(1);
         else if (phone.startsWith('8')) phone = '62' + phone;
+
+        // Pemetaan kota / kabupaten dengan alias
+        const city = String(
+          row['Kota (Opsional)'] ??
+          row['Kota'] ??
+          row['kota'] ??
+          row['City'] ??
+          row['city'] ??
+          row['Kabupaten'] ??
+          row['kabupaten'] ??
+          norm['kota'] ??
+          norm['city'] ??
+          norm['kabupaten'] ??
+          norm['kab_kota'] ??
+          ''
+        ).trim();
 
         const product = String(
           row['Nama Produk'] ??
@@ -153,8 +170,8 @@ export default function BulkImportOrdersModal({
           return;
         }
 
-        if (!phone || phone.length < 8) {
-          errors.push({ row: rowNum, reason: `Nomor WhatsApp '${phone || 'kosong'}' tidak valid` });
+        if (!phone || phone.length < 9) {
+          errors.push({ row: rowNum, reason: `Nomor WhatsApp '${phone || 'kosong'}' tidak valid (minimal 9 digit)` });
           return;
         }
 
@@ -172,6 +189,7 @@ export default function BulkImportOrdersModal({
           ...row,
           'Nomor WhatsApp': phone,
           'Nominal (Rp)': cleanAmount,
+          ...(city ? { Kota: city } : {}),
         });
         totalRevenue += cleanAmount;
       });
