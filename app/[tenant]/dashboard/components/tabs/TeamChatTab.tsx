@@ -39,6 +39,8 @@ import {
   Zap,
   Pencil,
   Download,
+  ChevronLeft,
+  X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'next/navigation';
@@ -429,6 +431,10 @@ export default function TeamChatTab({
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+
+  // Responsive layout state (Console CS Drawer on < 1400px & Mobile single-pane)
+  const [isCsConsoleOpen, setIsCsConsoleOpen] = useState(false);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   // Quick POS Dynamic Deal Modal / Form state (Custom Deal Closing)
   const [rightPanelTab, setRightPanelTab] = useState<'crm' | 'pos'>('pos');
@@ -1221,6 +1227,7 @@ export default function TeamChatTab({
     if (externalSetActiveConversationId) {
       externalSetActiveConversationId(id);
     }
+    setIsMobileChatOpen(true);
   };
 
   // Toggle Bot Pause / CS Takeover (Consolidated Server API & Optimistic Rollback)
@@ -2429,11 +2436,11 @@ export default function TeamChatTab({
       )}
 
       {/* ── 3-PANEL WORKSPACE CONTAINER (100% W-FULL CANVAS) ───────────────── */}
-      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[680px] lg:h-[calc(100vh-210px)]">
+      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-12 min-[1400px]:grid-cols-12 min-h-[680px] lg:h-[calc(100vh-210px)] relative">
         {/* =================================================================== */}
         {/* PANEL KIRI (3 COLS): DAFTAR ANTREAN PERCAKAPAN & FILTER              */}
         {/* =================================================================== */}
-        <div className="lg:col-span-3 border-r border-slate-200 flex flex-col bg-slate-50/50 h-full overflow-hidden">
+        <div className={`border-r border-slate-200 flex flex-col bg-slate-50/50 h-full overflow-hidden md:col-span-4 min-[1400px]:col-span-3 ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {/* Header Panel Kiri & Search */}
           <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
             <div className="flex items-center justify-between">
@@ -2486,11 +2493,11 @@ export default function TeamChatTab({
             </div>
 
             {/* Omnichannel Channel Filter Pills (Horizontal) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar scroll-smooth">
+            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-0.5 no-scrollbar scroll-smooth">
               <button
                 type="button"
                 onClick={() => setChannelFilter('all')}
-                className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
                   channelFilter === 'all'
                     ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-extrabold'
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
@@ -2511,7 +2518,7 @@ export default function TeamChatTab({
                 <button
                   type="button"
                   onClick={() => setChannelFilter('waba')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
                     channelFilter === 'waba'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-extrabold'
                       : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
@@ -2534,7 +2541,7 @@ export default function TeamChatTab({
                 <button
                   type="button"
                   onClick={() => setChannelFilter('engine')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
                     channelFilter === 'engine'
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
                       : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
@@ -2557,7 +2564,7 @@ export default function TeamChatTab({
                 <button
                   type="button"
                   onClick={() => setChannelFilter('webchat')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
                     channelFilter === 'webchat'
                       ? 'bg-sky-600 text-white border-sky-600 shadow-2xs font-extrabold'
                       : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
@@ -2835,7 +2842,7 @@ export default function TeamChatTab({
         {/* =================================================================== */}
         {/* PANEL TENGAH (6 COLS): THREAD RIWAYAT OBROLAN & INPUT BALASAN       */}
         {/* =================================================================== */}
-        <div className="lg:col-span-6 flex flex-col bg-white h-full border-b lg:border-b-0 lg:border-r border-slate-200 overflow-hidden">
+        <div className={`flex flex-col bg-white h-full border-b md:border-b-0 min-[1400px]:border-r border-slate-200 overflow-hidden md:col-span-8 min-[1400px]:col-span-6 ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {!currentConversation ? (
             <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-400">
               <MessageSquare className="w-10 h-10 text-slate-300 mb-2" />
@@ -2847,6 +2854,16 @@ export default function TeamChatTab({
               {/* Header Thread */}
               <div className="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
                 <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Mobile Back Button (< md) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileChatOpen(false)}
+                    className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0"
+                    title="Kembali ke antrean chat"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs uppercase">
                     {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
                   </div>
@@ -2913,6 +2930,21 @@ export default function TeamChatTab({
                         <span className="sm:hidden">#on</span>
                       </>
                     )}
+                  </button>
+
+                  {/* Detail CS Toggle Button on < 1400px (720p / Tablet) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCsConsoleOpen((prev) => !prev)}
+                    className={`min-[1400px]:hidden px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
+                      isCsConsoleOpen
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                    }`}
+                    title="Buka / Tutup Console CS & Quick POS"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Detail CS</span>
                   </button>
                 </div>
               </div>
@@ -3431,35 +3463,53 @@ export default function TeamChatTab({
         {/* =================================================================== */}
         {/* PANEL KANAN (3 COLS): QUICK POS & CRM RINGKASAN KONTAK             */}
         {/* =================================================================== */}
-        <div className="lg:col-span-3 flex flex-col bg-slate-50/60 h-full overflow-y-auto p-3.5 space-y-3">
+        <div
+          className={`${
+            isCsConsoleOpen
+              ? 'fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 min-[1400px]:static min-[1400px]:z-auto min-[1400px]:w-auto min-[1400px]:max-w-none min-[1400px]:shadow-none min-[1400px]:border-l-0 min-[1400px]:bg-slate-50/60 min-[1400px]:col-span-3 min-[1400px]:animate-none min-[1400px]:h-full'
+              : 'hidden min-[1400px]:flex min-[1400px]:col-span-3 flex-col bg-slate-50/60 h-full overflow-y-auto p-3.5 space-y-3'
+          }`}
+        >
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
               <ShoppingBag className="w-3.5 h-3.5 text-indigo-600" />
               <span>Console CS</span>
             </span>
-            <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg text-[10px] font-bold">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab('crm')}
+                  className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                    rightPanelTab === 'crm'
+                      ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Pelanggan (CRM)</span>
+                  {!isCrmEnabled && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab('pos')}
+                  className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
+                    rightPanelTab === 'pos'
+                      ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Quick POS
+                </button>
+              </div>
+
+              {/* Close Button for Slide-over Drawer on < 1400px */}
               <button
                 type="button"
-                onClick={() => setRightPanelTab('crm')}
-                className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
-                  rightPanelTab === 'crm'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={() => setIsCsConsoleOpen(false)}
+                className="min-[1400px]:hidden p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                title="Tutup Console CS"
               >
-                <span>Pelanggan (CRM)</span>
-                {!isCrmEnabled && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightPanelTab('pos')}
-                className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
-                  rightPanelTab === 'pos'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Quick POS
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -4142,6 +4192,14 @@ export default function TeamChatTab({
           )}
         </div>
       </div>
+
+      {/* Backdrop overlay saat Console CS Drawer terbuka di layar < 1400px */}
+      {isCsConsoleOpen && (
+        <div
+          className="min-[1400px]:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
+          onClick={() => setIsCsConsoleOpen(false)}
+        />
+      )}
 
       {/* ── MODAL: UNDANG CS / TAMBAH ADMIN ───────────────────────────────── */}
       {isInviteCsModalOpen && (

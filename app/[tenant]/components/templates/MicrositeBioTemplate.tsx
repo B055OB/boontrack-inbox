@@ -424,6 +424,33 @@ export default function MicrositeBioTemplate({
     ? `https://wa.me/${cleanWhatsapp}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20tertarik%20dengan%20produk%2Flayanan%20Anda`
     : '';
 
+  // Universal Headless Checkout Trigger ([data-bt-checkout] & [href="#checkout"])
+  useEffect(() => {
+    const handleGlobalCheckoutClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"]') as HTMLElement | null;
+      if (!target) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const products = storeProducts || tenantMetadata?.products || tenant?.metadata?.products || [];
+      const productId = target.getAttribute('data-product-id') || target.getAttribute('data-id');
+      const targetProduct = productId
+        ? products.find((p: any) => String(p.id) === String(productId))
+        : (products[0] || null);
+
+      if (targetProduct) {
+        setSelectedProduct(targetProduct);
+      }
+      setIsCheckoutOpen(true);
+    };
+
+    document.addEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    return () => {
+      document.removeEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    };
+  }, [storeProducts, tenantMetadata, tenant]);
+
   // ── Auto-inject Meta & TikTok pixels from tenant.metadata.tracking / tenant_settings ───
   useEffect(() => {
     let isMounted = true;

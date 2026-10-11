@@ -1628,6 +1628,56 @@ function SingleProductContent() {
     }
   };
 
+  // Universal Headless Checkout Trigger ([data-bt-checkout] & [href="#checkout"])
+  useEffect(() => {
+    const handleGlobalCheckoutClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"]') as HTMLElement | null;
+      if (!target) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Read optional overrides from attributes
+      const variantAttr = target.getAttribute('data-variant');
+      if (variantAttr) {
+        setSelectedVariant(variantAttr);
+      }
+      const qtyAttr = target.getAttribute('data-qty') || target.getAttribute('data-quantity');
+      if (qtyAttr) {
+        const parsedQty = parseInt(qtyAttr, 10);
+        if (!isNaN(parsedQty) && parsedQty > 0) {
+          setQuantity(parsedQty);
+        }
+      }
+
+      // Track initiation events
+      if (!hasTrackedAddToCart) {
+        trackAddToCart({
+          id: slug,
+          name: product.name,
+          price: basePrice
+        });
+        setHasTrackedAddToCart(true);
+      }
+      if (!hasTrackedInitiateCheckout) {
+        trackInitiateCheckout({
+          id: slug,
+          name: product.name,
+          price: basePrice
+        });
+        setHasTrackedInitiateCheckout(true);
+      }
+
+      // Trigger built-in modal checkout without redirect / page jump
+      setCheckoutOpen(true);
+    };
+
+    document.addEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    return () => {
+      document.removeEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    };
+  }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout]);
+
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;

@@ -24,6 +24,7 @@ import {
   Check,
   Printer,
   Upload,
+  MessageCircle,
 } from 'lucide-react';
 import BulkImportOrdersModal from '@/components/orders/BulkImportOrdersModal';
 import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
@@ -110,6 +111,25 @@ export function mapRawOrder(o: any): OrderItem {
     is_archived: Boolean(o.is_archived),
     created_at: o.created_at || new Date().toISOString(),
   };
+}
+
+export function getDigitalWhatsAppResendUrl(order: OrderItem, storeName: string): string | null {
+  const phone = (order.customer_phone || '').replace(/\D/g, '').replace(/^0/, '62');
+  if (!phone) return null;
+  const meta = order.fulfillment_metadata;
+  const name = order.customer_name || 'Pelanggan';
+  const invoice = order.invoice_no || order.id || '';
+  const accessUrl = meta?.access_url || '';
+  const licenseKey = meta?.license_key || '';
+  const instructions = meta?.instructions || '';
+
+  let message = `Halo ${name}, terima kasih telah memesan di ${storeName} (Invoice: ${invoice}).\n\nBerikut rincian akses produk digital Anda:`;
+  if (accessUrl) message += `\n🔗 Link Akses: ${accessUrl}`;
+  if (licenseKey) message += `\n🔑 Lisensi: ${licenseKey}`;
+  if (instructions) message += `\n📝 Petunjuk: ${instructions}`;
+  message += `\n\nJika membutuhkan bantuan lebih lanjut, silakan balas pesan ini. Terima kasih!`;
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
 export default function OrdersTab({
@@ -899,6 +919,27 @@ export default function OrdersTab({
                             </button>
                           )}
 
+                          {/* Quick Kirim Ulang WA Akses Digital */}
+                          {(() => {
+                            const normType = String(ord.product_type || '').toUpperCase();
+                            const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
+                            const reqs = resolveFulfillmentRequirements(ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
+                            const isDigital = isDigitalOrService || !reqs.requiresShipping;
+                            const waUrl = getDigitalWhatsAppResendUrl(ord, storeDisplayName || tenantSlug);
+                            return isDigital && waUrl ? (
+                              <a
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                                title="Kirim Ulang Akses / Lisensi via WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              </a>
+                            ) : null;
+                          })()}
+
                           <GodPayButton
                             order={ord as GodPayOrderItem}
                             tenantSlug={tenantSlug}
@@ -1139,6 +1180,21 @@ export default function OrdersTab({
                             <span>Buka URL Akses Materi</span>
                             <ExternalLink className="w-3 h-3" />
                           </a>
+                        )}
+
+                        {selectedOrder.customer_phone && (
+                          <div className="pt-2 border-t border-blue-100 flex items-center justify-between">
+                            <span className="text-[11px] text-slate-500 font-medium">Kirim Informasi ke Pembeli:</span>
+                            <a
+                              href={getDigitalWhatsAppResendUrl(selectedOrder, storeDisplayName || tenantSlug) || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>Kirim Ulang WA</span>
+                            </a>
+                          </div>
                         )}
                       </div>
                     </div>

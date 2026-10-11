@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ShoppingBag, Plus, Minus, X, QrCode } from 'lucide-react';
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
 import type { Product } from '@/app/[tenant]/types';
@@ -57,6 +57,41 @@ export function StorefrontTemplate({
   const setIsCheckoutOpen = props.setIsCheckoutOpen || setInternalIsCheckoutOpen;
   const productForCheckout = props.productForCheckout || internalProductForCheckout;
   const setProductForCheckout = props.setProductForCheckout || setInternalProductForCheckout;
+  const products = storeProducts || context?.tenant?.metadata?.products || [];
+
+  // Universal Headless Checkout Trigger ([data-bt-checkout] & [href="#checkout"])
+  useEffect(() => {
+    const handleGlobalCheckoutClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"]') as HTMLElement | null;
+      if (!target) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const productId = target.getAttribute('data-product-id') || target.getAttribute('data-id');
+      const targetProduct = productId
+        ? products.find((p: any) => String(p.id) === String(productId))
+        : (products[0] || null);
+
+      if (targetProduct) {
+        if (onInitiateCheckout) {
+          onInitiateCheckout(targetProduct);
+        } else if (props.onInitiateCheckout) {
+          props.onInitiateCheckout(targetProduct);
+        } else {
+          setProductForCheckout(targetProduct);
+          setIsCheckoutOpen(true);
+        }
+      } else {
+        setIsCheckoutOpen(true);
+      }
+    };
+
+    document.addEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    return () => {
+      document.removeEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    };
+  }, [products, setIsCheckoutOpen, setProductForCheckout, onInitiateCheckout, props]);
 
   const totalCartCount = useMemo(() => cart.reduce((acc: number, c: any) => acc + (c.qty || 1), 0), [cart]);
   const totalCartPrice = useMemo(() => cart.reduce((acc: number, c: any) => acc + (Number(c.product?.price || 0) * (c.qty || 1)), 0), [cart]);
@@ -218,7 +253,6 @@ export function StorefrontTemplate({
 
   // Standalone storefront render
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const products = storeProducts || context?.tenant?.metadata?.products || [];
   const meta = tenantMetadata || context?.tenant?.metadata || tenant?.metadata;
   const sections = resolveStorefrontSections(meta);
   const copy = resolveStorefrontCopy(meta, effectiveName);
