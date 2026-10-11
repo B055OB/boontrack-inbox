@@ -18,6 +18,24 @@ const domainCache = new Map<string, DomainCacheEntry>();
 const tenantSlugToIdCache = new Map<string, { id: string | null; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
+// Known Custom Domains Registry (Fast-path mapping with 0ms edge latency)
+const KNOWN_CUSTOM_DOMAINS: Record<string, { slug: string; tenantId?: string }> = {
+  'konsul.littlebitefeeding.com': {
+    slug: 'tumbuh-kembang-anak',
+    tenantId: '692080ea-81b7-496b-87ee-bd8b9565b28c',
+  },
+  'screening.littlebitefeeding.com': {
+    slug: 'tumbuh-kembang-anak',
+    tenantId: '692080ea-81b7-496b-87ee-bd8b9565b28c',
+  },
+};
+
+// Root / Apex Domain Redirects to Official Operational Subdomains (301 Permanent Redirect)
+const ROOT_DOMAIN_REDIRECTS: Record<string, string> = {
+  'littlebitefeeding.com': 'https://konsul.littlebitefeeding.com',
+  'www.littlebitefeeding.com': 'https://konsul.littlebitefeeding.com',
+};
+
 // Known B2B Tenant Slugs (webchat + CS inbox engine)
 const B2B_TENANT_SLUGS = new Set([
   'atmosfitnes',
@@ -88,6 +106,12 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
  * 3. Fallback ke Supabase REST jika Core Backend 404 / offline
  */
 async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | null; tenantId: string | null }> {
+  // 0. Fast-path: Known Custom Domains Registry (0ms Edge Execution)
+  const known = KNOWN_CUSTOM_DOMAINS[hostname];
+  if (known) {
+    return { slug: known.slug, tenantId: known.tenantId || null };
+  }
+
   const cached = domainCache.get(hostname);
   const now = Date.now();
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
@@ -126,9 +150,13 @@ async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | 
   if (!slug) {
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const currentKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+      const supabaseKey =
+        (currentKey && !currentKey.startsWith('sb_secret_'))
+          ? currentKey
+          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7');
       if (supabaseKey) {
-        const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&metadata->>custom_domain=eq.${encodeURIComponent(hostname)}&limit=1`;
+        const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&or=(metadata->>custom_domain.eq.${encodeURIComponent(hostname)},metadata->custom_domains.cs.["${encodeURIComponent(hostname)}"])&limit=1`;
         const supaRes = await fetch(supaUrl, {
           headers: {
             apikey: supabaseKey,
@@ -898,6 +926,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
       return NextResponse.redirect(loginUrl, 302);
     }
+  }
+
+  // ── 0c. ROOT / APEX DOMAIN REDIRECT TO OPERATIONAL SUBDOMAIN (301 Permanent Redirect) ──
+  const rootRedirectTarget = ROOT_DOMAIN_REDIRECTS[hostClean];
+  if (rootRedirectTarget) {
+    const targetUrl = new URL(`${rootRedirectTarget}${pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(targetUrl, 301);
   }
 
   // ── 1. CUSTOM DOMAIN LOOKUP & REWRITE ──
