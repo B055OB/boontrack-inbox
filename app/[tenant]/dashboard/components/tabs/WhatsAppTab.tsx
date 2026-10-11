@@ -109,6 +109,8 @@ export default function WhatsAppTab({
   const [localGreeting, setLocalGreeting] = useState<string>(greetingMessage || '');
   const [isSavingLocal, setIsSavingLocal] = useState(false);
   const [runtimeMode, setRuntimeMode] = useState<'dedicated' | 'coexistence'>('dedicated');
+  // Track QR image decode/render errors untuk fallback UI
+  const [qrImgError, setQrImgError] = useState(false);
 
   React.useEffect(() => {
     if (greetingMessage !== undefined) {
@@ -146,10 +148,10 @@ export default function WhatsAppTab({
       setIsSavingLocal(false);
     }
   };
-  // Pastikan nomor Platform WABA (+62 851-8183-0080) TIDAK MUNCUL sebagai koneksi toko merchant
+  // FIX: Jangan mensyaratkan connectedPhone untuk menampilkan status CONNECTED.
+  // Instance bisa terkoneksi (Evolution state=open) tanpa phone terpopulasi di Supabase.
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
-    Boolean(connectedPhone) &&
     !isPlatformWaba(connectedPhone) &&
     waConnectionMode !== 'SHARED';
   return (
@@ -371,11 +373,21 @@ export default function WhatsAppTab({
                 ) : qrCodeUrl ? (
                   <div className="flex flex-col items-center justify-center text-center space-y-3">
                     <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
-                      <img
-                        src={qrCodeUrl}
-                        alt="WhatsApp QR Code"
-                        className="w-56 h-56 object-contain block mx-auto"
-                      />
+                      {qrImgError ? (
+                        <div className="w-56 h-56 flex flex-col items-center justify-center gap-2 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                          <AlertTriangle className="w-8 h-8 text-amber-400" />
+                          <p className="text-[11px] font-medium text-slate-500">Gagal memuat QR Code.<br />Klik &lsquo;Muat Ulang&rsquo; untuk mencoba lagi.</p>
+                        </div>
+                      ) : (
+                        <img
+                          key={qrCodeUrl}
+                          src={qrCodeUrl!}
+                          alt="WhatsApp QR Code"
+                          className="w-56 h-56 object-contain block mx-auto"
+                          onLoad={() => setQrImgError(false)}
+                          onError={() => setQrImgError(true)}
+                        />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">

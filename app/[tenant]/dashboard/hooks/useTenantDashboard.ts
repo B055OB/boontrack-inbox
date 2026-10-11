@@ -2570,24 +2570,34 @@ export function useTenantDashboard() {
       if (data.provider) setWaProvider(data.provider);
       if (data.mode) setWaConnectionMode(data.mode);
 
-      const rawPhone = String(data.phone_number || data.connected_phone || '');
+      const rawPhone = String(data.phone_number || data.connected_phone || '').trim();
       const isPlatform =
         rawPhone.includes('85181830080') ||
         rawPhone.includes('85179555449') ||
         rawPhone.includes('85139555449') ||
         data.mode === 'SHARED';
 
-      if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {
+      // FIX: Jangan mensyaratkan rawPhone untuk menentukan CONNECTED.
+      // Instance bisa sudah connected (state=open di Evolution) tetapi phone_number belum
+      // terpopulasi di Supabase — kondisi sebelumnya menyebabkan blank QR silent.
+      const isConnected = (data.status === 'CONNECTED' || data.connected === true) && !isPlatform;
+
+      if (isConnected) {
         setWaStatus('CONNECTED');
-        setConnectedPhone(rawPhone);
+        setConnectedPhone(rawPhone || null);
         setQrCodeUrl(null);
         setWaErrorMessage(null);
       } else {
-        setWaStatus('CONNECTING');
+        // Hanya set CONNECTING jika bukan status CONNECTED
+        if (data.status !== 'CONNECTED') {
+          setWaStatus('CONNECTING');
+        }
         // Tangkap string gambar base64 murni dari respons BoonTrack WhatsApp Engine
         const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
         if (qr) {
-          setQrCodeUrl(qr);
+          // Validasi minimal: base64 QR harus berupa data URI atau raw base64
+          const normalizedQr = qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
+          setQrCodeUrl(normalizedQr);
         }
         setWaErrorMessage(null);
       }
@@ -2651,16 +2661,17 @@ export function useTenantDashboard() {
           rawPhone.includes('85139555449') ||
           data.mode === 'SHARED';
 
-        if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {
+        if ((data.status === 'CONNECTED' || data.connected === true) && !isPlatform) {
           setWaStatus('CONNECTED');
-          setConnectedPhone(rawPhone);
+          setConnectedPhone(rawPhone || null);
           setQrCodeUrl(null);
           setWaErrorMessage(null);
           clearInterval(pollInterval);
         } else if (data.status === 'CONNECTING') {
-          const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
-          if (qr && qr !== qrCodeUrl) {
-            setQrCodeUrl(qr);
+          const rawQr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
+          if (rawQr) {
+            const normalizedQr = rawQr.startsWith('data:') ? rawQr : `data:image/png;base64,${rawQr}`;
+            if (normalizedQr !== qrCodeUrl) setQrCodeUrl(normalizedQr);
           }
         }
       } catch (err) {
