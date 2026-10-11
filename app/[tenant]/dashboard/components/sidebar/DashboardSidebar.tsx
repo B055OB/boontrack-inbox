@@ -1,213 +1,34 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
   Store,
   ExternalLink,
-  Link as LinkIcon,
-  Package,
-  Brain,
-  Radio,
-  MessageSquare,
-  Target,
-  CreditCard,
-  Lock,
-  ShoppingBag,
   ChevronsUpDown,
   User,
   Crown,
   Globe,
   LogOut,
-  Palette,
   Sparkles,
   LayoutDashboard,
-  Wrench,
-  FileText,
-  Calendar,
-  Video,
-  UtensilsCrossed,
-  Truck,
-  Bike,
-  CalendarCheck,
-  FolderKey,
-  Share2,
   Settings,
-  Users,
+  ChevronDown,
+  Lock,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
 import { hasTierAccess } from '@/lib/subscription-tiers';
 import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 import PwaInstallPrompt from '../PwaInstallPrompt';
-
-function getVerticalMenuConfig(storeCategory?: string) {
-  const norm = (storeCategory || '').toUpperCase().trim();
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
-  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI'].some((k) => norm.includes(k));
-
-  if (isProService) {
-    return {
-      label: 'Katalog Jasa & Konsultasi',
-      badge: 'Jasa',
-      icon: Calendar,
-    };
-  }
-
-  if (isFieldService) {
-    return {
-      label: 'Layanan & Servis Lapangan',
-      badge: 'Jasa',
-      icon: Wrench,
-    };
-  }
-
-  const verticalKey = resolveDomainVertical(storeCategory);
-  switch (verticalKey) {
-    case 'field-service':
-      return {
-        label: 'Layanan & Servis Lapangan',
-        badge: 'Jasa',
-        icon: Wrench,
-      };
-    case 'digital-product':
-      return {
-        label: 'Produk & Materi Digital',
-        badge: 'Digital',
-        icon: FileText,
-      };
-    case 'pro-service':
-      return {
-        label: 'Katalog Jasa & Konsultasi',
-        badge: 'Jasa',
-        icon: Calendar,
-      };
-    case 'creator-agency':
-      return {
-        label: 'Paket & Jasa Kreator',
-        badge: 'Agency',
-        icon: Video,
-      };
-    case 'fnb-culinary':
-      return {
-        label: 'Menu Kuliner & FnB',
-        badge: 'FnB',
-        icon: UtensilsCrossed,
-      };
-    case 'physical-retail':
-    default:
-      return {
-        label: 'Katalog & Produk',
-        badge: 'Fisik',
-        icon: Package,
-      };
-  }
-}
-
-export interface OperationalMenuItem {
-  label: string;
-  targetTab: string;
-  badge: string;
-  icon: React.ElementType;
-  colorClass: string;
-}
-
-function getVerticalOperationalMenuItems(
-  categoryOrType?: string,
-  capabilities?: { shipping?: boolean; booking?: boolean; digital_fulfillment?: boolean; [key: string]: any } | null
-): OperationalMenuItem[] {
-  const norm = (categoryOrType || '').toUpperCase().trim();
-  const items: OperationalMenuItem[] = [];
-
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
-  const isFieldService = !isProService && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => norm.includes(k)));
-  const isBookingActive = isProService || isFieldService || capabilities?.booking === true;
-
-  const isFood = ['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => norm.includes(k));
-  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => norm.includes(k)) || capabilities?.digital_fulfillment === true;
-  const isAgency = ['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'CAMPAIGN', 'TALENT', 'AFFILIATE'].some((k) => norm.includes(k));
-
-  // 1. Pengiriman & Ekspedisi (Hanya produk fisik & FnB, kecuali shipping dinonaktifkan secara eksplisit)
-  const isPhysical = (!isDigital && !isProService && !isFieldService && !isAgency) || norm === 'PHYSICAL' || norm === 'RETAIL' || isFood;
-  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false;
-
-  if (showShipping) {
-    if (isFood) {
-      items.push({
-        label: 'Kurir Instan & Dapur',
-        targetTab: 'shipping',
-        badge: 'INSTAN',
-        icon: Bike,
-        colorClass: 'bg-amber-50 text-amber-600',
-      });
-    } else {
-      items.push({
-        label: 'Pengiriman & Ekspedisi',
-        targetTab: 'shipping',
-        badge: 'KURIR',
-        icon: Truck,
-        colorClass: 'bg-teal-50 text-teal-600',
-      });
-    }
-  }
-
-  // 2. Jadwal & Booking (Hanya jika vertikal toko adalah jasa/klinis/booking atau flag booking aktif)
-  if (isBookingActive) {
-    if (isProService) {
-      items.push({
-        label: 'Jadwal & Sesi Konsultasi',
-        targetTab: 'booking',
-        badge: 'SESI',
-        icon: Calendar,
-        colorClass: 'bg-blue-50 text-blue-600',
-      });
-    } else {
-      items.push({
-        label: 'Jadwal & Booking Servis',
-        targetTab: 'booking',
-        badge: 'SLOT',
-        icon: CalendarCheck,
-        colorClass: 'bg-emerald-50 text-emerald-600',
-      });
-    }
-  }
-
-  // 3. Akses Unduh & Lisensi (Produk Digital)
-  if (isDigital) {
-    items.push({
-      label: 'Akses Unduh & Lisensi',
-      targetTab: 'downloads',
-      badge: 'AKSES',
-      icon: FolderKey,
-      colorClass: 'bg-indigo-50 text-indigo-600',
-    });
-  }
-
-  // 4. Manajemen Kampanye & UGC (Creator Agency)
-  if (isAgency) {
-    items.push({
-      label: 'Manajemen Kampanye & UGC',
-      targetTab: 'campaigns',
-      badge: 'UGC',
-      icon: Share2,
-      colorClass: 'bg-pink-50 text-pink-600',
-    });
-  }
-
-  // Fallback: jika belum ada item sama sekali dan toko bukan non-shipping murni, berikan Pengiriman
-  if (items.length === 0 && capabilities?.shipping !== false) {
-    items.push({
-      label: 'Pengiriman & Ekspedisi',
-      targetTab: 'shipping',
-      badge: 'KURIR',
-      icon: Truck,
-      colorClass: 'bg-teal-50 text-teal-600',
-    });
-  }
-
-  return items;
-}
+import {
+  buildMenuRegistry,
+  findParentGroupId,
+  isTabActiveInItem,
+  NavMenuGroup,
+  NavMenuItem,
+  NavBadgeConfig,
+} from './menuRegistry';
 
 interface DashboardSidebarProps {
   tenant?: { tier?: string; [key: string]: any } | null;
@@ -249,6 +70,37 @@ interface DashboardSidebarProps {
   className?: string;
 }
 
+function NavBadgeRenderer({ badge }: { badge?: NavBadgeConfig | null }) {
+  if (!badge || (!badge.text && !badge.isLock)) return null;
+
+  const variantClass = (() => {
+    switch (badge.variant) {
+      case 'info':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'success':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'warning':
+        return 'bg-amber-50 text-amber-800 border-amber-200';
+      case 'purple':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'locked':
+        return 'bg-slate-100 text-slate-500 border-slate-200';
+      case 'neutral':
+      default:
+        return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+  })();
+
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.2 text-[9px] font-bold border shrink-0 ${variantClass}`}
+    >
+      {badge.isLock && <Lock className="w-2.5 h-2.5 shrink-0" />}
+      {badge.text ? <span>{badge.text}</span> : null}
+    </span>
+  );
+}
+
 export default function DashboardSidebar({
   tenant,
   tenantSlug,
@@ -286,11 +138,14 @@ export default function DashboardSidebar({
   const effectiveCustomDomain = customDomain || tenant?.custom_domain || tenant?.metadata?.custom_domain || null;
   const storefrontUrl = getStorefrontUrl(tenantSlug, effectiveCustomDomain);
   const currentTier = String(tenant?.tier || '').toUpperCase();
-  const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
   const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
   const isCrmEffective = Boolean(isCrmEnabled || (isTeamScale && hasTierAccess(tenant, 'crm')));
   const isResellerEffective = Boolean(isTeamScale || hasTierAccess(tenant, 'reseller'));
-  const isAiBotEffective = isAiBotAllowed !== undefined ? isAiBotAllowed : Boolean(!isCheckoutLite && (isAdsPerformance || isTeamScale || hasTierAccess(tenant, 'ai_bot')));
+  const isAiBotEffective =
+    isAiBotAllowed !== undefined
+      ? isAiBotAllowed
+      : Boolean(!isCheckoutLite && (isAdsPerformance || isTeamScale || hasTierAccess(tenant, 'ai_bot')));
+
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -323,45 +178,91 @@ export default function DashboardSidebar({
 
   const nameToShow = storeDisplayName || displayName || tenantSlug;
 
-  const isMainTabActive = (tab: string) => {
-    if (tab === 'dashboard' && (activeTab === 'dashboard' || activeTab === 'overview' || activeTab === 'microsite' || activeTab === 'links')) return true;
-    if (tab === 'catalog' && (activeTab === 'catalog' || activeTab === 'products')) return true;
-    if (tab === 'themes' && (activeTab === 'themes' || activeTab === 'storefront')) return true;
-    if (tab === 'ai_knowledge' && activeTab === 'ai_knowledge') return true;
-    return false;
-  };
+  // Build Centralized Navigation Registry
+  const menuGroups = useMemo(
+    () =>
+      buildMenuRegistry({
+        storeCategory,
+        businessType,
+        capabilities,
+        productCount,
+        activeProductCount,
+        orderCount,
+        inboxCount,
+        isCheckoutLite,
+        isTeamScale,
+        isAdsPerformance,
+        isAdsTrackingUnlocked,
+        isSoloOrTrial,
+        isCrmEffective,
+        isResellerEffective,
+        isAiBotEffective,
+        tierLabel,
+        grantDaysLeft,
+      }),
+    [
+      storeCategory,
+      businessType,
+      capabilities,
+      productCount,
+      activeProductCount,
+      orderCount,
+      inboxCount,
+      isCheckoutLite,
+      isTeamScale,
+      isAdsPerformance,
+      isAdsTrackingUnlocked,
+      isSoloOrTrial,
+      isCrmEffective,
+      isResellerEffective,
+      isAiBotEffective,
+      tierLabel,
+      grantDaysLeft,
+    ]
+  );
 
-  const isPowerTabActive = (tab: string) => {
-    if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator' || activeTab === 'telegram_alerts')) return true;
-    if (tab === 'inbox' && activeTab === 'inbox') return true;
-    if (tab === 'crm' && (activeTab === 'crm' || activeTab === 'customers')) return true;
-    if (tab === 'ads_tracking' && activeTab === 'ads_tracking') return true;
-    if (tab === 'finance' && (activeTab === 'finance' || activeTab === 'overview' || activeTab === 'integration' || activeTab === 'analytics')) return true;
-    if (tab === 'orders' && activeTab === 'orders') return true;
-    if (tab === 'shipping' && (activeTab === 'shipping' || activeTab === 'biteship')) return true;
-    if (tab === 'booking' && activeTab === 'booking') return true;
-    if (tab === 'downloads' && activeTab === 'downloads') return true;
-    if (tab === 'campaigns' && activeTab === 'campaigns') return true;
-    if (tab === 'reseller' && activeTab === 'reseller') return true;
-    return false;
+  // UX Rule 1 & 2: Default state & State-Aware Routing
+  // - Default state: closed when entering Ringkasan (openGroupId = null)
+  // - State-aware routing: opens the parent group containing the active tab on mount or refresh
+  const [openGroupId, setOpenGroupId] = useState<string | null>(() => {
+    const parent = findParentGroupId(activeTab, menuGroups);
+    return parent && parent !== 'ringkasan' ? parent : null;
+  });
+
+  // Automatically open the parent group when activeTab changes (e.g. on navigation or deep-linking)
+  useEffect(() => {
+    const parent = findParentGroupId(activeTab, menuGroups);
+    if (parent && parent !== 'ringkasan') {
+      setOpenGroupId(parent);
+    }
+  }, [activeTab, menuGroups]);
+
+  // UX Rule 3: Single / Controlled Accordion (Toggle current, close others)
+  const handleToggleGroup = (groupId: string) => {
+    setOpenGroupId((prev) => (prev === groupId ? null : groupId));
   };
 
   const handleSelectTab = (tab: string) => {
-    const targetTab = (tab === 'microsite' || tab === 'links') ? 'dashboard' : tab;
+    const targetTab = tab === 'microsite' || tab === 'links' ? 'dashboard' : tab;
     setActiveTab(targetTab);
     if (onCloseMobileDrawer) {
       onCloseMobileDrawer();
     }
   };
 
+  // Extract Ringkasan & Secondary Collapsible Groups
+  const ringkasanGroup = menuGroups.find((g) => g.id === 'ringkasan');
+  const ringkasanItem = ringkasanGroup?.items[0];
+  const collapsibleGroups = menuGroups.filter((g) => g.isCollapsible);
+
   return (
     <aside
       className={`w-64 xl:w-72 bg-white border-r border-slate-200 h-screen sticky top-0 self-start flex flex-col justify-between shrink-0 select-none z-40 overflow-hidden ${className}`}
     >
       {/* ======================================================== */}
-      {/* 1. TOP SECTION: KARTU PROFIL TOKO & POPOVER (PALING ATAS) */}
+      {/* 1. TOP SECTION: KARTU PROFIL TOKO & POPOVER (STICKY TOP) */}
       {/* ======================================================== */}
-      <div className="p-3 border-b border-slate-100 relative bg-white" ref={popoverRef}>
+      <div className="p-3 border-b border-slate-100 relative bg-white shrink-0" ref={popoverRef}>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -412,17 +313,17 @@ export default function DashboardSidebar({
                       <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                     )}
                     <span>
-                      {(tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout')
+                      {tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout'
                         ? tierLabel
-                        : (isCheckoutLite
-                          ? 'Checkout Lite'
-                          : isTeamScale
-                          ? 'Team Scale'
-                          : isAdsPerformance
-                          ? isTrialActive || trialDaysLeft !== null
-                            ? 'Ads Performance'
-                            : 'Ads Performance'
-                          : 'Paket Starter')}
+                        : isCheckoutLite
+                        ? 'Checkout Lite'
+                        : isTeamScale
+                        ? 'Team Scale'
+                        : isAdsPerformance
+                        ? isTrialActive || trialDaysLeft !== null
+                          ? 'Ads Performance'
+                          : 'Ads Performance'
+                        : 'Paket Starter'}
                     </span>
                   </span>
 
@@ -454,14 +355,16 @@ export default function DashboardSidebar({
           </button>
         </div>
 
-        {/* POPOVER MENU (Terbuka Presisi ke Bawah: side="bottom" align="start") */}
+        {/* POPOVER MENU (side="bottom" align="start") */}
         {isPopoverOpen && (
           <div className="absolute top-full left-3 right-3 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
             {/* Header info in popover */}
             <div className="px-3 py-2 border-b border-slate-100">
               <p className="text-xs font-black text-slate-900 truncate">{nameToShow}</p>
               <p className="text-[10px] font-semibold text-slate-400 truncate">
-                {effectiveCustomDomain ? effectiveCustomDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}
+                {effectiveCustomDomain
+                  ? effectiveCustomDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+                  : `shop.boontrack.com/${tenantSlug}`}
               </p>
             </div>
 
@@ -525,7 +428,7 @@ export default function DashboardSidebar({
 
             <div className="h-[1px] bg-slate-100 my-1" />
 
-            {/* Menu 4: Keluar (Logout) */}
+            {/* Menu 5: Keluar (Logout) */}
             <button
               type="button"
               onClick={() => {
@@ -557,722 +460,244 @@ export default function DashboardSidebar({
       </div>
 
       {/* ======================================================== */}
-      {/* 2. MIDDLE SECTION: NAVIGATION DENGAN MODERN SAAS MAKEOVER */}
+      {/* 2. MIDDLE SECTION: NAVIGATION REFACTOR BERBASIS REGISTRY */}
       {/* ======================================================== */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 no-scrollbar">
-        {isCheckoutLite ? (
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 no-scrollbar">
+        {/* GRUP 1: RINGKASAN (Dashboard, metrik penting, aktivitas terbaru) */}
+        {ringkasanItem && (
           <div>
-            <div className="flex items-center justify-between px-3 pt-1 pb-2">
-              <span className="text-[10px] font-bold tracking-widest text-amber-700 uppercase">
-                CHECKOUT LITE MENU
-              </span>
-              <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                5 MENU
-              </span>
-            </div>
-
-            <div className="space-y-1">
-              {/* 1. Dashboard: Metrik ringkas (omzet, volume order, status pesanan) */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('dashboard')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'dashboard' || activeTab === 'overview'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {(activeTab === 'dashboard' || activeTab === 'overview') && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
-                    <LayoutDashboard className="w-4 h-4" />
+            {(() => {
+              const isRingkasanActive = isTabActiveInItem(ringkasanItem, activeTab);
+              const RingkasanIcon = ringkasanItem.icon;
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab(ringkasanItem.targetTab)}
+                  className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition cursor-pointer group ${
+                    isRingkasanActive
+                      ? 'bg-indigo-50/90 text-indigo-900 font-semibold shadow-2xs ring-1 ring-indigo-500/20'
+                      : 'text-slate-700 hover:text-slate-900 hover:bg-slate-50/90 font-medium'
+                  }`}
+                  title={ringkasanItem.description || 'Dashboard, metrik penting, aktivitas terbaru'}
+                >
+                  {isRingkasanActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                        isRingkasanActive
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100'
+                      }`}
+                    >
+                      <RingkasanIcon className="w-4 h-4" />
+                    </div>
+                    <div className="text-left truncate">
+                      <span className="truncate block font-bold leading-tight">
+                        {ringkasanItem.label}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal truncate block leading-tight mt-0.5">
+                        Metrik &amp; Aktivitas
+                      </span>
+                    </div>
                   </div>
-                  <span className="truncate">Dashboard</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-600">
-                  Ringkas
-                </span>
-              </button>
-
-              {/* 2. Products / Katalog Produk: Daftar produk dengan visual indikator kuota (X/3 Produk Aktif) */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('catalog')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'catalog' || activeTab === 'products'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {(activeTab === 'catalog' || activeTab === 'products') && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                    <Package className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Katalog Produk</span>
-                </div>
-                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  {activeProductCount !== undefined ? activeProductCount : productCount}/3 Aktif
-                </span>
-              </button>
-
-              {/* 3. Orders / Pesanan: Tabel pemantauan pesanan masuk */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('orders')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'orders'
-                    ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {activeTab === 'orders' && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                    <ShoppingBag className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Daftar Pesanan Toko</span>
-                </div>
-                {orderCount > 0 ? (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
-                    {orderCount}
-                  </span>
-                ) : null}
-              </button>
-
-              {/* 4. Store Settings: Batasi khusus 4 sub-menu saja */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('settings')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'settings'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {activeTab === 'settings' && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
-                    <Store className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Pengaturan Toko</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-600">
-                  4 Sub-menu
-                </span>
-              </button>
-
-              {/* 5. Ads Tracking Lite: Pengaturan Meta & TikTok Pixel */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('ads_tracking')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'ads_tracking'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {activeTab === 'ads_tracking' && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
-                    <Target className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Ads Tracking Pro</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  Pixel Lite
-                </span>
-              </button>
-
-              {/* 6. Smart Chatbox (Live CS) - Gated Feature Teaser */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('inbox')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'inbox'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {activeTab === 'inbox' && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-500 text-white shadow-2xs">
-                    <MessageSquare className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Smart Chatbox</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5 text-amber-600" />
-                  <span>CAPI</span>
-                </span>
-              </button>
-
-              {/* 7. Pelanggan (CRM) - Gated Feature Teaser */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('customers')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'customers' || activeTab === 'crm'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {(activeTab === 'customers' || activeTab === 'crm') && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
-                    <Brain className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Pelanggan</span>
-                </div>
-                {!isCrmEffective ? (
-                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                    <Lock className="w-2.5 h-2.5 text-amber-600" />
-                    <span>SCALE</span>
-                  </span>
-                ) : (
-                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
-                    CRM
-                  </span>
-                )}
-              </button>
-
-              {/* 7. WhatsApp & Broadcast - Gated Feature Teaser */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('whatsapp')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'whatsapp' || activeTab === 'broadcast'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {(activeTab === 'whatsapp' || activeTab === 'broadcast') && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                    <Radio className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">WhatsApp &amp; Broadcast</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5 text-amber-600" />
-                  <span>WABA</span>
-                </span>
-              </button>
-
-              {/* 8. Laporan Keuangan - Gated Feature Teaser */}
-              <button
-                type="button"
-                onClick={() => handleSelectTab('finance')}
-                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'finance'
-                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                }`}
-              >
-                {activeTab === 'finance' && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                )}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-slate-100 text-slate-700">
-                    <CreditCard className="w-4 h-4" />
-                  </div>
-                  <span className="truncate">Laporan Keuangan</span>
-                </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5 text-amber-600" />
-                  <span>PRO</span>
-                </span>
-              </button>
-            </div>
-
-            {/* Banner Upgrade Tier Callout */}
-            <div className="mt-6 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/5 to-indigo-500/10 border border-amber-200/70 text-slate-700 space-y-2">
-              <div className="flex items-center gap-1.5 font-black text-xs text-amber-900">
-                <Crown className="w-3.5 h-3.5 text-amber-600" />
-                <span>Paket Checkout Lite</span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                Broadcast, CAPI Tracking, Multi-User CS, dan custom domain dinonaktifkan di tier Lite.
-              </p>
-              <button
-                type="button"
-                onClick={onOpenUpgradeModal}
-                className="w-full py-2 px-3 bg-gradient-to-r from-amber-600 to-indigo-600 text-white font-bold rounded-xl text-xs hover:opacity-95 transition active:scale-98 shadow-xs cursor-pointer text-center"
-              >
-                Upgrade ke Pro / Enterprise
-              </button>
-            </div>
+                  <NavBadgeRenderer badge={ringkasanItem.badge} />
+                </button>
+              );
+            })()}
           </div>
-        ) : (
-        <>
-            {/* KATEGORI 1: OPERASIONAL */}
-            <div>
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-1 pb-2 block">
-                OPERASIONAL
-              </span>
+        )}
 
-              <div className="space-y-1">
-                {/* Dashboard / Beranda */}
+        <div className="h-[1px] bg-slate-100" />
+
+        {/* ACCORDION GROUPS (Kelola Toko, Pesan & Pelanggan, Kembangkan Bisnis) */}
+        <div className="space-y-1.5">
+          {collapsibleGroups.map((group) => {
+            const isOpen = openGroupId === group.id;
+            const GroupIcon = group.icon || Store;
+            const hasActiveChild = group.items.some((it) => isTabActiveInItem(it, activeTab));
+
+            // Calculate group-level badges (e.g. orderCount or unread inboxCount)
+            const groupBadgeCount = (() => {
+              if (group.id === 'kelola-toko' && orderCount > 0) return orderCount;
+              if (group.id === 'pesan-pelanggan' && inboxCount > 0) return inboxCount;
+              return 0;
+            })();
+
+            return (
+              <div
+                key={group.id}
+                className={`rounded-2xl transition-all duration-200 border ${
+                  isOpen
+                    ? 'bg-slate-50/70 border-slate-200/90 shadow-2xs'
+                    : hasActiveChild
+                    ? 'border-indigo-100 bg-indigo-50/30'
+                    : 'border-transparent hover:border-slate-100'
+                }`}
+              >
+                {/* Accordion Group Header (Single / Controlled Accordion) */}
                 <button
                   type="button"
-                  onClick={() => handleSelectTab('dashboard')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('dashboard')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  onClick={() => handleToggleGroup(group.id)}
+                  aria-expanded={isOpen}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer select-none text-left ${
+                    isOpen
+                      ? 'text-slate-900'
+                      : hasActiveChild
+                      ? 'text-indigo-900'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
                   }`}
                 >
-                  {isMainTabActive('dashboard') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
-                      <LayoutDashboard className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Dashboard</span>
-                  </div>
-                </button>
-
-                {/* Katalog / Layanan Dinamis */}
-                {(() => {
-                  const verticalConfig = getVerticalMenuConfig(storeCategory || businessType);
-                  const VerticalIcon = verticalConfig.icon;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab('catalog')}
-                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                        isMainTabActive('catalog')
-                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  <div className="flex items-center gap-2 truncate">
+                    <div
+                      className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                        isOpen || hasActiveChild
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 text-slate-500'
                       }`}
                     >
-                      {isMainTabActive('catalog') && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                      )}
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                          <VerticalIcon className="w-4 h-4" />
-                        </div>
-                        <span className="truncate">{verticalConfig.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
-                          {verticalConfig.badge}
-                        </span>
-                        {productCount > 0 ? (
-                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {productCount}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })()}
-
-                {/* Pesanan & Order Toko */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('orders')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('orders')
-                      ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('orders') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                      <ShoppingBag className="w-4 h-4" />
+                      <GroupIcon className="w-3.5 h-3.5" />
                     </div>
-                    <span className="truncate">Daftar Pesanan Toko</span>
+                    <span className="truncate">{group.label}</span>
                   </div>
-                  {orderCount > 0 ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
-                      {orderCount}
-                    </span>
-                  ) : null}
-                </button>
 
-                {/* Modul Operasional Vertikal Bisnis (Shipping, Booking, Unduh, Kampanye) */}
-                {(() => {
-                  const operationalItems = getVerticalOperationalMenuItems(storeCategory || businessType, capabilities);
-                  return operationalItems.map((opItem) => {
-                    const OpIcon = opItem.icon;
-                    const isOpActive =
-                      activeTab === opItem.targetTab ||
-                      (opItem.targetTab === 'shipping' && activeTab === 'biteship');
-
-                    return (
-                      <button
-                        key={opItem.targetTab}
-                        type="button"
-                        onClick={() => handleSelectTab(opItem.targetTab)}
-                        className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                          isOpActive
-                            ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                        }`}
-                      >
-                        {isOpActive && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                        )}
-                        <div className="flex items-center gap-2.5 truncate">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opItem.colorClass}`}>
-                            <OpIcon className="w-4 h-4" />
-                          </div>
-                          <span className="truncate">{opItem.label}</span>
-                        </div>
-                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                          {opItem.badge}
-                        </span>
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-
-            {/* KATEGORI 2: CUSTOMER */}
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
-                CUSTOMER
-              </span>
-
-              <div className="space-y-1">
-                {/* Smart Chatbox (Live CS) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('inbox')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('inbox')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('inbox') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-500 text-white shadow-2xs">
-                      <MessageSquare className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Smart Chatbox</span>
-                  </div>
-                  {inboxCount && inboxCount > 0 ? (
-                    <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-100 text-blue-800 border border-blue-200 ml-auto">
-                      {inboxCount.toLocaleString('id-ID')}
-                    </span>
-                  ) : (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                        isTeamScale
-                          ? 'bg-purple-50 text-purple-700 border-purple-200'
-                          : isAdsPerformance
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
+                  <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                    {groupBadgeCount > 0 && !isOpen && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-indigo-100 text-indigo-700">
+                        {groupBadgeCount}
+                      </span>
+                    )}
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
+                        isOpen ? 'rotate-180 text-indigo-600' : ''
                       }`}
-                    >
-                      {!isTeamScale && !isAdsPerformance && <Lock className="w-2.5 h-2.5" />}
-                      {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
-                    </span>
-                  )}
+                    />
+                  </div>
                 </button>
 
-                {/* Pelanggan (CRM) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('customers')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    activeTab === 'customers' || isPowerTabActive('crm')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                {/* Collapsible Children Container (Smooth CSS Grid Animation) */}
+                <div
+                  className={`grid transition-[grid-template-rows,opacity] duration-200 ease-in-out ${
+                    isOpen
+                      ? 'grid-rows-[1fr] opacity-100'
+                      : 'grid-rows-[0fr] opacity-0 pointer-events-none'
                   }`}
                 >
-                  {(activeTab === 'customers' || isPowerTabActive('crm')) && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
-                      <Brain className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Pelanggan</span>
-                  </div>
-                  {!isCrmEffective ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
-                      <Lock className="w-2.5 h-2.5 text-amber-500" />
-                      <span>SCALE</span>
-                    </span>
-                  ) : (
-                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
-                      CRM
-                    </span>
-                  )}
-                </button>
+                  <div className="overflow-hidden">
+                    <div className="pt-0.5 pb-1.5 px-1.5 space-y-0.5">
+                      {group.items.map((item) => {
+                        const isItemActive = isTabActiveInItem(item, activeTab);
+                        const ItemIcon = item.icon;
 
-                {/* WhatsApp & Broadcast */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('whatsapp')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('whatsapp')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('whatsapp') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                      <Radio className="w-4 h-4" />
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSelectTab(item.targetTab)}
+                            className={`relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition cursor-pointer text-left ${
+                              isItemActive
+                                ? 'bg-white text-indigo-950 font-bold shadow-2xs ring-1 ring-indigo-500/20'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/80 font-medium'
+                            }`}
+                          >
+                            {isItemActive && (
+                              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-indigo-600 rounded-r" />
+                            )}
+                            <div className="flex items-center gap-2 truncate min-w-0 flex-1 pr-1">
+                              <ItemIcon
+                                className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                                  isItemActive ? 'text-indigo-600' : 'text-slate-400'
+                                }`}
+                              />
+                              <span className="truncate">{item.label}</span>
+                            </div>
+                            <NavBadgeRenderer badge={item.badge} />
+                          </button>
+                        );
+                      })}
                     </div>
-                    <span className="truncate">WhatsApp &amp; Broadcast</span>
                   </div>
-                  {isTeamScale ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      WABA
-                    </span>
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                </button>
+                </div>
               </div>
+            );
+          })}
+        </div>
+
+        {/* Upgrade Callout Banner for Checkout Lite & Starter */}
+        {isCheckoutLite && (
+          <div className="mt-4 p-3 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/5 to-indigo-500/10 border border-amber-200/70 text-slate-700 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-black text-xs text-amber-900">
+              <Crown className="w-3.5 h-3.5 text-amber-600" />
+              <span>Paket Checkout Lite</span>
             </div>
-
-            {/* KATEGORI 3: GROWTH */}
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
-                GROWTH
-              </span>
-
-              <div className="space-y-1">
-                {/* Tampilan & Tema */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('themes')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('themes')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isMainTabActive('themes') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
-                      <Palette className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Tampilan &amp; Tema</span>
-                  </div>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                    5 TEMA
-                  </span>
-                </button>
-
-                {/* AI Knowledge & Bot */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('ai_knowledge')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('ai_knowledge')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isMainTabActive('ai_knowledge') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">AI Knowledge &amp; Bot</span>
-                  </div>
-                  {isAiBotEffective ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
-                      AI
-                    </span>
-                  ) : (
-                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
-                      <Lock className="w-2.5 h-2.5 text-slate-500" />
-                      <span>PRO</span>
-                    </span>
-                  )}
-                </button>
-
-                {/* Ads Tracking Pro */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('ads_tracking')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('ads_tracking')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('ads_tracking') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
-                      <Target className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Ads Tracking Pro</span>
-                  </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                      isAdsTrackingUnlocked
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
-                    }`}
-                  >
-                    {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
-                    {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
-                  </span>
-                </button>
-
-                {/* Laporan Keuangan */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('finance')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('finance')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('finance') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-slate-100 text-slate-700">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Laporan Keuangan</span>
-                  </div>
-                  {isSoloOrTrial ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
-                      <Lock className="w-2.5 h-2.5" /> PRO
-                    </span>
-                  ) : null}
-                </button>
-
-                {/* Mitra Reseller Toko */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('reseller')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    activeTab === 'reseller' || isPowerTabActive('reseller')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {(activeTab === 'reseller' || isPowerTabActive('reseller')) && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Mitra Reseller</span>
-                  </div>
-                  {isResellerEffective ? (
-                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      BARU
-                    </span>
-                  ) : (
-                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
-                      <Lock className="w-2.5 h-2.5 text-slate-500" />
-                      <span>SCALE</span>
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-          </>
-
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              Buka WhatsApp Broadcast, CAPI Tracking, dan multi-seat CS dengan upgrade ke Pro.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenUpgradeModal}
+              className="w-full py-1.5 px-3 bg-gradient-to-r from-amber-600 to-indigo-600 text-white font-bold rounded-xl text-[11px] hover:opacity-95 transition active:scale-98 shadow-xs cursor-pointer text-center"
+            >
+              Upgrade Paket
+            </button>
+          </div>
         )}
       </div>
 
       {/* ======================================================== */}
-      {/* 3. PINNED BOTTOM SECTION: PENGATURAN TOKO & AKUN SAYA    */}
+      {/* 3. PINNED BOTTOM SECTION: PROFIL, AKUN & PENGATURAN TOKO */}
       {/* ======================================================== */}
-      <div className="mt-auto p-3 border-t border-slate-200/80 bg-slate-50/90 space-y-2 shrink-0">
-        <div className="space-y-1">
-          {/* Pinned 1: Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran) */}
+      <div className="mt-auto shrink-0 sticky bottom-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 p-2.5 sm:p-3 space-y-1.5 z-10">
+        <div className="space-y-0.5">
+          {/* Pinned 1: Profil & Akun */}
           <button
             type="button"
             onClick={() => {
               onOpenStoreSettings();
               if (onCloseMobileDrawer) onCloseMobileDrawer();
             }}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs"
-            title="Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran)"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs text-left"
+            title="Profil &amp; Akun Toko"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-indigo-50 group-hover:bg-indigo-600 text-indigo-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
-                <Settings className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0 text-left">
-                <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
-                  Pengaturan Toko
-                </span>
-                <span className="block text-[10px] text-slate-400 font-normal truncate">
-                  Profil, Jam Buka, Domain &amp; Rekening
-                </span>
-              </div>
-            </div>
-            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">⚙️</span>
-          </button>
-
-          {/* Pinned 2: Akun Saya */}
-          <button
-            type="button"
-            onClick={() => {
-              onOpenStoreSettings();
-              if (onCloseMobileDrawer) onCloseMobileDrawer();
-            }}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs"
-            title="Akun Saya & Profil Pengguna"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-slate-700 text-slate-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-lg bg-slate-100 group-hover:bg-slate-700 text-slate-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                 <User className="w-3.5 h-3.5" />
               </div>
-              <div className="min-w-0 text-left">
-                <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
-                  Akun Saya
-                </span>
-                <span className="block text-[10px] text-slate-400 font-normal truncate">
-                  Profil &amp; Keamanan Akun
-                </span>
-              </div>
+              <span className="truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                Profil &amp; Akun
+              </span>
             </div>
-            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">👤</span>
+            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">
+              👤
+            </span>
+          </button>
+
+          {/* Pinned 2: Pengaturan Toko */}
+          <button
+            type="button"
+            onClick={() => {
+              onOpenStoreSettings();
+              if (onCloseMobileDrawer) onCloseMobileDrawer();
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs text-left"
+            title="Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran)"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-lg bg-indigo-50 group-hover:bg-indigo-600 text-indigo-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                <Settings className="w-3.5 h-3.5" />
+              </div>
+              <span className="truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                Pengaturan Toko
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">
+              ⚙️
+            </span>
           </button>
         </div>
 
-        {/* Tombol Install App / PWA Selalu Tampil di Sidebar Mobile & Desktop */}
+        {/* Tombol Install App / PWA di Footer */}
         <PwaInstallPrompt
           tenantSlug={tenantSlug}
           variant="menu-item"
@@ -1281,25 +706,26 @@ export default function DashboardSidebar({
           }}
         />
 
-        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white/60 border border-slate-200/50 shadow-2xs">
-          <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+        {/* Compact BoonTrack Shop Brand Footer */}
+        <div className="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-50/70 border border-slate-200/50">
+          <div className="w-5 h-5 shrink-0 flex items-center justify-center">
             <Image
               src="/logo-master.png"
               alt="BoonTrack"
-              width={32}
-              height={32}
+              width={20}
+              height={20}
               priority
               className="w-full h-full object-contain drop-shadow-2xs"
             />
           </div>
-          <div className="min-w-0 flex-1 flex flex-col justify-center">
-            <div className="flex items-center gap-1 leading-tight">
-              <span className="text-xs font-black text-slate-900 tracking-tight">BoonTrack</span>
-              <span className="text-xs font-extrabold text-blue-600">Shop</span>
+          <div className="min-w-0 flex-1 flex items-center justify-between">
+            <div className="flex items-center gap-1 leading-none">
+              <span className="text-[11px] font-black text-slate-900 tracking-tight">BoonTrack</span>
+              <span className="text-[11px] font-extrabold text-blue-600">Shop</span>
             </div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mt-0.5 leading-none">
-              COMMERCE ENGINE
-            </p>
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">
+              ENGINE
+            </span>
           </div>
         </div>
       </div>
