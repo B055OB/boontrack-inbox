@@ -4946,6 +4946,242 @@ Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
 4. **Pemicu Notifikasi Afiliasi**: Jika tenant memiliki referral code atau terikat mitra, memicu `sendNewStoreReferralNotification` untuk memberitahu mitra rekruter dan Affiliate Manager.
 
 
+---
+
+## § 58. I18N LOCALIZATION FRAMEWORK & AUDIENCE SSOT CRM ALIGNMENT (ADR 2026-10-11)
+
+### 58.1 Konstitusi Data Audiens SSOT CRM (Contacts Table Invariant)
+- **Single Source of Truth (SSOT)**:
+  - Seluruh modul data pelanggan, broadcast WhatsApp (`WhatsAppBroadcastManager`), segmentasi audiens, dan analitik CRM **WAJIB** mengambil data dari tabel `contacts` di Supabase / PostgreSQL.
+  - **Eliminasi Total Kontak Sintetis**: DILARANG KERAS menginjeksi atau menarik kontak sintetis secara ad-hoc dari tabel transaksi pesanan lama (`orders`) tanpa verifikasi ke tabel `contacts`. Seluruh pemfilteran audiens disandarkan pada endpoint resmi `/api/v1/crm/contacts` atau query langsung ke tabel `contacts`.
+- **Isolasi Multi-Tenant Mutlak**:
+  - Setiap query audiens dan kontak wajib menerapkan filter isolasi tenant:
+    ```sql
+    WHERE tenant_id = :tenant_uuid OR tenant_slug = :tenant_slug
+    ```
+  - Penegakan integritas nomor telepon kanonis E.164 (`clean_phone`) dengan constraint unik komposit:
+    ```sql
+    ALTER TABLE contacts ADD CONSTRAINT unique_tenant_clean_phone UNIQUE (tenant_id, clean_phone);
+    ```
+- **Idempotent Order-to-Contact Linking**:
+  - Setiap transaksi pesanan baru (`orders`) dihubungkan secara non-destruktif ke tabel `contacts` melalui kolom `contact_id UUID REFERENCES contacts(id)`.
+  - Service `sync_contact_from_order` melakukan upsert atomik (`ON CONFLICT (tenant_id, clean_phone) DO UPDATE`) untuk memperbarui riwayat interaksi (`last_order_at`, akumulasi `total_spent`) tanpa membuat baris baru.
+  - **Fail-Safe Policy**: Kegagalan atau timeout pada sinkronisasi kontak tidak boleh menggagalkan pencatatan atau status lunas pesanan pada tabel `orders` dan buku besar finansial (`financial_ledger`).
+
+### 58.2 Standarisasi i18n Localization Framework
+- **Arsitektur Ringan & Zero Heavy Dependencies**:
+  - Sistem lokalisasi multi-bahasa dibangun di atas modul native React & Next.js tanpa dependensi pihak ketiga yang membebani bundle size:
+    * `lib/i18n/index.ts`: Definisi type dictionary, supported locales (`id` | `en`), dan fallback contract.
+    * `lib/i18n/provider.tsx`: Context provider reaktif untuk distribusi state bahasa.
+    * `lib/i18n/use-translation.ts`: Hook `useTranslation()` dengan dukungan nesting key (`t('overview.title')`) dan variable interpolation (`t('welcome', { name: 'User' })`).
+- **Kamus Bahasa Terpusat (Centralized Dictionaries)**:
+  - `locales/id.json`: Standar bahasa Indonesia sebagai bahasa resmi primer (Default locale: `'id'`).
+  - `locales/en.json`: Standar bahasa Inggris untuk tenant internasional dan pengguna global.
+- **Formatter Angka, Mata Uang & Tanggal Berbasis Native `Intl`**:
+  - Menggunakan API browser native `Intl.NumberFormat` dan `Intl.DateTimeFormat` di `lib/i18n/formatters.ts`:
+    * **Mata Uang**: `formatCurrency(val, currency = 'IDR', locale = 'id-ID')` -> Format bersih `Rp 249.000` atau `$249.00` tanpa desimal tidak perlu.
+    * **Angka & Persentase**: `formatNumber(val, locale)` dan `formatPercent(val, locale)`.
+    * **Tanggal & Waktu**: `formatDate(date, locale)`, `formatDateTime(date, locale)`, dan `formatRelativeTime(date, locale)`.
+- **Persistensi State Pengguna**:
+  - Pilihan bahasa disimpan secara persisten di `localStorage['app_locale']` dan disinkronkan secara mulus di seluruh komponen dashboard dan storefront.
+
+---
+
+## § 59. WORKSPACE UX OVERHAUL & UNIVERSAL CHECKOUT TRIGGER (ADR 2026-10-11)
+
+### 59.1 Standar Collapsible Sidebar (~72px Icon Mode) & Ergonomi Meja Kerja
+- **Ergonomi Layar HD 720p & Tablet**:
+  - Dashboard workspace dirancang untuk memberikan ruang kerja maksimal (*maximum workspace canvas*) pada resolusi standar 1280x720 (720p) maupun layar tablet/laptop 13 inci.
+  - Mendukung dua mode status sidebar:
+    1. **Expanded Mode (~260px)**: Menampilkan label navigasi lengkap, badge status, dan hirarki menu.
+    2. **Collapsed Icon Mode (~72px)**: Menampilkan icon ringkas dengan tooltip kontekstual, meluaskan area kerja tabel dan analitik hingga 85%+ lebar viewport.
+- **Persistensi Preferensi Lokal**:
+  - Status collapse/expand disimpan secara lokal di `localStorage['sidebar_collapsed']` (`"true"` | `"false"`).
+  - Saat reload halaman atau navigasi antar tab, layout workspace mempertahankan state preferensi pengguna secara konsisten.
+- **Accordion Registry Multi-Open**:
+  - Sidebar menggunakan struktur hierarki terpusat dengan accordion independen yang memungkinkan sub-menu dibuka secara bersamaan tanpa saling menutup paksa.
+
+### 59.2 Konsolidasi Navigasi & Penghapusan Menu Redundan "Unduhan & Lisensi"
+- **Streamlining Menu**:
+  - Menu terpisah "Unduhan & Lisensi" dihapus dari sidebar navigasi utama untuk mengurangi beban kognitif pengguna (*decluttering*).
+- **Aksi Operasional Produk Digital Terpadu**:
+  - Seluruh fitur pengiriman lisensi, link unduhan berkas digital, dan tombol aksi "Kirim Ulang WA" dikonsolidasikan langsung ke dalam Modal Detail Pesanan (`OrderDetailModal`).
+  - Pengguna/merchant dapat memicu pengiriman ulang invoice, akses lisensi, atau tiket digital langsung dari baris pesanan terkait dengan satu klik.
+
+### 59.3 Sub-Info Kontekstual Dinamis Berbasis Kategori Toko
+- **Adopsi Tipe Bisnis Dinamis**:
+  - Antarmuka daftar pesanan dan detail transaksi menyesuaikan sub-info yang ditampilkan berdasarkan kategori bisnis tenant (`store_category` / `business_type`):
+    * **Toko Produk Fisik**: Menampilkan sub-info nomor resi pengiriman, kurir logistik (JNE, SiCepat, J&T), estimasi sampai, dan status delivery.
+    * **Toko Jasa & Booking**: Menampilkan sub-info jadwal reservasi, tanggal kedatangan/sesi, dan slot waktu booking pelanggan.
+    * **Toko Produk Digital**: Menampilkan sub-info status pengiriman akses WhatsApp/Email, SKU lisensi, dan tautan materi instan.
+
+### 59.4 Responsive Smart Chatbox Console (Slide-Over Drawer Viewport < 1400px)
+- **Adaptivitas Viewport CS/CRM**:
+  - Console percakapan WhatsApp & Omnichannel Inbox menerapkan perilaku responsif berbasis breakpoint:
+    * **Viewport Lebar (>= 1400px)**: Tampilan dual-pane split-screen permanen (Daftar pesan/kontak di sisi kiri, kanvas percakapan aktif di sisi kanan).
+    * **Viewport Medium & Tablet (< 1400px)**: Chatbox beralih menjadi Slide-Over Drawer elegan dari sisi kanan dengan backdrop blur transparan.
+  - Memastikan operator CS dapat memantau database pelanggan atau transaksi sembari membalas chat secara simultan tanpa distorsi layout horizontal.
+
+### 59.5 Universal Checkout Trigger (`data-bt-checkout` / `href="#checkout"`)
+- **Interoperabilitas Kustom Landing Page**:
+  - Menyediakan kontrak pemicu universal (*headless-compatible trigger*) agar landing page buatan merchant (menggunakan AI tools seperti v0, Lovable, Claude Artifacts, Framer, Webflow, maupun HTML kustom) dapat langsung tersambung ke engine checkout BoonTrack.
+- **Protokol Atribut DOM**:
+  - Setiap elemen tombol, tautan, atau kartu yang memiliki atribut:
+    * `data-bt-checkout`
+    * `href="#checkout"`
+    * `data-bt-sku="{product_sku}"`
+    * `data-bt-tenant="{tenant_slug}"`
+  - Secara otomatis dideteksi dan di-intercept oleh client-side runtime script BoonTrack.
+- **Seamless Modal Execution**:
+  - Mengangkat modal checkout native BoonTrack dengan dynamic QRIS EMVCo Tag 54, penghitungan kode unik downward suffix, input data pembeli terverifikasi, dan auto-dispatch WhatsApp invoice tanpa perlu reload halaman atau integrasi API backend manual oleh merchant.
+
+
+---
+
+## § 60. CONTROL PLANE ARCHITECTURE & UNIFIED GOVERNANCE (`bossob.boontrack.com/admin`)
+
+### 60.1 Topologi & Domain Control Plane
+- **Canonical Admin Domain**: `bossob.boontrack.com/admin` (di-host pada Vercel/Next.js Control Plane Runner dengan koneksi berkeamanan tinggi ke Supabase Admin Client & Core Engine).
+- **Peran Sistem**: Sebagai *Executive Flight Deck* & sentral tata kelola administrasi platform, mengonsolidasikan seluruh pilar:
+  1. **BoonTrack Shop** (`boontrack.com` / storefront multitenant & POS Inbox).
+  2. **BoonTrack Creator** (`creator.boontrack.com` / portofolio & showcase kreator).
+  3. **BoonTrack Studio** (`studio.boontrack.com` / workspace video automator & FCD generative engine).
+  4. **BoonPilot Engine** (`api.boontrack.com` / FastAgency & Evolution API v2 runtime).
+- **Security & Authorization Gate**:
+  - Akses dilindungi sesi otentikasi role `SUPERADMIN` / `SYSTEM_ADMIN`.
+  - Akses direct database menggunakan `SUPABASE_SERVICE_ROLE_KEY` (fail-closed, bypass RLS secara terkontrol hanya untuk audit/rekonsiliasi).
+
+### 60.2 Master Tenant Registry & Global Lifecycle Management
+- **Sentralisasi Registry**:
+  - Tabel `tenants` bertindak sebagai *Universal Single Source of Truth* untuk eksistensi seluruh entitas bisnis di 4 pilar.
+  - Setiap pilar mengenali tenant melalui `tenant_id` (UUID v4) atau `slug` (URL-safe identifier).
+- **Domain & Subdomain Binding**:
+  - Pengelolaan custom domain (`Cloudflare for SaaS`), subdomain platform (`{slug}.boontrack.com`), dan status SSL/TLS secara langsung dari Control Plane.
+- **Tenant Lifecycle Operations**:
+  - Aktivasi manual (`is_active = true`), de-aktivasi darurat (suspend akibat pelanggaran TOS/fraud), dan pemulihan akun tanpa kehilangan riwayat transaksi atau ledger.
+
+### 60.3 SSOT Subscription Status Engine (`lib/subscriptions/status.ts`)
+- **Doktrin Arsitektur CTO**:
+  1. *Access != Payment != Commission*: Pemisahan mutlak antara hak akses aplikasi, transaksi pembayaran gateway, dan hak pembayaran komisi afiliasi.
+  2. *Superadmin / Core = Absolute Truth*: Portal mitra afiliasi hanyalah *Read Model / Proyeksi*.
+- **4 Canonical Subscription Domains**:
+  - `TRIAL`: Tenant dalam masa percobaan aktif (<= 7 hari kalender sejak registrasi). Memiliki akses fungsionalitas dasar, tetapi **DILARANG KERAS** memicu komisi afiliasi.
+  - `PAID`: Tenant aktif dengan langganan komersial berbayar (memiliki qualifying invoice berstatus `PAID` / `SETTLED`). Memiliki akses penuh dan **SAH** memicu komisi afiliasi mitra/AM.
+  - `GRANTED`: Hak akses khusus atas mandat CTO/Executive (Subtipe: `PILOT`, `BRAND_AMBASSADOR`, `DESIGN_PARTNER`, `PARTNERSHIP`, `INTERNAL_DOGFOOD`). Status ini memberikan akses tier berbayar/pro tanpa pembayaran kas, dan **DILARANG KERAS** memicu komisi afiliasi (`Commission Eligible = FALSE`).
+  - `EXPIRED`: Tenant yang masa trial atau periode berbayarnya telah lewat waktu (grace period habis). Sistem secara otomatis membatasi akses fitur (paywall lock) dan mengubah respon WhatsApp bot ke fallback ramah langganan.
+- **Invarian Komisi**:
+  `canGenerateCommission = (domainStatus === 'PAID') && !isGranted && !isTrial;`
+
+### 60.4 Master Ledger Rekonsiliasi Finansial Lintas Pilar
+- **Single Financial Authority**:
+  - Rekonsiliasi transaksi pembayaran kas dari seluruh payment rail:
+    * **Rail A**: Public SaaS / Studio Token / Scale Bundle via Xendit (`/api/billing/`, `/api/studio/billing/create-invoice`).
+    * **Rail B**: Storefront Checkout via Merchant Dynamic QRIS EMVCo Tag 54 + 3-Digit Downward Suffix.
+    * **Rail C**: Direct Bank Settlement via Reader APK & Proof-of-Payment OCR.
+- **Tabel Rekonsiliasi Terpadu**:
+  - `payment_intents`: Status permohonan pembayaran lintas pilar.
+  - `payment_events`: Event log audit append-only dari provider gateway (Xendit callback, bank mutasi).
+  - `tenant_credit_ledger`: Catatan mutasi kredit Studio & AI Token (`CREDIT_IN`, `CREDIT_OUT`).
+  - `affiliate_commissions`: Ledger komisi multi-pilar (`product_type: 'SHOP' | 'STUDIO' | 'SCALE_BUNDLE'`).
+- **Pendeteksi Orphan / Unmatched Payment**:
+  - Dashboard Control Plane menyajikan visual forensics untuk transaksi yang tidak cocok otomatis (Unmatched Suffix, Suspicious Amount, Timeout Replay) dengan opsi *Force Resolve* atau *Quarantine*.
+
+### 60.5 Dynamic Quota Override & Balance Adjustment
+- **Mekanisme Override Superadmin**:
+  - Superadmin memiliki kewenangan meng-override kuota tanpa merusak state machine:
+    * Override AI Session Token Quota (mengatasi lonjakan percakapan saat flash sale merchant).
+    * Override Studio Video Render Credits (penambahan kredit insentif atau kompensasi gangguan layanan).
+    * Storage Quota Bypass (untuk merchant enterprise dengan ratusan katalog produk).
+- **Audit Logging Wajib**:
+  - Setiap mutasi kuota melalui Control Plane wajib mencantumkan: `admin_user_id`, `reason`, `previous_quota`, `new_quota`, dan `timestamp_utc`. Dicatat secara immutable ke `admin_audit_logs`.
+
+### 60.6 Global Emergency Kill-Switches (Proteksi Insiden & BCP)
+Control Plane dilengkapi tombol darurat berlevel eksekutif dengan propagasi latensi rendah (< 5 detik) melalui Edge Config / Redis:
+1. **Kill-Switch 1: LLM Engine Freeze (`EMERGENCY_AI_FREEZE = true`)**:
+   - Mematikan seluruh outbound call ke Gemini / OpenAI API di seluruh tenant.
+   - Sistem secara instan beralih ke *Graceful Degradation Mode* (balasan berbasis tombol interaktif statis dan katalog produk tanpa konsumsi token).
+2. **Kill-Switch 2: WhatsApp Outbound Pause (`EMERGENCY_WA_OUTBOUND_PAUSE = true`)**:
+   - Menghentikan sementara seluruh antrean pesan keluar di modul Evolution API v2 jika terdeteksi indikasi anomali spam massal atau potensi blokir nomor oleh Meta.
+3. **Kill-Switch 3: Studio Worker Render Drain (`EMERGENCY_STUDIO_DRAIN = true`)**:
+   - Menunda eksekusi job FFmpeg baru pada worker queue tanpa memutus job yang sedang aktif me-render di background.
+4. **Kill-Switch 4: Gateway Auto-Settlement Lock (`EMERGENCY_SETTLEMENT_LOCK = true`)**:
+   - Mengunci eksekusi otomatis status `PAID` pada webhook masuk jika terjadi gangguan inkonsistensi bank atau potensi serangan replay signature.
+
+---
+
+## § 61. CROSS-BENEFIT ARCHITECTURE & ASSET PURGE LIFECYCLE
+
+### 61.1 Filosofi Cross-Pillar Synergies
+Ekosistem BoonTrack menghubungkan fungsionalitas perdagangan (BoonTrack Shop) dengan studio otomasi kreatif (BoonTrack Studio) melalui skema simbiosis nilai (*cross-benefit value loop*). Merchant yang mempercayakan platform tokonya kepada BoonTrack secara otomatis memperoleh daya saing konten video pemasaran dengan biaya termurah.
+
+### 61.2 Aturan Bonus Scale Bundle & Shop Activation (+15 Kredit Studio)
+- **Pemicu (Triggers)**:
+  1. Pembelian paket **Scale Bundle** (Batch digital marketing / growth acceleration package).
+  2. Aktivasi langganan berbayar **BoonTrack Shop** (SaaS starter/pro/scale merchant store).
+- **Benefit yang Diberikan Secara Deterministik**:
+  1. **+15 Kredit Render Studio Gratis**:
+     - Ditambahkan langsung ke `tenant_entitlements.credits_remaining` (+15 kredit).
+     - Dapat langsung digunakan untuk menghasilkan 15 video konten promosi FCD (Fast Creative Delivery) siap tayang di TikTok / Instagram Reels / Meta Ads.
+  2. **Upgrade Status Member Toko (`is_shop_member = true`)**:
+     - Kolom `tenants.tier` diubah ke `'member'` (atau mempertahankan tier lebih tinggi jika sudah berlangganan paket skala enterprise seperti `PRO_SCALE`).
+     - Metadata `tenants.metadata.is_shop_subscriber = true` dan `metadata.is_shop_member = true`.
+     - Flag `tenant_entitlements.is_shop_member = true`.
+  3. **Penguncian Harga Member Termurah (Permanent Member Pricing Lock)**:
+     - Seluruh pembelian token kredit Studio berikutnya secara otomatis menikmati harga diskon Member Toko:
+       * **Paket Ketengan (1 Kredit)**: Rp15.000 / video (diskon dari harga reguler Rp20.000).
+       * **Paket Starter (5 Kredit)**: Rp49.000 (diskon dari harga reguler Rp75.000).
+       * **Paket Creator (10 Kredit)**: Rp89.000 (diskon dari harga reguler Rp135.000).
+- **Idempotency Guard & Pencegahan Double-Granting**:
+  - Dikelola oleh `StudioCreditService.grantShopActivationBonus()`:
+  - Idempotency key format:
+    ```typescript
+    const idempotencyKey = invoiceId 
+      ? `BONUS_${tenant.id}_${invoiceId}` 
+      : `BONUS_${tenant.id}_${subscriptionId || 'SHOP_ACTIVATION'}`;
+    ```
+  - Jika webhook Xendit atau request aktivasi dipanggil berulang (replay), query ke `tenant_credit_ledger` mendeteksi `idempotency_key` yang sama dan mengembalikan `alreadyGranted = true` dengan penambahan kredit 0.
+- **Pencatatan Audit Ledger**:
+  - Baris mutasi dicatat secara immutable pada `tenant_credit_ledger`:
+    * `action`: `'PROMO_SHOP_ACTIVATION_BONUS'`
+    * `type`: `'CREDIT_IN'`
+    * `amount`: `15`
+    * `event`: `'PROMO_SHOP_ACTIVATION_BONUS'`
+    * `description`: `'Bonus langganan toko BoonTrack'`
+- **Kebijakan Finansial Tanpa Refund Kas (No-Refund Policy)**:
+  - Pembelian token Studio yang dilakukan pada harga publik sebelum upgrade toko tidak dapat di-refund secara tunai. Seluruh saldo kredit yang ada diakumulasikan dan dipertahankan secara utuh.
+
+### 61.3 Siklus Hidup & Cron Auto-Purge Aset Video FCD (7 Hari & 24 Jam)
+- **Latar Belakang & Efisiensi Biaya Storage**:
+  Video promosi FCD (Fast Creative Delivery / Fast Content Delivery) yang dihasilkan oleh Studio Worker menghasilkan file MP4 beresolusi 1080x1920 (9:16) dan audio TTS yang menghabiskan kapasitas cloud object storage (Cloudflare R2 / AWS S3 / Supabase Storage). Begitu merchant selesai mengunduh video dan mengunggahnya ke platform periklanan, penyimpanan file video mentah jangka panjang di server menimbulkan biaya sewa storage yang tidak perlu (*dead weight storage cost*).
+- **Aturan Pembersihan Otomatis (Dual-Threshold Purge Rules)**:
+  Pembersihan fisik objek storage diatur oleh dua kondisi waktu mutlak:
+  1. **Aturan A: 24 Jam Pasca-Unduh (`downloaded_at + 24 Jam`)**:
+     - Setiap kali pengguna menekan tombol unduh video di antarmuka Studio, endpoint `/api/studio/renders/[id]/track-download` mencatat timestamp `payload.downloaded_at = now()` dan `payload.download_count = n + 1`.
+     - Jika file fisik telah diunduh dan usia sejak `downloaded_at` telah melampaui **24 jam (1 hari kalender)**, file MP4 fisik di cloud bucket segera dihapus secara permanen.
+  2. **Aturan B: 7 Hari Kedaluwarsa Tanpa Unduh (`created_at + 7 Hari`)**:
+     - Jika merchant membuat video tetapi tidak pernah mengunduh filenya, file fisik MP4 di cloud bucket akan otomatis dihapus jika usia render berstatus `COMPLETED` telah melampaui **7 hari kalender (168 jam)** sejak `created_at`.
+- **Preservasi Metadata & Integritas Naskah (Zero Data Loss on Scripts & Analytics)**:
+  - **DILARANG MENGHAPUS ROW DATABASE**: Penghapusan hanya berlaku pada file fisik storage (`deletePhysicalFile()`).
+  - Seluruh metadata pekerjaan pada tabel `studio_jobs` dan `studio_scripts` **TETAP DIPERTAHANKAN**:
+    * Struktur naskah teks, hook, scene description, caption copywriting, dan target audience tetap utuh.
+    * Rekor telemetri durasi render, worker ID, dan konsumsi kredit tetap tersimpan untuk audit.
+  - Payload pekerjaan diperbarui menjadi:
+    ```json
+    {
+      "is_purged": true,
+      "purged_at": "2026-10-10T12:00:00.000Z",
+      "purge_reason": "DOWNLOADED_OVER_24H" | "EXPIRED_OVER_7D",
+      "archived_output_url": "https://pub-...r2.dev/renders/video-001.mp4"
+    }
+    ```
+  - Kolom `studio_jobs.output_url` diubah menjadi `null`.
+- **Cron Worker Engine (`/api/studio/cron/auto-purge`)**:
+  - Dijalankan secara berkala (setiap jam / daily schedule via Vercel Cron atau external heartbeat).
+  - Dilindungi otentikasi Bearer Header menggunakan `CRON_SECRET` atau `STUDIO_CRON_SECRET`.
+  - Memproses batch maksimum 200 pekerjaan per putaran untuk menghindari timeout runtime Edge/Serverless.
+  - Menghasilkan laporan terstruktur `AutoPurgeReport` berisi `scanned_count`, `purged_count`, `retained_count`, dan rincian detail setiap job ID yang dibersihkan.
+
+---
 
 ## SECTION 14. DYNAMIC CUSTOM DOMAIN & STOREFRONT GOVERNANCE (RULE 2 EXPANSION)
 

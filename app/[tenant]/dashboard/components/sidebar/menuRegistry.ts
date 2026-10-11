@@ -35,6 +35,7 @@ export interface NavBadgeConfig {
 export interface NavMenuItem {
   id: string;
   label: string;
+  subtitle?: string;
   targetTab: string;
   matchedTabs: string[];
   icon: React.ElementType;
@@ -189,6 +190,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'catalog',
       label: verticalCatalog.label,
+      subtitle: 'Katalog, Landing Page & Varian',
       targetTab: 'catalog',
       matchedTabs: ['catalog', 'products'],
       icon: verticalCatalog.icon,
@@ -208,6 +210,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'orders',
       label: 'Pesanan',
+      subtitle: 'Riwayat & Status Bayar',
       targetTab: 'orders',
       matchedTabs: ['orders', 'pesanan'],
       icon: ShoppingBag,
@@ -220,7 +223,8 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   if (showShipping) {
     kelolaTokoItems.push({
       id: 'shipping',
-      label: isFood ? 'Kurir Instan & Dapur' : 'Pengiriman & Ekspedisi',
+      label: 'Pengiriman',
+      subtitle: 'Alamat Gudang, Kurir Instan & Reguler',
       targetTab: 'shipping',
       matchedTabs: ['shipping', 'biteship'],
       icon: isFood ? Bike : Truck,
@@ -232,7 +236,8 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   if (isBookingActive) {
     kelolaTokoItems.push({
       id: 'booking',
-      label: isProService ? 'Jadwal & Sesi Konsultasi' : 'Jadwal & Booking Servis',
+      label: 'Jadwal & Booking',
+      subtitle: 'Area Jangkauan, Kalender & Slot Servis',
       targetTab: 'booking',
       matchedTabs: ['booking'],
       icon: isProService ? Calendar : CalendarCheck,
@@ -241,21 +246,11 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     });
   }
 
-  // Unduhan & Lisensi (Mandatory CTO spec for Kelola Toko)
-  kelolaTokoItems.push({
-    id: 'downloads',
-    label: 'Unduhan & Lisensi',
-    targetTab: 'downloads',
-    matchedTabs: ['downloads'],
-    icon: FolderKey,
-    parentGroup: 'kelola-toko',
-    badge: { text: 'AKSES', variant: 'purple' },
-  });
-
   if (isAgency) {
     kelolaTokoItems.push({
       id: 'campaigns',
       label: 'Manajemen Kampanye & UGC',
+      subtitle: 'Brief & Manajemen Kreator',
       targetTab: 'campaigns',
       matchedTabs: ['campaigns'],
       icon: Share2,
@@ -268,6 +263,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   kelolaTokoItems.push({
     id: 'themes',
     label: 'Tema',
+    subtitle: 'Kustomisasi Desain Toko',
     targetTab: 'themes',
     matchedTabs: ['themes', 'storefront'],
     icon: Palette,
@@ -280,6 +276,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'inbox',
       label: 'Smart Chatbox',
+      subtitle: 'Inbox CS & AI Bot',
       targetTab: 'inbox',
       matchedTabs: ['inbox'],
       icon: MessageSquare,
@@ -299,6 +296,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'customers',
       label: 'Pelanggan',
+      subtitle: 'Database Kontak CRM',
       targetTab: 'customers',
       matchedTabs: ['customers', 'crm'],
       icon: Users,
@@ -310,7 +308,8 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     },
     {
       id: 'whatsapp',
-      label: 'Broadcast WhatsApp',
+      label: 'Broadcast & Notifikasi',
+      subtitle: 'Notif Setting & Broadcast WABA',
       targetTab: 'whatsapp',
       matchedTabs: ['whatsapp', 'broadcast', 'auto_reply', 'rotator', 'telegram_alerts'],
       icon: Radio,
@@ -327,6 +326,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'ai_knowledge',
       label: 'AI & Knowledge',
+      subtitle: 'Knowledge Base & Latih Bot',
       targetTab: 'ai_knowledge',
       matchedTabs: ['ai_knowledge'],
       icon: Sparkles,
@@ -339,6 +339,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'ads_tracking',
       label: 'Ads Tracking',
+      subtitle: 'Setup Pixel, CAPI, GTM & TikTok',
       targetTab: 'ads_tracking',
       matchedTabs: ['ads_tracking'],
       icon: Target,
@@ -353,6 +354,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'reseller',
       label: 'Reseller',
+      subtitle: 'Komisi & Data Reseller',
       targetTab: 'reseller',
       matchedTabs: ['reseller'],
       icon: Users,
@@ -365,6 +367,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'finance',
       label: 'Keuangan',
+      subtitle: 'Ringkasan Finansial & Mutasi',
       targetTab: 'finance',
       matchedTabs: ['finance', 'overview_finance', 'integration', 'analytics'],
       icon: CreditCard,
@@ -387,6 +390,7 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
         {
           id: 'dashboard',
           label: 'Dashboard',
+          subtitle: 'Aktivitas & Info Update',
           targetTab: 'dashboard',
           matchedTabs: ['dashboard', 'overview', 'beranda', 'microsite', 'links'],
           icon: LayoutDashboard,
