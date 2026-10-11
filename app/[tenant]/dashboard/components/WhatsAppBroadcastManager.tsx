@@ -38,7 +38,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { getStorefrontUrl } from '@/lib/storefront-urls';
 
 interface WhatsAppBroadcastManagerProps {
-  tenantId?: string;
+  tenantId?: string | null;
   tenantSlug: string;
   displayName: string;
   onSaved?: (msg: string) => void;

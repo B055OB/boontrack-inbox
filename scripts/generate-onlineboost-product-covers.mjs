@@ -36,11 +36,11 @@ const PRODUCTS_CONFIG = [
   },
   {
     filename: 'onlineboost-batch1-scale.png',
-    badge: '★ BEST VALUE • RECOMMENDED ★',
+    badge: '🔥 INKUBASI OTOMASI BISNIS & SCALE-UP ADS BATCH 1',
     title: 'Kelas Inkubasi CTWA',
-    subTitle: 'Scale Bundle (Recommended)',
-    price: 'Rp 149.000',
-    strikePrice: 'Rp 499.000',
+    subTitle: 'Scale Bundle Batch 1 (Recommended)',
+    price: 'Rp 249.000',
+    strikePrice: 'Rp 1.490.000',
     theme: {
       bgGrad: 'linear-gradient(135deg, #0b0716 0%, #170d2c 50%, #0d061a 100%)',
       glow1: 'rgba(168, 85, 247, 0.32)',
@@ -54,11 +54,11 @@ const PRODUCTS_CONFIG = [
       tagText: 'VIP SCALE BUNDLE'
     },
     features: [
-      { icon: '📅', title: 'Akses Inkubasi Kelas 4 Hari', desc: 'Mentoring intensif strategi funnel & konversi WhatsApp' },
-      { icon: '🤖', title: 'Script JSON Sales Rep + SOP', desc: 'SOP Objection Handling terlengkap & auto-closing' },
-      { icon: '⚡', title: '1 Bulan Trial Ads Performance', desc: 'Hard-cap 100 Sesi AI & optimasi Meta server-side' },
-      { icon: '🎬', title: '15 Kredit Studio HD', desc: 'Video render 1080p + naskah copywriting viral' },
-      { icon: '👑', title: 'Status Member Toko Selamanya', desc: 'Kunci diskon harga member seumur hidup' }
+      { icon: '🚀', title: 'Engine Bot WhatsApp & Toko Digital', desc: 'Kasir otomatis 24 jam penerbit QRIS 0% fee' },
+      { icon: '🎬', title: 'Akses Studio Video 9-Scene', desc: 'Cetak video iklan Reels/TikTok tanpa syuting' },
+      { icon: '📊', title: 'Ads Performance Tracker', desc: 'Pantau laba bersih & ROAS riil tanpa pusing' },
+      { icon: '📦', title: 'Lisensi Produk Digital Siap Jual', desc: 'Hak jual ulang dengan margin profit 100%' },
+      { icon: '🎓', title: 'Kurikulum 10 Langkah & Forum VIP', desc: 'Mentoring praktis nol sampai pecah telur' }
     ]
   }
 ];

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const { data: conn } = await supabase
       .from('whatsapp_connections')
       .select('instance_name, status, is_connected, credential_ref')
-      .or(	enant_slug.eq.,tenant_id.eq.)
+      .or(`tenant_slug.eq.${cleanSlug},tenant_id.eq.${cleanSlug}`)
       .in('status', ['open', 'connected', 'ACTIVE', 'CONNECTED'])
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const delaySeconds = Math.max(1, Math.min(10, Number(anti_ban_delay) || 3));
 
     // 2. Catat event broadcast ke lifecycle_events
-    const broadcastId = cast_;
+    const broadcastId = `bcast_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     await supabase.from('lifecycle_events').insert({
       tenant_id: cleanSlug,
       customer_phone: 'BROADCAST_ALL',
@@ -106,15 +106,15 @@ export async function POST(req: NextRequest) {
         const ts = new Date().toLocaleTimeString('id-ID');
         if (ok) {
           sentSuccess++;
-          logs.push([] Terkirim ke  (+));
+          logs.push(`[${ts}] Terkirim ke ${item.name} (${item.phone})`);
         } else {
           sentFailed++;
-          logs.push([] Gagal kirim ke  (+));
+          logs.push(`[${ts}] Gagal kirim ke ${item.name} (${item.phone})`);
         }
       } catch (err: any) {
         sentFailed++;
         const ts = new Date().toLocaleTimeString('id-ID');
-        logs.push([] Error kirim ke : );
+        logs.push(`[${ts}] Error kirim ke ${item.name}: ${err?.message || 'Error'}`);
       }
 
       // Terapkan jeda anti-ban delay antar pengiriman

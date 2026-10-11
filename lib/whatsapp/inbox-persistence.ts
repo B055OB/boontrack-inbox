@@ -507,6 +507,7 @@ export async function persistOutboundMessage(
   // Track in Outbound Registry to prevent bot self-pause when Evolution webhook echoes with fromMe = true
   if (senderType === 'bot' || senderType === 'system') {
     registerBotOutbound({
+      tenantId: tenantId ? String(tenantId) : undefined,
       messageId: params.externalId,
       recipientPhone: phone,
       text: messageBody,

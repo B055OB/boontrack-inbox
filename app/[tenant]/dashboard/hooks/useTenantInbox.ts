@@ -477,6 +477,10 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
         const customerPhone = activeConversation.customerPhone;
         const nowIso = new Date().toISOString();
 
+        const isWebchat =
+          (activeConversation.channelType || '').toUpperCase() === 'WEBCHAT' ||
+          customerPhone.startsWith('webchat_');
+
         // 4a. Insert into messages
         await supabase.from('messages').insert({
           conversation_id: activeConversation.id,
@@ -486,7 +490,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           sender: 'agent',
           message_body: body,
           text: body,
-          channel: 'whatsapp',
+          channel: isWebchat ? 'webchat' : 'whatsapp',
           user_name: 'Anda (Live CS)',
           user_phone: customerPhone,
           delivery_status: 'sent',
@@ -507,63 +511,65 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           })
           .eq('id', activeConversation.id);
 
-        const targetTenantId = effectiveTenantId || effectiveTenantSlug;
-        const cleanCustPhone = customerPhone ? customerPhone.replace(/\D/g, '') : '';
-        if (targetTenantId && cleanCustPhone) {
-          try {
-            await supabase.from('conversation_sessions').upsert(
-              {
-                tenant_id: targetTenantId,
-                session_id: `wa_${targetTenantId}_${cleanCustPhone}`,
-                channel: 'WHATSAPP',
-                user_identifier: cleanCustPhone,
-                current_state: 'HANDOVER_TO_HUMAN',
-                is_paused: true,
-                paused_at: nowIso,
-                paused_by: 'cs_dashboard_reply',
-                paused_until: pausedUntilIso,
-                metadata: {
-                  auto_pause: true,
-                  triggered_by: 'cs_dashboard_reply',
+        if (!isWebchat) {
+          const targetTenantId = effectiveTenantId || effectiveTenantSlug;
+          const cleanCustPhone = customerPhone ? customerPhone.replace(/\D/g, '') : '';
+          if (targetTenantId && cleanCustPhone) {
+            try {
+              await supabase.from('conversation_sessions').upsert(
+                {
+                  tenant_id: targetTenantId,
+                  session_id: `wa_${targetTenantId}_${cleanCustPhone}`,
+                  channel: 'WHATSAPP',
+                  user_identifier: cleanCustPhone,
+                  current_state: 'HANDOVER_TO_HUMAN',
+                  is_paused: true,
                   paused_at: nowIso,
+                  paused_by: 'cs_dashboard_reply',
+                  paused_until: pausedUntilIso,
+                  metadata: {
+                    auto_pause: true,
+                    triggered_by: 'cs_dashboard_reply',
+                    paused_at: nowIso,
+                  },
+                  updated_at: nowIso,
                 },
-                updated_at: nowIso,
-              },
-              { onConflict: 'tenant_id,user_identifier' }
-            );
-          } catch (sessErr) {
-            console.warn('[useTenantInbox] Session pause note:', sessErr);
-          }
-        }
-
-        // 4c. Outbound dispatch via Outbound Lock Gateway with Idempotency Key
-        const idempotencyKey = `idemp_${activeConversation.id}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        try {
-          const sendRes = await fetch('/api/inbox/messages/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Idempotency-Key': idempotencyKey,
-            },
-            body: JSON.stringify({
-              tenant_id: effectiveTenantId || effectiveTenantSlug,
-              conversation_id: activeConversation.id,
-              text: body,
-              phone_number: customerPhone,
-              idempotency_key: idempotencyKey,
-            }),
-          });
-          const sendData = await sendRes.json();
-          if (!sendRes.ok || sendData.success === false) {
-            const errorMsg = sendData.detail || sendData.error || 'Gagal mengirim pesan melalui kanal tujuan.';
-            console.warn('[useTenantInbox] Outbound send note:', errorMsg);
-            if (sendRes.status === 422 || sendRes.status === 403) {
-              alert(errorMsg);
-              return false;
+                { onConflict: 'tenant_id,user_identifier' }
+              );
+            } catch (sessErr) {
+              console.warn('[useTenantInbox] Session pause note:', sessErr);
             }
           }
-        } catch (sendErr) {
-          console.warn('[useTenantInbox] WhatsApp dispatch warning:', sendErr);
+
+          // 4c. Outbound dispatch via Outbound Lock Gateway with Idempotency Key for WhatsApp
+          const idempotencyKey = `idemp_${activeConversation.id}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          try {
+            const sendRes = await fetch('/api/inbox/messages/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': idempotencyKey,
+              },
+              body: JSON.stringify({
+                tenant_id: effectiveTenantId || effectiveTenantSlug,
+                conversation_id: activeConversation.id,
+                text: body,
+                phone_number: customerPhone,
+                idempotency_key: idempotencyKey,
+              }),
+            });
+            const sendData = await sendRes.json();
+            if (!sendRes.ok || sendData.success === false) {
+              const errorMsg = sendData.detail || sendData.error || 'Gagal mengirim pesan melalui kanal tujuan.';
+              console.warn('[useTenantInbox] Outbound send note:', errorMsg);
+              if (sendRes.status === 422 || sendRes.status === 403) {
+                alert(errorMsg);
+                return false;
+              }
+            }
+          } catch (sendErr) {
+            console.warn('[useTenantInbox] WhatsApp dispatch warning:', sendErr);
+          }
         }
 
         setReplyText('');

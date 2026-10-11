@@ -40,14 +40,15 @@ describe('Backend Seeding: 2 SKU Digital & Cover Image untuk Tenant onlineboost'
       expect(prodA?.status).toBe('ACTIVE');
     });
 
-    it('should match exact specification for Produk 2 (Sel B: ACADEMY_CTWA_BATCH1_B)', () => {
-      const prodB = SEED_PRODUCTS.find(p => p.sku === 'ACADEMY_CTWA_BATCH1_B');
+    it('should match exact specification for Produk 2 (Scale: ACADEMY_CTWA_BATCH1_SCALE)', () => {
+      const prodB = SEED_PRODUCTS.find(p => p.sku === 'ACADEMY_CTWA_BATCH1_SCALE');
       expect(prodB).toBeDefined();
       expect(prodB?.name).toBe('Kelas Inkubasi CTWA Batch 1 - Scale Bundle (Recommended)');
-      expect(prodB?.price).toBe(149000);
+      expect(prodB?.price).toBe(1490000);
+      expect(prodB?.promo_price).toBe(249000);
       expect(prodB?.is_digital).toBe(true);
       expect(prodB?.description).toBe(
-        'Akses Inkubasi Kelas 4 Hari + Script JSON Sales Rep Bot + SOP Objection Handling + 1 Bulan Trial Ads Performance (Hard-cap 100 Sesi AI) + 15 Kredit Studio HD + Status Member Toko Selamanya.'
+        'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.'
       );
       expect(prodB?.image_url).toBe('/images/products/onlineboost-batch1-scale.png');
       expect(prodB?.status).toBe('ACTIVE');
@@ -64,11 +65,11 @@ describe('Backend Seeding: 2 SKU Digital & Cover Image untuk Tenant onlineboost'
 
       // Check both SKUs present
       expect(sqlContent).toContain('ACADEMY_CTWA_BATCH1_A');
-      expect(sqlContent).toContain('ACADEMY_CTWA_BATCH1_B');
+      expect(sqlContent).toContain('ACADEMY_CTWA_BATCH1_SCALE');
 
       // Check prices
       expect(sqlContent).toContain('99000');
-      expect(sqlContent).toContain('149000');
+      expect(sqlContent).toContain('249000');
 
       // Check images
       expect(sqlContent).toContain('/images/products/onlineboost-batch1-starter.png');

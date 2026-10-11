@@ -161,16 +161,37 @@ async function getTenantConnectionRegistry(tenantSlug: string): Promise<WhatsApp
   return defaultDedicated;
 }
 
+// Helper fetch with strict timeout handling (maksimal 10-12 detik)
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 10000
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function checkConnectionState(instanceName: string): Promise<{ status: number; state: string | null; data: any }> {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connectionState/${encodeURIComponent(instanceName)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "GET",
     headers: { apikey: EVOLUTION_API_KEY },
     cache: "no-store",
-  }).catch(() => null);
+  }, 10000);
 
-  if (!res) return { status: 500, state: null, data: {} };
+  if (!res) return { status: 504, state: null, data: {} };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json().catch(() => ({}));
   const state: string | null = data?.instance?.state || data?.state || null;
@@ -180,11 +201,11 @@ async function checkConnectionState(instanceName: string): Promise<{ status: num
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchInstanceInfo(instanceName: string): Promise<any | null> {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "GET",
     headers: { apikey: EVOLUTION_API_KEY },
     cache: "no-store",
-  }).catch(() => null);
+  }, 8000);
   if (!res || !res.ok) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const list: any = await res.json().catch(() => null);
@@ -196,10 +217,10 @@ async function fetchInstanceInfo(instanceName: string): Promise<any | null> {
 
 async function deleteInstance(instanceName: string) {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/delete/${encodeURIComponent(instanceName)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "DELETE",
     headers: { apikey: EVOLUTION_API_KEY },
-  }).catch(() => null);
+  }, 8000);
   if (!res) return { ok: false };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json().catch(() => ({}));
@@ -214,7 +235,7 @@ async function createInstance(instanceName: string) {
     "https://api.boontrack.com"
   ).replace(/\/$/, "");
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -229,7 +250,7 @@ async function createInstance(instanceName: string) {
       browser: ["BoonTrack Engine", "Chrome", "1.0.0"],
       browserName: "BoonTrack Engine",
     }),
-  }).catch(() => null);
+  }, 10000);
 
   if (!res) return { ok: false, data: {} };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -238,7 +259,7 @@ async function createInstance(instanceName: string) {
   // Configure Webhook on Evolution API for inbound messages & status updates
   try {
     const webhookUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${encodeURIComponent(instanceName)}`;
-    await fetch(webhookUrl, {
+    await fetchWithTimeout(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -253,7 +274,7 @@ async function createInstance(instanceName: string) {
           events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
         },
       }),
-    }).catch(() => null);
+    }, 5000);
   } catch (_) {}
 
   return { ok: res.ok, data };
@@ -262,13 +283,13 @@ async function createInstance(instanceName: string) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchConnect(instanceName: string): Promise<{ status: number; data: any }> {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "GET",
     headers: { apikey: EVOLUTION_API_KEY },
     cache: "no-store",
-  }).catch(() => null);
+  }, 12000);
 
-  if (!res) return { status: 500, data: {} };
+  if (!res) return { status: 504, data: {} };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json().catch(() => ({}));
   return { status: res.status, data };
@@ -319,8 +340,17 @@ export async function POST(req: NextRequest) {
     // ── 2. CEK STATUS KONEKSI AKTIF KE EVOLUTION API ─────────────────────────────
     let stateCheck = await checkConnectionState(targetInstance);
 
-    // Fallback: Jika instance yang dimapping bukan boontrack-gateway dan belum open,
-    // periksa apakah shared gateway utama berstatus open.
+    if (stateCheck.status === 504) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "DISCONNECTED",
+          error: "Gagal memuat sesi dari gateway proxy",
+        },
+        { status: 504 }
+      );
+    }
+
     let activeInstanceName = targetInstance;
     let isConnected = stateCheck.state === "open" || stateCheck.state === "CONNECTED";
 
@@ -364,9 +394,23 @@ export async function POST(req: NextRequest) {
       const rawBase64 =
         connectResult.data?.base64 ||
         connectResult.data?.qrcode?.base64 ||
+        connectResult.data?.qr ||
+        connectResult.data?.qrcode ||
+        connectResult.data?.qr_image ||
         null;
       const base64 = cleanBase64(rawBase64);
-      const code = connectResult.data?.code || connectResult.data?.qrcode?.code || null;
+      const code = connectResult.data?.code || connectResult.data?.qrcode?.code || connectResult.data?.pairingCode || null;
+
+      if (!base64 && !code) {
+        return NextResponse.json(
+          {
+            success: false,
+            status: "DISCONNECTED",
+            error: "Gagal memuat sesi dari gateway proxy",
+          },
+          { status: 502 }
+        );
+      }
 
       return NextResponse.json({
         success: true,
@@ -456,17 +500,18 @@ export async function POST(req: NextRequest) {
 
     if (!base64 && (connectResult.status === 200 || connectResult.status === 201)) {
       const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(targetInstance)}`;
-      await fetch(restartUrl, {
+      await fetchWithTimeout(restartUrl, {
         method: "POST",
         headers: { apikey: EVOLUTION_API_KEY },
-      }).catch(() => null);
+      }, 5000);
 
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       const retryConn = await fetchConnect(targetInstance);
       const retryBase64 = cleanBase64(
         retryConn.data?.base64 ||
         retryConn.data?.qrcode?.base64 ||
-        retryConn.data?.qr_image
+        retryConn.data?.qr_image ||
+        retryConn.data?.qr
       );
       if (retryBase64) {
         base64 = retryBase64;
@@ -474,6 +519,17 @@ export async function POST(req: NextRequest) {
       if (retryConn.data?.code || retryConn.data?.qrcode?.code || retryConn.data?.pairingCode) {
         code = retryConn.data?.code || retryConn.data?.qrcode?.code || retryConn.data?.pairingCode;
       }
+    }
+
+    if (!base64 && !code) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "DISCONNECTED",
+          error: "Gagal memuat sesi dari gateway proxy",
+        },
+        { status: 502 }
+      );
     }
 
     await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "connecting");
@@ -490,17 +546,13 @@ export async function POST(req: NextRequest) {
       tenant_slug: tenantSlug,
     });
   } catch (err: unknown) {
-    let msg =
-      err instanceof Error ? err.message : "Gagal berkomunikasi dengan BoonTrack Engine";
-    msg = msg
-      .replace(/Evolution API/gi, "BoonTrack Engine")
-      .replace(/socket/gi, "koneksi");
+    console.error("[WhatsAppConnect] Error connecting instance:", err);
     return NextResponse.json(
       {
         success: false,
         status: "DISCONNECTED",
         disconnect_reason: "GATEWAY_UNREACHABLE",
-        error: msg,
+        error: "Gagal memuat sesi dari gateway proxy",
       },
       { status: 502 }
     );

@@ -259,12 +259,14 @@ export default function WhatsAppTab({
     !isPlatformWaba(connectedPhone) &&
     waConnectionMode !== 'SHARED';
 
-  // AUTO-FETCH: Panggil handleConnectGrowthSession saat mount jika tenant belum connected dan qrCodeUrl masih kosong
+  // AUTO-FETCH: Panggil handleConnectGrowthSession saat mount jika tenant belum connected dan qrCodeUrl masih kosong (hanya 1x, cegah loop tak terbatas)
+  const hasAttemptedAutoFetch = React.useRef(false);
   React.useEffect(() => {
-    if (!isMerchantConnected && !qrCodeUrl && !isQrLoading) {
+    if (!isMerchantConnected && !qrCodeUrl && !hasAttemptedAutoFetch.current) {
+      hasAttemptedAutoFetch.current = true;
       handleConnectGrowthSession();
     }
-  }, [tenantSlug, isMerchantConnected, qrCodeUrl, isQrLoading, handleConnectGrowthSession]);
+  }, [tenantSlug, isMerchantConnected, qrCodeUrl, handleConnectGrowthSession]);
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -510,26 +512,16 @@ export default function WhatsAppTab({
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                     <span>Mengambil token autentikasi dari proxy server...</span>
                   </div>
-                ) : qrCodeUrl && !activeQrImgError ? (
+                ) : qrCodeUrl ? (
                   <div className="flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in duration-200">
                     <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
-                      {qrCodeUrl.startsWith('data:image/') ? (
-                        <img
-                          key={qrCodeUrl}
-                          src={qrCodeUrl}
-                          alt="WhatsApp QR Code"
-                          className="w-56 h-56 object-contain block mx-auto"
-                          onLoad={() => handleSetQrImgError(false)}
-                          onError={() => handleSetQrImgError(true)}
-                        />
-                      ) : (
-                        <QRCodeSVG
-                          value={qrCodeUrl}
-                          size={224}
-                          level="M"
-                          className="w-56 h-56 block mx-auto"
-                        />
-                      )}
+                      <img
+                        key={qrCodeUrl}
+                        src={qrCodeUrl.startsWith('data:') ? qrCodeUrl : `data:image/png;base64,${qrCodeUrl}`}
+                        alt="QR Code WhatsApp"
+                        className="w-64 h-64 mx-auto object-contain block"
+                        onLoad={() => handleSetQrImgError(false)}
+                      />
                     </div>
                     <div className="space-y-1">
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
@@ -543,26 +535,26 @@ export default function WhatsAppTab({
                   </div>
                 ) : (
                   <div className="text-center py-8 space-y-3">
-                    {activeQrImgError ? (
-                      <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto" />
+                    {waErrorMessage ? (
+                      <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
                     ) : (
                       <Smartphone className="w-12 h-12 text-slate-300 mx-auto" />
                     )}
                     <div>
                       <p className="text-xs font-bold text-slate-700">
-                        {activeQrImgError ? 'Gagal Memuat Barcode QR' : 'Disediakan WhatsApp'}
+                        {waErrorMessage ? 'Gagal Memuat QR Code' : 'Disediakan WhatsApp'}
                       </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {activeQrImgError
-                          ? 'Format gambar tidak dapat dirender. Klik tombol di bawah untuk memuat ulang QR Code.'
-                          : 'Klik tombol di bawah untuk mengaktifkan barcode QR Code.'}
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                        {waErrorMessage
+                          ? waErrorMessage
+                          : 'Klik tombol di bawah untuk memuat QR Code otentikasi WhatsApp.'}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         handleSetQrImgError(false);
-                        handleConnectGrowthSession();
+                        handleConnectGrowthSession(true);
                       }}
                       disabled={isQrLoading}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-300 text-white text-xs font-bold rounded-xl transition cursor-pointer inline-flex items-center gap-2 shadow-xs"
@@ -575,7 +567,7 @@ export default function WhatsAppTab({
                       ) : (
                         <>
                           <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Muat QR Code</span>
+                          <span>Coba Lagi / Generate Ulang QR</span>
                         </>
                       )}
                     </button>

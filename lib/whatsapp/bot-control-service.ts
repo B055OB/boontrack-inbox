@@ -14,6 +14,9 @@ import { cleanCustomerPhone } from '@/lib/whatsapp/inbox-persistence';
 import { isManualOrderMessage } from '@/lib/whatsapp/order-interceptor';
 
 export type BotControlAction = 'PAUSE' | 'RESUME';
+export type BotControlScope = 'tenant' | 'conversation';
+export type TenantBotStatus = 'BOT_ACTIVE' | 'BOT_DISABLED';
+export type ConversationBotStatus = 'AI_ACTIVE' | 'HUMAN_HANDOVER';
 
 /**
  * Normalizes and parses bot control commands from WhatsApp text.
@@ -149,60 +152,124 @@ export async function isAuthorizedBotController(params: {
 }
 
 /**
- * Dual-Level Database Mutation: Atomically syncs bot state across
- * tenants, conversation_sessions (chat_sessions), and conversations.
+ * Atomic State Mutation with Dual Scopes & Tight RBAC:
  *
- * PAUSE / #OFF:
- * - tenants: bot_paused = true, is_bot_active = false
- * - chat_sessions / conversation_sessions: is_paused = true, bot_status = 'HUMAN_PAUSED', paused_until = NOW() + INTERVAL '24 hours'
- * - conversations: bot_paused = true, bot_mode = 'HUMAN_ACTIVE', status = 'HUMAN_PAUSED'
+ * 1. TENANT-LEVEL (Scope: 'tenant'):
+ *    - Status model: BOT_ACTIVE / BOT_DISABLED
+ *    - RBAC: Restricted exclusively to owner, admin, superuser.
+ *    - Mutates:
+ *      * tenants: bot_paused, is_bot_active, metadata.bot_status
+ *      * conversation_sessions (tenant-wide sync)
+ *      * conversations (tenant-wide sync)
  *
- * RESUME / #ON:
- * - tenants: bot_paused = false, is_bot_active = true
- * - chat_sessions / conversation_sessions: is_paused = false, bot_status = 'BOT_ACTIVE', paused_until = NOW() - INTERVAL '1 minute'
- *   (loop quarantine flags cleared)
- * - conversations: bot_paused = false, bot_mode = 'AI_ACTIVE', status = 'active'
+ * 2. CONVERSATION-LEVEL (Scope: 'conversation'):
+ *    - Status model: AI_ACTIVE / HUMAN_HANDOVER
+ *    - RBAC: Accessible by CS, manager, admin, owner for specific conversation.
+ *    - Mutates:
+ *      * conversation_sessions (for target customer phone using tenant UUID)
+ *      * conversations (for target conversation record)
+ *
+ * Verifies every return error from Supabase to prevent false success.
  */
 export async function executeBotControl(params: {
-  action: BotControlAction;
+  action?: BotControlAction;
+  scope?: BotControlScope;
+  status?: TenantBotStatus | ConversationBotStatus | string;
   tenantId: string;
   tenantSlug?: string;
+  conversationId?: string;
+  customerPhone?: string;
   senderPhone?: string;
+  userRole?: string;
   source?: string;
   supabase?: any;
-}): Promise<{ success: boolean; bot_paused: boolean; message: string }> {
-  const { action, tenantId, tenantSlug, source = 'admin_command' } = params;
+}): Promise<{
+  success: boolean;
+  bot_paused: boolean;
+  message: string;
+  scope?: BotControlScope;
+  status?: string;
+  error?: string;
+}> {
+  const { tenantId, tenantSlug, source = 'admin_command' } = params;
   const supabase = params.supabase || getSupabaseAdmin() || getSupabase();
   if (!supabase) {
-    return { success: false, bot_paused: false, message: 'Supabase client unavailable' };
+    return { success: false, bot_paused: false, message: 'Supabase client unavailable', error: 'NO_SUPABASE_CLIENT' };
   }
 
-  const isPause = action === 'PAUSE';
+  // 1. Determine Scope
+  const scope: BotControlScope =
+    params.scope ||
+    (params.conversationId || params.customerPhone ? 'conversation' : 'tenant');
+
+  // 2. RBAC Enforcement
+  const role = (params.userRole || '').toLowerCase().trim();
+  if (role) {
+    if (scope === 'tenant') {
+      const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
+      if (!allowedTenantRoles.includes(role)) {
+        return {
+          success: false,
+          bot_paused: false,
+          scope: 'tenant',
+          message: 'Akses ditolak: Hanya role Owner atau Admin yang diizinkan mengubah status bot tingkat tenant (Tenant-level).',
+          error: 'FORBIDDEN_TENANT_ROLE',
+        };
+      }
+    } else {
+      const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
+      if (!allowedConvRoles.includes(role)) {
+        return {
+          success: false,
+          bot_paused: false,
+          scope: 'conversation',
+          message: 'Akses ditolak: Role Anda tidak memiliki izin untuk mengontrol sesi percakapan.',
+          error: 'FORBIDDEN_CONVERSATION_ROLE',
+        };
+      }
+    }
+  }
+
   const now = new Date();
   const nowIso = now.toISOString();
 
-  // Sliding window: PAUSE = NOW + 24 hours | RESUME = NOW - 1 minute
-  const pausedUntilIso = isPause
-    ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
-    : new Date(now.getTime() - 60 * 1000).toISOString();
-
-  const botStatus = isPause ? 'HUMAN_PAUSED' : 'BOT_ACTIVE';
-  const currentState = isPause ? 'HUMAN_PAUSED' : 'ACTIVE';
-  const botMode = isPause ? 'HUMAN_ACTIVE' : 'AI_ACTIVE';
-  const convStatus = isPause ? 'HUMAN_PAUSED' : 'active';
+  // 3. Resolve Tenant UUID (Single Source of Truth)
+  let resolvedTenantUuid = tenantId;
+  let resolvedTenantSlug = tenantSlug || tenantId;
+  let tenantRow: any = null;
 
   try {
-    // 1. UPDATE tenants table
-    const { data: tRow } = await supabase
+    const { data: tData } = await supabase
       .from('tenants')
-      .select('id, slug, metadata')
+      .select('id, slug, metadata, bot_paused, is_bot_active')
       .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
       .maybeSingle();
 
-    const resolvedId = tRow?.id || tenantId;
-    const resolvedSlug = tRow?.slug || tenantSlug || tenantId;
-    const meta = (tRow?.metadata && typeof tRow.metadata === 'object') ? { ...tRow.metadata } : {};
+    if (tData) {
+      tenantRow = tData;
+      resolvedTenantUuid = tData.id;
+      resolvedTenantSlug = tData.slug || resolvedTenantSlug;
+    }
+  } catch (err) {
+    console.warn('[BotControlService] Error resolving tenant UUID:', err);
+  }
 
+  // =========================================================================
+  // SCOPE A: TENANT-LEVEL MUTATION (BOT_ACTIVE / BOT_DISABLED)
+  // =========================================================================
+  if (scope === 'tenant') {
+    const isPause =
+      params.action === 'PAUSE' ||
+      params.status === 'BOT_DISABLED' ||
+      params.status === 'HUMAN_PAUSED';
+
+    const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE';
+    const pausedUntilIso = isPause
+      ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+      : new Date(now.getTime() - 60 * 1000).toISOString();
+
+    const meta = (tenantRow?.metadata && typeof tenantRow.metadata === 'object') ? { ...tenantRow.metadata } : {};
+    meta.bot_status = tenantStatus;
     meta.bot_paused = isPause;
     meta.is_bot_paused = isPause;
     meta.is_bot_active = !isPause;
@@ -219,64 +286,244 @@ export async function executeBotControl(params: {
       meta.quarantined = false;
     }
 
-    await supabase
-      .from('tenants')
-      .update({
+    try {
+      // 1. Update tenants table
+      let tUpdateChain: any = supabase.from('tenants').update({
         bot_paused: isPause,
         is_bot_active: !isPause,
         metadata: meta,
         updated_at: nowIso,
-      })
-      .or(`id.eq.${resolvedId},slug.eq.${resolvedSlug}`);
+      });
 
-    // 2. UPDATE conversation_sessions table (and chat_sessions)
-    const sessionUpdatePayload: Record<string, any> = {
-      is_paused: isPause,
-      current_state: currentState,
-      bot_status: botStatus,
-      paused_until: pausedUntilIso,
-      updated_at: nowIso,
-    };
+      if (typeof tUpdateChain.or === 'function') {
+        tUpdateChain = tUpdateChain.or(`id.eq.${resolvedTenantUuid},slug.eq.${resolvedTenantSlug}`);
+      } else if (typeof tUpdateChain.eq === 'function') {
+        tUpdateChain = tUpdateChain.eq('id', resolvedTenantUuid);
+      }
 
-    if (isPause) {
-      sessionUpdatePayload.paused_at = nowIso;
-      sessionUpdatePayload.paused_by = source;
-    } else {
-      sessionUpdatePayload.paused_at = null;
-      sessionUpdatePayload.paused_by = null;
+      const { error: tErr } = await tUpdateChain;
+
+      if (tErr) {
+        console.error('[BotControlService] Failed to update tenants table:', tErr);
+        return {
+          success: false,
+          bot_paused: isPause,
+          scope: 'tenant',
+          status: tenantStatus,
+          message: `Gagal memperbarui status bot toko: ${tErr.message}`,
+          error: tErr.message,
+        };
+      }
+
+      // 2. Synchronize conversation_sessions using valid tenant UUID
+      const sessionUpdatePayload: Record<string, any> = {
+        is_paused: isPause,
+        current_state: isPause ? 'HUMAN_PAUSED' : 'ACTIVE',
+        bot_status: isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE',
+        paused_until: pausedUntilIso,
+        updated_at: nowIso,
+      };
+
+      if (isPause) {
+        sessionUpdatePayload.paused_at = nowIso;
+        sessionUpdatePayload.paused_by = source;
+      } else {
+        sessionUpdatePayload.paused_at = null;
+        sessionUpdatePayload.paused_by = null;
+      }
+
+      let sUpdateChain: any = supabase.from('conversation_sessions').update(sessionUpdatePayload);
+      if (typeof sUpdateChain.or === 'function') {
+        sUpdateChain = sUpdateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_id.eq.${resolvedTenantSlug}`);
+      } else if (typeof sUpdateChain.eq === 'function') {
+        sUpdateChain = sUpdateChain.eq('tenant_id', resolvedTenantUuid);
+      }
+
+      const { error: sErr } = await sUpdateChain;
+
+      if (sErr) {
+        console.error('[BotControlService] Failed to update conversation_sessions for tenant:', sErr);
+        return {
+          success: false,
+          bot_paused: isPause,
+          scope: 'tenant',
+          status: tenantStatus,
+          message: `Gagal memperbarui sesi percakapan toko: ${sErr.message}`,
+          error: sErr.message,
+        };
+      }
+
+      // 3. Synchronize conversations table
+      let cUpdateChain: any = supabase.from('conversations').update({
+        bot_paused: isPause,
+        is_bot_paused: isPause,
+        is_bot_active: !isPause,
+        bot_mode: isPause ? 'HUMAN_ACTIVE' : 'AI_ACTIVE',
+        status: isPause ? 'HUMAN_PAUSED' : 'active',
+        updated_at: nowIso,
+      });
+
+      if (typeof cUpdateChain.or === 'function') {
+        cUpdateChain = cUpdateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_slug.eq.${resolvedTenantSlug}`);
+      } else if (typeof cUpdateChain.eq === 'function') {
+        cUpdateChain = cUpdateChain.eq('tenant_id', resolvedTenantUuid);
+      }
+
+      const { error: cErr } = await cUpdateChain;
+
+      if (cErr) {
+        console.error('[BotControlService] Failed to update conversations table:', cErr);
+        return {
+          success: false,
+          bot_paused: isPause,
+          scope: 'tenant',
+          status: tenantStatus,
+          message: `Gagal memperbarui percakapan toko: ${cErr.message}`,
+          error: cErr.message,
+        };
+      }
+
+      const replyMsg = isPause
+        ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (BOT_DISABLED). Semua percakapan dialihkan ke mode manual CS.'
+        : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan (BOT_ACTIVE).';
+
+      return {
+        success: true,
+        scope: 'tenant',
+        status: tenantStatus,
+        bot_paused: isPause,
+        message: replyMsg,
+      };
+    } catch (err: any) {
+      console.error('[BotControlService] Error executing tenant bot control:', err);
+      return {
+        success: false,
+        bot_paused: isPause,
+        scope: 'tenant',
+        status: tenantStatus,
+        message: `Error executing tenant bot control: ${err.message || String(err)}`,
+        error: err.message || String(err),
+      };
+    }
+  }
+
+  // =========================================================================
+  // SCOPE B: CONVERSATION-LEVEL MUTATION (AI_ACTIVE / HUMAN_HANDOVER)
+  // =========================================================================
+  const isHandover =
+    params.action === 'PAUSE' ||
+    params.status === 'HUMAN_HANDOVER' ||
+    params.status === 'HUMAN_PAUSED';
+
+  const convStatus: ConversationBotStatus = isHandover ? 'HUMAN_HANDOVER' : 'AI_ACTIVE';
+  const pausedUntilIso = isHandover
+    ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  const targetPhone = cleanCustomerPhone(params.customerPhone || params.senderPhone || '');
+
+  try {
+    // 1. Update conversation_sessions using canonical phone and resolved tenant UUID
+    if (targetPhone) {
+      const sessionPayload: Record<string, any> = {
+        tenant_id: resolvedTenantUuid,
+        session_id: `wa_${resolvedTenantUuid}_${targetPhone}`,
+        channel: 'WHATSAPP',
+        user_identifier: targetPhone,
+        current_state: isHandover ? 'HUMAN_PAUSED' : 'ACTIVE',
+        bot_status: convStatus,
+        is_paused: isHandover,
+        paused_at: isHandover ? nowIso : null,
+        paused_by: source,
+        paused_until: pausedUntilIso,
+        metadata: {
+          status: convStatus,
+          paused_reason: isHandover ? 'CS_HANDOVER' : null,
+          updated_by: source,
+          updated_at: nowIso,
+        },
+        updated_at: nowIso,
+      };
+
+      const csTable = supabase.from('conversation_sessions');
+      if (typeof csTable?.upsert === 'function') {
+        const { error: sErr } = await csTable.upsert(sessionPayload, {
+          onConflict: 'tenant_id,user_identifier',
+        });
+
+        if (sErr) {
+          console.error('[BotControlService] Failed to upsert conversation_sessions:', sErr);
+          return {
+            success: false,
+            scope: 'conversation',
+            status: convStatus,
+            bot_paused: isHandover,
+            message: `Gagal memperbarui sesi percakapan: ${sErr.message}`,
+            error: sErr.message,
+          };
+        }
+      }
     }
 
-    await supabase
-      .from('conversation_sessions')
-      .update(sessionUpdatePayload)
-      .or(`tenant_id.eq.${resolvedId},tenant_id.eq.${resolvedSlug}`);
-
-    // 3. UPDATE conversations table
-    await supabase
-      .from('conversations')
-      .update({
-        bot_paused: isPause,
-        bot_mode: botMode,
-        status: convStatus,
+    // 2. Update conversations table for the specific conversation
+    const convTable = supabase.from('conversations');
+    if (typeof convTable?.update === 'function') {
+      let updateChain = convTable.update({
+        bot_paused: isHandover,
+        is_bot_paused: isHandover,
+        is_bot_active: !isHandover,
+        bot_mode: isHandover ? 'HUMAN_ACTIVE' : 'AI_ACTIVE',
+        status: isHandover ? 'HUMAN_PAUSED' : 'active',
         updated_at: nowIso,
-      })
-      .or(`tenant_id.eq.${resolvedId},tenant_slug.eq.${resolvedSlug}`);
+      });
 
-    const replyMsg = isPause
-      ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (semua percakapan masuk mode manual).'
-      : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan.';
+      if (params.conversationId) {
+        updateChain = updateChain.eq('id', params.conversationId);
+      } else if (targetPhone) {
+        if (typeof updateChain?.or === 'function') {
+          updateChain = updateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_slug.eq.${resolvedTenantSlug}`);
+        }
+        if (typeof updateChain?.eq === 'function') {
+          updateChain = updateChain.eq('customer_phone', targetPhone);
+        }
+      } else {
+        if (typeof updateChain?.or === 'function') {
+          updateChain = updateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_slug.eq.${resolvedTenantSlug}`);
+        }
+      }
+
+      const { error: cErr } = await updateChain;
+      if (cErr) {
+        console.error('[BotControlService] Failed to update conversation:', cErr);
+        return {
+          success: false,
+          scope: 'conversation',
+          status: convStatus,
+          bot_paused: isHandover,
+          message: `Gagal memperbarui percakapan: ${cErr.message}`,
+          error: cErr.message,
+        };
+      }
+    }
 
     return {
       success: true,
-      bot_paused: isPause,
-      message: replyMsg,
+      scope: 'conversation',
+      status: convStatus,
+      bot_paused: isHandover,
+      message: isHandover
+        ? '⏸️ Percakapan dialihkan ke CS (HUMAN_HANDOVER). Bot AI dijeda selama 24 jam.'
+        : '🤖 Percakapan diaktifkan kembali untuk Bot AI (AI_ACTIVE).',
     };
   } catch (err: any) {
-    console.error('[BotControlService] Error executing bot control:', err);
+    console.error('[BotControlService] Error executing conversation bot control:', err);
     return {
       success: false,
-      bot_paused: isPause,
-      message: `Error executing bot control: ${err.message || String(err)}`,
+      scope: 'conversation',
+      status: convStatus,
+      bot_paused: isHandover,
+      message: `Error executing conversation bot control: ${err.message || String(err)}`,
+      error: err.message || String(err),
     };
   }
 }

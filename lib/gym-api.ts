@@ -298,13 +298,14 @@ export async function createGymMember(
 
 // 3. Access Logs
 export async function getGymAccessLogs(
-  params?: { controller_id?: string; decision?: string; limit?: number },
+  params?: { controller_id?: string; controller?: string; decision?: string; limit?: number },
   tenantId: string = DEFAULT_TENANT_ID
 ): Promise<AccessLog[]> {
   try {
     const query = new URLSearchParams();
-    if (params?.controller_id) query.append('controller_id', params.controller_id);
-    if (params?.decision) query.append('decision', params.decision);
+    const ctrl = params?.controller_id || params?.controller;
+    if (ctrl && ctrl !== 'ALL') query.append('controller_id', ctrl);
+    if (params?.decision && params.decision !== 'ALL') query.append('decision', params.decision);
     if (params?.limit) query.append('limit', String(params.limit));
 
     const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/access-logs?${query.toString()}`, {
@@ -418,11 +419,12 @@ export async function getGymBookings(classId?: string, tenantId: string = DEFAUL
 
 // 6. Invoices & Billing
 export async function getGymInvoices(
-  status?: 'ALL' | 'UNPAID' | 'PAID' | 'OVERDUE',
+  statusOrFilter?: 'ALL' | 'UNPAID' | 'PAID' | 'OVERDUE' | { status?: string; search?: string },
   tenantId: string = DEFAULT_TENANT_ID
 ): Promise<GymInvoice[]> {
   try {
-    const q = status && status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : '';
+    const rawStatus = typeof statusOrFilter === 'object' ? statusOrFilter.status : statusOrFilter;
+    const q = rawStatus && rawStatus !== 'ALL' ? `?status=${encodeURIComponent(rawStatus)}` : '';
     const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/invoices${q}`, {
       headers: getGymApiHeaders(tenantId),
       cache: 'no-store',
@@ -479,22 +481,39 @@ export async function getGymPOSProducts(category?: string, tenantId: string = DE
 }
 
 export async function checkoutGymPOS(
-  cartItems: POSCartItem[],
-  customerName: string,
-  paymentMethod: 'CASH' | 'QRIS',
+  cartItemsOrPayload: POSCartItem[] | { customer_name?: string; items?: any[]; payment_method?: any },
+  customerNameOrTenant?: string,
+  paymentMethod?: 'CASH' | 'QRIS',
   tenantId: string = DEFAULT_TENANT_ID
 ): Promise<{ success: boolean; message: string; transaction?: POSTransaction }> {
   try {
-    const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/pos/checkout`, {
-      method: 'POST',
-      headers: getGymApiHeaders(tenantId),
-      body: JSON.stringify({
-        customer_name: customerName,
-        payment_method: paymentMethod,
-        items: cartItems.map((c) => ({
+    const isObjectPayload = !Array.isArray(cartItemsOrPayload);
+    const effectiveCustomerName = isObjectPayload
+      ? (cartItemsOrPayload.customer_name || 'Walk-in Member')
+      : (customerNameOrTenant || 'Walk-in Member');
+    const effectivePaymentMethod = isObjectPayload
+      ? (cartItemsOrPayload.payment_method || 'CASH')
+      : (paymentMethod || 'CASH');
+    const effectiveTenantId = isObjectPayload
+      ? (customerNameOrTenant || DEFAULT_TENANT_ID)
+      : tenantId;
+    const effectiveItems = isObjectPayload
+      ? (cartItemsOrPayload.items || []).map((c: any) => ({
+          product_id: c.product_id || c.product?.id,
+          qty: c.qty,
+        }))
+      : (cartItemsOrPayload as POSCartItem[]).map((c) => ({
           product_id: c.product.id,
           qty: c.qty,
-        })),
+        }));
+
+    const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/pos/checkout`, {
+      method: 'POST',
+      headers: getGymApiHeaders(effectiveTenantId),
+      body: JSON.stringify({
+        customer_name: effectiveCustomerName,
+        payment_method: effectivePaymentMethod,
+        items: effectiveItems,
       }),
     });
     if (res.ok) {
@@ -526,10 +545,14 @@ export async function getGymPOSTransactions(tenantId: string = DEFAULT_TENANT_ID
 }
 
 // 8. Reports & Analytics
-export async function getGymReports(tenantId: string = DEFAULT_TENANT_ID): Promise<GymReportData> {
+export async function getGymReports(
+  paramsOrTenant?: { start_date?: string; end_date?: string } | string,
+  tenantId?: string
+): Promise<GymReportData> {
   try {
+    const effectiveTenantId = typeof paramsOrTenant === 'string' ? paramsOrTenant : tenantId || DEFAULT_TENANT_ID;
     const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/reports`, {
-      headers: getGymApiHeaders(tenantId),
+      headers: getGymApiHeaders(effectiveTenantId),
       cache: 'no-store',
     });
     if (res.ok) {
@@ -605,4 +628,18 @@ export async function updateGymSettings(
   } catch (error: any) {
     return { success: false, message: error?.message || 'Server pengaturan tidak merespons.' };
   }
+}
+
+// Aliases for page compatibility
+export const getGateControllers = getGymControllers;
+export const pairMemberCard = pairGymCardUid;
+export const getGymClassBookings = getGymBookings;
+export const getPOSProducts = getGymPOSProducts;
+export const checkoutPOS = checkoutGymPOS;
+export const getPOSTransactions = getGymPOSTransactions;
+export async function triggerGateUnlock(
+  controllerId: string,
+  tenantId: string = DEFAULT_TENANT_ID
+): Promise<{ success: boolean; message: string }> {
+  return pingGymController(controllerId, tenantId);
 }

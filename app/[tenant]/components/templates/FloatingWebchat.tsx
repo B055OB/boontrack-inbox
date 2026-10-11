@@ -18,6 +18,7 @@ import {
   Calendar,
   AlertCircle,
   ExternalLink,
+  UserCheck,
 } from 'lucide-react';
 import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/types';
 import type { StorefrontSectionConfig } from '@/lib/types/tenant-runtime';
@@ -117,13 +118,29 @@ export default function FloatingWebchat({
     return base;
   }, [dynamicQuickReplies, effectiveQuickReplies, initialTopic]);
 
-  // Lead Capture State
+  // Visitor ID & Lead Capture State (Zero Mock)
+  const [visitorId, setVisitorId] = useState<string>('');
   const [isLeadCaptured, setIsLeadCaptured] = useState(false);
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [selectedIntent, setSelectedIntent] = useState(() => availableIntents[0] || '💬 Tanya Informasi Layanan');
   const [leadError, setLeadError] = useState<string | null>(null);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+
+  // Initialize or restore visitor ID
+  useEffect(() => {
+    let vid = '';
+    try {
+      vid = localStorage.getItem(`boontrack_webchat_vid_${tenantSlug}`) || '';
+      if (!vid) {
+        vid = `vis_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem(`boontrack_webchat_vid_${tenantSlug}`, vid);
+      }
+    } catch {
+      vid = `vis_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+    setVisitorId(vid);
+  }, [tenantSlug]);
 
   // Check saved lead from localStorage
   useEffect(() => {
@@ -142,6 +159,100 @@ export default function FloatingWebchat({
     }
   }, [tenantSlug]);
 
+  // Fetch or Restore Messages from Supabase when lead is captured & visitor ID is ready
+  useEffect(() => {
+    if (!isLeadCaptured || !visitorId) return;
+
+    let isMounted = true;
+    async function restoreHistory() {
+      try {
+        const res = await fetch(
+          `/api/v1/chat/messages?tenant_slug=${encodeURIComponent(tenantSlug)}&visitor_id=${encodeURIComponent(visitorId)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted && data.success && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(
+            data.messages.map((m: any) => ({
+              id: m.id,
+              sender: m.sender,
+              senderName: m.senderName,
+              time: m.time,
+              text: m.text,
+              type: m.type,
+              payload: m.payload,
+              quick_actions: m.quick_actions,
+              checkout_url: m.checkout_url,
+            }))
+          );
+        } else if (isMounted) {
+          // If no previous message history, render the welcome greeting
+          setMessages((prev) => {
+            if (prev.length === 0) {
+              const greetingBase = getStoreChatGreeting(category || '', activeName);
+              const greetingText = parentName
+                ? `Halo ${parentName}! 👋\n\n${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`
+                : `${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`;
+              return [
+                {
+                  id: 'init-floating-1',
+                  sender: 'bot',
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  text: greetingText,
+                  type: 'TEXT',
+                  quick_actions: effectiveQuickReplies,
+                },
+              ];
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.debug('[FloatingWebchat] History fetch note:', err);
+      }
+    }
+
+    restoreHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [isLeadCaptured, visitorId, tenantSlug, category, activeName, parentName, effectiveQuickReplies]);
+
+  // Periodic Synchronization: Listen for CS agent responses while chat drawer is open
+  useEffect(() => {
+    if (!isOpen || !isLeadCaptured || !visitorId) return;
+
+    const syncInterval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/v1/chat/messages?tenant_slug=${encodeURIComponent(tenantSlug)}&visitor_id=${encodeURIComponent(visitorId)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages((prev) => {
+            if (data.messages.length === prev.length) return prev;
+            return data.messages.map((m: any) => ({
+              id: m.id,
+              sender: m.sender,
+              senderName: m.senderName,
+              time: m.time,
+              text: m.text,
+              type: m.type,
+              payload: m.payload,
+              quick_actions: m.quick_actions,
+              checkout_url: m.checkout_url,
+            }));
+          });
+        }
+      } catch {
+        // Non-fatal background sync
+      }
+    }, 3500);
+
+    return () => clearInterval(syncInterval);
+  }, [isOpen, isLeadCaptured, visitorId, tenantSlug]);
+
   // If initialTopic is passed from visual grid or external CTA, open chat
   useEffect(() => {
     if (initialTopic) {
@@ -152,31 +263,6 @@ export default function FloatingWebchat({
       }
     }
   }, [initialTopic, isLeadCaptured]);
-
-  // Initial Bot Greeting
-  useEffect(() => {
-    if (!isLeadCaptured) return;
-
-    setMessages((prev) => {
-      if (prev.length === 0) {
-        const greetingBase = getStoreChatGreeting(category || '', activeName);
-        const greetingText = parentName
-          ? `Halo ${parentName}! 👋\n\n${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`
-          : `${greetingBase}\n\nSilakan tanyakan kebutuhan Anda atau pilih opsi cepat di bawah:`;
-        return [
-          {
-            id: 'init-floating-1',
-            sender: 'bot',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: greetingText,
-            type: 'TEXT',
-            quick_actions: effectiveQuickReplies,
-          },
-        ];
-      }
-      return prev;
-    });
-  }, [isLeadCaptured, activeName, parentName, effectiveQuickReplies, category]);
 
   useEffect(() => {
     if (isOpen) {
@@ -208,7 +294,7 @@ export default function FloatingWebchat({
     setIsSubmittingLead(true);
     try {
       // 1. Submit lead to CRM API endpoint
-      const res = await fetch('/api/v1/crm/lead', {
+      await fetch('/api/v1/crm/lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -218,7 +304,7 @@ export default function FloatingWebchat({
           intent: selectedIntent,
           notes: `Lead Webchat Storefront: Kebutuhan awal "${selectedIntent}"`,
         }),
-      });
+      }).catch((crmErr) => console.warn('[FloatingWebchat] CRM lead error:', crmErr));
 
       // Save to localStorage
       try {
@@ -230,19 +316,38 @@ export default function FloatingWebchat({
 
       setIsLeadCaptured(true);
 
-      // Add user intent message and bot response
+      const firstText = `Halo, saya ${parentName.trim()}. Saya ingin bertanya seputar: ${selectedIntent}`;
+
+      // 2. Dispatch to official webchat messaging API (persists in conversations & messages)
+      const res = await fetch('/api/v1/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: tenantSlug,
+          visitor_id: visitorId,
+          customer_name: parentName.trim(),
+          customer_phone: canonical,
+          message: firstText,
+          intent: selectedIntent,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
       const firstUserMsg: StoreChatMessage = {
         id: `user-init-${Date.now()}`,
         sender: 'user',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Halo, saya ${parentName.trim()}. Saya ingin bertanya seputar: ${selectedIntent}`,
+        text: firstText,
         type: 'TEXT',
       };
 
       const isClinic = String(category || '').toUpperCase().includes('KLINIK');
-      const botResponseText = isClinic
+      const fallbackBotText = isClinic
         ? `Halo Bapak/Ibu ${parentName.trim()}! 🙏 Terima kasih telah menghubungi ${activeName}.\n\nKami telah mencatat ketertarikan Anda pada "${selectedIntent}". Tim kami siap menjawab pertanyaan seputar jadwal, alur konsultasi, atau biaya paket layanan.\n\nAda pertanyaan atau keluhan spesifik yang ingin dikonsultasikan saat ini?`
         : `Halo ${parentName.trim()}! 🙏 Terima kasih telah menghubungi ${activeName}.\n\nKami telah mencatat ketertarikan Anda pada "${selectedIntent}". Tim kami siap menjawab pertanyaan seputar katalog, jadwal layanan, estimasi pengerjaan, atau biaya.\n\nAda yang bisa kami bantu seputar kebutuhan Anda hari ini?`;
+
+      const botReply = data.reply || fallbackBotText;
 
       setMessages([
         firstUserMsg,
@@ -250,14 +355,14 @@ export default function FloatingWebchat({
           id: `bot-init-${Date.now() + 1}`,
           sender: 'bot',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: botResponseText,
+          text: botReply,
           type: 'TEXT',
-          quick_actions: effectiveQuickReplies,
+          quick_actions: data.quick_actions || effectiveQuickReplies,
+          checkout_url: data.checkout_url,
         },
       ]);
     } catch (err: any) {
       console.warn('[FloatingWebchat] Lead submission note:', err);
-      // Still allow chat even if CRM API has network error
       setIsLeadCaptured(true);
     } finally {
       setIsSubmittingLead(false);
@@ -277,36 +382,35 @@ export default function FloatingWebchat({
     setIsBotTyping(true);
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/v1/chat/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenant_slug: tenantSlug,
+          visitor_id: visitorId,
+          customer_name: parentName.trim() || 'Pengunjung Webchat',
+          customer_phone: parentPhone.trim() || undefined,
           message: userText,
-          tenant: tenantSlug,
-          history: messages.slice(-6).map((m) => ({
-            role: m.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: m.text }],
-          })),
         }),
       });
 
       const data = await res.json();
-      const botMsg: StoreChatMessage = {
-        id: `bot-${Date.now()}`,
-        sender: 'bot',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text:
-          data.reply ||
-          data.response ||
-          (isClinicOrPediatric
-            ? 'Terima kasih atas pesannya. Tim medis & CS kami siap membantu kebutuhan si kecil.'
-            : `Terima kasih atas pesannya. Tim customer service ${activeName} siap membantu kebutuhan Anda.`),
-        action: data.action,
-        type: data.type || 'TEXT',
-        product: data.product,
-        quick_actions: data.quick_actions || effectiveQuickReplies,
-      };
-      setMessages((prev) => [...prev, botMsg]);
+      if (data.reply) {
+        const botMsg: StoreChatMessage = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: data.reply,
+          action: data.action,
+          type: data.type || 'TEXT',
+          product: data.product,
+          quick_actions: data.quick_actions || effectiveQuickReplies,
+          checkout_url: data.checkout_url,
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      } else if (data.bot_paused) {
+        // CS Takeover is active: waiting for human CS response
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -315,8 +419,8 @@ export default function FloatingWebchat({
           sender: 'bot',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           text: isClinicOrPediatric
-            ? `Halo Ayah/Bunda! Layanan ${activeName} siap mendampingi. Silakan pilih opsi di bawah atau hubungi WhatsApp pendaftaran langsung jika memerlukan jadwal segera.`
-            : `Halo! Layanan resmi ${activeName} siap membantu. Silakan pilih opsi di bawah atau tanyakan langsung kebutuhan Anda kepada tim kami.`,
+            ? `Halo Ayah/Bunda! Layanan ${activeName} siap mendampingi. Tim kami akan segera menindaklanjuti pesan Anda.`
+            : `Halo! Layanan resmi ${activeName} siap membantu. Tim kami akan segera merespons pesan Anda.`,
           type: 'TEXT',
           quick_actions: effectiveQuickReplies,
         },
@@ -477,10 +581,32 @@ export default function FloatingWebchat({
                         className={`max-w-[88%] rounded-2xl p-3.5 leading-relaxed shadow-2xs ${
                           msg.sender === 'user'
                             ? 'bg-purple-600 text-white rounded-br-xs'
+                            : msg.sender === 'agent'
+                            ? 'bg-sky-50 text-slate-800 border border-sky-200/90 rounded-bl-xs'
                             : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs'
                         }`}
                       >
+                        {msg.sender === 'agent' && (
+                          <div className="flex items-center gap-1 text-[10px] font-black text-sky-700 mb-1">
+                            <UserCheck className="w-3 h-3 text-sky-600 shrink-0" />
+                            <span>Live CS ({msg.senderName || 'Admin Toko'})</span>
+                          </div>
+                        )}
                         <p className="whitespace-pre-line leading-relaxed">{msg.text}</p>
+
+                        {msg.checkout_url && (
+                          <div className="mt-2">
+                            <a
+                              href={msg.checkout_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] transition shadow-xs"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Buka Pesanan / Checkout</span>
+                            </a>
+                          </div>
+                        )}
 
                         {/* Rekomendasi Produk / Layanan */}
                         {msg.sender === 'bot' && msg.product && (

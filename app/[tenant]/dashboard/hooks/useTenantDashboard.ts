@@ -2560,11 +2560,15 @@ export function useTenantDashboard() {
     setIsQrLoading(true);
     setWaErrorMessage(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
       const url = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
 
@@ -2578,9 +2582,6 @@ export function useTenantDashboard() {
         rawPhone.includes('85139555449') ||
         data.mode === 'SHARED';
 
-      // FIX: Jangan mensyaratkan rawPhone untuk menentukan CONNECTED.
-      // Instance bisa sudah connected (state=open di Evolution) tetapi phone_number belum
-      // terpopulasi di Supabase — kondisi sebelumnya menyebabkan blank QR silent.
       const isConnected = (data.status === 'CONNECTED' || data.connected === true) && !isPlatform;
 
       if (isConnected) {
@@ -2593,25 +2594,40 @@ export function useTenantDashboard() {
         if (data.status !== 'CONNECTED') {
           setWaStatus('CONNECTING');
         }
-        setWaErrorMessage(null);
 
-        // Tangani parsing kembalian base64 QR dari Evolution API secara fleksibel
-        const rawBase64 = data?.base64 || data?.qrcode?.base64 || data?.qr || data?.code;
-        if (rawBase64 && typeof rawBase64 === 'string') {
-          const clean = rawBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+        // Tangani parsing kembalian base64 QR dari Evolution API secara fleksibel:
+        // Mendukung: data?.qrcode?.base64 || data?.base64 || data?.qr || data?.qrcode || data?.qr_image || data?.code
+        const qrRaw =
+          data?.qrcode?.base64 ||
+          data?.base64 ||
+          data?.qr ||
+          data?.qrcode ||
+          data?.qr_image ||
+          data?.code ||
+          null;
+
+        if (qrRaw && typeof qrRaw === 'string') {
+          const clean = qrRaw.replace(/^data:image\/[a-z]+;base64,/, '');
           if (!clean.startsWith('2@')) {
             setQrCodeUrl(`data:image/png;base64,${clean}`);
           } else {
-            setQrCodeUrl(rawBase64);
+            setQrCodeUrl(qrRaw);
           }
           setQrImgError(false);
+          setWaErrorMessage(null);
+        } else if (!res.ok || data.success === false || data.error) {
+          setWaErrorMessage(data.error || 'Gagal memuat sesi dari gateway proxy');
         }
-        // Pastikan qrCodeUrl TIDAK dikosongkan jika koneksi sedang proses pairing (belum open)
       }
-    } catch (err) {
+    } catch (err: any) {
       setWaStatus('DISCONNECTED');
-      setWaErrorMessage(null);
+      if (err?.name === 'AbortError') {
+        setWaErrorMessage('Koneksi ke gateway timeout (12 detik). Silakan coba lagi.');
+      } else {
+        setWaErrorMessage(err?.message || 'Gagal memuat sesi dari gateway proxy');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setIsQrLoading(false);
     }
   };
@@ -2676,8 +2692,14 @@ export function useTenantDashboard() {
           setWaErrorMessage(null);
           clearInterval(pollInterval);
         } else {
-          setWaStatus('CONNECTING');
-          const rawBase64 = data?.base64 || data?.qrcode?.base64 || data?.qr || data?.code;
+          const rawBase64 =
+            data?.qrcode?.base64 ||
+            data?.base64 ||
+            data?.qr ||
+            data?.qrcode ||
+            data?.qr_image ||
+            data?.code ||
+            null;
           if (rawBase64 && typeof rawBase64 === 'string') {
             const clean = rawBase64.replace(/^data:image\/[a-z]+;base64,/, '');
             const nextQr = !clean.startsWith('2@') ? `data:image/png;base64,${clean}` : rawBase64;

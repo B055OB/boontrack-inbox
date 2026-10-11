@@ -151,6 +151,8 @@ export interface SinglePageConfig {
   affiliate_commission_rate: number;
   whatsapp_number?: string;
   cta_label?: string;
+  /** Teks jaminan / transparansi pembayaran di bawah tombol CTA (e.g. Akses instan. Sekali bayar...) */
+  micro_copy?: string;
   /** Action mode for storefront checkout:
    * - 'DIRECT': Form Checkout Langsung (Direct Order)
    * - 'WHATSAPP': Konsultasi / Order via WhatsApp Langsung
@@ -343,6 +345,7 @@ export interface ProductItem {
   single_page_config?: SinglePageConfig;
   external_url?: string;
   cta_label?: string;
+  micro_copy?: string;
   checkout_type?: 'internal' | 'external';
   features?: string[] | string;
   facilities?: string[] | string;

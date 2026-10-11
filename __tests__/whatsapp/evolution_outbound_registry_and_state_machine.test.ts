@@ -1,6 +1,7 @@
 import {
   registerBotOutbound,
   isBotOutbound,
+  isBotOutboundAsync,
   clearOutboundRegistry,
   getOutboundRegistrySize,
 } from '@/lib/whatsapp/outbound-registry';
@@ -8,12 +9,14 @@ import {
   processEvolutionWebhookEvent,
   sendEvolutionTextMessage,
 } from '@/lib/whatsapp/evolution-webhook-handler';
+import { executeBotControl } from '@/lib/whatsapp/bot-control-service';
 
 // In-memory mock storage for tracking DB state changes
 const mockSessions: Record<string, any> = {};
 const mockConversations: Record<string, any> = {};
 const mockMessages: any[] = [];
 const mockOrders: any[] = [];
+const mockOutboundMessages: any[] = [];
 
 const mockConnections: Record<string, any> = {
   'merchant-evo-test': {
@@ -227,6 +230,33 @@ jest.mock('@/lib/supabaseClient', () => {
           };
         }
 
+        if (tableName === 'outbound_messages') {
+          return {
+            select: jest.fn(() => {
+              const chain: any = {
+                eq: jest.fn((field: string, val: string) => {
+                  const subChain: any = {
+                    eq: jest.fn(() => subChain),
+                    or: jest.fn(() => subChain),
+                    maybeSingle: jest.fn(async () => {
+                      const item = mockOutboundMessages.find((m) => m[field] === val);
+                      return { data: item || null, error: null };
+                    }),
+                  };
+                  return subChain;
+                }),
+                or: jest.fn(() => chain),
+                maybeSingle: jest.fn(async () => ({ data: mockOutboundMessages[0] || null, error: null })),
+              };
+              return chain;
+            }),
+            insert: jest.fn(async (data: any) => {
+              mockOutboundMessages.push(data);
+              return { data, error: null };
+            }),
+          };
+        }
+
         return {
           select: jest.fn(() => ({
             eq: jest.fn(() => ({
@@ -291,6 +321,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
     for (const k in mockConversations) delete mockConversations[k];
     mockMessages.length = 0;
     mockOrders.length = 0;
+    mockOutboundMessages.length = 0;
     jest.clearAllMocks();
   });
 
@@ -320,6 +351,81 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
           text: 'Pesan dari CS handphone',
         })
       ).toBe(false);
+    });
+
+    it('registers with tenant_id compound key and prevents cross-tenant collision', () => {
+      registerBotOutbound({
+        tenantId: 'tenant-alpha',
+        messageId: 'MSG-SHARED-ID-1',
+        recipientPhone: '628123456789',
+        text: 'Pesan dari tenant Alpha',
+      });
+
+      // Matches for same tenant
+      expect(
+        isBotOutbound({
+          tenantId: 'tenant-alpha',
+          messageId: 'MSG-SHARED-ID-1',
+        })
+      ).toBe(true);
+
+      // Does NOT match for different tenant with same message ID
+      expect(
+        isBotOutbound({
+          tenantId: 'tenant-beta',
+          messageId: 'MSG-SHARED-ID-1',
+        })
+      ).toBe(false);
+    });
+
+    it('falls back to database (outbound_messages) in isBotOutboundAsync when in-memory key is missing', async () => {
+      clearOutboundRegistry();
+      expect(getOutboundRegistrySize()).toBe(0);
+
+      // Seed outbound_messages table (simulating past bot outbound before worker restart)
+      mockOutboundMessages.push({
+        id: 'outbox-uuid-1',
+        tenant_id: 'solusiads',
+        wa_message_id: 'MSG-RESTART-999',
+        recipient_jid: '628123456789',
+        source: 'bot',
+      });
+
+      const mockSupabase = {
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            eq: jest.fn((field: string, val: string) => ({
+              eq: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => {
+                  const m = mockOutboundMessages.find((item) => item[field] === val);
+                  return { data: m || null, error: null };
+                }),
+              })),
+              or: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => {
+                  const m = mockOutboundMessages.find((item) => item[field] === val);
+                  return { data: m || null, error: null };
+                }),
+              })),
+              maybeSingle: jest.fn(async () => {
+                const m = mockOutboundMessages.find((item) => item[field] === val);
+                return { data: m || null, error: null };
+              }),
+            })),
+          })),
+        })),
+      };
+
+      const result = await isBotOutboundAsync({
+        tenantId: 'solusiads',
+        messageId: 'MSG-RESTART-999',
+        recipientPhone: '628123456789',
+        supabase: mockSupabase,
+      });
+
+      expect(result).toBe(true);
+      // Verify it re-populated the in-memory cache
+      expect(getOutboundRegistrySize()).toBe(1);
     });
 
     it('matches bot outbound messages by recipient phone and text snippet', () => {
@@ -370,6 +476,42 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
       await processEvolutionWebhookEvent(webhookPayload, 'merchant-evo-test');
 
       // 3. Verify: Session MUST NOT be paused, current_state MUST NOT be HUMAN_PAUSED
+      const sessionKey = `solusiads_${targetPhone}`;
+      expect(mockSessions[sessionKey]?.is_paused).toBeFalsy();
+      expect(mockSessions[sessionKey]?.current_state).not.toBe('HUMAN_PAUSED');
+    });
+
+    it('does NOT execute admin command or trigger self-pause when bot outbound message contains #pause command', async () => {
+      const targetPhone = '628123456789';
+      const botMessageText = 'Halo kak! Ketik #pause jika Anda ingin berbicara dengan CS manual.';
+      const botMsgId = 'BAE5BOT-CMD-TEST';
+
+      registerBotOutbound({
+        tenantId: 'solusiads',
+        messageId: botMsgId,
+        recipientPhone: targetPhone,
+        text: botMessageText,
+      });
+
+      const webhookPayload = {
+        event: 'messages.upsert',
+        instance: 'merchant-evo-test',
+        data: {
+          key: {
+            remoteJid: `${targetPhone}@s.whatsapp.net`,
+            fromMe: true,
+            id: botMsgId,
+          },
+          message: {
+            conversation: botMessageText,
+          },
+        },
+      };
+
+      await processEvolutionWebhookEvent(webhookPayload, 'merchant-evo-test');
+
+      // Tenant bot status MUST remain NOT paused!
+      expect(mockTenants['solusiads']?.bot_paused).toBeFalsy();
       const sessionKey = `solusiads_${targetPhone}`;
       expect(mockSessions[sessionKey]?.is_paused).toBeFalsy();
       expect(mockSessions[sessionKey]?.current_state).not.toBe('HUMAN_PAUSED');
@@ -573,6 +715,106 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
         typeof c[0] === 'string' && c[0].includes('/message/sendText')
       );
       expect(sendTextCalls.length).toBe(0);
+    });
+  });
+
+  describe('5. Atomic State Mutation & RBAC (bot-control-service)', () => {
+    it('enforces tenant-level RBAC: blocks CS role from changing global tenant bot status', async () => {
+      const result = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'tenant',
+        tenantId: 'solusiads',
+        userRole: 'cs',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN_TENANT_ROLE');
+    });
+
+    it('permits tenant-level toggle for owner role and updates BOT_ACTIVE / BOT_DISABLED', async () => {
+      const pauseRes = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'tenant',
+        tenantId: 'solusiads',
+        userRole: 'owner',
+      });
+
+      expect(pauseRes.success).toBe(true);
+      expect(pauseRes.status).toBe('BOT_DISABLED');
+      expect(pauseRes.bot_paused).toBe(true);
+
+      const resumeRes = await executeBotControl({
+        action: 'RESUME',
+        scope: 'tenant',
+        tenantId: 'solusiads',
+        userRole: 'admin',
+      });
+
+      expect(resumeRes.success).toBe(true);
+      expect(resumeRes.status).toBe('BOT_ACTIVE');
+      expect(resumeRes.bot_paused).toBe(false);
+    });
+
+    it('permits conversation-level toggle for CS role with AI_ACTIVE / HUMAN_HANDOVER without mutating tenants', async () => {
+      const targetPhone = '628999888777';
+
+      const handoverRes = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'conversation',
+        tenantId: 'solusiads',
+        customerPhone: targetPhone,
+        userRole: 'cs',
+      });
+
+      expect(handoverRes.success).toBe(true);
+      expect(handoverRes.status).toBe('HUMAN_HANDOVER');
+      expect(handoverRes.bot_paused).toBe(true);
+
+      // Verify conversation session is updated
+      const sessionKey = `solusiads_${targetPhone}`;
+      expect(mockSessions[sessionKey]?.current_state).toBe('HUMAN_PAUSED');
+      expect(mockSessions[sessionKey]?.bot_status).toBe('HUMAN_HANDOVER');
+
+      // Verify conversation can be resumed back to AI_ACTIVE by CS
+      const aiActiveRes = await executeBotControl({
+        action: 'RESUME',
+        scope: 'conversation',
+        tenantId: 'solusiads',
+        customerPhone: targetPhone,
+        userRole: 'cs',
+      });
+
+      expect(aiActiveRes.success).toBe(true);
+      expect(aiActiveRes.status).toBe('AI_ACTIVE');
+      expect(aiActiveRes.bot_paused).toBe(false);
+      expect(mockSessions[sessionKey]?.current_state).toBe('ACTIVE');
+      expect(mockSessions[sessionKey]?.bot_status).toBe('AI_ACTIVE');
+    });
+
+    it('fails atomic execution if Supabase update returns an error', async () => {
+      const failingSupabase = {
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            or: jest.fn(() => ({
+              maybeSingle: jest.fn(async () => ({ data: { id: 'uuid-1', slug: 'test' }, error: null })),
+            })),
+          })),
+          update: jest.fn(() => ({
+            or: jest.fn(async () => ({ data: null, error: new Error('Database connection lost') })),
+            eq: jest.fn(async () => ({ data: null, error: new Error('Database connection lost') })),
+          })),
+        })),
+      };
+
+      const result = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'tenant',
+        tenantId: 'solusiads',
+        supabase: failingSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
     });
   });
 });

@@ -508,6 +508,7 @@ function SingleProductContent() {
               whatsapp_custom_message: cfg.whatsapp_custom_message || match?.metadata?.whatsapp_custom_message || (match?.fulfillment_metadata?.single_page_config?.whatsapp_custom_message) || '',
               gallery_images: cfg.gallery_images || (match?.fulfillment_metadata?.single_page_config?.gallery_images) || [],
               intake_form_config: cfg.intake_form_config || (match?.fulfillment_metadata?.single_page_config?.intake_form_config) || undefined,
+              micro_copy: cfg.micro_copy || match?.metadata?.micro_copy || (match?.fulfillment_metadata as any)?.micro_copy || (match?.fulfillment_metadata?.single_page_config?.micro_copy) || (sqlProd?.fulfillment_metadata as any)?.micro_copy || undefined,
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -550,6 +551,7 @@ function SingleProductContent() {
               meta_pixel_id_override: match.meta_pixel_id_override || match.metadata?.meta_pixel_id_override || (sqlProd as any)?.meta_pixel_id_override || '',
               tiktok_pixel_id_override: match.tiktok_pixel_id_override || match.metadata?.tiktok_pixel_id_override || (sqlProd as any)?.tiktok_pixel_id_override || '',
               order_bumps: match.order_bumps || match.metadata?.order_bumps || match.fulfillment_metadata?.order_bumps,
+              micro_copy: dynamicConfig.micro_copy,
               metadata: {
                 ...(match.metadata || {}),
                 scarcity_badge: match?.metadata?.scarcity_badge || cfg.scarcity_badge || (match?.fulfillment_metadata as any)?.scarcity_badge || (sqlProd?.fulfillment_metadata as any)?.scarcity_badge || undefined,
@@ -2128,7 +2130,7 @@ function SingleProductContent() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
             </span>
-            <span className="truncate text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
+            <span className="leading-snug break-words text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
               {scarcityBadge.text}
             </span>
           </div>
@@ -2567,7 +2569,7 @@ function SingleProductContent() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
             </span>
-            <span className="truncate text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
+            <span className="leading-snug break-words text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
               {scarcityBadge.text}
             </span>
           </div>
@@ -3853,6 +3855,8 @@ function SingleProductContent() {
             <span>
               {totalAmount === 0
                 ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Akses Gratis Sekarang'))
+                : dynamicCtaPrefix.toLowerCase().includes('rp')
+                ? dynamicCtaPrefix
                 : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
             </span>
             <ArrowRight className="w-4 h-4" />
@@ -3884,6 +3888,12 @@ function SingleProductContent() {
           <span>💬 Masih ragu atau ingin tanya dulu? Hubungi Asisten WhatsApp</span>
         </button>
       ) : null}
+
+      {(config.micro_copy || product.metadata?.micro_copy || (product.fulfillment_metadata as any)?.micro_copy) && (
+        <p className="text-[11px] text-slate-500 text-center font-medium leading-relaxed pt-1">
+          {config.micro_copy || product.metadata?.micro_copy || (product.fulfillment_metadata as any)?.micro_copy}
+        </p>
+      )}
 
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -3986,6 +3996,24 @@ function SingleProductContent() {
                         {config.subheadline || product.description}
                       </p>
 
+                      {/* Scarcity / Kuota Badge Notifikasi Urgency Box (Hero) */}
+                      {scarcityBadge && scarcityBadge.enabled && (
+                        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-amber-500/10 border border-amber-400/40 text-amber-950 font-bold text-xs shadow-xs my-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="flex h-2 w-2 relative shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                            </span>
+                            <span className="leading-snug break-words text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
+                              {scarcityBadge.text}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100/90 px-2 py-0.5 rounded-full border border-rose-200/80 shrink-0">
+                            Terbatas
+                          </span>
+                        </div>
+                      )}
+
                       {/* Visual Indikator Kuota Peserta / Stok Terbatas */}
                       {(!product.is_unlimited && product.stock > 0 && product.stock <= 100) && (
                         <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl space-y-2 my-2">
@@ -4033,10 +4061,18 @@ function SingleProductContent() {
                             <span>
                               {basePrice === 0
                                 ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
+                                : dynamicCtaPrefix.toLowerCase().includes('rp')
+                                ? dynamicCtaPrefix
                                 : `${dynamicCtaPrefix} - Rp ${basePrice.toLocaleString('id-ID')}`}
                             </span>
                             <ArrowDown className="w-4 h-4" />
                           </button>
+                        )}
+
+                        {(config.micro_copy || product.metadata?.micro_copy || (product.fulfillment_metadata as any)?.micro_copy) && (
+                          <p className="text-xs text-slate-500 text-center font-medium leading-relaxed pt-1">
+                            {config.micro_copy || product.metadata?.micro_copy || (product.fulfillment_metadata as any)?.micro_copy}
+                          </p>
                         )}
 
                         {/* ── Dual CTA: Secondary WhatsApp Button (Hero) ── */}

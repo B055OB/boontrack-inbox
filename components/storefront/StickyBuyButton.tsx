@@ -115,6 +115,8 @@ export function StickyBuyButton({
     ctaText ||
     (totalAmount === 0
       ? 'Klaim Sekarang (Gratis)'
+      : dynamicCtaPrefix.toLowerCase().includes('rp')
+      ? dynamicCtaPrefix
       : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`);
 
   return (

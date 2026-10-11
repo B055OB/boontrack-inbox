@@ -40,11 +40,13 @@ export interface Product {
 
 export interface StoreChatMessage {
   id: string | number;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'bot' | 'agent' | 'system';
+  senderName?: string;
   time: string;
   text: string;
   action?: string;
   type?: string;
+  checkout_url?: string;
   product?: {
     id: number | string;
     name: string;

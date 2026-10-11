@@ -252,6 +252,11 @@ export async function POST(
       );
     }
 
+    const scope: 'tenant' | 'conversation' =
+      body.scope === 'conversation' || body.conversation_id || body.customer_phone || body.conversationId || body.customerPhone
+        ? 'conversation'
+        : 'tenant';
+
     let action: 'PAUSE' | 'RESUME';
     if (body.action) {
       action = String(body.action).toUpperCase() === 'PAUSE' ? 'PAUSE' : 'RESUME';
@@ -259,18 +264,32 @@ export async function POST(
       action = Boolean(body.bot_paused) ? 'PAUSE' : 'RESUME';
     } else if (body.is_bot_active !== undefined) {
       action = !Boolean(body.is_bot_active) ? 'PAUSE' : 'RESUME';
+    } else if (body.status) {
+      const s = String(body.status).toUpperCase();
+      action = (s === 'BOT_DISABLED' || s === 'HUMAN_HANDOVER' || s === 'HUMAN_PAUSED') ? 'PAUSE' : 'RESUME';
     } else {
       action = 'PAUSE';
     }
 
     const result = await executeBotControl({
       action,
+      scope,
+      status: body.status,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
+      conversationId: body.conversation_id || body.conversationId,
+      customerPhone: body.customer_phone || body.customerPhone,
       senderPhone: auth.user?.phone || undefined,
-      source: body.source || 'dashboard_toggle',
+      userRole: auth.role,
+      source: body.source || (scope === 'conversation' ? 'cs_chat_toggle' : 'dashboard_toggle'),
       supabase,
     });
+
+    if (!result.success) {
+      return NextResponse.json(result, {
+        status: result.error?.includes('FORBIDDEN') ? 403 : 500,
+      });
+    }
 
     return NextResponse.json(result);
   } catch (err: any) {

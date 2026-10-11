@@ -374,7 +374,9 @@ export default function TeamChatTab({
     const hasWebchatFromMetadata = Boolean(
       initialTenant?.metadata?.features?.webchat ||
       initialTenant?.metadata?.addons?.webchat ||
-      initialTenant?.metadata?.webchat_enabled
+      initialTenant?.metadata?.webchat_enabled ||
+      initialTenant?.metadata?.webchat_active ||
+      (initialTenant?.slug && initialTenant?.metadata?.features?.webchat !== false)
     );
     const hasWebchat = hasWebchatFromConv || hasWebchatFromMetadata;
 
@@ -510,26 +512,41 @@ export default function TeamChatTab({
 
   // Master Toggle Global Bot (Ekuivalen #resume dan #pause)
   const handleMasterToggleBot = async () => {
-    const newState = !isGlobalBotPaused;
+    const previousState = isGlobalBotPaused;
+    const newState = !previousState;
     setIsGlobalBotPaused(newState);
     const targetSlug = resolvedTenant || tenantSlug;
 
     try {
       if (targetSlug) {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bot_paused: newState }),
+          body: JSON.stringify({
+            scope: 'tenant',
+            bot_paused: newState,
+            action: newState ? 'PAUSE' : 'RESUME',
+            status: newState ? 'BOT_DISABLED' : 'BOT_ACTIVE',
+            source: 'dashboard_master_toggle',
+          }),
         });
+
+        if (!res.ok) {
+          // Rollback optimistic state if server returns failure
+          setIsGlobalBotPaused(previousState);
+          console.error('[TeamChatTab] Master toggle failed, rolled back to previous state.');
+          return;
+        }
       }
+      if (handleToggleTenantBot) {
+        handleToggleTenantBot();
+      }
+      await inbox.refreshConversations();
     } catch (err) {
+      // Rollback optimistic state on network exception
+      setIsGlobalBotPaused(previousState);
       console.warn('[TeamChatTab] Error toggling master bot:', err);
     }
-
-    if (handleToggleTenantBot) {
-      handleToggleTenantBot();
-    }
-    await inbox.refreshConversations();
   };
 
   // Filtered Quick Replies for Slash Trigger
@@ -1206,24 +1223,15 @@ export default function TeamChatTab({
     }
   };
 
-  // Toggle Bot Pause / CS Takeover
+  // Toggle Bot Pause / CS Takeover (Consolidated Server API & Optimistic Rollback)
   const handleToggleBot = async () => {
     if (!currentConversation) return;
-    const newBotState = !currentConversation.isBotActive;
+    const prevBotActive = Boolean(currentConversation.isBotActive);
+    const newBotState = !prevBotActive;
     const isPaused = !newBotState;
-    const nowIso = new Date().toISOString();
-    const pausedUntilIso = isPaused ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
-    const rawPhone = currentConversation.customerPhone || '';
-    const cleanPhone = rawPhone.replace(/\D/g, '');
-    let altPhone = cleanPhone;
-    if (cleanPhone.startsWith('62')) {
-      altPhone = '0' + cleanPhone.slice(2);
-    } else if (cleanPhone.startsWith('0')) {
-      altPhone = '62' + cleanPhone.slice(1);
-    }
-    const cleanSlug = resolvedTenant || 'boon';
+    const targetSlug = resolvedTenant || tenantSlug || 'boon';
 
-    // Optimistic update
+    // 1. Optimistic UI update
     currentConversation.isBotActive = newBotState;
     if (inbox.setConversations) {
       inbox.setConversations((prev) =>
@@ -1232,56 +1240,42 @@ export default function TeamChatTab({
     }
 
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        if (currentConversation.id) {
-          await supabase
-            .from('conversations')
-            .update({
-              bot_paused: isPaused,
-              is_bot_paused: isPaused,
-              is_bot_active: newBotState,
-              bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
-              status: isPaused ? 'HUMAN_PAUSED' : 'active',
-              updated_at: nowIso,
-            })
-            .eq('id', currentConversation.id);
-        }
+      // 2. Centralized Server API Mutation
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'conversation',
+          action: isPaused ? 'PAUSE' : 'RESUME',
+          status: isPaused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE',
+          conversation_id: currentConversation.id,
+          customer_phone: currentConversation.customerPhone,
+          source: 'cs_dashboard_toggle',
+        }),
+      });
 
-        const phoneVariants = Array.from(new Set([cleanPhone, altPhone, rawPhone].filter(Boolean)));
-        const tenantVariants = Array.from(new Set([cleanSlug, tenantId].filter((t): t is string => Boolean(t))));
-
-        for (const tId of tenantVariants) {
-          for (const ph of phoneVariants) {
-            await supabase
-              .from('conversation_sessions')
-              .upsert(
-                {
-                  tenant_id: tId,
-                  session_id: `wa_${tId}_${ph}`,
-                  channel: 'WHATSAPP',
-                  user_identifier: ph,
-                  current_state: isPaused ? 'HUMAN_PAUSED' : 'ACTIVE',
-                  is_paused: isPaused,
-                  paused_at: isPaused ? nowIso : null,
-                  paused_by: 'admin_dashboard',
-                  paused_until: pausedUntilIso,
-                  metadata: {
-                    manual_toggle: isPaused ? 'OFF' : 'ON',
-                    paused_reason: isPaused ? 'MANUAL_OFF' : null,
-                    paused_by: 'admin_dashboard',
-                    paused_at: isPaused ? nowIso : null,
-                  },
-                  updated_at: nowIso,
-                },
-                { onConflict: 'tenant_id,user_identifier' }
-              );
-          }
+      if (!res.ok) {
+        // Rollback optimistic state if server returns failure
+        currentConversation.isBotActive = prevBotActive;
+        if (inbox.setConversations) {
+          inbox.setConversations((prev) =>
+            prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: prevBotActive } : c))
+          );
         }
+        console.error('[TeamChatTab] Conversation bot toggle failed, rolled back optimistic state.');
+        return;
       }
+
       await inbox.refreshConversations();
-    } catch (e) {
-      console.debug('[TeamChat] Sync bot_paused error:', e);
+    } catch (err) {
+      // Rollback optimistic state on network exception
+      currentConversation.isBotActive = prevBotActive;
+      if (inbox.setConversations) {
+        inbox.setConversations((prev) =>
+          prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: prevBotActive } : c))
+        );
+      }
+      console.warn('[TeamChatTab] Error toggling conversation bot:', err);
     }
   };
 
@@ -2103,7 +2097,7 @@ export default function TeamChatTab({
             .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
-          if (conn?.instance_name && custPhone) {
+          if (conn?.instance_name && custPhone && !custPhone.startsWith('webchat_')) {
             const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
             await sendEvolutionTextMessage(conn.instance_name, custPhone, confirmationText, conn.credential_ref);
           }

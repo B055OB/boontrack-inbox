@@ -280,11 +280,15 @@ export default function CustomerDatabaseTab({
           // Fallback direct query to supabase
         }
 
-        if (contactsList.length === 0 && tenantUuid) {
+        if (contactsList.length === 0 && (tenantUuid || tenantSlug)) {
+          const contactOrTokens: string[] = [];
+          if (tenantUuid) contactOrTokens.push(`tenant_id.eq.${tenantUuid}`);
+          if (tenantSlug) contactOrTokens.push(`tenant_slug.eq.${tenantSlug}`);
+
           const { data: contactsData, error: contactsErr } = await supabase
             .from('contacts')
-            .select('id, tenant_id, phone_e164, name, email, contact_status, lifecycle_stage, metadata, last_interaction_at, created_at, updated_at')
-            .eq('tenant_id', tenantUuid)
+            .select('id, tenant_id, tenant_slug, phone_e164, name, email, contact_status, lifecycle_stage, metadata, last_interaction_at, created_at, updated_at')
+            .or(contactOrTokens.join(','))
             .order('last_interaction_at', { ascending: false });
 
           if (!contactsErr && Array.isArray(contactsData)) {

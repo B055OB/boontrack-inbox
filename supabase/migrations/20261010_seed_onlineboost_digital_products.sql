@@ -99,7 +99,7 @@ BEGIN
         asset_reference = EXCLUDED.asset_reference,
         fulfillment_metadata = EXCLUDED.fulfillment_metadata;
 
-    -- 3. Upsert Produk 2 (Sel B): ACADEMY_CTWA_BATCH1_B
+    -- 3. Upsert Produk 2 (Sel B / Scale): ACADEMY_CTWA_BATCH1_SCALE
     INSERT INTO public.products (
         id,
         tenant_id,
@@ -126,20 +126,20 @@ BEGIN
     ) VALUES (
         'b2c00572-c74a-4b01-8902-000000000002',
         v_tenant_id,
-        'ACADEMY_CTWA_BATCH1_B',
+        'ACADEMY_CTWA_BATCH1_SCALE',
         'Kelas Inkubasi CTWA Batch 1 - Scale Bundle (Recommended)',
-        'Kelas Inkubasi CTWA Batch 1 - Scale Bundle (Recommended)',
+        'Jangan Cuma Belajar Teori Iklan! Dapatkan Mesin Kasir WhatsApp Otomatis 24 Jam, Generator Video Iklan 9-Scene, dan Sistem Penjualan Siap Pakai Hari Ini.',
         'kelas-inkubasi-ctwa-batch-1-scale',
-        149000,
-        149000,
+        1490000,
+        249000,
         'digital',
         'URL_LINK',
         true,
-        'Akses Inkubasi Kelas 4 Hari + Script JSON Sales Rep Bot + SOP Objection Handling + 1 Bulan Trial Ads Performance (Hard-cap 100 Sesi AI) + 15 Kredit Studio HD + Status Member Toko Selamanya.',
+        'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
         '/images/products/onlineboost-batch1-scale.png',
         '/images/products/onlineboost-batch1-scale.png',
-        999,
-        true,
+        50,
+        false,
         true,
         true,
         false,
@@ -148,8 +148,39 @@ BEGIN
         jsonb_build_object(
             'delivery_type', 'DOWNLOAD_LINK',
             'access_url', 'https://onlineboost.id',
-            'instructions', 'Akses Inkubasi Kelas 4 Hari + Script JSON Sales Rep Bot + SOP Objection Handling + 1 Bulan Trial Ads Performance + 15 Kredit Studio HD + Status Member Toko Selamanya.',
-            'button_text', 'Akses Kelas Inkubasi'
+            'instructions', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
+            'button_text', 'Akses Kelas Inkubasi Batch 1',
+            'scarcity_badge', jsonb_build_object(
+                'enabled', true,
+                'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+            ),
+            'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+            'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+            'single_page_config', jsonb_build_object(
+                'slug', 'kelas-inkubasi-ctwa-batch-1-scale',
+                'badge_text', '🔥 INKUBASI OTOMASI BISNIS & SCALE-UP ADS BATCH 1',
+                'headline', 'Jangan Cuma Belajar Teori Iklan! Dapatkan Mesin Kasir WhatsApp Otomatis 24 Jam, Generator Video Iklan 9-Scene, dan Sistem Penjualan Siap Pakai Hari Ini.',
+                'subheadline', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
+                'banner_url', '/images/products/onlineboost-batch1-scale.png',
+                'scarcity_badge', jsonb_build_object(
+                    'enabled', true,
+                    'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+                ),
+                'solution_title', 'Materi & Fasilitas Utama',
+                'solution_points', jsonb_build_array(
+                    '🚀 Engine Bot WhatsApp & Toko Digital: Kasir otomatis 24 jam penerbit QRIS 0% fee (Senilai Rp 450.000)',
+                    '🎬 Akses Studio Video 9-Scene: Cetak video iklan Reels/TikTok vertikal tanpa syuting (Senilai Rp 350.000)',
+                    '📊 Ads Performance Tracker: Pantau laba bersih & ROAS riil tanpa pusing Ads Manager (Senilai Rp 299.000)',
+                    '📦 Lisensi Produk Digital Siap Jual: Hak jual ulang dengan margin profit 100% (Senilai Rp 200.000)',
+                    '🎓 Kurikulum 10 Langkah & Forum VIP: Mentoring praktis nol sampai pecah telur (Senilai Rp 195.000)',
+                    '⚡ Instant Settlement QRIS: Pembayaran otomatis terverifikasi tanpa perlu kirim bukti transfer manual',
+                    '🔒 Garansi Update & Member Group Selamanya: Komunitas praktikum anti boncos di Telegram'
+                ),
+                'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+                'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+                'enable_qris', true,
+                'enable_manual_transfer', false
+            )
         )
     )
     ON CONFLICT (id) DO UPDATE SET
@@ -212,35 +243,124 @@ BEGIN
 
     v_prod_b := jsonb_build_object(
         'id', 'b2c00572-c74a-4b01-8902-000000000002',
-        'sku', 'ACADEMY_CTWA_BATCH1_B',
+        'sku', 'ACADEMY_CTWA_BATCH1_SCALE',
         'name', 'Kelas Inkubasi CTWA Batch 1 - Scale Bundle (Recommended)',
-        'title', 'Kelas Inkubasi CTWA Batch 1 - Scale Bundle (Recommended)',
+        'title', 'Jangan Cuma Belajar Teori Iklan! Dapatkan Mesin Kasir WhatsApp Otomatis 24 Jam, Generator Video Iklan 9-Scene, dan Sistem Penjualan Siap Pakai Hari Ini.',
         'slug', 'kelas-inkubasi-ctwa-batch-1-scale',
-        'price', 149000,
-        'promo_price', 149000,
+        'price', 1490000,
+        'promo_price', 249000,
         'category', 'digital',
         'product_type', 'DIGITAL',
         'type', 'digital',
         'is_digital', true,
-        'description', 'Akses Inkubasi Kelas 4 Hari + Script JSON Sales Rep Bot + SOP Objection Handling + 1 Bulan Trial Ads Performance (Hard-cap 100 Sesi AI) + 15 Kredit Studio HD + Status Member Toko Selamanya.',
+        'description', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
         'image', '/images/products/onlineboost-batch1-scale.png',
         'image_url', '/images/products/onlineboost-batch1-scale.png',
         'images', jsonb_build_array('/images/products/onlineboost-batch1-scale.png'),
         'status', 'ACTIVE',
         'is_active', true,
         'is_available', true,
-        'stock', 999,
-        'is_unlimited', true,
-        'is_unlimited_stock', true,
+        'stock', 50,
+        'is_unlimited', false,
+        'is_unlimited_stock', false,
         'requires_shipping', false,
         'delivery_url', 'https://onlineboost.id',
         'link_digital', 'https://onlineboost.id',
         'download_url', 'https://onlineboost.id',
+        'promo', '🔥 INKUBASI OTOMASI BISNIS & SCALE-UP ADS BATCH 1',
+        'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+        'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+        'scarcity_badge', jsonb_build_object(
+            'enabled', true,
+            'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+        ),
+        'facilities', jsonb_build_array(
+            '🚀 Engine Bot WhatsApp & Toko Digital: Kasir otomatis 24 jam penerbit QRIS 0% fee (Senilai Rp 450.000)',
+            '🎬 Akses Studio Video 9-Scene: Cetak video iklan Reels/TikTok vertikal tanpa syuting (Senilai Rp 350.000)',
+            '📊 Ads Performance Tracker: Pantau laba bersih & ROAS riil tanpa pusing Ads Manager (Senilai Rp 299.000)',
+            '📦 Lisensi Produk Digital Siap Jual: Hak jual ulang dengan margin profit 100% (Senilai Rp 200.000)',
+            '🎓 Kurikulum 10 Langkah & Forum VIP: Mentoring praktis nol sampai pecah telur (Senilai Rp 195.000)',
+            '⚡ Instant Settlement QRIS: Pembayaran otomatis terverifikasi tanpa perlu kirim bukti transfer manual',
+            '🔒 Garansi Update & Member Group Selamanya: Komunitas praktikum anti boncos di Telegram'
+        ),
+        'features', jsonb_build_array(
+            '🚀 Engine Bot WhatsApp & Toko Digital: Kasir otomatis 24 jam penerbit QRIS 0% fee (Senilai Rp 450.000)',
+            '🎬 Akses Studio Video 9-Scene: Cetak video iklan Reels/TikTok vertikal tanpa syuting (Senilai Rp 350.000)',
+            '📊 Ads Performance Tracker: Pantau laba bersih & ROAS riil tanpa pusing Ads Manager (Senilai Rp 299.000)',
+            '📦 Lisensi Produk Digital Siap Jual: Hak jual ulang dengan margin profit 100% (Senilai Rp 200.000)',
+            '🎓 Kurikulum 10 Langkah & Forum VIP: Mentoring praktis nol sampai pecah telur (Senilai Rp 195.000)',
+            '⚡ Instant Settlement QRIS: Pembayaran otomatis terverifikasi tanpa perlu kirim bukti transfer manual',
+            '🔒 Garansi Update & Member Group Selamanya: Komunitas praktikum anti boncos di Telegram'
+        ),
+        'single_page_config', jsonb_build_object(
+            'slug', 'kelas-inkubasi-ctwa-batch-1-scale',
+            'badge_text', '🔥 INKUBASI OTOMASI BISNIS & SCALE-UP ADS BATCH 1',
+            'headline', 'Jangan Cuma Belajar Teori Iklan! Dapatkan Mesin Kasir WhatsApp Otomatis 24 Jam, Generator Video Iklan 9-Scene, dan Sistem Penjualan Siap Pakai Hari Ini.',
+            'subheadline', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
+            'banner_url', '/images/products/onlineboost-batch1-scale.png',
+            'scarcity_badge', jsonb_build_object(
+                'enabled', true,
+                'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+            ),
+            'solution_title', 'Materi & Fasilitas Utama',
+            'solution_points', jsonb_build_array(
+                '🚀 Engine Bot WhatsApp & Toko Digital: Kasir otomatis 24 jam penerbit QRIS 0% fee (Senilai Rp 450.000)',
+                '🎬 Akses Studio Video 9-Scene: Cetak video iklan Reels/TikTok vertikal tanpa syuting (Senilai Rp 350.000)',
+                '📊 Ads Performance Tracker: Pantau laba bersih & ROAS riil tanpa pusing Ads Manager (Senilai Rp 299.000)',
+                '📦 Lisensi Produk Digital Siap Jual: Hak jual ulang dengan margin profit 100% (Senilai Rp 200.000)',
+                '🎓 Kurikulum 10 Langkah & Forum VIP: Mentoring praktis nol sampai pecah telur (Senilai Rp 195.000)',
+                '⚡ Instant Settlement QRIS: Pembayaran otomatis terverifikasi tanpa perlu kirim bukti transfer manual',
+                '🔒 Garansi Update & Member Group Selamanya: Komunitas praktikum anti boncos di Telegram'
+            ),
+            'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+            'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+            'enable_qris', true,
+            'enable_manual_transfer', false
+        ),
+        'metadata', jsonb_build_object(
+            'scarcity_badge', jsonb_build_object(
+                'enabled', true,
+                'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+            ),
+            'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+            'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.'
+        ),
         'fulfillment_metadata', jsonb_build_object(
             'delivery_type', 'DOWNLOAD_LINK',
             'access_url', 'https://onlineboost.id',
-            'instructions', 'Akses Inkubasi Kelas 4 Hari + Script JSON Sales Rep Bot + SOP Objection Handling + 1 Bulan Trial Ads Performance + 15 Kredit Studio HD + Status Member Toko Selamanya.',
-            'button_text', 'Akses Kelas Inkubasi'
+            'instructions', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
+            'button_text', 'Akses Kelas Inkubasi Batch 1',
+            'scarcity_badge', jsonb_build_object(
+                'enabled', true,
+                'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+            ),
+            'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+            'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+            'single_page_config', jsonb_build_object(
+                'slug', 'kelas-inkubasi-ctwa-batch-1-scale',
+                'badge_text', '🔥 INKUBASI OTOMASI BISNIS & SCALE-UP ADS BATCH 1',
+                'headline', 'Jangan Cuma Belajar Teori Iklan! Dapatkan Mesin Kasir WhatsApp Otomatis 24 Jam, Generator Video Iklan 9-Scene, dan Sistem Penjualan Siap Pakai Hari Ini.',
+                'subheadline', 'Program bimbingan intensif 10 langkah praktis dari nol sampai pecah telur, langsung dibekali infrastruktur software siap jalan tanpa perlu sewa video editor atau admin manual.',
+                'banner_url', '/images/products/onlineboost-batch1-scale.png',
+                'scarcity_badge', jsonb_build_object(
+                    'enabled', true,
+                    'text', '🔴 Kuota Terbatas: Maksimal 50 Peserta Batch 1 untuk menjaga kestabilan load render video & engine bot.'
+                ),
+                'solution_title', 'Materi & Fasilitas Utama',
+                'solution_points', jsonb_build_array(
+                    '🚀 Engine Bot WhatsApp & Toko Digital: Kasir otomatis 24 jam penerbit QRIS 0% fee (Senilai Rp 450.000)',
+                    '🎬 Akses Studio Video 9-Scene: Cetak video iklan Reels/TikTok vertikal tanpa syuting (Senilai Rp 350.000)',
+                    '📊 Ads Performance Tracker: Pantau laba bersih & ROAS riil tanpa pusing Ads Manager (Senilai Rp 299.000)',
+                    '📦 Lisensi Produk Digital Siap Jual: Hak jual ulang dengan margin profit 100% (Senilai Rp 200.000)',
+                    '🎓 Kurikulum 10 Langkah & Forum VIP: Mentoring praktis nol sampai pecah telur (Senilai Rp 195.000)',
+                    '⚡ Instant Settlement QRIS: Pembayaran otomatis terverifikasi tanpa perlu kirim bukti transfer manual',
+                    '🔒 Garansi Update & Member Group Selamanya: Komunitas praktikum anti boncos di Telegram'
+                ),
+                'cta_label', 'AMANKAN AKSES LENGKAP BATCH 1 (RP 249.000)',
+                'micro_copy', '⚡ Akses instan. Sekali bayar, tidak ada biaya langganan tersembunyi. Invoice QRIS terbit otomatis dalam hitungan detik.',
+                'enable_qris', true,
+                'enable_manual_transfer', false
+            )
         )
     );
 
@@ -249,8 +369,9 @@ BEGIN
         FOR v_elem IN SELECT * FROM jsonb_array_elements(v_existing_meta->'products')
         LOOP
             IF NOT (
-                v_elem->>'sku' IN ('ACADEMY_CTWA_BATCH1_A', 'ACADEMY_CTWA_BATCH1_B') OR
-                v_elem->>'id' IN ('a1b00571-c74a-4b01-8901-000000000001', 'b2c00572-c74a-4b01-8902-000000000002')
+                v_elem->>'sku' IN ('ACADEMY_CTWA_BATCH1_A', 'ACADEMY_CTWA_BATCH1_B', 'ACADEMY_CTWA_BATCH1_SCALE') OR
+                v_elem->>'id' IN ('a1b00571-c74a-4b01-8901-000000000001', 'b2c00572-c74a-4b01-8902-000000000002') OR
+                v_elem->>'slug' = 'kelas-inkubasi-ctwa-batch-1-scale'
             ) THEN
                 v_filtered_products := v_filtered_products || jsonb_build_array(v_elem);
             END IF;

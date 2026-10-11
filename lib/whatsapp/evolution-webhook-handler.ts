@@ -148,7 +148,8 @@ export async function sendEvolutionTextMessage(
   instanceName: string,
   recipientPhone: string,
   text: string,
-  customApiKey?: string
+  customApiKey?: string,
+  tenantId?: string
 ): Promise<boolean> {
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
   const apiKey = getRequiredEvolutionApiKey(customApiKey);
@@ -168,6 +169,7 @@ export async function sendEvolutionTextMessage(
 
   // Pre-register in Outbound Registry to eliminate race condition with immediate webhook echo
   registerBotOutbound({
+    tenantId,
     recipientPhone: cleanNumber,
     text: formattedText,
   });
@@ -192,6 +194,7 @@ export async function sendEvolutionTextMessage(
         const returnedId = data?.key?.id || data?.id || data?.messageId;
         if (returnedId) {
           registerBotOutbound({
+            tenantId,
             messageId: returnedId,
             recipientPhone: cleanNumber,
             text: formattedText,
@@ -479,57 +482,18 @@ export async function processEvolutionWebhookEvent(
     ).trim();
     const cleanCmdLower = textBodyEarly.toLowerCase();
 
-    // 2B. Admin Command Override & Outbound fromMe Handling
-    const controlAction = parseBotControlCommand(textBodyEarly);
-
-    if (controlAction) {
-      if (key.fromMe === true) {
-        // Admin / Operator typing from bot's WhatsApp phone or web
-        console.info(`[Evolution Admin Override] Command ${controlAction} fromMe on tenant ${tenantId}`);
-        const ctrlRes = await executeBotControl({
-          action: controlAction,
-          tenantId,
-          tenantSlug,
-          senderPhone,
-          source: 'admin_from_me',
-          supabase,
-        });
-
-        if (senderPhone) {
-          await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey);
-        }
-        processedCount++;
-        continue;
-      } else if (!isGroup && senderPhone) {
-        // Inbound message from external phone — verify Owner / Admin RBAC
-        const isOwner = await isAuthorizedBotController({
-          senderPhone,
-          tenantId,
-          tenantSlug,
-          supabase,
-        });
-
-        if (isOwner) {
-          console.info(`[Evolution Admin Ingress] Authorized Owner ${senderPhone} executed ${controlAction} on tenant ${tenantId}`);
-          const ctrlRes = await executeBotControl({
-            action: controlAction,
-            tenantId,
-            tenantSlug,
-            senderPhone,
-            source: 'owner_inbound_chat',
-            supabase,
-          });
-
-          await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey);
-          processedCount++;
-          continue; // Halt turn: prevent control command from reaching LLM context!
-        }
-      }
-    }
-
+    // =========================================================================
+    // 2B. fromMe Webhook Handling:
+    // 1. Echo Detection (Using tenant_id + wa_message_id) -> MUST RUN BEFORE parseBotControlCommand!
+    //    If echo: ignore event immediately (return 200/NO-OP), DO NOT trigger manual CS takeover, DO NOT set pause 24 jam!
+    // 2. Admin Command Override (#pause / #resume from connected bot device)
+    // 3. CS Manual Mobile Outbound Takeover (HUMAN_PAUSED + 24h sliding window)
+    // =========================================================================
     if (key.fromMe === true) {
       if (!isGroup && senderPhone) {
+        // Step 1: Detect bot outbound echo using tenantId + wa_message_id (with DB fallback for restarts)
         const isEcho = await isBotOutboundAsync({
+          tenantId,
           messageId: key.id || undefined,
           recipientPhone: senderPhone,
           text: textBodyEarly,
@@ -538,21 +502,43 @@ export async function processEvolutionWebhookEvent(
 
         if (isEcho) {
           console.info(
-            `[Evolution Webhook] Bot outbound echo detected for ${senderPhone} (msgId: ${key.id || 'n/a'}). Bypassing auto-pause.`
+            `[Evolution Webhook] Bot outbound echo detected for ${senderPhone} (tenant: ${tenantId}, msgId: ${key.id || 'n/a'}). Ignoring event seketika (NO-OP).`
           );
+          // Return 200 / ignore event seketika: JANGAN evaluasi command, JANGAN trigger manual CS takeover, JANGAN set pause 24 jam!
           continue;
         }
 
+        // Step 2: Not an echo! Now evaluate whether admin/operator typed a bot control command from WhatsApp Web / bot device:
+        const controlAction = parseBotControlCommand(textBodyEarly);
+        if (controlAction) {
+          console.info(`[Evolution Admin Override] Command ${controlAction} fromMe on tenant ${tenantId}`);
+          const ctrlRes = await executeBotControl({
+            action: controlAction,
+            scope: 'tenant',
+            tenantId,
+            tenantSlug,
+            senderPhone,
+            source: 'admin_from_me',
+            supabase,
+          });
+
+          await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
+          processedCount++;
+          continue;
+        }
+
+        // Step 3: Not an echo, and not a bot control command -> Real Human CS Mobile Outbound Message Takeover!
         const nowIso = new Date().toISOString();
         const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_PAUSED (24h sliding window).`);
         if (supabase) {
           try {
+            const tenantUuid = tenantRecordForHardening?.id || tenantId;
             const csTable = supabase.from('conversation_sessions');
             if (typeof csTable?.upsert === 'function') {
               await csTable.upsert({
-                tenant_id: tenantId,
-                session_id: `wa_${tenantId}_${senderPhone}`,
+                tenant_id: tenantUuid,
+                session_id: `wa_${tenantUuid}_${senderPhone}`,
                 channel: 'WHATSAPP',
                 user_identifier: senderPhone,
                 current_state: 'HUMAN_PAUSED',
@@ -571,48 +557,82 @@ export async function processEvolutionWebhookEvent(
               }, { onConflict: 'tenant_id,user_identifier' });
             }
 
-              const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
-              const convTable = supabase.from('conversations');
-              if (typeof convTable?.update === 'function') {
-                let uQ = convTable.update({
-                  bot_paused: true,
-                  bot_mode: 'HUMAN_ACTIVE',
-                  status: 'HUMAN_PAUSED',
-                  last_message: textBodyEarly || 'Pesan terkirim dari CS',
-                  last_message_at: nowIso,
-                  updated_at: nowIso,
-                });
-                if (typeof uQ?.or === 'function') {
-                  uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`);
-                }
-                if (typeof uQ?.in === 'function') {
-                  await uQ.in('customer_phone', phoneVariants);
-                } else if (typeof uQ?.eq === 'function') {
-                  await uQ.eq('customer_phone', senderPhone);
-                }
+            const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
+            const convTable = supabase.from('conversations');
+            if (typeof convTable?.update === 'function') {
+              let uQ = convTable.update({
+                bot_paused: true,
+                is_bot_paused: true,
+                is_bot_active: false,
+                bot_mode: 'HUMAN_ACTIVE',
+                status: 'HUMAN_PAUSED',
+                last_message: textBodyEarly || 'Pesan terkirim dari CS',
+                last_message_at: nowIso,
+                updated_at: nowIso,
+              });
+              if (typeof uQ?.or === 'function') {
+                uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantUuid}`);
               }
-
-              if (textBodyEarly) {
-                await persistOutboundMessage({
-                  tenantId,
-                  tenantSlug: tenantSlug || tenantId,
-                  customerPhone: senderPhone,
-                  senderType: 'agent',
-                  senderName: 'CS Manual (WhatsApp HP)',
-                  messageBody: textBodyEarly,
-                  externalId: key.id || undefined,
-                });
+              if (typeof uQ?.in === 'function') {
+                await uQ.in('customer_phone', phoneVariants);
+              } else if (typeof uQ?.eq === 'function') {
+                await uQ.eq('customer_phone', senderPhone);
               }
-            } catch (hErr) {
-              console.warn('[Evolution Webhook] Mobile CS auto-pause error:', hErr);
             }
+
+            if (textBodyEarly) {
+              await persistOutboundMessage({
+                tenantId: tenantUuid,
+                tenantSlug: tenantSlug || tenantId,
+                customerPhone: senderPhone,
+                senderType: 'agent',
+                senderName: 'CS Manual (WhatsApp HP)',
+                messageBody: textBodyEarly,
+                externalId: key.id || undefined,
+              });
+            }
+          } catch (hErr) {
+            console.warn('[Evolution Webhook] Mobile CS auto-pause error:', hErr);
           }
-          // Outbound message - don't increment processedCount (inbound counter)
-          continue;
         }
-        // Pesan admin biasa lainnya -> BYPASS / NO ACTION
+        // Outbound message - don't increment processedCount (inbound counter)
         continue;
       }
+      // Pesan fromMe lainnya (e.g. status broadcast) -> BYPASS / NO ACTION
+      continue;
+    }
+
+    // =========================================================================
+    // 2C. Inbound Admin Command Handling from external phone (Customer/Owner chat)
+    // =========================================================================
+    if (!isGroup && senderPhone) {
+      const controlAction = parseBotControlCommand(textBodyEarly);
+      if (controlAction) {
+        const isOwner = await isAuthorizedBotController({
+          senderPhone,
+          tenantId,
+          tenantSlug,
+          supabase,
+        });
+
+        if (isOwner) {
+          console.info(`[Evolution Admin Ingress] Authorized Owner ${senderPhone} executed ${controlAction} on tenant ${tenantId}`);
+          const ctrlRes = await executeBotControl({
+            action: controlAction,
+            scope: 'tenant',
+            tenantId,
+            tenantSlug,
+            senderPhone,
+            source: 'owner_inbound_chat',
+            supabase,
+          });
+
+          await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
+          processedCount++;
+          continue; // Halt turn: prevent control command from reaching LLM context!
+        }
+      }
+    }
 
     // Group Mention Guard: Merchant accounts strictly for 1-on-1 chats
     if (isGroup) {

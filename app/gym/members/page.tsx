@@ -297,7 +297,7 @@ export default function GymMembersPage() {
               ) : members.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 text-sm">
-                    {searchQuery || filterStatus !== 'ALL' || filterPackage !== 'ALL'
+                    {searchQuery || statusFilter !== 'ALL' || packageFilter !== 'ALL'
                       ? 'Tidak ada member yang cocok dengan filter pencarian.'
                       : 'Belum ada member terdaftar.'}
                   </td>

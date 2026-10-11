@@ -212,7 +212,6 @@ export default function TenantDashboardPage() {
     handleSendMessage,
     isTenantBotPaused,
     handleToggleTenantBot,
-    tenantId,
 
     bankForm,
     setBankForm,
