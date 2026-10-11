@@ -15,7 +15,8 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       const [ringkasan, kelolaToko, pesanPelanggan, kembangkanBisnis] = groups;
 
       expect(ringkasan.id).toBe('ringkasan');
-      expect(ringkasan.label).toBe('Ringkasan');
+      expect(ringkasan.label).toBe('Dashboard');
+      expect(ringkasan.description).toBe('Aktivitas & Info Update');
       expect(ringkasan.isCollapsible).toBe(false);
 
       expect(kelolaToko.id).toBe('kelola-toko');

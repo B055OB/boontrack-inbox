@@ -379,19 +379,19 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   return [
     {
       id: 'ringkasan',
-      label: 'Ringkasan',
+      label: 'Dashboard',
       icon: LayoutDashboard,
       isCollapsible: false,
-      description: 'Dashboard, metrik penting, aktivitas terbaru',
+      description: 'Aktivitas & Info Update',
       items: [
         {
           id: 'dashboard',
-          label: 'Ringkasan',
+          label: 'Dashboard',
           targetTab: 'dashboard',
           matchedTabs: ['dashboard', 'overview', 'beranda', 'microsite', 'links'],
           icon: LayoutDashboard,
           parentGroup: 'ringkasan',
-          description: 'Dashboard, metrik penting, aktivitas terbaru',
+          description: 'Aktivitas & Info Update',
           badge: isCheckoutLite ? { text: 'Ringkas', variant: 'neutral' } : null,
         },
       ],

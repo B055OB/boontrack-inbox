@@ -515,7 +515,7 @@ export default function DashboardSidebar({
                         {ringkasanItem.label}
                       </span>
                       <span className="text-[10px] text-slate-400 font-normal truncate block leading-tight mt-0.5">
-                        Metrik &amp; Aktivitas
+                        {ringkasanItem.description || 'Aktivitas & Info Update'}
                       </span>
                     </div>
                   </div>
