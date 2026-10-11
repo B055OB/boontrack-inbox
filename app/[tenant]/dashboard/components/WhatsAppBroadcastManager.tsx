@@ -32,6 +32,7 @@ import {
   Eye,
   Layers,
   ArrowRight,
+  Lock,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getStorefrontUrl } from '@/lib/storefront-urls';
@@ -98,6 +99,13 @@ export default function WhatsAppBroadcastManager({
   const [selectedTagFilter, setSelectedTagFilter] = useState('all');
   const [selectedSegmentFilter, setSelectedSegmentFilter] = useState('all');
 
+  // Real Dynamic Audience Segment Counts (Zero Mock)
+  const hotLeadsCount = useMemo(() => contacts.filter((c) => c.quality === 'HOT').length, [contacts]);
+  const abandonedCartCount = useMemo(() => contacts.filter((c) => c.quality === 'WARM' || (Array.isArray(c.tags) && c.tags.includes('Abandoned Cart'))).length, [contacts]);
+  const repeatBuyersCount = useMemo(() => contacts.filter((c) => c.quality === 'CUSTOMER' || c.totalOrders > 0).length, [contacts]);
+  const allContactsCount = useMemo(() => contacts.length, [contacts]);
+  const customTagCount = useMemo(() => customTag ? contacts.filter((c) => Array.isArray(c.tags) && c.tags.some((t) => t.toLowerCase().includes(customTag.toLowerCase()))).length : contacts.length, [contacts, customTag]);
+
   // Composer State
   const [campaignTitle, setCampaignTitle] = useState('Promo Spesial Weekend');
   const [targetAudience, setTargetAudience] = useState<'all' | 'hot' | 'abandoned' | 'customers' | 'custom'>('hot');
@@ -125,67 +133,139 @@ export default function WhatsAppBroadcastManager({
   const [newContactTag, setNewContactTag] = useState('Lead Baru');
   const [newContactProduct, setNewContactProduct] = useState('Katalog Toko');
 
-  // Load real orders into contacts from Supabase on mount (isolated per tenant_slug)
+  // Available tags & loading state from CRM database
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [isWabaConfigured, setIsWabaConfigured] = useState(false);
+
+  // Check if tenant has valid Meta WABA credentials configured
+  const checkWabaConfiguration = React.useCallback(async () => {
+    if (!tenantSlug) return;
+    try {
+      const supabase = getSupabase();
+      if (!supabase) return;
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id, metadata')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
+
+      const meta = tenantData?.metadata || {};
+      const hasMetaCreds = Boolean(
+        meta.waba_config?.phone_number_id &&
+        (meta.waba_config?.permanent_access_token || meta.waba_config?.access_token)
+      ) || Boolean(
+        meta.whatsapp_credentials?.phone_number_id &&
+        meta.whatsapp_credentials?.access_token
+      );
+
+      if (hasMetaCreds) {
+        setIsWabaConfigured(true);
+        return;
+      }
+
+      // Check tenant_waba_configs table
+      const tenantIds = [tenantSlug];
+      if (tenantData?.id) tenantIds.push(tenantData.id);
+
+      const { data: wabaConfigs } = await supabase
+        .from('tenant_waba_configs')
+        .select('id, waba_phone_number_id, is_active')
+        .in('tenant_id', tenantIds)
+        .eq('is_active', true)
+        .limit(1);
+
+      if (wabaConfigs && wabaConfigs.length > 0 && wabaConfigs[0].waba_phone_number_id) {
+        setIsWabaConfigured(true);
+        return;
+      }
+
+      // Check whatsapp_connections table for active Meta/WABA
+      const { data: conns } = await supabase
+        .from('whatsapp_connections')
+        .select('id, phone_number_id, status')
+        .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}${tenantData?.id ? `,tenant_id.eq.${tenantData.id}` : ''}`)
+        .in('status', ['active', 'connected', 'open'])
+        .not('phone_number_id', 'is', null)
+        .limit(1);
+
+      if (conns && conns.length > 0 && conns[0].phone_number_id) {
+        setIsWabaConfigured(true);
+        return;
+      }
+
+      // Check tenant_whatsapp_channels table
+      if (tenantData?.id) {
+        const { data: channels } = await supabase
+          .from('tenant_whatsapp_channels')
+          .select('id, status')
+          .eq('tenant_id', tenantData.id)
+          .eq('status', 'ACTIVE')
+          .limit(1);
+        if (channels && channels.length > 0) {
+          setIsWabaConfigured(true);
+          return;
+        }
+      }
+
+      setIsWabaConfigured(false);
+    } catch {
+      setIsWabaConfigured(false);
+    }
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    checkWabaConfiguration();
+  }, [checkWabaConfiguration]);
+
+  // Load real CRM contacts from API endpoint (GET /api/v1/crm/contacts?tenant_id=...)
   const syncAudienceFromDatabase = async () => {
     try {
       if (!tenantSlug) {
         setContacts([]);
         return;
       }
-      const supabase = getSupabase();
-      if (!supabase) return;
-
-      const { data: dbOrders } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('tenant_slug', tenantSlug)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (dbOrders && dbOrders.length > 0) {
-        const syncedContacts: ContactItem[] = dbOrders.map((ord: any, idx: number) => {
-          const isPaid = ord.status === 'PAID';
-          const score = isPaid ? 100 : ord.affiliate_code ? 90 : 80;
-          const quality = isPaid ? 'CUSTOMER' : score >= 85 ? 'HOT' : 'WARM';
-
-          return {
-            id: `ord-lead-${ord.id || idx}`,
-            name: ord.customer_name || 'Pelanggan Toko',
-            phone: ord.customer_phone || '08123456789',
-            tags: [
-              ord.affiliate_code ? `Ref: ${ord.affiliate_code}` : 'Direct Web',
-              isPaid ? 'Customer Paid' : 'Pending Payment',
-              ord.utm_source ? `UTM: ${ord.utm_source}` : 'Organic',
-            ],
-            productInterest: ord.product_title || 'Produk Toko',
-            leadScore: score,
-            quality: quality as any,
-            utmSource: ord.utm_source || ord.affiliate_code || 'organic',
-            totalOrders: isPaid ? 1 : 0,
-            totalSpend: isPaid ? Number(ord.gross_amount || 0) : 0,
-            createdAt: new Date(ord.created_at || Date.now()).toLocaleDateString('id-ID', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            }),
-            lastContacted: 'Baru Saja Terdata',
-          };
-        });
-
-        setContacts(syncedContacts);
-        if (onSaved) onSaved(`✅ Berhasil menyinkronkan ${syncedContacts.length} data audiens dari transaksi live!`);
+      setIsLoadingContacts(true);
+      const res = await fetch(`/api/v1/crm/contacts?tenant_id=${encodeURIComponent(tenantSlug)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const contactList: ContactItem[] = Array.isArray(json.contacts)
+          ? json.contacts
+          : Array.isArray(json.data)
+            ? json.data
+            : [];
+        setContacts(contactList);
+        if (Array.isArray(json.tags)) {
+          setAvailableTags(json.tags);
+        }
+        if (onSaved) onSaved(`✅ Berhasil menyinkronkan ${contactList.length} data audiens dari CRM!`);
       } else {
         setContacts([]);
       }
     } catch (err) {
-      console.warn('[Broadcast Sync] Error fetching contacts:', err);
+      console.warn('[Broadcast Sync] Error fetching CRM contacts:', err);
       setContacts([]);
+    } finally {
+      setIsLoadingContacts(false);
     }
   };
 
   useEffect(() => {
     syncAudienceFromDatabase();
   }, [tenantSlug]);
+
+  // Pull unique tags directly from database / CRM response (including 'alumni-cpm')
+  const uniqueTags = useMemo(() => {
+    const set = new Set<string>(availableTags);
+    contacts.forEach((c) => {
+      if (Array.isArray(c.tags)) {
+        c.tags.forEach((t) => {
+          if (t && t.trim()) set.add(t.trim());
+        });
+      }
+    });
+    return Array.from(set);
+  }, [availableTags, contacts]);
 
   // Target audience resolution
   const resolvedTargetContacts = useMemo(() => {
@@ -239,7 +319,7 @@ export default function WhatsAppBroadcastManager({
     setMessageTemplate((prev) => `${prev} {${variableKey}}`);
   };
 
-  // Broadcast Execution Simulation
+  // Broadcast Execution via Real API (Zero Mock & Strict Database Binding)
   const handleStartBroadcast = async () => {
     if (resolvedTargetContacts.length === 0) {
       return alert('Tidak ada kontak dalam segmen audiens yang dipilih!');
@@ -256,42 +336,68 @@ export default function WhatsAppBroadcastManager({
     setBroadcastLogs([]);
 
     const total = resolvedTargetContacts.length;
-    let currentSent = 0;
 
-    for (let i = 0; i < total; i++) {
-      const contact = resolvedTargetContacts[i];
-      await new Promise((res) => setTimeout(res, antiBanDelay * 300)); // simulation pace
+    // Siapkan daftar penerima dan pesan yang sudah diformat per-kontak
+    const recipientsPayload = resolvedTargetContacts.map((contact) => ({
+      name: contact.name,
+      phone: contact.phone,
+      message: generatePreviewText(contact),
+    }));
 
-      currentSent += 1;
-      const pct = Math.round((currentSent / total) * 100);
-      setSendProgress(pct);
-      setSentCount(currentSent);
+    try {
+      const res = await fetch('/api/v1/broadcast/direct/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: tenantSlug,
+          campaign_title: campaignTitle,
+          recipients: recipientsPayload,
+          anti_ban_delay: antiBanDelay,
+        }),
+      });
 
-      const timestamp = new Date().toLocaleTimeString('id-ID');
-      const logEntry = `[${timestamp}] Sukses terkirim ke ${contact.name} (+62${contact.phone.replace(/^0/, '')}) • Anti-ban delay ${antiBanDelay}s`;
-      setBroadcastLogs((prev) => [logEntry, ...prev.slice(0, 15)]);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        const errMessage = data.error || 'Gagal memulai pengiriman broadcast WhatsApp';
+        alert(`Gagal mengirim broadcast: ${errMessage}`);
+        setBroadcastLogs((prev) => [`[${new Date().toLocaleTimeString('id-ID')}] Error: ${errMessage}`, ...prev]);
+        setIsSending(false);
+        return;
+      }
+
+      setSentCount(data.sent_success || 0);
+      setFailedCount(data.sent_failed || 0);
+      setSendProgress(100);
+      if (Array.isArray(data.logs)) {
+        setBroadcastLogs(data.logs);
+      }
+
+      // Save real transaction event to History (Zero Mock)
+      const newHistory: BroadcastHistoryItem = {
+        id: data.broadcast_id || `bcast-${Date.now()}`,
+        campaignName: campaignTitle,
+        targetSegment: `${targetAudience.toUpperCase()} (${total} Target)`,
+        sentCount: data.sent_success || 0,
+        totalTarget: total,
+        deliveredRate: total > 0 ? Number(((Number(data.sent_success || 0) / total) * 100).toFixed(1)) : 0,
+        clickRate: 0,
+        closings: 0,
+        revenue: 0,
+        sentAt: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+        status: 'COMPLETED',
+      };
+
+      setHistoryList((prev) => [newHistory, ...prev]);
+
+      if (onSaved) {
+        onSaved(`🚀 Broadcast "${campaignTitle}" selesai: ${data.sent_success || 0} berhasil, ${data.sent_failed || 0} gagal.`);
+      }
+    } catch (err: any) {
+      alert(`Error saat memproses broadcast: ${err?.message || 'Koneksi terputus'}`);
+    } finally {
+      setIsSending(false);
     }
-
-    setIsSending(false);
-
-    // Save to History
-    const newHistory: BroadcastHistoryItem = {
-      id: `bcast-${Date.now()}`,
-      campaignName: campaignTitle,
-      targetSegment: `${targetAudience.toUpperCase()} (${total} Target)`,
-      sentCount: total,
-      totalTarget: total,
-      deliveredRate: 99.4,
-      clickRate: 41.2,
-      closings: Math.round(total * 0.18),
-      revenue: Math.round(total * 0.18 * 149000),
-      sentAt: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
-      status: 'COMPLETED',
-    };
-
-    setHistoryList((prev) => [newHistory, ...prev]);
-
-    if (onSaved) onSaved(`🚀 Broadcast "${campaignTitle}" berhasil terkirim ke ${total} kontak!`);
   };
 
   const handleAddManualContact = (e: React.FormEvent) => {
@@ -348,6 +454,11 @@ export default function WhatsAppBroadcastManager({
   };
 
   const handleSendMetaBroadcast = async () => {
+    if (!isWabaConfigured) {
+      return alert(
+        'Konfigurasi Meta WABA Belum Aktif. Silakan hubungkan akun WABA resmi terlebih dahulu di tab WhatsApp.'
+      );
+    }
     if (!metaTemplateName.trim()) {
       return alert('Template Name Meta (WABA) wajib diisi!');
     }
@@ -415,22 +526,23 @@ export default function WhatsAppBroadcastManager({
       }
 
       if (!sentSuccess) {
-        setMetaResponseLog(
-          `✅ [Simulated Success]: Payload Meta WABA siap dikirim ke backend core.\nTotal Penerima: ${resolvedTargetContacts.length} Kontak\nTemplate: ${metaTemplateName} (${metaLanguageCode}) • Status: Antrean Terkirim`
-        );
+        const errorText = `Gagal mengirim broadcast Meta WABA: Endpoint tidak merespons atau kredensial belum aktif.`;
+        setMetaResponseLog(`❌ ${errorText}`);
+        alert(errorText);
+        return;
       }
 
-      // Record to History
+      // Record to History ONLY on real success (Zero Mock)
       const newHistory: BroadcastHistoryItem = {
         id: `meta-${Date.now()}`,
         campaignName: `[Meta WABA] ${metaTemplateName}`,
         targetSegment: `PRO SCALE (${resolvedTargetContacts.length} Target)`,
         sentCount: resolvedTargetContacts.length,
         totalTarget: resolvedTargetContacts.length,
-        deliveredRate: 99.9,
-        clickRate: 51.5,
-        closings: Math.round(resolvedTargetContacts.length * 0.22),
-        revenue: Math.round(resolvedTargetContacts.length * 0.22 * 99000),
+        deliveredRate: 100,
+        clickRate: 0,
+        closings: 0,
+        revenue: 0,
         sentAt: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
         status: 'COMPLETED',
       };
@@ -635,9 +747,14 @@ export default function WhatsAppBroadcastManager({
                           : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-bold text-xs text-rose-700 flex items-center gap-1">
-                        <Flame className="w-3.5 h-3.5" />
-                        <span>HOT Leads</span>
+                      <div className="font-bold text-xs text-rose-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Flame className="w-3.5 h-3.5" />
+                          <span>HOT Leads</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full">
+                          {hotLeadsCount}
+                        </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">Intensi Checkout QRIS</p>
                     </button>
@@ -651,9 +768,14 @@ export default function WhatsAppBroadcastManager({
                           : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-bold text-xs text-amber-700 flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Abandoned Cart</span>
+                      <div className="font-bold text-xs text-amber-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Abandoned Cart</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                          {abandonedCartCount}
+                        </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">Belum Selesai Bayar</p>
                     </button>
@@ -667,9 +789,14 @@ export default function WhatsAppBroadcastManager({
                           : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-bold text-xs text-blue-700 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Repeat Buyers</span>
+                      <div className="font-bold text-xs text-blue-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Repeat Buyers</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                          {repeatBuyersCount}
+                        </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">Sudah Pernah Beli</p>
                     </button>
@@ -683,9 +810,14 @@ export default function WhatsAppBroadcastManager({
                           : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-bold text-xs text-emerald-700 flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" />
-                        <span>Semua Prospek</span>
+                      <div className="font-bold text-xs text-emerald-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Semua Prospek</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">
+                          {allContactsCount}
+                        </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">Seluruh Database</p>
                     </button>
@@ -699,9 +831,14 @@ export default function WhatsAppBroadcastManager({
                           : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-bold text-xs text-purple-700 flex items-center gap-1">
-                        <Tag className="w-3.5 h-3.5" />
-                        <span>Tag Iklan / Custom</span>
+                      <div className="font-bold text-xs text-purple-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Tag className="w-3.5 h-3.5" />
+                          <span>Tag Iklan / Custom</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                          {customTagCount}
+                        </span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">Filter per UTM Tag</p>
                     </button>
@@ -709,15 +846,33 @@ export default function WhatsAppBroadcastManager({
                 </div>
 
                 {targetAudience === 'custom' && (
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Cari Berdasarkan Tag Iklan:</label>
-                    <input
-                      type="text"
-                      value={customTag}
-                      onChange={(e) => setCustomTag(e.target.value)}
-                      placeholder="Contoh: Meta Ads, TikTok Ads, Gamis"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-purple-500"
-                    />
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      Pilih atau Cari Berdasarkan Tag Database / Iklan:
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {uniqueTags.length > 0 && (
+                        <select
+                          value={customTag}
+                          onChange={(e) => setCustomTag(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-purple-500"
+                        >
+                          <option value="">-- Pilih Tag Database --</option>
+                          {uniqueTags.map((t) => (
+                            <option key={t} value={t}>
+                              🏷️ {t}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <input
+                        type="text"
+                        value={customTag}
+                        onChange={(e) => setCustomTag(e.target.value)}
+                        placeholder="Atau ketik tag pencarian (misal: alumni-cpm)..."
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -932,9 +1087,11 @@ export default function WhatsAppBroadcastManager({
                 <option value="hot">🔥 HOT Leads</option>
                 <option value="warm">⚡ WARM Leads</option>
                 <option value="customer">✅ Customer Paid</option>
-                <option value="meta">Meta Ads</option>
-                <option value="tiktok">TikTok Ads</option>
-                <option value="abandoned">Abandoned Cart</option>
+                {uniqueTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    🏷️ {tag}
+                  </option>
+                ))}
               </select>
 
               {/* Search input */}
@@ -966,10 +1123,42 @@ export default function WhatsAppBroadcastManager({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredDirectoryContacts.length === 0 ? (
+                {contacts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-16 text-center">
+                      <div className="max-w-md mx-auto space-y-3">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <h4 className="font-bold text-sm text-slate-900">Belum ada kontak terdaftar.</h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Belum ada data kontak atau prospek terdaftar untuk toko ini. Kontak akan otomatis tercatat saat ada interaksi chat, order kasir/online, atau penambahan data baru.
+                        </p>
+                        <div className="pt-2 flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Tambah Kontak Baru</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={syncAudienceFromDatabase}
+                            className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Sinkronkan Ulang</span>
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredDirectoryContacts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                      Tidak ditemukan kontak yang sesuai dengan pencarian.
+                      Tidak ditemukan kontak yang sesuai dengan pencarian atau filter.
                     </td>
                   </tr>
                 ) : (
@@ -1138,6 +1327,27 @@ export default function WhatsAppBroadcastManager({
               </div>
             </div>
           </div>
+
+          {!isWabaConfigured && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3.5 shadow-xs">
+              <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black text-amber-900 uppercase tracking-wide">
+                    Setup WABA Required
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-200 text-amber-900 uppercase">
+                    Kredensial Belum Terdaftar
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Akun Meta Cloud API resmi (Phone Number ID & Permanent Access Token) belum terkonfigurasi untuk toko ini. Tombol dispatch dinonaktifkan untuk mencegah unhandled exception. Silakan hubungkan WABA resmi terlebih dahulu di tab <strong>Koneksi Gateway & Bot</strong>.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Form Konfigurasi Template & Parameter */}
@@ -1392,11 +1602,20 @@ export default function WhatsAppBroadcastManager({
 
                 <button
                   type="button"
-                  disabled={isSendingMeta || resolvedTargetContacts.length === 0}
+                  disabled={!isWabaConfigured || isSendingMeta || resolvedTargetContacts.length === 0}
                   onClick={handleSendMetaBroadcast}
-                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition disabled:opacity-50 cursor-pointer"
+                  className={`w-full py-3.5 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition ${
+                    !isWabaConfigured
+                      ? 'bg-slate-400 hover:bg-slate-400 opacity-60 cursor-not-allowed shadow-none'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/25 cursor-pointer'
+                  }`}
                 >
-                  {isSendingMeta ? (
+                  {!isWabaConfigured ? (
+                    <>
+                      <Lock className="w-4 h-4 text-amber-300" />
+                      <span>Konfigurasi Meta WABA Belum Aktif</span>
+                    </>
+                  ) : isSendingMeta ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
                       <span>Mengirim ke Meta WABA Endpoint...</span>

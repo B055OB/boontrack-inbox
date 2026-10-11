@@ -246,17 +246,50 @@ export default function CustomerDatabaseTab({
         }
       }
 
-      // 2. Fetch contacts from contacts table
+      // 2. Fetch contacts directly from GET /api/v1/crm/contacts?tenant_id=
       let contactsList: any[] = [];
-      if (tenantUuid) {
-        const { data: contactsData, error: contactsErr } = await supabase
-          .from('contacts')
-          .select('id, tenant_id, phone_e164, name, email, contact_status, lifecycle_stage, metadata, last_interaction_at, created_at, updated_at')
-          .eq('tenant_id', tenantUuid)
-          .order('last_interaction_at', { ascending: false });
+      const targetTenantKey = tenantUuid || tenantSlug;
+      if (targetTenantKey) {
+        try {
+          const crmRes = await fetch(`/api/v1/crm/contacts?tenant_id=${encodeURIComponent(targetTenantKey)}`);
+          if (crmRes.ok) {
+            const crmData = await crmRes.json();
+            if (Array.isArray(crmData.contacts)) {
+              contactsList = crmData.contacts.map((c: any) => ({
+                id: c.id,
+                tenant_id: tenantUuid,
+                phone_e164: c.phone,
+                name: c.name,
+                email: c.email || null,
+                contact_status: 'ACTIVE',
+                lifecycle_stage: c.quality === 'CUSTOMER' ? 'CUSTOMER' : 'LEAD',
+                metadata: {
+                  tags: c.tags,
+                  product_interest: c.productInterest,
+                  lead_score: c.leadScore,
+                  utm_source: c.utmSource,
+                  total_orders: c.totalOrders,
+                  total_spend: c.totalSpend,
+                },
+                last_interaction_at: c.lastContacted,
+                created_at: c.createdAt,
+              }));
+            }
+          }
+        } catch {
+          // Fallback direct query to supabase
+        }
 
-        if (!contactsErr && Array.isArray(contactsData)) {
-          contactsList = contactsData;
+        if (contactsList.length === 0 && tenantUuid) {
+          const { data: contactsData, error: contactsErr } = await supabase
+            .from('contacts')
+            .select('id, tenant_id, phone_e164, name, email, contact_status, lifecycle_stage, metadata, last_interaction_at, created_at, updated_at')
+            .eq('tenant_id', tenantUuid)
+            .order('last_interaction_at', { ascending: false });
+
+          if (!contactsErr && Array.isArray(contactsData)) {
+            contactsList = contactsData;
+          }
         }
       }
 
@@ -892,14 +925,14 @@ export default function CustomerDatabaseTab({
                   ? 'Tidak ada hasil pencarian'
                   : activeFilter === 'DUE_TODAY'
                   ? 'Tidak ada follow-up yang jatuh tempo hari ini'
-                  : 'Belum ada data pelanggan'}
+                  : 'Belum ada kontak terdaftar.'}
               </p>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 {searchQuery
                   ? `Tidak ada kontak yang cocok dengan "${searchQuery}". Coba kata kunci lain.`
                   : activeFilter === 'DUE_TODAY'
                   ? 'Semua jadwal evaluasi H+3, H+7, dan hari ulang tahun pasien terkendali rapi.'
-                  : 'Mulai input data pasien baru secara manual, atau catat transaksi walk-in pada kasir Quick POS.'}
+                  : 'Belum ada kontak terdaftar. Mulai input data pelanggan secara manual, atau tunggu interaksi pesan masuk.'}
               </p>
               {!searchQuery && activeFilter !== 'DUE_TODAY' && (
                 <button

@@ -217,7 +217,14 @@ export default function GymReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
-              {report?.daily_revenue.map((row) => (
+              {(!report?.daily_revenue || report.daily_revenue.length === 0) ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-slate-500 font-sans text-xs">
+                    Belum ada riwayat pendapatan pada periode ini.
+                  </td>
+                </tr>
+              ) : (
+                report.daily_revenue.map((row) => (
                 <tr key={row.date} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-3 font-sans font-medium text-slate-200">
                     {new Date(row.date).toLocaleDateString('id-ID', {
@@ -237,7 +244,7 @@ export default function GymReportsPage() {
                     Rp {row.total.toLocaleString('id-ID')}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>
@@ -253,7 +260,12 @@ export default function GymReportsPage() {
           </div>
 
           <div className="space-y-3">
-            {report?.top_packages.map((pkg) => (
+            {(!report?.top_packages || report.top_packages.length === 0) ? (
+              <p className="py-6 text-center text-slate-500 text-xs">
+                Belum ada data transaksi paket membership.
+              </p>
+            ) : (
+              report.top_packages.map((pkg) => (
               <div
                 key={pkg.name}
                 className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between"
@@ -266,7 +278,7 @@ export default function GymReportsPage() {
                   Rp {pkg.revenue.toLocaleString('id-ID')}
                 </span>
               </div>
-            ))}
+            )))}
           </div>
         </div>
 
@@ -278,7 +290,12 @@ export default function GymReportsPage() {
           </div>
 
           <div className="space-y-4">
-            {report?.facility_checkins.map((fac) => (
+            {(!report?.facility_checkins || report.facility_checkins.length === 0) ? (
+              <p className="py-6 text-center text-slate-500 text-xs">
+                Belum ada data riwayat check-in fasilitas.
+              </p>
+            ) : (
+              report.facility_checkins.map((fac) => (
               <div key={fac.facility} className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-medium text-slate-200">{fac.facility}</span>
@@ -293,7 +310,7 @@ export default function GymReportsPage() {
                   />
                 </div>
               </div>
-            ))}
+            )))}
           </div>
         </div>
       </div>

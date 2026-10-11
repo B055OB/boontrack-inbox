@@ -22,6 +22,7 @@ import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 import TelegramAlertManager from '../TelegramAlertManager';
 import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
+import { getSupabase } from '@/lib/supabaseClient';
 
 interface WhatsAppTabProps {
   tenantSlug: string;
@@ -161,10 +162,100 @@ export default function WhatsAppTab({
       setIsSavingLocal(false);
     }
   };
-  // FIX: Jangan mensyaratkan connectedPhone untuk menampilkan status CONNECTED.
-  // Instance bisa terkoneksi (Evolution state=open) tanpa phone terpopulasi di Supabase.
+  // Check if official Meta WABA credentials are fully configured on this tenant
+  const [hasWabaCredentials, setHasWabaCredentials] = useState<boolean>(false);
+  const [isInstanceDbActive, setIsInstanceDbActive] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function checkTenantCredentials() {
+      if (!tenantSlug) return;
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+
+        // 1. Check Meta WABA credentials in tenants table & tenant_whatsapp_channels
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        const meta = tenantData?.metadata || {};
+        const hasMetaCreds = Boolean(
+          meta.waba_config?.phone_number_id &&
+          (meta.waba_config?.permanent_access_token || meta.waba_config?.access_token)
+        ) || Boolean(
+          meta.whatsapp_credentials?.phone_number_id &&
+          meta.whatsapp_credentials?.access_token
+        );
+
+        let wabaActive = hasMetaCreds;
+        if (!wabaActive && tenantData?.id) {
+          const { data: channels } = await supabase
+            .from('tenant_whatsapp_channels')
+            .select('id, status')
+            .eq('tenant_id', tenantData.id)
+            .eq('status', 'ACTIVE')
+            .limit(1);
+          if (channels && channels.length > 0) {
+            wabaActive = true;
+          }
+        }
+
+        // 2. Check active Evolution/Baileys instance recorded in database (tenant_whatsapp_channels & whatsapp_connections)
+        let channelActive = false;
+        if (tenantData?.id) {
+          const { data: chList } = await supabase
+            .from('tenant_whatsapp_channels')
+            .select('id, status')
+            .eq('tenant_id', tenantData.id)
+            .eq('status', 'ACTIVE')
+            .limit(1);
+          if (chList && chList.length > 0) {
+            channelActive = true;
+          }
+        }
+
+        const { data: connData } = await supabase
+          .from('whatsapp_connections')
+          .select('status, is_connected, provider')
+          .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const dbActive = Boolean(
+          channelActive || (
+            connData &&
+            (connData.status === 'open' || connData.status === 'connected' || connData.status === 'ACTIVE') &&
+            connData.is_connected === true
+          )
+        );
+
+        if (isMounted) {
+          setHasWabaCredentials(wabaActive);
+          setIsInstanceDbActive(dbActive);
+          // If in meta mode without credentials, fallback to qr mode
+          if (waMode === 'meta' && !wabaActive) {
+            setWaMode('qr');
+          }
+        }
+      } catch (err) {
+        console.debug('[WhatsAppTab] Check credentials error:', err);
+      }
+    }
+
+    checkTenantCredentials();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug, waMode, setWaMode]);
+
+  // FIX: Hanya tampilkan CONNECTED jika waStatus CONNECTED, terdaftar aktif di DB, dan bukan nomor platform
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
+    isInstanceDbActive &&
     !isPlatformWaba(connectedPhone) &&
     waConnectionMode !== 'SHARED';
 
@@ -212,24 +303,42 @@ export default function WhatsAppTab({
             </button>
             <button
               type="button"
-              onClick={() => setWaMode('meta')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                waMode === 'meta'
-                  ? 'bg-white text-emerald-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+              disabled={!hasWabaCredentials}
+              onClick={() => {
+                if (hasWabaCredentials) {
+                  setWaMode('meta');
+                }
+              }}
+              title={
+                !hasWabaCredentials
+                  ? 'Setup WABA Required: Kredensial Meta resmi (Phone Number ID & Access Token) belum terkonfigurasi pada tenant ini.'
+                  : undefined
+              }
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                !hasWabaCredentials
+                  ? 'opacity-50 cursor-not-allowed text-slate-400 bg-slate-100/60 border border-slate-200'
+                  : waMode === 'meta'
+                  ? 'bg-white text-emerald-600 shadow-xs cursor-pointer'
+                  : 'text-slate-600 hover:text-slate-900 cursor-pointer'
               }`}
             >
-              {!isProScale ? (
+              {!hasWabaCredentials ? (
+                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              ) : !isProScale ? (
                 <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               ) : (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               )}
               <span>Meta Cloud API (WABA)</span>
-              {!isProScale && (
+              {!hasWabaCredentials ? (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-200 text-slate-600 shrink-0">
+                  SETUP REQUIRED
+                </span>
+              ) : !isProScale ? (
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
                   PROSCALE
                 </span>
-              )}
+              ) : null}
             </button>
           </div>
         </div>
