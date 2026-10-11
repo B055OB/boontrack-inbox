@@ -2,6 +2,35 @@ import { POST } from '@/app/api/whatsapp/connect/route';
 import { NextRequest } from 'next/server';
 
 describe('WhatsApp Connect Route for buzzerukm', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/v1/whatsapp/sessions/buzzerukm/connect')) {
+        return Promise.resolve({
+          status: 200,
+          ok: true,
+          json: async () => ({
+            success: true,
+            status: 'CONNECTING',
+            base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY44YAAAAASUVORK5CYII=',
+            code: 'test-pairing-code-123',
+            instance_name: 'buzzerukm',
+          }),
+        } as any);
+      }
+      return Promise.resolve({
+        status: 404,
+        ok: false,
+        json: async () => ({ error: 'Not found' }),
+      } as any);
+    });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it('returns valid base64 QR for connecting instance buzzerukm', async () => {
     const req = new NextRequest('http://localhost:3000/api/whatsapp/connect?tenant=buzzerukm', {
       method: 'POST',

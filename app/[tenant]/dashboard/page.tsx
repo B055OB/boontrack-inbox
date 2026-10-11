@@ -194,6 +194,7 @@ export default function TenantDashboardPage() {
     qrImgError,
     setQrImgError,
     isQrLoading,
+    waLoadingMessage,
     waErrorMessage,
     connectedPhone,
     setConnectedPhone,
@@ -1144,6 +1145,7 @@ export default function TenantDashboardPage() {
               qrImgError={qrImgError}
               setQrImgError={setQrImgError}
               isQrLoading={isQrLoading}
+              waLoadingMessage={waLoadingMessage}
               waErrorMessage={waErrorMessage}
               connectedPhone={connectedPhone}
               setConnectedPhone={setConnectedPhone}

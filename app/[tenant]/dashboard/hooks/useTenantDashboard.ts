@@ -314,6 +314,7 @@ export function useTenantDashboard() {
   // WhatsApp Gateway State (Strict Multi-Tenant)
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   const [isQrLoading, setIsQrLoading] = useState(false);
+  const [waLoadingMessage, setWaLoadingMessage] = useState<string | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [qrImgError, setQrImgError] = useState(false);
   const [waStatus, setWaStatus] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'DEGRADED'>('DISCONNECTED');
@@ -1400,8 +1401,12 @@ export function useTenantDashboard() {
     async function evaluateStoreReadiness() {
       if (!tenantSlug || isAuthenticated !== true) return;
       try {
-        const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`);
-        if (res.ok) {
+        const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
+        const res = await fetch(`${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        }).catch(() => null);
+        if (res && res.ok) {
           const data = await res.json();
           const rawPhone = String(data.connected_phone || data.phone_number || '');
           const isPlatform =
@@ -2558,56 +2563,85 @@ export function useTenantDashboard() {
     }
   };
 
-  // 10. WhatsApp Engine Handlers (Strict Payload & Direct Base64 Capture)
+  // 10. WhatsApp Engine Handlers (Strict Canonical Core Endpoint)
   const handleConnectGrowthSession = async (isReload = false) => {
     if (!tenantSlug) return;
     setIsQrLoading(true);
     setWaErrorMessage(null);
+    setWaLoadingMessage(isReload ? 'Sedang memuat ulang sesi WhatsApp...' : 'Menghubungkan ke BoonTrack WhatsApp Engine...');
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const url = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-      });
+      const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
+      const primaryUrl = `${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect${isReload ? '?force=true' : ''}`;
+
+      let res: Response;
+      try {
+        res = await fetch(primaryUrl, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal,
+        });
+      } catch {
+        // Fallback ke server gateway proxy internal jika direct fetch terhalang
+        const fallbackUrl = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
+        res = await fetch(fallbackUrl, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal,
+        });
+      }
+
+      // Status 202: IN_PROGRESS (Sedang menyiapkan sesi aman...)
+      if (res.status === 202) {
+        setIsQrLoading(true);
+        setWaLoadingMessage('Sedang menyiapkan sesi aman...');
+        setWaStatus('CONNECTING');
+        setWaErrorMessage(null);
+        return;
+      }
+
       const data = await res.json().catch(() => ({}));
 
-      if (data.provider) setWaProvider(data.provider);
-      if (data.mode) setWaConnectionMode(data.mode);
+      // Status 200: QR payload / Connected
+      if (res.status === 200 || (res.ok && data?.success !== false)) {
+        if (data.provider) setWaProvider(data.provider);
+        if (data.mode) setWaConnectionMode(data.mode);
 
-      const rawPhone = String(data.phone_number || data.connected_phone || '').trim();
-      const isPlatform =
-        rawPhone.includes('85181830080') ||
-        rawPhone.includes('85179555449') ||
-        rawPhone.includes('85139555449') ||
-        data.mode === 'SHARED';
+        const rawPhone = String(data.phone_number || data.connected_phone || '').trim();
+        const isPlatform =
+          rawPhone.includes('85181830080') ||
+          rawPhone.includes('85179555449') ||
+          rawPhone.includes('85139555449') ||
+          data.mode === 'SHARED';
 
-      const isConnected = (data.status === 'CONNECTED' || data.connected === true) && !isPlatform;
+        const isConnected =
+          (data.status === 'CONNECTED' || data.status === 'open' || data.connected === true) &&
+          !isPlatform &&
+          Boolean(rawPhone);
 
-      if (isConnected) {
-        setWaStatus('CONNECTED');
-        setConnectedPhone(rawPhone || null);
-        setQrCodeUrl(null);
-        setQrImgError(false);
-        setWaErrorMessage(null);
-      } else {
-        if (data.status !== 'CONNECTED') {
-          setWaStatus('CONNECTING');
+        if (isConnected) {
+          setWaStatus('CONNECTED');
+          setConnectedPhone(rawPhone || null);
+          setQrCodeUrl(null);
+          setQrImgError(false);
+          setWaErrorMessage(null);
+          setIsQrLoading(false);
+          setWaLoadingMessage(null);
+          return;
         }
 
-        // Tangani parsing kembalian base64 QR dari Evolution API secara fleksibel:
-        // Mendukung: data?.qrcode?.base64 || data?.base64 || data?.qr || data?.qrcode || data?.qr_image || data?.code
+        // Parsing payload QR: base64 / qrcode / code / qr_image / qr_raw
         const qrRaw =
-          data?.qrcode?.base64 ||
           data?.base64 ||
-          data?.qr ||
-          data?.qrcode ||
+          data?.qrcode?.base64 ||
           data?.qr_image ||
+          data?.qrcode ||
+          data?.qr ||
           data?.code ||
+          data?.qr_raw ||
           null;
 
         if (qrRaw && typeof qrRaw === 'string') {
@@ -2617,22 +2651,47 @@ export function useTenantDashboard() {
           } else {
             setQrCodeUrl(qrRaw);
           }
+          setWaStatus('CONNECTING');
           setQrImgError(false);
           setWaErrorMessage(null);
-        } else if (!res.ok || data.success === false || data.error) {
-          setWaErrorMessage(data.error || 'Gagal memuat sesi dari gateway proxy');
+          setIsQrLoading(false);
+          setWaLoadingMessage(null);
+        } else if (data.status === 'IN_PROGRESS' || data.status === 'connecting') {
+          setIsQrLoading(true);
+          setWaLoadingMessage('Sedang menyiapkan sesi aman...');
+          setWaStatus('CONNECTING');
+        } else {
+          setIsQrLoading(false);
+          setWaLoadingMessage(null);
+          if (data.error) {
+            setWaErrorMessage(data.error);
+          }
         }
+      } else {
+        // Status 502 / error dari Core tanpa crash
+        setIsQrLoading(false);
+        setWaLoadingMessage(null);
+        setWaStatus('DISCONNECTED');
+        const errDetail =
+          data?.error ||
+          data?.detail ||
+          data?.message ||
+          (res.status === 502
+            ? 'Layanan WhatsApp Gateway sedang sibuk (502). Silakan coba lagi.'
+            : `Kendala koneksi Core (HTTP ${res.status})`);
+        setWaErrorMessage(errDetail);
       }
     } catch (err: any) {
+      setIsQrLoading(false);
+      setWaLoadingMessage(null);
       setWaStatus('DISCONNECTED');
       if (err?.name === 'AbortError') {
-        setWaErrorMessage('Koneksi ke gateway timeout (12 detik). Silakan coba lagi.');
+        setWaErrorMessage('Koneksi ke gateway timeout (15 detik). Silakan coba lagi.');
       } else {
-        setWaErrorMessage(err?.message || 'Gagal memuat sesi dari gateway proxy');
+        setWaErrorMessage(err?.message || 'Kendala menghubungi server WhatsApp Core.');
       }
     } finally {
       clearTimeout(timeoutId);
-      setIsQrLoading(false);
     }
   };
 
@@ -2649,13 +2708,21 @@ export function useTenantDashboard() {
     let consecutiveErrors = 0;
     let isCancelled = false;
 
+    const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
+    const pollUrl = `${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect`;
+
     const pollInterval = setInterval(async () => {
       if (isCancelled) return;
       try {
-        const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
+        const res = await fetch(pollUrl, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Accept': 'application/json' },
         });
+
+        if (res.status === 202) {
+          setWaLoadingMessage('Sedang menyiapkan sesi aman...');
+          return;
+        }
 
         if (!res.ok) {
           consecutiveErrors++;
@@ -2861,6 +2928,7 @@ export function useTenantDashboard() {
     qrImgError,
     setQrImgError,
     isQrLoading,
+    waLoadingMessage,
     waErrorMessage,
     connectedPhone,
     setConnectedPhone,

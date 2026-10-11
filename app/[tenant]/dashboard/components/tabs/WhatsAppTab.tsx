@@ -36,6 +36,7 @@ interface WhatsAppTabProps {
   qrImgError?: boolean;
   setQrImgError?: (err: boolean) => void;
   isQrLoading: boolean;
+  waLoadingMessage?: string | null;
   waErrorMessage: string | null;
   connectedPhone: string | null;
   setConnectedPhone: (phone: string | null) => void;
@@ -92,6 +93,7 @@ export default function WhatsAppTab({
   qrImgError: qrImgErrorProp,
   setQrImgError: setQrImgErrorProp,
   isQrLoading,
+  waLoadingMessage,
   waErrorMessage,
   connectedPhone,
   setConnectedPhone,
@@ -494,7 +496,7 @@ export default function WhatsAppTab({
                     {isQrLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Menghubungkan ke BoonTrack WhatsApp Engine...</span>
+                        <span>{waLoadingMessage || 'Sedang menyiapkan sesi aman...'}</span>
                       </>
                     ) : (
                       <>
@@ -510,7 +512,7 @@ export default function WhatsAppTab({
                 {isQrLoading && !qrCodeUrl ? (
                   <div className="flex flex-col items-center gap-3 py-12 text-xs text-slate-500 font-medium">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                    <span>Mengambil token autentikasi dari proxy server...</span>
+                    <span>{waLoadingMessage || 'Sedang menyiapkan sesi aman...'}</span>
                   </div>
                 ) : qrCodeUrl ? (
                   <div className="flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in duration-200">
@@ -562,7 +564,7 @@ export default function WhatsAppTab({
                       {isQrLoading ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Memuat QR Code...</span>
+                          <span>{waLoadingMessage || 'Sedang menyiapkan sesi aman...'}</span>
                         </>
                       ) : (
                         <>
