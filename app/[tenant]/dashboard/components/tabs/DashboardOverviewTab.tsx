@@ -36,6 +36,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
 import AiSessionQuotaMeter from '@/app/[tenant]/dashboard/components/AiSessionQuotaMeter';
 import { isValidPaidStatus, extractOrderAmount } from '@/lib/finance-engine';
+import { formatCurrency } from '@/lib/i18n';
 
 
 interface DashboardOverviewTabProps {
@@ -899,7 +900,7 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
             </div>
             <div>
               <div className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Rp {recentOmzet.toLocaleString('id-ID')}
+                {formatCurrency(recentOmzet)}
               </div>
               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
                 <span>100% Masuk Rekening</span>

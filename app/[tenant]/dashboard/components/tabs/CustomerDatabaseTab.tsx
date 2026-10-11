@@ -43,6 +43,7 @@ import {
 } from '@/lib/crm/types';
 import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 import BulkImportCustomersModal from '../modals/BulkImportCustomersModal';
+import { useTranslation, formatCurrency } from '@/lib/i18n';
 
 // -------------------------------------------------------------------
 // Types
@@ -156,6 +157,7 @@ export default function CustomerDatabaseTab({
   tenantId,
   onOpenInbox,
 }: CustomerDatabaseTabProps) {
+  const { t, locale } = useTranslation();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -402,7 +404,7 @@ export default function CustomerDatabaseTab({
         });
       }
 
-      // Merge / append conversations
+      // Merge conversations strictly to enrich existing SSOT CRM contacts
       for (const conv of convList) {
         const phone = toE164(conv.customer_phone);
         if (!phone) continue;
@@ -424,67 +426,6 @@ export default function CustomerDatabaseTab({
               rules: currentFollowUpRules,
             });
           }
-        } else {
-          const stats = orderStatsByPhone.get(phone);
-          const customerName = conv.customer_name || formatDisplayPhone(phone);
-          const lastVisitDate = stats?.lastOrderDate || conv.last_message_at || null;
-          const stage = (stats?.totalOrders || 0) > 1 ? 'REPEAT_CUSTOMER' : (stats?.totalOrders || 0) > 0 ? 'CUSTOMER' : 'LEAD';
-
-          const followUp = calculateFollowUpInfo({
-            customerName,
-            birthDate: null,
-            lastVisitDate,
-            tenantName: tenantName || 'Toko Resmi',
-            rules: currentFollowUpRules,
-          });
-
-          customerMap.set(phone, {
-            id: conv.id,
-            customerPhone: phone,
-            customerName,
-            birthDate: null,
-            lastVisitDate,
-            lastMessage: conv.last_message || '',
-            lastMessageAt: conv.last_message_at || null,
-            tags: [],
-            unreadCount: conv.unread_count || 0,
-            lifecycleStage: stage,
-            totalOrders: stats?.totalOrders || 0,
-            lifetimeValue: stats?.lifetimeValue || 0,
-            assignedAgentName: conv.assigned_agent_id ? 'CS Aktif' : 'Bot / CS',
-            followUp,
-          });
-        }
-      }
-
-      // Append any orders-only customers not yet captured
-      for (const [phone, stats] of orderStatsByPhone.entries()) {
-        if (!customerMap.has(phone)) {
-          const customerName = formatDisplayPhone(phone);
-          const followUp = calculateFollowUpInfo({
-            customerName,
-            birthDate: null,
-            lastVisitDate: stats.lastOrderDate,
-            tenantName: tenantName || 'Toko Resmi',
-            rules: currentFollowUpRules,
-          });
-
-          customerMap.set(phone, {
-            id: phone,
-            customerPhone: phone,
-            customerName,
-            birthDate: null,
-            lastVisitDate: stats.lastOrderDate,
-            lastMessage: '',
-            lastMessageAt: stats.lastOrderDate,
-            tags: ['Order'],
-            unreadCount: 0,
-            lifecycleStage: stats.totalOrders > 1 ? 'REPEAT_CUSTOMER' : 'CUSTOMER',
-            totalOrders: stats.totalOrders,
-            lifetimeValue: stats.lifetimeValue,
-            assignedAgentName: 'Transaksi POS',
-            followUp,
-          });
         }
       }
 
@@ -763,14 +704,15 @@ export default function CustomerDatabaseTab({
                 <h1 className="text-base font-black text-slate-900 leading-tight">
                   Database Pelanggan &amp; Pasien
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  Lifecycle CRM
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>SSOT CRM Contacts</span>
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
                 {isLoading
-                  ? 'Memuat database...'
-                  : `${customers.length.toLocaleString('id-ID')} kontak terdaftar di database ${tenantName || 'tenant'}`}
+                  ? t('common.loading')
+                  : `${customers.length.toLocaleString(locale === 'en' ? 'en-US' : 'id-ID')} kontak unik terdaftar di database ${tenantName || 'tenant'}`}
               </p>
             </div>
           </div>
@@ -1069,7 +1011,7 @@ export default function CustomerDatabaseTab({
                     </p>
                     {customer.totalOrders > 0 && (
                       <span className="text-[9px] font-semibold text-indigo-700 block mt-0.5">
-                        {customer.totalOrders} Transaksi • Rp {customer.lifetimeValue.toLocaleString('id-ID')}
+                        {customer.totalOrders} Transaksi • {formatCurrency(customer.lifetimeValue)}
                       </span>
                     )}
                   </div>
