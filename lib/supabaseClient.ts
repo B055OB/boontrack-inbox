@@ -69,18 +69,12 @@ export const getSupabase = () => {
 
 let lastConfiguredAdminKey: string | null = null;
 
-export const getSupabaseAdmin = () => {
-  const currentKey = (
+export const getSupabaseAdmin = (): SupabaseClient => {
+  const serviceKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     ''
   ).trim();
-
-  // Ensure credentials 100% resolve from environment variables
-  const serviceKey = (currentKey && !currentKey.startsWith('sb_secret_'))
-    ? currentKey
-    : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
 
   if (!supabaseAdminInstance || (serviceKey && serviceKey !== lastConfiguredAdminKey)) {
     lastConfiguredAdminKey = serviceKey;
@@ -91,5 +85,5 @@ export const getSupabaseAdmin = () => {
       },
     });
   }
-  return supabaseAdminInstance;
+  return supabaseAdminInstance!;
 };
