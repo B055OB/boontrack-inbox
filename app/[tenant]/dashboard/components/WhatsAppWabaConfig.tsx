@@ -8,411 +8,440 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Copy,
-  Check,
-  Zap,
-  Save,
-  RefreshCw,
-  Activity,
-  Info,
-  Server,
+  Loader2,
   Key,
   Smartphone,
-  ExternalLink,
   Lock,
+  ExternalLink,
+  Info,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
-interface WhatsAppWabaConfigProps {
+export interface WhatsAppWabaConfigProps {
   tenantSlug: string;
   displayName: string;
-  onSuccess?: (data: any) => void;
+  isModal?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
+  onSuccess?: (data: {
+    phone_number?: string;
+    verified_name?: string;
+    quality_rating?: string;
+    status: string;
+  }) => void;
   onSaved?: (msg: string) => void;
 }
 
 export default function WhatsAppWabaConfig({
   tenantSlug,
   displayName,
+  isModal = false,
+  isOpen = true,
+  onClose,
   onSuccess,
   onSaved,
 }: WhatsAppWabaConfigProps) {
-  // WABA Credentials State
-  const [wabaId, setWabaId] = useState('');
+  // Input Form States
   const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [wabaId, setWabaId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [showAccessToken, setShowAccessToken] = useState(false);
 
-  // Read-only Webhook Configuration
-  // Read-only Webhook Configuration for Meta Developer Console
-  // PENGECUALIAN: Direct Railway origin dipertahankan khusus handshake hub.challenge Meta agar tidak terhadang Cloudflare
-  // Webhook handled at system platform level
-  const webhookVerifyToken = 'boontrack_waba_webhook_verify_token';
-
-  // Copy state
-  const [copiedUrl, setCopiedUrl] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
-
-  // Ping Test & Save state
-  const [saving, setSaving] = useState(false);
-  const [isPingTesting, setIsPingTesting] = useState(false);
-  const [pingResult, setPingResult] = useState<{
-    status: 'SUCCESS' | 'ERROR';
-    message: string;
+  // Handshake & Verification States
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successData, setSuccessData] = useState<{
     verifiedName?: string;
     displayPhone?: string;
     qualityRating?: string;
+    message?: string;
   } | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
 
   // Load existing credentials from Supabase on mount
   useEffect(() => {
-    async function loadConfig() {
+    async function loadExistingConfig() {
+      if (!tenantSlug) return;
       try {
         const supabase = getSupabase();
-        if (supabase) {
-          const { data } = await supabase
-            .from('tenant_settings')
-            .select('waba_config')
-            .eq('tenant_slug', tenantSlug)
-            .maybeSingle();
+        if (!supabase) return;
 
-          if (data?.waba_config) {
-            const cfg = data.waba_config;
-            if (cfg.waba_id) setWabaId(cfg.waba_id);
-            // Kunci: Sembunyikan dan jangan pernah load ID/Nomor Platform WABA resmi ke akun merchant
-            const rawPhoneId = String(cfg.phone_number_id || '');
-            if (rawPhoneId && !rawPhoneId.includes('85181830080') && !rawPhoneId.includes('85179555449') && !rawPhoneId.includes('85139555449')) {
-              setPhoneNumberId(rawPhoneId);
-            } else {
-              setPhoneNumberId('');
-            }
-            if (cfg.permanent_access_token) setAccessToken(cfg.permanent_access_token);
+        // 1. Prioritaskan pembacaan dari whatsapp_connections
+        const { data: conn } = await supabase
+          .from('whatsapp_connections')
+          .select('*')
+          .or(`tenant_id.eq.${tenantSlug},tenant_slug.eq.${tenantSlug}`)
+          .eq('provider', 'meta')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (conn) {
+          if (conn.phone_number_id) setPhoneNumberId(conn.phone_number_id);
+          if (conn.waba_id) setWabaId(conn.waba_id);
+          if (conn.api_key) setAccessToken(conn.api_key);
+
+          if (conn.is_connected || conn.status === 'active' || conn.status === 'open') {
+            setSuccessData({
+              verifiedName: conn.metadata?.verified_name || displayName.toUpperCase(),
+              displayPhone: conn.phone_number || (conn.phone_number_id ? `ID: ${conn.phone_number_id}` : undefined),
+              qualityRating: conn.metadata?.quality_rating || 'GREEN',
+              message: 'Akun Meta WABA sudah terverifikasi dan aktif.',
+            });
+          }
+          return;
+        }
+
+        // 2. Fallback cek tenant_settings
+        const { data: settings } = await supabase
+          .from('tenant_settings')
+          .select('waba_config')
+          .eq('tenant_slug', tenantSlug)
+          .maybeSingle();
+
+        if (settings?.waba_config) {
+          const cfg = settings.waba_config;
+          if (cfg.phone_number_id) setPhoneNumberId(cfg.phone_number_id);
+          if (cfg.waba_id) setWabaId(cfg.waba_id);
+          if (cfg.permanent_access_token) setAccessToken(cfg.permanent_access_token);
+
+          if (cfg.status === 'CONNECTED') {
+            setSuccessData({
+              verifiedName: cfg.verified_name || displayName.toUpperCase(),
+              displayPhone: cfg.display_phone_number || cfg.phone_number_id,
+              qualityRating: cfg.quality_rating || 'GREEN',
+              message: 'Akun Meta WABA sudah terhubung.',
+            });
           }
         }
       } catch (err) {
-        console.warn('[WABA Config] Using initial state:', err);
+        console.warn('[WABA Config] Note loading existing config:', err);
       }
     }
-    loadConfig();
-  }, [tenantSlug]);
 
-  const copyToClipboard = (text: string, type: 'url' | 'token') => {
-    navigator.clipboard.writeText(text);
-    if (type === 'url') {
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
-    } else {
-      setCopiedToken(true);
-      setTimeout(() => setCopiedToken(false), 2000);
-    }
-  };
+    loadExistingConfig();
+  }, [tenantSlug, displayName]);
 
-  // ── SAVE WABA CREDENTIALS TO SUPABASE ──
-  const handleSaveCredentials = async (e: React.FormEvent) => {
+  // Handle Form Submission: Simpan & Verifikasi Koneksi
+  const handleConnectAndVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wabaId || !phoneNumberId || !accessToken) {
-      alert('Silakan lengkapi seluruh field WABA ID, Phone Number ID, dan Access Token!');
+    setErrorMessage(null);
+
+    const cleanPhoneId = phoneNumberId.trim();
+    const cleanWabaId = wabaId.trim();
+    const cleanToken = accessToken.trim();
+
+    if (!cleanPhoneId || !cleanWabaId || !cleanToken) {
+      setErrorMessage('Harap lengkapi seluruh field: Phone Number ID, WABA ID, dan Meta Permanent Access Token.');
       return;
     }
 
-    setSaving(true);
-    setFeedback(null);
-
-    const payload = {
-      waba_id: wabaId.trim(),
-      phone_number_id: phoneNumberId.trim(),
-      permanent_access_token: accessToken.trim(),
-      webhook_verify_token: webhookVerifyToken,
-      status: 'CONNECTED',
-      updated_at: new Date().toISOString(),
-    };
+    setIsVerifying(true);
+    setSuccessData(null);
 
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              waba_config: payload,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'tenant_slug' }
-          );
-      }
-
-      setFeedback('✅ Kredensial Resmi WABA berhasil disimpan dan diaktifkan!');
-      if (onSaved) onSaved('✅ Kredensial Resmi WABA berhasil disimpan!');
-      if (onSuccess) onSuccess({ phone_number: phoneNumberId, status: 'CONNECTED' });
-      setTimeout(() => setFeedback(null), 4000);
-    } catch (err) {
-      setFeedback('✅ Pengaturan WABA disimpan secara lokal.');
-      setTimeout(() => setFeedback(null), 3000);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── PING TEST TO META GRAPH API ──
-  const handlePingTest = async () => {
-    if (!phoneNumberId || !accessToken) {
-      alert('Masukkan Phone Number ID dan Access Token terlebih dahulu untuk melakukan tes ping.');
-      return;
-    }
-
-    setIsPingTesting(true);
-    setPingResult(null);
-
-    try {
-      // Direct Meta Graph API probe
-      const res = await fetch(
-        `https://graph.facebook.com/v21.0/${phoneNumberId.trim()}?fields=verified_name,code_verification_status,display_phone_number,quality_rating`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken.trim()}`,
-          },
-        }
-      );
-
-      const json = await res.json();
-
-      if (res.ok && !json.error) {
-        setPingResult({
-          status: 'SUCCESS',
-          message: 'Koneksi Meta Graph API Berhasil! Kredensial WABA terverifikasi valid.',
-          verifiedName: json.verified_name || displayName.toUpperCase(),
-          displayPhone: json.display_phone_number || '+62 819-7765-5099',
-          qualityRating: json.quality_rating || 'GREEN (HIGH QUALITY)',
-        });
-      } else {
-        // Fallback simulation if Graph API rejects local mock token
-        if (accessToken.startsWith('EAAB') || accessToken.length > 20) {
-          setPingResult({
-            status: 'SUCCESS',
-            message: 'Koneksi Meta Cloud WABA Terhubung & Aktif.',
-            verifiedName: displayName.toUpperCase(),
-            displayPhone: json.display_phone_number || (phoneNumberId ? `ID: ${phoneNumberId}` : 'Terverifikasi'),
-            qualityRating: 'GREEN (HIGH QUALITY)',
-          });
-        } else {
-          setPingResult({
-            status: 'ERROR',
-            message: json.error?.message || 'Access Token atau Phone Number ID tidak valid pada Meta Graph API.',
-          });
-        }
-      }
-    } catch (err: any) {
-      // If CORS or offline, fallback to structured simulated response
-      setPingResult({
-        status: 'SUCCESS',
-        message: 'Koneksi Meta Cloud WABA Terhubung & Aktif.',
-        verifiedName: displayName.toUpperCase(),
-        displayPhone: phoneNumberId ? `ID: ${phoneNumberId}` : 'Terverifikasi',
-        qualityRating: 'GREEN (HIGH QUALITY)',
+      // Panggil endpoint proxy internal inbox (yang akan meneruskan ke Core Backend / Meta Graph API)
+      const res = await fetch('/api/whatsapp/connect-manual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_id: tenantSlug,
+          tenant_slug: tenantSlug,
+          phone_number_id: cleanPhoneId,
+          waba_id: cleanWabaId,
+          access_token: cleanToken,
+        }),
       });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        const errorText =
+          data.error ||
+          data.detail?.message ||
+          (typeof data.detail === 'string' ? data.detail : null) ||
+          'Verifikasi Meta Graph API gagal. Pastikan Phone Number ID, WABA ID, dan Access Token Anda valid.';
+        throw new Error(errorText);
+      }
+
+      // Handshake sukses!
+      const resolvedVerifiedName = data.verified_name || displayName.toUpperCase();
+      const resolvedDisplayPhone = data.display_phone_number || cleanPhoneId;
+      const resolvedQualityRating = data.quality_rating || 'GREEN';
+
+      setSuccessData({
+        verifiedName: resolvedVerifiedName,
+        displayPhone: resolvedDisplayPhone,
+        qualityRating: resolvedQualityRating,
+        message: data.message || `WABA berhasil terhubung dan terverifikasi untuk ${displayName}!`,
+      });
+
+      const successMsg = `✅ Akun WABA '${resolvedVerifiedName}' berhasil terhubung & terverifikasi!`;
+      if (onSaved) onSaved(successMsg);
+
+      if (onSuccess) {
+        onSuccess({
+          phone_number: resolvedDisplayPhone,
+          verified_name: resolvedVerifiedName,
+          quality_rating: resolvedQualityRating,
+          status: 'CONNECTED',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghubungi server verifikasi WABA.';
+      setErrorMessage(msg);
     } finally {
-      setIsPingTesting(false);
+      setIsVerifying(false);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      
-      {/* Header Card */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
-                <span>Konfigurasi Resmi WhatsApp Business API (WABA)</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  OFFICIAL META CLOUD
-                </span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Koneksi direct permanent system user access token untuk akun WhatsApp Verified centang hijau.
-              </p>
-            </div>
-          </div>
+  if (isModal && !isOpen) return null;
 
-          <div className="flex items-center gap-2">
+  const content = (
+    <div className="space-y-6">
+      {/* ── HEADER CARD ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold border border-emerald-500/20 shrink-0">
+            <MessageSquare className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-black text-sm text-slate-900">
+                Hubungkan WABA Resmi (Manual Setup)
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                OFFICIAL META CLOUD
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Koneksi direct permanent system user access token untuk akun WhatsApp Business resmi centang hijau.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {successData && (
             <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Provider Managed</span>
+              <span>Terhubung Aktif</span>
             </span>
-          </div>
-        </div>
-
-        {feedback && (
-          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{feedback}</span>
-          </div>
-        )}
-
-        {/* ── MAIN CREDENTIALS FORM ── */}
-        <form onSubmit={handleSaveCredentials} className="space-y-5">
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* WABA ID */}
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-blue-600" />
-                <span>WhatsApp Business Account ID (WABA ID) *</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={wabaId}
-                onChange={(e) => setWabaId(e.target.value)}
-                placeholder="Contoh: 109283746519203"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-600 transition"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                ID Akun WhatsApp Business di Meta Business Manager.
-              </p>
-            </div>
-
-            {/* Phone Number ID */}
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Phone Number ID *</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={phoneNumberId}
-                onChange={(e) => setPhoneNumberId(e.target.value)}
-                placeholder="Contoh: 582910293847561"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-600 transition"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                ID Nomor Telepon spesifik yang terdaftar di Meta Developer Console.
-              </p>
-            </div>
-
-          </div>
-
-          {/* Permanent Access Token */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-purple-600" />
-              <span>Permanent System User Access Token *</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showAccessToken ? 'text' : 'password'}
-                required
-                value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="EAABwz..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-12 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-purple-600 transition"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAccessToken(!showAccessToken)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                title={showAccessToken ? 'Sembunyikan Token' : 'Lihat Token'}
-              >
-                {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Token permanen dengan permissions <code>whatsapp_business_management</code> dan <code>whatsapp_business_messaging</code>.
-            </p>
-          </div>
-
-          
-
-          {/* ── LIVE PING TEST RESULT CARD ── */}
-          {pingResult && (
-            <div
-              className={`p-4 rounded-2xl border text-xs animate-in fade-in space-y-2 ${
-                pingResult.status === 'SUCCESS'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : 'bg-rose-50 border-rose-200 text-rose-900'
-              }`}
-            >
-              <div className="flex items-center gap-2 font-bold">
-                {pingResult.status === 'SUCCESS' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600" />
-                )}
-                <span>{pingResult.message}</span>
-              </div>
-
-              {pingResult.status === 'SUCCESS' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px] border-t border-emerald-200/80">
-                  <div>Verified Name: <strong>{pingResult.verifiedName}</strong></div>
-                  <div>Display Phone: <strong>{pingResult.displayPhone}</strong></div>
-                  <div>Quality Rating: <strong className="text-emerald-700">{pingResult.qualityRating}</strong></div>
-                </div>
-              )}
-            </div>
           )}
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          {isModal && onClose && (
             <button
               type="button"
-              onClick={handlePingTest}
-              disabled={isPingTesting}
-              className="w-full sm:w-auto px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 border border-slate-200 cursor-pointer disabled:opacity-50"
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              title="Tutup Modal"
             >
-              {isPingTesting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-                  <span>Memvalidasi Graph API...</span>
-                </>
-              ) : (
-                <>
-                  <Activity className="w-4 h-4 text-blue-600" />
-                  <span>Tes Ping Koneksi WhatsApp</span>
-                </>
-              )}
+              <X className="w-5 h-5" />
             </button>
+          )}
+        </div>
+      </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-2xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Menyimpan Kredensial...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Simpan Kredensial WABA</span>
-                </>
-              )}
-            </button>
+      {/* ── SUCCESS FEEDBACK CARD (NAMA AKUN WABA TERVERIFIKASI) ── */}
+      {successData && (
+        <div className="p-5 rounded-2xl bg-emerald-50/90 border-2 border-emerald-300 text-emerald-950 text-xs animate-in fade-in duration-200 space-y-3 shadow-xs">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm text-emerald-950 flex items-center gap-1.5">
+                  <span>Akun WABA Resmi Terverifikasi!</span>
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </h4>
+                <p className="text-[11px] text-emerald-800 mt-0.5">
+                  {successData.message || 'Koneksi ke Meta Graph API aktif dan webhook tersinkronisasi.'}
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-black text-[10px] border border-emerald-300 uppercase tracking-wider shrink-0">
+              Verified
+            </span>
           </div>
 
-        </form>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/80 text-[11px]">
+            <div className="p-2.5 bg-white/80 rounded-xl border border-emerald-200">
+              <span className="text-[10px] font-bold text-slate-400 block uppercase">Nama Akun WABA</span>
+              <strong className="text-slate-900 font-extrabold text-xs block truncate mt-0.5">
+                {successData.verifiedName || displayName.toUpperCase()}
+              </strong>
+            </div>
 
-        {/* ── BANTUAN OPERASIONAL BOONTRACK ── */}
-        <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-start gap-3 mt-4">
-          <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold">Informasi Setup Partner & Operasional:</p>
-            <p className="text-[11px] text-blue-800 leading-relaxed">
-              Kredensial WABA toko Anda disiapkan dan diverifikasi langsung oleh Tim Operasional BoonTrack. Webhook terkonfigurasi otomatis secara aman di tingkat sistem tanpa perlu setup manual.
+            <div className="p-2.5 bg-white/80 rounded-xl border border-emerald-200">
+              <span className="text-[10px] font-bold text-slate-400 block uppercase">Nomor WhatsApp</span>
+              <strong className="text-slate-900 font-extrabold text-xs block truncate mt-0.5">
+                {successData.displayPhone || phoneNumberId}
+              </strong>
+            </div>
+
+            <div className="p-2.5 bg-white/80 rounded-xl border border-emerald-200">
+              <span className="text-[10px] font-bold text-slate-400 block uppercase">Quality Rating</span>
+              <span className="inline-flex items-center gap-1 font-extrabold text-xs text-emerald-700 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                {successData.qualityRating || 'GREEN (HIGH QUALITY)'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ERROR FEEDBACK ALERT ── */}
+      {errorMessage && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs animate-in fade-in duration-150 space-y-2">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="font-extrabold text-xs text-rose-950">Gagal Memverifikasi Koneksi WABA</h4>
+              <p className="text-[11px] text-rose-800 leading-relaxed">{errorMessage}</p>
+              <p className="text-[10px] text-rose-600 pt-0.5">
+                Tips: Pastikan System User di Meta Business Manager memiliki permission <code>whatsapp_business_management</code> dan <code>whatsapp_business_messaging</code> serta token berstatus Permanent (Never Expire).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MAIN CREDENTIALS FORM ── */}
+      <form onSubmit={handleConnectAndVerify} className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 1. Phone Number ID */}
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Phone Number ID *</span>
+            </label>
+            <input
+              type="text"
+              required
+              disabled={isVerifying}
+              value={phoneNumberId}
+              onChange={(e) => setPhoneNumberId(e.target.value)}
+              placeholder="Contoh: 1419090974617162"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-600 transition disabled:opacity-60"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              ID Nomor Telepon spesifik yang terdaftar di Meta Developer Console.
+            </p>
+          </div>
+
+          {/* 2. WABA ID */}
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-blue-600" />
+              <span>WhatsApp Business Account ID (WABA ID) *</span>
+            </label>
+            <input
+              type="text"
+              required
+              disabled={isVerifying}
+              value={wabaId}
+              onChange={(e) => setWabaId(e.target.value)}
+              placeholder="Contoh: 102938475610293"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-600 transition disabled:opacity-60"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              ID Akun WhatsApp Business di Meta Business Manager.
             </p>
           </div>
         </div>
 
-      </div>
+        {/* 3. Meta Permanent Access Token */}
+        <div>
+          <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-purple-600" />
+            <span>Meta Permanent Access Token *</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showAccessToken ? 'text' : 'password'}
+              required
+              disabled={isVerifying}
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="EAAT4OxjEH58..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-12 py-3 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-purple-600 transition disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAccessToken(!showAccessToken)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              title={showAccessToken ? 'Sembunyikan Token' : 'Lihat Token'}
+            >
+              {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Token permanen System User (Never Expire) dengan permissions <code>whatsapp_business_management</code> dan <code>whatsapp_business_messaging</code>.
+          </p>
+        </div>
 
+        {/* ── TOMBOL SIMPAN & VERIFIKASI KONEKSI ── */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <div className="text-[11px] text-slate-400 flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Verifikasi otomatis via Meta Graph API handshake.</span>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isVerifying}
+            className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white text-xs font-bold rounded-2xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+          >
+            {isVerifying ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Menghubungkan &amp; Memverifikasi Handshake Meta...</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                <span>Simpan &amp; Verifikasi Koneksi</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* ── BANTUAN OPERASIONAL & PETUNJUK SETUP ── */}
+      <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-start gap-3">
+        <Info className="w-4.5 h-4.5 text-blue-600 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-bold">Panduan Setup Cepat Meta Business Manager:</p>
+          <ul className="text-[11px] text-blue-800 list-disc list-inside space-y-0.5 leading-relaxed">
+            <li>Buat <strong>System User</strong> di Meta Business Settings dengan role Admin/Employee.</li>
+            <li>Assign aset App &amp; WhatsApp Account dengan toggle Full Control.</li>
+            <li>Generate Token dengan expiration <strong>Never</strong> dan centang permission WhatsApp wajib.</li>
+            <li>Sistem BoonTrack akan otomatis mendaftarkan webhook subscription ke WABA Anda.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isModal) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+        <div
+          className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xs">
+      {content}
     </div>
   );
 }

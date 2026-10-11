@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Save,
   Radio,
+  Key,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 import TelegramAlertManager from '../TelegramAlertManager';
@@ -111,6 +112,8 @@ export default function WhatsAppTab({
   const [runtimeMode, setRuntimeMode] = useState<'dedicated' | 'coexistence'>('dedicated');
   // Track QR image decode/render errors untuk fallback UI
   const [qrImgError, setQrImgError] = useState(false);
+  // Modal State untuk Hubungkan WABA Resmi (Manual Setup)
+  const [isManualWabaModalOpen, setIsManualWabaModalOpen] = useState(false);
 
   React.useEffect(() => {
     if (greetingMessage !== undefined) {
@@ -167,40 +170,51 @@ export default function WhatsAppTab({
           </p>
         </div>
 
-        <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto items-center">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setWaMode('qr')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              waMode === 'qr'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            onClick={() => setIsManualWabaModalOpen(true)}
+            className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
           >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>BoonTrack Direct Connect</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Hubungkan WABA Resmi (Manual Setup)</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setWaMode('meta')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              waMode === 'meta'
-                ? 'bg-white text-emerald-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            {!isProScale ? (
-              <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            ) : (
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            )}
-            <span>Meta Cloud API (WABA)</span>
-            {!isProScale && (
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                PROSCALE
-              </span>
-            )}
-          </button>
+
+          <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto items-center">
+            <button
+              type="button"
+              onClick={() => setWaMode('qr')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                waMode === 'qr'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>BoonTrack Direct Connect</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setWaMode('meta')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                waMode === 'meta'
+                  ? 'bg-white text-emerald-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {!isProScale ? (
+                <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              )}
+              <span>Meta Cloud API (WABA)</span>
+              {!isProScale && (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                  PROSCALE
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -469,7 +483,7 @@ export default function WhatsAppTab({
       {/* PRO SCALE PANEL */}
       {waMode === 'meta' && (
         !isProScale ? (
-          <div className="py-2 flex items-center justify-center">
+          <div className="py-2 flex flex-col items-center justify-center space-y-4">
             <FeatureLockedTeaser
               featureTitle="WhatsApp Business API (Official WABA)"
               badgeTier="Team Scale"
@@ -490,6 +504,14 @@ export default function WhatsAppTab({
               tenantSlug={tenantSlug}
               onUpgrade={() => onUpgradeTier?.('team_scale')}
             />
+            <button
+              type="button"
+              onClick={() => setIsManualWabaModalOpen(true)}
+              className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sudah Memiliki Kredensial Meta Sendiri? Buka Manual Setup WABA</span>
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -499,7 +521,7 @@ export default function WhatsAppTab({
               onSuccess={(data) => {
                 setConnectedPhone(data.phone_number || 'Official WABA');
                 setWaStatus('CONNECTED');
-                setSaveFeedback('✅ Kredensial Resmi WABA berhasil diaktifkan!');
+                setSaveFeedback(`✅ Akun WABA '${data.verified_name || displayName}' berhasil diaktifkan!`);
                 setTimeout(() => setSaveFeedback(null), 4000);
               }}
               onSaved={(msg) => {
@@ -509,6 +531,29 @@ export default function WhatsAppTab({
             />
           </div>
         )
+      )}
+
+      {/* ── MODAL HUBUNGKAN WABA RESMI (MANUAL SETUP) ── */}
+      {isManualWabaModalOpen && (
+        <WhatsAppWabaConfig
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          isModal={true}
+          isOpen={isManualWabaModalOpen}
+          onClose={() => setIsManualWabaModalOpen(false)}
+          onSuccess={(data) => {
+            setConnectedPhone(data.phone_number || 'Official WABA');
+            setWaStatus('CONNECTED');
+            setWaMode('meta');
+            setSaveFeedback(`✅ Akun WABA '${data.verified_name || displayName}' berhasil terhubung & terverifikasi!`);
+            setTimeout(() => setSaveFeedback(null), 4000);
+            setIsManualWabaModalOpen(false);
+          }}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 4000);
+          }}
+        />
       )}
 
       {/* KUSTOMISASI TEKS SAPAAN WHATSAPP (GREETING MESSAGE) */}
