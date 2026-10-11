@@ -511,20 +511,46 @@ export async function processEvolutionWebhookEvent(
         // Step 2: Not an echo! Now evaluate whether admin/operator typed a bot control command from WhatsApp Web / bot device:
         const controlAction = parseBotControlCommand(textBodyEarly);
         if (controlAction) {
-          console.info(`[Evolution Admin Override] Command ${controlAction} fromMe on tenant ${tenantId}`);
-          const ctrlRes = await executeBotControl({
-            action: controlAction,
-            scope: 'tenant',
-            tenantId,
-            tenantSlug,
-            senderPhone,
-            source: 'admin_from_me',
-            supabase,
-          });
+          // RBAC Gatekeeper: Pastikan isAuthorizedBotController() dijalankan sebelum executeBotControl()
+          const participantPhone = key.participant ? String(key.participant).split('@')[0].replace(/\D/g, '') : undefined;
+          const candidateControllers = Array.from(new Set([botPhoneNumber, participantPhone, senderPhone].filter(Boolean))) as string[];
 
-          await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
-          processedCount++;
-          continue;
+          let isAuthorized = false;
+          let authorizedPhone = '';
+          for (const cand of candidateControllers) {
+            const ok = await isAuthorizedBotController({
+              senderPhone: cand,
+              tenantId,
+              tenantSlug,
+              supabase,
+            });
+            if (ok) {
+              isAuthorized = true;
+              authorizedPhone = cand;
+              break;
+            }
+          }
+
+          if (isAuthorized) {
+            console.info(`[Evolution Admin Override] Authorized Command ${controlAction} fromMe on tenant ${tenantId} by ${authorizedPhone}`);
+            const ctrlRes = await executeBotControl({
+              action: controlAction,
+              scope: 'tenant',
+              tenantId,
+              tenantSlug,
+              senderPhone: authorizedPhone || senderPhone,
+              source: 'admin_from_me',
+              supabase,
+            });
+
+            await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
+            processedCount++;
+            continue;
+          } else {
+            console.warn(
+              `[Evolution Admin Override] Unauthorized fromMe bot control attempt (${controlAction}) on tenant ${tenantId}. Candidate phones: ${candidateControllers.join(', ')}`
+            );
+          }
         }
 
         // Step 3: Not an echo, and not a bot control command -> Real Human CS Mobile Outbound Message Takeover!
@@ -1302,7 +1328,7 @@ export async function processEvolutionWebhookEvent(
               isSessionPaused = true;
               sessionPauseReason = `conversation_sessions table (state: ${s.current_state}, paused_by: ${s.paused_by || 'admin'})`;
               break;
-            } else if (sessionDecision.reason === 'AUTO_RESUMED_EXPIRED') {
+            } else if (sessionDecision.reason === 'AUTO_RESUMED_EXPIRED' || sessionDecision.reason?.startsWith('AUTO_')) {
               isSessionExpired = true;
             }
           }

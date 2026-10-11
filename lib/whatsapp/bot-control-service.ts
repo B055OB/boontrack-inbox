@@ -572,13 +572,12 @@ export async function checkRuntimeBotDecisionGate(params: {
       Boolean(session.metadata?.is_bot_paused);
 
     if (isSessionStatePaused) {
-      const pausedUntil = session.paused_until ? new Date(session.paused_until) : null;
       const nowTime = Date.now();
+      const supabase = params.supabase || getSupabaseAdmin() || getSupabase();
 
-      // RULE 3: AUTO-RESUME IF PAUSED_UNTIL HAS EXPIRED
-      if (pausedUntil && pausedUntil.getTime() <= nowTime) {
-        console.info(`[BotControlService] Auto-resuming expired session (paused_until: ${session.paused_until})`);
-        const supabase = params.supabase || getSupabaseAdmin() || getSupabase();
+      // Helper: Auto-resume session di database conversation_sessions
+      const autoResumeSession = async (resumeReason: string) => {
+        console.info(`[BotControlService] Auto-resuming session ${session.session_id || 'unknown'} (${resumeReason})`);
         if (supabase && session.session_id) {
           try {
             await supabase
@@ -591,8 +590,76 @@ export async function checkRuntimeBotDecisionGate(params: {
                 updated_at: new Date().toISOString(),
               })
               .eq('session_id', session.session_id);
+          } catch (updateErr) {
+            console.warn('[BotControlService] Failed to auto-resume session record:', updateErr);
+          }
+        }
+      };
+
+      // KONDISI 1: paused_until bernilai null atau undefined
+      if (!session.paused_until) {
+        const pausedBy = String(session.paused_by || session.metadata?.paused_by || '').toLowerCase().trim();
+        const isExplicitOwnerPause =
+          pausedBy === 'owner' ||
+          pausedBy === 'admin' ||
+          pausedBy === 'owner_inbound_chat' ||
+          pausedBy === 'admin_from_me' ||
+          pausedBy === 'admin_command' ||
+          session.metadata?.explicit_owner === true;
+
+        // Jika bukan pause eksplisit oleh owner (misal auto-trigger, cs mobile takeover, atau dangling null state):
+        // Lakukan AUTO-RECONCILE langsung agar sesi tidak stuck selamanya di SESSION_PAUSED
+        if (!isExplicitOwnerPause) {
+          console.info(
+            `[BotControlService] Auto-reconciling non-owner pause with null paused_until for session ${session.session_id} (paused_by: '${pausedBy || 'none'}')`
+          );
+          await autoResumeSession('AUTO_RECONCILE_NON_OWNER_PAUSE');
+          return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
+        }
+
+        // Jika merupakan pause eksplisit oleh owner tanpa batasan waktu: terapkan fallback expiry 30 menit
+        const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 menit fallback
+        const pauseStartTime = session.paused_at
+          ? new Date(session.paused_at).getTime()
+          : session.updated_at
+          ? new Date(session.updated_at).getTime()
+          : 0;
+
+        const hasTimeoutExpired = pauseStartTime === 0 || nowTime - pauseStartTime >= DEFAULT_TIMEOUT_MS;
+
+        if (hasTimeoutExpired) {
+          console.info(
+            `[BotControlService] Default 30m timeout expired for explicit owner pause: session ${session.session_id}`
+          );
+          await autoResumeSession('AUTO_RESUMED_EXPIRED_DEFAULT_30M');
+          return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
+        }
+
+        // Masih dalam jendela timeout 30 menit: set paused_until konkret di database agar tidak undefined
+        const fallbackPausedUntil = new Date(pauseStartTime + DEFAULT_TIMEOUT_MS).toISOString();
+        if (supabase && session.session_id) {
+          try {
+            await supabase
+              .from('conversation_sessions')
+              .update({
+                paused_until: fallbackPausedUntil,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('session_id', session.session_id);
           } catch (_) {}
         }
+
+        return { shouldBypass: true, reason: 'SESSION_PAUSED' };
+      }
+
+      // KONDISI 2: paused_until bernilai valid/string
+      const parsedUntil = new Date(session.paused_until);
+      const isInvalidDate = isNaN(parsedUntil.getTime());
+
+      // RULE 3: AUTO-RESUME IF PAUSED_UNTIL HAS EXPIRED ATAU INVALID
+      if (isInvalidDate || parsedUntil.getTime() <= nowTime) {
+        console.info(`[BotControlService] Auto-resuming expired session (paused_until: ${session.paused_until})`);
+        await autoResumeSession('AUTO_RESUMED_EXPIRED');
         return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
       }
 
