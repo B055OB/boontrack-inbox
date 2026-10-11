@@ -221,25 +221,42 @@ export default function DashboardSidebar({
     ]
   );
 
-  // UX Rule 1 & 2: Default state & State-Aware Routing
-  // - Default state: closed when entering Ringkasan (openGroupId = null)
-  // - State-aware routing: opens the parent group containing the active tab on mount or refresh
-  const [openGroupId, setOpenGroupId] = useState<string | null>(() => {
+  // Multi-Open Accordion State (Set<string>)
+  // - Default state: parent group of activeTab is initially open (if activeTab is in a collapsible group)
+  // - State-aware routing: automatically adds parent group of activeTab into openGroupIds on mount or tab change
+  const [openGroupIds, setOpenGroupIds] = useState<Set<string>>(() => {
+    const initialSet = new Set<string>();
     const parent = findParentGroupId(activeTab, menuGroups);
-    return parent && parent !== 'ringkasan' ? parent : null;
+    if (parent && parent !== 'ringkasan') {
+      initialSet.add(parent);
+    }
+    return initialSet;
   });
 
-  // Automatically open the parent group when activeTab changes (e.g. on navigation or deep-linking)
+  // State-Aware Routing: Auto-include the parent group of activeTab into openGroupIds
   useEffect(() => {
     const parent = findParentGroupId(activeTab, menuGroups);
     if (parent && parent !== 'ringkasan') {
-      setOpenGroupId(parent);
+      setOpenGroupIds((prev) => {
+        if (prev.has(parent)) return prev;
+        const next = new Set(prev);
+        next.add(parent);
+        return next;
+      });
     }
   }, [activeTab, menuGroups]);
 
-  // UX Rule 3: Single / Controlled Accordion (Toggle current, close others)
+  // Independent Toggle per Group (multi-open: does not close other groups)
   const handleToggleGroup = (groupId: string) => {
-    setOpenGroupId((prev) => (prev === groupId ? null : groupId));
+    setOpenGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
   };
 
   const handleSelectTab = (tab: string) => {
@@ -514,7 +531,7 @@ export default function DashboardSidebar({
         {/* ACCORDION GROUPS (Kelola Toko, Pesan & Pelanggan, Kembangkan Bisnis) */}
         <div className="space-y-1.5">
           {collapsibleGroups.map((group) => {
-            const isOpen = openGroupId === group.id;
+            const isOpen = openGroupIds.has(group.id);
             const GroupIcon = group.icon || Store;
             const hasActiveChild = group.items.some((it) => isTabActiveInItem(it, activeTab));
 

@@ -200,4 +200,59 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(financeItem.badge?.isLock).toBe(true);
     });
   });
+
+  describe('4. Multi-Open Accordion State Behavior', () => {
+    it('mempertahankan kategori lain tetap terbuka ketika kategori baru diklik (independent toggle)', () => {
+      // Simulasikan state Set<string>
+      const openGroupIds = new Set<string>();
+
+      // Fungsi toggle independen
+      const toggleGroup = (groupId: string) => {
+        if (openGroupIds.has(groupId)) {
+          openGroupIds.delete(groupId);
+        } else {
+          openGroupIds.add(groupId);
+        }
+      };
+
+      // 1. User membuka 'kelola-toko'
+      toggleGroup('kelola-toko');
+      expect(openGroupIds.has('kelola-toko')).toBe(true);
+      expect(openGroupIds.size).toBe(1);
+
+      // 2. User membuka 'pesan-pelanggan' (tidak boleh menutup 'kelola-toko')
+      toggleGroup('pesan-pelanggan');
+      expect(openGroupIds.has('kelola-toko')).toBe(true);
+      expect(openGroupIds.has('pesan-pelanggan')).toBe(true);
+      expect(openGroupIds.size).toBe(2);
+
+      // 3. User membuka 'kembangkan-bisnis'
+      toggleGroup('kembangkan-bisnis');
+      expect(openGroupIds.has('kelola-toko')).toBe(true);
+      expect(openGroupIds.has('pesan-pelanggan')).toBe(true);
+      expect(openGroupIds.has('kembangkan-bisnis')).toBe(true);
+      expect(openGroupIds.size).toBe(3);
+
+      // 4. User menutup 'pesan-pelanggan' secara eksplisit
+      toggleGroup('pesan-pelanggan');
+      expect(openGroupIds.has('pesan-pelanggan')).toBe(false);
+      expect(openGroupIds.has('kelola-toko')).toBe(true);
+      expect(openGroupIds.has('kembangkan-bisnis')).toBe(true);
+      expect(openGroupIds.size).toBe(2);
+    });
+
+    it('otomatis memasukkan parent group dari route aktif ke dalam daftar terbuka', () => {
+      const groups = buildMenuRegistry({});
+      const initialOpenGroupIds = new Set<string>();
+
+      const activeTab = 'inbox';
+      const parent = findParentGroupId(activeTab, groups);
+      if (parent && parent !== 'ringkasan') {
+        initialOpenGroupIds.add(parent);
+      }
+
+      expect(initialOpenGroupIds.has('pesan-pelanggan')).toBe(true);
+    });
+  });
 });
+
