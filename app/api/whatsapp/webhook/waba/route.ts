@@ -51,13 +51,16 @@ export async function POST(req: Request) {
     const signatureHeader = req.headers.get('x-hub-signature-256');
     const appSecret = process.env.META_APP_SECRET;
 
-    // 2. Meta Webhook Signature Verification (HMAC-SHA256)
-    if (appSecret || signatureHeader) {
-      const isValid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
-      if (!isValid) {
-        console.warn('[SECURITY_WABA_SIGNATURE_REJECTED] Invalid or missing HMAC signature. Blocking ingress.');
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-      }
+    // 2. Meta Webhook Signature Verification (HMAC-SHA256) - Mandatory Fail-Closed P1 Security
+    if (!signatureHeader || !appSecret) {
+      console.warn('[SECURITY_WABA_SIGNATURE_REJECTED] Missing x-hub-signature-256 header or META_APP_SECRET unconfigured. Ingress blocked.');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    const isValid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
+    if (!isValid) {
+      console.warn('[SECURITY_WABA_SIGNATURE_REJECTED] Invalid HMAC signature. Ingress blocked.');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     // 3. Payload Extraction

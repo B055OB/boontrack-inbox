@@ -13,6 +13,7 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { resolveAreaCoordinates } from '@/app/api/v1/shipping/locations/search/route';
 import { metaWabaAdapter } from '@/services/waba';
+import { resolveTenantWabaCredential } from '@/lib/whatsapp/credential-resolver';
 import { sendEvolutionTextMessage } from '@/lib/whatsapp/evolution-webhook-handler';
 import { sendWhatsAppSessionMessage } from '@/lib/whatsapp';
 
@@ -463,13 +464,12 @@ export async function sendInstantShippingRecommendation(params: {
     if (conn && conn.status !== 'refused' && conn.status !== 'close') {
       // Option A: Meta Cloud API WABA
       if (conn.credential_ref && conn.phone_number_id) {
-        const resolvedToken =
-          process.env[`META_TOKEN_${tenant.slug.toUpperCase()}`] ||
-          process.env.META_WA_TOKEN ||
-          process.env.WHATSAPP_API_TOKEN ||
-          conn.credential_ref;
-
         try {
+          const resolvedCred = await resolveTenantWabaCredential(
+            tenant.id || tenant.slug,
+            conn.phone_number_id
+          );
+
           await metaWabaAdapter.dispatchTenantMessage(
             tenant.slug,
             conn,
@@ -478,7 +478,7 @@ export async function sendInstantShippingRecommendation(params: {
               type: 'text',
               text: { preview_url: false, body: replyText },
             },
-            resolvedToken,
+            resolvedCred.accessToken,
             conn.credential_ref
           );
           sentSuccess = true;
@@ -505,7 +505,9 @@ export async function sendInstantShippingRecommendation(params: {
     // Fallback: Default session message helper
     if (!sentSuccess) {
       try {
-        const res = await sendWhatsAppSessionMessage(customerPhone, replyText);
+        const res = await sendWhatsAppSessionMessage(customerPhone, replyText, {
+          tenantId: tenant.id || tenant.slug,
+        });
         sentSuccess = res.success;
       } catch (fbErr) {
         console.warn('[InstantCourier] Fallback session send error:', fbErr);

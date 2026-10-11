@@ -8,6 +8,7 @@
  */
 
 import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
+import { resolveTenantWabaCredential, ResolvedWabaCredential } from '@/lib/whatsapp/credential-resolver';
 
 export interface WabaSendOptions {
   phoneNumberId: string;
@@ -244,13 +245,14 @@ export class MetaWabaProviderAdapter {
 
   /**
    * Mengirim pesan outbound aman dengan penegakan otoritas Section 22.3.
+   * Menggunakan token terverifikasi atau me-resolve langsung via resolveTenantWabaCredential.
    */
   async dispatchTenantMessage(
     targetTenantId: string,
     connection: WabaConnectionAuthority,
     to: string,
     payload: WabaMessagePayload,
-    resolvedToken: string,
+    resolvedToken?: string,
     dispatchedCredentialRef?: string
   ): Promise<MetaWabaSendResult> {
     this.assertOutboundAuthority(targetTenantId, connection, dispatchedCredentialRef);
@@ -258,7 +260,18 @@ export class MetaWabaProviderAdapter {
     if (!phoneId) {
       return { success: false, error: 'Missing phone_number_id on connection authority' };
     }
-    return this.sendMessage(phoneId, resolvedToken, to, payload);
+
+    let tokenToUse = resolvedToken;
+    if (!tokenToUse || !tokenToUse.trim()) {
+      const resolved = await resolveTenantWabaCredential(targetTenantId, phoneId);
+      tokenToUse = resolved.accessToken;
+    }
+
+    if (!tokenToUse || !tokenToUse.trim()) {
+      throw new Error('[SECURITY_OUTBOUND_VIOLATION] Missing verified access token for outbound dispatch');
+    }
+
+    return this.sendMessage(phoneId, tokenToUse, to, payload);
   }
 }
 

@@ -1,6 +1,13 @@
 import { resolveChannelBinding, hasCapability } from '@/lib/channels';
 import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-formatter';
+import { resolveTenantWabaCredential, ResolvedWabaCredential } from '@/lib/whatsapp/credential-resolver';
 
+export interface SendWhatsAppSessionOptions {
+  tenantId?: string;
+  phoneNumberId?: string;
+  accessToken?: string;
+  supabase?: any;
+}
 
 export interface OrderNotificationParams {
   phone: string;
@@ -59,10 +66,15 @@ export function generateVerificationToken(): string {
 /**
  * Kirim pesan teks sesi WhatsApp (User-Initiated 24-hour service window reply)
  * Gratis tanpa biaya template Meta dalam kuota 1.000 sesi/bulan.
+ *
+ * Menggunakan kredensial per-tenant terverifikasi dari resolveTenantWabaCredential.
+ * Fail-Closed P1: Melempar error jika kredensial tidak ditemukan / tidak valid.
  */
 export async function sendWhatsAppSessionMessage(
   toPhone: string,
-  textMessage: string
+  textMessage: string,
+  optionsOrTenant?: string | SendWhatsAppSessionOptions,
+  inboundPhoneNumberId?: string
 ): Promise<WhatsAppSendResult> {
   const normalizedTo = normalizeWhatsAppNumber(toPhone);
   if (!normalizedTo) {
@@ -71,25 +83,53 @@ export async function sendWhatsAppSessionMessage(
 
   const formattedBody = formatToWhatsAppMarkdown(textMessage);
 
+  let targetTenantId: string | undefined;
+  let targetPhoneNumberId: string | undefined;
+  let targetAccessToken: string | undefined;
+  let customSupabase: any;
+
+  if (typeof optionsOrTenant === 'string') {
+    targetTenantId = optionsOrTenant.trim() || undefined;
+    targetPhoneNumberId = inboundPhoneNumberId?.trim() || undefined;
+  } else if (optionsOrTenant && typeof optionsOrTenant === 'object') {
+    targetTenantId = optionsOrTenant.tenantId?.trim() || undefined;
+    targetPhoneNumberId = (optionsOrTenant.phoneNumberId || inboundPhoneNumberId)?.trim() || undefined;
+    targetAccessToken = optionsOrTenant.accessToken?.trim() || undefined;
+    customSupabase = optionsOrTenant.supabase;
+  }
+
+  // Jika tenantId diberikan, resolve kredensial via dedicated dynamic resolver
+  if (targetTenantId && (!targetAccessToken || !targetPhoneNumberId)) {
+    const phoneToResolve =
+      targetPhoneNumberId ||
+      process.env.WHATSAPP_PHONE_NUMBER_ID ||
+      process.env.META_PHONE_NUMBER_ID ||
+      '';
+
+    const resolved = await resolveTenantWabaCredential(targetTenantId, phoneToResolve, {
+      supabase: customSupabase,
+    });
+    targetPhoneNumberId = resolved.phoneNumberId;
+    targetAccessToken = resolved.accessToken;
+  }
+
   const phoneNumberId =
+    targetPhoneNumberId ||
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
     '';
 
   const accessToken =
+    targetAccessToken ||
     process.env.WHATSAPP_API_TOKEN ||
     process.env.META_WA_TOKEN ||
     process.env.WHATSAPP_ACCESS_TOKEN ||
     '';
 
   if (!phoneNumberId || !accessToken) {
-    console.warn(
-      `[WhatsApp Cloud API] Kredensial WABA belum lengkap (PHONE_NUMBER_ID / API_TOKEN). Simulasi pesan ke ${normalizedTo}: ${formattedBody}`
+    throw new Error(
+      `[SECURITY_WABA_MISSING_CREDENTIAL] Outbound WhatsApp message rejected: missing verified WABA credentials (phoneNumberId or accessToken) for tenant="${targetTenantId || 'UNSPECIFIED'}"`
     );
-    return {
-      success: true,
-      messageId: `sim_${Date.now()}`,
-    };
   }
 
   try {
@@ -168,13 +208,9 @@ export async function sendOrderPaidNotification({
   const safeItems = String(itemsSummary || 'Produk Pesanan').trim().slice(0, 100);
 
   if (!phoneNumberId || !accessToken) {
-    console.warn(
-      `[WhatsApp Cloud API] WABA credentials belum dikonfigurasi. Simulasi utility template order_notification_v1 ke ${normalizedTo}: Order #${safeOrderId} (${formattedAmount})`
+    throw new Error(
+      `[SECURITY_WABA_MISSING_CREDENTIAL] Outbound WhatsApp template rejected: missing verified WABA credentials (phoneNumberId or accessToken)`
     );
-    return {
-      success: true,
-      messageId: `sim_order_${safeOrderId}_${Date.now()}`,
-    };
   }
 
   try {

@@ -9,7 +9,10 @@ import {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-webhook-normalizer';
+import {
+  verifyMetaWebhookChallenge,
+  verifyMetaWebhookSignature,
+} from '@/lib/whatsapp/meta-webhook-normalizer';
 
 /**
  * Meta Webhook Challenge Verification (GET)
@@ -43,7 +46,13 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const rawBody = await req.text();
+    let body: any = {};
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
+    }
 
     // Delegasi jika payload berasal dari Evolution API v2
     if (body.event || body.instance || (body.data && !Array.isArray(body.entry))) {
@@ -56,6 +65,14 @@ export async function POST(req: NextRequest) {
     const entries = Array.isArray(body.entry) ? body.entry : [];
     if (entries.length === 0) {
       return NextResponse.json({ success: true, message: 'No entries to process' });
+    }
+
+    // Fail-Closed P1 Security for Meta WABA Ingress
+    const signatureHeader = req.headers.get('x-hub-signature-256');
+    const appSecret = process.env.META_APP_SECRET;
+    if (!signatureHeader || !appSecret || !verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret)) {
+      console.warn('[SECURITY_WABA_SIGNATURE_REJECTED] Invalid or missing HMAC signature on Meta webhook ingress.');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     const supabase = getSupabaseAdmin() || getSupabase();

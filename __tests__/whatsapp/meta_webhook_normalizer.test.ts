@@ -550,7 +550,8 @@ describe('Meta Webhook Normalizer & Handshake', () => {
     });
 
     it('POST: drops group message (@g.us) for non-official merchant tenant without calling ConversationEngine', async () => {
-      delete process.env.META_APP_SECRET;
+      const secret = 'test_webhook_secret_123';
+      process.env.META_APP_SECRET = secret;
       mockConversationEngineProcess.mockClear();
 
       const bodyObj = {
@@ -583,12 +584,18 @@ describe('Meta Webhook Normalizer & Handshake', () => {
         ],
       };
 
+      const rawBody = JSON.stringify(bodyObj);
+      const signature = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
+
       const req = new Request(
         'https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyObj),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+          },
+          body: rawBody,
         }
       );
 
@@ -601,7 +608,8 @@ describe('Meta Webhook Normalizer & Handshake', () => {
     });
 
     it('POST: processes group message (@g.us) for official support when @boon mention is present', async () => {
-      delete process.env.META_APP_SECRET;
+      const secret = 'test_webhook_secret_123';
+      process.env.META_APP_SECRET = secret;
       mockConversationEngineProcess.mockClear();
 
       const bodyObj = {
@@ -634,12 +642,18 @@ describe('Meta Webhook Normalizer & Handshake', () => {
         ],
       };
 
+      const rawBody = JSON.stringify(bodyObj);
+      const signature = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
+
       const req = new Request(
         'https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyObj),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+          },
+          body: rawBody,
         }
       );
 
@@ -655,6 +669,37 @@ describe('Meta Webhook Normalizer & Handshake', () => {
           message: '@boon cara daftar paket starter gimana?',
         })
       );
+    });
+
+    it('POST: fail-closed P1 - rejects with 401 when x-hub-signature-256 header is missing', async () => {
+      process.env.META_APP_SECRET = 'some_secret';
+      const req = new Request('https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ object: 'whatsapp_business_account', entry: [] }),
+      });
+
+      const res = await metaPost(req);
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.error).toBe('Invalid signature');
+    });
+
+    it('POST: fail-closed P1 - rejects with 401 when META_APP_SECRET is not configured', async () => {
+      delete process.env.META_APP_SECRET;
+      const req = new Request('https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hub-signature-256': 'sha256=any_hash',
+        },
+        body: JSON.stringify({ object: 'whatsapp_business_account', entry: [] }),
+      });
+
+      const res = await metaPost(req);
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.error).toBe('Invalid signature');
     });
   });
 });

@@ -17,6 +17,7 @@ import crypto from 'crypto';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { metaWabaAdapter } from '@/services/waba';
+import { resolveTenantWabaCredential } from '@/lib/whatsapp/credential-resolver';
 import { sendWhatsAppSessionMessage } from '@/lib/whatsapp';
 import {
   isManualOrderMessage,
@@ -137,8 +138,8 @@ export function verifyMetaWebhookSignature(
 ): boolean {
   const secret = appSecret || process.env.META_APP_SECRET;
   if (!secret) {
-    // Non-production or unconfigured secret bypass only if no signature provided
-    return !signatureHeader;
+    // Fail-closed P1 Security: Cannot verify signature without secret configured
+    return false;
   }
 
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
@@ -791,38 +792,34 @@ export async function processNormalizedMetaEvent(
       const orderConfirmReply = getOrderConfirmationReply(storeName);
 
       // Kirim auto-reply konfirmasi order standar jika WABA connected
-      if (connection.status === 'CONNECTED' && connection.credential_ref) {
-        const resolvedToken =
-          process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
-          process.env.META_WA_TOKEN ||
-          process.env.WHATSAPP_API_TOKEN ||
-          (connection.credential_ref.startsWith('ey') ? connection.credential_ref : '');
+      if (connection.status === 'CONNECTED') {
+        try {
+          const resolvedCred = await resolveTenantWabaCredential(tenantId, phoneNumberId, {
+            supabase,
+          });
 
-        if (resolvedToken) {
-          try {
-            await metaWabaAdapter.dispatchTenantMessage(
-              tenantId,
-              connection,
-              senderPhone,
-              {
-                type: 'text',
-                text: { preview_url: false, body: orderConfirmReply },
-              },
-              resolvedToken,
-              connection.credential_ref
-            );
+          await metaWabaAdapter.dispatchTenantMessage(
+            tenantId,
+            connection,
+            senderPhone,
+            {
+              type: 'text',
+              text: { preview_url: false, body: orderConfirmReply },
+            },
+            resolvedCred.accessToken,
+            connection.credential_ref
+          );
 
-            await persistOutboundMessage({
-              tenantId,
-              customerPhone: senderPhone,
-              senderType: 'bot',
-              senderName: 'OrderGatekeeper',
-              messageBody: orderConfirmReply,
-              rawPayload: { trigger: 'order_gatekeeper' },
-            });
-          } catch (sendErr) {
-            console.warn('[Meta Webhook] Order confirmation reply error:', sendErr);
-          }
+          await persistOutboundMessage({
+            tenantId,
+            customerPhone: senderPhone,
+            senderType: 'bot',
+            senderName: 'OrderGatekeeper',
+            messageBody: orderConfirmReply,
+            rawPayload: { trigger: 'order_gatekeeper' },
+          });
+        } catch (sendErr) {
+          console.warn('[Meta Webhook] Order confirmation reply error:', sendErr);
         }
       }
 
@@ -835,25 +832,21 @@ export async function processNormalizedMetaEvent(
       let wabaBase64: string | undefined = undefined;
       if (msg.type === 'image' && msg.media?.id) {
         try {
-          const resolvedToken =
-            process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
-            process.env.META_WA_TOKEN ||
-            process.env.WHATSAPP_API_TOKEN ||
-            (connection.credential_ref?.startsWith('ey') ? connection.credential_ref : '');
-          if (resolvedToken) {
-            const metaMediaRes = await fetch(`https://graph.facebook.com/v21.0/${msg.media.id}`, {
-              headers: { Authorization: `Bearer ${resolvedToken}` },
-            });
-            if (metaMediaRes.ok) {
-              const metaMediaData = await metaMediaRes.json();
-              if (metaMediaData.url) {
-                const imgRes = await fetch(metaMediaData.url, {
-                  headers: { Authorization: `Bearer ${resolvedToken}` },
-                });
-                if (imgRes.ok) {
-                  const arrBuf = await imgRes.arrayBuffer();
-                  wabaBase64 = Buffer.from(arrBuf).toString('base64');
-                }
+          const resolvedCred = await resolveTenantWabaCredential(tenantId, phoneNumberId, {
+            supabase,
+          });
+          const metaMediaRes = await fetch(`https://graph.facebook.com/v21.0/${msg.media.id}`, {
+            headers: { Authorization: `Bearer ${resolvedCred.accessToken}` },
+          });
+          if (metaMediaRes.ok) {
+            const metaMediaData = await metaMediaRes.json();
+            if (metaMediaData.url) {
+              const imgRes = await fetch(metaMediaData.url, {
+                headers: { Authorization: `Bearer ${resolvedCred.accessToken}` },
+              });
+              if (imgRes.ok) {
+                const arrBuf = await imgRes.arrayBuffer();
+                wabaBase64 = Buffer.from(arrBuf).toString('base64');
               }
             }
           }
@@ -875,19 +868,17 @@ export async function processNormalizedMetaEvent(
       });
 
       // 5. Outbound Dispatch: Penegakan State Operasional (CONNECTED)
-      if (engineResult?.reply && connection.credential_ref) {
+      if (engineResult?.reply) {
         if (connection.status !== 'CONNECTED') {
           console.warn(
             `[SECURITY_WABA_OUTBOUND_SUPPRESSED] Operational state is '${connection.status}' (not CONNECTED). Inbound accepted for tenant=${tenantId}, but outbound reply suppressed.`
           );
         } else {
-          const resolvedToken =
-            process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
-            process.env.META_WA_TOKEN ||
-            process.env.WHATSAPP_API_TOKEN ||
-            (connection.credential_ref.startsWith('ey') ? connection.credential_ref : '');
+          try {
+            const resolvedCred = await resolveTenantWabaCredential(tenantId, phoneNumberId, {
+              supabase,
+            });
 
-          if (resolvedToken) {
             await metaWabaAdapter.dispatchTenantMessage(
               tenantId,
               connection,
@@ -896,7 +887,7 @@ export async function processNormalizedMetaEvent(
                 type: 'text',
                 text: { preview_url: false, body: engineResult.reply },
               },
-              resolvedToken,
+              resolvedCred.accessToken,
               connection.credential_ref
             );
 
@@ -910,6 +901,8 @@ export async function processNormalizedMetaEvent(
               externalId: msg.id ? `bot_reply_${msg.id}` : undefined,
               rawPayload: { trigger: 'conversation_engine' },
             });
+          } catch (dispatchErr) {
+            console.error('[Meta Webhook Outbound Error]:', dispatchErr);
           }
         }
       }

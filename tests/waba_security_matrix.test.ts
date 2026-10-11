@@ -114,6 +114,7 @@ jest.mock('@/lib/supabaseClient', () => ({
 // ---------------------------------------------------------------------------
 import { GET, POST, verifyMetaWebhookSignature } from '@/app/api/whatsapp/webhook/waba/route';
 import { metaWabaAdapter } from '@/services/waba';
+import { sendWhatsAppSessionMessage } from '@/lib/whatsapp';
 
 describe('WABA Security Boundary Acceptance Matrix', () => {
   const TEST_APP_SECRET = 'meta_test_secret_key_12345';
@@ -186,6 +187,25 @@ describe('WABA Security Boundary Acceptance Matrix', () => {
       const res = await POST(req);
       expect(res.status).toBe(401);
       expect(mockConversationEngineProcess).not.toHaveBeenCalled();
+    });
+
+    it('rejects POST with 401 when META_APP_SECRET is not configured', async () => {
+      delete process.env.META_APP_SECRET;
+      const payload = JSON.stringify({ entry: [] });
+      const req = new Request('https://inbox.boontrack.com/api/whatsapp/webhook/waba', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hub-signature-256': 'sha256=1234567890abcdef',
+        },
+        body: payload,
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data).toEqual({ error: 'Invalid signature' });
+      process.env.META_APP_SECRET = TEST_APP_SECRET;
     });
 
     it('passes signature verification when correctly signed', () => {
@@ -533,6 +553,23 @@ describe('WABA Security Boundary Acceptance Matrix', () => {
           'cred_ref_tenant_b'
         );
       }).not.toThrow();
+    });
+
+    it('enforces fail-closed error in sendWhatsAppSessionMessage when credentials are missing', async () => {
+      const origPhone = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const origToken = process.env.WHATSAPP_API_TOKEN;
+      delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+      delete process.env.META_PHONE_NUMBER_ID;
+      delete process.env.WHATSAPP_API_TOKEN;
+      delete process.env.META_WA_TOKEN;
+      delete process.env.WHATSAPP_ACCESS_TOKEN;
+
+      await expect(
+        sendWhatsAppSessionMessage('628123456789', 'Pesan uji fail-closed')
+      ).rejects.toThrow(/SECURITY_WABA_MISSING_CREDENTIAL/);
+
+      if (origPhone) process.env.WHATSAPP_PHONE_NUMBER_ID = origPhone;
+      if (origToken) process.env.WHATSAPP_API_TOKEN = origToken;
     });
   });
 
