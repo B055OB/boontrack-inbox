@@ -64,7 +64,7 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(itemLabels).toEqual([
         'Smart Chatbox',
         'Pelanggan',
-        'Broadcast WhatsApp',
+        'Whatsapp Connect',
       ]);
     });
 

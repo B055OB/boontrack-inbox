@@ -308,8 +308,8 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     },
     {
       id: 'whatsapp',
-      label: 'Broadcast & Notifikasi',
-      subtitle: 'Notif Setting & Broadcast WABA',
+      label: 'Whatsapp Connect',
+      subtitle: 'Broadcast & Notifikasi',
       targetTab: 'whatsapp',
       matchedTabs: ['whatsapp', 'broadcast', 'auto_reply', 'rotator', 'telegram_alerts'],
       icon: Radio,

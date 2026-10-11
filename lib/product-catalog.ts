@@ -101,6 +101,7 @@ export interface SinglePageConfig {
   enable_offer?: boolean;             // default: true
   enable_faq?: boolean;               // default: false
   enable_payment?: boolean;           // default: true
+  enable_custom_html?: boolean;       // default: false
 
   // 1. Hook & Hero
   headline: string;
@@ -195,6 +196,9 @@ export interface SinglePageConfig {
     action_type?: 'WHATSAPP' | 'CHECKOUT';
     target_wa_number?: string;
   };
+
+  /** Section #10: Custom HTML / AI Landing Page (v0 / Lovable / Custom) */
+  custom_html?: string;
 }
 
 export type ProductType =

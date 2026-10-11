@@ -480,6 +480,8 @@ function SingleProductContent() {
               enable_offer: cfg.enable_offer ?? true,
               enable_faq: cfg.enable_faq ?? false,
               enable_payment: cfg.enable_payment ?? true,
+              enable_custom_html: cfg.enable_custom_html ?? (match?.metadata?.enable_custom_html ?? (match?.fulfillment_metadata?.single_page_config?.enable_custom_html ?? false)),
+              custom_html: cfg.custom_html || match?.metadata?.custom_html || (match?.fulfillment_metadata?.single_page_config?.custom_html) || '',
               client_logos: cfg.client_logos || builder.client_logos || match.client_logos || [],
               faqs: cfg.faqs || [],
               problem_title: ps.title || ps.problem_title || cfg.problem_title || '',
@@ -3982,6 +3984,7 @@ function SingleProductContent() {
             'offer_bonus',
             'faq',
             'payment_voucher',
+            'custom_html',
           ];
           const effectiveOrder = (config.section_order && config.section_order.length > 0)
             ? [
@@ -4520,6 +4523,23 @@ function SingleProductContent() {
                       )}
                     </section>
                   </React.Fragment>
+                ) : null;
+
+              case 'custom_html':
+                return (config.enable_custom_html && config.custom_html) ? (
+                  <section
+                    key="section-custom-html"
+                    id="custom-html-section"
+                    className="w-full my-4"
+                    dangerouslySetInnerHTML={{ __html: config.custom_html }}
+                    onClick={(e) => {
+                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"]');
+                      if (target) {
+                        e.preventDefault();
+                        handleOpenCheckout();
+                      }
+                    }}
+                  />
                 ) : null;
 
               default:

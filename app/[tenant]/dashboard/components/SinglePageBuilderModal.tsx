@@ -17,6 +17,7 @@ import {
   RefreshCw,
   MessageCircle,
   Video,
+  Code,
 } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import VideoEmbedPlayer from '@/components/VideoEmbedPlayer';
@@ -38,7 +39,8 @@ export type BuilderTab =
   | 'social_proof'
   | 'offer_bonus'
   | 'faq'
-  | 'payment_voucher';
+  | 'payment_voucher'
+  | 'custom_html';
 
 export const BUILDER_TABS = [
   { id: 'hook', label: '1. Judul & Banner Utama', icon: '🎯', toggleKey: 'enable_hero', defaultEnabled: true },
@@ -50,6 +52,7 @@ export const BUILDER_TABS = [
   { id: 'offer_bonus', label: '7. Penawaran & Bonus', icon: '🎁', toggleKey: 'enable_offer', defaultEnabled: true },
   { id: 'faq', label: '8. Tanya Jawab (FAQ)', icon: '❓', toggleKey: 'enable_faq', defaultEnabled: false },
   { id: 'payment_voucher', label: '9. Checkout & Voucher', icon: '🎟️', toggleKey: 'enable_payment', defaultEnabled: true },
+  { id: 'custom_html', label: '#10 Custom HTML / AI Landing Page', icon: '✨', toggleKey: 'enable_custom_html', defaultEnabled: false },
 ] as const;
 
 function SectionToggleHeader({
@@ -360,7 +363,7 @@ export default function SinglePageBuilderModal({
                       <span className={`truncate text-xs font-bold ${
                         isActive ? 'text-blue-900 font-black' : 'text-slate-800'
                       }`}>
-                        {tab.label.replace(/^\d+\.\s*/, '')}
+                        {tab.label.replace(/^(#?\d+[\.\s]*)/, '')}
                       </span>
                     </div>
 
@@ -1873,6 +1876,55 @@ export default function SinglePageBuilderModal({
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   Sistem berjalan murni direct store ke rekening merchant tanpa potongan komisi affiliate produk ritel. Seluruh omset 100% dialokasikan ke toko Anda.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 10: CUSTOM HTML / AI LANDING PAGE */}
+          {activeBuilderTab === 'custom_html' && (
+            <div className="space-y-4 animate-fadeIn">
+              <SectionToggleHeader
+                title="#10 Custom HTML / AI Landing Page"
+                description="Integrasikan custom landing page hasil buatan AI (v0, Lovable, Tailwind UI, atau custom code) secara langsung."
+                enabled={Boolean(singlePageForm.enable_custom_html)}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_custom_html: val }))}
+              />
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold leading-none flex items-center justify-center">
+                      <Code className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <label htmlFor="custom-html-textarea" className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                        <span>Kode HTML / AI Landing Page (v0 / Lovable / Custom)</span>
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                      </label>
+                      <p className="text-[10px] text-slate-500">
+                        Tempel struktur HTML mentah dari builder AI favorit Anda.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-wide">
+                    HTML + CTA Hook
+                  </span>
+                </div>
+
+                <div>
+                  <textarea
+                    id="custom-html-textarea"
+                    rows={14}
+                    value={singlePageForm.custom_html || ''}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, custom_html: e.target.value }))}
+                    placeholder="Tempel kode HTML lengkap di sini... Tambahkan atribut data-bt-checkout atau href='#checkout' pada tombol CTA Anda."
+                    className="w-full min-h-[300px] p-3.5 bg-slate-900 text-emerald-400 placeholder:text-slate-500 font-mono text-xs rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y shadow-inner leading-relaxed"
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                    Jika section ini aktif, template akan merender HTML ini secara visual dan menghubungkan semua tombol CTA <code className="text-indigo-600 font-bold bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200">[data-bt-checkout]</code> langsung ke modal checkout native BoonTrack.
+                  </p>
+                </div>
               </div>
             </div>
           )}
