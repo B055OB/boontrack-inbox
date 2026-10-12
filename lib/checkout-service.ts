@@ -90,6 +90,33 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     payload.customerPhone = normalizePhoneToE164(payload.customerPhone);
   }
 
+  // Jika dipanggil dari browser (client-side), utamakan gateway API internal /api/checkout/create-order
+  // Ini menghindari ketergantungan langsung browser terhadap service role key atau anon key quota issues.
+  if (typeof window !== 'undefined') {
+    try {
+      const response = await fetch('/api/checkout/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+      const errJson = await response.json().catch(() => null);
+      if (errJson?.error) {
+        const customErr: any = new Error(errJson.error);
+        if (errJson.code) customErr.code = errJson.code;
+        if (errJson.isTrial) customErr.isTrial = errJson.isTrial;
+        throw customErr;
+      }
+    } catch (browserErr: any) {
+      if (browserErr?.code === 'TRIAL_LIMIT_EXCEEDED' || browserErr?.isTrial) {
+        throw browserErr;
+      }
+      console.warn('[Checkout Service] Client-side fetch failed, fallback to direct supabase:', browserErr);
+    }
+  }
+
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase client not initialized");
 

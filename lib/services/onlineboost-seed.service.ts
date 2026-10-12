@@ -1,7 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
 export const ONLINEBOOST_DIGITAL_PRODUCTS = [
   {
@@ -127,9 +124,7 @@ export const ONLINEBOOST_DIGITAL_PRODUCTS = [
 
 export class OnlineboostSeedService {
   private static getClient() {
-    return createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false }
-    });
+    return getSupabaseAdmin();
   }
 
   /**

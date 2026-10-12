@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { getTenantBaseUrl, getTenantCheckoutUrl } from "@/lib/checkout-link";
 import {
   InteractiveMenu,
@@ -9,12 +8,7 @@ import {
 } from "@/lib/whatsappFormatter";
 import { isManualOrderMessage, getOrderConfirmationReply } from "@/lib/whatsapp/order-interceptor";
 
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-  );
-}
+import { getSupabaseAdmin } from "@/lib/supabaseClient";
 
 export interface ChatCoreRequest {
   tenant_slug: string;
