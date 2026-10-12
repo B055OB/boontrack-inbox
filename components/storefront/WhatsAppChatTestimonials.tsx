@@ -65,6 +65,7 @@ export interface WhatsAppChatTestimonialsProps {
   title?: string;
   subtitle?: string;
   testimonials?: WhatsAppReviewItem[];
+  productSlug?: string;
   className?: string;
 }
 
@@ -72,9 +73,20 @@ export function WhatsAppChatTestimonials({
   title = 'Obrolan Komunitas & Ulasan Nyata',
   subtitle = 'Tangkapan layar obrolan pengguna aktif yang telah membuktikan sistem ini:',
   testimonials,
+  productSlug,
   className = '',
 }: WhatsAppChatTestimonialsProps) {
-  const items = (testimonials && testimonials.length > 0) ? testimonials : DEFAULT_WHATSAPP_TESTIMONIALS;
+  const isCtwaProduct = productSlug === 'kelas-inkubasi-ctwa-batch-1-scale';
+  const hasDynamicTestimonials = Array.isArray(testimonials) && testimonials.length > 0;
+
+  // STRICT GUARD: HANYA render jika product?.slug === 'kelas-inkubasi-ctwa-batch-1-scale'
+  // atau jika data testimoni berasal dari array dinamis product?.testimonials / config?.testimonials.
+  // Jika data kosong atau bukan produk CTWA, render null (jangan tampilkan apa pun).
+  if (!hasDynamicTestimonials && !isCtwaProduct) {
+    return null;
+  }
+
+  const items = hasDynamicTestimonials ? testimonials : DEFAULT_WHATSAPP_TESTIMONIALS;
 
   return (
     <section

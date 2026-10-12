@@ -4734,11 +4734,35 @@ function SingleProductContent() {
                     )}
 
                     {/* 7.8 Section Testimoni Kompak: Gaya WhatsApp Chat Bubble */}
-                    {config.enable_testimonials !== false && (
-                      <WhatsAppChatTestimonials
-                        testimonials={product.metadata?.whatsapp_testimonials || config.whatsapp_testimonials}
-                      />
-                    )}
+                    {config.enable_testimonials !== false && (() => {
+                      const dynamicTestimonials =
+                        (Array.isArray((product as any)?.testimonials) && (product as any).testimonials.length > 0)
+                          ? (product as any).testimonials
+                          : (Array.isArray(config?.testimonials) && config.testimonials.length > 0)
+                          ? config.testimonials
+                          : (Array.isArray(product?.metadata?.whatsapp_testimonials) && product.metadata.whatsapp_testimonials.length > 0)
+                          ? product.metadata.whatsapp_testimonials
+                          : (Array.isArray((product as any)?.metadata?.testimonials) && (product as any).metadata.testimonials.length > 0)
+                          ? (product as any).metadata.testimonials
+                          : (Array.isArray(config?.whatsapp_testimonials) && config.whatsapp_testimonials.length > 0)
+                          ? config.whatsapp_testimonials
+                          : undefined;
+
+                      const isCtwaProduct =
+                        product?.slug === 'kelas-inkubasi-ctwa-batch-1-scale' ||
+                        slug === 'kelas-inkubasi-ctwa-batch-1-scale';
+
+                      if (!dynamicTestimonials && !isCtwaProduct) {
+                        return null;
+                      }
+
+                      return (
+                        <WhatsAppChatTestimonials
+                          productSlug={product?.slug || slug}
+                          testimonials={dynamicTestimonials}
+                        />
+                      );
+                    })()}
 
                     {/* 8. Ultra-Lean Single Page Checkout Section */}
                     <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
@@ -4849,7 +4873,7 @@ function SingleProductContent() {
           whatsAppUrl={wabaConsultationUrl}
           onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}
-          allowAddToCart={!isCustomLinkMode && !isCartDisabled && cartPolicy.allowAddToCart}
+          allowAddToCart={!isCartDisabled && cartPolicy.allowAddToCart}
           onAddToCart={handleAddToCart}
           isCustomLinkMode={isCustomLinkMode}
           customCtaUrl={ctaTargetUrl}
