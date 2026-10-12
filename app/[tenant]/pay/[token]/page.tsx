@@ -300,6 +300,9 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
   }, [isWaitingConfirmation, order?.metadata?.auto_paid_at, order?.metadata?.ocr_verified]);
 
   // QRIS calculation
+  const BOONTRACK_PLATFORM_FALLBACK_QRIS =
+    '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+
   const rawStaticQris =
     tenant?.qris_payload ||
     tenant?.metadata?.qris_payload ||
@@ -310,13 +313,22 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
     tenant?.metadata?.raw_qris_string ||
     tenant?.qris_content ||
     tenant?.metadata?.qris_content ||
+    tenant?.qris_code ||
+    tenant?.qris_data ||
+    tenant?.metadata?.qris_code ||
+    tenant?.metadata?.qris_data ||
     '';
 
   const orderQrString = order?.qr_string || '';
   const candidateQris = (rawStaticQris && rawStaticQris.startsWith('000201'))
     ? rawStaticQris
-    : ((orderQrString && orderQrString.startsWith('000201')) ? orderQrString : rawStaticQris);
-  const rawQrisValue = candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '';
+    : ((orderQrString && orderQrString.startsWith('000201'))
+        ? orderQrString
+        : (rawStaticQris || BOONTRACK_PLATFORM_FALLBACK_QRIS));
+  const rawQrisValue =
+    (candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '') ||
+    generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) ||
+    BOONTRACK_PLATFORM_FALLBACK_QRIS;
   const orderQrImageUrl = order?.qr_code_url || (orderQrString && orderQrString.startsWith('http') ? orderQrString : '');
 
   const hasQris = Boolean(rawQrisValue || orderQrImageUrl);

@@ -1737,18 +1737,49 @@ function SingleProductContent() {
       window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
       return;
     }
+
+    const formEl = document.getElementById('checkout-form') as HTMLFormElement | null;
     const checkoutEl =
       document.getElementById('checkout-form') ||
       document.getElementById('checkout-section');
+
+    // a. Jika data pemesan (nama & no HP) sudah terisi lengkap: langsung trigger submit order form
+    const hasRequiredBuyerData = Boolean(buyerName.trim() && buyerPhone.trim());
+    if (formEl && hasRequiredBuyerData) {
+      if (typeof formEl.requestSubmit === 'function') {
+        try {
+          formEl.requestSubmit();
+          return;
+        } catch {
+          // fallback
+        }
+      }
+      if (actionMode === 'WHATSAPP') {
+        handleWhatsAppOrderSubmit(e as any);
+      } else {
+        handleDirectCheckout(e as any);
+      }
+      return;
+    }
+
+    // b. Jika form belum terisi: smooth scroll ke form pemesanan dan otomatis fokuskan kursor ke input nama/telepon
     if (checkoutEl) {
       checkoutEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       // Safely focus the first input without causing mobile viewport jump
       setTimeout(() => {
-        const input = checkoutEl.querySelector('input') as HTMLInputElement | null;
-        if (input && document.activeElement !== input) {
-          input.focus({ preventScroll: true });
+        const nameInput = document.getElementById('buyer-name-input') as HTMLInputElement | null;
+        const phoneInput = document.getElementById('buyer-phone-input') as HTMLInputElement | null;
+        const targetInput =
+          (!buyerName.trim() ? nameInput : null) ||
+          (!buyerPhone.trim() ? phoneInput : null) ||
+          nameInput ||
+          phoneInput ||
+          (checkoutEl.querySelector('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])') as HTMLInputElement | null);
+
+        if (targetInput && document.activeElement !== targetInput) {
+          targetInput.focus({ preventScroll: true });
         }
-      }, 400);
+      }, 350);
     } else {
       setCheckoutOpen(true);
     }
@@ -2813,7 +2844,7 @@ function SingleProductContent() {
   );
 
   const renderCheckoutForm = () => (
-    <form id="checkout-form" noValidate onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
+    <form id="checkout-form" onSubmit={handleDirectCheckout} noValidate className="space-y-4 text-xs">
       {errorMessage && !errorMessage.toLowerCase().includes('supabasekey') && (
         <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-2xl text-rose-800 text-xs flex items-start gap-2.5 shadow-xs">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />

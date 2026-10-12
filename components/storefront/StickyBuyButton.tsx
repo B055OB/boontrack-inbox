@@ -69,19 +69,39 @@ export function StickyBuyButton({
       return;
     }
 
-    // Default smooth scroll behavior to form without resetting viewport to top
-    const formEl =
-      document.getElementById(targetFormId) ||
-      document.getElementById('checkout-section');
+    // Default smooth scroll / submit behavior to form without resetting viewport to top
+    const formEl = (document.getElementById(targetFormId) ||
+      document.getElementById('checkout-section')) as HTMLElement | null;
 
     if (formEl) {
+      if (formEl instanceof HTMLFormElement && typeof formEl.requestSubmit === 'function') {
+        const nameInput = document.getElementById('buyer-name-input') as HTMLInputElement | null;
+        const phoneInput = document.getElementById('buyer-phone-input') as HTMLInputElement | null;
+        if (nameInput?.value?.trim() && phoneInput?.value?.trim()) {
+          try {
+            formEl.requestSubmit();
+            return;
+          } catch {
+            // fallback to smooth scroll
+          }
+        }
+      }
+
       formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => {
-        const input = formEl.querySelector('input') as HTMLInputElement | null;
-        if (input && document.activeElement !== input) {
-          input.focus({ preventScroll: true });
+        const nameInput = document.getElementById('buyer-name-input') as HTMLInputElement | null;
+        const phoneInput = document.getElementById('buyer-phone-input') as HTMLInputElement | null;
+        const targetInput =
+          (nameInput && !nameInput.value.trim() ? nameInput : null) ||
+          (phoneInput && !phoneInput.value.trim() ? phoneInput : null) ||
+          nameInput ||
+          phoneInput ||
+          (formEl.querySelector('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])') as HTMLInputElement | null);
+
+        if (targetInput && document.activeElement !== targetInput) {
+          targetInput.focus({ preventScroll: true });
         }
-      }, 400);
+      }, 350);
     }
   };
 
