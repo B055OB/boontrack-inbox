@@ -620,12 +620,13 @@ function SingleProductContent() {
 
   const queryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
   const queryName = (searchParams.get('name') || searchParams.get('buyer_name') || '').trim();
+  const queryEmail = (searchParams.get('email') || searchParams.get('buyer_email') || '').trim().toLowerCase();
   const isPhoneLocked = Boolean(queryPhone);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [buyerName, setBuyerName] = useState(() => queryName);
   const [buyerPhone, setBuyerPhone] = useState(() => queryPhone);
-  const [buyerEmail, setBuyerEmail] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState(() => queryEmail);
   const [briefingUrl, setBriefingUrl] = useState('');
   const [waOrderSuccess, setWaOrderSuccess] = useState<{ token: string; url: string } | null>(null);
 
@@ -640,6 +641,12 @@ function SingleProductContent() {
       setBuyerName(queryName);
     }
   }, [queryName, buyerName]);
+
+  useEffect(() => {
+    if (queryEmail && !buyerEmail) {
+      setBuyerEmail(queryEmail);
+    }
+  }, [queryEmail, buyerEmail]);
 
   // Deteksi ketersediaan QRIS toko secara fleksibel (URL gambar QRIS, payload EMVCo, atau status aktif)
   const hasQris = Boolean(
@@ -1768,6 +1775,59 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
+    // Helper untuk memfokuskan dan menggulir ke field yang belum lengkap
+    const focusAndScrollField = (elementId: string) => {
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById(elementId);
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    };
+
+    // 1. Validasi Nama Pembeli
+    const cleanName = buyerName.trim();
+    if (!cleanName) {
+      setErrorMessage('Silakan lengkapi nama lengkap pemesan.');
+      focusAndScrollField('buyer-name-input');
+      return;
+    }
+
+    // 2. Validasi Nomor WhatsApp Pembeli (minimal 9 digit angka)
+    const cleanPhone = buyerPhone.trim().replace(/[^0-9+]/g, '');
+    const phoneDigitsOnly = cleanPhone.replace(/[^0-9]/g, '');
+    if (!cleanPhone || phoneDigitsOnly.length < 9) {
+      setErrorMessage('Silakan isi nomor WhatsApp aktif yang valid (minimal 9 digit).');
+      focusAndScrollField('buyer-phone-input');
+      return;
+    }
+
+    // 3. Validasi Email Pembeli (.trim().toLowerCase() sebelum regex untuk menangani autofill keyboard mobile)
+    const cleanEmail = buyerEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (isDigitalPreset) {
+      if (!cleanEmail) {
+        setErrorMessage('Alamat email wajib diisi untuk pengiriman akses produk digital/layanan.');
+        focusAndScrollField('buyer-email-input');
+        return;
+      }
+      if (!emailRegex.test(cleanEmail)) {
+        setErrorMessage('Format alamat email tidak valid (contoh: nama@email.com).');
+        focusAndScrollField('buyer-email-input');
+        return;
+      }
+    } else if (cleanEmail && !emailRegex.test(cleanEmail)) {
+      setErrorMessage('Format alamat email tidak valid (contoh: nama@email.com).');
+      focusAndScrollField('buyer-email-input');
+      return;
+    }
+
+    // Perbarui state lokal dengan nilai bersih
+    setBuyerName(cleanName);
+    setBuyerPhone(cleanPhone);
+    setBuyerEmail(cleanEmail);
+
     const isPickup = isFoodPreset ? foodDiningOption === 'PICKUP' : fulfillmentType === 'PICKUP';
 
     if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
@@ -1865,9 +1925,9 @@ function SingleProductContent() {
         uniqueCode: currentUniqueCode,
         paymentMethod,
         affiliateCommission: 0,
-        customerName: buyerName,
-        customerPhone: buyerPhone,
-        customerEmail: isDigitalPreset ? buyerEmail : (buyerEmail || undefined),
+        customerName: cleanName,
+        customerPhone: cleanPhone,
+        customerEmail: isDigitalPreset ? cleanEmail : (cleanEmail || undefined),
         reference_token: directRefToken,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         reseller_code: resellerCode || undefined,
@@ -1879,6 +1939,10 @@ function SingleProductContent() {
         } : undefined,
       });
 
+      if (!result || !result.orderId) {
+        throw new Error('Gagal membuat pesanan. Silakan periksa kembali data Anda dan coba beberapa saat lagi.');
+      }
+
       if (result?.orderId) {
         trackLeadFormSubmission(totalAmount);
         // HANYA memicu event Purchase bila order gratis (Rp 0) yang otomatis langsung terkonfirmasi lunas
@@ -1887,11 +1951,19 @@ function SingleProductContent() {
         }
       }
 
-      // Redirect langsung ke rincian invoice presisi
-      router.push(result.invoiceUrl || `/checkout/${result.orderId}`);
+      // Redirect langsung ke rincian invoice presisi / QRIS
+      const redirectUrl = result.invoiceUrl || `/checkout/${result.orderId}`;
+      router.push(redirectUrl);
     } catch (err: any) {
       console.error('Checkout error:', err);
-      setErrorMessage(err.message || 'Gagal memproses pesanan.');
+      const userMessage = err?.message || 'Gagal memproses pesanan dan QRIS. Silakan periksa koneksi internet Anda dan coba lagi.';
+      setErrorMessage(userMessage);
+      if (typeof document !== 'undefined') {
+        const errorEl = document.getElementById('checkout-error-banner') || document.getElementById('checkout-form');
+        if (errorEl) {
+          errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -2690,10 +2762,14 @@ function SingleProductContent() {
   );
 
   const renderCheckoutForm = () => (
-    <form id="checkout-form" onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
+    <form id="checkout-form" noValidate onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
       {errorMessage && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
-          {errorMessage}
+        <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-2xl text-rose-800 text-xs flex items-start gap-2.5 shadow-xs">
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-bold block text-rose-900">Perhatian:</span>
+            <span>{errorMessage}</span>
+          </div>
         </div>
       )}
 
@@ -2832,12 +2908,16 @@ function SingleProductContent() {
             Nama Lengkap <span className="text-rose-500">*</span>
           </label>
           <input
+            id="buyer-name-input"
             type="text"
             required
             placeholder="Contoh: Budi Pratama"
             value={buyerName}
             onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-            onChange={(e) => setBuyerName(e.target.value)}
+            onChange={(e) => {
+              setBuyerName(e.target.value);
+              if (errorMessage) setErrorMessage('');
+            }}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
           />
         </div>
@@ -2847,6 +2927,7 @@ function SingleProductContent() {
             Nomor WhatsApp Aktif <span className="text-rose-500">*</span>
           </label>
           <input
+            id="buyer-phone-input"
             type="tel"
             required
             readOnly={isPhoneLocked}
@@ -2854,7 +2935,10 @@ function SingleProductContent() {
             value={buyerPhone}
             onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
             onChange={(e) => {
-              if (!isPhoneLocked) setBuyerPhone(e.target.value);
+              if (!isPhoneLocked) {
+                setBuyerPhone(e.target.value);
+                if (errorMessage) setErrorMessage('');
+              }
             }}
             className={`w-full border rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-sm md:text-xs font-mono transition ${
               isPhoneLocked
@@ -2875,12 +2959,16 @@ function SingleProductContent() {
               Alamat Email <span className="text-rose-500">* (Wajib untuk Pengiriman Akses)</span>
             </label>
             <input
+              id="buyer-email-input"
               type="email"
               required
               placeholder="nama@email.com"
               value={buyerEmail}
               onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-              onChange={(e) => setBuyerEmail(e.target.value)}
+              onChange={(e) => {
+                setBuyerEmail(e.target.value);
+                if (errorMessage) setErrorMessage('');
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
             />
           </div>
@@ -2890,11 +2978,15 @@ function SingleProductContent() {
               Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional - notifikasi order via WhatsApp)</span>
             </label>
             <input
+              id="buyer-email-input"
               type="email"
               placeholder="nama@email.com"
               value={buyerEmail}
               onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-              onChange={(e) => setBuyerEmail(e.target.value)}
+              onChange={(e) => {
+                setBuyerEmail(e.target.value);
+                if (errorMessage) setErrorMessage('');
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
             />
           </div>
@@ -3974,6 +4066,21 @@ function SingleProductContent() {
           </span>
         </div>
       </div>
+
+      {/* Visual Error Feedback Banner tepat di atas tombol submit */}
+      {errorMessage && (
+        <div 
+          id="checkout-error-banner"
+          data-testid="checkout-error-banner"
+          className="p-3.5 bg-rose-50 border border-rose-300 rounded-2xl text-rose-800 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1 shadow-xs"
+        >
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-bold block text-rose-900">Perhatian:</span>
+            <span>{errorMessage}</span>
+          </div>
+        </div>
+      )}
 
       {isCustomLinkMode ? (
         <button

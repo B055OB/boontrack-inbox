@@ -398,6 +398,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   };
 
   const dbOrderData = sanitizeOrderPayload(rawOrderData);
+  // Physical schema safety: hilangkan kolom yang tidak ada pada tabel fisik PostgreSQL orders
+  delete (dbOrderData as any).fulfillment_type;
+  delete (dbOrderData as any).unit_price;
+  delete (dbOrderData as any).is_archived;
+  delete (dbOrderData as any).subscription_id;
 
   let { error: orderError } = await supabase
     .from("orders")
@@ -415,6 +420,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       gross_amount: grossAmount,
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
+      customer_email: payload.customerEmail || null,
+      quantity: orderQuantity,
+      payment_status: "PENDING",
+      order_status: "PENDING",
       briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
       customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
       status: "PENDING",
@@ -429,6 +438,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         quantity: orderQuantity,
         unit_price: unitPrice,
         product_subtotal: unitPrice * orderQuantity,
+        payment_method: paymentMethod,
       },
       created_at: orderData.created_at,
       updated_at: orderData.created_at,
@@ -439,6 +449,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   if (orderError) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
+    throw new Error(`Gagal membuat order di database: ${orderError.message || 'Database error'}`);
   }
 
   // 1b. Catat line item utama dan add-on ke tabel order_items (menyimpan snapshot item & tracking_context)
@@ -539,6 +550,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       pcfg?.qris_content ||
       pcfg?.raw_qris_string ||
       pcfg?.static_qris_payload ||
+      pcfg?.qris_payload ||
       tenantRowData?.metadata?.static_qris_payload ||
       "";
 
