@@ -40,6 +40,7 @@ import {
   Pencil,
   Download,
   ChevronLeft,
+  ChevronRight,
   X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -311,9 +312,17 @@ export default function TeamChatTab({
 
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'followup' | 'paused' | 'mine' | 'unassigned'>('all');
-  const [channelFilter, setChannelFilter] = useState<'all' | 'waba' | 'engine' | 'webchat'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'waba' | 'engine' | 'webchat' | 'telegram'>('all');
   const [localReplyText, setLocalReplyText] = useState('');
   const [displayLimit, setDisplayLimit] = useState(60);
+  const channelScrollRef = useRef<HTMLDivElement>(null);
+
+  // Sinkronisasi otomatis: Pastikan selectedConvId selalu memicu pemanggilan pesan yang tepat di useTenantInbox
+  useEffect(() => {
+    if (selectedConvId && inbox.activeConversationId !== selectedConvId) {
+      inbox.setActiveConversationId(selectedConvId);
+    }
+  }, [selectedConvId, inbox.activeConversationId, inbox.setActiveConversationId]);
 
   useEffect(() => {
     setDisplayLimit(60);
@@ -382,7 +391,25 @@ export default function TeamChatTab({
     );
     const hasWebchat = hasWebchatFromConv || hasWebchatFromMetadata;
 
-    return { hasWaba, hasEngine, hasWebchat };
+    // 4. Telegram: tampilkan jika tenant mengaktifkan Telegram atau memiliki percakapan Telegram
+    const hasTelegramFromConn = tenantConnections.some(
+      (c) =>
+        (c.provider === 'TELEGRAM' || (c.channel_type || '').toUpperCase() === 'TELEGRAM') &&
+        (c.is_connected === true || ['CONNECTED', 'OPEN', 'ACTIVE'].includes(String(c.status || '').toUpperCase()))
+    );
+    const hasTelegramFromConv = conversationsList.some((c) => {
+      const raw = (c.channelType || '').toUpperCase();
+      return raw === 'TELEGRAM' || raw === 'TG';
+    });
+    const hasTelegramFromMetadata = Boolean(
+      initialTenant?.metadata?.telegram_bot_token ||
+      initialTenant?.metadata?.telegram_active ||
+      initialTenant?.metadata?.features?.telegram ||
+      initialTenant?.metadata?.addons?.telegram
+    );
+    const hasTelegram = hasTelegramFromConn || hasTelegramFromConv || hasTelegramFromMetadata;
+
+    return { hasWaba, hasEngine, hasWebchat, hasTelegram };
   }, [tenantConnections, conversationsList, initialTenant]);
 
   // Counts per channel for filter tabs
@@ -390,17 +417,20 @@ export default function TeamChatTab({
     let waba = 0;
     let engine = 0;
     let webchat = 0;
+    let telegram = 0;
     for (const c of conversationsList) {
       const raw = (c.channelType || '').toUpperCase();
       if (raw === 'WABA') {
         waba++;
       } else if (raw === 'WEBCHAT' || c.customerPhone.startsWith('webchat_')) {
         webchat++;
+      } else if (raw === 'TELEGRAM' || raw === 'TG') {
+        telegram++;
       } else {
         engine++;
       }
     }
-    return { all: conversationsList.length, waba, engine, webchat };
+    return { all: conversationsList.length, waba, engine, webchat, telegram };
   }, [conversationsList]);
 
   // Dynamic Tier & CS Seat Entitlement Quota
@@ -1176,11 +1206,15 @@ export default function TeamChatTab({
         if (!isWaba) return false;
       } else if (channelFilter === 'engine') {
         const raw = (c.channelType || '').toUpperCase();
-        const isEngine = raw === 'BAILEYS' || raw === 'ENGINE' || (!raw && !c.customerPhone.startsWith('webchat_'));
+        const isEngine = raw === 'BAILEYS' || raw === 'ENGINE' || (!raw && !c.customerPhone.startsWith('webchat_') && raw !== 'TELEGRAM' && raw !== 'TG');
         if (!isEngine) return false;
       } else if (channelFilter === 'webchat') {
         const isWebchat = (c.channelType || '').toUpperCase() === 'WEBCHAT' || c.customerPhone.startsWith('webchat_');
         if (!isWebchat) return false;
+      } else if (channelFilter === 'telegram') {
+        const raw = (c.channelType || '').toUpperCase();
+        const isTelegram = raw === 'TELEGRAM' || raw === 'TG';
+        if (!isTelegram) return false;
       }
 
       // Filter by search keyword
@@ -2435,12 +2469,12 @@ export default function TeamChatTab({
         </div>
       )}
 
-      {/* ── 3-PANEL WORKSPACE CONTAINER (100% W-FULL CANVAS) ───────────────── */}
-      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-12 min-[1400px]:grid-cols-12 min-h-[680px] lg:h-[calc(100vh-210px)] relative">
+      {/* ── 3-PANEL WORKSPACE CONTAINER (BAKU FLEX 3-KOLOM DESKTOP >= XL) ─── */}
+      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-row min-h-[680px] lg:h-[calc(100vh-210px)] relative">
         {/* =================================================================== */}
-        {/* PANEL KIRI (3 COLS): DAFTAR ANTREAN PERCAKAPAN & FILTER              */}
+        {/* KOLOM 1 (KIRI): ANTREAN PERCAKAPAN (w-80 / w-96, h-full)            */}
         {/* =================================================================== */}
-        <div className={`border-r border-slate-200 flex flex-col bg-slate-50/50 h-full overflow-hidden md:col-span-4 min-[1400px]:col-span-3 ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-80 xl:w-88 2xl:w-96 shrink-0 border-r border-slate-200 flex flex-col bg-slate-50/50 h-full overflow-hidden ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {/* Header Panel Kiri & Search */}
           <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
             <div className="flex items-center justify-between">
@@ -2492,96 +2526,132 @@ export default function TeamChatTab({
               />
             </div>
 
-            {/* Omnichannel Channel Filter Pills (Horizontal) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap pb-0.5 no-scrollbar scroll-smooth">
-              <button
-                type="button"
-                onClick={() => setChannelFilter('all')}
-                className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                  channelFilter === 'all'
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-extrabold'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-                title="Semua kanal percakapan"
+            {/* Omnichannel Channel Filter Pills (Horizontal Scroll + Right-Edge Indicator) */}
+            <div className="relative group">
+              <div
+                ref={channelScrollRef}
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 px-1 whitespace-nowrap"
               >
-                <span>Semua</span>
-                <span
-                  className={`text-[9px] px-1 rounded-full ${
-                    channelFilter === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {channelCounts.all}
-                </span>
-              </button>
-
-              {activeChannels.hasWaba && (
                 <button
                   type="button"
-                  onClick={() => setChannelFilter('waba')}
+                  onClick={() => setChannelFilter('all')}
                   className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                    channelFilter === 'waba'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-extrabold'
-                      : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                    channelFilter === 'all'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-extrabold'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
-                  title="Filter kanal resmi WABA (Meta Cloud API)"
+                  title="Semua kanal percakapan"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span>WABA</span>
+                  <span>Semua</span>
                   <span
                     className={`text-[9px] px-1 rounded-full ${
-                      channelFilter === 'waba' ? 'bg-emerald-700 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                      channelFilter === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {channelCounts.waba}
+                    {channelCounts.all}
                   </span>
                 </button>
-              )}
 
-              {activeChannels.hasEngine && (
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter('engine')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                    channelFilter === 'engine'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
-                      : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                  }`}
-                  title="Filter kanal BoonTrack WhatsApp Engine (Nomor Pairing)"
-                >
-                  <Zap className="w-2.5 h-2.5 text-current shrink-0" />
-                  <span>BoonTrack Engine</span>
-                  <span
-                    className={`text-[9px] px-1 rounded-full ${
-                      channelFilter === 'engine' ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-800'
+                {activeChannels.hasWaba && (
+                  <button
+                    type="button"
+                    onClick={() => setChannelFilter('waba')}
+                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
+                      channelFilter === 'waba'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-extrabold'
+                        : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
                     }`}
+                    title="Filter kanal resmi WABA (Meta Cloud API)"
                   >
-                    {channelCounts.engine}
-                  </span>
-                </button>
-              )}
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <span>WABA</span>
+                    <span
+                      className={`text-[9px] px-1 rounded-full ${
+                        channelFilter === 'waba' ? 'bg-emerald-700 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                      }`}
+                    >
+                      {channelCounts.waba}
+                    </span>
+                  </button>
+                )}
 
-              {activeChannels.hasWebchat && (
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter('webchat')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                    channelFilter === 'webchat'
-                      ? 'bg-sky-600 text-white border-sky-600 shadow-2xs font-extrabold'
-                      : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
-                  }`}
-                  title="Filter kanal Webchat (Widget Toko)"
-                >
-                  <MessageSquare className="w-2.5 h-2.5 text-current shrink-0" />
-                  <span>Webchat</span>
-                  <span
-                    className={`text-[9px] px-1 rounded-full ${
-                      channelFilter === 'webchat' ? 'bg-sky-700 text-sky-100' : 'bg-sky-100 text-sky-800'
+                {activeChannels.hasEngine && (
+                  <button
+                    type="button"
+                    onClick={() => setChannelFilter('engine')}
+                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
+                      channelFilter === 'engine'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
+                        : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
                     }`}
+                    title="Filter kanal BoonTrack WhatsApp Engine (Nomor Pairing)"
                   >
-                    {channelCounts.webchat}
-                  </span>
-                </button>
-              )}
+                    <Zap className="w-2.5 h-2.5 text-current shrink-0" />
+                    <span>BoonTrack Engine</span>
+                    <span
+                      className={`text-[9px] px-1 rounded-full ${
+                        channelFilter === 'engine' ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-800'
+                      }`}
+                    >
+                      {channelCounts.engine}
+                    </span>
+                  </button>
+                )}
+
+                {activeChannels.hasWebchat && (
+                  <button
+                    type="button"
+                    onClick={() => setChannelFilter('webchat')}
+                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
+                      channelFilter === 'webchat'
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-2xs font-extrabold'
+                        : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
+                    }`}
+                    title="Filter kanal Webchat (Widget Toko)"
+                  >
+                    <MessageSquare className="w-2.5 h-2.5 text-current shrink-0" />
+                    <span>Webchat</span>
+                    <span
+                      className={`text-[9px] px-1 rounded-full ${
+                        channelFilter === 'webchat' ? 'bg-sky-700 text-sky-100' : 'bg-sky-100 text-sky-800'
+                      }`}
+                    >
+                      {channelCounts.webchat}
+                    </span>
+                  </button>
+                )}
+
+                {activeChannels.hasTelegram && (
+                  <button
+                    type="button"
+                    onClick={() => setChannelFilter('telegram')}
+                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
+                      channelFilter === 'telegram'
+                        ? 'bg-sky-500 text-white border-sky-500 shadow-2xs font-extrabold'
+                        : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'
+                    }`}
+                    title="Filter kanal Telegram Bot"
+                  >
+                    <Send className="w-2.5 h-2.5 text-current shrink-0" />
+                    <span>Telegram</span>
+                    <span
+                      className={`text-[9px] px-1 rounded-full ${
+                        channelFilter === 'telegram' ? 'bg-sky-600 text-sky-100' : 'bg-sky-100 text-sky-700'
+                      }`}
+                    >
+                      {channelCounts.telegram}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* Visual Fade Indicator di Ujung Kanan */}
+              <div
+                className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/80 to-transparent flex items-center justify-end pr-0.5 rounded-r-xl"
+                aria-hidden="true"
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-60" />
+              </div>
             </div>
 
             {/* Filter Tabs Pills (Semua, Belum Dibaca, Follow-up, Paused) */}
@@ -2840,9 +2910,9 @@ export default function TeamChatTab({
         </div>
 
         {/* =================================================================== */}
-        {/* PANEL TENGAH (6 COLS): THREAD RIWAYAT OBROLAN & INPUT BALASAN       */}
+        {/* KOLOM 2 (TENGAH): CHAT AREA AKTIF (flex-1, h-full, min-w-0)         */}
         {/* =================================================================== */}
-        <div className={`flex flex-col bg-white h-full border-b md:border-b-0 min-[1400px]:border-r border-slate-200 overflow-hidden md:col-span-8 min-[1400px]:col-span-6 ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`flex-1 min-w-0 h-full flex flex-col bg-white overflow-hidden ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {!currentConversation ? (
             <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-400">
               <MessageSquare className="w-10 h-10 text-slate-300 mb-2" />
@@ -2932,11 +3002,11 @@ export default function TeamChatTab({
                     )}
                   </button>
 
-                  {/* Detail CS Toggle Button on < 1400px (720p / Tablet) */}
+                  {/* Detail CS Toggle Button on < xl (Split-screen / Tablet) */}
                   <button
                     type="button"
                     onClick={() => setIsCsConsoleOpen((prev) => !prev)}
-                    className={`min-[1400px]:hidden px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
+                    className={`xl:hidden px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
                       isCsConsoleOpen
                         ? 'bg-indigo-600 text-white border-indigo-600'
                         : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
@@ -2944,14 +3014,14 @@ export default function TeamChatTab({
                     title="Buka / Tutup Console CS & Quick POS"
                   >
                     <ShoppingBag className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Detail CS</span>
+                    <span>Detail CS</span>
                   </button>
                 </div>
               </div>
 
               {/* Area Pesan Chat (Scrollable) */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/40">
-                {inbox.isLoadingMessages && messagesList.length === 0 ? (
+                {inbox.isLoadingMessages || (selectedConvId && messagesList.length === 0 && (inbox.isLoadingConversations || !inbox.activeConversationId || inbox.activeConversationId !== selectedConvId)) ? (
                   <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 my-auto">
                     <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
                     <p className="text-[11px] text-slate-400">Memuat riwayat pesan WhatsApp...</p>
@@ -3461,13 +3531,13 @@ export default function TeamChatTab({
         </div>
 
         {/* =================================================================== */}
-        {/* PANEL KANAN (3 COLS): QUICK POS & CRM RINGKASAN KONTAK             */}
+        {/* KOLOM 3 (KANAN): CONSOLE CS CRM + QUICK POS (BAKU 3-KOLOM / DRAWER) */}
         {/* =================================================================== */}
         <div
           className={`${
             isCsConsoleOpen
-              ? 'fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 min-[1400px]:static min-[1400px]:z-auto min-[1400px]:w-auto min-[1400px]:max-w-none min-[1400px]:shadow-none min-[1400px]:border-l-0 min-[1400px]:bg-slate-50/60 min-[1400px]:col-span-3 min-[1400px]:animate-none min-[1400px]:h-full'
-              : 'hidden min-[1400px]:flex min-[1400px]:col-span-3 flex-col bg-slate-50/60 h-full overflow-y-auto p-3.5 space-y-3'
+              ? 'fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 xl:static xl:z-auto xl:w-80 xl:w-88 2xl:w-96 xl:max-w-none xl:shadow-none xl:border-l xl:bg-slate-50/60 xl:animate-none xl:h-full xl:shrink-0'
+              : 'hidden xl:flex xl:w-80 xl:w-88 2xl:w-96 shrink-0 flex-col bg-slate-50/60 h-full overflow-y-auto border-l border-slate-200 p-3.5 space-y-3'
           }`}
         >
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -3502,11 +3572,11 @@ export default function TeamChatTab({
                 </button>
               </div>
 
-              {/* Close Button for Slide-over Drawer on < 1400px */}
+              {/* Close Button for Slide-over Drawer on < xl */}
               <button
                 type="button"
                 onClick={() => setIsCsConsoleOpen(false)}
-                className="min-[1400px]:hidden p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                className="xl:hidden p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
                 title="Tutup Console CS"
               >
                 <X className="w-4 h-4" />
@@ -4193,10 +4263,10 @@ export default function TeamChatTab({
         </div>
       </div>
 
-      {/* Backdrop overlay saat Console CS Drawer terbuka di layar < 1400px */}
+      {/* Backdrop overlay saat Console CS Drawer terbuka di layar < xl */}
       {isCsConsoleOpen && (
         <div
-          className="min-[1400px]:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
+          className="xl:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
           onClick={() => setIsCsConsoleOpen(false)}
         />
       )}

@@ -191,9 +191,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
         }
 
         setConversations(uniqueConvs);
-        if (uniqueConvs.length > 0 && !activeConversationId) {
-          setActiveConversationId(uniqueConvs[0].id);
-        }
+        setActiveConversationId((prev) => prev || (uniqueConvs.length > 0 ? uniqueConvs[0].id : null));
       } else {
         setConversations([]);
       }
@@ -203,7 +201,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [resolvedTenantUuid, resolvedTenantSlug, tenantId, tenantSlug, effectiveTenantId, effectiveTenantSlug, activeConversationId]);
+  }, [resolvedTenantUuid, resolvedTenantSlug, tenantId, tenantSlug, effectiveTenantId, effectiveTenantSlug]);
 
   // 2. Fetch Messages for Active Conversation (with Frontend Deduplication)
   const fetchMessages = useCallback(async (convId: string) => {
@@ -319,9 +317,12 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
   // Load messages when activeConversationId changes
   useEffect(() => {
     if (activeConversationId) {
+      setMessages([]);
+      setIsLoadingMessages(true);
       fetchMessages(activeConversationId);
     } else {
       setMessages([]);
+      setIsLoadingMessages(false);
     }
   }, [activeConversationId, fetchMessages]);
 
