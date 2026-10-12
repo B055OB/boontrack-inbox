@@ -57,7 +57,9 @@ import {
   trackLeadFormSubmission,
   trackContactEvent,
   initPixelsFromMetadata,
-  formatIndonesianWhatsAppNumber
+  formatIndonesianWhatsAppNumber,
+  getClientTrackingContext,
+  getTrackingParams
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { captureStoreReseller, getActiveResellerCode } from '@/lib/store-reseller';
@@ -84,6 +86,7 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
+import WhatsAppChatTestimonials from '@/components/storefront/WhatsAppChatTestimonials';
 import ProductMediaShowcase from '@/components/storefront/ProductMediaShowcase';
 import VideoEmbedPlayer from '@/components/VideoEmbedPlayer';
 import MiniIntakeForm from '@/components/storefront/MiniIntakeForm';
@@ -1601,10 +1604,91 @@ function SingleProductContent() {
     }
   };
 
+  // ── DYNAMIC CUSTOM CTA CONFIGURATION (product.metadata) ──
+  const productMeta = (product?.metadata || {}) as Record<string, any>;
+  const ctaMode = String(productMeta.cta_mode || 'checkout').toLowerCase().trim();
+  const ctaTargetUrl = String(productMeta.cta_target_url || '').trim();
+  const isCustomLinkMode = ctaMode === 'custom_link' && Boolean(ctaTargetUrl);
+  const ctaCustomLabel = String(productMeta.cta_label || 'AMANKAN AKSES SEKARANG').trim();
+  const ctaPixelEvent = (productMeta.cta_pixel_event === 'Lead' ? 'Lead' : 'InitiateCheckout') as 'InitiateCheckout' | 'Lead';
+
+  const handleCustomCtaClick = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const effectiveValue = Number(basePrice ?? product.price) || 0;
+    const eventId = `CTA_${product.id || slug}_${Date.now()}`;
+    const productName = (product as any)?.title || product.name || 'Product';
+
+    // 1. Tembak Meta Pixel di client browser
+    if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
+      (window as any).fbq('track', ctaPixelEvent, {
+        content_name: productName,
+        content_ids: [String(product.id || slug)],
+        content_type: 'product',
+        value: effectiveValue,
+        currency: 'IDR',
+      }, { eventID: eventId });
+    }
+
+    // 1b. Tembak TikTok Pixel di client browser
+    if (typeof window !== 'undefined' && typeof (window as any).ttq?.track === 'function') {
+      const ttEvent = ctaPixelEvent === 'Lead' ? 'SubmitForm' : 'InitiateCheckout';
+      (window as any).ttq.track(ttEvent, {
+        content_name: productName,
+        content_id: String(product.id || slug),
+        value: effectiveValue,
+        currency: 'IDR',
+      }, { event_id: eventId });
+    }
+
+    // 2. Dispatch Server-Side CAPI
+    try {
+      const trackingContext = getClientTrackingContext();
+      const trackingParams = getTrackingParams();
+      fetch('/api/v1/tracking/capi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: tenant,
+          eventName: ctaPixelEvent,
+          eventId: eventId,
+          amount: effectiveValue,
+          currency: 'IDR',
+          contentName: productName,
+          contentIds: [String(product.id || slug)],
+          fbc: trackingContext.fbc,
+          fbp: trackingContext.fbp,
+          userAgent: trackingContext.client_user_agent,
+          ctwa_clid: trackingParams.ctwa_clid,
+        }),
+        keepalive: true,
+      }).catch((err) => {
+        console.warn('[CustomCTA] CAPI dispatch warning:', err);
+      });
+    } catch (err) {
+      console.warn('[CustomCTA] CAPI trigger error:', err);
+    }
+
+    // 3. Buka cta_target_url (di tab baru atau fallback ke window location langsung)
+    if (ctaTargetUrl && typeof window !== 'undefined') {
+      const openedWindow = window.open(ctaTargetUrl, '_blank', 'noopener,noreferrer');
+      if (!openedWindow || openedWindow.closed || typeof openedWindow.closed === 'undefined') {
+        window.location.assign(ctaTargetUrl);
+      }
+    }
+  };
+
   const handleOpenCheckout = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
+    }
+    if (isCustomLinkMode) {
+      handleCustomCtaClick(e);
+      return;
     }
     triggerAddToCart();
     triggerInitiateCheckout();
@@ -3891,30 +3975,43 @@ function SingleProductContent() {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition disabled:opacity-75 cursor-pointer"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Memproses Pesanan...</span>
-          </>
-        ) : (
-          <>
-            <Lock className="w-4 h-4" />
-            <span>
-              {totalAmount === 0
-                ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Akses Gratis Sekarang'))
-                : dynamicCtaPrefix.toLowerCase().includes('rp')
-                ? dynamicCtaPrefix
-                : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
-            </span>
-            <ArrowRight className="w-4 h-4" />
-          </>
-        )}
-      </button>
+      {isCustomLinkMode ? (
+        <button
+          type="button"
+          id="custom-cta-button"
+          data-testid="custom-cta-button"
+          onClick={handleCustomCtaClick}
+          className="w-full py-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 active:scale-[0.99] text-white rounded-xl font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer"
+        >
+          <span>{ctaCustomLabel}</span>
+          <ArrowRight className="w-5 h-5 shrink-0" />
+        </button>
+      ) : (
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition disabled:opacity-75 cursor-pointer"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Memproses Pesanan...</span>
+            </>
+          ) : (
+            <>
+              <Lock className="w-4 h-4" />
+              <span>
+                {totalAmount === 0
+                  ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Akses Gratis Sekarang'))
+                  : dynamicCtaPrefix.toLowerCase().includes('rp')
+                  ? dynamicCtaPrefix
+                  : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      )}
 
       {/* Secondary Add to Cart Button for multi-item catalogs (FOOD / PHYSICAL) */}
       {!isCartDisabled && cartPolicy.allowAddToCart && (
@@ -4105,6 +4202,17 @@ function SingleProductContent() {
                             <span>{affiliateCtaLabel}</span>
                             <ExternalLink className="w-4 h-4" />
                           </a>
+                        ) : isCustomLinkMode ? (
+                          <button
+                            type="button"
+                            id="hero-custom-cta-button"
+                            data-testid="hero-custom-cta-button"
+                            onClick={handleCustomCtaClick}
+                            className="w-full py-3.5 px-6 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer text-sm"
+                          >
+                            <span>{ctaCustomLabel}</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
                         ) : (
                           <button
                             type="button"
@@ -4464,6 +4572,13 @@ function SingleProductContent() {
                       />
                     )}
 
+                    {/* 7.8 Section Testimoni Kompak: Gaya WhatsApp Chat Bubble */}
+                    {config.enable_testimonials !== false && (
+                      <WhatsAppChatTestimonials
+                        testimonials={product.metadata?.whatsapp_testimonials || config.whatsapp_testimonials}
+                      />
+                    )}
+
                     {/* 8. Ultra-Lean Single Page Checkout Section */}
                     <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
                       <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
@@ -4555,7 +4670,9 @@ function SingleProductContent() {
           totalAmount={totalAmount}
           dynamicCtaPrefix={dynamicCtaPrefix}
           ctaText={
-            actionMode === 'WHATSAPP'
+            isCustomLinkMode
+              ? ctaCustomLabel
+              : actionMode === 'WHATSAPP'
               ? (config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order via WhatsApp'))
               : totalAmount === 0
               ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Sekarang (Gratis)'))
@@ -4571,8 +4688,12 @@ function SingleProductContent() {
           whatsAppUrl={wabaConsultationUrl}
           onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}
-          allowAddToCart={!isCartDisabled && cartPolicy.allowAddToCart}
+          allowAddToCart={!isCustomLinkMode && !isCartDisabled && cartPolicy.allowAddToCart}
           onAddToCart={handleAddToCart}
+          isCustomLinkMode={isCustomLinkMode}
+          customCtaUrl={ctaTargetUrl}
+          customCtaLabel={ctaCustomLabel}
+          onCustomCtaClick={handleCustomCtaClick}
         />
       )}
 

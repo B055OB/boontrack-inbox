@@ -20,6 +20,10 @@ export interface StickyBuyButtonProps {
   onWhatsAppClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   allowAddToCart?: boolean;
   onAddToCart?: () => void;
+  isCustomLinkMode?: boolean;
+  customCtaUrl?: string;
+  customCtaLabel?: string;
+  onCustomCtaClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 /**
@@ -49,6 +53,10 @@ export function StickyBuyButton({
   onWhatsAppClick,
   allowAddToCart = false,
   onAddToCart,
+  isCustomLinkMode = false,
+  customCtaUrl,
+  customCtaLabel,
+  onCustomCtaClick,
 }: StickyBuyButtonProps) {
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -136,7 +144,7 @@ export function StickyBuyButton({
 
         {/* Right: CTA Actions (Direct Buy & Optional Add to Cart) */}
         <div className="flex items-center gap-2 flex-1 max-w-sm justify-end">
-          {allowAddToCart && onAddToCart && !hasValidWhatsAppUrl && !hasValidExternalUrl && (
+          {allowAddToCart && onAddToCart && !isCustomLinkMode && !hasValidWhatsAppUrl && !hasValidExternalUrl && (
             <button
               type="button"
               id="sticky-cart-button"
@@ -155,7 +163,27 @@ export function StickyBuyButton({
             </button>
           )}
 
-          {hasValidWhatsAppUrl ? (
+          {isCustomLinkMode ? (
+            <button
+              type="button"
+              id="sticky-custom-cta-button"
+              data-testid="sticky-custom-cta-button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onCustomCtaClick) {
+                  onCustomCtaClick(e);
+                } else if (customCtaUrl) {
+                  window.open(customCtaUrl, '_blank', 'noopener,noreferrer');
+                }
+              }}
+              disabled={disabled}
+              className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer text-center"
+            >
+              <span className="truncate">{customCtaLabel || resolvedCtaLabel}</span>
+              <ArrowRight className="w-4 h-4 shrink-0" />
+            </button>
+          ) : hasValidWhatsAppUrl ? (
             <a
               href={whatsAppUrl}
               target="_blank"

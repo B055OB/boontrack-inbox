@@ -136,6 +136,7 @@ export interface SinglePageConfig {
   // 5. Social Proof / Testimoni
   testimonial_images?: string[]; // Hingga 3 screenshot bukti/chat
   testimonials?: TestimonialItem[]; // Testimoni teks peserta
+  whatsapp_testimonials?: any[]; // Testimoni gaya WhatsApp Chat Bubble
 
   // 6. Offer & Bonus
   bonus_items?: BonusItem[];
