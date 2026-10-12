@@ -1,5 +1,5 @@
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
-import { resolveCommunityContext } from '@/lib/boonpilot/platform-engine';
+import { resolveCommunityContext, processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
 /**
  * lib/whatsapp/meta-webhook-normalizer.ts
  * Inbound Event Normalizer & Handshake Verification for Meta WhatsApp Cloud API.
@@ -570,7 +570,9 @@ export async function processNormalizedMetaEvent(
         connection?.instance_name === 'boontrack-shop' ||
         connection?.instance_name === 'boontrack-app-shop' ||
         cleanDisplayPhone === '6281215567168' ||
+        cleanDisplayPhone === '081215567168' ||
         cleanConnPhone === '6281215567168' ||
+        cleanConnPhone === '081215567168' ||
         connection?.phone_number_id === '6281215567168';
 
       if (!isOfficialSupport) {
@@ -580,12 +582,17 @@ export async function processNormalizedMetaEvent(
         continue;
       }
 
-      // HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup
+      // HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup (§39.1)
       const rawTextTrim = textContent.trim().toLowerCase();
       const isDirectIdCommand = rawTextTrim === '/id' || rawTextTrim === '!id' || rawTextTrim === '@boon id';
 
+      // Group Mention Regex Guard (§39.1):
+      // Pastikan nomor platform 6281215567168 merespons jika memuat regex /@(boon|boontrack|081215567168)\b/i
+      const groupMentionRegex = /@(boon|boontrack|081215567168)\b/i;
+      const isGroupMentionMatch = groupMentionRegex.test(textContent);
+
       const wakeWord = isBoonPilotWakeWordTriggered(textContent, true, 'WHATSAPP');
-      const hasBoonMention = wakeWord.triggered || isDirectIdCommand;
+      const hasBoonMention = wakeWord.triggered || isDirectIdCommand || isGroupMentionMatch;
       if (!hasBoonMention) {
         console.info(`[GROUP_GUARD] Official support ignoring general group chatter in '${rawFrom}' (no @boon mention).`);
         continue;
@@ -611,23 +618,54 @@ export async function processNormalizedMetaEvent(
       }
 
       // 1.2 CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43)
+      const cleanQuery = (wakeWord.cleanText || '').trim();
+      const isJustGreeting =
+        !cleanQuery ||
+        /^(halo|hai|hi|hello|p|ping|start|test|tes|yo|bro|kak|min|mimin|gan|boss|assalamualaikum|waalaikumsalam|apa kabar|selamat pagi|selamat siang|selamat malam)[\.\!\?]?$/i.test(cleanQuery);
+
+      if (isJustGreeting) {
+        try {
+          const commCtx = await resolveCommunityContext(rawFrom, supabase);
+
+          if (commCtx.binding_id) {
+            const replyText =
+              `👋 *Halo dari BoonTrack!*\n` +
+              `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+              `🛍️ *Cek Contoh Demo:*\n${commCtx.demo_store_url}\n\n` +
+              `🚀 *Buka Toko Online / Coba Gratis:*\n${commCtx.registration_url}`;
+
+            await sendWhatsAppSessionMessage(rawFrom, replyText);
+            processedMessages++;
+            continue;
+          }
+        } catch (waErr) {
+          console.warn('[WA Group Community Trigger Error]:', waErr);
+        }
+      }
+
+      // 1.3 PERTANYAAN DI GRUP -> proses via processBoonPilotPlatformChat
       try {
-        const commCtx = await resolveCommunityContext(rawFrom, supabase);
+        const platformResult = await processBoonPilotPlatformChat(
+          {
+            senderPhone,
+            message: cleanQuery || textContent,
+            channel_type: 'WAHA',
+            community_source_id: rawFrom,
+          },
+          supabase
+        );
 
-        if (commCtx.binding_id) {
-          const replyText =
-            `👋 *Halo dari BoonTrack!*\n` +
-            `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
-            `🛍️ *Cek Contoh Demo:*\n${commCtx.demo_store_url}\n\n` +
-            `🚀 *Buka Toko Online / Coba Gratis:*\n${commCtx.registration_url}`;
-
-          await sendWhatsAppSessionMessage(rawFrom, replyText);
+        if (platformResult.reply && platformResult.reply.trim()) {
+          await sendWhatsAppSessionMessage(rawFrom, platformResult.reply.trim());
           processedMessages++;
           continue;
         }
-      } catch (waErr) {
-        console.warn('[WA Group Community Trigger Error]:', waErr);
+      } catch (groupAiErr) {
+        console.warn('[Meta WA Group AI Error]:', groupAiErr);
       }
+
+      processedMessages++;
+      continue;
     }
 
     // 2. Deteksi pola aktivasi platform (AKTIVASI BT-XXXX)

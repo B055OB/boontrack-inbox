@@ -370,15 +370,6 @@ export async function processEvolutionWebhookEvent(
   // 2. Resolve Tenant Identity from whatsapp_connections dynamically (Zero Hardcoding)
   let tenantId: string | null = null;
   let tenantSlug: string | null = null;
-  let resolvedApiKey: string;
-  try {
-    resolvedApiKey = getRequiredEvolutionApiKey();
-  } catch (keyErr: any) {
-    console.error(
-      `[SECURITY_ALERT] Webhook aborted: ${keyErr?.message || 'EVOLUTION_API_KEY missing'}. Halting process (FAIL-CLOSED).`
-    );
-    throw keyErr;
-  }
 
   const botPhoneNumber =
     payload.owner ||
@@ -392,6 +383,16 @@ export async function processEvolutionWebhookEvent(
     botPhoneNumber,
   });
 
+  let resolvedApiKey: string;
+  try {
+    resolvedApiKey = getRequiredEvolutionApiKey(resolvedTenant?.apiKey);
+  } catch (keyErr: any) {
+    console.error(
+      `[SECURITY_ALERT] Webhook aborted: ${keyErr?.message || 'EVOLUTION_API_KEY missing'}. Halting process (FAIL-CLOSED).`
+    );
+    throw keyErr;
+  }
+
   // ATURAN MUTLAK FAIL-CLOSED & ANTI-LEAK:
   // Jika tenant_id bernilai null atau validasi instance/owner gagal, bot HARUS DIAM (SILENT / SAFE DROP) dan log alert ke internal.
   // DILARANG KERAS memanggil AI, dilarang mengirim template platform BoonTrack, dilarang membalas ke customer!
@@ -404,9 +405,6 @@ export async function processEvolutionWebhookEvent(
 
   tenantId = resolvedTenant.tenantId;
   tenantSlug = resolvedTenant.tenantSlug;
-  if (resolvedTenant.apiKey) {
-    resolvedApiKey = resolvedTenant.apiKey;
-  }
 
   // Resolve Hardening Policy version (Progressive Runtime Rollout)
   let tenantRecordForHardening: any = { id: tenantId, slug: tenantSlug || tenantId };
@@ -684,14 +682,16 @@ export async function processEvolutionWebhookEvent(
       }
     }
 
-    // Group Mention Guard: Merchant accounts strictly for 1-on-1 chats
+    // Group Mention Guard (§39.1): Merchant accounts strictly for 1-on-1 chats
     if (isGroup) {
+      const cleanBotPhone = (resolvedTenant?.ownerPhone || botPhoneNumber || '').replace(/\D/g, '');
       const isOfficial =
         tenantId === 'boon' ||
         tenantId === '52967979-4760-4cea-b686-cdbdb389c0e1' ||
         instanceName === 'boontrack-shop' ||
         instanceName === 'boontrack-app-shop' ||
-        senderPhone === '6281215567168';
+        cleanBotPhone === '6281215567168' ||
+        cleanBotPhone === '081215567168';
 
       if (!isOfficial) {
         console.warn(`[Evolution Webhook] Group message dropped for merchant '${tenantId}' in ${rawFrom}`);
@@ -706,8 +706,19 @@ export async function processEvolutionWebhookEvent(
       const rawTrimmed = rawText.trim().toLowerCase();
       const isDirectIdCommand = rawTrimmed === '/id' || rawTrimmed === '!id' || rawTrimmed === '@boon id';
 
+      // Group Mention Regex Guard (§39.1):
+      // Pastikan nomor platform 6281215567168 merespons jika memuat regex /@(boon|boontrack|081215567168)\b/i
+      const groupMentionRegex = /@(boon|boontrack|081215567168)\b/i;
+      const isGroupMentionMatch = groupMentionRegex.test(rawText);
+
+      const mentionedJids: string[] =
+        item.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+      const isBotJidMentioned = Array.isArray(mentionedJids) && mentionedJids.some((jid) =>
+        typeof jid === 'string' && (jid.includes('6281215567168') || jid.includes('081215567168'))
+      );
+
       const wakeWord = isBoonPilotWakeWordTriggered(rawText, true, 'WHATSAPP');
-      const hasMention = wakeWord.triggered || isDirectIdCommand;
+      const hasMention = wakeWord.triggered || isDirectIdCommand || isGroupMentionMatch || isBotJidMentioned;
       if (!hasMention) {
         continue;
       }

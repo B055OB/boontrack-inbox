@@ -90,20 +90,22 @@ export async function resolveCommunityContext(
       demoStoreUrl = 'https://shop.boontrack.com/boon';
     }
 
-    // b. registration_url
+    // b. registration_url (ARCHITECTURE.md §43.4)
     const affId = (binding.affiliate_id || '').trim();
-    const affIdLower = affId.toLowerCase();
-    const tenantSlug = (binding.tenant_slug || '').trim().toLowerCase();
-    const isKangSakti = affIdLower === 'buzzerukm' || tenantSlug === 'buzzerukm';
+    const meta = (binding.metadata as Record<string, any>) || {};
+    const metaRegisterUrl = typeof meta.register_url === 'string' && meta.register_url.trim()
+      ? meta.register_url.trim()
+      : (typeof meta.fallback_register === 'string' && meta.fallback_register.trim() ? meta.fallback_register.trim() : '');
 
     let registrationUrl = '';
-    if (isKangSakti) {
-      registrationUrl = 'https://buzzerukm.boontrack.com/register';
+    if (metaRegisterUrl) {
+      registrationUrl = metaRegisterUrl;
     } else {
-      const meta = (binding.metadata as Record<string, any>) || {};
-      const customReg = meta.register_url || meta.fallback_register;
-      if (typeof customReg === 'string' && customReg.trim()) {
-        registrationUrl = customReg.trim();
+      const affIdLower = affId.toLowerCase();
+      const tenantSlug = (binding.tenant_slug || '').trim().toLowerCase();
+      const isKangSakti = affIdLower === 'buzzerukm' || tenantSlug === 'buzzerukm';
+      if (isKangSakti) {
+        registrationUrl = 'https://buzzerukm.boontrack.com/register';
       } else if (affId) {
         registrationUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
       } else {

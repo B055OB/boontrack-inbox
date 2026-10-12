@@ -43,9 +43,11 @@ export function isBoonPilotWakeWordTriggered(
     };
   }
 
-  // Regex pemicu: diawali atau mengandung "boon", "@boon", "@boonshop_bot", "@boontrack_bot", "@boontrack", "@081215567168"
+  // Regex pemicu sesuai ARCHITECTURE.md §39.1:
+  // /@(boon|boontrack|081215567168)\b/i
+  const groupMentionRegex = /@(boon|boontrack|081215567168)\b/i;
   const triggerPattern = /(?:^|\s|[^\w@])(@boonshop_bot|@boontrack_bot|@boontrack|@boon|@081215567168|@6281215567168|\bboon\b)/i;
-  const match = triggerPattern.exec(raw);
+  const match = groupMentionRegex.exec(raw) || triggerPattern.exec(raw);
 
   if (!match) {
     return {

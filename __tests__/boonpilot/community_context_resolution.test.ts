@@ -66,13 +66,13 @@ describe('BoonPilot Dynamic Community Context Resolution', () => {
       };
 
       const ctx = await resolveCommunityContext('120363430879517540@g.us', mockSupabase);
-      // Kang Sakti special registration url
-      expect(ctx.registration_url).toBe('https://buzzerukm.boontrack.com');
+      // Kang Sakti special registration url (§43.4)
+      expect(ctx.registration_url).toBe('https://buzzerukm.boontrack.com/register');
       // toko-demo is replaced by https://shop.boontrack.com/boon
       expect(ctx.demo_store_url).toBe('https://shop.boontrack.com/boon');
     });
 
-    it('resolves other affiliates to https://shop.boontrack.com/?ref={referral_code}', async () => {
+    it('resolves other affiliates to https://shop.boontrack.com/register?ref={referral_code}', async () => {
       const mockSupabase = {
         from: jest.fn().mockReturnValue({
           select: jest.fn().mockReturnThis(),
@@ -93,7 +93,7 @@ describe('BoonPilot Dynamic Community Context Resolution', () => {
       };
 
       const ctx = await resolveCommunityContext('120363111111111111@g.us', mockSupabase);
-      expect(ctx.registration_url).toBe('https://shop.boontrack.com/?ref=sukses_bersama');
+      expect(ctx.registration_url).toBe('https://shop.boontrack.com/register?ref=sukses_bersama');
       expect(ctx.demo_store_url).toBe('https://shop.boontrack.com/sukses-bersama');
     });
 
@@ -126,6 +126,14 @@ describe('BoonPilot Dynamic Community Context Resolution', () => {
   });
 
   describe('2. System Prompt & Fallback Resolution with Community Context', () => {
+    beforeAll(() => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: jest.fn().mockResolvedValue('offline fallback in unit tests'),
+      }) as any;
+    });
+
     it('injects dynamic demo_store_url and registration_url into buildBoonPilotSystemPrompt', () => {
       const prompt = buildBoonPilotSystemPrompt(
         {
@@ -136,12 +144,12 @@ describe('BoonPilot Dynamic Community Context Resolution', () => {
         },
         {
           demo_store_url: 'https://shop.boontrack.com/boon',
-          registration_url: 'https://buzzerukm.boontrack.com',
+          registration_url: 'https://buzzerukm.boontrack.com/register',
         }
       );
 
       expect(prompt).toContain('https://shop.boontrack.com/boon');
-      expect(prompt).toContain('https://buzzerukm.boontrack.com');
+      expect(prompt).toContain('https://buzzerukm.boontrack.com/register');
       expect(prompt).toContain('demo_store_url');
       expect(prompt).toContain('registration_url');
     });
@@ -234,7 +242,7 @@ describe('BoonPilot Dynamic Community Context Resolution', () => {
         mockSupabase
       );
 
-      expect(result.reply).toContain('https://shop.boontrack.com/?ref=mitra_berkah');
+      expect(result.reply).toContain('https://shop.boontrack.com/register?ref=mitra_berkah');
       expect(result.isDeterministicMatch).toBe(true);
     });
 
