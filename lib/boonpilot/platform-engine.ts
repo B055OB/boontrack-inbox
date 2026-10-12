@@ -98,14 +98,14 @@ export async function resolveCommunityContext(
 
     let registrationUrl = '';
     if (isKangSakti) {
-      registrationUrl = 'https://buzzerukm.boontrack.com';
+      registrationUrl = 'https://buzzerukm.boontrack.com/register';
     } else {
       const meta = (binding.metadata as Record<string, any>) || {};
       const customReg = meta.register_url || meta.fallback_register;
       if (typeof customReg === 'string' && customReg.trim()) {
         registrationUrl = customReg.trim();
       } else if (affId) {
-        registrationUrl = `https://shop.boontrack.com/?ref=${encodeURIComponent(affId)}`;
+        registrationUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
       } else {
         registrationUrl = 'https://boontrack.com';
       }

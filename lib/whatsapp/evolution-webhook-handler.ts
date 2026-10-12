@@ -445,7 +445,20 @@ export async function processEvolutionWebhookEvent(
     if (rawFrom === 'status@broadcast' || rawFrom.endsWith('@broadcast')) continue;
 
     const isGroup = rawFrom.includes('@g.us');
-    const senderPhone = rawFrom.split('@')[0].replace(/\D/g, '');
+    let senderPhone = rawFrom.split('@')[0].replace(/\D/g, '');
+    if (isGroup) {
+      const partJid = String(
+        key.participantAlt ||
+        item.participantAlt ||
+        key.participant ||
+        item.participant ||
+        ''
+      );
+      const cleanPart = partJid.split('@')[0].replace(/\D/g, '');
+      if (cleanPart) {
+        senderPhone = cleanPart;
+      }
+    }
     if (!senderPhone) continue;
 
     const messageExternalId = key.id || item.id || undefined;
