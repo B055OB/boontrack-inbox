@@ -48,6 +48,7 @@ export interface SendTelegramMessageOptions {
   parseMode?: 'Markdown' | 'HTML';
   buttons?: TelegramButton[][];
   disableWebPagePreview?: boolean;
+  messageThreadId?: number;
 }
 
 /**
@@ -109,6 +110,10 @@ export async function sendTelegramMessage(
         options.disableWebPagePreview !== undefined ? options.disableWebPagePreview : true,
     };
 
+    if (options.messageThreadId) {
+      payload.message_thread_id = options.messageThreadId;
+    }
+
     if (isLast && options.buttons && options.buttons.length > 0) {
       payload.reply_markup = {
         inline_keyboard: options.buttons,
@@ -129,9 +134,12 @@ export async function sendTelegramMessage(
       let data = await res.json();
 
       // If HTML / Markdown parse failed (400 Bad Request), retry without parse_mode and clean HTML tags
-      if (!data.ok && payload.parse_mode) {
+      if (!data.ok && (payload.parse_mode || payload.message_thread_id)) {
         delete payload.parse_mode;
         payload.text = chunk.replace(/<[^>]+>/g, '');
+        if (data.description && /message thread not found/i.test(data.description)) {
+          delete payload.message_thread_id;
+        }
         res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -298,7 +306,17 @@ export async function generateAffiliateSalesAiReply(
     communityContext: commCtx,
   });
 
-  return result.reply;
+  let reply = result.reply;
+  if (opts.demoUrl && opts.demoUrl !== 'https://shop.boontrack.com/boon') {
+    reply = reply.replace(/(?:https?:\/\/)?shop\.boontrack\.com\/boon/g, opts.demoUrl);
+  }
+  if (opts.registerUrl) {
+    reply = reply
+      .replace(/(?:https?:\/\/)?(?:shop\.)?boontrack\.com\/register(?:\?ref=[^\s\)\<\"]+)?/g, opts.registerUrl)
+      .replace(/(?<![\w\.\-])https:\/\/boontrack\.com(?:\/)?(?!\w)/g, opts.registerUrl);
+  }
+
+  return reply;
 }
 
 /**
@@ -325,13 +343,197 @@ export async function handleTelegramUpdate(
   const chatId = message.chat?.id;
   const chatType = message.chat?.type || 'private';
   const isGroup = chatType === 'group' || chatType === 'supergroup';
+  const incomingThreadId = message.message_thread_id;
+
+  if (!chatId) {
+    return { handled: false, reason: 'missing_chat_id' };
+  }
 
   const fromUser = callbackQuery ? callbackQuery.from : message.from;
   const fromId = fromUser?.id || chatId;
   const rawText = (callbackQuery ? callbackQuery.data : (message.text || message.caption || '')).trim();
 
-  if (!chatId || !rawText) {
-    return { handled: false, reason: 'missing_chat_or_text' };
+  // If there is no text and no new_chat_members, nothing to do
+  const hasMemberJoinEvent = Boolean(message.new_chat_members && message.new_chat_members.length > 0);
+  if (!rawText && !hasMemberJoinEvent) {
+    return { handled: false, reason: 'missing_text' };
+  }
+
+  // Fast-path Silent Ignore for ordinary group chatter without bot triggers:
+  if (isGroup && !hasMemberJoinEvent) {
+    const isTargetCommunity =
+      String(chatId) === '-1004371114362' ||
+      String(chatId) === '-1001910259389' ||
+      String(chatId).includes('4371114362') ||
+      String(chatId).includes('1910259389');
+
+    const botUsername = getTelegramBotUsername().toLowerCase();
+    const isReplyToBot = Boolean(
+      message.reply_to_message &&
+      (message.reply_to_message.from?.is_bot ||
+        message.reply_to_message.from?.username?.toLowerCase() === botUsername ||
+        message.reply_to_message.from?.username?.toLowerCase() === 'boonshop_bot' ||
+        message.reply_to_message.from?.username?.toLowerCase() === 'boontrack_bot')
+    );
+
+    const isDirectBotMention =
+      new RegExp(`@(?:${botUsername}|boonshop_bot|boontrack_bot)\\b`, 'i').test(rawText) ||
+      isReplyToBot;
+
+    const isBoonTrigger =
+      isDirectBotMention ||
+      /(?:^|\s)@boon\b/i.test(rawText) ||
+      /^\s*boon\b/i.test(rawText) ||
+      isBoonPilotWakeWordTriggered(rawText, true, 'TELEGRAM').triggered;
+
+    const isProgressionKeyword =
+      /(?:^|\s|[^\w])(checklist|langkah\s*awal|fase\s*[123]|tugas\s*fase\s*1|kapan\s*(?:mulai\s*|bisa\s*)?iklan|kapan\s*ngiklan|bocoran|materi\s*selanjutnya|studio\s*video|ads\s*analysis|scaling\s*hacks)(?:$|\s|[^\w])/i.test(rawText);
+
+    const hasMentionOrCommand = rawText.startsWith('/') || /@([a-zA-Z0-9_\-]+)/.test(rawText);
+
+    if (!isTargetCommunity && !isBoonTrigger && !isReplyToBot && !isProgressionKeyword && !hasMentionOrCommand) {
+      return {
+        handled: false,
+        reason: 'silent_ignore_group_chatter',
+        chatId,
+      };
+    }
+  }
+
+  const supabase = getSupabaseAdmin() || getSupabase();
+  let channelBinding: any = null;
+
+  if (isGroup && supabase) {
+    try {
+      const { data: cb } = await supabase
+        .from('channel_bindings')
+        .select('*')
+        .eq('channel_type', 'telegram')
+        .eq('community_source_id', String(chatId))
+        .eq('is_active', true)
+        .maybeSingle();
+      channelBinding = cb;
+    } catch (err) {
+      console.warn('[TELEGRAM] channel_bindings lookup error:', err);
+    }
+  }
+
+  const isOnlineBoost =
+    String(chatId) === '-1004371114362' ||
+    String(chatId).includes('4371114362') ||
+    Boolean(
+      channelBinding &&
+      (channelBinding.tenant_slug === 'onlineboost' ||
+        (Array.isArray(channelBinding.capabilities) &&
+          channelBinding.capabilities.includes('onboarding_guide') &&
+          channelBinding.capabilities.includes('gated_progression')))
+    );
+
+  const fase1ThreadId = channelBinding?.metadata?.fase1_thread_id ?? 5;
+
+  // ── EVENT MEMBER BARU (new_chat_members) ──────────────────────────────────
+  if (message.new_chat_members && Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) {
+    if (isOnlineBoost) {
+      let lastResult: any = null;
+      for (const member of message.new_chat_members) {
+        if (member.is_bot) continue;
+        const firstName = member.first_name || 'Member';
+        const welcomeText =
+          `Halo Kak ${firstName}! Selamat datang di OnlineBoost | CTWA Scale Engine Batch 1 🚀\n\n` +
+          `Untuk unlock materi Fase 2 (Video Kreatif 9-Scene) dan Fase 3 (Ads Analysis & Scaling), selesaikan fondasi di Fase 1 terlebih dahulu:\n\n` +
+          `📋 TASK PRAKTIKUM FASE 1:\n\n` +
+          `Setup Toko Digital BoonTrack (Pilih Ads Performance 7 Days Trial).\n\n` +
+          `Aktivasi Kasir QRIS Mandiri (0% MDR fee).\n\n` +
+          `Sambungkan Bot WhatsApp ke engine.\n\n` +
+          `Siapkan Akun Whitelist (WL).\n\n` +
+          `🎁 KLAIM BONUS GRANT 1 BULAN (Rp299.000):\n` +
+          `Tuntaskan poin 1–3, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5) untuk aktivasi bonus akses 1 bulan penuh!\n\n` +
+          `Ketik /fase1 kapan saja untuk melihat checklist lengkapnya. Selamat berpraktik!`;
+
+        await sendTelegramMessage(chatId, welcomeText, {
+          messageThreadId: fase1ThreadId,
+          parseMode: 'HTML',
+          disableWebPagePreview: true,
+        });
+
+        lastResult = {
+          handled: true,
+          chatId,
+          senderPhone: String(member.id),
+          reply: welcomeText,
+          role: 'ONBOARDING_GUIDE',
+          activeEngine: 'ONLINEBOOST_NEW_MEMBER_WELCOME',
+        };
+      }
+      if (lastResult) return lastResult;
+      return { handled: true, chatId, reason: 'new_bot_member_ignored' };
+    }
+  }
+
+  // ── ONBOARDING GUIDE & GATED PROGRESSION (ONLINEBOOST SUPERGROUP & GLOBAL /fase1) ──
+  const targetThreadId = isOnlineBoost ? fase1ThreadId : incomingThreadId;
+
+  const isFase1Checklist =
+    /^\/fase1(?:@[a-zA-Z0-9_\-]+)?(?:\s|$)/i.test(rawText) ||
+    (isOnlineBoost && /(?:^|\s|[^\w])(checklist|langkah\s*awal|fase\s*1|tugas\s*fase\s*1)(?:$|\s|[^\w])/i.test(rawText));
+
+  const isGatedFase2Or3 =
+    isOnlineBoost &&
+    /(?:^|\s|[^\w])(fase\s*2|fase\s*3|kapan\s*(?:mulai\s*|bisa\s*)?iklan|kapan\s*ngiklan|bocoran|materi\s*selanjutnya|studio\s*video|ads\s*analysis|scaling\s*hacks)(?:$|\s|[^\w])/i.test(rawText);
+
+  if (isGatedFase2Or3) {
+    const gatedText =
+      `🔒 <b>MATERI FASE 2 & FASE 3 TERKUNCI!</b>\n\n` +
+      `Halo Kak! Materi <b>Fase 2 (Video Kreatif 9-Scene)</b> dan <b>Fase 3 (Ads Analysis & Scaling)</b> saat ini masih digembok demi keberhasilan praktik Anda.\n\n` +
+      `⚠️ <b>Aturan Gated Progression Batch 1:</b>\n` +
+      `Kami tidak membuka materi scaling sebelum fondasi funnel & teknis toko Kakak siap 100%. Beriklan tanpa kesiapan kasir QRIS otomatis dan integrasi WhatsApp bot hanya akan membakar budget iklan secara sia-sia.\n\n` +
+      `👉 <b>Langkah Anda Sekarang:</b>\n` +
+      `Selesaikan seluruh tugas di <b>Fase 1</b> terlebih dahulu, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5).\n\n` +
+      `Setelah diverifikasi oleh mentor, akses materi lanjutan akan otomatis terbuka! Ketik /fase1 kapan saja untuk melihat checklist praktikum.`;
+
+    await sendTelegramMessage(chatId, gatedText, {
+      messageThreadId: targetThreadId,
+      replyToMessageId: message.message_id,
+      parseMode: 'HTML',
+      disableWebPagePreview: true,
+    });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: gatedText,
+      role: 'GATEKEEPER',
+      activeEngine: 'ONLINEBOOST_GATED_PROGRESSION',
+    };
+  }
+
+  if (isFase1Checklist) {
+    const checklistText =
+      `📋 <b>TASK PRAKTIKUM FASE 1:</b>\n\n` +
+      `Setup Toko Digital BoonTrack (Pilih Ads Performance 7 Days Trial).\n\n` +
+      `Aktivasi Kasir QRIS Mandiri (0% MDR fee).\n\n` +
+      `Sambungkan Bot WhatsApp ke engine.\n\n` +
+      `Siapkan Akun Whitelist (WL).\n\n` +
+      `🎁 <b>KLAIM BONUS GRANT 1 BULAN (Rp299.000):</b>\n` +
+      `Tuntaskan poin 1–3, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5) untuk aktivasi bonus akses 1 bulan penuh!\n\n` +
+      `Ketik /fase1 kapan saja untuk melihat checklist lengkapnya. Selamat berpraktik!`;
+
+    await sendTelegramMessage(chatId, checklistText, {
+      messageThreadId: targetThreadId,
+      replyToMessageId: message.message_id,
+      parseMode: 'HTML',
+      disableWebPagePreview: true,
+    });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: checklistText,
+      role: 'ONBOARDING_GUIDE',
+      activeEngine: 'ONLINEBOOST_FASE1_CHECKLIST',
+    };
   }
 
   // ── DEEP LINKING & COMMAND HANDLERS ──────────────────────────────────────
@@ -504,9 +706,16 @@ export async function handleTelegramUpdate(
   }
 
   // ── §42.5 BOT ID VALIDATION & GROUP ISOLATION ────────────────────────────
-  const supabase = getSupabaseAdmin() || getSupabase();
   let matchedTenant: any = null;
   let affiliateCommunityBinding: any = null;
+
+  if (
+    channelBinding &&
+    (channelBinding.context === 'AFFILIATE_CONTEXT' ||
+      (Array.isArray(channelBinding.capabilities) && channelBinding.capabilities.includes('referral_acquisition')))
+  ) {
+    affiliateCommunityBinding = channelBinding;
+  }
 
   if (supabase) {
     try {
@@ -521,35 +730,28 @@ export async function handleTelegramUpdate(
     }
   }
 
-  if (isGroup && supabase) {
+  if (!matchedTenant && channelBinding?.tenant_id && supabase) {
     try {
-      const { data: acb } = await supabase
-        .from('channel_bindings')
-        .select('*')
-        .eq('channel_type', 'telegram')
-        .eq('community_source_id', String(chatId))
-        .eq('is_active', true)
+      const { data: t } = await supabase
+        .from('tenants')
+        .select('id, name, slug, phone, telegram_chat_id, metadata')
+        .eq('id', channelBinding.tenant_id)
         .maybeSingle();
-
-      if (
-        acb &&
-        (acb.context === 'AFFILIATE_CONTEXT' ||
-          (Array.isArray(acb.capabilities) && acb.capabilities.includes('referral_acquisition')))
-      ) {
-        affiliateCommunityBinding = acb;
-      }
-    } catch (dbErr) {
-      console.warn('[TELEGRAM] Affiliate community binding lookup warning:', dbErr);
+      matchedTenant = t;
+    } catch (err) {
+      console.warn('[TELEGRAM] Tenant by binding lookup warning:', err);
     }
+  }
 
+  if (isGroup) {
     // §42.5 — Bot ID Validation:
-    // Drop jika chat_id tidak terdaftar di tenants maupun kolam affiliate di channel_bindings,
+    // Drop jika chat_id tidak terdaftar di tenants maupun channel_bindings,
     // KECUALI jika bot secara eksplisit di-mention (@boonshop_bot / @boontrack_bot) atau reply ke bot untuk melayani tanya jawab platform.
     const isDirectBotMention =
       /@(?:boonshop_bot|boontrack_bot)\b/i.test(rawText) ||
       isReplyToBot;
 
-    if (!matchedTenant && !affiliateCommunityBinding && !isDirectBotMention && process.env.NODE_ENV !== 'test') {
+    if (!matchedTenant && !channelBinding && !affiliateCommunityBinding && !isDirectBotMention && process.env.NODE_ENV !== 'test') {
       return {
         handled: false,
         reason: 'unregistered_group_chat_dropped',
@@ -600,6 +802,41 @@ export async function handleTelegramUpdate(
       .replace(/@boon\b/gi, '')
       .trim();
 
+    // Sapaan singkat / salam pembuka -> balas langsung dengan format resmi komunitas
+    const isJustGreeting =
+      !cleanPrompt ||
+      /^(halo|hai|hi|hello|p|ping|start|test|tes|yo|bro|kak|min|mimin|gan|boss|assalamualaikum|waalaikumsalam|apa kabar|selamat pagi|selamat siang|selamat malam)[\.\!\?]?$/i.test(cleanPrompt);
+
+    if (isJustGreeting) {
+      const replyText =
+        `👋 <b>Halo dari BoonTrack!</b>\n` +
+        `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+        `🛍️ <b>Cek Contoh Demo:</b>\n${demoUrl}\n\n` +
+        `🚀 <b>Buka Toko Online / Coba Gratis:</b>\n${registerUrl}`;
+
+      const promoButtons: TelegramButton[][] = [
+        [{ text: '🛍️ Lihat Demo Toko', url: demoUrl }],
+        [{ text: '🚀 Daftar Akun Resmi', url: registerUrl }],
+      ];
+
+      await sendTelegramMessage(chatId, replyText, {
+        replyToMessageId: message.message_id,
+        parseMode: 'HTML',
+        buttons: promoButtons,
+        disableWebPagePreview: true,
+      });
+
+      recordGroupTrigger(chatId, fromId);
+      return {
+        handled: true,
+        chatId,
+        senderPhone: String(fromId),
+        reply: replyText,
+        role: 'AFFILIATE_COMMUNITY_LEADER',
+        activeEngine: 'AFFILIATE_COMMUNITY_POOL',
+      };
+    }
+
     // Teruskan ke BoonPilot Platform Engine yang terpadu (sama persis dengan WhatsApp)
     const platformResult = await processBoonPilotPlatformChat(
       {
@@ -613,12 +850,22 @@ export async function handleTelegramUpdate(
       supabase
     );
 
-    const aiReply = platformResult.reply;
+    let aiReply = platformResult.reply;
 
-    // HANYA sematkan tombol demo/link jika pengguna secara eksplisit memintanya
-    const isExplicitLinkRequested = /(link demo|lihat demo|contoh toko|minta link|kirim link|daftar akun|link daftar|cara daftar|coba demo)/i.test(cleanPrompt);
+    // Ganti tautan fallback statis platform (shop.boontrack.com/boon & boontrack.com/register) dengan URL binding grup
+    if (demoUrl && demoUrl !== 'https://shop.boontrack.com/boon') {
+      aiReply = aiReply.replace(/(?:https?:\/\/)?shop\.boontrack\.com\/boon/g, demoUrl);
+    }
+    if (registerUrl) {
+      aiReply = aiReply
+        .replace(/(?:https?:\/\/)?(?:shop\.)?boontrack\.com\/register(?:\?[^\s\)\<\"]+)?/g, registerUrl)
+        .replace(/(?<![\w\.\-])https:\/\/boontrack\.com(?:\/)?(?!\w)/g, registerUrl);
+    }
+
+    // HANYA sematkan tombol demo/link jika pengguna secara eksplisit memintanya atau reply memuat tautan
+    const isExplicitLinkRequested = /(link demo|lihat demo|contoh toko|minta link|kirim link|daftar akun|link daftar|cara daftar|coba demo|katalog)/i.test(cleanPrompt);
     let promoButtons: TelegramButton[][] | undefined;
-    if (isExplicitLinkRequested) {
+    if (isExplicitLinkRequested || aiReply.includes(demoUrl) || aiReply.includes(registerUrl)) {
       promoButtons = [
         [{ text: '🛍️ Lihat Demo Toko', url: demoUrl }],
         [{ text: '🚀 Daftar Akun Resmi', url: registerUrl }],
