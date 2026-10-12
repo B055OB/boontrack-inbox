@@ -18,6 +18,7 @@ import {
 } from '@/lib/cart/cart-types';
 import { getCartWithItems, markCartConverted, resolveTenantRecord } from '@/lib/cart/cart-engine';
 import { createOrderAndInvoice, CreateOrderPayload } from '@/lib/checkout-service';
+import { normalizePhoneToE164 } from '@/lib/phone';
 
 export interface DirectBuyInput {
   tenantSlug: string;
@@ -262,7 +263,7 @@ export async function processUnifiedOrderCreation(
     shippingCourier: context.shippingCourier || (context.requiresShipping ? 'Kurir Instan' : undefined),
     fulfillmentType: context.fulfillmentType || 'DELIVERY',
     customerName: context.customerData?.name || payloadOverrides.customerName || 'Pelanggan Toko',
-    customerPhone: context.customerData?.phone || payloadOverrides.customerPhone || '',
+    customerPhone: normalizePhoneToE164(context.customerData?.phone || payloadOverrides.customerPhone || ''),
     customerEmail: context.customerData?.email || payloadOverrides.customerEmail || '',
     shippingAddress: context.customerData?.address || payloadOverrides.shippingAddress || '',
     customerCity: context.customerData?.city || payloadOverrides.customerCity || '',

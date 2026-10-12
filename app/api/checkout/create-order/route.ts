@@ -1,4 +1,4 @@
-﻿/**
+/**
  * POST /api/checkout/create-order
  *
  * Server-side proxy untuk createOrderAndInvoice.
@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
+import { normalizePhoneToE164 } from '@/lib/phone';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -40,6 +41,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalisasi dan validasi nomor telepon pelanggan ke format baku E.164 (628xxxxxxxxxx)
+    const normalizedPhone = normalizePhoneToE164(payload.customerPhone);
+    if (!normalizedPhone || normalizedPhone.length < 10) {
+      return NextResponse.json(
+        {
+          error: 'Nomor WhatsApp tidak valid. Masukkan nomor WhatsApp aktif (contoh: 08123456789).',
+          code: 'INVALID_PHONE_NUMBER',
+        },
+        { status: 400 }
+      );
+    }
+
     // Tambahkan client IP dari header request (untuk CAPI tracking)
     const forwardedFor = request.headers.get('x-forwarded-for');
     const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : request.headers.get('x-real-ip') || undefined;
@@ -47,6 +60,7 @@ export async function POST(request: NextRequest) {
 
     const enrichedPayload = {
       ...payload,
+      customerPhone: normalizedPhone,
       tracking_context: {
         ...payload.tracking_context,
         client_ip_address: payload.tracking_context?.client_ip_address || clientIp,

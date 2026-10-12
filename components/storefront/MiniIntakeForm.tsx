@@ -18,6 +18,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { toE164 } from '@/lib/crm/phone-utils';
+import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from '@/lib/phone';
 
 export interface IntakeSubmissionData {
   parentName: string;
@@ -137,15 +138,15 @@ export default function MiniIntakeForm({
       setErrorMsg(isClinicTenant ? 'Mohon isi nama lengkap Ayah atau Bunda.' : 'Mohon isi nama lengkap Anda.');
       return;
     }
-    const cleanPhone = whatsappPhone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 9) {
+    const cleanPhoneE164 = normalizePhoneToE164(whatsappPhone);
+    if (!cleanPhoneE164 || cleanPhoneE164.length < 10) {
       setErrorMsg('Mohon masukkan nomor WhatsApp yang valid (minimal 9 digit).');
       return;
     }
 
     const payload: IntakeSubmissionData = {
       parentName: parentName.trim(),
-      whatsappPhone: cleanPhone.startsWith('0') ? `62${cleanPhone.slice(1)}` : cleanPhone,
+      whatsappPhone: cleanPhoneE164,
       childName: childName.trim() || undefined,
       childAge: childAge.trim() || undefined,
       primaryConcern: selectedConcern,
@@ -282,14 +283,20 @@ Mohon info ketersediaan dan penawaran terbaik. Terima kasih.
                 <Phone className="w-3.5 h-3.5 text-slate-400" />
                 <span>Nomor WhatsApp Aktif <span className="text-rose-500">*</span></span>
               </label>
-              <input
-                type="tel"
-                required
-                value={whatsappPhone}
-                onChange={(e) => setWhatsappPhone(e.target.value)}
-                placeholder="081234567890"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
-              />
+              <div className="relative flex items-center rounded-xl border border-slate-200 bg-slate-50 transition overflow-hidden focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
+                <span className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-100/90 border-r border-slate-200 text-slate-700 font-bold text-xs select-none shrink-0">
+                  <span className="text-sm">🇮🇩</span>
+                  <span>+62</span>
+                </span>
+                <input
+                  type="tel"
+                  required
+                  value={whatsappPhone}
+                  onChange={(e) => setWhatsappPhone(sanitizePhoneInputForPrefix(e.target.value))}
+                  placeholder="812-3456-7890 (atau 0812...)"
+                  className="w-full px-3 py-2.5 text-xs sm:text-sm font-medium focus:outline-hidden bg-transparent"
+                />
+              </div>
             </div>
           </div>
 

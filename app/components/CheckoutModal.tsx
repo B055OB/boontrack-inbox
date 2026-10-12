@@ -10,6 +10,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
 import { normalizeBriefingUrl } from "@/lib/product-catalog";
 import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
+import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
 
 
@@ -628,9 +629,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMessage("");
 
+    const cleanPhoneE164 = normalizePhoneToE164(customerPhone);
+    if (!cleanPhoneE164 || cleanPhoneE164.length < 10) {
+      setErrorMessage("Silakan isi nomor WhatsApp aktif yang valid (minimal 9 digit).");
+      return;
+    }
+
+    setLoading(true);
 
     const trackingParams = getTrackingData();
     const resolvedProductType = isBookingOrService
@@ -708,7 +715,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         tenantStaticQris: tenantStaticQris || undefined,
         affiliateCommission: 0,
         customerName,
-        customerPhone,
+        customerPhone: cleanPhoneE164,
         customerEmail: isDigital ? (customerEmail || undefined) : undefined,
         fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
         pickupInfo: isPickup ? {
@@ -788,7 +795,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             orderId: result.orderId,
             amount: totalAmount,
             currency: 'IDR',
-            customerPhone: customerPhone || undefined,
+            customerPhone: cleanPhoneE164 || undefined,
             customerName: customerName || undefined,
             customerEmail: customerEmail || undefined,
             fbp: clientTrackingContext.fbp,
@@ -806,7 +813,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             orderId: result.orderId,
             tenantSlug,
             customerName,
-            customerPhone,
+            customerPhone: cleanPhoneE164,
             productTitle: product.title,
             amount: totalAmount,
             shippingAddress: isPhysical ? shippingAddress : undefined,
@@ -833,7 +840,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               slot_date: product.slot.slotDate,
               start_time: product.slot.startTime,
               customer_name: customerName,
-              customer_phone: customerPhone,
+              customer_phone: cleanPhoneE164,
               customer_email: customerEmail,
               business_topic: product.slot.businessTopic,
               service_title: product.title,
@@ -1545,14 +1552,20 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
               <div className="space-y-1">
                 <label className="text-slate-400 font-medium">Nomor WhatsApp Aktif *</label>
-                <input
-                  type="tel"
-                  required
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Contoh: 081234567890"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs font-mono"
-                />
+                <div className="relative flex items-center rounded-xl border border-slate-800 bg-slate-950 transition overflow-hidden focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-900 border-r border-slate-800 text-slate-300 font-bold text-xs select-none shrink-0">
+                    <span className="text-sm">🇮🇩</span>
+                    <span>+62</span>
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(sanitizePhoneInputForPrefix(e.target.value))}
+                    placeholder="812-3456-7890 (atau 0812...)"
+                    className="w-full px-3 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none text-sm md:text-xs font-mono bg-transparent"
+                  />
+                </div>
               </div>
 
               {/* JIKA DIGITAL: Tampilkan Email Wajib, JIKA FISIK/KULINER: Tampilkan Email Opsional */}

@@ -5,6 +5,9 @@ import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
 import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 import { generateUniqueCodeForTenant } from "@/lib/unique-code-generator";
+import { normalizePhoneToE164, isValidIndonesianPhone } from "@/lib/phone";
+
+export { normalizePhoneToE164, isValidIndonesianPhone };
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -82,6 +85,11 @@ export interface CreateOrderPayload {
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
+  // Normalisasi nomor HP customer ke format baku E.164 (628xxxxxxxxxx)
+  if (payload.customerPhone) {
+    payload.customerPhone = normalizePhoneToE164(payload.customerPhone);
+  }
+
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase client not initialized");
 

@@ -47,6 +47,23 @@ import {
   checkRuntimeBotDecisionGate,
   setRuntimeSessionCache,
 } from '@/lib/whatsapp/bot-control-service';
+import {
+  AUTO_REJECT_CALL_MESSAGE,
+  rejectEvolutionCall,
+  handleBaileysIncomingCalls,
+  attachBaileysCallRejectListener,
+  BaileysCall,
+  BaileysSocketLike,
+} from '@/lib/whatsapp/baileys-call-handler';
+
+export {
+  AUTO_REJECT_CALL_MESSAGE,
+  rejectEvolutionCall,
+  handleBaileysIncomingCalls,
+  attachBaileysCallRejectListener,
+  type BaileysCall,
+  type BaileysSocketLike,
+};
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -419,6 +436,106 @@ export async function processEvolutionWebhookEvent(
     } catch {}
   }
   const hardeningPolicy = resolveHardeningPolicy(tenantRecordForHardening);
+
+  // 2.5 Handle Incoming WhatsApp Call (Auto-Reject & Dedicated Bot Auto-Reply)
+  if (
+    rawEvent.includes('CALL') ||
+    rawEvent === 'CALL' ||
+    rawEvent === 'CALLS' ||
+    rawEvent === 'CALL_UPDATE' ||
+    rawEvent === 'CALL_OFFER' ||
+    Boolean(payload.call) ||
+    Boolean(payload.data?.call)
+  ) {
+    let callList: any[] = [];
+    if (Array.isArray(payload.data)) {
+      callList = payload.data;
+    } else if (Array.isArray(payload.data?.calls)) {
+      callList = payload.data.calls;
+    } else if (payload.data?.call && typeof payload.data.call === 'object') {
+      callList = [payload.data.call];
+    } else if (
+      payload.data &&
+      typeof payload.data === 'object' &&
+      (payload.data.id || payload.data.from || payload.data.status)
+    ) {
+      callList = [payload.data];
+    } else if (Array.isArray(payload.calls)) {
+      callList = payload.calls;
+    } else if (payload.call && typeof payload.call === 'object') {
+      callList = [payload.call];
+    }
+
+    let rejectedCallsCount = 0;
+
+    for (const callItem of callList) {
+      const callStatus = String(callItem.status || '').toLowerCase();
+      // Hanya tolak panggilan saat statusnya adalah offer (panggilan baru masuk diajukan)
+      if (callStatus === 'offer') {
+        const callId = String(callItem.id || callItem.callId || '');
+        const fromJid = String(callItem.from || callItem.sender || callItem.remoteJid || '');
+        const cleanCallerPhone = cleanCustomerPhone(fromJid);
+
+        if (callId && fromJid) {
+          // 1. Putus / tolak panggilan otomatis via Evolution API (Baileys)
+          await rejectEvolutionCall(
+            EVOLUTION_API_URL,
+            instanceName,
+            callId,
+            fromJid,
+            resolvedApiKey
+          );
+
+          // 2. Kirim pesan notifikasi singkat bot
+          if (cleanCallerPhone) {
+            await sendEvolutionTextMessage(
+              instanceName,
+              cleanCallerPhone,
+              AUTO_REJECT_CALL_MESSAGE,
+              resolvedApiKey,
+              tenantId
+            );
+
+            // 3. Catat di Inbox Supabase Ledger (Inbound Call + Outbound Auto-Reply)
+            try {
+              await persistInboundMessage({
+                tenantId,
+                tenantSlug: tenantSlug || undefined,
+                customerPhone: cleanCallerPhone,
+                messageBody: '[Panggilan Suara/Video WhatsApp Masuk - Ditolak Otomatis]',
+                senderType: 'customer',
+                messageType: 'call',
+                rawPayload: callItem,
+              });
+
+              await persistOutboundMessage({
+                tenantId,
+                tenantSlug: tenantSlug || undefined,
+                customerPhone: cleanCallerPhone,
+                messageBody: AUTO_REJECT_CALL_MESSAGE,
+                senderType: 'bot',
+                senderName: 'Boon Assistant (Auto-Reply)',
+                rawPayload: { callId, autoRejected: true },
+              });
+            } catch (persistErr) {
+              console.warn('[Evolution Call Handler] Warning persisting call event to inbox:', persistErr);
+            }
+          }
+
+          rejectedCallsCount++;
+        }
+      }
+    }
+
+    if (rejectedCallsCount > 0 || rawEvent.includes('CALL')) {
+      return {
+        success: true,
+        processed: rejectedCallsCount,
+        event: 'CALL_AUTO_REJECTED',
+        status: 'rejected',
+      };
+    }
+  }
 
   // 3. Normalisasi Daftar Pesan
   let messagesList: any[] = [];

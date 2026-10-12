@@ -62,6 +62,7 @@ import {
   getTrackingParams
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
+import { normalizePhoneToE164, sanitizePhoneInputForPrefix, formatPhoneForDisplay } from '@/lib/phone';
 import { captureStoreReseller, getActiveResellerCode } from '@/lib/store-reseller';
 import { 
   resolveSinglePageProduct, 
@@ -649,10 +650,11 @@ function SingleProductContent() {
     product.metadata?.cta_label ||
     'Beli Sekarang';
 
-  const queryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
+  const rawQueryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
+  const queryPhone = sanitizePhoneInputForPrefix(rawQueryPhone);
   const queryName = (searchParams.get('name') || searchParams.get('buyer_name') || '').trim();
   const queryEmail = (searchParams.get('email') || searchParams.get('buyer_email') || '').trim().toLowerCase();
-  const isPhoneLocked = Boolean(queryPhone);
+  const isPhoneLocked = Boolean(rawQueryPhone);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [buyerName, setBuyerName] = useState(() => queryName);
@@ -662,10 +664,10 @@ function SingleProductContent() {
   const [waOrderSuccess, setWaOrderSuccess] = useState<{ token: string; url: string } | null>(null);
 
   useEffect(() => {
-    if (queryPhone) {
-      setBuyerPhone(queryPhone);
+    if (rawQueryPhone) {
+      setBuyerPhone(sanitizePhoneInputForPrefix(rawQueryPhone));
     }
-  }, [queryPhone]);
+  }, [rawQueryPhone]);
 
   useEffect(() => {
     if (queryName && !buyerName) {
@@ -1825,10 +1827,9 @@ function SingleProductContent() {
       return;
     }
 
-    // 2. Validasi Nomor WhatsApp Pembeli (minimal 9 digit angka)
-    const cleanPhone = buyerPhone.trim().replace(/[^0-9+]/g, '');
-    const phoneDigitsOnly = cleanPhone.replace(/[^0-9]/g, '');
-    if (!cleanPhone || phoneDigitsOnly.length < 9) {
+    // 2. Validasi Nomor WhatsApp Pembeli (format E.164 baku 628xxxxxxxxxx)
+    const cleanPhoneE164 = normalizePhoneToE164(buyerPhone);
+    if (!cleanPhoneE164 || cleanPhoneE164.length < 10) {
       setErrorMessage('Silakan isi nomor WhatsApp aktif yang valid (minimal 9 digit).');
       focusAndScrollField('buyer-phone-input');
       return;
@@ -1856,7 +1857,7 @@ function SingleProductContent() {
 
     // Perbarui state lokal dengan nilai bersih
     setBuyerName(cleanName);
-    setBuyerPhone(cleanPhone);
+    setBuyerPhone(sanitizePhoneInputForPrefix(buyerPhone));
     setBuyerEmail(cleanEmail);
 
     const isPickup = isFoodPreset ? foodDiningOption === 'PICKUP' : fulfillmentType === 'PICKUP';
@@ -1957,7 +1958,7 @@ function SingleProductContent() {
         paymentMethod,
         affiliateCommission: 0,
         customerName: cleanName,
-        customerPhone: cleanPhone,
+        customerPhone: cleanPhoneE164,
         customerEmail: isDigitalPreset ? cleanEmail : (cleanEmail || undefined),
         reference_token: directRefToken,
         affiliateCode: undefined, // Murni direct store ke toko merchant
@@ -2009,8 +2010,9 @@ function SingleProductContent() {
       return;
     }
 
-    if (!buyerPhone.trim()) {
-      setErrorMessage('Silakan isi nomor WhatsApp aktif pemesan.');
+    const cleanPhoneE164 = normalizePhoneToE164(buyerPhone);
+    if (!cleanPhoneE164 || cleanPhoneE164.length < 10) {
+      setErrorMessage('Silakan isi nomor WhatsApp aktif pemesan yang valid (minimal 9 digit).');
       return;
     }
 
@@ -2112,7 +2114,7 @@ function SingleProductContent() {
         paymentMethod: 'manual_transfer',
         affiliateCommission: 0,
         customerName: buyerName.trim(),
-        customerPhone: buyerPhone.trim(),
+        customerPhone: cleanPhoneE164,
         customerEmail: isDigitalPreset ? buyerEmail.trim() : (buyerEmail.trim() || undefined),
         reference_token: refToken,
         reseller_code: resellerCode || undefined,
@@ -2141,7 +2143,7 @@ function SingleProductContent() {
         customMessage: config.whatsapp_custom_message,
         referenceToken: refToken,
         buyerName: buyerName.trim(),
-        buyerPhone: buyerPhone.trim(),
+        buyerPhone: cleanPhoneE164,
         totalAmount,
         variant: selectedVariant,
         quantity,
@@ -2163,7 +2165,8 @@ function SingleProductContent() {
   };
 
   const handleSecondaryWhatsAppClick = async () => {
-    if (buyerPhone.trim()) {
+    const cleanPhoneE164 = normalizePhoneToE164(buyerPhone);
+    if (cleanPhoneE164 && cleanPhoneE164.length >= 10) {
       const refToken = generateReferenceToken();
       const isPickup = fulfillmentType === 'PICKUP';
       try {
@@ -2190,7 +2193,7 @@ function SingleProductContent() {
           productType,
           paymentMethod: 'manual_transfer',
           customerName: buyerName.trim() || 'Pelanggan Toko',
-          customerPhone: buyerPhone.trim(),
+          customerPhone: cleanPhoneE164,
           customerEmail: buyerEmail.trim() || undefined,
           reference_token: refToken,
           reseller_code: resellerCode || undefined,
@@ -2215,7 +2218,7 @@ function SingleProductContent() {
         customMessage: config.whatsapp_custom_message,
         referenceToken: refToken,
         buyerName: buyerName.trim(),
-        buyerPhone: buyerPhone.trim(),
+        buyerPhone: cleanPhoneE164,
         totalAmount,
         variant: selectedVariant,
         quantity,
@@ -2475,22 +2478,30 @@ function SingleProductContent() {
           <label className="font-bold text-slate-700 block mb-1">
             Nomor WhatsApp Aktif <span className="text-rose-500">*</span>
           </label>
-          <input
-            type="tel"
-            required
-            readOnly={isPhoneLocked}
-            placeholder="Contoh: 081234567890"
-            value={buyerPhone}
-            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-            onChange={(e) => {
-              if (!isPhoneLocked) setBuyerPhone(e.target.value);
-            }}
-            className={`w-full border rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-sm md:text-xs font-mono transition ${
-              isPhoneLocked
-                ? 'bg-slate-100/90 border-slate-200 text-slate-700 cursor-not-allowed select-none'
-                : 'bg-slate-50 border-slate-200 focus:border-emerald-600 focus:bg-white'
-            }`}
-          />
+          <div className={`relative flex items-center rounded-xl border transition overflow-hidden ${
+            isPhoneLocked
+              ? 'bg-slate-100/90 border-slate-200'
+              : 'bg-slate-50 border-slate-200 focus-within:border-emerald-600 focus-within:bg-white focus-within:ring-1 focus-within:ring-emerald-500/20'
+          }`}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-100/90 border-r border-slate-200 text-slate-700 font-bold text-xs select-none shrink-0">
+              <span className="text-sm">🇮🇩</span>
+              <span>+62</span>
+            </span>
+            <input
+              type="tel"
+              required
+              readOnly={isPhoneLocked}
+              placeholder="812-3456-7890 (atau 0812...)"
+              value={buyerPhone}
+              onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
+              onChange={(e) => {
+                if (!isPhoneLocked) setBuyerPhone(sanitizePhoneInputForPrefix(e.target.value));
+              }}
+              className={`w-full px-3 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-sm md:text-xs font-mono bg-transparent transition ${
+                isPhoneLocked ? 'cursor-not-allowed select-none' : ''
+              }`}
+            />
+          </div>
           {isPhoneLocked && (
             <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 w-fit">
               <span>🔒 Nomor WhatsApp terverifikasi</span>
@@ -2957,26 +2968,35 @@ function SingleProductContent() {
           <label className="font-bold text-slate-700 block mb-1">
             Nomor WhatsApp Aktif <span className="text-rose-500">*</span>
           </label>
-          <input
-            id="buyer-phone-input"
-            type="tel"
-            required
-            readOnly={isPhoneLocked}
-            placeholder="Contoh: 081234567890"
-            value={buyerPhone}
-            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-            onChange={(e) => {
-              if (!isPhoneLocked) {
-                setBuyerPhone(e.target.value);
-                if (errorMessage) setErrorMessage('');
-              }
-            }}
-            className={`w-full border rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-sm md:text-xs font-mono transition ${
-              isPhoneLocked
-                ? 'bg-slate-100/90 border-slate-200 text-slate-700 cursor-not-allowed select-none'
-                : 'bg-slate-50 border-slate-200 focus:border-blue-600 focus:bg-white'
-            }`}
-          />
+          <div className={`relative flex items-center rounded-xl border transition overflow-hidden ${
+            isPhoneLocked
+              ? 'bg-slate-100/90 border-slate-200'
+              : 'bg-slate-50 border-slate-200 focus-within:border-blue-600 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-500/20'
+          }`}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-100/90 border-r border-slate-200 text-slate-700 font-bold text-xs select-none shrink-0">
+              <span className="text-sm">🇮🇩</span>
+              <span>+62</span>
+            </span>
+            <input
+              id="buyer-phone-input"
+              type="tel"
+              required
+              readOnly={isPhoneLocked}
+              placeholder="812-3456-7890 (atau 0812...)"
+              value={buyerPhone}
+              onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
+              onChange={(e) => {
+                if (!isPhoneLocked) {
+                  const sanitized = sanitizePhoneInputForPrefix(e.target.value);
+                  setBuyerPhone(sanitized);
+                  if (errorMessage) setErrorMessage('');
+                }
+              }}
+              className={`w-full px-3 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-sm md:text-xs font-mono bg-transparent transition ${
+                isPhoneLocked ? 'cursor-not-allowed select-none' : ''
+              }`}
+            />
+          </div>
           {isPhoneLocked && (
             <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 w-fit">
               <span>🔒 Nomor WhatsApp terverifikasi</span>
@@ -4707,7 +4727,7 @@ function SingleProductContent() {
                         isClinic={tenant === 'tumbuh-kembang-anak' || tenantCategory === 'KLINIK_KONSULTASI'}
                         onDirectCheckout={(data) => {
                           setBuyerName(data.parentName);
-                          setBuyerPhone(data.whatsappPhone);
+                          setBuyerPhone(sanitizePhoneInputForPrefix(data.whatsappPhone));
                           handleOpenCheckout();
                         }}
                       />
