@@ -755,8 +755,28 @@ function SingleProductContent() {
   const [uniqueCode] = useState(() => Math.floor(1 + Math.random() * 999));
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
-  const [resellerCode, setResellerCode] = useState<string | undefined>(undefined);
+  const [affiliateCode, setAffiliateCode] = useState<string | undefined>(() => {
+    if (typeof window === 'undefined') return undefined;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const qRef = sp.get('ref') || sp.get('aff') || sp.get('ref_id') || sp.get('referral');
+      if (qRef) return qRef.trim();
+      return sessionStorage.getItem(`bt_ref_${tenant.toLowerCase()}`) || localStorage.getItem(`bt_ref_${tenant.toLowerCase()}`) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const [resellerCode, setResellerCode] = useState<string | undefined>(() => {
+    if (typeof window === 'undefined') return undefined;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const qRes = sp.get('r') || sp.get('reseller') || sp.get('reseller_id') || sp.get('resellerId');
+      if (qRes) return qRes.trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase() || undefined;
+      return getActiveResellerCode(tenant) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
   const rawCategory = (product.category || '').toLowerCase();
@@ -1515,15 +1535,35 @@ function SingleProductContent() {
       price: basePrice
     });
 
-    const refFromUrl = searchParams.get('ref') || searchParams.get('aff');
+    const refFromUrl = searchParams.get('ref') || searchParams.get('aff') || searchParams.get('ref_id') || searchParams.get('referral');
     if (refFromUrl) {
-      setAffiliateCode(refFromUrl.trim());
+      const cleanRef = refFromUrl.trim();
+      setAffiliateCode(cleanRef);
+      if (typeof window !== 'undefined') {
+        try {
+          const key = `bt_ref_${tenant.toLowerCase()}`;
+          sessionStorage.setItem(key, cleanRef);
+          localStorage.setItem(key, cleanRef);
+        } catch (_) {}
+      }
     } else {
-      setAffiliateCode(undefined);
+      if (typeof window !== 'undefined') {
+        try {
+          const key = `bt_ref_${tenant.toLowerCase()}`;
+          const savedRef = sessionStorage.getItem(key) || localStorage.getItem(key);
+          if (savedRef) {
+            setAffiliateCode(savedRef);
+          }
+        } catch (_) {}
+      }
     }
 
-    // Resolusi Store Reseller (?r= atau ?reseller=) secara non-blocking
-    const resellerFromUrl = searchParams.get('r') || searchParams.get('reseller');
+    // Resolusi Store Reseller (?r= atau ?reseller= atau ?reseller_id=) secara non-blocking
+    const resellerFromUrl =
+      searchParams.get('r') ||
+      searchParams.get('reseller') ||
+      searchParams.get('reseller_id') ||
+      searchParams.get('resellerId');
     if (resellerFromUrl) {
       const cleanReseller = resellerFromUrl.trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase();
       setResellerCode(cleanReseller || undefined);
@@ -1992,8 +2032,10 @@ function SingleProductContent() {
         customerPhone: cleanPhoneE164,
         customerEmail: isDigitalPreset ? cleanEmail : (cleanEmail || undefined),
         reference_token: directRefToken,
-        affiliateCode: undefined, // Murni direct store ke toko merchant
+        affiliateCode: affiliateCode || undefined,
+        ref: affiliateCode || undefined,
         reseller_code: resellerCode || undefined,
+        reseller_id: resellerCode || undefined,
         tracking: trackingParams,
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {
@@ -2152,7 +2194,10 @@ function SingleProductContent() {
         customerPhone: cleanPhoneE164,
         customerEmail: isDigitalPreset ? buyerEmail.trim() : (buyerEmail.trim() || undefined),
         reference_token: refToken,
+        affiliateCode: affiliateCode || undefined,
+        ref: affiliateCode || undefined,
         reseller_code: resellerCode || undefined,
+        reseller_id: resellerCode || undefined,
         tracking: trackingParams,
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {

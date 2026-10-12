@@ -24,6 +24,7 @@ export interface CreateOrderPayload {
   customerEmail?: string;
   reference_token?: string;
   affiliateCode?: string;
+  ref?: string;
   managerId?: string;
   ctwa_clid?: string;
   tracking?: Record<string, any>;
@@ -300,11 +301,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
     customer_email: payload.customerEmail || "",
-    affiliate_code: payload.affiliateCode || null,
+    affiliate_code: payload.affiliateCode || payload.ref || null,
     manager_id: payload.managerId || null,
-    reseller_code: payload.reseller_code || null,
+    reseller_code: payload.reseller_code || payload.reseller_id || null,
     reseller_attribution_id: payload.reseller_attribution_id || null,
-    reseller_id: payload.reseller_id || null,
+    reseller_id: payload.reseller_id || payload.reseller_code || null,
     utm_source: payload.tracking?.utm_source || null,
     utm_medium: payload.tracking?.utm_medium || null,
     utm_campaign: payload.tracking?.utm_campaign || null,

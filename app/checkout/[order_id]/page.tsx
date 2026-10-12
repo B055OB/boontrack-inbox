@@ -757,18 +757,24 @@ export default function CheckoutPage({ params }: Props) {
   const orderQrImage = order?.qr_code_url || (order?.qr_string && (order.qr_string.startsWith('http://') || order.qr_string.startsWith('https://')) ? order.qr_string : '');
   const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
 
-  // Dynamic QRIS: pastikan selalu dinamis jika ada payload string EMVCo (000201...)
-  // Prioritaskan payload milik tenant jika tersedia. Jika kosong/null, gunakan Platform Fallback QRIS resmi BoonTrack.
-  const candidateQris = (fallbackQrisString && fallbackQrisString.startsWith('000201'))
-    ? fallbackQrisString
-    : ((order?.qr_string && order.qr_string.startsWith('000201'))
-        ? order.qr_string
-        : (fallbackQrisString || BOONTRACK_PLATFORM_FALLBACK_QRIS));
+  // Resolusi payload string QRIS milik tenant (jika ada string EMVCo 000201...)
+  const tenantRawQrisString =
+    (fallbackQrisString && fallbackQrisString.startsWith('000201') ? fallbackQrisString : '') ||
+    (order?.qr_string && order.qr_string.startsWith('000201') ? order.qr_string : '') ||
+    (fallbackQrisString && !fallbackQrisString.startsWith('http') ? fallbackQrisString : '');
 
-  const rawQrisValue =
-    (candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '') ||
-    generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) ||
-    BOONTRACK_PLATFORM_FALLBACK_QRIS;
+  // Dynamic QRIS & Fallback Platform:
+  // 1. Jika tenant memiliki string QRIS EMVCo: gunakan string tenant untuk membuat QRIS dinamis.
+  // 2. Jika tenant TIDAK memiliki string tapi memiliki gambar QRIS aktif (seperti buzzerukm / upload dashboard):
+  //    JANGAN gunakan fallback string platform agar UI me-render gambar QRIS asli milik tenant.
+  // 3. Fallback platform QRIS BoonTrack HANYA aktif jika konfigurasi tenant bernilai null/kosong (tanpa string & tanpa gambar).
+  const effectiveQrisPayload = tenantRawQrisString
+    ? tenantRawQrisString
+    : (!candidateQrImageUrl ? BOONTRACK_PLATFORM_FALLBACK_QRIS : '');
+
+  const rawQrisValue = effectiveQrisPayload
+    ? (generateDynamicQRIS(effectiveQrisPayload, grossAmount) || effectiveQrisPayload)
+    : '';
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||
     tenant?.metadata?.whatsapp ||

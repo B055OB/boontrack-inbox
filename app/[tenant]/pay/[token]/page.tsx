@@ -190,29 +190,33 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
   const handleDownloadQR = () => {
     if (typeof document === 'undefined') return;
     const svg = document.getElementById('qris-svg-element');
-    if (!svg) return;
-
-    try {
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = img.width + 40;
-        canvas.height = img.height + 40;
-        if (ctx) {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 20, 20);
-          const a = document.createElement('a');
-          a.download = `QRIS-${order?.id || token}.png`;
-          a.href = canvas.toDataURL('image/png');
-          a.click();
-        }
-      };
-      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-    } catch (e) {
-      console.warn('[DedicatedPayToken] Error downloading QR code:', e);
+    if (svg) {
+      try {
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width + 40;
+          canvas.height = img.height + 40;
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 20, 20);
+            const a = document.createElement('a');
+            a.download = `QRIS-${order?.id || token}.png`;
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+          }
+        };
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        return;
+      } catch (e) {
+        console.warn('[DedicatedPayToken] Error downloading QR code:', e);
+      }
+    }
+    if (orderQrImageUrl) {
+      window.open(orderQrImageUrl, '_blank');
     }
   };
 
@@ -319,17 +323,37 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
     tenant?.metadata?.qris_data ||
     '';
 
+  const fallbackQrisImage =
+    tenant?.qris_image_url ||
+    tenant?.qris_url ||
+    tenant?.qris_image ||
+    tenant?.metadata?.qris_image_url ||
+    tenant?.metadata?.qris_url ||
+    tenant?.metadata?.qris_image ||
+    tenant?.metadata?.payment_settings?.qris ||
+    tenant?.metadata?.payment_config?.qris_image_url ||
+    tenant?.metadata?.payment_config?.manual_config?.qris_image_url ||
+    '';
+
   const orderQrString = order?.qr_string || '';
-  const candidateQris = (rawStaticQris && rawStaticQris.startsWith('000201'))
-    ? rawStaticQris
-    : ((orderQrString && orderQrString.startsWith('000201'))
-        ? orderQrString
-        : (rawStaticQris || BOONTRACK_PLATFORM_FALLBACK_QRIS));
-  const rawQrisValue =
-    (candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '') ||
-    generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) ||
-    BOONTRACK_PLATFORM_FALLBACK_QRIS;
-  const orderQrImageUrl = order?.qr_code_url || (orderQrString && orderQrString.startsWith('http') ? orderQrString : '');
+  const orderQrImageUrl =
+    order?.qr_code_url ||
+    (orderQrString && (orderQrString.startsWith('http://') || orderQrString.startsWith('https://')) ? orderQrString : '') ||
+    fallbackQrisImage;
+
+  const tenantRawQrisString =
+    (rawStaticQris && rawStaticQris.startsWith('000201') ? rawStaticQris : '') ||
+    (orderQrString && orderQrString.startsWith('000201') ? orderQrString : '') ||
+    (rawStaticQris && !rawStaticQris.startsWith('http') ? rawStaticQris : '');
+
+  // Fallback platform QRIS HANYA aktif jika konfigurasi tenant bernilai null/kosong (tanpa string & tanpa gambar)
+  const effectiveQrisPayload = tenantRawQrisString
+    ? tenantRawQrisString
+    : (!orderQrImageUrl ? BOONTRACK_PLATFORM_FALLBACK_QRIS : '');
+
+  const rawQrisValue = effectiveQrisPayload
+    ? (generateDynamicQRIS(effectiveQrisPayload, grossAmount) || effectiveQrisPayload)
+    : '';
 
   const hasQris = Boolean(rawQrisValue || orderQrImageUrl);
   const hasBank = bankAccounts.length > 0;
@@ -638,10 +662,18 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
                   ) : orderQrImageUrl ? (
                     <img
                       src={orderQrImageUrl}
-                      alt="QRIS Barcode"
+                      alt="QRIS Toko Resmi"
                       className="w-56 h-56 object-contain rounded-lg"
                     />
-                  ) : null}
+                  ) : (
+                    <QRCodeSVG
+                      id="qris-svg-element"
+                      value={generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) || BOONTRACK_PLATFORM_FALLBACK_QRIS}
+                      size={220}
+                      level="M"
+                      includeMargin={true}
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-1">

@@ -239,14 +239,25 @@ export function extractResellerCodeFromQuery(
   if (typeof source === 'string') {
     try {
       const url = new URL(source, 'http://localhost');
-      raw = url.searchParams.get('r') || url.searchParams.get('reseller');
+      raw =
+        url.searchParams.get('r') ||
+        url.searchParams.get('reseller') ||
+        url.searchParams.get('reseller_id') ||
+        url.searchParams.get('resellerId');
     } catch {
       raw = null;
     }
   } else if (source instanceof URLSearchParams) {
-    raw = source.get('r') || source.get('reseller');
+    raw =
+      source.get('r') ||
+      source.get('reseller') ||
+      source.get('reseller_id') ||
+      source.get('resellerId');
   } else if (typeof source === 'object') {
-    raw = (source['r'] || source['reseller']) as string | null;
+    raw = (source['r'] ||
+      source['reseller'] ||
+      source['reseller_id'] ||
+      source['resellerId']) as string | null;
   }
 
   if (!raw || typeof raw !== 'string') return null;

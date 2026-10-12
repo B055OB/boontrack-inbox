@@ -43,12 +43,6 @@ export async function generateMetadata({
     const storeName = store?.name || cleanTenant.replace(/[-_]/g, ' ').toUpperCase();
     const metaObj = (store?.metadata as Record<string, any>) || {};
 
-    console.log("DEBUG TENANT METADATA:", JSON.stringify({
-      slug: resolvedParams.tenant,
-      store,
-      metaObj,
-    }, null, 2));
-
     const description =
       metaObj.description ||
       metaObj.tagline ||
@@ -132,7 +126,7 @@ export async function generateMetadata({
       }
     }
 
-    const rawOgImage = storeLogo || explicitOgImage || bannerUrl || firstProductImage || '/default-og.png';
+    const rawOgImage = explicitOgImage || bannerUrl || storeLogo || firstProductImage || '/default-og.png';
 
     // Normalisasi URL gambar ke Absolute URL kanonikal yang valid untuk bot crawler WhatsApp / Facebook
     let resolvedOgImage = rawOgImage;

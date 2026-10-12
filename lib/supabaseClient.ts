@@ -3,23 +3,37 @@ import { isValidUuid, safeUuidOrNull } from './uuid-guard';
 
 export { isValidUuid, safeUuidOrNull };
 
-export const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+// ─── Fail-closed validation (module load time) ───────────────────────────────
+const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const _anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
+if (!_url) {
+  throw new Error(
+    '[Supabase Config] Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL'
+  );
+}
+if (!_anonKey) {
+  throw new Error(
+    '[Supabase Config] Missing required environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  );
+}
 
-export const SUPABASE_PUBLISHABLE_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7';
+export const SUPABASE_URL: string = _url;
+export const SUPABASE_ANON_KEY: string = _anonKey;
+export const SUPABASE_PUBLISHABLE_KEY: string =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
 
-export const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjQxNzIzMiwiZXhwIjoyMTAxOTkzMjMyfQ.TJMAEJQXeAv33EcwCt6OVyaC0ZFTROWzuljvm07i0Qg';
+/**
+ * SERVER-ONLY. Reads from process.env — no hardcoded fallback.
+ * Returns empty string in browser context to prevent accidental exposure.
+ * Use getSupabaseAdmin() for all admin-privileged DB operations.
+ */
+export const SUPABASE_SERVICE_ROLE_KEY: string =
+  typeof window === 'undefined'
+    ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
+    : '';
 
-// Direct export of client-side Supabase instance (Hardcoded fallback resolves 'supabaseKey is required')
+// Direct export of browser-safe Supabase client
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const supabaseUrl = SUPABASE_URL;
@@ -89,13 +103,18 @@ export const getSupabase = () => {
 let lastConfiguredAdminKey: string | null = null;
 
 export const getSupabaseAdmin = (): SupabaseClient => {
-  const serviceKey = (
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    SUPABASE_SERVICE_ROLE_KEY
-  ).trim();
+  if (typeof window !== 'undefined') {
+    throw new Error('[Security Guard] getSupabaseAdmin() cannot be called in client-side browser context.');
+  }
 
-  if (!supabaseAdminInstance || (serviceKey && serviceKey !== lastConfiguredAdminKey)) {
+  // Read ONLY from process.env — no hardcoded fallback, no alias chain.
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
+
+  if (!serviceKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
+  }
+
+  if (!supabaseAdminInstance || serviceKey !== lastConfiguredAdminKey) {
     lastConfiguredAdminKey = serviceKey;
     supabaseAdminInstance = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },

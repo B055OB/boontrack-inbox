@@ -1,20 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+// ─── Fail-closed validation (module load time) ───────────────────────────────
+const _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const _anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
+if (!_url) {
+  throw new Error(
+    '[Supabase Config] Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL'
+  );
+}
+if (!_anonKey) {
+  throw new Error(
+    '[Supabase Config] Missing required environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  );
+}
 
-export const SUPABASE_PUBLISHABLE_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  'sb_publishable_OXETaOPFYI_AKCrKpLEr0Q__RUHScg7';
+export const SUPABASE_URL: string = _url;
+export const SUPABASE_ANON_KEY: string = _anonKey;
+export const SUPABASE_PUBLISHABLE_KEY: string =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
 
-export const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjQxNzIzMiwiZXhwIjoyMTAxOTkzMjMyfQ.TJMAEJQXeAv33EcwCt6OVyaC0ZFTROWzuljvm07i0Qg';
+/**
+ * SERVER-ONLY. Reads from process.env — no hardcoded fallback.
+ * Returns empty string in browser context to prevent accidental exposure.
+ */
+export const SUPABASE_SERVICE_ROLE_KEY: string =
+  typeof window === 'undefined'
+    ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
+    : '';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
