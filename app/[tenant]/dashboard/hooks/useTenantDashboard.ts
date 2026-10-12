@@ -908,7 +908,7 @@ export function useTenantDashboard() {
               is_unlimited: p.is_unlimited !== undefined ? p.is_unlimited : true,
               weight_grams: p.weight_grams,
               fulfillment_metadata: p.fulfillment_metadata,
-              single_page_config: p.single_page_config,
+              single_page_config: p.single_page_config || p.fulfillment_metadata?.single_page_config || p.metadata?.single_page_config,
             }));
 
             // Gabungkan dengan prioritas metadata (update terbaru merchant)
@@ -1951,24 +1951,33 @@ export function useTenantDashboard() {
       min_spend: 50000,
     };
 
-    const cfg = prod.single_page_config;
+    const cfg = prod.single_page_config || prod.fulfillment_metadata?.single_page_config || (prod as any).metadata?.single_page_config;
+
+    const isCustomHtmlActive = Boolean(
+      (cfg?.enable_custom_html || (cfg as any)?.is_custom_html_enabled || (cfg as any)?.use_custom_html) &&
+      cfg?.custom_html?.trim()
+    );
 
     setSinglePageForm({
       slug: prodSlug,
       checkout_action_mode: cfg?.checkout_action_mode || 'DIRECT',
       whatsapp_custom_message: cfg?.whatsapp_custom_message || '',
       whatsapp_number: cfg?.whatsapp_number || '',
-      enable_hero: cfg?.enable_hero ?? true,
-      enable_client_logos: cfg?.enable_client_logos ?? false,
-      enable_problem_solution: cfg?.enable_problem_solution ?? true,
-      enable_us_vs_them: cfg?.enable_us_vs_them ?? true,
-      enable_testimonials: cfg?.enable_testimonials ?? true,
-      enable_offer: cfg?.enable_offer ?? true,
-      enable_faq: cfg?.enable_faq ?? false,
-      enable_payment: cfg?.enable_payment ?? true,
-      enable_custom_html: cfg?.enable_custom_html ?? false,
+      enable_hero: isCustomHtmlActive ? (cfg?.enable_hero ?? false) : (cfg?.enable_hero ?? true),
+      enable_client_logos: isCustomHtmlActive ? (cfg?.enable_client_logos ?? false) : (cfg?.enable_client_logos ?? false),
+      enable_problem_solution: isCustomHtmlActive ? (cfg?.enable_problem_solution ?? false) : (cfg?.enable_problem_solution ?? true),
+      enable_us_vs_them: isCustomHtmlActive ? (cfg?.enable_us_vs_them ?? false) : (cfg?.enable_us_vs_them ?? true),
+      enable_testimonials: isCustomHtmlActive ? (cfg?.enable_testimonials ?? false) : (cfg?.enable_testimonials ?? true),
+      enable_offer: isCustomHtmlActive ? (cfg?.enable_offer ?? false) : (cfg?.enable_offer ?? true),
+      enable_faq: isCustomHtmlActive ? (cfg?.enable_faq ?? false) : (cfg?.enable_faq ?? false),
+      enable_payment: isCustomHtmlActive ? (cfg?.enable_payment ?? false) : (cfg?.enable_payment ?? true),
+      enable_custom_html: isCustomHtmlActive || Boolean(cfg?.enable_custom_html),
+      is_custom_html_enabled: isCustomHtmlActive || Boolean((cfg as any)?.is_custom_html_enabled),
+      use_custom_html: isCustomHtmlActive || Boolean((cfg as any)?.use_custom_html),
       custom_html: cfg?.custom_html || '',
-      enable_media_gallery: cfg?.enable_media_gallery ?? Boolean(cfg?.gallery_images && cfg.gallery_images.length > 0),
+      sections_override: isCustomHtmlActive ? false : (cfg?.sections_override ?? true),
+      active_section: isCustomHtmlActive ? 'custom_html' : ((cfg as any)?.active_section || undefined),
+      enable_media_gallery: isCustomHtmlActive ? (cfg?.enable_media_gallery ?? false) : (cfg?.enable_media_gallery ?? Boolean(cfg?.gallery_images && cfg.gallery_images.length > 0)),
       gallery_images: cfg?.gallery_images ? [...cfg.gallery_images] : [],
       headline: cfg?.headline || prod.name,
       subheadline: cfg?.subheadline || prod.description,
@@ -2042,8 +2051,42 @@ export function useTenantDashboard() {
     setIsSavingSinglePage(true);
     const cleanSpForm = sanitizeProductPayload(singlePageForm);
     const prodSlug = cleanSpForm.slug?.trim() || slugify(activeSinglePageProduct.name);
+
+    // Rule: Jika Section #10 (custom_html) aktif dan terisi kode
+    const hasCustomHtmlContent = Boolean(cleanSpForm.custom_html && cleanSpForm.custom_html.trim().length > 0);
+    const isCustomHtmlActive = Boolean(
+      (cleanSpForm.enable_custom_html || cleanSpForm.is_custom_html_enabled || cleanSpForm.use_custom_html) &&
+      hasCustomHtmlContent
+    );
+
+    const customHtmlPayloadFlags = isCustomHtmlActive
+      ? {
+          is_custom_html_enabled: true,
+          enable_custom_html: true,
+          use_custom_html: true,
+          active_section: 'custom_html',
+          custom_html: cleanSpForm.custom_html,
+          // Matikan render section bawaan agar tidak saling menimpa
+          sections_override: false,
+          enable_hero: false,
+          enable_media_gallery: false,
+          enable_client_logos: false,
+          enable_problem_solution: false,
+          enable_us_vs_them: false,
+          enable_testimonials: false,
+          enable_offer: false,
+          enable_faq: false,
+          enable_payment: false,
+        }
+      : {
+          enable_custom_html: Boolean(cleanSpForm.enable_custom_html),
+          is_custom_html_enabled: Boolean(cleanSpForm.is_custom_html_enabled),
+          use_custom_html: Boolean(cleanSpForm.use_custom_html),
+        };
+
     const updatedConfig: SinglePageConfig = sanitizeProductPayload({
       ...cleanSpForm,
+      ...customHtmlPayloadFlags,
       slug: prodSlug,
       discount_coupon: cleanSpForm.voucher?.code || cleanSpForm.discount_coupon || '',
       checkout_action_mode: cleanSpForm.checkout_action_mode || 'DIRECT',
@@ -2051,10 +2094,29 @@ export function useTenantDashboard() {
       whatsapp_number: cleanSpForm.whatsapp_number || '',
     });
 
+    // Pertahankan local state form agar tidak mental balik
+    setSinglePageForm(updatedConfig);
+
+    const activeIdStr = String(activeSinglePageProduct.id || '').trim().toLowerCase();
+    const activeSkuStr = (activeSinglePageProduct.sku || '').trim().toLowerCase();
+    const activeSlugStr = (activeSinglePageProduct.slug || '').trim().toLowerCase();
+
+    const isTargetProduct = (p: ProductItem) => {
+      const pIdStr = String(p.id || '').trim().toLowerCase();
+      const pSkuStr = (p.sku || '').trim().toLowerCase();
+      const pSlugStr = (p.slug || '').trim().toLowerCase();
+      return (
+        (activeIdStr && pIdStr === activeIdStr) ||
+        (activeSkuStr && pSkuStr === activeSkuStr) ||
+        (activeSlugStr && pSlugStr === activeSlugStr)
+      );
+    };
+
+    let updatedTargetProduct: ProductItem | null = null;
     const updatedProducts = products.map(p => {
-      if (p.id === activeSinglePageProduct.id) {
+      if (isTargetProduct(p)) {
         const ctaText = (cleanSpForm.cta_label || p.metadata?.cta_text || p.cta_label || '').trim();
-        return sanitizeProductPayload({
+        const updatedItem = sanitizeProductPayload({
           ...p,
           slug: prodSlug,
           cta_label: ctaText || undefined,
@@ -2070,14 +2132,24 @@ export function useTenantDashboard() {
             voucher_config: updatedConfig.voucher,
             checkout_action_mode: updatedConfig.checkout_action_mode,
             whatsapp_custom_message: updatedConfig.whatsapp_custom_message,
+            enable_custom_html: updatedConfig.enable_custom_html,
+            is_custom_html_enabled: updatedConfig.is_custom_html_enabled,
+            use_custom_html: updatedConfig.use_custom_html,
+            custom_html: updatedConfig.custom_html,
+            sections_override: updatedConfig.sections_override,
           },
         });
+        updatedTargetProduct = updatedItem;
+        return updatedItem;
       }
       return p;
     });
 
     const cleanUpdatedProducts = sanitizeProductPayload(updatedProducts);
     setProducts(cleanUpdatedProducts);
+    if (updatedTargetProduct) {
+      setActiveSinglePageProduct(updatedTargetProduct);
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanUpdatedProducts));
     }
@@ -2097,7 +2169,7 @@ export function useTenantDashboard() {
             ? tenantRow.metadata.products
             : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
 
-          const targetProd = cleanUpdatedProducts.find(p => p.id === activeSinglePageProduct.id);
+          const targetProd = cleanUpdatedProducts.find(p => isTargetProduct(p)) || updatedTargetProduct;
           if (targetProd) {
             const targetSku = (targetProd.sku || '').trim().toLowerCase();
             const targetId = String(targetProd.id || '').trim().toLowerCase();
@@ -2136,10 +2208,10 @@ export function useTenantDashboard() {
             const existingSections = tenantRow.metadata?.storefront_sections || tenantRow.metadata?.sections || {};
             const updatedSections = {
               ...existingSections,
-              hero: { ...existingSections.hero, is_active: cleanSpForm.enable_hero ?? true },
-              testimonials: { ...existingSections.testimonials, is_active: cleanSpForm.enable_testimonials ?? true },
-              catalog: { ...existingSections.catalog, is_active: cleanSpForm.enable_offer ?? true },
-              benefits: { ...existingSections.benefits, is_active: cleanSpForm.enable_problem_solution ?? true },
+              hero: { ...existingSections.hero, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_hero ?? true) },
+              testimonials: { ...existingSections.testimonials, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_testimonials ?? true) },
+              catalog: { ...existingSections.catalog, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_offer ?? true) },
+              benefits: { ...existingSections.benefits, is_active: isCustomHtmlActive ? false : (cleanSpForm.enable_problem_solution ?? true) },
             };
 
             const updatedMeta = {
@@ -2149,6 +2221,15 @@ export function useTenantDashboard() {
               single_page_config: cleanUpdatedConfig,
               storefront_copy: updatedCopy,
               storefront_sections: updatedSections,
+              ...(isCustomHtmlActive
+                ? {
+                    is_custom_html_enabled: true,
+                    use_custom_html: true,
+                    custom_html: cleanSpForm.custom_html,
+                    active_section: 'custom_html',
+                    sections_override: false,
+                  }
+                : {}),
             };
 
             await supabase
@@ -2193,7 +2274,7 @@ export function useTenantDashboard() {
     }
 
     try {
-      const targetProd = cleanUpdatedProducts.find(p => p.id === activeSinglePageProduct.id);
+      const targetProd = cleanUpdatedProducts.find(p => isTargetProduct(p)) || updatedTargetProduct;
       if (targetProd) {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
           method: 'POST',

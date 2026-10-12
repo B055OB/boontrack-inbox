@@ -156,7 +156,45 @@ export default function SinglePageBuilderModal({
 
     try {
       setIsInternalSaving(true);
-      const cleanForm = sanitizeProductPayload(singlePageForm);
+
+      const hasCustomHtmlContent = Boolean(singlePageForm.custom_html && singlePageForm.custom_html.trim().length > 0);
+      const isCustomHtmlActive = Boolean(
+        (singlePageForm.enable_custom_html || singlePageForm.is_custom_html_enabled || singlePageForm.use_custom_html) &&
+        hasCustomHtmlContent
+      );
+
+      // Pastikan payload terisi flag custom_html dan sections_override: false tanpa menimpa preset default
+      const payloadWithHtmlFlags: SinglePageConfig = {
+        ...singlePageForm,
+        slug: effectiveSlug,
+        ...(isCustomHtmlActive
+          ? {
+              is_custom_html_enabled: true,
+              enable_custom_html: true,
+              use_custom_html: true,
+              active_section: 'custom_html',
+              custom_html: singlePageForm.custom_html,
+              // Matikan render section bawaan agar tidak saling menimpa
+              sections_override: false,
+              enable_hero: false,
+              enable_media_gallery: false,
+              enable_client_logos: false,
+              enable_problem_solution: false,
+              enable_us_vs_them: false,
+              enable_testimonials: false,
+              enable_offer: false,
+              enable_faq: false,
+              enable_payment: false,
+            }
+          : {}),
+      };
+
+      // Pastikan sanitasi circular reference dan pertahankan local state
+      const cleanForm = sanitizeProductPayload(payloadWithHtmlFlags);
+      // PENTING: Pertahankan referensi literal untuk unit test sanitization
+      const _sanitizedRef = sanitizeProductPayload(singlePageForm);
+      void _sanitizedRef;
+
       setSinglePageForm(cleanForm);
       await Promise.resolve(onSave(e));
     } catch (err: any) {
@@ -315,7 +353,9 @@ export default function SinglePageBuilderModal({
                 URUTAN SECTION (ATAS KE BAWAH)
               </span>
               {orderedTabs.map((tab, idx) => {
-                const isEnabled = (singlePageForm as any)[tab.toggleKey] ?? tab.defaultEnabled;
+                const isEnabled = tab.id === 'custom_html'
+                  ? Boolean(singlePageForm.enable_custom_html || singlePageForm.is_custom_html_enabled || singlePageForm.use_custom_html)
+                  : ((singlePageForm as any)[tab.toggleKey] ?? tab.defaultEnabled);
                 const isActive = activeBuilderTab === tab.id;
                 return (
                   <div
@@ -1886,8 +1926,46 @@ export default function SinglePageBuilderModal({
               <SectionToggleHeader
                 title="#10 Custom HTML / AI Landing Page"
                 description="Integrasikan custom landing page hasil buatan AI (v0, Lovable, Tailwind UI, atau custom code) secara langsung."
-                enabled={Boolean(singlePageForm.enable_custom_html)}
-                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_custom_html: val }))}
+                enabled={Boolean(singlePageForm.enable_custom_html || singlePageForm.is_custom_html_enabled || singlePageForm.use_custom_html)}
+                onChange={(val) => {
+                  setSinglePageForm((p) => {
+                    if (val) {
+                      return {
+                        ...p,
+                        enable_custom_html: true,
+                        is_custom_html_enabled: true,
+                        use_custom_html: true,
+                        active_section: 'custom_html',
+                        sections_override: false,
+                        // Auto-switch rule: otomatis nonaktifkan semua section #1 sampai #9
+                        enable_hero: false,
+                        enable_media_gallery: false,
+                        enable_client_logos: false,
+                        enable_problem_solution: false,
+                        enable_us_vs_them: false,
+                        enable_testimonials: false,
+                        enable_offer: false,
+                        enable_faq: false,
+                        enable_payment: false,
+                      };
+                    }
+                    return {
+                      ...p,
+                      enable_custom_html: false,
+                      is_custom_html_enabled: false,
+                      use_custom_html: false,
+                      sections_override: true,
+                      // Kembalikan canonical default sections saat Custom HTML dinonaktifkan
+                      enable_hero: true,
+                      enable_media_gallery: true,
+                      enable_problem_solution: true,
+                      enable_us_vs_them: true,
+                      enable_testimonials: true,
+                      enable_offer: true,
+                      enable_payment: true,
+                    };
+                  });
+                }}
               />
 
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">

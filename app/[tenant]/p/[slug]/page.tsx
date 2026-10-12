@@ -469,22 +469,53 @@ function SingleProductContent() {
               cfg.banner_url || 
               '';
 
+            const isCustomHtmlActive = Boolean(
+              (
+                cfg.enable_custom_html ||
+                (cfg as any).is_custom_html_enabled ||
+                (cfg as any).use_custom_html ||
+                match?.metadata?.enable_custom_html ||
+                match?.metadata?.is_custom_html_enabled ||
+                match?.metadata?.use_custom_html ||
+                match?.fulfillment_metadata?.single_page_config?.enable_custom_html ||
+                match?.fulfillment_metadata?.single_page_config?.is_custom_html_enabled ||
+                match?.fulfillment_metadata?.single_page_config?.use_custom_html
+              ) &&
+              (
+                cfg.custom_html ||
+                match?.metadata?.custom_html ||
+                match?.fulfillment_metadata?.single_page_config?.custom_html
+              )?.trim()
+            );
+
+            const resolvedCustomHtml = (
+              cfg.custom_html ||
+              match?.metadata?.custom_html ||
+              match?.fulfillment_metadata?.single_page_config?.custom_html ||
+              ''
+            );
+
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
               headline: hero.headline || cfg.headline || match.title || match.name || 'Produk Eksklusif',
               subheadline: hero.subheadline || cfg.subheadline || match.description || '',
               banner_url: resolvedBannerImage,
               badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
-              enable_hero: cfg.enable_hero ?? true,
-              enable_client_logos: cfg.enable_client_logos ?? (Boolean(cfg.client_logos?.length) || Boolean(builder.client_logos?.length) || false),
-              enable_problem_solution: cfg.enable_problem_solution ?? true,
-              enable_us_vs_them: cfg.enable_us_vs_them ?? true,
-              enable_testimonials: cfg.enable_testimonials ?? true,
-              enable_offer: cfg.enable_offer ?? true,
-              enable_faq: cfg.enable_faq ?? false,
-              enable_payment: cfg.enable_payment ?? true,
-              enable_custom_html: cfg.enable_custom_html ?? (match?.metadata?.enable_custom_html ?? (match?.fulfillment_metadata?.single_page_config?.enable_custom_html ?? false)),
-              custom_html: cfg.custom_html || match?.metadata?.custom_html || (match?.fulfillment_metadata?.single_page_config?.custom_html) || '',
+              enable_hero: isCustomHtmlActive ? false : (cfg.enable_hero ?? true),
+              enable_client_logos: isCustomHtmlActive ? false : (cfg.enable_client_logos ?? (Boolean(cfg.client_logos?.length) || Boolean(builder.client_logos?.length) || false)),
+              enable_problem_solution: isCustomHtmlActive ? false : (cfg.enable_problem_solution ?? true),
+              enable_us_vs_them: isCustomHtmlActive ? false : (cfg.enable_us_vs_them ?? true),
+              enable_testimonials: isCustomHtmlActive ? false : (cfg.enable_testimonials ?? true),
+              enable_offer: isCustomHtmlActive ? false : (cfg.enable_offer ?? true),
+              enable_faq: isCustomHtmlActive ? false : (cfg.enable_faq ?? false),
+              enable_payment: isCustomHtmlActive ? false : (cfg.enable_payment ?? true),
+              enable_media_gallery: isCustomHtmlActive ? false : (cfg.enable_media_gallery ?? Boolean(cfg.gallery_images && cfg.gallery_images.length > 0)),
+              enable_custom_html: isCustomHtmlActive,
+              is_custom_html_enabled: isCustomHtmlActive,
+              use_custom_html: isCustomHtmlActive,
+              custom_html: resolvedCustomHtml,
+              sections_override: isCustomHtmlActive ? false : (cfg.sections_override ?? true),
+              active_section: isCustomHtmlActive ? 'custom_html' : ((cfg as any).active_section || undefined),
               client_logos: cfg.client_logos || builder.client_logos || match.client_logos || [],
               faqs: cfg.faqs || [],
               problem_title: ps.title || ps.problem_title || cfg.problem_title || '',
@@ -4198,6 +4229,9 @@ function SingleProductContent() {
             : defaultSectionOrder;
 
           return effectiveOrder.map((sectionId) => {
+            if (config.sections_override === false && sectionId !== 'custom_html') {
+              return null;
+            }
             switch (sectionId) {
               case 'hook':
                 return config.enable_hero !== false ? (
@@ -4748,7 +4782,7 @@ function SingleProductContent() {
                 ) : null;
 
               case 'custom_html':
-                return (config.enable_custom_html && config.custom_html) ? (
+                return ((config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html) && config.custom_html) ? (
                   <section
                     key="section-custom-html"
                     id="custom-html-section"

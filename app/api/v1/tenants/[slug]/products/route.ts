@@ -154,10 +154,30 @@ export async function POST(
       is_active: body.is_active !== false,
       order_bumps: cleanOrderBumps,
       single_page_config: body.single_page_config
-        ? {
-            ...body.single_page_config,
-            slug: finalSlug,
-          }
+        ? (() => {
+            const spc = { ...body.single_page_config, slug: finalSlug };
+            const isCustomHtml = Boolean(
+              (spc.enable_custom_html || spc.is_custom_html_enabled || spc.use_custom_html) &&
+              spc.custom_html?.trim()
+            );
+            if (isCustomHtml) {
+              spc.is_custom_html_enabled = true;
+              spc.enable_custom_html = true;
+              spc.use_custom_html = true;
+              spc.active_section = 'custom_html';
+              spc.sections_override = false;
+              spc.enable_hero = false;
+              spc.enable_media_gallery = false;
+              spc.enable_client_logos = false;
+              spc.enable_problem_solution = false;
+              spc.enable_us_vs_them = false;
+              spc.enable_testimonials = false;
+              spc.enable_offer = false;
+              spc.enable_faq = false;
+              spc.enable_payment = false;
+            }
+            return spc;
+          })()
         : undefined,
       updated_at: new Date().toISOString(),
       created_at: body.created_at || new Date().toISOString(),

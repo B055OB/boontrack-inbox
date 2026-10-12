@@ -102,6 +102,10 @@ export interface SinglePageConfig {
   enable_faq?: boolean;               // default: false
   enable_payment?: boolean;           // default: true
   enable_custom_html?: boolean;       // default: false
+  is_custom_html_enabled?: boolean;   // default: false
+  use_custom_html?: boolean;          // flag for custom html mode
+  active_section?: string;            // 'custom_html' or standard canonical sections
+  sections_override?: boolean;        // false when custom html replaces standard sections
 
   // 1. Hook & Hero
   headline: string;
