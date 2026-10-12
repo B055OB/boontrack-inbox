@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabaseClient";
+import { getSupabase, getSupabaseAdmin } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
@@ -117,7 +117,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  const supabase = getSupabase();
+  const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : getSupabase();
   if (!supabase) throw new Error("Supabase client not initialized");
 
   const orderId = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;

@@ -1988,7 +1988,11 @@ function SingleProductContent() {
       router.push(redirectUrl);
     } catch (err: any) {
       console.error('Checkout error:', err);
-      const userMessage = err?.message || 'Gagal memproses pesanan dan QRIS. Silakan periksa koneksi internet Anda dan coba lagi.';
+      let rawMsg = String(err?.message || '');
+      let userMessage = rawMsg;
+      if (!userMessage || userMessage.toLowerCase().includes('supabasekey') || userMessage.toLowerCase().includes('supabase') || userMessage.toLowerCase().includes('apikey')) {
+        userMessage = 'Gagal memproses pesanan dan QRIS. Silakan periksa kembali data Anda dan coba beberapa saat lagi.';
+      }
       setErrorMessage(userMessage);
       if (typeof document !== 'undefined') {
         const errorEl = document.getElementById('checkout-error-banner') || document.getElementById('checkout-form');
@@ -2158,7 +2162,12 @@ function SingleProductContent() {
       }
     } catch (err: any) {
       console.error('WhatsApp Lead Form error:', err);
-      setErrorMessage(err.message || 'Gagal menyiapkan pesanan via WhatsApp.');
+      let rawMsg = String(err?.message || '');
+      let userMessage = rawMsg;
+      if (!userMessage || userMessage.toLowerCase().includes('supabasekey') || userMessage.toLowerCase().includes('supabase') || userMessage.toLowerCase().includes('apikey')) {
+        userMessage = 'Gagal menyiapkan pesanan via WhatsApp. Silakan coba beberapa saat lagi.';
+      }
+      setErrorMessage(userMessage);
     } finally {
       setLoading(false);
     }
@@ -2805,7 +2814,7 @@ function SingleProductContent() {
 
   const renderCheckoutForm = () => (
     <form id="checkout-form" noValidate onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
-      {errorMessage && (
+      {errorMessage && !errorMessage.toLowerCase().includes('supabasekey') && (
         <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-2xl text-rose-800 text-xs flex items-start gap-2.5 shadow-xs">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -4119,7 +4128,7 @@ function SingleProductContent() {
       </div>
 
       {/* Visual Error Feedback Banner tepat di atas tombol submit */}
-      {errorMessage && (
+      {errorMessage && !errorMessage.toLowerCase().includes('supabasekey') && (
         <div 
           id="checkout-error-banner"
           data-testid="checkout-error-banner"

@@ -154,7 +154,7 @@ async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | 
       const supabaseKey =
         (currentKey && !currentKey.startsWith('sb_secret_'))
           ? currentKey
-          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
+          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M');
       if (supabaseKey) {
         const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&or=(metadata->>custom_domain.eq.${encodeURIComponent(hostname)},metadata->custom_domains.cs.["${encodeURIComponent(hostname)}"])&limit=1`;
         const supaRes = await fetch(supaUrl, {
@@ -199,8 +199,11 @@ async function resolveTenantIdForSlug(slug: string): Promise<string | null> {
   }
   let id: string | null = null;
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
     if (supabaseKey) {
       const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
       const supaRes = await fetch(supaUrl, {
@@ -278,8 +281,11 @@ async function resolveAffiliateCode(subdomain: string): Promise<string | null> {
 
   let referralCode: string | null = null;
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
     if (supabaseKey) {
       const supaUrl = `${supabaseUrl}/rest/v1/affiliates?select=referral_code&referral_code=ilike.${encodeURIComponent(cleanSub)}&limit=1`;
       const res = await fetch(supaUrl, {
