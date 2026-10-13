@@ -283,7 +283,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     headersObj['tenant'] ||
     null;
 
-  // 2. Cek apakah ada Direct Order ID (dari Gateway / Payment Provider resmi)
+  // 2. Cek apakah ada Direct Order ID (dari Gateway / Payment Provider resmi Xendit / Reader)
   const directOrderId =
     rawBody.order_id ||
     rawBody.external_id ||
@@ -291,6 +291,10 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     rawBody.invoice_id ||
     rawBody.reference_id ||
     rawBody.bill_no ||
+    rawBody.data?.reference_id ||
+    rawBody.data?.external_id ||
+    rawBody.data?.id ||
+    rawBody.data?.order_id ||
     searchParams.get('order_id');
 
   const rawStatus = String(
@@ -298,6 +302,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     rawBody.payment_status ||
     rawBody.transaction_status ||
     rawBody.event ||
+    rawBody.data?.status ||
     ''
   ).toUpperCase();
 
@@ -308,6 +313,8 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     rawStatus === 'SUCCESS' ||
     rawStatus === 'COMPLETED' ||
     rawStatus === 'MUTATION_MATCHED' ||
+    rawBody.event === 'qr.payment' ||
+    rawBody.data?.status === 'COMPLETED' ||
     (rawStatus === 'CAPTURE' && (!rawBody.fraud_status || String(rawBody.fraud_status).toLowerCase() === 'accept'));
 
   // 3. Ekstraksi Notifikasi Teks (dari BoonTrack Reader APK Android)
@@ -329,12 +336,14 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     ? `${_titlePart} ${_bodyPart}`
     : (_bodyPart || _titlePart || null);
 
-  // Nominal eksplisit jika Android Reader sudah mem-parsing sebelumnya
+  // Nominal eksplisit jika Android Reader atau Xendit sudah mem-parsing sebelumnya
   const explicitAmount = Number(
     rawBody.amount ||
     rawBody.nominal ||
     rawBody.gross_amount ||
     rawBody.total ||
+    rawBody.paid_amount ||
+    rawBody.data?.amount ||
     0
   );
 
@@ -754,8 +763,8 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
         }
       }
 
-      // 2.C: Fallback global jika tenantSlug mismatch atau tidak menemukan match
-      if (!matchedOrder) {
+      // 2.C: Fallback global HANYA JIKA TIDAK ADA tenantSlug spesifik (Fail-closed multi-tenant isolation)
+      if (!matchedOrder && !tenantSlug) {
         console.log(`[Webhook Reader ${logId}] Global fallback: Mencari order pending gross_amount = ${parsedAmount}...`);
         const { data: globalOrders } = await supabase
           .from('orders')
@@ -855,6 +864,102 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
 
   const paidAt = new Date().toISOString();
 
+  // VALIDASI KEAMANAN P0.1: Rekonsiliasi Tenant Identity
+  if (tenantSlug) {
+    const orderTenantSlug = String(matchedOrder.tenant_slug || '').trim().toLowerCase();
+    const orderTenantId = String(matchedOrder.tenant_id || '').trim().toLowerCase();
+    const cleanTenant = String(tenantSlug).trim().toLowerCase();
+
+    if (orderTenantSlug && orderTenantSlug !== cleanTenant && orderTenantId !== cleanTenant) {
+      const tenantMismatchRes = {
+        success: false,
+        error: 'TENANT_MISMATCH',
+        message: `Identitas tenant webhook ('${tenantSlug}') tidak cocok dengan order #${orderId} ('${matchedOrder.tenant_slug}').`,
+        order_id: orderId,
+        log_id: logId,
+      };
+      addWebhookLog({
+        id: logId,
+        timestamp: new Date().toISOString(),
+        endpoint: endpointSource,
+        method: 'POST',
+        headers: headersObj,
+        rawBody,
+        parsedAmount: explicitAmount > 0 ? explicitAmount : parsedAmount,
+        detectedApp,
+        tenantSlug,
+        matchedOrderId: orderId,
+        matchStrategy,
+        resultStatus: 403,
+        resultBody: tenantMismatchRes,
+      });
+      console.warn(`[Webhook Reader ${logId}] TENANT_MISMATCH: Order ${orderId} (${matchedOrder.tenant_slug}) != Webhook ${tenantSlug}`);
+      return NextResponse.json(tenantMismatchRes, { status: 403 });
+    }
+  }
+
+  // VALIDASI KEAMANAN P0.1: Rekonsiliasi Mata Uang (Wajib IDR)
+  const orderCurrency = String(matchedOrder.currency || matchedOrder.metadata?.currency || 'IDR').toUpperCase();
+  const webhookCurrency = String(rawBody.currency || rawBody.currency_code || 'IDR').toUpperCase();
+  if (orderCurrency !== 'IDR' || webhookCurrency !== 'IDR') {
+    const currencyMismatchRes = {
+      success: false,
+      error: 'CURRENCY_MISMATCH',
+      message: `Mata uang transaksi tidak valid ('${webhookCurrency}'). Sistem hanya menerima mata uang IDR.`,
+      order_id: orderId,
+      log_id: logId,
+    };
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount: explicitAmount > 0 ? explicitAmount : parsedAmount,
+      detectedApp,
+      tenantSlug,
+      matchedOrderId: orderId,
+      matchStrategy,
+      resultStatus: 400,
+      resultBody: currencyMismatchRes,
+    });
+    console.warn(`[Webhook Reader ${logId}] CURRENCY_MISMATCH: Order #${orderId} currency ${orderCurrency} vs webhook ${webhookCurrency}`);
+    return NextResponse.json(currencyMismatchRes, { status: 400 });
+  }
+
+  // VALIDASI KEAMANAN P0: Transaksi HANYA boleh dimutasi ke status 'PAID' jika nominal numerik match 100% dengan total tagihan order.
+  const orderGrossAmount = Number(matchedOrder.gross_amount ?? matchedOrder.total_amount ?? 0);
+  const incomingAmount = explicitAmount > 0 ? explicitAmount : parsedAmount;
+  if (incomingAmount && !validateOrderPaymentMatch(orderGrossAmount, incomingAmount)) {
+    const mismatchRes = {
+      success: false,
+      error: 'AMOUNT_MISMATCH',
+      message: `Nominal pembayaran Rp ${incomingAmount} tidak cocok 100% dengan total tagihan order #${orderId} (Rp ${orderGrossAmount}).`,
+      order_id: orderId,
+      gross_amount: orderGrossAmount,
+      parsed_amount: incomingAmount,
+      log_id: logId,
+    };
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount: incomingAmount,
+      detectedApp,
+      tenantSlug,
+      matchedOrderId: orderId,
+      matchStrategy,
+      resultStatus: 400,
+      resultBody: mismatchRes,
+    });
+    console.warn(`[Webhook Reader ${logId}] AMOUNT_MISMATCH: Order ${orderId} Rp ${orderGrossAmount} != Incoming Rp ${incomingAmount}`);
+    return NextResponse.json(mismatchRes, { status: 400 });
+  }
+
   // TRIAL QUOTA GUARD — Webhook Processor (BATCH 1 / Ticket 1.2)
   // Check before confirming PAID: if trial tenant has hit order limit, reject the
   // confirmation and return 402. This prevents charging infrastructure costs beyond
@@ -891,37 +996,6 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       console.warn(`[Webhook Reader ${logId}] TRIAL_LIMIT_EXCEEDED: Order ${orderId} blocked for tenant ${webhookTenantId}`);
       return NextResponse.json(quotaExceededRes, { status: 402 });
     }
-  }
-
-  // VALIDASI KEAMANAN P0: Transaksi HANYA boleh dimutasi ke status 'PAID' jika nominal numerik match 100% dengan total tagihan order.
-  const orderGrossAmount = Number(matchedOrder.gross_amount ?? matchedOrder.total_amount ?? 0);
-  if (!isDirectPaid && parsedAmount && !validateOrderPaymentMatch(orderGrossAmount, parsedAmount)) {
-    const mismatchRes = {
-      success: false,
-      error: 'AMOUNT_MISMATCH',
-      message: `Nominal pembayaran Rp ${parsedAmount} tidak cocok 100% dengan total tagihan order #${orderId} (Rp ${orderGrossAmount}).`,
-      order_id: orderId,
-      gross_amount: orderGrossAmount,
-      parsed_amount: parsedAmount,
-      log_id: logId,
-    };
-    addWebhookLog({
-      id: logId,
-      timestamp: new Date().toISOString(),
-      endpoint: endpointSource,
-      method: 'POST',
-      headers: headersObj,
-      rawBody,
-      parsedAmount,
-      detectedApp,
-      tenantSlug,
-      matchedOrderId: orderId,
-      matchStrategy,
-      resultStatus: 400,
-      resultBody: mismatchRes,
-    });
-    console.warn(`[Webhook Reader ${logId}] AMOUNT_MISMATCH: Order ${orderId} Rp ${orderGrossAmount} != Notif Rp ${parsedAmount}`);
-    return NextResponse.json(mismatchRes, { status: 400 });
   }
 
   // UPDATE STATUS ORDER KE 'PAID' (Single Source of Truth: orders)

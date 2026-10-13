@@ -1,3 +1,4 @@
+import { createXenditDynamicQRIS } from "@/lib/payment/xendit-service";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
@@ -602,8 +603,38 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       pcfg?.manual_config?.qris_image_url ||
       "";
 
-    if (tenantStaticQris && tenantStaticQris.startsWith("000201")) {
-      // Injeksi nominal (Tag 54) + hitung ulang CRC16 menggunakan base string QRIS merchant langsung
+    const isXenditGatewayTenant =
+      payload.tenantSlug === 'onlineboost' ||
+      tenantRowData?.payment_settings?.provider === 'xendit' ||
+      tenantRowData?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+      tenantRowData?.metadata?.payment_settings?.provider === 'xendit' ||
+      tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+      !tenantStaticQris ||
+      tenantStaticQris.includes('ID.DANA.WWW');
+
+    // 1. Prioritas Utama: Xendit Dynamic QRIS untuk onlineboost & Payment Gateway
+    if (isXenditGatewayTenant) {
+      try {
+        const xenditRes = await createXenditDynamicQRIS({
+          orderId,
+          amount: grossAmount,
+          tenantSlug: payload.tenantSlug,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          customerEmail: payload.customerEmail,
+          productTitle: payload.productTitle,
+        });
+
+        if (xenditRes.success && xenditRes.qr_string) {
+          qrString = xenditRes.qr_string;
+          qrCodeUrl = xenditRes.qr_code_url || `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+          if (xenditRes.invoice_url) invoiceUrl = xenditRes.invoice_url;
+        }
+      } catch (xErr) {
+        console.warn("[Checkout Service] Xendit Dynamic QRIS generation error:", xErr);
+      }
+    } else if (tenantStaticQris && tenantStaticQris.startsWith("000201") && !tenantStaticQris.includes("ID.DANA.WWW")) {
+      // Direct Clinic Merchant QRIS
       qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     } else if (tenantQrisImageUrl) {
@@ -611,7 +642,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       qrCodeUrl = tenantQrisImageUrl;
     }
 
-    // 2. Jika tenant belum memiliki QRIS statis toko sendiri, panggil Payment Gateway / Backend Core
+    // 2. Jika belum mendapatkan QRIS, panggil Payment Gateway / Backend Core
     if (!qrString && !qrCodeUrl) {
       const appBaseUrl = typeof window !== 'undefined'
         ? window.location.origin
@@ -630,7 +661,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         unique_code: uniqueCode,
         tenant_slug: payload.tenantSlug,
         tenant_id: resolvedTenantId,
-        tenant_static_qris: tenantStaticQris || undefined,
         customer_phone: payload.customerPhone,
         customer_name: payload.customerName,
         customer_email: payload.customerEmail || "",
@@ -681,19 +711,38 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }
     }
 
+    // 3. Fallback Xendit API jika endpoints gagal
     if (!qrString && !qrCodeUrl) {
-      const sandboxMockQris = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS;
-      if (sandboxMockQris && sandboxMockQris.startsWith("000201")) {
-        qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
-        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      try {
+        const xenditRes = await createXenditDynamicQRIS({
+          orderId,
+          amount: grossAmount,
+          tenantSlug: payload.tenantSlug,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          customerEmail: payload.customerEmail,
+          productTitle: payload.productTitle,
+        });
+        if (xenditRes.success && xenditRes.qr_string) {
+          qrString = xenditRes.qr_string;
+          qrCodeUrl = xenditRes.qr_code_url || `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+          if (xenditRes.invoice_url) invoiceUrl = xenditRes.invoice_url;
+        }
+      } catch (xErr) {
+        console.warn("[Checkout Service] Final Xendit fallback note:", xErr);
       }
-    } else if (qrString) {
-      if (qrString.startsWith("000201")) {
-        // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid
+    }
+
+    // 4. Pastikan string QRIS valid tanpa merusak dynamic payload dari Xendit
+    if (qrString) {
+      if (qrString.startsWith("000201010211") && !qrString.includes("ID.DANA.WWW")) {
+        // Hanya inject nominal jika merupakan QRIS statis merchant klinik (010211)
         qrString = generateDynamicQRIS(qrString, grossAmount);
         qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
       } else if (!qrCodeUrl) {
-        qrCodeUrl = qrString;
+        qrCodeUrl = qrString.startsWith("000201")
+          ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`
+          : qrString;
       }
     }
 

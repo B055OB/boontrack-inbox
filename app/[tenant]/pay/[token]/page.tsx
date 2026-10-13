@@ -304,8 +304,8 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
   }, [isWaitingConfirmation, order?.metadata?.auto_paid_at, order?.metadata?.ocr_verified]);
 
   // QRIS calculation
-  const BOONTRACK_PLATFORM_FALLBACK_QRIS =
-    '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+  // DEPRECATED & DISABLED: Static DANA Bandung fallback QRIS string
+  const BOONTRACK_PLATFORM_FALLBACK_QRIS = '';
 
   const rawStaticQris =
     tenant?.qris_payload ||
@@ -346,14 +346,19 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
     (orderQrString && orderQrString.startsWith('000201') ? orderQrString : '') ||
     (rawStaticQris && !rawStaticQris.startsWith('http') ? rawStaticQris : '');
 
-  // Fallback platform QRIS HANYA aktif jika konfigurasi tenant bernilai null/kosong (tanpa string & tanpa gambar)
-  const effectiveQrisPayload = tenantRawQrisString
-    ? tenantRawQrisString
-    : (!orderQrImageUrl ? BOONTRACK_PLATFORM_FALLBACK_QRIS : '');
+  // Prioritas Utama: String QRIS resmi dari response Xendit Gateway (orderQrString)
+  const isXenditDynamic = orderQrString.startsWith('000201010212');
+  let rawQrisValue = '';
 
-  const rawQrisValue = effectiveQrisPayload
-    ? (generateDynamicQRIS(effectiveQrisPayload, grossAmount) || effectiveQrisPayload)
-    : '';
+  if (isXenditDynamic) {
+    rawQrisValue = orderQrString;
+  } else if (orderQrString && orderQrString.startsWith('000201') && !orderQrString.includes('ID.DANA.WWW')) {
+    rawQrisValue = orderQrString.startsWith('000201010211') ? (generateDynamicQRIS(orderQrString, grossAmount) || orderQrString) : orderQrString;
+  } else if (rawStaticQris && rawStaticQris.startsWith('000201') && !rawStaticQris.includes('ID.DANA.WWW')) {
+    rawQrisValue = generateDynamicQRIS(rawStaticQris, grossAmount) || rawStaticQris;
+  } else if (orderQrString && orderQrString.startsWith('000201')) {
+    rawQrisValue = orderQrString;
+  }
 
   const hasQris = Boolean(rawQrisValue || orderQrImageUrl);
   const hasBank = bankAccounts.length > 0;
@@ -666,13 +671,19 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
                       className="w-56 h-56 object-contain rounded-lg"
                     />
                   ) : (
-                    <QRCodeSVG
-                      id="qris-svg-element"
-                      value={generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) || BOONTRACK_PLATFORM_FALLBACK_QRIS}
-                      size={220}
-                      level="M"
-                      includeMargin={true}
-                    />
+                    rawQrisValue ? (
+                      <QRCodeSVG
+                        id="qris-svg-element"
+                        value={rawQrisValue}
+                        size={220}
+                        level="M"
+                        includeMargin={true}
+                      />
+                    ) : (
+                      <div className="p-6 text-center text-xs text-slate-500">
+                        Memuat barcode QRIS resmi...
+                      </div>
+                    )
                   )}
                 </div>
 

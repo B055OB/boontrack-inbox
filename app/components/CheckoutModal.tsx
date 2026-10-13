@@ -1199,24 +1199,33 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 );
               }
 
-              // QRIS Rendering
-              const candidateQris = (tenantStaticQris && tenantStaticQris.startsWith('000201'))
-                ? tenantStaticQris
-                : ((paymentData.qr_string?.startsWith('000201') || paymentData.qrString?.startsWith('000201'))
-                    ? (paymentData.qr_string || paymentData.qrString)
-                    : tenantStaticQris);
+              // QRIS Rendering: Prioritaskan Official Xendit Dynamic QRIS dari paymentData
+              const returnedQrString = paymentData.qr_string || paymentData.qrString || '';
+              const candidateQris = (returnedQrString && returnedQrString.startsWith('000201'))
+                ? returnedQrString
+                : ((tenantStaticQris && tenantStaticQris.startsWith('000201') && !tenantStaticQris.includes('ID.DANA.WWW'))
+                    ? tenantStaticQris
+                    : returnedQrString);
+
               const candidateQrImage =
                 paymentData.qrCodeUrl ||
                 paymentData.qr_code_url ||
-                (paymentData.qr_string && (paymentData.qr_string.startsWith('http://') || paymentData.qr_string.startsWith('https://')) ? paymentData.qr_string : '') ||
+                (returnedQrString && (returnedQrString.startsWith('http://') || returnedQrString.startsWith('https://')) ? returnedQrString : '') ||
                 tenantQrisImageUrl ||
                 '';
+
+              // Jika QRIS berasal dari Xendit (000201010212), gunakan langsung tanpa mutasi Tag 54/CRC16
+              const finalQrValue = candidateQris.startsWith('000201010212')
+                ? candidateQris
+                : (candidateQris.startsWith('000201010211') && !candidateQris.includes('ID.DANA.WWW')
+                    ? (generateDynamicQRIS(candidateQris, totalAmount) || candidateQris)
+                    : candidateQris);
 
               const qrContainer = candidateQris ? (
                 <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
                   <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
                     <QRCodeSVG
-                      value={generateDynamicQRIS(candidateQris, totalAmount)}
+                      value={finalQrValue}
                       size={220}
                       level="M"
                       includeMargin={true}

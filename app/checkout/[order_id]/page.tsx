@@ -716,8 +716,8 @@ export default function CheckoutPage({ params }: Props) {
     }
   };
 
-  const BOONTRACK_PLATFORM_FALLBACK_QRIS =
-    '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+  // DEPRECATED & DISABLED: Static DANA Bandung fallback QRIS string
+  const BOONTRACK_PLATFORM_FALLBACK_QRIS = '';
 
   const fallbackQrisString =
     tenant?.qris_payload ||
@@ -757,24 +757,23 @@ export default function CheckoutPage({ params }: Props) {
   const orderQrImage = order?.qr_code_url || (order?.qr_string && (order.qr_string.startsWith('http://') || order.qr_string.startsWith('https://')) ? order.qr_string : '');
   const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
 
-  // Resolusi payload string QRIS milik tenant (jika ada string EMVCo 000201...)
-  const tenantRawQrisString =
-    (fallbackQrisString && fallbackQrisString.startsWith('000201') ? fallbackQrisString : '') ||
-    (order?.qr_string && order.qr_string.startsWith('000201') ? order.qr_string : '') ||
-    (fallbackQrisString && !fallbackQrisString.startsWith('http') ? fallbackQrisString : '');
+  // Resolusi payload string QRIS resmi:
+  // 1. Prioritas Utama: String QRIS resmi dari response Xendit Gateway (order.qr_string)
+  //    Jika string adalah dynamic (000201010212), JANGAN ubah/inject ulang agar CRC16 resmi tidak rusak.
+  // 2. Prioritas Kedua: String QRIS merchant klinik non-DANA jika toko menggunakan static merchant QR
+  const orderQr = order?.qr_string || '';
+  const isXenditDynamic = orderQr.startsWith('000201010212');
+  let rawQrisValue = '';
 
-  // Dynamic QRIS & Fallback Platform:
-  // 1. Jika tenant memiliki string QRIS EMVCo: gunakan string tenant untuk membuat QRIS dinamis.
-  // 2. Jika tenant TIDAK memiliki string tapi memiliki gambar QRIS aktif (seperti buzzerukm / upload dashboard):
-  //    JANGAN gunakan fallback string platform agar UI me-render gambar QRIS asli milik tenant.
-  // 3. Fallback platform QRIS BoonTrack HANYA aktif jika konfigurasi tenant bernilai null/kosong (tanpa string & tanpa gambar).
-  const effectiveQrisPayload = tenantRawQrisString
-    ? tenantRawQrisString
-    : (!candidateQrImageUrl ? BOONTRACK_PLATFORM_FALLBACK_QRIS : '');
-
-  const rawQrisValue = effectiveQrisPayload
-    ? (generateDynamicQRIS(effectiveQrisPayload, grossAmount) || effectiveQrisPayload)
-    : '';
+  if (isXenditDynamic) {
+    rawQrisValue = orderQr;
+  } else if (orderQr && orderQr.startsWith('000201') && !orderQr.includes('ID.DANA.WWW')) {
+    rawQrisValue = orderQr.startsWith('000201010211') ? (generateDynamicQRIS(orderQr, grossAmount) || orderQr) : orderQr;
+  } else if (fallbackQrisString && fallbackQrisString.startsWith('000201') && !fallbackQrisString.includes('ID.DANA.WWW')) {
+    rawQrisValue = generateDynamicQRIS(fallbackQrisString, grossAmount) || fallbackQrisString;
+  } else if (orderQr && orderQr.startsWith('000201')) {
+    rawQrisValue = orderQr;
+  }
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||
     tenant?.metadata?.whatsapp ||
@@ -1361,12 +1360,18 @@ export default function CheckoutPage({ params }: Props) {
                 <span>QRIS Dinamis • Nominal Pas Otomatis</span>
               </div>
               <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-                <QRCodeSVG
-                  value={generateDynamicQRIS(BOONTRACK_PLATFORM_FALLBACK_QRIS, grossAmount) || BOONTRACK_PLATFORM_FALLBACK_QRIS}
-                  size={220}
-                  level="M"
-                  includeMargin={true}
-                />
+                {rawQrisValue ? (
+                  <QRCodeSVG
+                    value={rawQrisValue}
+                    size={220}
+                    level="M"
+                    includeMargin={true}
+                  />
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    Memuat barcode QRIS resmi...
+                  </div>
+                )}
               </div>
               <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
                 QRIS STANDAR PEMBAYARAN NASIONAL
