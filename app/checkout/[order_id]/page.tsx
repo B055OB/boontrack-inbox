@@ -25,6 +25,7 @@ import {
   Image as ImageIcon,
   FileCheck,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
@@ -35,6 +36,22 @@ import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
+
+function extractRawQrString(strOrUrl?: string): string {
+  if (!strOrUrl) return '';
+  const trimmed = strOrUrl.trim();
+  if (trimmed.startsWith('000201')) return trimmed;
+  if (trimmed.includes('text=000201') || trimmed.includes('text=')) {
+    try {
+      const match = trimmed.match(/[?&]text=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeURIComponent(match[1]);
+        if (decoded.startsWith('000201')) return decoded;
+      }
+    } catch {}
+  }
+  return '';
+}
 
 
 
@@ -60,6 +77,8 @@ export default function CheckoutPage({ params }: Props) {
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [proofUploadFeedback, setProofUploadFeedback] = useState<string | null>(null);
   const [ocrCountdown, setOcrCountdown] = useState<number | null>(null);
+  const [isGeneratingQris, setIsGeneratingQris] = useState(false);
+  const [qrisError, setQrisError] = useState<string | null>(null);
   const hasTrackedPixelRef = React.useRef(false);
 
   const triggerPurchasePixels = React.useCallback((orderData: any) => {
@@ -469,43 +488,70 @@ export default function CheckoutPage({ params }: Props) {
     fetchTenantInfo();
   }, [order?.tenant_slug, order?.tenant_id, order?.product_id, order?.download_url, order?.fulfillment_metadata?.access_url]);
 
-  // Request dynamic QRIS jika belum ada qr_code_url
-  useEffect(() => {
-    async function ensureDynamicQris() {
-      if (!order || order.payment_method === 'manual_transfer' || order.qr_code_url) return;
+  // Request dynamic QRIS jika belum ada qr_code_url atau qr_string
+  const ensureDynamicQris = React.useCallback(async () => {
+    if (!order || order.payment_method === 'manual_transfer') return;
+    const hasValidQr = Boolean(order.qr_string || (order.qr_code_url && extractRawQrString(order.qr_code_url)));
+    if (hasValidQr) return;
+    if (isGeneratingQris) return;
 
-      try {
-        const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
-        const res = await fetch('/api/v1/payments/qris/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            external_id: orderId,
-            amount: gross,
-            tenant_slug: order.tenant_slug || order.tenant_id || '',
-            customer_phone: order.customer_phone,
-            customer_name: order.customer_name,
-            product_name: order.product_title
-          })
-        });
+    setIsGeneratingQris(true);
+    setQrisError(null);
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.qr_code_url || data.qr_string) {
-            setOrder((prev: any) => ({
-              ...prev,
-              qr_code_url: data.qr_code_url || (data.qr_string ? `https://quickchart.io/qr?text=${encodeURIComponent(data.qr_string)}&size=300&ecLevel=H` : prev.qr_code_url),
-              qr_string: data.qr_string || prev.qr_string
-            }));
-          }
+    try {
+      const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
+      const res = await fetch('/api/v1/payments/qris/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          external_id: orderId,
+          amount: gross,
+          tenant_slug: order.tenant_slug || order.tenant_id || '',
+          tenant_id: order.tenant_id || '',
+          customer_phone: order.customer_phone,
+          customer_name: order.customer_name,
+          customer_email: order.customer_email || '',
+          product_id: order.product_id,
+          product_name: order.product_title,
+          productTitle: order.product_title,
+        })
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success !== false) {
+        const resQrString = data?.qr_string || data?.data?.qr_string || data?.qrString || data?.data?.qrString || '';
+        const resQrCodeUrl = data?.qr_code_url || data?.data?.qr_code_url || data?.qrCodeUrl || data?.data?.qrCodeUrl || '';
+
+        if (resQrString || resQrCodeUrl) {
+          setOrder((prev: any) => ({
+            ...prev,
+            qr_code_url: resQrCodeUrl || (resQrString ? `https://quickchart.io/qr?text=${encodeURIComponent(resQrString)}&size=300&ecLevel=H` : prev?.qr_code_url),
+            qr_string: resQrString || prev?.qr_string,
+            gross_amount: data?.amount || data?.total_amount || prev?.gross_amount,
+          }));
+          setQrisError(null);
+        } else {
+          setQrisError('Response QRIS tidak memuat kode barcode yang valid.');
         }
-      } catch (qErr) {
-        console.warn('[Checkout Page] Dynamic QRIS fetch note:', qErr);
+      } else {
+        const errMsg = data?.error || data?.message || `Gagal memuat barcode QRIS resmi (HTTP ${res.status})`;
+        console.error('[Checkout Page] Dynamic QRIS error:', errMsg);
+        setQrisError(errMsg);
       }
+    } catch (qErr: any) {
+      console.error('[Checkout Page] Dynamic QRIS fetch note:', qErr);
+      setQrisError(qErr?.message || 'Gagal menghubungi gateway QRIS resmi. Silakan coba lagi.');
+    } finally {
+      setIsGeneratingQris(false);
     }
+  }, [order, orderId, isGeneratingQris]);
 
-    ensureDynamicQris();
-  }, [order, orderId]);
+  useEffect(() => {
+    if (order && !order.qr_code_url && !order.qr_string && order.payment_method !== 'manual_transfer') {
+      ensureDynamicQris();
+    }
+  }, [order?.id, order?.payment_method, order?.qr_code_url, order?.qr_string, ensureDynamicQris]);
 
   // Trigger Purchase (Meta) & CompletePayment (TikTok) dengan deduplikasi event_id
   const [hasTrackedPurchase, setHasTrackedPurchase] = useState(false);
@@ -577,11 +623,23 @@ export default function CheckoutPage({ params }: Props) {
 
   const netProductPrice = Number(order?.net_product_price || Math.max(0, basePrice - productDiscount));
 
-  const uniqueCode = rawUniqueCode > 0
-    ? rawUniqueCode
-    : (!isManual && (basePrice - productDiscount + netShippingCost) > grossAmount
-        ? (basePrice - productDiscount + netShippingCost) - grossAmount
-        : 0);
+  const isOnlineboostTenant =
+    (order?.tenant_slug || '').toLowerCase() === 'onlineboost' ||
+    (tenant?.slug || '').toLowerCase() === 'onlineboost';
+  const isGatewayPayment =
+    isOnlineboostTenant ||
+    order?.payment_method === 'xendit' ||
+    order?.payment_method === 'xendit_qris' ||
+    tenant?.payment_settings?.provider === 'xendit' ||
+    tenant?.metadata?.payment_settings?.provider === 'xendit';
+
+  const uniqueCode = isGatewayPayment
+    ? 0
+    : (rawUniqueCode > 0
+        ? rawUniqueCode
+        : (!isManual && (basePrice - productDiscount + netShippingCost) > grossAmount
+            ? (basePrice - productDiscount + netShippingCost) - grossAmount
+            : 0));
 
   const rawOrderType =
     order?.product_type ||
@@ -754,14 +812,15 @@ export default function CheckoutPage({ params }: Props) {
     '';
 
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
-  const orderQrImage = order?.qr_code_url || (order?.qr_string && (order.qr_string.startsWith('http://') || order.qr_string.startsWith('https://')) ? order.qr_string : '');
+  const orderQrRaw = order?.qr_string || extractRawQrString(order?.qr_code_url);
+  const orderQrImage = order?.qr_code_url || (orderQrRaw && (orderQrRaw.startsWith('http://') || orderQrRaw.startsWith('https://')) ? orderQrRaw : '');
   const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
 
   // Resolusi payload string QRIS resmi:
-  // 1. Prioritas Utama: String QRIS resmi dari response Xendit Gateway (order.qr_string)
+  // 1. Prioritas Utama: String QRIS resmi dari response Xendit Gateway (orderQrRaw)
   //    Jika string adalah dynamic (000201010212), JANGAN ubah/inject ulang agar CRC16 resmi tidak rusak.
   // 2. Prioritas Kedua: String QRIS merchant klinik non-DANA jika toko menggunakan static merchant QR
-  const orderQr = order?.qr_string || '';
+  const orderQr = orderQrRaw || '';
   const isXenditDynamic = orderQr.startsWith('000201010212');
   let rawQrisValue = '';
 
@@ -1359,7 +1418,7 @@ export default function CheckoutPage({ params }: Props) {
                 <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
                 <span>QRIS Dinamis • Nominal Pas Otomatis</span>
               </div>
-              <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+              <div className="p-2.5 bg-white rounded-xl flex items-center justify-center min-h-[220px]">
                 {rawQrisValue ? (
                   <QRCodeSVG
                     value={rawQrisValue}
@@ -1367,9 +1426,26 @@ export default function CheckoutPage({ params }: Props) {
                     level="M"
                     includeMargin={true}
                   />
+                ) : qrisError ? (
+                  <div className="p-5 text-center text-xs text-red-600 bg-red-50/90 rounded-xl border border-red-200 space-y-2.5 max-w-[260px]">
+                    <AlertTriangle className="w-6 h-6 text-red-500 mx-auto" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-red-800 text-[11px] uppercase tracking-wide">Gagal Menyiapkan QRIS</p>
+                      <p className="text-red-700 leading-relaxed text-[11px]">{qrisError}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => ensureDynamicQris()}
+                      className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Coba Muat Ulang</span>
+                    </button>
+                  </div>
                 ) : (
-                  <div className="p-6 text-center text-xs text-slate-500">
-                    Memuat barcode QRIS resmi...
+                  <div className="p-6 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2.5">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                    <span className="font-medium text-slate-600">Memuat barcode QRIS resmi...</span>
                   </div>
                 )}
               </div>

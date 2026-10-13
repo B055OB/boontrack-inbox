@@ -10,6 +10,8 @@ import { normalizePhoneToE164, isValidIndonesianPhone } from "@/lib/phone";
 
 export { normalizePhoneToE164, isValidIndonesianPhone };
 
+const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
 export interface CreateOrderPayload {
   tenantSlug: string;
   productId: string;
@@ -161,12 +163,14 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     });
 
     if (!matchedProd && resolvedTenantId) {
-      const { data: sqlProd } = await supabase
-        .from('products')
-        .select('*')
-        .eq('tenant_id', resolvedTenantId)
-        .or(`slug.eq.${payload.productId},id.eq.${payload.productId}`)
-        .maybeSingle();
+      const isTargetUuid = isUuid(payload.productId);
+      let prodQuery = supabase.from('products').select('*').eq('tenant_id', resolvedTenantId);
+      if (isTargetUuid) {
+        prodQuery = prodQuery.or(`slug.eq.${payload.productId},id.eq.${payload.productId}`);
+      } else {
+        prodQuery = prodQuery.eq('slug', payload.productId);
+      }
+      const { data: sqlProd } = await prodQuery.maybeSingle();
       if (sqlProd) {
         matchedProd = {
           ...sqlProd,
@@ -243,18 +247,36 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
   const adminFee = 0;
+
+  // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Gateway
+  const cleanTenantSlug = String(payload.tenantSlug || '').trim().toLowerCase();
+  const isXenditGatewayTenant =
+    cleanTenantSlug === 'onlineboost' ||
+    String(paymentMethod).toLowerCase().includes('xendit') ||
+    tenantRowData?.payment_settings?.provider === 'xendit' ||
+    tenantRowData?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+    tenantRowData?.metadata?.payment_settings?.provider === 'xendit' ||
+    tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
+
   // Logika Dynamic QRIS: Potong nominal acak 3 digit ke bawah (1 - 999)
   // Transfer manual: Tambah nominal unik verifikasi (1 - 999) dengan proteksi anti-duplikasi per tenant
-  const uniqueCode = payload.uniqueCode !== undefined && payload.uniqueCode !== null
-    ? payload.uniqueCode
-    : await generateUniqueCodeForTenant({
-        tenantSlug: payload.tenantSlug,
-        baseAmount: netProductPrice + netShippingCost,
-        paymentMethod: paymentMethod,
-      });
+  // Xendit Dynamic QRIS / OnlineBoost: Wajib 0 (nominal bulat pas, tanpa mutasi 3 digit)
+  const uniqueCode = isXenditGatewayTenant
+    ? 0
+    : (payload.uniqueCode !== undefined && payload.uniqueCode !== null
+        ? payload.uniqueCode
+        : await generateUniqueCodeForTenant({
+            tenantSlug: payload.tenantSlug,
+            tenantId: resolvedTenantId || undefined,
+            baseAmount: netProductPrice + netShippingCost,
+            paymentMethod: paymentMethod,
+          }));
 
   let grossAmount = payload.amount;
-  if (!grossAmount || verifiedOrderBumps.length > 0) {
+  if (isXenditGatewayTenant) {
+    // Nominal bulat pas untuk payment gateway resmi
+    grossAmount = netProductPrice + netShippingCost;
+  } else if (!grossAmount || verifiedOrderBumps.length > 0) {
     if (paymentMethod === 'qris') {
       grossAmount = Math.max(1000, (netProductPrice + netShippingCost) - uniqueCode);
     } else {

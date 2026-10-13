@@ -14,6 +14,22 @@ import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
 
 
+function extractRawQrString(strOrUrl?: string): string {
+  if (!strOrUrl) return '';
+  const trimmed = strOrUrl.trim();
+  if (trimmed.startsWith('000201')) return trimmed;
+  if (trimmed.includes('text=000201') || trimmed.includes('text=')) {
+    try {
+      const match = trimmed.match(/[?&]text=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeURIComponent(match[1]);
+        if (decoded.startsWith('000201')) return decoded;
+      }
+    } catch {}
+  }
+  return '';
+}
+
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -129,6 +145,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const [qrisError, setQrisError] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [tenantPhone, setTenantPhone] = useState<string>("");
+  const [tenantData, setTenantData] = useState<any>(null);
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
   const [tenantQrisImageUrl, setTenantQrisImageUrl] = useState<string>("");
@@ -228,13 +245,24 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
   const isPickup = isFood ? (foodDiningOption !== 'INSTANT') : (fulfillmentType === 'PICKUP');
-  const currentUniqueCode = uniqueCode;
+
+  // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS bypass kode unik & gunakan nominal bulat pas
+  const isOnlineboostOrGateway =
+    (tenantSlug || '').toLowerCase() === 'onlineboost' ||
+    (tenantData?.payment_settings?.provider === 'xendit') ||
+    (tenantData?.payment_settings?.mode === 'PAYMENT_GATEWAY') ||
+    (tenantData?.metadata?.payment_settings?.provider === 'xendit') ||
+    (tenantData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY');
+
+  const currentUniqueCode = isOnlineboostOrGateway ? 0 : uniqueCode;
   const currentShippingCost = isFood
     ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
     : (isPhysical && !isPickup ? shippingCost : 0);
-  const totalAmount = isQris
-    ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
-    : basePrice + adminFee + currentUniqueCode + currentShippingCost;
+  const totalAmount = isOnlineboostOrGateway
+    ? (basePrice + adminFee + currentShippingCost)
+    : (isQris
+        ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
+        : basePrice + adminFee + currentUniqueCode + currentShippingCost);
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
 
   // Sinkronisasi Ongkos Kirim sesuai Layanan Kurir Terpilih (Instan vs Reguler)
@@ -404,6 +432,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               .eq('slug', tenantSlug)
               .maybeSingle();
             if (data) {
+              setTenantData(data);
               const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || data?.phone || '';
               if (phone) setTenantPhone(phone);
               const metaId = data?.metadata?.pixel_config?.meta_pixel_id || data?.metadata?.meta_pixel_id || '';
@@ -1200,7 +1229,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               }
 
               // QRIS Rendering: Prioritaskan Official Xendit Dynamic QRIS dari paymentData
-              const returnedQrString = paymentData.qr_string || paymentData.qrString || '';
+              const rawExtracted = extractRawQrString(paymentData.qr_string || paymentData.qrString || (paymentData as any).data?.qr_string || paymentData.qrCodeUrl || paymentData.qr_code_url);
+              const returnedQrString = rawExtracted || paymentData.qr_string || paymentData.qrString || (paymentData as any).data?.qr_string || '';
               const candidateQris = (returnedQrString && returnedQrString.startsWith('000201'))
                 ? returnedQrString
                 : ((tenantStaticQris && tenantStaticQris.startsWith('000201') && !tenantStaticQris.includes('ID.DANA.WWW'))

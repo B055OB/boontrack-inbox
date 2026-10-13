@@ -112,14 +112,10 @@ export async function POST(req: NextRequest) {
           const res = await pQuery.maybeSingle();
           if (res?.data) {
             dbProduct = res.data;
-          } else if (res?.error) {
-            console.error('[Payments API Error Detail]:', res.error);
           }
         }
       }
-    } catch (pErr) {
-      console.error('[Payments API Error Detail]:', pErr);
-    }
+    } catch (_) {}
 
     // Fallback jika targetProductId adalah slug dan bukan primary ID
     if (!dbProduct) {
@@ -174,7 +170,43 @@ export async function POST(req: NextRequest) {
     const finalProductTitle = String(authoritativeProduct.title || authoritativeProduct.name || 'Pesanan Produk').trim();
     const finalProductId = String(authoritativeProduct.id || targetProductId).trim();
 
-    // 3. KODE UNIK & LEDGER DETERMINISTIK
+    // 3. RESOLUSI TIPE GATEWAY & QRIS DARI SERVER CONFIG
+    const pcfg = tenantRow.metadata?.payment_config;
+    const tenantStaticQris =
+      (tenantRow as any)?.qris_payload ||
+      tenantRow.metadata?.qris_payload ||
+      (tenantRow as any)?.qris_static_string ||
+      tenantRow.metadata?.qris_static_string ||
+      (tenantRow as any)?.qris_content ||
+      tenantRow.metadata?.qris_content ||
+      tenantRow.metadata?.payment_settings?.qris_raw ||
+      tenantRow.metadata?.payment_settings?.raw_qris_string ||
+      tenantRow.metadata?.qris_raw ||
+      tenantRow.metadata?.raw_qris_string ||
+      tenantRow.metadata?.qris?.static_qr ||
+      pcfg?.qris_content ||
+      pcfg?.raw_qris_string ||
+      pcfg?.static_qris_payload ||
+      tenantRow.metadata?.static_qris_payload ||
+      '';
+
+    const isPlatformDana =
+      tenantStaticQris.includes('BoonTrack') ||
+      tenantStaticQris.includes('BOONTRACK') ||
+      tenantStaticQris.includes('Kab. Bandung') ||
+      tenantStaticQris.includes('0940770000');
+
+    const isXenditGateway =
+      targetTenantSlug === 'onlineboost' ||
+      cleanSlug === 'onlineboost' ||
+      tenantRow.payment_settings?.provider === 'xendit' ||
+      tenantRow.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+      tenantRow.metadata?.payment_settings?.provider === 'xendit' ||
+      tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+      !tenantStaticQris ||
+      isPlatformDana;
+
+    // 4. KODE UNIK & LEDGER DETERMINISTIK
     // Hitung kode unik dan total transaksi murni di server.
     // Client DILARANG mendikte nominal atau menyuntikkan kode unik buatan client!
     const hasAuthoritativePrice = (authoritativeProduct.promo_price !== undefined && authoritativeProduct.promo_price !== null) ||
@@ -192,7 +224,12 @@ export async function POST(req: NextRequest) {
     const requestedUniqueCode = body.unique_code !== undefined ? Number(body.unique_code) : undefined;
     const expectedSubtotal = productBasePrice * quantity;
 
-    if (
+    if (isXenditGateway) {
+      // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS bypass kode unik & nominal bulat pas
+      uniqueCode = 0;
+      productBasePrice = expectedSubtotal;
+      numAmount = expectedSubtotal;
+    } else if (
       requestedUniqueCode !== undefined &&
       requestedUniqueCode >= 0 &&
       requestedAmount > 0 &&
@@ -263,46 +300,11 @@ export async function POST(req: NextRequest) {
     const finalCustomerPhone = String(customer_phone || body.customerPhone || '').trim();
     const finalCustomerEmail = String(customer_email || body.customerEmail || metadata?.customer_email || '').trim();
 
-    // 4. RESOLUSI QRIS DARI SERVER CONFIG (TOLAK RAW CLIENT BODY QRIS!)
+    // 5. GENERASI QRIS DARI SERVER CONFIG (TOLAK RAW CLIENT BODY QRIS!)
     let qrString = '';
     let qrCodeUrl = '';
     let invoiceUrl = `/checkout/${orderId}`;
     let xenditId = '';
-
-    const pcfg = tenantRow.metadata?.payment_config;
-    const tenantStaticQris =
-      (tenantRow as any)?.qris_payload ||
-      tenantRow.metadata?.qris_payload ||
-      (tenantRow as any)?.qris_static_string ||
-      tenantRow.metadata?.qris_static_string ||
-      (tenantRow as any)?.qris_content ||
-      tenantRow.metadata?.qris_content ||
-      tenantRow.metadata?.payment_settings?.qris_raw ||
-      tenantRow.metadata?.payment_settings?.raw_qris_string ||
-      tenantRow.metadata?.qris_raw ||
-      tenantRow.metadata?.raw_qris_string ||
-      tenantRow.metadata?.qris?.static_qr ||
-      pcfg?.qris_content ||
-      pcfg?.raw_qris_string ||
-      pcfg?.static_qris_payload ||
-      tenantRow.metadata?.static_qris_payload ||
-      '';
-
-    const isPlatformDana =
-      tenantStaticQris.includes('BoonTrack') ||
-      tenantStaticQris.includes('BOONTRACK') ||
-      tenantStaticQris.includes('Kab. Bandung') ||
-      tenantStaticQris.includes('0940770000');
-
-    const isXenditGateway =
-      targetTenantSlug === 'onlineboost' ||
-      cleanSlug === 'onlineboost' ||
-      tenantRow.payment_settings?.provider === 'xendit' ||
-      tenantRow.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
-      tenantRow.metadata?.payment_settings?.provider === 'xendit' ||
-      tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
-      !tenantStaticQris ||
-      isPlatformDana;
 
     // 4.1 Prioritas Utama: Xendit Official Dynamic QRIS untuk onlineboost & Payment Gateway
     if (isXenditGateway) {
@@ -618,7 +620,25 @@ export async function POST(req: NextRequest) {
       qr_code_url: qrCodeUrl,
       invoice_url: invoiceUrl || `/checkout/${orderId}`,
       xendit_id: xenditId || undefined,
-      source: 'dynamic_generator'
+      source: 'dynamic_generator',
+      data: {
+        order_id: orderId,
+        external_id: orderId,
+        id: orderId,
+        amount: numAmount,
+        total_amount: numAmount,
+        base_price: productBasePrice,
+        unique_code: uniqueCode,
+        payment_method: 'QRIS',
+        payment_status: 'PENDING',
+        order_status: 'PENDING',
+        tenant_slug: targetTenantSlug,
+        tenant_id: resolvedTenantId,
+        qr_string: qrString,
+        qr_code_url: qrCodeUrl,
+        invoice_url: invoiceUrl || `/checkout/${orderId}`,
+        xendit_id: xenditId || undefined,
+      }
     });
   } catch (err: unknown) {
     console.error('[Payments API Error Detail]:', err);

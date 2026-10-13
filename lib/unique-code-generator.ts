@@ -37,12 +37,26 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
     activeWindowMinutes = 120,
   } = options;
 
+  const cleanSlug = String(tenantSlug || '').trim().toLowerCase();
+  const cleanMethod = String(paymentMethod || '').trim().toLowerCase();
+
+  // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Payment Gateway
+  // Official payment gateway QRIS tidak boleh memakai mutasi 3 digit, nominal wajib bulat pas.
+  if (
+    cleanSlug === 'onlineboost' ||
+    cleanMethod.includes('xendit') ||
+    cleanMethod === 'gateway' ||
+    (options as any).isGateway ||
+    (options as any).isXendit
+  ) {
+    return 0;
+  }
+
   const supabase = getSupabaseAdmin() || getSupabase();
   const takenCodes = new Set<number>();
   const takenAmounts = new Set<number>();
 
   const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-  const cleanSlug = String(tenantSlug || '').trim();
   const rawTenantId = String(tenantId || '').trim();
   const cleanTenantId = isUuid(rawTenantId) ? rawTenantId : (isUuid(cleanSlug) ? cleanSlug : '');
 

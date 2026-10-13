@@ -41,6 +41,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Wajibkan field email divalidasi dan disimpan (tidak boleh null / format tidak valid)
+    const rawEmail = (payload.customerEmail || payload.email || '').trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!rawEmail || !emailRegex.test(rawEmail)) {
+      return NextResponse.json(
+        {
+          error: 'Field email wajib diisi dengan alamat email yang valid dan tidak boleh kosong.',
+          code: 'INVALID_CUSTOMER_EMAIL',
+          field: 'customerEmail',
+        },
+        { status: 400 }
+      );
+    }
+
     // Normalisasi dan validasi nomor telepon pelanggan ke format baku E.164 (628xxxxxxxxxx)
     const normalizedPhone = normalizePhoneToE164(payload.customerPhone);
     if (!normalizedPhone || normalizedPhone.length < 10) {
@@ -58,9 +72,19 @@ export async function POST(request: NextRequest) {
     const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : request.headers.get('x-real-ip') || undefined;
     const userAgent = request.headers.get('user-agent') || undefined;
 
+    // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Dynamic QRIS
+    // Paksa unique_code = 0 dan gunakan nominal bulat pas tanpa mutasi 3 digit
+    const isOnlineboost = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
+    const isXenditGateway =
+      isOnlineboost ||
+      String(payload.paymentMethod || '').trim().toLowerCase().includes('xendit') ||
+      Boolean(payload.isGateway || payload.isXendit);
+
     const enrichedPayload = {
       ...payload,
       customerPhone: normalizedPhone,
+      customerEmail: rawEmail,
+      ...(isXenditGateway ? { uniqueCode: 0, unique_code: 0 } : {}),
       tracking_context: {
         ...payload.tracking_context,
         client_ip_address: payload.tracking_context?.client_ip_address || clientIp,
