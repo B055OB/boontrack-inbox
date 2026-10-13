@@ -147,7 +147,7 @@ describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
       tenant_slug: '46cf50c6-18ff-4c1d-88a4-d86001d754c7',
       tenant_id: '46cf50c6-18ff-4c1d-88a4-d86001d754c7',
       message: 'Halo, saya mau tanya seputar jasa',
-      sender_phone: '6281237450222',
+      sender_phone: '6281977655099',
     });
 
     expect(result.success).toBe(true);
@@ -161,7 +161,7 @@ describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
     const result = await processMultimodalChat({
       tenant_slug: 'slug-only-store',
       message: 'Halo min',
-      sender_phone: '6281237450222',
+      sender_phone: '6281977655099',
     });
 
     expect(result.success).toBe(true);
@@ -173,7 +173,7 @@ describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
     const result = await processMultimodalChat({
       tenant_slug: '11111111-2222-3333-4444-555555555555',
       message: 'Halo',
-      sender_phone: '6281237450222',
+      sender_phone: '6281977655099',
     });
 
     expect(result.success).toBe(true);
@@ -185,7 +185,7 @@ describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
     const result = await ConversationEngine.process({
       session_id: 'sess-test-123',
       tenant_id: '46cf50c6-18ff-4c1d-88a4-d86001d754c7',
-      user_identifier: '6281237450222',
+      user_identifier: '6281977655099',
       channel: 'WHATSAPP',
       message: 'Halo mau tanya produk',
     });

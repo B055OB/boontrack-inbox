@@ -410,4 +410,48 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
       expect(json.order.status).toBe('PAID');
     });
   });
+
+  describe('4. Notification & Reconcile Idempotency Guard (BuzzerUKM ORD-1790483266787-7715)', () => {
+    it('returns 200 with idempotent message without duplicate notification when order is already PAID and notified', async () => {
+      const buzzerOrderId = 'ORD-1790483266787-7715';
+      const existing = mockOrdersDatabase.find((o) => o.id === buzzerOrderId);
+      if (existing) {
+        existing.status = 'PAID';
+        existing.payment_status = 'PAID';
+        existing.notified_at = new Date().toISOString();
+        existing.metadata = { notified_at: existing.notified_at };
+      } else {
+        mockOrdersDatabase.push({
+          id: buzzerOrderId,
+          order_number: null,
+          tenant_slug: 'buzzerukm',
+          tenant_id: 'edd76758-2792-4602-8c99-be37735e9de1',
+          product_title: 'Jasa Buzzer & Review UMKM',
+          gross_amount: 99497,
+          status: 'PAID',
+          payment_status: 'PAID',
+          order_status: 'COMPLETED',
+          paid_at: new Date().toISOString(),
+          notified_at: new Date().toISOString(),
+          metadata: { notified_at: new Date().toISOString() },
+        });
+      }
+
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${buzzerOrderId}/quick-paid`, {
+        method: 'POST',
+        headers: {
+          cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'buzzerukm', id: buzzerOrderId }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.message).toBe('Order already processed and notified.');
+    });
+  });
 });

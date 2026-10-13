@@ -84,6 +84,20 @@ export async function POST(
       );
     }
 
+    // Guard Idempotensi: Jika pesanan sudah PAID dan sudah dinotifikasi sebelumnya
+    const currentStatus = String(order.status || order.payment_status || '').toUpperCase();
+    if (currentStatus === 'PAID' && (order.notified_at || order.metadata?.notified_at)) {
+      console.log(`[Approve Order API] Order #${orderId} already PAID and notified. Returning idempotent 200 OK.`);
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Order already processed and notified.',
+          order,
+        },
+        { status: 200 }
+      );
+    }
+
     const paidAt = new Date().toISOString();
     let fulfillmentMeta = order.fulfillment_metadata || {};
 
@@ -159,6 +173,7 @@ export async function POST(
       payment_confirmation_source: 'MANUAL_CONFIRMATION',
       payment_source: 'MANUAL_CONFIRMATION',
       paid_at: paidAt,
+      notified_at: paidAt,
       fulfillment_metadata: fulfillmentMeta,
       download_url: fulfillmentMeta.access_url || order.download_url || null,
     };
@@ -170,6 +185,7 @@ export async function POST(
         payment_status: 'PAID',
         order_status: 'COMPLETED',
         paid_at: paidAt,
+        notified_at: paidAt,
         fulfillment_metadata: fulfillmentMeta,
         download_url: fulfillmentMeta.access_url || order.download_url || null,
         metadata: updatedMeta,

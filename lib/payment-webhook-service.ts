@@ -818,14 +818,18 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   const orderId = matchedOrder.id || matchedOrder.order_id;
   const currentStatus = String(matchedOrder.status || matchedOrder.payment_status || '').toUpperCase();
 
-  // IDEMPOTENCY: Jika sudah lunas sebelumnya
+  // IDEMPOTENCY: Guard pengecekan status sebelum memicu pengiriman email notifikasi berulang
   if (currentStatus === 'PAID' || currentStatus === 'SETTLED' || currentStatus === 'COMPLETED') {
+    const isAlreadyNotified = Boolean(matchedOrder.notified_at || matchedOrder.metadata?.notified_at);
     const idempotentRes = {
       success: true,
-      message: `Pesanan #${orderId} sudah berstatus LUNAS (PAID) sebelumnya. Idempotent skip.`,
+      message: isAlreadyNotified
+        ? 'Order already processed and notified.'
+        : `Pesanan #${orderId} sudah berstatus LUNAS (PAID) sebelumnya. Idempotent skip.`,
       order_id: orderId,
       already_paid: true,
       paid_at: matchedOrder.paid_at || matchedOrder.updated_at,
+      notified_at: matchedOrder.notified_at || matchedOrder.metadata?.notified_at || matchedOrder.paid_at,
       match_strategy: matchStrategy,
       log_id: logId,
     };
@@ -924,6 +928,11 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   // NOTE (BATCH 1 / Ticket 1.1): Order mutation stays here intentionally as
   // a non-breaking refactor. The full decoupling (order service via domain events)
   // is scheduled for a future ADR. The payment event service is wired below.
+  const updatedOrderMetadata = {
+    ...(matchedOrder.metadata || {}),
+    notified_at: paidAt,
+  };
+
   await supabase
     .from('orders')
     .update({
@@ -931,6 +940,8 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       payment_status: 'PAID',
       order_status: 'COMPLETED',
       paid_at: paidAt,
+      notified_at: paidAt,
+      metadata: updatedOrderMetadata,
       updated_at: paidAt,
     })
     .eq('id', orderId);

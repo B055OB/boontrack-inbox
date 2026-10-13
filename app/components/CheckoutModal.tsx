@@ -492,6 +492,26 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         initTikTokPixel(activeTTId);
       }
 
+      // Event ViewContent & InitiateCheckout pada Drawer Checkout (Client-Side Meta Pixel)
+      if (typeof window !== 'undefined' && (window as any).fbq) {
+        const prodName = product.title || (product as any)?.name || 'Produk';
+        (window as any).fbq('track', 'ViewContent', {
+          content_name: prodName,
+          content_ids: [String(product.id)],
+          content_type: 'product',
+          value: Number(product.price || 0),
+          currency: 'IDR',
+        });
+
+        (window as any).fbq('track', 'InitiateCheckout', {
+          content_name: prodName,
+          content_ids: [String(product.id)],
+          num_items: quantity || 1,
+          value: Number(product.price || 0),
+          currency: 'IDR',
+        });
+      }
+
       // Event Lead: Saat user pertama kali memicu tombol paket / membuka modal pemesanan
       const leadEventId = `LEAD_${tenantSlug}_${product.id}_${Date.now()}`;
       trackLead(product.title, product.price || 0, leadEventId);
@@ -515,7 +535,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }).catch(() => {});
       } catch (_) {}
     }
-  }, [isOpen, product, tenantMetaPixel, tenantTTPixel, tenantSlug]);
+  }, [isOpen, product, tenantMetaPixel, tenantTTPixel, tenantSlug, quantity]);
 
   // Real-time polling to detect when order is paid & fire browser purchase events
   useEffect(() => {
@@ -577,6 +597,16 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
           // Trigger Event Purchase saat order terkonfirmasi PAID (Browser Pixel + Server CAPI)
           trackClientPurchase(paymentData.orderId, totalAmount, product?.title);
+
+          // Fallback Client-Side Purchase: trigger langsung di browser dengan eventID sama untuk deduplikasi Meta
+          if (typeof window !== 'undefined' && (window as any).fbq) {
+            (window as any).fbq('track', 'Purchase', {
+              content_name: product?.title || (product as any)?.name || 'Pesanan Produk',
+              content_ids: [String(product?.id || paymentData.orderId)],
+              value: Number(totalAmount),
+              currency: 'IDR'
+            }, { eventID: paymentData.orderId });
+          }
 
           try {
             const clientTracking = getClientTrackingContext();

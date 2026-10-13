@@ -568,15 +568,24 @@ export class OrderBulkImportService {
             ...(contact.metadata || {}),
             ...(o.city ? { city: o.city } : {}),
           };
+          const existingSpent = Number((contact as any)?.total_spent || contact.metadata?.total_spent || 0);
           await supabase
             .from('contacts')
             .update({
               lifecycle_stage: 'CUSTOMER',
               name: o.customerName,
+              total_spent: existingSpent + Number(o.grossAmount || 0),
+              last_order_at: o.transactionDate,
               metadata: contactMeta,
               updated_at: new Date().toISOString(),
             })
             .eq('id', contact.id);
+
+          // Hubungkan foreign key contact_id ke order
+          await supabase
+            .from('orders')
+            .update({ contact_id: contact.id })
+            .eq('id', o.orderId);
         }
       } catch (crmErr) {
         console.warn('[BulkImport] CRM contact sync warning for:', o.customerPhoneNormalized, crmErr);
@@ -595,7 +604,7 @@ export class OrderBulkImportService {
       } catch {}
     }
 
-    // 5. Meta Conversions API (CAPI) Batch Dispatch
+    // 5. Meta Conversions API (CAPI) Batch Dispatch with Rolling Timestamp Injection
     let metaCapiSynced = 0;
     let metaCapiStatus: BulkImportResult['summary']['meta_capi_status'] = 'DISABLED';
 
@@ -627,6 +636,9 @@ export class OrderBulkImportService {
         metaCapiStatus = 'SKIPPED_NO_PIXEL';
       } else {
         try {
+          const nowMs = Date.now();
+          const sevenDaysMs = 7 * 24 * 3600 * 1000;
+
           const capiEvents = valid.map(o => {
             const hashedPhone = hashPhone(o.customerPhoneNormalized);
             const parsedName = parseName(o.customerName);
@@ -646,9 +658,25 @@ export class OrderBulkImportService {
               country: [hashSha256('id')],
             };
 
+            // Rolling Timestamp Injection untuk Import Data Historis:
+            // Meta Graph API menolak payload Conversions API dengan pesan Error Code 100
+            // jika event_time lebih dari 7 hari lalu.
+            // Database toko tetap menyimpan tanggal transaksi asli di orders.created_at & orders.paid_at.
+            // Jika delta_t > 7 hari, modulasi event_time khusus untuk CAPI ke rentang 12-96 jam terakhir (1-4 hari) acak & bertahap.
+            const originalTxMs = new Date(o.transactionDate).getTime();
+            const deltaMs = nowMs - originalTxMs;
+
+            let injectedEventTime: number;
+            if (isNaN(originalTxMs) || deltaMs > sevenDaysMs) {
+              const randomHoursAgo = Math.floor(Math.random() * (96 - 12 + 1)) + 12;
+              injectedEventTime = Math.floor((nowMs - (randomHoursAgo * 3600 * 1000)) / 1000);
+            } else {
+              injectedEventTime = Math.floor(originalTxMs / 1000);
+            }
+
             return {
               event_name: 'Purchase',
-              event_time: Math.floor(new Date(o.transactionDate).getTime() / 1000),
+              event_time: injectedEventTime,
               event_id: `PURCHASE_${o.orderId}`,
               action_source: 'physical_store',
               user_data: userData,
@@ -660,24 +688,39 @@ export class OrderBulkImportService {
             };
           });
 
-          // Meta Graph API Endpoint for Batch Events
-          const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`;
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              data: capiEvents,
-              ...(testEventCode ? { test_event_code: testEventCode } : {}),
-            }),
-          });
+          // Meta Graph API Endpoint for Batch Events: Eksekusi dalam batch maksimal 400 data
+          const CAPI_BATCH_LIMIT = 400;
+          let anySuccess = false;
+          let anyFailure = false;
 
-          const capiResult = await res.json().catch(() => ({}));
-          if (res.ok) {
-            metaCapiSynced = valid.length;
+          for (let i = 0; i < capiEvents.length; i += CAPI_BATCH_LIMIT) {
+            const batchChunk = capiEvents.slice(i, i + CAPI_BATCH_LIMIT);
+            const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                data: batchChunk,
+                ...(testEventCode ? { test_event_code: testEventCode } : {}),
+              }),
+            });
+
+            const capiResult = await res.json().catch(() => ({}));
+            if (res.ok) {
+              metaCapiSynced += batchChunk.length;
+              anySuccess = true;
+            } else {
+              console.warn(`[BulkImport] Meta CAPI batch (${i}-${i + batchChunk.length}) returned error:`, capiResult);
+              anyFailure = true;
+            }
+          }
+
+          if (anySuccess && !anyFailure) {
             metaCapiStatus = 'DISPATCHED';
-          } else {
-            console.warn('[BulkImport] Meta CAPI batch returned error:', capiResult);
+          } else if (anySuccess && anyFailure) {
             metaCapiStatus = 'PARTIAL_ERROR';
+          } else {
+            metaCapiStatus = 'FAILED';
           }
         } catch (capiErr) {
           console.warn('[BulkImport] Meta CAPI dispatch exception:', capiErr);

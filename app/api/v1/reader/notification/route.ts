@@ -332,6 +332,20 @@ export async function POST(req: NextRequest) {
     // Pilih order paling relevan
     const matchedOrder = pendingOrders[0];
 
+    // Guard Idempotensi: Cegah pengiriman email / notifikasi ganda jika order sudah PAID dan sudah dinotifikasi
+    const currentStatus = String(matchedOrder.status || matchedOrder.payment_status || '').toUpperCase();
+    if (currentStatus === 'PAID' && (matchedOrder.notified_at || matchedOrder.metadata?.notified_at)) {
+      console.log(`[BoonTrack Reader Webhook] Idempotent skip: Order #${matchedOrder.id} already PAID and notified.`);
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Order already processed and notified.',
+          order_id: matchedOrder.id,
+        },
+        { status: 200 }
+      );
+    }
+
     // Validasi Keamanan P0: Wajibkan 100% exact numerical match sebelum mutasi status ke PAID
     const orderGross = Number(matchedOrder.gross_amount ?? matchedOrder.total_amount ?? 0);
     if (!validateOrderPaymentMatch(orderGross, parsedAmount)) {
@@ -362,7 +376,12 @@ export async function POST(req: NextRequest) {
 
     console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}${isMultiTenantMatch ? ` [→ toko: ${matchedOrder.tenant_slug}]` : ''}. Mengupdate ke PAID...`);
 
-    // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'COMPLETED', paid_at
+    // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'COMPLETED', paid_at, notified_at
+    const updatedOrderMetadata = {
+      ...(matchedOrder.metadata || {}),
+      notified_at: paidAt,
+    };
+
     const { error: updateErr } = await supabase
       .from('orders')
       .update({
@@ -370,6 +389,8 @@ export async function POST(req: NextRequest) {
         payment_status: 'PAID',
         order_status: 'COMPLETED',
         paid_at: paidAt,
+        notified_at: paidAt,
+        metadata: updatedOrderMetadata,
         updated_at: paidAt,
       })
       .eq('id', matchedOrder.id);

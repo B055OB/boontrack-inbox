@@ -368,6 +368,42 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       expect(event.user_data.em[0]).toHaveLength(64);
     });
 
+    it('menginjeksi rolling timestamp (12-96 jam lalu) untuk data historis > 7 hari agar tidak ditolak Meta CAPI Error 100', async () => {
+      // Data transaksi 90 hari yang lalu
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      const rows = [
+        {
+          tanggal_transaksi: ninetyDaysAgo,
+          nomor_invoice: 'INV-HISTORIS-001',
+          nama_pembeli: 'Rina Nose',
+          nomor_whatsapp: '081234567890',
+          nama_produk: 'Cincin Custom Elianor',
+          nominal: 2500000,
+        },
+      ];
+
+      const result = await OrderBulkImportService.processBulkImport(rows, {
+        tenantSlug: 'toko-berkah',
+        syncMetaCapi: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(capiFetchCalls).toHaveLength(1);
+      const event = capiFetchCalls[0].body.data[0];
+
+      // Verifikasi event_time Meta CAPI dimodulasi ke rentang 12 - 96 jam terakhir
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const minExpectedTime = nowSeconds - (96 * 3600);
+      const maxExpectedTime = nowSeconds - (12 * 3600);
+      expect(event.event_time).toBeGreaterThanOrEqual(minExpectedTime - 5);
+      expect(event.event_time).toBeLessThanOrEqual(maxExpectedTime + 5);
+
+      // Verifikasi database toko tetap menyimpan tanggal transaksi asli 90 hari lalu
+      const storedOrder = dbOrders.find(o => o.order_number === 'INV-HISTORIS-001');
+      expect(storedOrder).toBeDefined();
+      expect(storedOrder?.created_at).toContain(ninetyDaysAgo);
+    });
+
     it('menandai status SKIPPED_NO_PIXEL jika tenant belum memasang Pixel ID di metadata', async () => {
       // Hapus pixel config pada tenant
       dbTenants[0].metadata = {};

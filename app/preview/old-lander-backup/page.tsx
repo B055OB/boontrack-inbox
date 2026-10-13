@@ -739,7 +739,8 @@ export default function ShopLandingPage() {
                   <div>
                     <span className="font-bold text-slate-900 block">Alamat Kantor Bisnis:</span>
                     <p className="text-slate-600 leading-relaxed">
-                      Jl Saturnus Selatan Komplek Boemi Kirana A16, Buahbatu, Kota Bandung, Jawa Barat 40286, Indonesia.
+                      PT Boontrack Inovasi Digital<br />
+                      Bandung, Jawa Barat, Indonesia
                     </p>
                   </div>
                 </div>

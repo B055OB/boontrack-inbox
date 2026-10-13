@@ -246,7 +246,7 @@ describe('Baileys WhatsApp Call Auto-Reject & Auto-Reply Suite', () => {
         data: [
           {
             id: 'call_ev_456',
-            from: '6281237450222@s.whatsapp.net',
+            from: '6281977655099@s.whatsapp.net',
             status: 'offer',
             isVideo: false,
           },

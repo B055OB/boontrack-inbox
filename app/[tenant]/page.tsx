@@ -310,6 +310,16 @@ export default function TenantStorefrontPage() {
               .filter((p: Product) => p.is_active !== false)
           );
           setStoreStatus("active");
+
+          // Trigger ViewContent di Frontpage (Katalog) bersamaan dengan PageView
+          if (typeof window !== "undefined" && (window as any).fbq) {
+            (window as any).fbq("track", "PageView");
+            (window as any).fbq("track", "ViewContent", {
+              content_name: tenantRow.name || "Katalog Etalase Toko",
+              content_category: "Storefront Catalog",
+              content_type: "product_group",
+            });
+          }
         }
       } catch (err) {
         console.error("[TenantRuntime] Failed to load tenant record:", err);
@@ -325,6 +335,15 @@ export default function TenantStorefrontPage() {
               )
             );
             setStoreStatus("active");
+
+            if (typeof window !== "undefined" && (window as any).fbq) {
+              (window as any).fbq("track", "PageView");
+              (window as any).fbq("track", "ViewContent", {
+                content_name: fallbackConfig.name || "Katalog Etalase Toko",
+                content_category: "Storefront Catalog",
+                content_type: "product_group",
+              });
+            }
           } else {
             setStoreStatus("not_found");
           }
