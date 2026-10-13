@@ -748,7 +748,7 @@ export function normalizeTenantSlug(slug: string): string {
 const STORAGE_CONFIG_PREFIX = 'boontrack_tenant_config_';
 const STORAGE_HISTORY_PREFIX = 'boontrack_tenant_history_';
 
-export function getTenantConfig(slug: string): TenantConfig {
+export function getTenantConfig(slug: string): TenantConfig | null {
   const normSlug = normalizeTenantSlug(slug);
 
   if (typeof window !== 'undefined') {
@@ -765,62 +765,7 @@ export function getTenantConfig(slug: string): TenantConfig {
   const def = DEFAULT_TENANT_CONFIGS[normSlug];
   if (def) return JSON.parse(JSON.stringify(def));
 
-  // Fallback for custom / unregistered tenant
-  return {
-    slug: normSlug,
-    name: normSlug.replace(/-/g, ' ').toUpperCase(),
-    category: 'external',
-    health: {
-      status: 'HEALTHY',
-      wa_gateway: 'CONNECTED',
-      last_payment_ping: '15 menit lalu',
-      last_activity_ping: 'Baru saja',
-      response_time_ms: 190,
-      uptime_pct: 99.5,
-    },
-    persona: {
-      ai_name: `${normSlug} Assistant`,
-      system_prompt: `Anda adalah asisten AI resmi untuk ${normSlug}. Jawab pertanyaan pengguna dengan ramah dan informatif.`,
-      tone: 'formal',
-      greeting_message: `Halo! Selamat datang di layanan ${normSlug}. Ada yang bisa kami bantu?`,
-      fallback_message: 'Pesan Anda telah kami terima dan akan diteruskan ke tim kami.',
-      human_handoff_enabled: false,
-      human_handoff_number: '',
-    },
-    operational_hours: {
-      days: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
-      open_time: '08:00',
-      close_time: '20:00',
-      timezone: 'WIB',
-      is_24_hours: false,
-      closed_auto_reply: 'Saat ini layanan sedang di luar jam operasional.',
-      emergency_contact: '',
-    },
-    pricing: {
-      tier: 'STARTER',
-      monthly_fee: 500000,
-      max_monthly_messages: 1000,
-      currency: 'IDR',
-      custom_packages: [],
-    },
-    features: {
-      whatsapp_gateway: true,
-      telegram_bot: false,
-      webchat_widget: true,
-      auto_ai_reply: true,
-      qris_billing: false,
-      gate_iot_sync: false,
-      cv_ats_scanner: false,
-      rate_limiting: true,
-    },
-    secrets: {
-      wa_api_token: '••••••••••••••••••••••••',
-      webhook_verify_token: '••••••••••••••••',
-      payment_api_key: '••••••••••••••••',
-      admin_password: '••••••••',
-    },
-    updated_at: new Date().toISOString(),
-  };
+  return null;
 }
 
 export function saveTenantConfig(

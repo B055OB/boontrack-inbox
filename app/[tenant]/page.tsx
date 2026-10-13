@@ -506,6 +506,7 @@ export default function TenantStorefrontPage() {
   }
 
   if (storeStatus === "not_found") {
+    const rawOrSlug = rawTenant || tenantSlug;
     return (
       <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
         <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
@@ -513,24 +514,32 @@ export default function TenantStorefrontPage() {
             <Layers className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900">Layanan Belum Terdaftar</h2>
+            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
             <p className="text-xs text-slate-500 mt-1">
-              Alamat layanan <span className="font-bold text-slate-800 font-mono">boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
+              Toko <span className="font-bold text-slate-800 font-mono">{rawOrSlug}</span> belum terdaftar di BoonTrack Shop.
             </p>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-2">
-            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand atau instansi ini?</span>
+            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand atau usaha ini?</span>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Daftarkan nama portal Anda dalam 1 menit dan aktifkan layanan digital terintegrasi otomatis.
+              Daftarkan toko Anda sekarang dan aktifkan etalase digital otomatis dengan checkout QRIS dan notifikasi WhatsApp terintegrasi.
             </p>
           </div>
-          <button
-            onClick={() => router.push(`/register?claim=${tenantSlug}`)}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>Klaim &amp; Daftarkan Layanan Ini</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="space-y-2.5 pt-1">
+            <a
+              href={`https://shop.boontrack.com/register?slug=${encodeURIComponent(rawTenant || tenantSlug)}`}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Daftarkan Toko Ini</span>
+              <ArrowRight className="w-4 h-4" />
+            </a>
+            <a
+              href="https://boontrack.com"
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Kembali ke Beranda Utama (boontrack.com)</span>
+            </a>
+          </div>
         </div>
       </div>
     );
