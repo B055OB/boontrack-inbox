@@ -64,6 +64,7 @@ import {
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix, formatPhoneForDisplay } from '@/lib/phone';
 import { captureStoreReseller, getActiveResellerCode } from '@/lib/store-reseller';
+import { getTenantConfig } from '@/lib/tenant-config';
 import { 
   resolveSinglePageProduct, 
   SinglePageConfig, 
@@ -290,15 +291,14 @@ function SingleProductContent() {
   const [tenantCategory, setTenantCategory] = useState<string>('');
   const [tenantData, setTenantData] = useState<any>(null);
 
+  const [pageStatus, setPageStatus] = useState<'checking' | 'active' | 'tenant_not_found' | 'product_not_found'>('checking');
+
   // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase
   const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig }>(() => 
     resolveSinglePageProduct(tenant, slug)
   );
 
   useEffect(() => {
-    // 1. Sinkronisasi data dinamis dari localStorage
-    const dynamicData = resolveSinglePageProduct(tenant, slug);
-    setResolvedData(dynamicData);
 
     // 2. Sinkronisasi langsung secara dinamis dari database Supabase (tenants.metadata.products)
     let isMounted = true;
@@ -307,17 +307,12 @@ function SingleProductContent() {
         const supabase = getSupabase();
         if (!supabase) return;
 
-        // 2. Query paralel non-waterfall ke database Supabase (tenants, products, tenant_settings, shipping config)
-        const [tenantRes, sqlProdRes, settingsRes, shippingCfg] = await Promise.all([
+        // 2. Query paralel non-waterfall ke database Supabase (tenants, tenant_settings, shipping config)
+        const [tenantRes, settingsRes, shippingCfg] = await Promise.all([
           supabase
             .from("tenants")
             .select("*")
             .eq("slug", tenant)
-            .maybeSingle(),
-          supabase
-            .from("products")
-            .select("*")
-            .eq("slug", slug)
             .maybeSingle(),
           supabase
             .from("tenant_settings")
@@ -328,20 +323,27 @@ function SingleProductContent() {
         ]);
 
         const tenantRow = tenantRes.data;
-        let sqlProd = sqlProdRes.data;
-        if (!sqlProd && tenantRow?.id) {
-          const { data: tenantProds } = await supabase
-            .from('products')
-            .select('*')
-            .eq('tenant_id', tenantRow.id);
-          if (tenantProds && tenantProds.length > 0) {
-            const normSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-            sqlProd = tenantProds.find((p: any) => {
-              const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              const pName = slugify(p.title || p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              return pSlug === normSlug || pName === normSlug || (pSlug && (normSlug.includes(pSlug) || pSlug.includes(normSlug)));
-            }) || null;
-          }
+
+        // ZERO CROSS-TENANT LEAKAGE: Fail-closed jika tenant tidak terdaftar
+        if (!tenantRow || !tenantRow.id) {
+          if (isMounted) setPageStatus('tenant_not_found');
+          return;
+        }
+
+        let sqlProd: any = null;
+
+        // SINGLE-PASS ATOMIC LOOKUP (P0.2):
+        // Eksekusi query produk wajib mengikat sekaligus: WHERE tenant_id = tenantRow.id AND slug = slug.
+        // DILARANG query produk global tanpa filter tenant_id!
+        if (tenantRow?.id) {
+          const { data: directSqlProd } = await supabase
+            .from("products")
+            .select("*")
+            .eq("tenant_id", tenantRow.id)
+            .eq("slug", slug)
+            .maybeSingle();
+
+          sqlProd = directSqlProd;
         }
         const adsTrackingCfg = settingsRes.data?.ads_tracking_config;
 
@@ -599,6 +601,10 @@ function SingleProductContent() {
               product: dynamicProduct,
               config: dynamicConfig,
             });
+            if (isMounted) setPageStatus('active');
+          } else if (isMounted) {
+            // ZERO CROSS-TENANT LEAKAGE: Produk tidak ditemukan pada tenant ini -> FAIL-CLOSED
+            setPageStatus('product_not_found');
           }
         } catch (err) {
         console.warn('[SingleProductContent] Supabase sync note:', err);
@@ -1382,7 +1388,8 @@ function SingleProductContent() {
     ? (product.metadata?.cta_text || config.cta_label || 'Beli Sekarang').trim()
     : (product.metadata?.cta_text || config.cta_label || product.cta_label || defaultCtaLabel).trim();
 
-  // Sinkronisasi voucher otomatis HANYA jika seller mengaktifkan voucher promo
+  // Sinkronisasi voucher dinonaktifkan sementara dari checkout agar UI bersih & fokus konversi
+  /*
   useEffect(() => {
     if (isVoucherActive && activeSellerVoucher && activeSellerVoucher.discount_value > 0 && !appliedVoucher) {
       setVoucherInput(activeSellerVoucher.code || '');
@@ -1393,6 +1400,7 @@ function SingleProductContent() {
       });
     }
   }, [isVoucherActive, activeSellerVoucher, appliedVoucher]);
+  */
 
   // Perhitungan Finansial Presisi (Mendukung Multi-Quantity, Diskon & Freebie)
   const isFreebie = product.price === 0 || product.promo_price === 0;
@@ -4046,63 +4054,7 @@ function SingleProductContent() {
         </div>
       )}
 
-      {/* Input Kode Voucher Promo Fleksibel (HANYA DITAMPILKAN JIKA SELLER MENGAKTIFKAN TOGGLE VOUCHER) */}
-      {isVoucherActive && (
-        <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 font-bold text-slate-900">
-              <Tag className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Punya Kode Voucher?</span>
-            </div>
-            {appliedVoucher && (
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                {appliedVoucher.code} Aktif
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={voucherInput}
-              onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
-              placeholder="Masukkan kode voucher promo"
-              className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 focus:outline-none focus:border-indigo-600"
-            />
-            <button
-              type="button"
-              onClick={() => handleApplyVoucher()}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
-            >
-              Terapkan
-            </button>
-            {appliedVoucher && (
-              <button
-                type="button"
-                onClick={handleRemoveVoucher}
-                title="Hapus Voucher"
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {voucherMsg && (
-            <div className={`text-[11px] font-semibold flex items-center gap-1.5 ${
-              voucherMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
-            }`}>
-              {voucherMsg.type === 'success' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span>{voucherMsg.text}</span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Input Kode Voucher Promo dinonaktifkan dari modal checkout untuk memaksimalkan fokus konversi */}
 
       {/* Rincian Kalkulasi Pembayaran Presisi */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
@@ -4293,6 +4245,96 @@ function SingleProductContent() {
       </div>
     </form>
   );
+
+  // ZERO CROSS-TENANT LEAKAGE: Fail-Closed Views
+  if (pageStatus === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-400">Memuat penawaran toko...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageStatus === 'tenant_not_found') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto border border-slate-700">
+            <Store className="w-8 h-8 text-amber-400" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-black tracking-tight text-white">Toko Belum Terdaftar</h1>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Domain atau toko <span className="text-white font-semibold">"{tenant}"</span> belum terdaftar di platform BoonTrack.
+            </p>
+          </div>
+          <div className="p-4 bg-slate-800/40 border border-slate-800 rounded-2xl text-left space-y-2">
+            <span className="text-[11px] font-bold text-slate-300 block">Apakah Anda pemilik brand atau usaha ini?</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Daftarkan toko Anda sekarang dan aktifkan etalase digital otomatis dengan checkout QRIS dan notifikasi WhatsApp terintegrasi.
+            </p>
+          </div>
+          <div className="space-y-2.5 pt-1">
+            <a
+              href={`https://shop.boontrack.com/register?slug=${encodeURIComponent(tenant)}`}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Daftarkan Toko Ini</span>
+              <ArrowRight className="w-4 h-4" />
+            </a>
+            <a
+              href="https://boontrack.com"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Kembali ke Beranda Utama (boontrack.com)</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageStatus === 'product_not_found') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto border border-slate-700">
+            <Package className="w-8 h-8 text-amber-400" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-black tracking-tight text-white">Produk Tidak Ditemukan</h1>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Produk atau penawaran <span className="text-white font-semibold">"{slug}"</span> tidak tersedia di etalase toko <span className="text-white font-semibold">{tenantData?.name || tenant}</span>.
+            </p>
+          </div>
+          <div className="p-4 bg-slate-800/40 border border-slate-800 rounded-2xl text-left space-y-2">
+            <span className="text-[11px] font-bold text-slate-300 block">Katalog Resmi Toko</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Silakan periksa produk dan layanan resmi yang aktif pada etalase toko ini.
+            </p>
+          </div>
+          <div className="space-y-2.5 pt-1">
+            <a
+              href={`/${tenant}`}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Lihat Katalog Toko</span>
+              <ArrowRight className="w-4 h-4" />
+            </a>
+            <a
+              href="https://boontrack.com"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Kembali ke Beranda Utama (boontrack.com)</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans pb-28 selection:bg-blue-600 selection:text-white">

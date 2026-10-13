@@ -21,6 +21,7 @@ import {
   FileText,
   Video,
   UtensilsCrossed,
+  Send,
 } from 'lucide-react';
 import { resolveDomainVertical } from '@/app/[tenant]/dashboard/components/modules';
 
@@ -149,9 +150,9 @@ export function getVerticalCatalogConfig(storeCategory?: string) {
  * Builds the centralized, single-source-of-truth navigation registry
  * adhering to CTO's specified hierarchy:
  * 1. Ringkasan (Dashboard, metrik penting, aktivitas terbaru)
- * 2. Kelola Toko (Collapsible: Katalog & Produk, Pesanan, Unduhan & Lisensi, Tema + Opsional Fulfilment)
- * 3. Pesan & Pelanggan (Collapsible: Smart Chatbox, Pelanggan, Broadcast WhatsApp)
- * 4. Kembangkan Bisnis (Collapsible: AI & Knowledge, Ads Tracking, Reseller, Keuangan)
+ * 2. Kelola Toko (Katalog, Pesanan, Keuangan, AI Knowledge & Bot Setup, Tema + Opsional Fulfilment)
+ * 3. Pesan & Pelanggan (Smart Chatbox, Pelanggan, WhatsApp Connect, Telegram Connect)
+ * 4. Marketing Tools (Ads Tracking, Broadcast WA, Program Reseller)
  */
 export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   const {
@@ -259,6 +260,36 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     });
   }
 
+  // Keuangan (Pindah ke grup Kelola Toko sesuai restrukturisasi)
+  kelolaTokoItems.push({
+    id: 'finance',
+    label: 'Keuangan',
+    subtitle: 'Ringkasan Finansial & Mutasi',
+    targetTab: 'finance',
+    matchedTabs: ['finance', 'overview_finance', 'integration', 'analytics'],
+    icon: CreditCard,
+    parentGroup: 'kelola-toko',
+    badge: isSoloOrTrial || isCheckoutLite
+      ? { text: 'PRO', variant: 'warning', isLock: true }
+      : null,
+    isLocked: isSoloOrTrial || isCheckoutLite,
+  });
+
+  // AI Knowledge & Bot Setup (Menu mandiri di grup Kelola Toko)
+  kelolaTokoItems.push({
+    id: 'ai_knowledge',
+    label: 'AI Knowledge & Bot Setup',
+    subtitle: 'Knowledge Base & Latih Bot',
+    targetTab: 'ai_knowledge',
+    matchedTabs: ['ai_knowledge'],
+    icon: Sparkles,
+    parentGroup: 'kelola-toko',
+    badge: isAiBotEffective
+      ? { text: 'AI', variant: 'purple' }
+      : { text: 'PRO', variant: 'warning', isLock: true },
+    isLocked: !isAiBotEffective,
+  });
+
   // Tema (Mandatory CTO spec for Kelola Toko)
   kelolaTokoItems.push({
     id: 'themes',
@@ -309,9 +340,9 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     {
       id: 'whatsapp',
       label: 'Whatsapp Connect',
-      subtitle: 'Broadcast & Notifikasi',
+      subtitle: 'Direct Connect & Notifikasi',
       targetTab: 'whatsapp',
-      matchedTabs: ['whatsapp', 'broadcast', 'auto_reply', 'rotator', 'telegram_alerts'],
+      matchedTabs: ['whatsapp', 'auto_reply', 'rotator'],
       icon: Radio,
       parentGroup: 'pesan-pelanggan',
       badge: isTeamScale
@@ -319,23 +350,20 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
         : { text: isCheckoutLite ? 'WABA' : undefined, isLock: true, variant: 'locked' },
       isLocked: !isTeamScale,
     },
+    {
+      id: 'telegram',
+      label: 'Telegram Connect',
+      subtitle: 'Notifikasi & Alert Order',
+      targetTab: 'telegram_alerts',
+      matchedTabs: ['telegram', 'telegram_alerts', 'alerts'],
+      icon: Send,
+      parentGroup: 'pesan-pelanggan',
+      badge: { text: 'BOT', variant: 'info' },
+    },
   ];
 
-  // 3. Kembangkan Bisnis Items
+  // 3. Marketing Tools Items (Dahulu Kembangkan Bisnis)
   const kembangkanBisnisItems: NavMenuItem[] = [
-    {
-      id: 'ai_knowledge',
-      label: 'AI & Knowledge',
-      subtitle: 'Knowledge Base & Latih Bot',
-      targetTab: 'ai_knowledge',
-      matchedTabs: ['ai_knowledge'],
-      icon: Sparkles,
-      parentGroup: 'kembangkan-bisnis',
-      badge: isAiBotEffective
-        ? { text: 'AI', variant: 'purple' }
-        : { text: 'PRO', variant: 'warning', isLock: true },
-      isLocked: !isAiBotEffective,
-    },
     {
       id: 'ads_tracking',
       label: 'Ads Tracking',
@@ -352,30 +380,30 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
       isLocked: !isAdsTrackingUnlocked && !isCheckoutLite,
     },
     {
+      id: 'broadcast',
+      label: 'Broadcast WA',
+      subtitle: 'Kirim Pesan Promo Massal',
+      targetTab: 'broadcast',
+      matchedTabs: ['broadcast'],
+      icon: Radio,
+      parentGroup: 'kembangkan-bisnis',
+      badge: isTeamScale
+        ? { text: 'WABA', variant: 'success' }
+        : { text: 'SCALE', variant: 'locked', isLock: true },
+      isLocked: !isTeamScale,
+    },
+    {
       id: 'reseller',
-      label: 'Reseller',
+      label: 'Program Reseller',
       subtitle: 'Komisi & Data Reseller',
       targetTab: 'reseller',
-      matchedTabs: ['reseller'],
+      matchedTabs: ['reseller', 'affiliate'],
       icon: Users,
       parentGroup: 'kembangkan-bisnis',
       badge: isResellerEffective
         ? { text: 'BARU', variant: 'success' }
         : { text: 'SCALE', variant: 'locked', isLock: true },
       isLocked: !isResellerEffective,
-    },
-    {
-      id: 'finance',
-      label: 'Keuangan',
-      subtitle: 'Ringkasan Finansial & Mutasi',
-      targetTab: 'finance',
-      matchedTabs: ['finance', 'overview_finance', 'integration', 'analytics'],
-      icon: CreditCard,
-      parentGroup: 'kembangkan-bisnis',
-      badge: isSoloOrTrial || isCheckoutLite
-        ? { text: 'PRO', variant: 'warning', isLock: true }
-        : null,
-      isLocked: isSoloOrTrial || isCheckoutLite,
     },
   ];
 
@@ -416,8 +444,8 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
     },
     {
       id: 'kembangkan-bisnis',
-      label: 'Kembangkan Bisnis',
-      icon: Sparkles,
+      label: 'Marketing Tools',
+      icon: Target,
       isCollapsible: true,
       items: kembangkanBisnisItems,
     },
