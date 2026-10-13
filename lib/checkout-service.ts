@@ -603,6 +603,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       pcfg?.manual_config?.qris_image_url ||
       "";
 
+    const isPlatformDana =
+      tenantStaticQris.includes('BoonTrack') ||
+      tenantStaticQris.includes('BOONTRACK') ||
+      tenantStaticQris.includes('Kab. Bandung') ||
+      tenantStaticQris.includes('0940770000');
+
     const isXenditGatewayTenant =
       payload.tenantSlug === 'onlineboost' ||
       tenantRowData?.payment_settings?.provider === 'xendit' ||
@@ -610,7 +616,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       tenantRowData?.metadata?.payment_settings?.provider === 'xendit' ||
       tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
       !tenantStaticQris ||
-      tenantStaticQris.includes('ID.DANA.WWW');
+      isPlatformDana;
 
     // 1. Prioritas Utama: Xendit Dynamic QRIS untuk onlineboost & Payment Gateway
     if (isXenditGatewayTenant) {
@@ -633,7 +639,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       } catch (xErr) {
         console.warn("[Checkout Service] Xendit Dynamic QRIS generation error:", xErr);
       }
-    } else if (tenantStaticQris && tenantStaticQris.startsWith("000201") && !tenantStaticQris.includes("ID.DANA.WWW")) {
+    } else if (tenantStaticQris && tenantStaticQris.startsWith("000201") && !isPlatformDana) {
       // Direct Clinic Merchant QRIS
       qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
@@ -735,7 +741,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
     // 4. Pastikan string QRIS valid tanpa merusak dynamic payload dari Xendit
     if (qrString) {
-      if (qrString.startsWith("000201010211") && !qrString.includes("ID.DANA.WWW")) {
+      const isPlatformDanaQr =
+        qrString.includes('BoonTrack') ||
+        qrString.includes('BOONTRACK') ||
+        qrString.includes('Kab. Bandung') ||
+        qrString.includes('0940770000');
+
+      if (qrString.startsWith("000201010211") && !isPlatformDanaQr) {
         // Hanya inject nominal jika merupakan QRIS statis merchant klinik (010211)
         qrString = generateDynamicQRIS(qrString, grossAmount);
         qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;

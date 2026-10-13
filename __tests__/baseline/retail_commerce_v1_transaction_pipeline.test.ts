@@ -306,7 +306,7 @@ describe('GATE 3: RETAIL_COMMERCE_V1 Transaction Pipeline Regression Test', () =
       expect(savedOrder.status).toBe('PENDING');
       expect(savedOrder.payment_status).toBe('PENDING');
       expect(savedOrder.gross_amount).toBe(grossAmount);
-      expect(savedOrder.unique_code).toBe(450);
+      expect(savedOrder.unique_code ?? savedOrder.metadata?.unique_code).toBe(450);
     });
   });
 

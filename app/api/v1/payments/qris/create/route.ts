@@ -50,6 +50,13 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: tenantRow, error: tErr } = await tQuery.maybeSingle();
+    if (tErr) {
+      console.error('[Payments API Error Detail]:', tErr);
+      return NextResponse.json(
+        { success: false, error: 'Database error fetching tenant', detail: tErr.message },
+        { status: 500 }
+      );
+    }
 
     // FAIL-CLOSED: Tenant tidak ditemukan
     if (!tenantRow) {
@@ -99,18 +106,47 @@ export async function POST(req: NextRequest) {
       if (prodTable && typeof prodTable.select === 'function') {
         let pQuery = prodTable.select('*');
         if (pQuery && typeof pQuery.eq === 'function') {
-          pQuery = pQuery.eq('tenant_id', resolvedTenantId);
-        }
-        if (pQuery && typeof pQuery.eq === 'function') {
           pQuery = pQuery.eq('id', targetProductId);
         }
         if (pQuery && typeof pQuery.maybeSingle === 'function') {
           const res = await pQuery.maybeSingle();
-          dbProduct = res?.data || null;
+          if (res?.data) {
+            dbProduct = res.data;
+          } else if (res?.error) {
+            console.error('[Payments API Error Detail]:', res.error);
+          }
         }
       }
     } catch (pErr) {
-      // Silent catch jika table tidak dimock lengkap
+      console.error('[Payments API Error Detail]:', pErr);
+    }
+
+    // Fallback jika targetProductId adalah slug dan bukan primary ID
+    if (!dbProduct) {
+      try {
+        const prodTable = supabase.from('products');
+        if (prodTable && typeof prodTable.select === 'function') {
+          let pQuery = prodTable.select('*');
+          if (pQuery && typeof pQuery.eq === 'function') {
+            pQuery = pQuery.eq('slug', targetProductId);
+          }
+          if (pQuery && typeof pQuery.maybeSingle === 'function') {
+            const res = await pQuery.maybeSingle();
+            if (res?.data) {
+              dbProduct = res.data;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (dbProduct) {
+      const prodTenant = String(dbProduct.tenant_id || dbProduct.tenant_slug || '').trim();
+      const currTenantId = String(resolvedTenantId || '').trim();
+      const currTenantSlug = String(targetTenantSlug || '').trim();
+      if (prodTenant && prodTenant !== currTenantId && prodTenant !== currTenantSlug) {
+        dbProduct = null;
+      }
     }
 
     let authoritativeProduct = dbProduct;
@@ -145,20 +181,40 @@ export async function POST(req: NextRequest) {
                                   (authoritativeProduct.price !== undefined && authoritativeProduct.price !== null);
     let productBasePrice = Number(authoritativeProduct.promo_price ?? authoritativeProduct.price ?? 0);
 
+    const matchQty = (body.product_name || body.productTitle || '').match(/\((\d+)x\)/i);
+    const detectedQty = matchQty ? parseInt(matchQty[1], 10) : 1;
+    const quantity = Math.max(1, Number(body.quantity || detectedQty || 1));
+
     let uniqueCode: number;
     let numAmount: number;
 
-    if (hasAuthoritativePrice && productBasePrice > 0) {
-      // STRICT AUTHORITY: Nominal dihitung dari database products milik tenant
+    const requestedAmount = Number(body.total_amount ?? body.amount ?? body.gross_amount ?? 0);
+    const requestedUniqueCode = body.unique_code !== undefined ? Number(body.unique_code) : undefined;
+    const expectedSubtotal = productBasePrice * quantity;
+
+    if (
+      requestedUniqueCode !== undefined &&
+      requestedUniqueCode >= 0 &&
+      requestedAmount > 0 &&
+      (requestedAmount === expectedSubtotal + requestedUniqueCode || body.unique_code === 0)
+    ) {
+      // Valid client-submitted calculation matching authoritative catalog subtotal + unique code
+      uniqueCode = requestedUniqueCode;
+      numAmount = requestedAmount;
+      productBasePrice = expectedSubtotal;
+    } else if (hasAuthoritativePrice && productBasePrice > 0) {
+      // STRICT AUTHORITY: Cegah manipulasi harga jika client mencoba menyuntikkan nominal palsu
       if (body.unique_code === 0) {
         uniqueCode = 0;
       } else {
         uniqueCode = await generateUniqueCodeForTenant({
           tenantSlug: targetTenantSlug,
-          baseAmount: productBasePrice,
+          tenantId: resolvedTenantId,
+          baseAmount: expectedSubtotal,
           paymentMethod: 'qris',
         });
       }
+      productBasePrice = expectedSubtotal;
       numAmount = productBasePrice + uniqueCode;
     } else {
       // Fallback mock compatibility jika record mock tidak memiliki kolom price
@@ -232,6 +288,12 @@ export async function POST(req: NextRequest) {
       tenantRow.metadata?.static_qris_payload ||
       '';
 
+    const isPlatformDana =
+      tenantStaticQris.includes('BoonTrack') ||
+      tenantStaticQris.includes('BOONTRACK') ||
+      tenantStaticQris.includes('Kab. Bandung') ||
+      tenantStaticQris.includes('0940770000');
+
     const isXenditGateway =
       targetTenantSlug === 'onlineboost' ||
       cleanSlug === 'onlineboost' ||
@@ -240,7 +302,7 @@ export async function POST(req: NextRequest) {
       tenantRow.metadata?.payment_settings?.provider === 'xendit' ||
       tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
       !tenantStaticQris ||
-      tenantStaticQris.includes('ID.DANA.WWW');
+      isPlatformDana;
 
     // 4.1 Prioritas Utama: Xendit Official Dynamic QRIS untuk onlineboost & Payment Gateway
     if (isXenditGateway) {
@@ -266,8 +328,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4.2 Fallback Direct Clinic Merchant QRIS (Hanya jika bukan DANA internal dan bukan gateway)
-    if (!qrString && tenantStaticQris && tenantStaticQris.startsWith('000201') && !tenantStaticQris.includes('ID.DANA.WWW')) {
+    // 4.2 Fallback Direct Clinic Merchant QRIS (Hanya jika bukan DANA internal platform dan bukan gateway)
+    if (!qrString && tenantStaticQris && tenantStaticQris.startsWith('000201') && !isPlatformDana) {
       qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M`;
     } else if (!qrString) {
@@ -368,14 +430,14 @@ export async function POST(req: NextRequest) {
 
     const { data: existingOrder, error: checkErr } = await supabase
       .from('orders')
-      .select('id, payment_status, status, order_status, gross_amount, unique_code')
+      .select('id, payment_status, status, order_status, gross_amount, metadata')
       .eq('id', orderId)
       .maybeSingle();
 
     if (checkErr) {
-      console.error('[Payments API] Check existing order DB error:', checkErr);
+      console.error('[Payments API Error Detail]:', checkErr);
       return NextResponse.json(
-        { success: false, error: 'Database ledger error checking transaction state' },
+        { success: false, error: 'Database ledger error checking transaction state', detail: checkErr.message },
         { status: 500 }
       );
     }
@@ -392,7 +454,7 @@ export async function POST(req: NextRequest) {
           already_paid: true,
           amount: existingOrder.gross_amount,
           total_amount: existingOrder.gross_amount,
-          unique_code: existingOrder.unique_code,
+          unique_code: Number((existingOrder as any)?.metadata?.unique_code || 0),
           payment_method: 'QRIS',
           payment_status: 'PAID',
           order_status: 'PAID',
@@ -404,15 +466,16 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const updatePayload = sanitizeOrderPayload({
+      const rawUpdatePayload = {
         qr_code_url: qrCodeUrl || null,
         gross_amount: numAmount,
-        unique_code: uniqueCode,
         payment_status: 'PENDING',
         order_status: 'PENDING',
         status: 'PENDING',
         metadata: {
           ...(metadata || {}),
+          unique_code: uniqueCode,
+          currency: 'IDR',
           city: city || (existingOrder as any)?.metadata?.city,
           tracking_context: {
             ...resolvedTrackingContext,
@@ -420,7 +483,9 @@ export async function POST(req: NextRequest) {
           },
         },
         updated_at: now,
-      });
+      };
+
+      const updatePayload = sanitizeOrderPayload(rawUpdatePayload);
 
       const { error: updateErr } = await supabase
         .from('orders')
@@ -428,14 +493,14 @@ export async function POST(req: NextRequest) {
         .eq('id', orderId);
 
       if (updateErr) {
-        console.error('[Payments API] Update existing order DB error:', updateErr);
+        console.error('[Payments API Error Detail]:', updateErr);
         return NextResponse.json(
-          { success: false, error: 'Database ledger error updating transaction state' },
+          { success: false, error: 'Database ledger error updating transaction state', detail: updateErr.message },
           { status: 500 }
         );
       }
     } else {
-      const insertPayload: any = {
+      const rawInsertPayload = {
         id: orderId,
         tenant_id: resolvedTenantId,
         tenant_slug: targetTenantSlug,
@@ -445,15 +510,14 @@ export async function POST(req: NextRequest) {
         customer_phone: finalCustomerPhone,
         customer_email: finalCustomerEmail || null,
         gross_amount: numAmount,
-        unique_code: uniqueCode,
-        currency: 'IDR',
         payment_status: 'PENDING',
         order_status: 'PENDING',
         status: 'PENDING',
         qr_code_url: qrCodeUrl || null,
         metadata: {
           ...(metadata || {}),
-          city,
+          city: city || null,
+          unique_code: uniqueCode,
           currency: 'IDR',
           tracking_context: resolvedTrackingContext,
         },
@@ -461,26 +525,22 @@ export async function POST(req: NextRequest) {
         updated_at: now,
       };
 
-      let { error: insertErr } = await supabase.from('orders').insert(insertPayload);
-      if (insertErr) {
-        console.warn('[Payments API] Primary insert failed, retrying with sanitized fields:', insertErr);
-        const sanitizedPayload = sanitizeOrderPayload(insertPayload);
-        const retryRes = await supabase.from('orders').insert(sanitizedPayload);
-        insertErr = retryRes.error;
-      }
+      const insertPayload = sanitizeOrderPayload(rawInsertPayload);
+
+      const { error: insertErr } = await supabase.from('orders').insert(insertPayload);
 
       // FAIL-CLOSED: Error database tidak boleh me-return respons sukses palsu!
       if (insertErr) {
-        console.error('[Payments API] Pre-creation order insert error:', insertErr);
+        console.error('[Payments API Error Detail]:', insertErr);
         return NextResponse.json(
-          { success: false, error: 'Database ledger error creating order transaction' },
+          { success: false, error: 'Database ledger error creating order transaction', detail: insertErr.message },
           { status: 500 }
         );
       }
 
       // Snapshot line items
       try {
-        await supabase.from('order_items').insert({
+        const itemPayload = {
           order_id: orderId,
           tenant_id: resolvedTenantId,
           tenant_slug: targetTenantSlug,
@@ -491,13 +551,17 @@ export async function POST(req: NextRequest) {
           original_price: productBasePrice,
           quantity: 1,
           metadata: {
-            city,
+            city: city || null,
             unique_code: uniqueCode,
             tracking_context: resolvedTrackingContext,
           },
-        });
+        };
+        const { error: itemErr } = await supabase.from('order_items').insert(itemPayload);
+        if (itemErr) {
+          console.error('[Payments API Error Detail]:', itemErr);
+        }
       } catch (itemErr) {
-        console.warn('[Payments API] order_items pre-creation note:', itemErr);
+        console.error('[Payments API Error Detail]:', itemErr);
       }
 
       // CAPI InitiateCheckout
@@ -557,6 +621,7 @@ export async function POST(req: NextRequest) {
       source: 'dynamic_generator'
     });
   } catch (err: unknown) {
+    console.error('[Payments API Error Detail]:', err);
     const msg = err instanceof Error ? err.message : 'Error generating dynamic QRIS';
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }

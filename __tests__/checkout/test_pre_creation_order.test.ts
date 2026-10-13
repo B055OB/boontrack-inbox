@@ -250,7 +250,7 @@ describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
     expect(savedOrder.customer_name).toBe('Budi Santoso');
     expect(savedOrder.customer_phone).toBe('081234567890');
     expect(savedOrder.gross_amount).toBe(99450);
-    expect(savedOrder.unique_code).toBe(450);
+    expect(savedOrder.unique_code ?? savedOrder.metadata?.unique_code).toBe(450);
   });
 
   it('2. Synchronizes Reader Webhook mutation matching to update order to PAID & COMPLETED and triggers WhatsApp fulfillment', async () => {

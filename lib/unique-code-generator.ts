@@ -41,44 +41,57 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
   const takenCodes = new Set<number>();
   const takenAmounts = new Set<number>();
 
+  const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
   const cleanSlug = String(tenantSlug || '').trim();
-  const cleanTenantId = String(tenantId || cleanSlug).trim();
+  const rawTenantId = String(tenantId || '').trim();
+  const cleanTenantId = isUuid(rawTenantId) ? rawTenantId : (isUuid(cleanSlug) ? cleanSlug : '');
 
   if (supabase && (cleanSlug || cleanTenantId)) {
     try {
       const windowStartIso = new Date(Date.now() - activeWindowMinutes * 60 * 1000).toISOString();
 
       // 1. Check active records in `payment_intents` table if table exists
-      try {
-        const { data: activeIntents } = await supabase
-          .from('payment_intents')
-          .select('unique_suffix, expected_amount, status, expires_at')
-          .or(`tenant_id.eq.${cleanTenantId},tenant_id.eq.${cleanSlug}`)
-          .in('status', ['PENDING', 'ACTIVE'])
-          .gte('expires_at', toCanonicalUTCString());
+      if (cleanTenantId) {
+        try {
+          const { data: activeIntents } = await supabase
+            .from('payment_intents')
+            .select('unique_suffix, expected_amount, status, expires_at')
+            .eq('tenant_id', cleanTenantId)
+            .in('status', ['PENDING', 'ACTIVE'])
+            .gte('expires_at', toCanonicalUTCString());
 
-        if (Array.isArray(activeIntents)) {
-          for (const intent of activeIntents) {
-            const suffix = Number(intent.unique_suffix || 0);
-            if (suffix >= 1 && suffix <= 999) {
-              takenCodes.add(suffix);
-            }
-            const expAmt = Number(intent.expected_amount || 0);
-            if (expAmt > 0) {
-              takenAmounts.add(expAmt);
+          if (Array.isArray(activeIntents)) {
+            for (const intent of activeIntents) {
+              const suffix = Number(intent.unique_suffix || 0);
+              if (suffix >= 1 && suffix <= 999) {
+                takenCodes.add(suffix);
+              }
+              const expAmt = Number(intent.expected_amount || 0);
+              if (expAmt > 0) {
+                takenAmounts.add(expAmt);
+              }
             }
           }
+        } catch (intentErr) {
+          // Table may be pending or not used directly
         }
-      } catch (intentErr) {
-        // Table may be pending or not used directly
       }
 
       // 2. Check active pending orders in `orders` table
-      const { data: activeOrders, error } = await supabase
+      let ordersQuery = supabase
         .from('orders')
         .select('id, gross_amount, metadata, status, payment_status, order_status')
-        .or(`tenant_slug.eq.${cleanSlug},tenant_id.eq.${cleanTenantId}`)
         .gte('created_at', windowStartIso);
+
+      if (cleanSlug && cleanTenantId) {
+        ordersQuery = ordersQuery.or(`tenant_slug.eq.${cleanSlug},tenant_id.eq.${cleanTenantId}`);
+      } else if (cleanTenantId) {
+        ordersQuery = ordersQuery.eq('tenant_id', cleanTenantId);
+      } else if (cleanSlug) {
+        ordersQuery = ordersQuery.eq('tenant_slug', cleanSlug);
+      }
+
+      const { data: activeOrders, error } = await ordersQuery;
 
       if (!error && Array.isArray(activeOrders)) {
         for (const o of activeOrders) {
