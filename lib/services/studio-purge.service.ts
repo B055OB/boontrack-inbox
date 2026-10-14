@@ -15,6 +15,7 @@
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
+import { resolveR2Endpoint } from '@/app/api/v1/upload/route';
 
 export interface PurgeResultDetail {
   job_id: string;
@@ -49,13 +50,12 @@ function getStorageClient(): { client: S3Client; bucket: string; publicUrlBase: 
     '56303bb13200d0980da8695adcf08550'
   );
 
-  let endpoint = cleanEnv(
+  const endpoint = resolveR2Endpoint(
+    process.env.R2_ENDPOINT ||
     process.env.R2_ENDPOINT_URL ||
-    `https://${accountId}.r2.cloudflarestorage.com`
+    process.env.S3_ENDPOINT,
+    accountId
   );
-  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
-    endpoint = `https://${endpoint}`;
-  }
 
   const accessKeyId = cleanEnv(
     process.env.R2_ACCESS_KEY_ID ||
@@ -88,6 +88,7 @@ function getStorageClient(): { client: S3Client; bucket: string; publicUrlBase: 
       accessKeyId,
       secretAccessKey,
     },
+    forcePathStyle: true,
   });
 
   return { client, bucket, publicUrlBase };

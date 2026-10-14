@@ -3,25 +3,132 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSupabase } from '@/lib/supabaseClient';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 
-function cleanEnv(val?: string | null): string {
+export function cleanEnv(val?: string | null): string {
   if (!val) return '';
   return val.replace(/^["']|["']$/g, '').trim();
 }
 
-function getR2Client(): { client: S3Client; bucket: string; publicUrlBase: string } | null {
+/**
+ * Memastikan endpoint R2 berformat murni S3 API:
+ * https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+ * Mencegah pemakaian custom domain (assets.boontrack.com), bucket path (/boontrack-media),
+ * atau subdomain berlebih yang menyebabkan TLS Handshake Failure (SSL alert number 40 / EPROTO).
+ */
+export function resolveR2Endpoint(rawEndpoint?: string, accountId?: string): string {
+  const accId = cleanEnv(
+    accountId ||
+    process.env.R2_ACCOUNT_ID ||
+    process.env.CLOUDFLARE_ACCOUNT_ID ||
+    '56303bb13200d0980da8695adcf08550'
+  );
+  const pureR2Default = `https://${accId}.r2.cloudflarestorage.com`;
+
+  const inputCandidate =
+    rawEndpoint ||
+    process.env.R2_ENDPOINT ||
+    process.env.R2_ENDPOINT_URL ||
+    process.env.S3_ENDPOINT;
+
+  let ep = cleanEnv(inputCandidate);
+  if (!ep) {
+    return pureR2Default;
+  }
+
+  // Tambahkan https:// jika belum ada skema
+  if (!ep.startsWith('http://') && !ep.startsWith('https://')) {
+    ep = `https://${ep}`;
+  }
+
+  try {
+    const parsed = new URL(ep);
+    const host = parsed.hostname.toLowerCase();
+
+    // 1. Guard custom CDN domain: assets.boontrack.com atau *.r2.dev bukan endpoint S3 API
+    if (host.includes('boontrack.com') || host.includes('r2.dev') || !host.includes('r2.cloudflarestorage.com')) {
+      console.warn(`[R2 Endpoint Guard] Custom domain detected in endpoint ('${host}'). Re-routing to pure R2 S3 endpoint.`);
+      return pureR2Default;
+    }
+
+    // 2. Guard bucket prefix atau format subdomain pada hostname
+    // Cloudflare R2 wildcard certificate (*.r2.cloudflarestorage.com) mewajibkan tepat:
+    // https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+    const parts = host.split('.');
+    if (
+      parts.length >= 4 &&
+      parts[parts.length - 2] === 'cloudflarestorage' &&
+      parts[parts.length - 1] === 'com' &&
+      parts[parts.length - 3] === 'r2'
+    ) {
+      const accountPart = parts[parts.length - 4];
+      const bucketName = cleanEnv(process.env.R2_BUCKET_NAME || 'boontrack-media').toLowerCase();
+      if (accountPart && accountPart !== 'r2' && accountPart.toLowerCase() !== bucketName) {
+        return `https://${accountPart}.r2.cloudflarestorage.com`;
+      }
+      return pureR2Default;
+    }
+
+    return `https://${host}`;
+  } catch {
+    return pureR2Default;
+  }
+}
+
+/**
+ * Format pesan error upload agar user-friendly dan tidak memuntahkan stack trace EPROTO mentah
+ */
+export function formatUploadError(err: any): string {
+  const rawMsg = String(err?.message || '');
+  const code = String(err?.code || err?.name || '');
+
+  if (
+    rawMsg.includes('EPROTO') ||
+    rawMsg.includes('handshake failure') ||
+    rawMsg.includes('SSL alert') ||
+    rawMsg.includes('tls') ||
+    rawMsg.includes('CERT_') ||
+    code === 'EPROTO'
+  ) {
+    return 'Gagal mengunggah foto produk ke cloud storage karena kendala koneksi aman (TLS/SSL Handshake). Silakan refresh halaman dan coba kembali.';
+  }
+
+  if (
+    rawMsg.includes('ECONNREFUSED') ||
+    rawMsg.includes('ECONNRESET') ||
+    rawMsg.includes('ETIMEDOUT') ||
+    rawMsg.includes('ENOTFOUND') ||
+    code === 'ETIMEDOUT'
+  ) {
+    return 'Koneksi ke server penyimpanan awan terputus atau timeout. Silakan periksa jaringan internet Anda dan coba lagi.';
+  }
+
+  if (
+    rawMsg.includes('NoSuchBucket') ||
+    rawMsg.includes('AccessDenied') ||
+    rawMsg.includes('InvalidAccessKeyId')
+  ) {
+    return 'Autentikasi penyimpanan awan belum terkonfigurasi dengan benar. Hubungi tim teknis BoonTrack.';
+  }
+
+  if (rawMsg && rawMsg.length <= 160 && !rawMsg.includes('at ') && !rawMsg.includes('node:')) {
+    return rawMsg;
+  }
+
+  return 'Gagal memproses upload media. Silakan coba beberapa saat lagi.';
+}
+
+export function getR2Client(): { client: S3Client; bucket: string; publicUrlBase: string } | null {
   const accountId = cleanEnv(
     process.env.R2_ACCOUNT_ID ||
     process.env.CLOUDFLARE_ACCOUNT_ID ||
     '56303bb13200d0980da8695adcf08550'
   );
 
-  let endpoint = cleanEnv(
+  const endpoint = resolveR2Endpoint(
+    process.env.R2_ENDPOINT ||
     process.env.R2_ENDPOINT_URL ||
-    `https://${accountId}.r2.cloudflarestorage.com`
+    process.env.S3_ENDPOINT,
+    accountId
   );
-  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
-    endpoint = `https://${endpoint}`;
-  }
 
   const accessKeyId = cleanEnv(
     process.env.R2_ACCESS_KEY_ID ||
@@ -54,6 +161,7 @@ function getR2Client(): { client: S3Client; bucket: string; publicUrlBase: strin
       accessKeyId,
       secretAccessKey,
     },
+    forcePathStyle: true,
   });
 
   return { client, bucket, publicUrlBase };
@@ -139,9 +247,9 @@ export async function POST(req: NextRequest) {
       storage: 'cloudflare_r2',
     });
   } catch (err: any) {
-    console.error('Upload route error:', err);
+    console.error('[Upload Route Failure]:', err);
     return NextResponse.json(
-      { status: 'error', detail: err.message || 'Gagal memproses upload media' },
+      { status: 'error', detail: formatUploadError(err) },
       { status: 500 }
     );
   }

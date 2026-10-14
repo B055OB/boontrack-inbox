@@ -5291,3 +5291,36 @@ Mendukung model BYO-Gateway (Bring Your Own Payment Gateway) untuk tenant B2B ta
    - Seluruh alur (Inbound Keyword $\rightarrow$ Tagging `awaiting_payment` $\rightarrow$ Order Creation Rp249.000 $\rightarrow$ Webhook Settlement $\rightarrow$ Mutasi `customer_batch1_paid` $\rightarrow$ Telegram Invite Generation $\rightarrow$ WABA Outbox Notification) wajib divalidasi end-to-end sebelum pelepasan siaran broadcast.
    - Menggunakan nomor dummy dan order uji coba dengan verifikasi *Clean Slate Protocol* (0 residu transaksi, contact, atau outbox di database Supabase).
 
+---
+
+## 64. Cloudflare R2 Object Storage TLS/SSL Architecture & Handshake Protection (ADR 2026-10-14)
+
+### 64.1 Akar Masalah SSL Alert Number 40 (Handshake Failure / EPROTO)
+Kegagalan upload foto produk dengan pesan error `write EPROTO ... ssl/tls alert handshake failure ... SSL alert number 40` disebabkan oleh salah satu dari dua pelanggaran arsitektur storage:
+1. **Penyimpangan Endpoint S3**: Variabel `R2_ENDPOINT` atau `S3_ENDPOINT` diarahkan ke custom domain CDN distribusi publik (seperti `https://assets.boontrack.com`) atau menyertakan bucket sebagai subdomain tingkat dua (`<bucket>.<account-id>.r2.cloudflarestorage.com`). Domain CDN bukan endpoint API S3 dan tidak merespons negosiasi TLS/SigV4 S3.
+2. **Ketiadaan Flag `forcePathStyle: true`**: Tanpa `forcePathStyle: true`, `@aws-sdk/client-s3` secara default membentuk virtual-host style addressing (`https://<bucket>.<account-id>.r2.cloudflarestorage.com`). Karena sertifikat TLS Cloudflare R2 berstatus wildcard tingkat satu (`*.r2.cloudflarestorage.com`), penamaan subdomain bertingkat dua gagal pada verifikasi TLS SNI (Server Name Indication) dan memicu penolakan SSL alert 40.
+
+### 64.2 Kontrak Arsitektur Object Storage Wajib
+1. **Pure S3 API Endpoint Format**:
+   - `R2_ENDPOINT` / `S3_ENDPOINT` WAJIB bertaraf murni: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+   - Dilarang keras menyisipkan nama bucket di endpoint URL (`/boontrack-media` atau prefix subdomain).
+   - Domain CDN publik (`https://assets.boontrack.com`) HANYA diizinkan sebagai `R2_PUBLIC_DOMAIN` / `R2_PUBLIC_URL` untuk membaca file, DILARANG digunakan sebagai endpoint upload S3Client.
+2. **Mandatory S3Client Configuration**:
+   ```typescript
+   new S3Client({
+     region: "auto",
+     endpoint: resolveR2Endpoint(process.env.R2_ENDPOINT),
+     credentials: {
+       accessKeyId: process.env.R2_ACCESS_KEY_ID,
+       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+     },
+     forcePathStyle: true, // WAJIB: Memastikan URL berbentuk path-style (.../bucket/key)
+   })
+   ```
+3. **Self-Healing Endpoint Sanitizer (`resolveR2Endpoint`)**:
+   - Seluruh route backend (`boontrack-inbox` dan `boontrack-core`) wajib melalukan sanitasi otomatis pada candidate endpoint: jika terdeteksi custom domain (`boontrack.com`, `r2.dev`) atau subdomain prefix bucket, sistem otomatis menormalkannya kembali ke `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+4. **Zero Raw EPROTO Leakage**:
+   - Seluruh handler upload (`app/api/v1/upload/route.ts`, `media_routes.py`, `ImageUpload.tsx`) wajib menangkap error level socket/koneksi (`EPROTO`, `SSL alert`, `handshake failure`, `ETIMEDOUT`) dan mengembalikan pesan ramah pengguna: *"Gagal mengunggah foto ke cloud storage karena kendala koneksi aman (TLS/SSL). Silakan refresh halaman dan coba kembali."*
+   - Dilarang memuntahkan raw stack trace, EPROTO, atau path internal ke client dashboard.
+
+

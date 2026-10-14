@@ -186,6 +186,15 @@ export default function ImageUpload({
             serverError = errJson.message;
           }
         } catch {}
+
+        if (
+          serverError.includes('EPROTO') ||
+          serverError.includes('handshake failure') ||
+          serverError.includes('SSL alert') ||
+          serverError.includes('TLS')
+        ) {
+          serverError = 'Gagal mengunggah gambar ke cloud storage karena kendala koneksi aman (TLS/SSL). Silakan coba beberapa saat lagi.';
+        }
         throw new Error(serverError);
       }
 
@@ -210,7 +219,16 @@ export default function ImageUpload({
       }
     } catch (err: any) {
       console.error('Error uploading image:', err);
-      setErrorMsg(err.message || 'Terjadi kesalahan saat mengunggah gambar');
+      let clientMsg = err.message || 'Terjadi kesalahan saat mengunggah gambar';
+      if (
+        clientMsg.includes('EPROTO') ||
+        clientMsg.includes('handshake failure') ||
+        clientMsg.includes('SSL alert') ||
+        clientMsg.includes('TLS')
+      ) {
+        clientMsg = 'Gagal mengunggah gambar ke cloud storage karena kendala koneksi aman (TLS/SSL). Silakan coba beberapa saat lagi.';
+      }
+      setErrorMsg(clientMsg);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
