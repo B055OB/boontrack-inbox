@@ -49,7 +49,12 @@ export function resolveR2Endpoint(rawEndpoint?: string, accountId?: string): str
       return pureR2Default;
     }
 
-    // 2. Guard bucket prefix atau format subdomain pada hostname
+    // 2. Guard bare r2.cloudflarestorage.com (tanpa account ID)
+    if (host === 'r2.cloudflarestorage.com') {
+      return pureR2Default;
+    }
+
+    // 3. Guard bucket prefix atau format subdomain pada hostname
     // Cloudflare R2 wildcard certificate (*.r2.cloudflarestorage.com) mewajibkan tepat:
     // https://<ACCOUNT_ID>.r2.cloudflarestorage.com
     const parts = host.split('.');
@@ -59,15 +64,18 @@ export function resolveR2Endpoint(rawEndpoint?: string, accountId?: string): str
       parts[parts.length - 1] === 'com' &&
       parts[parts.length - 3] === 'r2'
     ) {
-      const accountPart = parts[parts.length - 4];
-      const bucketName = cleanEnv(process.env.R2_BUCKET_NAME || 'boontrack-media').toLowerCase();
-      if (accountPart && accountPart !== 'r2' && accountPart.toLowerCase() !== bucketName) {
-        return `https://${accountPart}.r2.cloudflarestorage.com`;
+      const r2Index = parts.indexOf('r2');
+      if (r2Index > 0) {
+        const potentialAccId = parts[r2Index - 1];
+        const bucketName = cleanEnv(process.env.R2_BUCKET_NAME || 'boontrack-media').toLowerCase();
+        if (potentialAccId && potentialAccId !== 'r2' && potentialAccId.toLowerCase() !== bucketName) {
+          return `https://${potentialAccId}.r2.cloudflarestorage.com`;
+        }
       }
       return pureR2Default;
     }
 
-    return `https://${host}`;
+    return pureR2Default;
   } catch {
     return pureR2Default;
   }
@@ -96,6 +104,7 @@ export function formatUploadError(err: any): string {
     rawMsg.includes('ECONNRESET') ||
     rawMsg.includes('ETIMEDOUT') ||
     rawMsg.includes('ENOTFOUND') ||
+    rawMsg.includes('timeout') ||
     code === 'ETIMEDOUT'
   ) {
     return 'Koneksi ke server penyimpanan awan terputus atau timeout. Silakan periksa jaringan internet Anda dan coba lagi.';
@@ -117,11 +126,25 @@ export function formatUploadError(err: any): string {
 }
 
 export function getR2Client(): { client: S3Client; bucket: string; publicUrlBase: string } | null {
-  const accountId = cleanEnv(
+  let accountId = cleanEnv(
     process.env.R2_ACCOUNT_ID ||
-    process.env.CLOUDFLARE_ACCOUNT_ID ||
-    '56303bb13200d0980da8695adcf08550'
+    process.env.CLOUDFLARE_ACCOUNT_ID
   );
+
+  // Jika R2_ACCOUNT_ID tidak eksplisit di env, coba ekstrak dari endpoint URL
+  if (!accountId) {
+    const rawEp = cleanEnv(
+      process.env.R2_ENDPOINT ||
+      process.env.R2_ENDPOINT_URL ||
+      process.env.S3_ENDPOINT
+    );
+    const match = rawEp.match(/([a-f0-9]{32})\.r2\.cloudflarestorage\.com/i);
+    if (match) {
+      accountId = match[1];
+    } else {
+      accountId = '56303bb13200d0980da8695adcf08550';
+    }
+  }
 
   const endpoint = resolveR2Endpoint(
     process.env.R2_ENDPOINT ||
@@ -167,6 +190,59 @@ export function getR2Client(): { client: S3Client; bucket: string; publicUrlBase
   return { client, bucket, publicUrlBase };
 }
 
+/**
+ * Failover resilient engine: Simpan asset ke Supabase Storage (bucket: store-assets)
+ */
+export async function uploadToSupabaseStorage(
+  buffer: Buffer,
+  key: string,
+  tenantSlug: string,
+  contentType: string
+): Promise<{ publicUrl: string; path: string } | null> {
+  try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      console.warn('[Upload Route] Supabase client unavailable for storage failover');
+      return null;
+    }
+
+    // 1. Coba upload langsung dengan path standar: products/... atau media/...
+    const { error: directError } = await supabase.storage
+      .from('store-assets')
+      .upload(key, buffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (!directError) {
+      const { data: pubData } = supabase.storage.from('store-assets').getPublicUrl(key);
+      return { publicUrl: pubData.publicUrl, path: `/${key}` };
+    }
+
+    console.warn('[Upload Route] Direct key upload note:', directError.message);
+
+    // 2. Fallback: upload dengan prefix tenantSlug jika direktori scoped
+    const tenantKey = `${tenantSlug}/${key}`;
+    const { error: tenantError } = await supabase.storage
+      .from('store-assets')
+      .upload(tenantKey, buffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (!tenantError) {
+      const { data: tPub } = supabase.storage.from('store-assets').getPublicUrl(tenantKey);
+      return { publicUrl: tPub.publicUrl, path: `/${tenantKey}` };
+    }
+
+    console.error('[Upload Route] Supabase failover also failed:', tenantError.message);
+    return null;
+  } catch (sbErr: any) {
+    console.error('[Upload Route] Supabase storage exception:', sbErr?.message || sbErr);
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -192,59 +268,97 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const sanitizedName = (file.name || (isQris ? 'qris.png' : 'image.webp')).replace(/[^a-zA-Z0-9.-]/g, '_');
-    let key = `${folder}/${Date.now()}_${sanitizedName}`;
+    const key = `${folder}/${Date.now()}_${sanitizedName}`;
 
-    // 1. Direct Cloudflare R2 Upload menggunakan S3 Client (@aws-sdk/client-s3)
+    let uploadSuccess = false;
+    let finalUrl = '';
+    let storageEngine = '';
+    let uploadErrorMsg = '';
+
+    // Engine 1: Cloudflare R2 Upload via S3Client
     const r2Config = getR2Client();
-    if (!r2Config) {
+    if (r2Config) {
+      try {
+        const s3Promise = r2Config.client.send(
+          new PutObjectCommand({
+            Bucket: r2Config.bucket,
+            Key: key,
+            Body: buffer,
+            ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
+          })
+        );
+
+        // Timeout 5 detik agar jika TLS handshake bermasalah di Vercel edge, langsung failover tanpa hang
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Cloudflare R2 timeout (5000ms)')), 5000)
+        );
+
+        await Promise.race([s3Promise, timeoutPromise]);
+
+        const rawR2Url = `${r2Config.publicUrlBase}/${key}`;
+        finalUrl = sanitizeImageUrl(rawR2Url) || rawR2Url;
+        storageEngine = 'cloudflare_r2';
+        uploadSuccess = true;
+
+        // Async sync ke Supabase Storage sebagai replika backup
+        uploadToSupabaseStorage(
+          buffer,
+          key,
+          tenantSlug,
+          file.type || (isQris ? 'image/png' : 'image/webp')
+        ).catch((sbErr) => {
+          console.debug('[Upload Route] Background backup sync note:', sbErr);
+        });
+      } catch (r2Err: any) {
+        console.warn('[Upload Route] Primary R2 upload failed, initiating Supabase Storage failover:', r2Err?.message || r2Err);
+        uploadErrorMsg = formatUploadError(r2Err);
+      }
+    } else {
+      console.warn('[Upload Route] Cloudflare R2 not configured, utilizing Supabase Storage as primary engine.');
+    }
+
+    // Engine 2: Supabase Storage Failover
+    if (!uploadSuccess) {
+      console.log(`[Upload Route] Executing Supabase Storage upload for tenant: ${tenantSlug}...`);
+      const sbResult = await uploadToSupabaseStorage(
+        buffer,
+        key,
+        tenantSlug,
+        file.type || (isQris ? 'image/png' : 'image/webp')
+      );
+
+      if (sbResult && sbResult.publicUrl) {
+        finalUrl = sbResult.publicUrl;
+        storageEngine = 'supabase_storage';
+        uploadSuccess = true;
+      }
+    }
+
+    if (!uploadSuccess || !finalUrl) {
       return NextResponse.json(
-        { status: 'error', detail: 'Cloudflare R2 Client belum terkonfigurasi (R2_ACCESS_KEY_ID & R2_SECRET_ACCESS_KEY wajib diset)' },
+        {
+          status: 'error',
+          detail: uploadErrorMsg || 'Gagal mengunggah media ke semua server cloud storage. Silakan coba beberapa saat lagi.',
+        },
         { status: 500 }
       );
     }
 
-    await r2Config.client.send(
-      new PutObjectCommand({
-        Bucket: r2Config.bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
-      })
-    );
-
-    // 2. Simpan juga ke Supabase Storage (store-assets) untuk backup jika bucket siap
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        await supabase.storage
-          .from('store-assets')
-          .upload(`${tenantSlug}/${key}`, buffer, {
-            contentType: file.type || (isQris ? 'image/png' : 'image/webp'),
-            upsert: true,
-          });
-      }
-    } catch (sbErr) {
-      console.debug('[Upload Route] Backup sync note:', sbErr);
-    }
-
-    // URL publik kanonikal dan proksi internal yang selalu sinkron dengan key penyimpanan
-    const publicUrl = `${r2Config.publicUrlBase}/${key}`;
-    const canonicalAssetUrl = sanitizeImageUrl(publicUrl) || publicUrl;
     const localProxyUrl = `/api/v1/media/${key}`;
 
     return NextResponse.json({
       status: 'success',
-      url: canonicalAssetUrl,
-      public_url: canonicalAssetUrl,
-      r2_url: canonicalAssetUrl,
-      image_url: canonicalAssetUrl,
+      url: finalUrl,
+      public_url: finalUrl,
+      r2_url: finalUrl,
+      image_url: finalUrl,
       local_proxy_url: localProxyUrl,
-      qris_url: isQris ? canonicalAssetUrl : undefined,
+      qris_url: isQris ? finalUrl : undefined,
       path: `/${key}`,
       filename: sanitizedName,
       folder,
       is_qris: isQris,
-      storage: 'cloudflare_r2',
+      storage: storageEngine,
     });
   } catch (err: any) {
     console.error('[Upload Route Failure]:', err);

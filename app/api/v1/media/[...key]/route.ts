@@ -93,8 +93,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   // 2. Coba ambil dari Supabase Storage (store-assets)
+  const supabaseBaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co').replace(/\/+$/, '');
   const supabasePaths = [
-    `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/store-assets/${joinedKey}`,
+    `${supabaseBaseUrl}/storage/v1/object/public/store-assets/${joinedKey}`,
   ];
 
   for (const sbUrl of supabasePaths) {
