@@ -1908,6 +1908,29 @@ function SingleProductContent() {
     };
   }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout]);
 
+  // Re-hydrate & execute scripts inside Custom HTML (HTML5 spec prevents innerHTML/dangerouslySetInnerHTML from running script tags)
+  useEffect(() => {
+    if (!config.custom_html) return;
+    const timer = setTimeout(() => {
+      const container = document.getElementById('custom-html-section');
+      if (!container) return;
+
+      const scripts = container.querySelectorAll('script');
+      scripts.forEach((oldScript) => {
+        if (oldScript.dataset.hydrated === 'true') return;
+        const newScript = document.createElement('script');
+        Array.from(oldScript.attributes).forEach((attr) => {
+          newScript.setAttribute(attr.name, attr.value);
+        });
+        newScript.dataset.hydrated = 'true';
+        newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+        oldScript.parentNode?.replaceChild(newScript, oldScript);
+      });
+    }, 60);
+
+    return () => clearTimeout(timer);
+  }, [config.custom_html]);
+
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
