@@ -184,7 +184,8 @@ export default function SinglePageBuilderModal({
               enable_testimonials: false,
               enable_offer: false,
               enable_faq: false,
-              enable_payment: false,
+              // Pertahankan toggle Checkout & Voucher (#9) sesuai pilihan merchant
+              enable_payment: singlePageForm.enable_payment !== false,
             }
           : {}),
       };

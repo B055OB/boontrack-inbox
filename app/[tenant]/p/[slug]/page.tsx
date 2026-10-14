@@ -511,7 +511,7 @@ function SingleProductContent() {
               enable_testimonials: isCustomHtmlActive ? false : (cfg.enable_testimonials ?? true),
               enable_offer: isCustomHtmlActive ? false : (cfg.enable_offer ?? true),
               enable_faq: isCustomHtmlActive ? false : (cfg.enable_faq ?? false),
-              enable_payment: isCustomHtmlActive ? false : (cfg.enable_payment ?? true),
+              enable_payment: cfg.enable_payment !== false,
               enable_media_gallery: isCustomHtmlActive ? false : (cfg.enable_media_gallery ?? Boolean(cfg.gallery_images && cfg.gallery_images.length > 0)),
               enable_custom_html: isCustomHtmlActive,
               is_custom_html_enabled: isCustomHtmlActive,
@@ -1833,10 +1833,10 @@ function SingleProductContent() {
     }
   };
 
-  // Universal Headless Checkout Trigger ([data-bt-checkout] & [href="#checkout"])
+  // Universal Headless Checkout Trigger ([data-bt-checkout], [href="#checkout"], and window 'open-checkout' event)
   useEffect(() => {
     const handleGlobalCheckoutClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"]') as HTMLElement | null;
+      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], .sbp-btn') as HTMLElement | null;
       if (!target) return;
 
       e.preventDefault();
@@ -1877,9 +1877,31 @@ function SingleProductContent() {
       setCheckoutOpen(true);
     };
 
+    const handleCustomOpenCheckout = () => {
+      if (!hasTrackedAddToCart) {
+        trackAddToCart({
+          id: slug,
+          name: product.name,
+          price: basePrice
+        });
+        setHasTrackedAddToCart(true);
+      }
+      if (!hasTrackedInitiateCheckout) {
+        trackInitiateCheckout({
+          id: slug,
+          name: product.name,
+          price: basePrice
+        });
+        setHasTrackedInitiateCheckout(true);
+      }
+      setCheckoutOpen(true);
+    };
+
     document.addEventListener('click', handleGlobalCheckoutClick, { capture: true });
+    window.addEventListener('open-checkout', handleCustomOpenCheckout);
     return () => {
       document.removeEventListener('click', handleGlobalCheckoutClick, { capture: true });
+      window.removeEventListener('open-checkout', handleCustomOpenCheckout);
     };
   }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout]);
 
@@ -4377,7 +4399,11 @@ function SingleProductContent() {
 
           return effectiveOrder.map((sectionId) => {
             if (config.sections_override === false && sectionId !== 'custom_html') {
-              return null;
+              if (sectionId === 'payment_voucher' && config.enable_payment !== false) {
+                // Section Checkout tetap aktif dan dirender di bawah custom HTML jika enable_payment true
+              } else {
+                return null;
+              }
             }
             switch (sectionId) {
               case 'hook':

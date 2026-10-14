@@ -1970,7 +1970,7 @@ export function useTenantDashboard() {
       enable_testimonials: isCustomHtmlActive ? (cfg?.enable_testimonials ?? false) : (cfg?.enable_testimonials ?? true),
       enable_offer: isCustomHtmlActive ? (cfg?.enable_offer ?? false) : (cfg?.enable_offer ?? true),
       enable_faq: isCustomHtmlActive ? (cfg?.enable_faq ?? false) : (cfg?.enable_faq ?? false),
-      enable_payment: isCustomHtmlActive ? (cfg?.enable_payment ?? false) : (cfg?.enable_payment ?? true),
+      enable_payment: cfg?.enable_payment !== false,
       enable_custom_html: isCustomHtmlActive || Boolean(cfg?.enable_custom_html),
       is_custom_html_enabled: isCustomHtmlActive || Boolean((cfg as any)?.is_custom_html_enabled),
       use_custom_html: isCustomHtmlActive || Boolean((cfg as any)?.use_custom_html),
@@ -2076,7 +2076,7 @@ export function useTenantDashboard() {
           enable_testimonials: false,
           enable_offer: false,
           enable_faq: false,
-          enable_payment: false,
+          enable_payment: cleanSpForm.enable_payment !== false,
         }
       : {
           enable_custom_html: Boolean(cleanSpForm.enable_custom_html),

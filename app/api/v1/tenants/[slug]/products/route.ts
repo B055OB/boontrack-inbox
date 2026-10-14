@@ -174,7 +174,11 @@ export async function POST(
               spc.enable_testimonials = false;
               spc.enable_offer = false;
               spc.enable_faq = false;
-              spc.enable_payment = false;
+              if (body.single_page_config?.enable_payment === false || spc.enable_payment === false) {
+                spc.enable_payment = false;
+              } else {
+                spc.enable_payment = true;
+              }
             }
             return spc;
           })()
