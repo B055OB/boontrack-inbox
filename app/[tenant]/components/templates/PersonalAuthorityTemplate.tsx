@@ -689,9 +689,9 @@ export function FeaturedCatalogSection({
               <div className="flex items-center gap-2">
                 {(() => {
                   const hasDedicatedPage =
-                    (mainProduct.slug && mainProduct.slug === 'ctwa-mastery-7day') ||
-                    Boolean(mainProduct.single_page_config) ||
-                    Boolean((mainProduct as any).single_page_enabled);
+                    (mainProduct?.slug && mainProduct.slug === 'ctwa-mastery-7day') ||
+                    Boolean(mainProduct?.single_page_config) ||
+                    Boolean((mainProduct as any)?.single_page_enabled);
                   const dedicatedPageUrl = hasDedicatedPage && mainProduct.slug
                     ? getProductPageUrl(tenantSlug, mainProduct.slug, customDomain)
                     : null;
@@ -838,9 +838,9 @@ export function FeaturedCatalogSection({
 
                       {(() => {
                         const hasDedicatedPage =
-                          (item.slug && item.slug === 'ctwa-mastery-7day') ||
-                          Boolean(item.single_page_config) ||
-                          Boolean((item as any).single_page_enabled);
+                          (item?.slug && item.slug === 'ctwa-mastery-7day') ||
+                          Boolean(item?.single_page_config) ||
+                          Boolean((item as any)?.single_page_enabled);
                         const dedicatedPageUrl = hasDedicatedPage && item.slug
                           ? getProductPageUrl(tenantSlug, item.slug, customDomain)
                           : null;
@@ -1401,8 +1401,8 @@ export default function PersonalAuthorityTemplate({
   const dynamicTestimonials: Array<{ name: string; role?: string; rating?: number; text: string }> =
     Array.isArray(tenantMetadata?.testimonials) && tenantMetadata.testimonials.length > 0
       ? tenantMetadata.testimonials
-      : (Array.isArray(tenantMetadata?.single_page_config?.testimonials) && tenantMetadata.single_page_config.testimonials.length > 0
-        ? tenantMetadata.single_page_config.testimonials
+      : (Array.isArray(tenantMetadata?.single_page_config?.testimonials) && tenantMetadata?.single_page_config?.testimonials && tenantMetadata.single_page_config.testimonials.length > 0
+        ? tenantMetadata?.single_page_config?.testimonials
         : []);
 
   const stats: Array<{ value: string; label: string }> | null =
