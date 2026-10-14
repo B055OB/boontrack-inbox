@@ -15,6 +15,7 @@ export default function FnbCulinaryProductForm({
   productForm,
   setProductForm,
 }: ModularProductFormProps) {
+  const safeForm = productForm || ({} as ProductItem);
   return (
     <div className="space-y-4">
       <div className="p-4 bg-orange-50/70 border border-orange-200 rounded-2xl space-y-3">
@@ -37,8 +38,8 @@ export default function FnbCulinaryProductForm({
               type="number"
               required
               min={1}
-              value={productForm.weight_grams || 500}
-              onChange={(e) => setProductForm((p) => ({ ...p, weight_grams: Number(e.target.value) }))}
+              value={safeForm.weight_grams || 500}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), weight_grams: Number(e.target.value) }))}
               placeholder="Contoh: 500 gram (Porsi Standar)"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-orange-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
@@ -53,8 +54,8 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={productForm.variants || 'Level 1, Level 2, Level 3 / Extra Sambal'}
-              onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
+              value={safeForm.variants || 'Level 1, Level 2, Level 3 / Extra Sambal'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: Manis, Pedas Sedang, Super Pedas"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
             />
@@ -68,8 +69,8 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={productForm.promo || '2 Hari Suhu Ruang • 1 Bulan Freezer'}
-              onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
+              value={safeForm.promo || '2 Hari Suhu Ruang • 1 Bulan Freezer'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), promo: e.target.value }))}
               placeholder="Contoh: 2 Hari Suhu Ruang • 1 Bulan Freezer"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
             />
@@ -81,8 +82,8 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={productForm.description || 'Kemasan Vacum Food Grade'}
-              onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
+              value={safeForm.description || 'Kemasan Vacum Food Grade'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), description: e.target.value }))}
               placeholder="Contoh: Kemasan Vacum Food Grade Kedap Udara"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
             />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2, Tag, CreditCard, ShoppingCart } from 'lucide-react';
 import BoonPilotPitchModal from './BoonPilotPitchModal';
 import ImageUpload from '@/components/ImageUpload';
@@ -92,11 +92,12 @@ export const BOON_VERTICAL_OPTIONS: BoonVerticalMeta[] = [
 ];
 
 export function resolveBoonVertical(
-  product: Partial<ProductItem>,
+  product?: Partial<ProductItem> | null,
   storeCategory?: string
 ): BoonVerticalOption {
+  const safeProd = product || {};
   // 1. Prioritaskan atribut tipe produk spesifik jika ada
-  const pt = (product.product_type || '').toUpperCase();
+  const pt = (safeProd.product_type || '').toUpperCase();
   if (pt === 'FOOD' || pt === 'FNB') return 'fnb';
   if (pt === 'DIGITAL' || pt === 'DIGITAL_FILE') return 'digital_product';
   if (pt === 'FIELD_SERVICE') return 'field_service';
@@ -104,8 +105,8 @@ export function resolveBoonVertical(
   if (pt === 'AGENCY') return 'creator_agency';
   if (pt === 'PHYSICAL') return 'retail_physical';
 
-  const rawType = (product.type || '').toLowerCase();
-  const rawCat = (product.category || '').toLowerCase();
+  const rawType = (safeProd.type || '').toLowerCase();
+  const rawCat = (safeProd.category || '').toLowerCase();
 
   if (rawCat.includes('kuliner') || rawCat.includes('fnb') || rawCat.includes('food') || rawType.includes('fnb')) return 'fnb';
   if (rawCat.includes('digital') || rawCat.includes('course') || rawCat.includes('ebook') || rawType.includes('digital')) return 'digital_product';
@@ -142,7 +143,7 @@ export interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (e: React.FormEvent) => void;
-  productForm: ProductItem;
+  productForm?: ProductItem;
   setProductForm: React.Dispatch<React.SetStateAction<ProductItem>>;
   editingProductId: number | string | null;
   storeCategory?: string;
@@ -156,7 +157,7 @@ export default function ProductFormModal({
   isOpen,
   onClose,
   onSave,
-  productForm,
+  productForm = {} as ProductItem,
   setProductForm,
   editingProductId,
   storeCategory,
@@ -173,72 +174,74 @@ export default function ProductFormModal({
   useEffect(() => {
     if (isOpen) {
       setProductForm((prev) => {
-        const vertical = resolveBoonVertical(prev, storeCategory);
+        const safePrev = prev || ({} as ProductItem);
+        const vertical = resolveBoonVertical(safePrev, storeCategory);
         const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === vertical) || BOON_VERTICAL_OPTIONS[0];
-        const effectiveProductType = prev.product_type || meta.productType;
+        const effectiveProductType = safePrev?.product_type || meta.productType;
         const normPt = String(effectiveProductType).toUpperCase();
         const isPhysical = normPt === 'PHYSICAL';
         const isPhysicalStock = isPhysical || normPt === 'FOOD';
-        const isServiceOrDigital = normPt === 'DIGITAL_FILE' || normPt === 'DIGITAL' || normPt === 'SERVICE' || normPt === 'PROFESSIONAL_SERVICE' || normPt === 'FIELD_SERVICE';
+        const isServiceOrDigital = normPt === 'DIGITAL_FILE' || normPt === 'DIGITAL' || normPt === 'SERVICE' || normPt === 'PROFESSIONAL_SERVICE' || normPt === 'FIELD_SERVICE' || normPt === 'AGENCY';
         const defaultEnableCart = isPhysical ? true : (isServiceOrDigital ? false : isPhysical);
-        const explicitEnableCart = prev.metadata?.enable_cart !== undefined
-          ? Boolean(prev.metadata.enable_cart)
-          : ((prev as any).enable_cart !== undefined ? Boolean((prev as any).enable_cart) : undefined);
+        const explicitEnableCart = safePrev.metadata?.enable_cart !== undefined
+          ? Boolean(safePrev.metadata.enable_cart)
+          : ((safePrev as any)?.enable_cart !== undefined ? Boolean((safePrev as any)?.enable_cart) : undefined);
         const resolvedEnableCart = explicitEnableCart !== undefined ? explicitEnableCart : defaultEnableCart;
 
         const reqs = resolveFulfillmentRequirements(effectiveProductType);
-        const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
-        const customBadge = prev.custom_badge?.trim();
-        const resolvedBadge = customBadge || (prev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(prev.category.trim().toLowerCase()) ? prev.category.trim() : meta.defaultBadge);
+        const currentSlug = safePrev.slug?.trim() || (safePrev.name ? slugify(safePrev.name) : '');
+        const customBadge = safePrev.custom_badge?.trim();
+        const resolvedBadge = customBadge || (safePrev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(safePrev.category.trim().toLowerCase()) ? safePrev.category.trim() : meta.defaultBadge);
 
         return {
-          ...prev,
-          image: sanitizeImageUrl(prev.image),
+          ...safePrev,
+          image: sanitizeImageUrl(safePrev.image),
           slug: currentSlug,
           product_type: effectiveProductType,
-          type: prev.type || meta.backendType,
+          type: safePrev.type || meta.backendType,
           category: resolvedBadge,
           custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
-          is_unlimited: !isPhysicalStock ? true : (prev.is_unlimited !== undefined ? prev.is_unlimited : reqs.strategy === 'DIGITAL'),
-          stock: !isPhysicalStock ? 999999 : (prev.stock ?? 100),
-          weight_grams: !isPhysical ? 0 : (prev.weight_grams ?? 0),
+          is_unlimited: !isPhysicalStock ? true : (safePrev.is_unlimited !== undefined ? safePrev.is_unlimited : reqs.strategy === 'DIGITAL'),
+          stock: !isPhysicalStock ? 999999 : (safePrev.stock ?? 100),
+          weight_grams: !isPhysical ? 0 : (safePrev.weight_grams ?? 0),
           requires_shipping: isPhysical,
           enable_cart: resolvedEnableCart,
           metadata: {
-            ...(prev.metadata || {}),
+            ...(safePrev.metadata || {}),
             enable_cart: resolvedEnableCart,
           },
-          checkout_type: prev.checkout_type || (prev.external_url ? 'external' : 'internal'),
-          external_url: prev.external_url || '',
-          cta_label: prev.cta_label || '',
+          checkout_type: safePrev.checkout_type || (safePrev.external_url ? 'external' : 'internal'),
+          external_url: safePrev.external_url || '',
+          cta_label: safePrev.cta_label || '',
         };
       });
     }
   }, [isOpen, storeCategory, editingProductId, setProductForm]);
 
-  const currentVerticalKey = resolveBoonVertical(productForm, storeCategory);
+  const safeForm = productForm || ({} as ProductItem);
+  const currentVerticalKey = resolveBoonVertical(safeForm, storeCategory);
   const activeVerticalMeta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
 
-  const currentType: ProductType = productForm.product_type || activeVerticalMeta.productType;
+  const currentType: ProductType = safeForm.product_type || activeVerticalMeta.productType;
   const requirements = resolveFulfillmentRequirements(currentType);
 
-  const normProductType = (productForm.product_type || currentType || '').toUpperCase();
+  const normProductType = (safeForm.product_type || currentType || '').toUpperCase();
   const isPhysicalProduct = normProductType === 'PHYSICAL';
-  const effectiveVertical = resolveDomainVertical(productForm.product_type || currentType || currentVerticalKey || storeCategory);
+  const effectiveVertical = resolveDomainVertical(safeForm.product_type || currentType || currentVerticalKey || storeCategory);
   const isPhysicalStockVertical = isPhysicalProduct || (normProductType === 'FOOD');
 
-  const isCartEnabled = productForm.metadata?.enable_cart !== undefined
-    ? Boolean(productForm.metadata.enable_cart)
-    : (productForm as any).enable_cart !== undefined
-      ? Boolean((productForm as any).enable_cart)
+  const isCartEnabled = safeForm.metadata?.enable_cart !== undefined
+    ? Boolean(safeForm.metadata.enable_cart)
+    : (safeForm as any)?.enable_cart !== undefined
+      ? Boolean((safeForm as any)?.enable_cart)
       : isPhysicalProduct;
 
   const handleToggleEnableCart = (enabled: boolean) => {
     setProductForm((prev) => ({
-      ...prev,
+      ...(prev || {}),
       enable_cart: enabled,
       metadata: {
-        ...(prev.metadata || {}),
+        ...(prev?.metadata || {}),
         enable_cart: enabled,
       },
     }));
@@ -247,9 +250,9 @@ export default function ProductFormModal({
   const isServiceCluster = currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' || currentVerticalKey === 'creator_agency' || activeVerticalMeta.backendType === 'service';
   const isDigitalCluster = currentVerticalKey === 'digital_product' || activeVerticalMeta.backendType === 'digital';
 
-  const metadata: FulfillmentMetadata = productForm.fulfillment_metadata || {
+  const metadata: FulfillmentMetadata = safeForm.fulfillment_metadata || {
     delivery_type: isServiceCluster ? 'WHATSAPP_GROUP' : 'DOWNLOAD_LINK',
-    access_url: productForm.download_url || '',
+    access_url: safeForm.download_url || '',
     instructions: '',
   };
 
@@ -270,7 +273,7 @@ export default function ProductFormModal({
       const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
       const trimmed = safeString.trim();
       return {
-        ...prev,
+        ...(prev || {}),
         custom_badge: safeString,
         category: trimmed || meta.defaultBadge,
       };
@@ -286,30 +289,31 @@ export default function ProductFormModal({
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
     }
-    const safeName = typeof productForm.name === 'string' ? productForm.name.trim() : '';
+    const safeName = typeof safeForm.name === 'string' ? safeForm.name.trim() : '';
     const generated = slugify(safeName || 'produk');
     setProductForm((p) => ({
-      ...p,
+      ...(p || {}),
       slug: generated,
-      single_page_config: p.single_page_config
+      single_page_config: p?.single_page_config
         ? { ...p.single_page_config, slug: generated }
         : undefined,
     }));
   };
 
-  const handleMetadataChange = (key: keyof FulfillmentMetadata, value: string) => {
+  const handleMetadataChange = useCallback((key: keyof FulfillmentMetadata, value: string) => {
     setProductForm((prev) => {
+      const safePrev = prev || ({} as ProductItem);
       const updatedMeta: FulfillmentMetadata = {
-        ...(prev.fulfillment_metadata || {}),
+        ...(safePrev.fulfillment_metadata || {}),
         [key]: value,
       };
       return {
-        ...prev,
+        ...safePrev,
         fulfillment_metadata: updatedMeta,
-        download_url: key === 'access_url' ? value : prev.download_url,
+        download_url: key === 'access_url' ? value : safePrev.download_url,
       };
     });
-  };
+  }, [setProductForm]);
 
   // Resolve string for Materi & Fasilitas Utama
   const facilitiesString = useMemo(() => {
@@ -621,9 +625,10 @@ export default function ProductFormModal({
       return;
     }
 
-    const currentPt = (productForm.product_type || '').toUpperCase();
+    const safeProductForm = productForm || ({} as ProductItem);
+    const currentPt = (safeProductForm?.product_type || currentType || '').toUpperCase();
     const isPhysical = currentPt === 'PHYSICAL';
-    const isAffiliate = productForm.checkout_type === 'external';
+    const isAffiliate = safeProductForm?.checkout_type === 'external';
 
     // Sanitize order bump items gracefully: only keep items with non-empty name
     const validBumpItems = (orderBumpItems || [])
@@ -644,39 +649,42 @@ export default function ProductFormModal({
     };
 
     // Sanitize facilities & features as clean array
-    const resolvedFacilities = Array.isArray(productForm.facilities)
-      ? productForm.facilities.map((s) => String(s).trim()).filter(Boolean)
-      : typeof productForm.facilities === 'string'
-      ? (productForm.facilities as string).split('\n').map((s) => s.trim()).filter(Boolean)
+    const resolvedFacilities = Array.isArray(safeProductForm.facilities)
+      ? safeProductForm.facilities.map((s) => String(s).trim()).filter(Boolean)
+      : typeof safeProductForm.facilities === 'string'
+      ? (safeProductForm.facilities as string).split('\n').map((s) => s.trim()).filter(Boolean)
       : [];
 
-    const resolvedFeatures = Array.isArray(productForm.features)
-      ? productForm.features.map((s) => String(s).trim()).filter(Boolean)
-      : typeof productForm.features === 'string'
-      ? (productForm.features as string).split('\n').map((s) => s.trim()).filter(Boolean)
+    const resolvedFeatures = Array.isArray(safeProductForm.features)
+      ? safeProductForm.features.map((s) => String(s).trim()).filter(Boolean)
+      : typeof safeProductForm.features === 'string'
+      ? (safeProductForm.features as string).split('\n').map((s) => s.trim()).filter(Boolean)
       : resolvedFacilities;
 
     const cleanForm: ProductItem = {
-      ...productForm,
+      ...safeProductForm,
       name: trimmedName,
-      price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
-      promo_price: productForm.promo_price ? Number(productForm.promo_price) : undefined,
-      is_unlimited: !isPhysical ? true : (productForm.is_unlimited ?? false),
-      stock: !isPhysical ? 999999 : (productForm.stock ?? 100),
-      weight_grams: isPhysical && !isAffiliate ? Number(productForm.weight_grams || 1000) : 0,
+      product_type: safeProductForm.product_type || currentType || (isPhysical ? 'PHYSICAL' : (isServiceCluster ? 'FIELD_SERVICE' : 'DIGITAL')),
+      type: safeProductForm.type || activeVerticalMeta.backendType,
+      category: safeProductForm.category || activeVerticalMeta.defaultBadge,
+      price: typeof safeProductForm.price === 'number' ? safeProductForm.price : (Number(safeProductForm.price) || 0),
+      promo_price: safeProductForm.promo_price ? Number(safeProductForm.promo_price) : undefined,
+      is_unlimited: !isPhysical ? true : (safeProductForm.is_unlimited ?? false),
+      stock: !isPhysical ? 999999 : (safeProductForm.stock ?? 100),
+      weight_grams: isPhysical && !isAffiliate ? Number(safeProductForm.weight_grams || 1000) : 0,
       requires_shipping: isPhysical && !isAffiliate,
       enable_cart: isCartEnabled,
       facilities: resolvedFacilities,
       features: resolvedFeatures,
       order_bumps: cleanOrderBumps,
       fulfillment_metadata: {
-        ...(productForm.fulfillment_metadata || {}),
+        ...(safeProductForm.fulfillment_metadata || {}),
         order_bumps: cleanOrderBumps,
-        delivery_type: productForm.fulfillment_metadata?.delivery_type || (isPhysical ? 'PHYSICAL' : 'DOWNLOAD_LINK'),
-        access_url: productForm.download_url || productForm.fulfillment_metadata?.access_url || '',
+        delivery_type: safeProductForm.fulfillment_metadata?.delivery_type || (isPhysical ? 'PHYSICAL' : (isServiceCluster ? 'WHATSAPP_GROUP' : 'DOWNLOAD_LINK')),
+        access_url: safeProductForm.download_url || safeProductForm.fulfillment_metadata?.access_url || '',
       },
       metadata: {
-        ...(productForm.metadata || {}),
+        ...(safeProductForm.metadata || {}),
         enable_cart: isCartEnabled,
         order_bumps: cleanOrderBumps,
         facilities: resolvedFacilities,
@@ -1151,15 +1159,15 @@ export default function ProductFormModal({
 
           {/* FULFILLMENT & DOMAIN SPECIFIC PRODUCT FORM */}
           <ModularProductFormDispatcher
-            verticalKey={resolveDomainVertical(productForm.product_type || currentType || storeCategory)}
-            productForm={productForm}
+            verticalKey={resolveDomainVertical(safeForm?.product_type || currentType || storeCategory)}
+            productForm={safeForm}
             setProductForm={setProductForm}
             tenantSlug={tenantSlug}
             onMetadataChange={handleMetadataChange}
           />
 
           {/* METODE PEMBAYARAN & VOUCHER PROMO (DECOUPLED & MANDIRI) */}
-          {productForm.checkout_type !== 'external' && (
+          {safeForm?.checkout_type !== 'external' && (
             <div className="space-y-3.5">
               {/* A. Metode Pembayaran Checkout (Selalu Mandiri & Aktif) */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">

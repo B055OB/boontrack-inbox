@@ -16,9 +16,10 @@ export default function ProServiceProductForm({
   setProductForm,
   onMetadataChange,
 }: ModularProductFormProps) {
-  const metadata: FulfillmentMetadata = productForm.fulfillment_metadata || {
+  const safeForm = productForm || ({} as ProductItem);
+  const metadata: FulfillmentMetadata = safeForm.fulfillment_metadata || {
     delivery_type: 'CALENDAR_LINK',
-    access_url: productForm.download_url || '',
+    access_url: safeForm.download_url || '',
     instructions: '',
   };
 
@@ -59,7 +60,7 @@ export default function ProServiceProductForm({
               <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="url"
-                value={metadata.access_url || productForm.download_url || ''}
+                value={metadata.access_url || safeForm.download_url || ''}
                 onChange={(e) => onMetadataChange('access_url', e.target.value)}
                 placeholder="https://cal.com/nama-anda/sesi-privat"
                 className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-sky-600 font-medium"
@@ -75,8 +76,8 @@ export default function ProServiceProductForm({
             </label>
             <input
               type="text"
-              value={productForm.variants || '60 Menit 1-on-1'}
-              onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
+              value={safeForm.variants || '60 Menit 1-on-1'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: 60 Menit 1-on-1 / 90 Menit Audit"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-sky-600"
             />
@@ -88,8 +89,8 @@ export default function ProServiceProductForm({
             </label>
             <input
               type="text"
-              value={productForm.promo || 'Termasuk Rekaman & Action Plan'}
-              onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
+              value={safeForm.promo || 'Termasuk Rekaman & Action Plan'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), promo: e.target.value }))}
               placeholder="Contoh: PDF Action Plan + Rekaman Sesi"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-sky-600"
             />

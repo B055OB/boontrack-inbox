@@ -68,7 +68,8 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
 
       // 3. Filter transaksi produk fisik atau pesanan yang membutuhkan pengiriman
       const physicalOrders = rawOrders.filter((o: any) => {
-        const pt = String(o.product_type || '').toUpperCase();
+        if (!o) return false;
+        const pt = String(o?.product_type || '').toUpperCase();
         if (pt.includes('PHYSICAL') || pt.includes('RETAIL') || pt.includes('FNB') || pt.includes('FOOD')) {
           return true;
         }

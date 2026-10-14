@@ -295,7 +295,8 @@ export async function POST(req: NextRequest) {
 
         await Promise.race([s3Promise, timeoutPromise]);
 
-        const rawR2Url = `${r2Config.publicUrlBase}/${key}`;
+        const canonicalAssetUrl = `${r2Config.publicUrlBase}/${key}`;
+        const rawR2Url = canonicalAssetUrl;
         finalUrl = sanitizeImageUrl(rawR2Url) || rawR2Url;
         storageEngine = 'cloudflare_r2';
         uploadSuccess = true;

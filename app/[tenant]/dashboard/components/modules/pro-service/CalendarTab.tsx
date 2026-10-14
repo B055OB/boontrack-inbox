@@ -63,7 +63,8 @@ export default function ProServiceCalendarTab({ tenantSlug }: { tenantSlug: stri
       const orderSessions: ConsultationSession[] = [];
       if (Array.isArray(rawOrders)) {
         for (const o of rawOrders) {
-          const pt = String(o.product_type || '').toUpperCase();
+          if (!o) continue;
+          const pt = String(o?.product_type || '').toUpperCase();
           const hasMeeting = Boolean(
             o.fulfillment_metadata?.meeting_url ||
             o.fulfillment_metadata?.google_meet_url ||

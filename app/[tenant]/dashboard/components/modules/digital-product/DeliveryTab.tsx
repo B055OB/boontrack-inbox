@@ -66,7 +66,8 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
 
       // 3. Filter khusus transaksi yang melibatkan produk digital
       const digitalOrders = rawOrders.filter((o: any) => {
-        const pt = String(o.product_type || '').toUpperCase();
+        if (!o) return false;
+        const pt = String(o?.product_type || '').toUpperCase();
         if (pt.includes('DIGITAL')) return true;
         if (o.fulfillment_metadata?.access_url || o.fulfillment_metadata?.download_url) return true;
         if (o.download_url || o.delivery_url) return true;

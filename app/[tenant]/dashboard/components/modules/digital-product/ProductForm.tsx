@@ -16,9 +16,10 @@ export default function DigitalProductForm({
   setProductForm,
   onMetadataChange,
 }: ModularProductFormProps) {
-  const metadata: FulfillmentMetadata = productForm.fulfillment_metadata || {
+  const safeForm = productForm || ({} as ProductItem);
+  const metadata: FulfillmentMetadata = safeForm.fulfillment_metadata || {
     delivery_type: 'DOWNLOAD_LINK',
-    access_url: productForm.download_url || '',
+    access_url: safeForm.download_url || '',
     instructions: '',
   };
 
@@ -61,7 +62,7 @@ export default function DigitalProductForm({
               <input
                 type="url"
                 required
-                value={metadata.access_url || productForm.download_url || ''}
+                value={metadata.access_url || safeForm.download_url || ''}
                 onChange={(e) => onMetadataChange('access_url', e.target.value)}
                 placeholder="https://drive.google.com/... atau https://app..."
                 className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600 font-medium"
@@ -78,8 +79,8 @@ export default function DigitalProductForm({
             </label>
             <input
               type="text"
-              value={productForm.variants || 'Akses Selamanya (Lifetime)'}
-              onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
+              value={safeForm.variants || 'Akses Selamanya (Lifetime)'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: Lifetime Access / 1 Tahun Berlangganan"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
             />
@@ -91,10 +92,10 @@ export default function DigitalProductForm({
             </label>
             <input
               type="text"
-              value={productForm.promo !== undefined ? productForm.promo : (metadata.file_format || 'Video HD + PDF Modul')}
+              value={safeForm.promo !== undefined ? safeForm.promo : (metadata.file_format || 'Video HD + PDF Modul')}
               onChange={(e) => {
                 const val = e.target.value;
-                setProductForm((p) => ({ ...p, promo: val }));
+                setProductForm((p) => ({ ...(p || {}), promo: val }));
                 onMetadataChange('file_format', val);
               }}
               placeholder="Contoh: Video MP4, E-book PDF, Template Notion"

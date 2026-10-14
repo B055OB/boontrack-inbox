@@ -15,7 +15,8 @@ export default function PhysicalRetailProductForm({
   productForm,
   setProductForm,
 }: ModularProductFormProps) {
-  const productType = (productForm.product_type || '').toUpperCase().trim();
+  const safeForm = productForm || ({} as ProductItem);
+  const productType = (safeForm?.product_type || '').toUpperCase().trim();
   const isPhysical = productType === 'PHYSICAL';
 
   // Section "Pengaturan Logistik, Ekspedisi & Berat Paket" HANYA boleh di-render jika productType === 'PHYSICAL'
@@ -45,8 +46,8 @@ export default function PhysicalRetailProductForm({
               type="number"
               required
               min={1}
-              value={productForm.weight_grams || 1000}
-              onChange={(e) => setProductForm((p) => ({ ...p, weight_grams: Number(e.target.value) }))}
+              value={safeForm.weight_grams || 1000}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), weight_grams: Number(e.target.value) }))}
               placeholder="Contoh: 1000 gram (1 kg)"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-amber-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
@@ -61,8 +62,8 @@ export default function PhysicalRetailProductForm({
             </label>
             <input
               type="text"
-              value={productForm.variants || 'Hitam, Putih, Navy / S, M, L, XL'}
-              onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
+              value={safeForm.variants || 'Hitam, Putih, Navy / S, M, L, XL'}
+              onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: Merah, Biru, Hitam / S, M, L"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-amber-600"
             />

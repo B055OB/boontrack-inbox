@@ -16,11 +16,13 @@ export default function FieldServiceProductForm({
   setProductForm,
   onMetadataChange,
 }: ModularProductFormProps) {
+  const safeForm = productForm || ({} as ProductItem);
+
   // Pastikan parameter background terkunci untuk jasa lapangan
   useEffect(() => {
     onMetadataChange('delivery_type', 'WHATSAPP_GROUP');
     setProductForm((prev) => ({
-      ...prev,
+      ...(prev || {}),
       requires_shipping: false,
       weight: 0,
       weight_grams: 0,
@@ -57,8 +59,8 @@ export default function FieldServiceProductForm({
           </label>
           <input
             type="text"
-            value={productForm.variants || ''}
-            onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
+            value={safeForm.variants || ''}
+            onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
             placeholder="Contoh: 1 - 2 Jam / Pengerjaan 45 Menit"
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 font-medium"
           />
@@ -70,8 +72,8 @@ export default function FieldServiceProductForm({
           </label>
           <input
             type="text"
-            value={productForm.promo || ''}
-            onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
+            value={safeForm.promo || ''}
+            onChange={(e) => setProductForm((p) => ({ ...(p || {}), promo: e.target.value }))}
             placeholder="Contoh: Garansi 30 Hari Bersih Tuntas"
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 font-medium"
           />

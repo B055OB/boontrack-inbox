@@ -8,6 +8,7 @@ import { getBackendApiUrl } from '@/lib/api-config';
 import { getPlatformWhatsApp } from '@/lib/tenant-config';
 import {
   ProductItem,
+  ProductType,
   SinglePageConfig,
   VoucherConfig,
   TransactionItem,
@@ -857,28 +858,33 @@ export function useTenantDashboard() {
                 .select('*')
                 .eq('tenant_id', tenant.id);
               if (Array.isArray(dbProds) && dbProds.length > 0) {
-                hydratedProducts = dbProds.map((p: any, idx: number) => ({
-                  id: p.id || `prod-${idx + 1}`,
-                  name: p.title || p.name || `Produk ${idx + 1}`,
-                  slug: p.slug || p.single_page_config?.slug || slugify(p.title || p.name || `produk-${idx + 1}`),
-                  category: p.category || (p.product_type === 'PHYSICAL' ? 'Fisik' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'Jasa Lapangan' : 'Digital')),
-                  product_type: p.product_type || (p.category?.toLowerCase() === 'fisik' ? 'PHYSICAL' : (p.category?.toLowerCase() === 'jasa' || p.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
-                  type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'FOOD' ? 'fnb' : (p.product_type === 'DIGITAL' ? 'digital' : 'service'))),
-                  custom_badge: p.custom_badge,
-                  price: Number(p.price) || 0,
-                  promo_price: p.promo_price ? Number(p.promo_price) : 0,
-                  variants: p.variants || '',
-                  promo: p.promo || '',
-                  description: p.description || '',
-                  download_url: p.link_digital || p.download_url || '',
-                  image: sanitizeImageUrl(p.image || p.image_url || ''),
-                  stock: p.stock !== undefined ? Number(p.stock) : 999999,
-                  sku: p.sku || `SKU-${idx + 1}`,
-                  is_unlimited: p.is_unlimited_stock ?? p.is_unlimited ?? true,
-                  weight_grams: p.weight_grams,
-                  fulfillment_metadata: p.fulfillment_metadata,
-                  single_page_config: p.fulfillment_metadata?.single_page_config || p.single_page_config,
-                }));
+                hydratedProducts = (dbProds || []).filter(Boolean).map((p: any, idx: number) => {
+                  const rawPt = (p?.product_type || '').toUpperCase();
+                  const rawCat = (p?.category || '').toLowerCase();
+                  const resolvedPt: ProductType = (p?.product_type || (rawCat === 'fisik' ? 'PHYSICAL' : (rawCat === 'jasa' || rawCat === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))) as ProductType;
+                  return {
+                    id: p?.id || `prod-${idx + 1}`,
+                    name: p?.title || p?.name || `Produk ${idx + 1}`,
+                    slug: p?.slug || p?.single_page_config?.slug || slugify(p?.title || p?.name || `produk-${idx + 1}`),
+                    category: p?.category || (resolvedPt === 'PHYSICAL' ? 'Fisik' : (resolvedPt === 'SERVICE' || resolvedPt === 'FIELD_SERVICE' ? 'Jasa Lapangan' : (resolvedPt === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : (resolvedPt === 'AGENCY' ? 'Agency & Kreator' : (resolvedPt === 'FOOD' ? 'Kuliner & F&B' : 'Digital'))))),
+                    product_type: resolvedPt,
+                    type: p?.type || (resolvedPt === 'PHYSICAL' ? 'physical' : (resolvedPt === 'FOOD' ? 'fnb' : (resolvedPt === 'DIGITAL' ? 'digital' : 'service'))),
+                    custom_badge: p?.custom_badge,
+                    price: Number(p?.price) || 0,
+                    promo_price: p?.promo_price ? Number(p?.promo_price) : 0,
+                    variants: p?.variants || '',
+                    promo: p?.promo || '',
+                    description: p?.description || '',
+                    download_url: p?.link_digital || p?.download_url || '',
+                    image: sanitizeImageUrl(p?.image || p?.image_url || ''),
+                    stock: p?.stock !== undefined ? Number(p?.stock) : 999999,
+                    sku: p?.sku || `SKU-${idx + 1}`,
+                    is_unlimited: p?.is_unlimited_stock ?? p?.is_unlimited ?? true,
+                    weight_grams: p?.weight_grams,
+                    fulfillment_metadata: p?.fulfillment_metadata,
+                    single_page_config: p?.fulfillment_metadata?.single_page_config || p?.single_page_config,
+                  };
+                });
               }
             } catch (pTableErr) {
               console.debug('[Dashboard] SQL products table query note:', pTableErr);
@@ -888,28 +894,33 @@ export function useTenantDashboard() {
           // 2. Ambil dari tenant.metadata.products (Single Source of Truth)
           const metaProducts = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
           if (metaProducts.length > 0) {
-            const mappedMeta = metaProducts.map((p: any, idx: number) => ({
-              id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
-              name: p.name || p.title || `Produk ${idx + 1}`,
-              slug: p.slug || p.single_page_config?.slug || slugify(p.name || p.title || `produk-${idx + 1}`),
-              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'Fisik' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'Jasa Lapangan' : (p.product_type === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : (p.product_type === 'AGENCY' ? 'Agency & Kreator' : (p.product_type === 'FOOD' ? 'Kuliner & F&B' : 'Digital'))))),
-              product_type: p.product_type || (p.category?.toLowerCase() === 'fisik' ? 'PHYSICAL' : (p.category?.toLowerCase() === 'jasa' || p.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
-              type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'FOOD' ? 'fnb' : (p.product_type === 'DIGITAL' ? 'digital' : 'service'))),
-              custom_badge: p.custom_badge,
-              price: Number(p.price) || 0,
-              promo_price: p.promo_price ? Number(p.promo_price) : 0,
-              variants: p.variants || '',
-              promo: p.promo || '',
-              description: p.description || '',
-              download_url: p.download_url || p.delivery_url || p.link_digital || '',
-              image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || ''),
-              stock: p.stock !== undefined ? Number(p.stock) : 999999,
-              sku: p.sku || `SKU-${idx + 1}`,
-              is_unlimited: p.is_unlimited !== undefined ? p.is_unlimited : true,
-              weight_grams: p.weight_grams,
-              fulfillment_metadata: p.fulfillment_metadata,
-              single_page_config: p.single_page_config || p.fulfillment_metadata?.single_page_config || p.metadata?.single_page_config,
-            }));
+            const mappedMeta = metaProducts.filter(Boolean).map((p: any, idx: number) => {
+              const rawPt = (p?.product_type || '').toUpperCase();
+              const rawCat = (p?.category || '').toLowerCase();
+              const resolvedPt: ProductType = (p?.product_type || (rawCat === 'fisik' ? 'PHYSICAL' : (rawCat === 'jasa' || rawCat === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))) as ProductType;
+              return {
+                id: p?.id !== undefined && p?.id !== null ? p.id : `prod-${idx + 1}`,
+                name: p?.name || p?.title || `Produk ${idx + 1}`,
+                slug: p?.slug || p?.single_page_config?.slug || slugify(p?.name || p?.title || `produk-${idx + 1}`),
+                category: (p?.category as any) || (resolvedPt === 'PHYSICAL' ? 'Fisik' : (resolvedPt === 'SERVICE' || resolvedPt === 'FIELD_SERVICE' ? 'Jasa Lapangan' : (resolvedPt === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : (resolvedPt === 'AGENCY' ? 'Agency & Kreator' : (resolvedPt === 'FOOD' ? 'Kuliner & F&B' : 'Digital'))))),
+                product_type: resolvedPt,
+                type: p?.type || (resolvedPt === 'PHYSICAL' ? 'physical' : (resolvedPt === 'FOOD' ? 'fnb' : (resolvedPt === 'DIGITAL' ? 'digital' : 'service'))),
+                custom_badge: p?.custom_badge,
+                price: Number(p?.price) || 0,
+                promo_price: p?.promo_price ? Number(p?.promo_price) : 0,
+                variants: p?.variants || '',
+                promo: p?.promo || '',
+                description: p?.description || '',
+                download_url: p?.download_url || p?.delivery_url || p?.link_digital || '',
+                image: sanitizeImageUrl(p?.image || (Array.isArray(p?.images) && p.images[0]) || p?.image_url || ''),
+                stock: p?.stock !== undefined ? Number(p?.stock) : 999999,
+                sku: p?.sku || `SKU-${idx + 1}`,
+                is_unlimited: p?.is_unlimited !== undefined ? p.is_unlimited : true,
+                weight_grams: p?.weight_grams,
+                fulfillment_metadata: p?.fulfillment_metadata,
+                single_page_config: p?.single_page_config || p?.fulfillment_metadata?.single_page_config || p?.metadata?.single_page_config,
+              };
+            });
 
             // Gabungkan dengan prioritas metadata (update terbaru merchant)
             const metaIds = new Set(mappedMeta.map((m: any) => String(m.id)));
@@ -1448,14 +1459,14 @@ export function useTenantDashboard() {
 
     setEditingProductId(null);
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
-    const reqs = resolveFulfillmentRequirements(defaultProductType);
+    const chosenProductType = initialData?.product_type || defaultProductType;
+    const reqs = resolveFulfillmentRequirements(chosenProductType);
     setProductForm({
       id: Date.now(),
       name: '',
       slug: '',
-      product_type: defaultProductType,
-      type: defaultProductType === 'FOOD' ? 'fnb' : reqs.strategy === 'PHYSICAL' ? 'physical' : reqs.strategy === 'SERVICE' ? 'service' : 'digital',
-      category: defaultProductType === 'FOOD' ? 'Kuliner & F&B' : reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? (defaultProductType === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : defaultProductType === 'AGENCY' ? 'Agency & Kreator' : 'Jasa Lapangan') : 'Digital',
+      type: chosenProductType === 'FOOD' ? 'fnb' : reqs.strategy === 'PHYSICAL' ? 'physical' : reqs.strategy === 'SERVICE' ? 'service' : 'digital',
+      category: chosenProductType === 'FOOD' ? 'Kuliner & F&B' : reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? (chosenProductType === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : chosenProductType === 'AGENCY' ? 'Agency & Kreator' : 'Jasa Lapangan') : 'Digital',
       custom_badge: '',
       price: 99000,
       promo_price: 0,
@@ -1472,25 +1483,30 @@ export function useTenantDashboard() {
       external_url: '',
       cta_label: '',
       ...(initialData || {}),
+      product_type: chosenProductType,
     });
     setIsProductModalOpen(true);
   };
 
   const openEditProductModal = (prod: ProductItem) => {
+    if (!prod) return;
     setEditingProductId(prod.id);
-    const prodSlug = prod.slug || prod.single_page_config?.slug || slugify(prod.name);
+    const safeProd = prod || ({} as ProductItem);
+    const prodSlug = safeProd.slug || safeProd.single_page_config?.slug || slugify(safeProd.name || '');
+    const resolvedProductType = safeProd.product_type || (safeProd.category?.toLowerCase() === 'fisik' || safeProd.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (safeProd.category?.toLowerCase() === 'jasa' || safeProd.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'));
     setProductForm({
-      ...prod,
-      category: prod.category || (prod.product_type === 'PHYSICAL' ? 'Fisik' : prod.product_type === 'SERVICE' ? 'Jasa Lapangan' : 'Digital'),
-      custom_badge: prod.custom_badge || '',
-      image: sanitizeImageUrl(prod.image),
+      ...safeProd,
+      product_type: resolvedProductType,
+      category: safeProd.category || (resolvedProductType === 'PHYSICAL' ? 'Fisik' : (resolvedProductType === 'SERVICE' || resolvedProductType === 'FIELD_SERVICE' ? 'Jasa Lapangan' : (resolvedProductType === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : (resolvedProductType === 'AGENCY' ? 'Agency & Kreator' : (resolvedProductType === 'FOOD' ? 'Kuliner & F&B' : 'Digital'))))),
+      custom_badge: safeProd.custom_badge || '',
+      image: sanitizeImageUrl(safeProd.image),
       slug: prodSlug,
-      stock: prod.stock ?? 100,
-      sku: prod.sku || `SKU-${prod.id}`,
-      is_unlimited: prod.is_unlimited ?? false,
-      checkout_type: prod.checkout_type || (prod.external_url || prod.metadata?.external_url ? 'external' : 'internal'),
-      external_url: prod.external_url || prod.metadata?.external_url || '',
-      cta_label: prod.cta_label || prod.metadata?.cta_label || '',
+      stock: safeProd.stock ?? 100,
+      sku: safeProd.sku || `SKU-${safeProd.id}`,
+      is_unlimited: safeProd.is_unlimited ?? false,
+      checkout_type: safeProd.checkout_type || (safeProd.external_url || safeProd.metadata?.external_url ? 'external' : 'internal'),
+      external_url: safeProd.external_url || safeProd.metadata?.external_url || '',
+      cta_label: safeProd.cta_label || safeProd.metadata?.cta_label || '',
     });
     setIsProductModalOpen(true);
   };
@@ -1567,7 +1583,9 @@ export function useTenantDashboard() {
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productForm.name || !tenantSlug) return;
+    if (!productForm) return;
+    const safeForm = sanitizeProductPayload(productForm);
+    if (!safeForm.name || !tenantSlug) return;
 
     if (isSubscriptionExpired) {
       setSaveFeedback('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
@@ -1575,12 +1593,11 @@ export function useTenantDashboard() {
       return;
     }
 
-    const safeForm = sanitizeProductPayload(productForm);
-
     const isTargetActive = safeForm.is_active !== false;
     if (isCheckoutLite && isTargetActive) {
       const isEditing = editingProductId !== null && editingProductId !== undefined;
       const otherActiveCount = products.filter(p => {
+        if (!p) return false;
         if (isEditing && String(p.id) === String(editingProductId)) return false;
         return p.is_active !== false;
       }).length;
@@ -1597,9 +1614,10 @@ export function useTenantDashboard() {
 
     const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(safeForm.image);
-    const currentPt = (safeForm.product_type || '').toUpperCase();
+    const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
+    const currentPt = (safeForm.product_type || defaultProductType || '').toUpperCase();
     const isPhysicalProduct = currentPt === 'PHYSICAL';
-    const isServiceOrDigital = currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE';
+    const isServiceOrDigital = currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE' || currentPt === 'AGENCY';
     const isPhysicalStock = isPhysicalProduct || (!isServiceOrDigital && (storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD'));
     const isExternalCheckout = safeForm.checkout_type === 'external' || Boolean(safeForm.external_url?.trim());
     const isRequiresShipping = isPhysicalProduct && !isExternalCheckout;
@@ -1609,8 +1627,11 @@ export function useTenantDashboard() {
       ? Boolean(safeForm.metadata.enable_cart)
       : ((safeForm as any)?.enable_cart !== undefined ? Boolean((safeForm as any)?.enable_cart) : isPhysicalProduct);
 
+    const resolvedProductType: ProductType = (safeForm.product_type || (isPhysicalProduct ? 'PHYSICAL' : isServiceOrDigital ? (currentPt as ProductType) : defaultProductType)) as ProductType;
+
     const updatedProductItem: ProductItem = sanitizeProductPayload({
       ...safeForm,
+      product_type: resolvedProductType,
       price: typeof safeForm.price === 'number' ? safeForm.price : (Number(safeForm.price) || 0),
       is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (safeForm.is_unlimited ?? false)),
       stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (safeForm.stock ?? 100)),
@@ -1702,6 +1723,7 @@ export function useTenantDashboard() {
                 for (const sp of sqlProds) {
                   const spSlug = (sp.slug || '').toLowerCase();
                   const spId = String(sp.id);
+                  const spPt = (sp?.product_type || '').toUpperCase();
                   if (!knownSlugs.has(spSlug) && !knownIds.has(spId)) {
                     allKnownProducts.push({
                       id: sp.id,
@@ -1709,8 +1731,8 @@ export function useTenantDashboard() {
                       title: sp.title,
                       slug: sp.slug,
                       category: sp.category || 'digital',
-                      product_type: sp.product_type || 'DIGITAL',
-                      type: sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'service' : 'digital'),
+                      product_type: (sp?.product_type || 'DIGITAL') as ProductType,
+                      type: spPt === 'PHYSICAL' ? 'physical' : (spPt === 'SERVICE' || spPt === 'FIELD_SERVICE' || spPt === 'PROFESSIONAL_SERVICE' || spPt === 'AGENCY' ? 'service' : (spPt === 'FOOD' ? 'fnb' : 'digital')),
                       price: Number(sp.price) || 0,
                       promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
                       sku: sp.sku || `SKU-${sp.id}`,
@@ -1797,7 +1819,7 @@ export function useTenantDashboard() {
               is_unlimited_stock: fullProductItem.is_unlimited ?? true,
               asset_reference: `product:${finalSlug}`,
               license_status: 'UNVERIFIED',
-              product_type: mapToDbProductType(fullProductItem.product_type, fullProductItem.category),
+              product_type: mapToDbProductType(fullProductItem?.product_type, fullProductItem?.category),
               sku: fullProductItem.sku || `SKU-${finalSlug}`,
               is_active: isTargetActive,
               requires_shipping: Boolean(fullProductItem.requires_shipping),
@@ -1934,11 +1956,12 @@ export function useTenantDashboard() {
 
   // 6. Single Page Checkout Handlers
   const openSinglePageBuilder = (prod: ProductItem) => {
+    if (!prod) return;
     setActiveSinglePageProduct(prod);
-    const prodSlug = prod.slug || slugify(prod.name);
+    const prodSlug = prod.slug || slugify(prod.name || '');
     const existingVoucher = prod.single_page_config?.voucher;
     const fulfillment = resolveFulfillmentRequirements(
-      prod.product_type || (prod.category?.toLowerCase() === 'fisik' || prod.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (prod.category?.toLowerCase() === 'jasa' || prod.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))
+      prod?.product_type || (prod?.category?.toLowerCase() === 'fisik' || prod?.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (prod?.category?.toLowerCase() === 'jasa' || prod?.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))
     );
     const isPhysical = fulfillment.requiresShipping;
 

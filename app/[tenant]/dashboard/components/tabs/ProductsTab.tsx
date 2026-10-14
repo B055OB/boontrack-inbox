@@ -387,8 +387,9 @@ export default function ProductsTab({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredProducts.map((p) => {
+                if (!p) return null;
                 const itemFulfillment = resolveFulfillmentRequirements(
-                  p.product_type || p.type || (isServiceCategory ? 'SERVICE' : isDigitalCategory ? 'DIGITAL' : 'PHYSICAL')
+                  p?.product_type || p?.type || (isServiceCategory ? 'SERVICE' : isDigitalCategory ? 'DIGITAL' : 'PHYSICAL')
                 );
                 const isServiceItem = itemFulfillment.strategy === 'SERVICE' || isServiceCategory;
                 const isDigitalItem = !isServiceItem && (itemFulfillment.strategy === 'DIGITAL' || p.is_unlimited || isDigitalCategory);
@@ -471,11 +472,11 @@ export default function ProductsTab({
                           SKU: {p.sku || 'SKU-AUTO'}
                         </span>
                         {isServiceItem ? (
-                          isProfessional || p.product_type === 'PROFESSIONAL_SERVICE' ? (
+                          isProfessional || p?.product_type === 'PROFESSIONAL_SERVICE' ? (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                               Sesi Konsultasi (Booking)
                             </span>
-                          ) : isFieldService || p.product_type === 'FIELD_SERVICE' ? (
+                          ) : isFieldService || p?.product_type === 'FIELD_SERVICE' ? (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               Layanan Lapangan (Booking)
                             </span>
@@ -611,7 +612,7 @@ export default function ProductsTab({
                   <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
                       {(() => {
-                        const reqs = resolveFulfillmentRequirements(p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'));
+                        const reqs = resolveFulfillmentRequirements(p?.product_type || (p?.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'));
                         if (reqs.requiresDeliveryPayload) {
                           return (
                             <span className="text-slate-400 font-mono text-[11px] truncate">

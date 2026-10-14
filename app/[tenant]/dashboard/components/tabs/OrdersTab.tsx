@@ -556,8 +556,9 @@ export default function OrdersTab({
             onClick={() =>
               exportOrdersToLincahCsv(
                 filteredOrders.filter((o) => {
+                  if (!o) return false;
                   const reqs = resolveFulfillmentRequirements(
-                    o.product_type || (o.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+                    o?.product_type || (o?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
                   );
                   return reqs.requiresShipping;
                 }),
@@ -693,8 +694,9 @@ export default function OrdersTab({
                 </tr>
               ) : (
                 filteredOrders.map((ord) => {
+                  if (!ord) return null;
                   const reqs = resolveFulfillmentRequirements(
-                    ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+                    ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
                   );
                   const isPaid = ord.payment_status === 'PAID' || ord.status === 'PAID';
                   const needsManualConfirm = isManualPendingPayment(ord);
@@ -895,9 +897,9 @@ export default function OrdersTab({
 
                           {/* Quick Print Label Resi (HANYA jika produk fisik & requires_shipping === true, BUKAN DIGITAL / SERVICE) */}
                           {(() => {
-                            const normType = String(ord.product_type || '').toUpperCase();
+                            const normType = String(ord?.product_type || '').toUpperCase();
                             const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
-                            const reqs = resolveFulfillmentRequirements(ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
+                            const reqs = resolveFulfillmentRequirements(ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
                             return !isDigitalOrService && reqs.requiresShipping;
                           })() && (
                             <button
@@ -921,9 +923,9 @@ export default function OrdersTab({
 
                           {/* Quick Kirim Ulang WA Akses Digital */}
                           {(() => {
-                            const normType = String(ord.product_type || '').toUpperCase();
+                            const normType = String(ord?.product_type || '').toUpperCase();
                             const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
-                            const reqs = resolveFulfillmentRequirements(ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
+                            const reqs = resolveFulfillmentRequirements(ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
                             const isDigital = isDigitalOrService || !reqs.requiresShipping;
                             const waUrl = getDigitalWhatsAppResendUrl(ord, storeDisplayName || tenantSlug);
                             return isDigital && waUrl ? (
@@ -961,7 +963,7 @@ export default function OrdersTab({
       {/* ======================================================== */}
       {selectedOrder && (() => {
         const orderReqs = resolveFulfillmentRequirements(
-          selectedOrder.product_type || (selectedOrder.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+          selectedOrder?.product_type || (selectedOrder?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
         );
         const meta = selectedOrder.fulfillment_metadata;
         const isOrderPaid = selectedOrder.payment_status === 'PAID' || selectedOrder.status === 'PAID';
@@ -1257,7 +1259,7 @@ export default function OrdersTab({
 
                   {/* Print Label Resi Thermal (HANYA untuk pesanan fisik, BUKAN DIGITAL / SERVICE) */}
                   {(() => {
-                    const normType = String(selectedOrder.product_type || '').toUpperCase();
+                    const normType = String(selectedOrder?.product_type || '').toUpperCase();
                     const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
                     return !isDigitalOrService && orderReqs.requiresShipping;
                   })() && (
