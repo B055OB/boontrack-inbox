@@ -482,8 +482,9 @@ export async function dispatchMetaCAPIPurchaseForOrder(
       order.metadata?.source_url ||
       `https://shop.boontrack.com/${resolvedSlug}/order/${order.id}`;
 
+    const passedAmount = typeof orderIdOrPayload === 'object' && orderIdOrPayload?.amount !== undefined ? orderIdOrPayload.amount : undefined;
     const grossAmount = Number(
-      order.gross_amount ?? order.total_amount ?? order.amount ?? 0
+      order.total_amount ?? order.gross_amount ?? order.amount ?? passedAmount ?? 0
     );
 
     const eventId = `PURCHASE_${order.id}`;

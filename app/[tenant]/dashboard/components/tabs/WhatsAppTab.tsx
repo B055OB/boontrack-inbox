@@ -176,20 +176,24 @@ export default function WhatsAppTab({
         const supabase = getSupabase();
         if (!supabase) return;
 
-        // 1. Check Meta WABA credentials in tenants table & tenant_whatsapp_channels
+        // 1. Check Meta WABA credentials in tenants table & tenant_whatsapp_channels & whatsapp_connections
         const { data: tenantData } = await supabase
           .from('tenants')
-          .select('id, metadata')
+          .select('id, metadata, waba_phone_number_id')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
         const meta = tenantData?.metadata || {};
         const hasMetaCreds = Boolean(
-          meta.waba_config?.phone_number_id &&
-          (meta.waba_config?.permanent_access_token || meta.waba_config?.access_token)
-        ) || Boolean(
-          meta.whatsapp_credentials?.phone_number_id &&
-          meta.whatsapp_credentials?.access_token
+          meta.waba_configured === true ||
+          meta.waba_active === true ||
+          Boolean(meta.waba_phone_number_id) ||
+          Boolean(meta.whatsapp_phone_number_id) ||
+          Boolean(tenantData?.waba_phone_number_id) ||
+          (meta.waba_config?.phone_number_id &&
+            (meta.waba_config?.permanent_access_token || meta.waba_config?.access_token)) ||
+          (meta.whatsapp_credentials?.phone_number_id &&
+            meta.whatsapp_credentials?.access_token)
         );
 
         let wabaActive = hasMetaCreds;
@@ -201,6 +205,19 @@ export default function WhatsAppTab({
             .eq('status', 'ACTIVE')
             .limit(1);
           if (channels && channels.length > 0) {
+            wabaActive = true;
+          }
+        }
+
+        if (!wabaActive) {
+          const { data: wabaConn } = await supabase
+            .from('whatsapp_connections')
+            .select('id, status, is_connected')
+            .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
+            .eq('provider', 'meta')
+            .limit(1)
+            .maybeSingle();
+          if (wabaConn && (wabaConn.is_connected || wabaConn.status === 'active' || wabaConn.status === 'open')) {
             wabaActive = true;
           }
         }
@@ -241,6 +258,8 @@ export default function WhatsAppTab({
           // If in meta mode without credentials, fallback to qr mode
           if (waMode === 'meta' && !wabaActive) {
             setWaMode('qr');
+          } else if (wabaActive && meta.whatsapp_gateway_type === 'waba' && waMode === 'qr') {
+            setWaMode('meta');
           }
         }
       } catch (err) {
@@ -261,14 +280,14 @@ export default function WhatsAppTab({
     !isPlatformWaba(connectedPhone) &&
     waConnectionMode !== 'SHARED';
 
-  // AUTO-FETCH: Panggil handleConnectGrowthSession saat mount jika tenant belum connected dan qrCodeUrl masih kosong (hanya 1x, cegah loop tak terbatas)
+  // AUTO-FETCH: Panggil handleConnectGrowthSession saat mount jika tenant belum connected dan qrCodeUrl masih kosong (hanya 1x jika di mode Direct Connect QR)
   const hasAttemptedAutoFetch = React.useRef(false);
   React.useEffect(() => {
-    if (!isMerchantConnected && !qrCodeUrl && !hasAttemptedAutoFetch.current) {
+    if (waMode === 'qr' && !isMerchantConnected && !qrCodeUrl && !hasAttemptedAutoFetch.current) {
       hasAttemptedAutoFetch.current = true;
       handleConnectGrowthSession();
     }
-  }, [tenantSlug, isMerchantConnected, qrCodeUrl, handleConnectGrowthSession]);
+  }, [tenantSlug, isMerchantConnected, qrCodeUrl, handleConnectGrowthSession, waMode]);
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -342,7 +361,11 @@ export default function WhatsAppTab({
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
                   PROSCALE
                 </span>
-              ) : null}
+              ) : (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                  ACTIVE
+                </span>
+              )}
             </button>
           </div>
         </div>

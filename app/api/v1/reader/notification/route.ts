@@ -533,7 +533,7 @@ export async function POST(req: NextRequest) {
       tenantId: matchedOrder.tenant_id || effectiveTenantSlug,
       tenantSlug: effectiveTenantSlug,
       eventName: 'Purchase',
-      grossAmount: Number(matchedOrder.gross_amount || matchedOrder.total_amount || 0),
+      grossAmount: Number(matchedOrder.total_amount ?? matchedOrder.gross_amount ?? matchedOrder.amount ?? 0),
       currency: 'IDR',
       customPayload: {
         customer_name: matchedOrder.customer_name || matchedOrder.buyer_name,

@@ -2064,8 +2064,8 @@ function SingleProductContent() {
         }
       }
 
-      // Redirect langsung ke rincian invoice presisi / QRIS
-      const redirectUrl = result.invoiceUrl || `/checkout/${result.orderId}`;
+      // Arahkan ke rincian invoice & dynamic QRIS in-app
+      const redirectUrl = `/checkout/${result.orderId}`;
       router.push(redirectUrl);
     } catch (err: any) {
       console.error('Checkout error:', err);

@@ -27,10 +27,11 @@ import {
 } from '@/lib/formatting/universal-chat-formatter';
 
 export function getTelegramBotToken(): string {
-  return (
-    process.env.TELEGRAM_BOT_TOKEN ||
-    '8012369915:AAGSvpGSqq4R2lATfYxhHYIx_CxVgdb29VI'
-  );
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not configured in environment variables (fail-closed)');
+  }
+  return token;
 }
 
 export function getTelegramBotUsername(): string {

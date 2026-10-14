@@ -303,7 +303,7 @@ export async function POST(
       tenantId: order.tenant_id || tenantSlug,
       tenantSlug,
       eventName: 'Purchase',
-      grossAmount: Number(order.gross_amount || order.total_amount || 0),
+      grossAmount: Number(order.total_amount ?? order.gross_amount ?? order.amount ?? 0),
       currency: 'IDR',
       customPayload: {
         customer_name: order.customer_name,

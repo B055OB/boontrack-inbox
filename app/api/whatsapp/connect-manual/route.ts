@@ -215,6 +215,47 @@ export async function POST(req: NextRequest) {
           },
           { onConflict: "tenant_slug" }
         );
+
+        // 3. Update tenants table metadata & direct columns for multi-tenant consistency
+        const { data: tenantRow } = await supabase
+          .from("tenants")
+          .select("id, metadata")
+          .eq("slug", tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow) {
+          const currentMeta = tenantRow.metadata || {};
+          const nextMeta = {
+            ...currentMeta,
+            waba_phone_number_id: phoneNumberId,
+            whatsapp_phone_number_id: phoneNumberId,
+            waba_account_id: wabaId,
+            waba_access_token: accessToken,
+            waba_configured: true,
+            waba_active: true,
+            whatsapp_gateway_type: "waba",
+            waba_config: {
+              phone_number_id: phoneNumberId,
+              waba_id: wabaId,
+              access_token: accessToken,
+              permanent_access_token: accessToken,
+              status: "CONNECTED",
+              verified_name: verifiedName,
+              display_phone_number: displayPhone,
+              quality_rating: qualityRating,
+              updated_at: nowIso,
+            },
+          };
+
+          await supabase
+            .from("tenants")
+            .update({
+              waba_phone_number_id: phoneNumberId,
+              metadata: nextMeta,
+              updated_at: nowIso,
+            })
+            .eq("id", tenantRow.id);
+        }
       }
 
       return NextResponse.json({

@@ -28,6 +28,15 @@ export async function GET() {
  */
 export async function POST(req: NextRequest) {
   try {
+    // Verifikasi ketat header X-Telegram-Bot-Api-Secret-Token dengan secret environment
+    const secretHeader = req.headers.get('x-telegram-bot-api-secret-token');
+    const configuredSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || process.env.TELEGRAM_SECRET_TOKEN)?.trim();
+
+    if (configuredSecret && (!secretHeader || secretHeader !== configuredSecret)) {
+      console.warn('[TELEGRAM WEBHOOK UNAUTHORIZED] Rejected update: invalid or missing secret token header');
+      return NextResponse.json({ error: 'Unauthorized: Invalid secret token' }, { status: 401 });
+    }
+
     const update = await req.json();
 
     if (!update) {

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
-import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
+import { sendOrderFulfillmentNotification, normalizeWhatsAppNumber } from '@/lib/whatsapp';
+import { generateTelegramInviteLink } from '@/lib/telegram/telegram-invite-service';
 import { dispatchMetaCAPI, dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { enqueueCAPIOutboxEvent } from '@/lib/capi-outbox';
 import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
@@ -277,6 +278,8 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     rawBody.slug ||
     rawBody.merchant_slug ||
     rawBody.store_slug ||
+    rawBody.metadata?.tenant_slug ||
+    rawBody.data?.metadata?.tenant_slug ||
     headersObj['x-tenant-slug'] ||
     headersObj['x-tenant-id'] ||
     headersObj['tenant-slug'] ||
@@ -285,16 +288,16 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
 
   // 2. Cek apakah ada Direct Order ID (dari Gateway / Payment Provider resmi Xendit / Reader)
   const directOrderId =
-    rawBody.order_id ||
-    rawBody.external_id ||
-    rawBody.id ||
-    rawBody.invoice_id ||
-    rawBody.reference_id ||
-    rawBody.bill_no ||
     rawBody.data?.reference_id ||
+    rawBody.reference_id ||
+    rawBody.external_id ||
     rawBody.data?.external_id ||
-    rawBody.data?.id ||
+    rawBody.order_id ||
     rawBody.data?.order_id ||
+    rawBody.invoice_id ||
+    rawBody.bill_no ||
+    rawBody.id ||
+    rawBody.data?.id ||
     searchParams.get('order_id');
 
   const rawStatus = String(
@@ -714,11 +717,26 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
 
   // JALUR 1: Pencocokan berbasis Direct Order ID (Gateway / QRIS Direct)
   if (directOrderId && isDirectPaid) {
-    const { data: orderById } = await supabase
+    let { data: orderById } = await supabase
       .from('orders')
       .select('*')
       .eq('id', directOrderId)
       .maybeSingle();
+
+    if (!orderById) {
+      try {
+        const { data: orderByAlt } = await supabase
+          .from('orders')
+          .select('*')
+          .or(`correlation_id.eq.${directOrderId},metadata->>xendit_id.eq.${directOrderId},metadata->>qr_id.eq.${directOrderId},metadata->>xendit_external_id.eq.${directOrderId}`)
+          .maybeSingle();
+        if (orderByAlt) {
+          orderById = orderByAlt;
+        }
+      } catch (altErr) {
+        console.debug('[Webhook Reader] Alt query error:', altErr);
+      }
+    }
 
     if (orderById) {
       matchedOrder = orderById;
@@ -998,13 +1016,164 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     }
   }
 
-  // UPDATE STATUS ORDER KE 'PAID' (Single Source of Truth: orders)
-  // NOTE (BATCH 1 / Ticket 1.1): Order mutation stays here intentionally as
-  // a non-breaking refactor. The full decoupling (order service via domain events)
-  // is scheduled for a future ADR. The payment event service is wired below.
+  // DYNAMIC RESOLUTION OF ACCESS URL & INSTRUCTIONS FROM DATABASE
+  let resolvedAccessUrl =
+    matchedOrder.fulfillment_metadata?.access_url ||
+    matchedOrder.metadata?.access_url ||
+    matchedOrder.link_digital ||
+    matchedOrder.download_url ||
+    matchedOrder.payload_url ||
+    matchedOrder.delivery_url ||
+    '';
+
+  let resolvedInstructions =
+    matchedOrder.fulfillment_metadata?.instructions ||
+    matchedOrder.metadata?.instructions ||
+    '';
+
+  // 1. Query tabel 'products' jika URL belum ditemukan
+  if (!resolvedAccessUrl && matchedOrder.product_id && supabase) {
+    try {
+      const { data: dbProd } = await supabase
+        .from('products')
+        .select('link_digital, asset_reference, fulfillment_metadata')
+        .eq('id', matchedOrder.product_id)
+        .maybeSingle();
+      if (dbProd) {
+        resolvedAccessUrl =
+          dbProd.fulfillment_metadata?.access_url ||
+          dbProd.link_digital ||
+          dbProd.asset_reference ||
+          '';
+        if (!resolvedInstructions) {
+          resolvedInstructions = dbProd.fulfillment_metadata?.instructions || '';
+        }
+      }
+    } catch (prodResolveErr) {
+      console.warn(`[Webhook Reader ${logId}] Products table query error:`, prodResolveErr);
+    }
+  }
+
+  // 2. Query snapshot 'order_items' jika masih kosong
+  if (!resolvedAccessUrl && orderId && supabase) {
+    try {
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('product_id, metadata')
+        .eq('order_id', orderId)
+        .limit(1);
+      if (items && items[0]) {
+        const itemMeta = items[0].metadata || {};
+        resolvedAccessUrl =
+          itemMeta.access_url ||
+          itemMeta.download_url ||
+          itemMeta.link_digital ||
+          itemMeta.payload_url ||
+          '';
+        if (!resolvedAccessUrl && items[0].product_id) {
+          const { data: itemProd } = await supabase
+            .from('products')
+            .select('link_digital, fulfillment_metadata')
+            .eq('id', items[0].product_id)
+            .maybeSingle();
+          if (itemProd) {
+            resolvedAccessUrl =
+              itemProd.fulfillment_metadata?.access_url ||
+              itemProd.link_digital ||
+              '';
+          }
+        }
+      }
+    } catch (itemsResolveErr) {
+      console.warn(`[Webhook Reader ${logId}] Order items query error:`, itemsResolveErr);
+    }
+  }
+
+  // 3. Fallback scoped metadata products di tabel tenants
+  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
+  if (!resolvedAccessUrl && (matchedOrder.tenant_id || targetTenantSlug) && supabase) {
+    try {
+      let tQ = supabase.from('tenants').select('metadata');
+      if (matchedOrder.tenant_id) {
+        tQ = tQ.eq('id', matchedOrder.tenant_id);
+      } else {
+        tQ = tQ.eq('slug', targetTenantSlug);
+      }
+      const { data: tRow } = await tQ.maybeSingle();
+      const metaProds = Array.isArray(tRow?.metadata?.products) ? tRow.metadata.products : [];
+      const targetPId = String(matchedOrder.product_id || '').trim();
+      const targetTitle = String(matchedOrder.product_title || matchedOrder.product_name || '').trim().toLowerCase();
+      const found = metaProds.find((p: any) =>
+        (targetPId && (String(p.id) === targetPId || String(p.slug) === targetPId || String(p.sku) === targetPId)) ||
+        (targetTitle && String(p.name || p.title || '').toLowerCase() === targetTitle)
+      );
+      if (found) {
+        resolvedAccessUrl =
+          found.fulfillment_metadata?.access_url ||
+          found.download_url ||
+          found.link_digital ||
+          found.payload_url ||
+          '';
+        if (!resolvedInstructions) {
+          resolvedInstructions = found.fulfillment_metadata?.instructions || '';
+        }
+      }
+    } catch (metaResolveErr) {
+      console.warn(`[Webhook Reader ${logId}] Tenant metadata query error:`, metaResolveErr);
+    }
+  }
+
+  // 4. Dynamic Telegram Invite Link Generation untuk OnlineBoost Batch 1 (member_limit: 1, expire_date: +86400s)
+  const isOnlineBoostBatch1 =
+    targetTenantSlug === 'onlineboost' ||
+    matchedOrder.tenant_id === 'e12acd29-6c18-487b-ade7-5422878c1c36' ||
+    Boolean(matchedOrder.product_title?.toLowerCase().includes('inkubasi')) ||
+    Boolean(matchedOrder.product_title?.toLowerCase().includes('batch 1'));
+
+  if (isOnlineBoostBatch1) {
+    try {
+      const dynamicTgLink = await generateTelegramInviteLink({
+        tenantSlug: targetTenantSlug || 'onlineboost',
+        tenantId: matchedOrder.tenant_id,
+        orderId: String(orderId),
+        productTitle: matchedOrder.product_title,
+        defaultFallbackUrl: resolvedAccessUrl || 'https://t.me/+WZ6alwTIjjExODc1',
+        supabaseClient: supabase,
+      });
+      if (dynamicTgLink) {
+        resolvedAccessUrl = dynamicTgLink;
+        if (!resolvedInstructions) {
+          resolvedInstructions =
+            'Silakan klik link undangan Telegram di atas untuk masuk ke grup mentoring & inkubasi Batch 1 (Link berlaku 24 jam untuk 1 orang).';
+        }
+      }
+    } catch (tgGenErr) {
+      console.warn(`[Webhook Reader ${logId}] Error generating dynamic Telegram invite:`, tgGenErr);
+      if (!resolvedAccessUrl) {
+        resolvedAccessUrl = 'https://t.me/+WZ6alwTIjjExODc1';
+      }
+    }
+  }
+
+  // 4b. Scoped Fallback untuk tenant 'onlineboost' ke grup Telegram resmi
+  if (!resolvedAccessUrl && targetTenantSlug === 'onlineboost') {
+    resolvedAccessUrl = 'https://t.me/+WZ6alwTIjjExODc1';
+    if (!resolvedInstructions) {
+      resolvedInstructions = 'Silakan langsung bergabung ke grup Telegram resmi untuk akses materi dan mentoring.';
+    }
+  }
+
+  // UPDATE STATUS ORDER KE 'PAID' & ATOMISASI FULFILLMENT (Single Source of Truth: orders)
   const updatedOrderMetadata = {
     ...(matchedOrder.metadata || {}),
     notified_at: paidAt,
+    ...(isOnlineBoostBatch1 ? { customer_tag: 'customer_batch1_paid' } : {}),
+  };
+
+  const updatedFulfillmentMetadata = {
+    ...(matchedOrder.fulfillment_metadata || {}),
+    ...(resolvedAccessUrl ? { access_url: resolvedAccessUrl } : {}),
+    ...(resolvedInstructions ? { instructions: resolvedInstructions } : {}),
   };
 
   await supabase
@@ -1015,10 +1184,86 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       order_status: 'COMPLETED',
       paid_at: paidAt,
       notified_at: paidAt,
+      download_url: resolvedAccessUrl || matchedOrder.download_url || null,
+      fulfillment_metadata: updatedFulfillmentMetadata,
       metadata: updatedOrderMetadata,
       updated_at: paidAt,
     })
     .eq('id', orderId);
+
+  // 5. MUTASI TAGGING CRM: 'customer_batch1_paid' (serta hapus 'awaiting_payment')
+  if (isOnlineBoostBatch1) {
+    try {
+      const rawPhone =
+        matchedOrder.customer_phone ||
+        matchedOrder.phone ||
+        matchedOrder.whatsapp_number;
+      const cleanPhone = normalizeWhatsAppNumber(rawPhone);
+      const targetTenantId = matchedOrder.tenant_id || 'e12acd29-6c18-487b-ade7-5422878c1c36';
+
+      if (cleanPhone) {
+        const { ContactService } = await import('@/lib/crm/contact.service');
+        const contact = await ContactService.getOrCreateContactByPhone(
+          targetTenantId,
+          cleanPhone,
+          matchedOrder.customer_name || matchedOrder.buyer_name || cleanPhone
+        );
+
+        // Add tag 'customer_batch1_paid'
+        const paidTag = await ContactService.createTag(targetTenantId, 'customer_batch1_paid', '#10B981');
+        await ContactService.addTagToContact(contact.id, paidTag.id);
+
+        // Remove tag 'awaiting_payment' if present
+        try {
+          const { data: awaitingTagRow } = await supabase
+            .from('tags')
+            .select('id')
+            .eq('tenant_id', targetTenantId)
+            .eq('name', 'awaiting_payment')
+            .maybeSingle();
+          if (awaitingTagRow?.id) {
+            await ContactService.removeTagFromContact(contact.id, awaitingTagRow.id);
+          }
+        } catch {}
+
+        // Update contact record & lifecycle stage
+        const existingTags = Array.isArray(contact.metadata?.tags) ? contact.metadata.tags : [];
+        const updatedTags = Array.from(new Set([
+          ...existingTags.filter((t: string) => t !== 'awaiting_payment'),
+          'customer_batch1_paid',
+        ]));
+
+        await supabase
+          .from('contacts')
+          .update({
+            lifecycle_stage: 'CUSTOMER',
+            last_order_at: paidAt,
+            total_spent: Number((contact as any)?.total_spent || 0) + Number(matchedOrder.gross_amount || 249000),
+            metadata: {
+              ...(contact.metadata || {}),
+              tags: updatedTags,
+              customer_tag: 'customer_batch1_paid',
+              funnel: 'onlineboost_batch1',
+              funnel_stage: 'customer_batch1_paid',
+              paid_at: paidAt,
+              last_order_id: String(orderId),
+            },
+            updated_at: paidAt,
+          })
+          .eq('id', contact.id);
+
+        // Link contact to order
+        await supabase
+          .from('orders')
+          .update({ contact_id: contact.id })
+          .eq('id', orderId);
+
+        console.log(`[Webhook Reader ${logId}] Mutated customer tag to 'customer_batch1_paid' for contact ${contact.id}`);
+      }
+    } catch (tagErr) {
+      console.warn(`[Webhook Reader ${logId}] Non-fatal customer tagging mutation error:`, tagErr);
+    }
+  }
 
   // PAYMENT EVENT RECORDING (fire-and-forget)
   // Delegate payload parsing to ReaderAdapter and record event to payment_events.
@@ -1042,8 +1287,6 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   }
 
   console.log(`[Webhook Reader ${logId}] SUCCESS: Order #${orderId} diupdate menjadi PAID (Strategy: ${matchStrategy}).`);
-
-  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
 
   // SHOP SUBSCRIPTION / BUNDLE CROSS-BENEFIT (e.g. ACADEMY_CTWA_BATCH1_B Scale Bundle)
   const isScaleBundleOrMemberProduct =
@@ -1085,24 +1328,16 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     'Pesanan Produk';
 
   const totalAmount = Number(
-    matchedOrder.gross_amount ||
     matchedOrder.total_amount ||
+    matchedOrder.gross_amount ||
     parsedAmount ||
+    matchedOrder.amount ||
     0
   );
 
   const resolvedProductType =
     matchedOrder.product_type ||
     (matchedOrder.shipping_address ? 'PHYSICAL' : 'DIGITAL');
-
-  const resolvedAccessUrl =
-    matchedOrder.fulfillment_metadata?.access_url ||
-    matchedOrder.download_url ||
-    matchedOrder.delivery_url ||
-    '';
-
-  const resolvedInstructions =
-    matchedOrder.fulfillment_metadata?.instructions || '';
 
   const hardeningPolicy = resolveHardeningPolicy(matchedOrder?.tenant || { slug: targetTenantSlug, metadata: matchedOrder?.metadata });
 
@@ -1111,6 +1346,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       hardening_policy_version: hardeningPolicy,
       order_id: String(orderId),
       tenant_slug: targetTenantSlug,
+      access_url: resolvedAccessUrl,
     });
     // Async worker / outbox dispatch ensures PENDING -> PAID DB status mutation and HTTP 200 response are never blocked
     try {

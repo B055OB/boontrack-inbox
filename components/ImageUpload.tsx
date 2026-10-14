@@ -12,6 +12,7 @@ interface ImageUploadProps {
   placeholder?: string;
   description?: string;
   tenantSlug?: string;
+  folder?: string;
 }
 
 export async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> {
@@ -78,6 +79,7 @@ export default function ImageUpload({
   placeholder = 'Pilih gambar (JPG, PNG, WebP maks 5 MB)',
   description = 'Auto-convert ke WebP & resize max width 1200px',
   tenantSlug,
+  folder = 'products',
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -145,7 +147,7 @@ export default function ImageUpload({
       formData.append('image', processedFile, processedFile.name);
       formData.append('tenant_slug', activeTenant);
       formData.append('tenant_id', activeTenant);
-      formData.append('folder', 'products');
+      formData.append('folder', folder || 'products');
 
       let authToken: string | null = null;
       if (typeof window !== 'undefined') {

@@ -567,6 +567,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   }, [isOpen, product, tenantMetaPixel, tenantTTPixel, tenantSlug, quantity]);
 
   // Real-time polling to detect when order is paid & fire browser purchase events
+  // Real-time polling & Supabase subscription to detect when order is paid & fire browser purchase events
   useEffect(() => {
     if (!paymentData?.orderId) return;
 
@@ -585,7 +586,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             const data = await res.json();
             if (data?.status === 'PAID') {
               isPaid = true;
-              accessUrl = data.link_digital || data.fulfillment_metadata?.access_url;
+              accessUrl = data.link_digital || data.access_url || data.fulfillment_url || data.download_url || data.fulfillment_metadata?.access_url;
               instructions = data.fulfillment_metadata?.instructions;
             }
           }
@@ -596,7 +597,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           if (supabase) {
             const { data: ord } = await supabase
               .from('orders')
-              .select('id, status, payment_status')
+              .select('id, status, payment_status, link_digital, fulfillment_metadata')
               .eq('id', paymentData.orderId)
               .maybeSingle();
 
@@ -604,11 +605,20 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               const statusUpper = (ord.payment_status || ord.status || '').toUpperCase();
               if (statusUpper === 'PAID' || statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS' || statusUpper === 'SETTLED') {
                 isPaid = true;
-                accessUrl = product?.download_url || product?.link_digital || product?.delivery_url;
-                instructions = product?.fulfillment_metadata?.instructions;
+                accessUrl =
+                  ord.link_digital ||
+                  ord.fulfillment_metadata?.access_url ||
+                  product?.download_url ||
+                  product?.link_digital ||
+                  product?.delivery_url;
+                instructions = ord.fulfillment_metadata?.instructions || product?.fulfillment_metadata?.instructions;
               }
             }
           }
+        }
+
+        if (isPaid && !accessUrl && (tenantSlug || '').toLowerCase() === 'onlineboost') {
+          accessUrl = 'https://t.me/+WZ6alwTIjjExODc1';
         }
 
         if (isPaid && active) {
@@ -617,7 +627,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             accessUrl ||
             product?.download_url ||
             product?.link_digital ||
-            product?.delivery_url;
+            product?.delivery_url ||
+            ((tenantSlug || '').toLowerCase() === 'onlineboost' ? 'https://t.me/+WZ6alwTIjjExODc1' : undefined);
 
           setOrderFulfillment({
             access_url: resolvedAccess,
@@ -634,7 +645,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               content_ids: [String(product?.id || paymentData.orderId)],
               value: Number(totalAmount),
               currency: 'IDR'
-            }, { eventID: paymentData.orderId });
+            }, { eventID: `PURCHASE_${paymentData.orderId}` });
           }
 
           try {
@@ -665,10 +676,39 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
       } catch {}
     };
 
+    // Realtime Supabase Subscription
+    let channel: any = null;
+    const supabase = getSupabase();
+    if (supabase && paymentData.orderId) {
+      try {
+        channel = supabase
+          .channel(`checkout-modal-${paymentData.orderId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'orders',
+              filter: `id=eq.${paymentData.orderId}`,
+            },
+            (payload: any) => {
+              const newRow = payload?.new;
+              if (newRow) {
+                const s = (newRow.payment_status || newRow.status || '').toUpperCase();
+                if (['PAID', 'COMPLETED', 'SUCCESS', 'SETTLED'].includes(s)) {
+                  checkStatus();
+                }
+              }
+            }
+          )
+          .subscribe();
+      } catch {}
+    }
+
     let checkCount = 0;
     const guardedCheckStatus = async () => {
       checkCount++;
-      if (checkCount > 45) { // Stop after ~3 minutes
+      if (checkCount > 75) { // Stop after ~3 minutes
         clearInterval(interval);
         return;
       }
@@ -676,13 +716,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     };
 
     guardedCheckStatus();
-    const interval = setInterval(guardedCheckStatus, 4000);
+    const interval = setInterval(guardedCheckStatus, 2500);
 
     return () => {
       active = false;
       clearInterval(interval);
+      if (channel && supabase) {
+        try {
+          supabase.removeChannel(channel);
+        } catch {}
+      }
     };
-  }, [paymentData?.orderId, product, totalAmount]);
+  }, [paymentData?.orderId, product, totalAmount, tenantSlug, customerPhone, customerName, customerEmail]);
 
   if (!isOpen || !product) return null;
 
@@ -990,8 +1035,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           </div>
         ) : paymentData ? (
           orderStatus === 'PAID' ? (
-            /* Tampilan Lunas / Akses Digital Siap */
-            <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">
+            /* Tampilan Lunas / Akses Digital Siap (Native Thank You Screen) */
+            <div className="text-center space-y-4 py-2 animate-in fade-in duration-200">
               <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
@@ -1000,72 +1045,126 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                   Pembayaran Terverifikasi (Lunas)
                 </span>
                 <h4 className="font-black text-white text-base">
-                  {isBookingOrService ? 'Sesi Konsultasi Berhasil Terjadwal!' : 'Akses Produk Digital Siap!'}
+                  {isBookingOrService ? 'Sesi Konsultasi Berhasil Terjadwal!' : 'Akses Program Kelas Resmi Aktif!'}
                 </h4>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: #{paymentData.orderId}</p>
               </div>
 
+              {/* Rincian Ringkas Invoice & Akses */}
               <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3 shadow-inner">
-                {isBookingOrService ? (
-                  <div className="space-y-2.5">
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Selamat! Pembayaran untuk <strong>{product.title}</strong> telah terkonfirmasi. Jadwal sesi konsultasi privat Anda resmi dikunci:
-                    </p>
-                    <div className="p-3.5 bg-emerald-950/50 border border-emerald-500/40 rounded-xl space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>{product.slot?.displayLabel || 'Sesi Terjadwal 1-on-1'}</span>
-                      </div>
-                      {product.slot?.businessTopic && (
-                        <p className="text-[11px] text-slate-300">
-                          Topik: <span className="text-white font-medium">{product.slot.businessTopic}</span>
-                        </p>
-                      )}
-                    </div>
-                    <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-center space-y-1">
-                      <p className="text-xs font-bold text-indigo-300">
-                        Link Room &amp; Kalender Sesi
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Tautan Google Meet / Zoom dan reminder kalender otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
-                      </p>
-                    </div>
-                  </div>
-                ) : orderFulfillment?.access_url ? (
-                  <>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Selamat! Pembayaran untuk <strong>{product.title}</strong> telah selesai. Anda dapat langsung membuka akses materi sekarang:
-                    </p>
-                    <a
-                      href={orderFulfillment.access_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/25 cursor-pointer"
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                  <span className="text-slate-400">Total Pembayaran</span>
+                  <span className="font-black text-emerald-400 font-mono text-sm">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                  <span className="text-slate-400">Kode Akses Ringkas</span>
+                  <div className="flex items-center gap-1.5 font-mono font-bold text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/40">
+                    <span>VIP-{paymentData.orderId.replace(/[^0-9]/g, '').slice(-4) || 'ACCESS'}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(`VIP-${paymentData.orderId.replace(/[^0-9]/g, '').slice(-4) || 'ACCESS'}`, 'access_code')}
+                      className="hover:text-white"
+                      title="Salin Kode Akses"
                     >
-                      <Download className="w-4 h-4" />
-                      <span>Buka Akses / Unduh Materi Sekarang</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </>
-                ) : (
-                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center space-y-1">
-                    <p className="text-xs font-bold text-amber-300">
-                      Akses produk digital Anda sedang disiapkan oleh admin toko.
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Detail link dan instruksi akses otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
-                    </p>
+                      {copiedField === 'access_code' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+                {customerPhone && (
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                    <span className="text-slate-400">Nomor WhatsApp Pembeli</span>
+                    <span className="font-medium text-slate-200 font-mono">{customerPhone}</span>
                   </div>
                 )}
+
+                {/* Tombol Akses Telegram / Unduh Materi Dinamis */}
+                {(() => {
+                  const resolvedUrl =
+                    orderFulfillment?.access_url ||
+                    (product as any)?.download_url ||
+                    (product as any)?.link_digital ||
+                    (product as any)?.delivery_url ||
+                    (product as any)?.fulfillment_metadata?.access_url ||
+                    ((tenantSlug || '').toLowerCase() === 'onlineboost' ? 'https://t.me/+WZ6alwTIjjExODc1' : undefined);
+
+                  const isTelegramLink = Boolean(resolvedUrl && (resolvedUrl.includes('t.me') || resolvedUrl.includes('telegram')));
+
+                  if (isBookingOrService) {
+                    return (
+                      <div className="space-y-2 pt-1">
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Selamat! Pembayaran untuk <strong>{product.title}</strong> telah terkonfirmasi. Jadwal sesi konsultasi privat Anda resmi dikunci:
+                        </p>
+                        <div className="p-3 bg-emerald-950/50 border border-emerald-500/40 rounded-xl space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>{product.slot?.displayLabel || 'Sesi Terjadwal 1-on-1'}</span>
+                          </div>
+                          {product.slot?.businessTopic && (
+                            <p className="text-[11px] text-slate-300">
+                              Topik: <span className="text-white font-medium">{product.slot.businessTopic}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-center space-y-1">
+                          <p className="text-xs font-bold text-indigo-300">Link Room &amp; Kalender Sesi</p>
+                          <p className="text-[11px] text-slate-400">
+                            Tautan Google Meet / Zoom otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (resolvedUrl) {
+                    return (
+                      <div className="space-y-2 pt-1">
+                        <a
+                          href={resolvedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`w-full py-3.5 px-4 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer ${
+                            isTelegramLink
+                              ? 'bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white shadow-sky-600/30'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25'
+                          }`}
+                        >
+                          {isTelegramLink ? <MessageSquare className="w-4 h-4 text-white" /> : <Download className="w-4 h-4" />}
+                          <span>{isTelegramLink ? 'Gabung Grup Telegram Kelas Sekarang' : 'Buka Akses / Unduh Materi Sekarang'}</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        <p className="text-[10px] text-slate-400 text-center">
+                          {isTelegramLink
+                            ? 'Klik tombol di atas untuk langsung bergabung ke grup Telegram kelas tanpa meninggalkan halaman toko.'
+                            : 'Akses materi telah aktif instan. Anda dapat membuka atau mengunduhnya langsung.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center space-y-1">
+                      <p className="text-xs font-bold text-amber-300">
+                        Akses produk digital Anda sedang disiapkan oleh admin toko.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Detail link dan instruksi akses otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
+              {/* Rincian Faktur / Invoice */}
               {paymentData.invoiceUrl && (
                 <a
                   href={paymentData.invoiceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition"
                 >
-                  <span>Lihat Rincian Faktur / Invoice</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>Lihat Lembar Faktur / Invoice Resmi</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
             </div>
@@ -1244,8 +1343,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 tenantQrisImageUrl ||
                 '';
 
-              // Jika QRIS berasal dari Xendit (000201010212), gunakan langsung tanpa mutasi Tag 54/CRC16
-              const finalQrValue = candidateQris.startsWith('000201010212')
+              // Jika QRIS berasal dari Xendit / Payment Gateway, gunakan langsung tanpa mutasi Tag 54/CRC16
+              const isDynamicQrisFromGateway =
+                candidateQris.startsWith('000201010212') ||
+                isOnlineboostOrGateway ||
+                Boolean(paymentData.qr_string || paymentData.qrString);
+
+              const finalQrValue = isDynamicQrisFromGateway
                 ? candidateQris
                 : (candidateQris.startsWith('000201010211') && !candidateQris.includes('ID.DANA.WWW')
                     ? (generateDynamicQRIS(candidateQris, totalAmount) || candidateQris)
@@ -1342,6 +1446,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               return (
                 <div className="space-y-3">
                   {qrContainer}
+
+                  {/* Realtime Detection Banner */}
+                  <div className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-300 text-xs">
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    <span className="text-[11px] font-medium">Menunggu pembayaran... Terverifikasi otomatis dalam detik saat lunas</span>
+                  </div>
 
                   {/* Alternatif Transfer Manual jika tersedia */}
                   {bankAccounts.length > 0 && (

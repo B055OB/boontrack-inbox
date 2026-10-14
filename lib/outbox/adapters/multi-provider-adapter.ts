@@ -44,11 +44,13 @@ export class MultiProviderAdapter implements IProviderAdapter {
       const { data, error } = await supabase
         .from('whatsapp_connections')
         .select('provider, status')
-        .eq('tenant_id', tenantId)
-        .eq('status', 'CONNECTED')
+        .or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantId}`)
+        .in('status', ['CONNECTED', 'active', 'ACTIVE'])
         .maybeSingle();
 
       if (!error && data?.provider) {
+        const p = data.provider.toUpperCase();
+        if (p === 'WABA' || p === 'META') return 'WABA';
         return data.provider as WhatsAppProvider;
       }
     } catch {

@@ -1121,12 +1121,21 @@ export default function SinglePageBuilderModal({
                         label={`Screenshot Testimoni #${idx + 1}`}
                         value={currentVal}
                         onChange={(url) => {
-                          const imgs = [...(singlePageForm.testimonial_images || ['', '', ''])];
-                          imgs[idx] = url;
-                          setSinglePageForm(p => ({ ...p, testimonial_images: imgs.filter(Boolean) }));
+                          const currentImgs = singlePageForm.testimonial_images || [];
+                          const nextImgs = [
+                            currentImgs[0] || '',
+                            currentImgs[1] || '',
+                            currentImgs[2] || '',
+                          ];
+                          nextImgs[idx] = url || '';
+                          while (nextImgs.length > 0 && !nextImgs[nextImgs.length - 1]) {
+                            nextImgs.pop();
+                          }
+                          setSinglePageForm((p) => ({ ...p, testimonial_images: nextImgs }));
                         }}
                         placeholder={`Upload bukti review / testimoni #${idx + 1}`}
                         tenantSlug={tenantSlug}
+                        folder="testimonials"
                       />
                     </div>
                   );

@@ -29,6 +29,22 @@ import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-account
 import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { getStorefrontShopUrl } from '@/lib/storefront-urls';
 
+function extractRawQrString(strOrUrl?: string): string {
+  if (!strOrUrl) return '';
+  const trimmed = strOrUrl.trim();
+  if (trimmed.startsWith('000201')) return trimmed;
+  if (trimmed.includes('text=000201') || trimmed.includes('text=')) {
+    try {
+      const match = trimmed.match(/[?&]text=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeURIComponent(match[1]);
+        if (decoded.startsWith('000201')) return decoded;
+      }
+    } catch {}
+  }
+  return '';
+}
+
 interface PayTokenPageProps {
   params: Promise<{ tenant: string; token: string }>;
 }
@@ -335,7 +351,7 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
     tenant?.metadata?.payment_config?.manual_config?.qris_image_url ||
     '';
 
-  const orderQrString = order?.qr_string || '';
+  const orderQrString = order?.qr_string || extractRawQrString(order?.qr_code_url) || '';
   const orderQrImageUrl =
     order?.qr_code_url ||
     (orderQrString && (orderQrString.startsWith('http://') || orderQrString.startsWith('https://')) ? orderQrString : '') ||

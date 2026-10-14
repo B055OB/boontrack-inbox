@@ -13,35 +13,71 @@ import { metaWabaAdapter } from '@/services/waba';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
 /**
- * Resolve the WhatsApp access token for a given credential_ref or phone_number_id.
+ * Resolve the WhatsApp credentials (access token and phone_number_id).
  * Priority:
- *   1. WABA_ACCESS_TOKEN env var (single-tenant / dev shortcut)
+ *   1. WABA_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID env vars
  *   2. Supabase lookup via whatsapp_connections table
  */
-async function resolveAccessToken(
+async function resolveWabaCredentials(
   tenantId: string,
   phoneNumberId: string | null
-): Promise<string | null> {
-  // Fast-path: single env var token (local dev / single-WABA setup)
-  const envToken = process.env.WABA_ACCESS_TOKEN?.trim();
-  if (envToken) return envToken;
+): Promise<{ accessToken: string | null; phoneNumberId: string | null }> {
+  const envToken = process.env.WABA_ACCESS_TOKEN?.trim() || process.env.META_WA_TOKEN?.trim() || null;
+  const envPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || process.env.META_PHONE_NUMBER_ID?.trim() || null;
 
-  if (!tenantId || tenantId === 'undefined' || tenantId === 'null') return null;
+  if (!tenantId || tenantId === 'undefined' || tenantId === 'null') {
+    return { accessToken: envToken, phoneNumberId: phoneNumberId || envPhoneId };
+  }
 
-  // Dynamic path: look up token from whatsapp_connections
+  // Dynamic path: look up credentials from whatsapp_connections
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('whatsapp_connections')
-    .select('credential_ref, phone_number, instance_name, status')
-    .eq('tenant_id', tenantId)
-    .eq('provider', 'WABA')
-    .eq('status', 'CONNECTED')
-    .maybeSingle();
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('whatsapp_connections')
+        .select('credential_ref, api_key, metadata, phone_number, instance_name, status, phone_number_id')
+        .or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantId}`)
+        .in('provider', ['WABA', 'meta', 'META', 'waba'])
+        .in('status', ['CONNECTED', 'active', 'ACTIVE'])
+        .maybeSingle();
 
-  if (error || !data) return null;
+      if (data) {
+        const candidateToken =
+          data.api_key ||
+          data.metadata?.token ||
+          data.metadata?.access_token ||
+          data.metadata?.waba_access_token ||
+          (data.credential_ref && data.credential_ref.length > 50 ? data.credential_ref : null);
 
-  // credential_ref may be a direct token or a secret name — for now treat as direct token
-  return data.credential_ref ?? null;
+        const candidatePhoneId =
+          phoneNumberId ||
+          data.phone_number_id ||
+          data.metadata?.phone_number_id ||
+          null;
+
+        if (candidateToken || candidatePhoneId) {
+          return {
+            accessToken: candidateToken || envToken || null,
+            phoneNumberId: candidatePhoneId || envPhoneId || null,
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // Fallback: look up token directly from tenants table metadata
+  try {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('metadata')
+      .or(`id.eq.${tenantId},slug.eq.${tenantId}`)
+      .maybeSingle();
+    const token = tenantRow?.metadata?.waba_access_token || envToken || null;
+    const phoneId = tenantRow?.metadata?.whatsapp_phone_number_id || phoneNumberId || envPhoneId || null;
+    return { accessToken: token, phoneNumberId: phoneId };
+  } catch {}
+
+  return { accessToken: envToken, phoneNumberId: phoneNumberId || envPhoneId };
 }
 
 export class WabaProviderAdapter implements IProviderAdapter {
@@ -49,8 +85,12 @@ export class WabaProviderAdapter implements IProviderAdapter {
     const { tenant_id, phone_number_id, payload } = message;
     const targetRecipient = message.recipient || message.recipient_phone;
 
-    // Resolve access token
-    const accessToken = await resolveAccessToken(tenant_id, phone_number_id);
+    // Resolve credentials (accessToken & phoneNumberId)
+    const { accessToken, phoneNumberId: resolvedPhoneId } = await resolveWabaCredentials(
+      tenant_id,
+      phone_number_id
+    );
+
     if (!accessToken) {
       return {
         success: false,
@@ -58,12 +98,11 @@ export class WabaProviderAdapter implements IProviderAdapter {
       };
     }
 
-    // phone_number_id must be present in the message
-    const phoneId = phone_number_id?.trim();
+    const phoneId = resolvedPhoneId?.trim();
     if (!phoneId) {
       return {
         success: false,
-        error: '[WabaProviderAdapter] Missing phone_number_id on outbox message',
+        error: `[WabaProviderAdapter] Missing phone_number_id for tenant '${tenant_id}'`,
       };
     }
 

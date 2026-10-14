@@ -113,6 +113,34 @@ export default function WhatsAppWabaConfig({
               qualityRating: cfg.quality_rating || 'GREEN',
               message: 'Akun Meta WABA sudah terhubung.',
             });
+            return;
+          }
+        }
+
+        // 3. Fallback baca langsung dari tenants table (metadata & direct columns)
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, metadata, waba_phone_number_id')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow) {
+          const meta = tenantRow.metadata || {};
+          const phoneId = tenantRow.waba_phone_number_id || meta.waba_phone_number_id || meta.whatsapp_phone_number_id || meta.waba_config?.phone_number_id;
+          const accountId = meta.waba_account_id || meta.waba_config?.waba_id;
+          const token = meta.waba_access_token || meta.waba_config?.permanent_access_token || meta.waba_config?.access_token;
+
+          if (phoneId) setPhoneNumberId(phoneId);
+          if (accountId) setWabaId(accountId);
+          if (token) setAccessToken(token);
+
+          if (meta.waba_configured === true || meta.waba_active === true || Boolean(phoneId) || meta.waba_config?.status === 'CONNECTED') {
+            setSuccessData({
+              verifiedName: meta.waba_config?.verified_name || displayName.toUpperCase(),
+              displayPhone: meta.waba_config?.display_phone_number || (phoneId ? `ID: ${phoneId}` : undefined),
+              qualityRating: meta.waba_config?.quality_rating || 'GREEN (HIGH QUALITY)',
+              message: 'Akun Meta Cloud API (WABA) resmi aktif dan terkonfigurasi pada tenant ini.',
+            });
           }
         }
       } catch (err) {

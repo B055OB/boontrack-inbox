@@ -942,22 +942,24 @@ export function resolveSinglePageProduct(
     }
   }
 
-  // 3. Coba cari di DEFAULT_PRODUCTS
-  const defaultMatch = DEFAULT_PRODUCTS.find((p) => {
-    const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (pSlug === normTarget || pNameSlug === normTarget) return true;
-    if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
-    if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
-    if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
-    return false;
-  });
+  // 3. Coba cari di DEFAULT_PRODUCTS (HANYA UNTUK TENANT ONLINEBOOST - ZERO CROSS-TENANT LEAKAGE)
+  if (tenantSlug === 'onlineboost') {
+    const defaultMatch = DEFAULT_PRODUCTS.find((p) => {
+      const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (pSlug === normTarget || pNameSlug === normTarget) return true;
+      if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
+      if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
+      if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
+      return false;
+    });
 
-  if (defaultMatch) {
-    return {
-      product: defaultMatch,
-      config: defaultMatch.single_page_config!,
-    };
+    if (defaultMatch) {
+      return {
+        product: defaultMatch,
+        config: defaultMatch.single_page_config!,
+      };
+    }
   }
 
   // 4. Fallback jika slug belum terdaftar sama sekali

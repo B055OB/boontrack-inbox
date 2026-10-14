@@ -23,6 +23,9 @@ import {
   isManualOrderMessage,
   getOrderConfirmationReply,
   markSessionAsPendingVerification,
+  isOnlineBoostRegistrationKeyword,
+  getOnlineBoostBatch1RegistrationReply,
+  tagCustomerAwaitingPayment,
 } from '@/lib/whatsapp/order-interceptor';
 import {
   persistInboundMessage,
@@ -459,8 +462,10 @@ export async function processNormalizedMetaEvent(
       .select('tenant_id, ownership_domain, status, credential_ref, phone_number_id')
       .eq('phone_number_id', phoneNumberId)
       .eq('ownership_domain', 'TENANT')
-      .eq('provider', 'META')
-      .single();
+      .in('provider', ['META', 'WABA', 'META_API'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     connection = res.data;
     connError = res.error;
@@ -796,6 +801,59 @@ export async function processNormalizedMetaEvent(
       }
     } catch {
       // Non-fatal if schema is mocked in tests
+    }
+
+    // 3.4. INTERCEPTOR KEYWORD ONLINEBOOST BATCH 1: "MAU METODE RAHASIA"
+    if (isOnlineBoostRegistrationKeyword(textContent)) {
+      console.info(
+        `[ONLINEBOOST_BATCH1_INGRESS] Intercepted keyword 'MAU METODE RAHASIA' from ${senderPhone} on tenant '${tenantId}'. Tagging awaiting_payment.`
+      );
+
+      // Tag customer 'awaiting_payment' in CRM
+      await tagCustomerAwaitingPayment({
+        supabase,
+        tenantId,
+        senderPhone,
+        senderName: msg.senderName,
+        convId,
+      });
+
+      const registrationReply = getOnlineBoostBatch1RegistrationReply();
+
+      // Dispatch auto-reply via WABA
+      if (connection.status === 'CONNECTED') {
+        try {
+          const resolvedCred = await resolveTenantWabaCredential(tenantId, phoneNumberId, {
+            supabase,
+          });
+
+          await metaWabaAdapter.dispatchTenantMessage(
+            tenantId,
+            connection,
+            senderPhone,
+            {
+              type: 'text',
+              text: { preview_url: true, body: registrationReply },
+            },
+            resolvedCred.accessToken,
+            connection.credential_ref
+          );
+
+          await persistOutboundMessage({
+            tenantId,
+            customerPhone: senderPhone,
+            senderType: 'bot',
+            senderName: 'OnlineBoost Registration',
+            messageBody: registrationReply,
+            rawPayload: { trigger: 'keyword_mau_metode_rahasia', tag: 'awaiting_payment' },
+          });
+        } catch (sendErr) {
+          console.warn('[Meta Webhook] Batch 1 registration reply error:', sendErr);
+        }
+      }
+
+      processedMessages++;
+      continue; // Bypass LLM / ConversationEngine
     }
 
     // 3.5. INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER)

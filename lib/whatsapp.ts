@@ -358,11 +358,18 @@ Kabar baik! Pembayaran untuk pesanan #${safeOrderId} sebesar ${formattedAmount} 
 
 Kami akan segera mengabarkan nomor resi pengiriman setelah paket diserahkan ke kurir ekspedisi. Terima kasih telah berbelanja!`;
   } else {
-    // Pesan Khusus Produk Digital: Ringkasan & Link Akses Instan
+    // Pesan Khusus Produk Digital / Kelas / Komunitas: Ringkasan & Link Akses Instan Dinamis
+    const isTelegramCommunity = Boolean(
+      resolvedLink && (resolvedLink.includes('t.me') || resolvedLink.includes('telegram'))
+    );
     const linkSection = resolvedLink
-      ? `\n📥 Akses / Unduh Materi Digital:\n${resolvedLink}\n`
+      ? (isTelegramCommunity
+          ? `\n🚀 Akses Komunitas & Grup Telegram Kelas:\n${resolvedLink}\n`
+          : `\n📥 Akses / Unduh Materi Digital:\n${resolvedLink}\n`)
       : `\n📥 Akses produk digital Anda telah otomatis aktif di akun Anda.\n`;
-    const noteSection = instructions ? `\n💡 Catatan: ${instructions}\n` : '';
+    const noteSection = instructions
+      ? `\n💡 Catatan: ${instructions}\n`
+      : (isTelegramCommunity ? `\n💡 Silakan langsung klik tautan Telegram di atas untuk bergabung ke grup mentoring & praktikum.\n` : '');
 
     messageText =
 `Halo ${safeName}! 🎉
@@ -373,7 +380,7 @@ Terima kasih! Pembayaran untuk pesanan #${safeOrderId} sebesar ${formattedAmount
 • Produk: ${safeItems}
 • Total Bayar: ${formattedAmount}
 ${linkSection}${noteSection}
-Semoga materi/produk digital ini bermanfaat! Jika Anda butuh bantuan, balas langsung pesan ini.`;
+Semoga materi/program ini bermanfaat! Jika Anda butuh bantuan, balas langsung pesan ini.`;
   }
 
   return {
@@ -446,6 +453,17 @@ export async function sendOrderFulfillmentNotification(
   // First attempt: Enqueue via Transactional Outbox (Guaranteed idempotency & queue safety)
   const outboxResult = await enqueueOrderFulfillmentNotification(params);
   if (outboxResult.success) {
+    // Proactive non-blocking drain: Kirimkan antrean segera tanpa menunggu polling cron terpisah
+    try {
+      import('@/lib/outbox/worker').then(({ outboxWorker }) => {
+        import('@/lib/outbox/adapters/multi-provider-adapter').then(({ multiProviderAdapter }) => {
+          outboxWorker.runOnce(multiProviderAdapter).catch((drainErr) => {
+            console.warn('[WhatsApp Outbox Drain Note]:', drainErr);
+          });
+        });
+      }).catch(() => {});
+    } catch {}
+
     return outboxResult;
   }
 

@@ -86,7 +86,7 @@ export default function CheckoutPage({ params }: Props) {
     hasTrackedPixelRef.current = true;
 
     try {
-      const grossVal = Number(orderData.gross_amount || orderData.total_amount || orderData.amount || 0);
+      const grossVal = Number(orderData.total_amount ?? orderData.gross_amount ?? orderData.amount ?? 0);
       const prodName = orderData.product_title || 'Produk';
       const prodId = String(orderData.product_id || orderData.id || '');
       const rawOrderId = String(orderData.id || orderId || '').trim();
@@ -553,42 +553,47 @@ export default function CheckoutPage({ params }: Props) {
     }
   }, [order?.id, order?.payment_method, order?.qr_code_url, order?.qr_string, ensureDynamicQris]);
 
-  // Trigger Purchase (Meta) & CompletePayment (TikTok) dengan deduplikasi event_id
-  const [hasTrackedPurchase, setHasTrackedPurchase] = useState(false);
+  // Inisialisasi Meta Pixel & TikTok Pixel serta trigger Purchase HANYA jika order berstatus PAID
   useEffect(() => {
-    if (order && !hasTrackedPurchase) {
-      const gross = Number(order.base_price || order.gross_amount || order.total_amount || order.amount || 149000);
-      const title = order.product_title || order.product_name || 'Checkout Order';
+    if (!order) return;
 
-      // Baca pixel ID: Gunakan meta_pixel_id_override (jika diisi di produk) atau fallback ke default tenant Meta Pixel
-      const resolvedMetaPixelId =
-        order.meta_pixel_id_override ||
-        order.metadata?.meta_pixel_id_override ||
-        tenant?.metadata?.pixel_config?.meta_pixel_id ||
-        tenant?.metadata?.meta_pixel_id ||
-        tenant?.metadata?.pixel_id ||
-        tenant?.metadata?.tracking?.meta_pixel_id ||
-        tenant?.metadata?.tracking?.facebook_pixel_id ||
-        null;
+    // Baca pixel ID: Gunakan meta_pixel_id_override (jika diisi di produk) atau fallback ke default tenant Meta Pixel
+    const resolvedMetaPixelId =
+      order.meta_pixel_id_override ||
+      order.metadata?.meta_pixel_id_override ||
+      tenant?.metadata?.pixel_config?.meta_pixel_id ||
+      tenant?.metadata?.meta_pixel_id ||
+      tenant?.metadata?.pixel_id ||
+      tenant?.metadata?.tracking?.meta_pixel_id ||
+      tenant?.metadata?.tracking?.facebook_pixel_id ||
+      null;
 
-      const resolvedTTPixelId =
-        order.tiktok_pixel_id_override ||
-        order.metadata?.tiktok_pixel_id_override ||
-        tenant?.metadata?.pixel_config?.tiktok_pixel_id ||
-        tenant?.metadata?.tiktok_pixel_id ||
-        null;
+    const resolvedTTPixelId =
+      order.tiktok_pixel_id_override ||
+      order.metadata?.tiktok_pixel_id_override ||
+      tenant?.metadata?.pixel_config?.tiktok_pixel_id ||
+      tenant?.metadata?.tiktok_pixel_id ||
+      null;
 
-      if (resolvedMetaPixelId) {
-        initMetaPixel(resolvedMetaPixelId);
-      }
-      if (resolvedTTPixelId) {
-        initTikTokPixel(resolvedTTPixelId);
-      }
-
-      trackClientPurchase(orderId, gross, title);
-      setHasTrackedPurchase(true);
+    if (resolvedMetaPixelId) {
+      initMetaPixel(resolvedMetaPixelId);
     }
-  }, [order, tenant, orderId, hasTrackedPurchase]);
+    if (resolvedTTPixelId) {
+      initTikTokPixel(resolvedTTPixelId);
+    }
+
+    const isOrderPaid =
+      order.status === 'PAID' ||
+      order.status === 'COMPLETED' ||
+      order.status === 'SUCCESS' ||
+      order.status === 'SETTLED' ||
+      order.payment_status === 'PAID' ||
+      order.order_status === 'PAID';
+
+    if (isOrderPaid) {
+      triggerPurchasePixels(order);
+    }
+  }, [order, tenant, triggerPurchasePixels]);
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);

@@ -201,7 +201,10 @@ export async function POST(req: NextRequest) {
           resolvedPhone = resolvedPhone || dbOrder.customer_phone || dbOrder.phone;
           resolvedEmail = resolvedEmail || dbOrder.customer_email;
           resolvedName = resolvedName || dbOrder.customer_name || dbOrder.buyer_name;
-          resolvedAmount = resolvedAmount !== undefined ? resolvedAmount : dbOrder.gross_amount;
+          resolvedAmount = resolvedAmount !== undefined ? resolvedAmount : (dbOrder.total_amount ?? dbOrder.gross_amount ?? dbOrder.amount ?? 0);
+          if (resolvedEventName === 'Purchase' && dbOrder) {
+            resolvedAmount = dbOrder.total_amount ?? dbOrder.gross_amount ?? dbOrder.amount ?? resolvedAmount ?? 0;
+          }
           resolvedCity =
             resolvedCity ||
             dbOrder.customer_city ||

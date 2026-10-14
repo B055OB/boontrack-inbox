@@ -71,6 +71,7 @@ function getStorageClient(): { client: S3Client; bucket: string; publicUrlBase: 
 
   const publicUrlBase = cleanEnv(
     process.env.R2_PUBLIC_URL ||
+    process.env.R2_PUBLIC_DOMAIN ||
     process.env.NEXT_PUBLIC_R2_URL ||
     process.env.NEXT_PUBLIC_ASSET_DOMAIN ||
     'https://assets.boontrack.com'

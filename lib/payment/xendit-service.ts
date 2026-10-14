@@ -99,6 +99,10 @@ export async function createXenditDynamicQRIS(
 
   // 2. Terbitkan juga / Fallback Invoice: POST https://api.xendit.co/v2/invoices
   try {
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://shop.boontrack.com').replace(/\/$/, '');
+    const successRedirectUrl = `${appBaseUrl}/${tenantSlug}/order-success/${orderId}`;
+    const failureRedirectUrl = `${appBaseUrl}/${tenantSlug}/order-failed/${orderId}`;
+
     const invRes = await fetch(`${apiUrl}/v2/invoices`, {
       method: 'POST',
       headers: {
@@ -112,6 +116,8 @@ export async function createXenditDynamicQRIS(
         invoice_duration: 86400,
         currency: 'IDR',
         payment_methods: ['QRIS'],
+        success_redirect_url: successRedirectUrl,
+        failure_redirect_url: failureRedirectUrl,
         customer: {
           given_names: customerName || 'Pelanggan',
           mobile_number: customerPhone || undefined,
