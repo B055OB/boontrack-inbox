@@ -179,6 +179,10 @@ export interface SinglePageConfig {
   limit_single_item?: boolean;
   /** Urutan kustom untuk section 1-9 pada landing page */
   section_order?: string[];
+  /** Mode tampilan checkout: 'inline' (di body halaman) atau 'drawer' / 'popup' / 'modal' */
+  checkout_mode?: 'inline' | 'drawer' | 'popup' | 'modal' | string;
+  /** Tampilkan tombol checkout melayang di bagian bawah layar. Default: true */
+  enable_sticky_button?: boolean;
 
   // 9. Interactive Product Media Showcase & Lightbox Gallery
   enable_media_gallery?: boolean;

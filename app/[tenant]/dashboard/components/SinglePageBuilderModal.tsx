@@ -186,6 +186,11 @@ export default function SinglePageBuilderModal({
               enable_faq: false,
               // Pertahankan toggle Checkout & Voucher (#9) sesuai pilihan merchant
               enable_payment: singlePageForm.enable_payment !== false,
+              section_order: (singlePageForm.section_order && singlePageForm.section_order.includes('custom_html'))
+                ? singlePageForm.section_order
+                : ['custom_html', 'payment_voucher'],
+              checkout_mode: (singlePageForm as any).checkout_mode || 'inline',
+              enable_sticky_button: (singlePageForm as any).enable_sticky_button,
             }
           : {}),
       };

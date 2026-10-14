@@ -2077,6 +2077,11 @@ export function useTenantDashboard() {
           enable_offer: false,
           enable_faq: false,
           enable_payment: cleanSpForm.enable_payment !== false,
+          section_order: (cleanSpForm.section_order && cleanSpForm.section_order.includes('custom_html'))
+            ? cleanSpForm.section_order
+            : ['custom_html', 'payment_voucher'],
+          checkout_mode: (cleanSpForm as any).checkout_mode || 'inline',
+          enable_sticky_button: (cleanSpForm as any).enable_sticky_button,
         }
       : {
           enable_custom_html: Boolean(cleanSpForm.enable_custom_html),

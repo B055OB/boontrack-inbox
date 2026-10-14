@@ -548,6 +548,9 @@ function SingleProductContent() {
               gallery_images: cfg.gallery_images || (match?.fulfillment_metadata?.single_page_config?.gallery_images) || [],
               intake_form_config: cfg.intake_form_config || (match?.fulfillment_metadata?.single_page_config?.intake_form_config) || undefined,
               micro_copy: cfg.micro_copy || match?.metadata?.micro_copy || (match?.fulfillment_metadata as any)?.micro_copy || (match?.fulfillment_metadata?.single_page_config?.micro_copy) || (sqlProd?.fulfillment_metadata as any)?.micro_copy || undefined,
+              section_order: cfg.section_order || (match?.fulfillment_metadata?.single_page_config as any)?.section_order || (match?.metadata as any)?.section_order || [],
+              checkout_mode: (cfg as any).checkout_mode || (match?.fulfillment_metadata?.single_page_config as any)?.checkout_mode || (match?.metadata as any)?.checkout_mode || 'inline',
+              enable_sticky_button: (cfg as any).enable_sticky_button !== false && (match?.fulfillment_metadata?.single_page_config as any)?.enable_sticky_button !== false && (match?.metadata as any)?.enable_sticky_button !== false,
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -4376,20 +4379,33 @@ function SingleProductContent() {
         {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
         {isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
 
-        {/* Render sections dynamically according to merchant ordering & video embeds */}
         {(() => {
-          const defaultSectionOrder = [
-            'hook',
-            'media_gallery',
-            'client_logos',
-            'problem_solution',
-            'comparison',
-            'social_proof',
-            'offer_bonus',
-            'faq',
-            'payment_voucher',
-            'custom_html',
-          ];
+          const isCustomHtml = Boolean(config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html);
+          const defaultSectionOrder = isCustomHtml
+            ? [
+                'custom_html',
+                'payment_voucher',
+                'hook',
+                'media_gallery',
+                'client_logos',
+                'problem_solution',
+                'comparison',
+                'social_proof',
+                'offer_bonus',
+                'faq',
+              ]
+            : [
+                'hook',
+                'media_gallery',
+                'client_logos',
+                'problem_solution',
+                'comparison',
+                'social_proof',
+                'offer_bonus',
+                'faq',
+                'payment_voucher',
+                'custom_html',
+              ];
           const effectiveOrder = (config.section_order && config.section_order.length > 0)
             ? [
                 ...config.section_order.filter((id) => defaultSectionOrder.includes(id)),
@@ -4868,6 +4884,9 @@ function SingleProductContent() {
                 ) : null;
 
               case 'payment_voucher':
+                if ((config as any).checkout_mode === 'drawer' || (config as any).checkout_mode === 'popup' || (config as any).checkout_mode === 'modal') {
+                  return null;
+                }
                 return config.enable_payment !== false ? (
                   <React.Fragment key="section-payment-voucher">
                     {/* 7.5 Mini Intake Form (Dynamic Lead Capture & Positive Friction Intake) */}
@@ -5003,7 +5022,7 @@ function SingleProductContent() {
       </main>
 
       {/* 4. Sticky Bottom CTA (Mobile & Desktop) */}
-      {config.enable_payment !== false && (
+      {config.enable_payment !== false && (config as any).enable_sticky_button !== false && (
         <StickyBuyButton
           totalAmount={totalAmount}
           dynamicCtaPrefix={dynamicCtaPrefix}

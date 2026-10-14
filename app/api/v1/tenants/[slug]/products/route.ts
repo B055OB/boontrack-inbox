@@ -179,6 +179,9 @@ export async function POST(
               } else {
                 spc.enable_payment = true;
               }
+              if (!spc.section_order || !spc.section_order.includes('custom_html')) {
+                spc.section_order = ['custom_html', 'payment_voucher'];
+              }
             }
             return spc;
           })()
