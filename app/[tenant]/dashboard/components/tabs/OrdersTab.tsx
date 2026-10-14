@@ -86,6 +86,7 @@ export interface OrdersTabProps {
 }
 
 export function mapRawOrder(o: any): OrderItem {
+  if (!o) return {} as OrderItem;
   const displayId = String(o.order_number || o.id || o.order_id || o.invoice_no || '');
   return {
     id: String(o.id || o.order_number || o.order_id || o.invoice_no || ''),
@@ -100,7 +101,7 @@ export function mapRawOrder(o: any): OrderItem {
     payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
     status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
     shipping_status: o.shipping_status,
-    product_type: o.product_type,
+    product_type: o?.product_type,
     shipping_address: o.shipping_address,
     shipping_courier: o.shipping_courier,
     tracking_number: o.tracking_number,

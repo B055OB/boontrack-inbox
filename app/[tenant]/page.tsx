@@ -270,27 +270,32 @@ export default function TenantStorefrontPage() {
           const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || "").toLowerCase()));
           const existingIds = new Set(prodsList.map((p: any) => String(p.id)));
 
-          for (const sp of sqlProducts) {
+          for (const sp of (sqlProducts || [])) {
+            if (!sp) continue;
             const spSlug = (sp.slug || "").toLowerCase();
             const spId = String(sp.id);
             if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
+              const spPt = String(sp?.product_type || "").toUpperCase();
+              const isSpService = spPt === "SERVICE" || spPt === "FIELD_SERVICE" || spPt === "PROFESSIONAL_SERVICE" || spPt === "AGENCY";
               combinedProds.push({
                 id: sp.id,
                 name: sp.title || `Produk`,
                 title: sp.title,
                 slug: sp.slug,
-                category: sp.category || "Digital",
-                product_type: sp.product_type || "DIGITAL",
+                category: sp.category || (isSpService ? "Layanan" : "Digital"),
+                product_type: sp?.product_type || "DIGITAL",
                 requires_shipping: Boolean(
                   sp.requires_shipping ||
-                    String(sp.product_type || "").toUpperCase() === "PHYSICAL" ||
-                    String(sp.product_type || "").toUpperCase() === "FOOD"
+                    spPt === "PHYSICAL" ||
+                    spPt === "FOOD"
                 ),
                 type:
-                  String(sp.product_type || "").toUpperCase() === "FOOD"
+                  spPt === "FOOD"
                     ? "food"
-                    : String(sp.product_type || "").toUpperCase() === "PHYSICAL"
+                    : spPt === "PHYSICAL"
                     ? "physical"
+                    : isSpService
+                    ? "service"
                     : "digital",
                 price: Number(sp.price) || 0,
                 promo_price: sp.promo_price ? Number(sp.promo_price) : 0,

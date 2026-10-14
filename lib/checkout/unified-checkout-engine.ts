@@ -51,8 +51,8 @@ export async function createEphemeralCheckoutContextFromDirectBuy(
   const { tenantSlug, product, quantity = 1, variantId, variantName, selectedModifiers, customerData } = input;
   const qty = Math.max(1, quantity);
 
-  const rawType = (product.product_type || '').toUpperCase();
-  const rawCat = (product.category || '').toLowerCase();
+  const rawType = (product?.product_type || '').toUpperCase();
+  const rawCat = (product?.category || '').toLowerCase();
   const isFood =
     rawType === 'FOOD' ||
     rawType === 'FNB' ||

@@ -98,7 +98,8 @@ export async function POST(
 
     const productId = id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const finalSlug = body.slug ? slugify(body.slug) : slugify(trimmedName);
-    const resolvedCategory = body.category || category || (body.product_type === 'PHYSICAL' ? 'Fisik' : (body.product_type === 'SERVICE' ? 'Jasa' : 'Digital'));
+    const isServicePt = ['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(body?.product_type || '').toUpperCase());
+    const resolvedCategory = body?.category || category || (body?.product_type === 'PHYSICAL' ? 'Fisik' : (isServicePt ? 'Jasa' : 'Digital'));
 
     // Graceful sanitization of order_bumps so empty/malformed bump entries never crash save
     const rawBumps = body.order_bumps || body.metadata?.order_bumps || body.fulfillment_metadata?.order_bumps;
@@ -148,8 +149,8 @@ export async function POST(
       promo: promo || '',
       description: description || '',
       download_url: download_url || null,
-      type: type || (body.product_type === 'PHYSICAL' ? 'physical' : (body.product_type === 'SERVICE' || category === 'jasa' ? 'service' : 'digital')),
-      product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
+      type: type || (body?.product_type === 'PHYSICAL' ? 'physical' : (isServicePt || category === 'jasa' ? 'service' : 'digital')),
+      product_type: body?.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
       sku: body.sku || `SKU-${finalSlug}`,
       is_active: body.is_active !== false,
       order_bumps: cleanOrderBumps,
@@ -242,8 +243,8 @@ export async function POST(
                   title: sp.title,
                   slug: sp.slug,
                   category: sp.category || 'digital',
-                  product_type: sp.product_type || 'DIGITAL',
-                  type: sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'service' : 'digital'),
+                  product_type: sp?.product_type || 'DIGITAL',
+                  type: sp?.product_type === 'PHYSICAL' ? 'physical' : (['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(sp?.product_type || '').toUpperCase()) ? 'service' : 'digital'),
                   price: Number(sp.price) || 0,
                   promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
                   sku: sp.sku || `SKU-${sp.id}`,
@@ -585,8 +586,8 @@ export async function GET(
             name: sp.title || `Produk ${idx + 1}`,
             title: sp.title || `Produk ${idx + 1}`,
             slug: sp.slug,
-            category: sp.category || (sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'jasa' : 'digital')),
-            product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : (sp.category === 'jasa' || sp.category === 'service' ? 'SERVICE' : 'DIGITAL')),
+            category: sp?.category || (sp?.product_type === 'PHYSICAL' ? 'physical' : (['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(sp?.product_type || '').toUpperCase()) ? 'jasa' : 'digital')),
+            product_type: sp?.product_type || (sp?.category === 'fisik' ? 'PHYSICAL' : (sp?.category === 'jasa' || sp?.category === 'service' ? 'SERVICE' : 'DIGITAL')),
             price: Number(sp.price) || 0,
             promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
             description: sp.description || '',

@@ -618,8 +618,8 @@ function SingleProductContent() {
     return () => { isMounted = false; };
   }, [tenant, slug]);
 
-  const product = resolvedData.product;
-  const config = resolvedData.config;
+  const product: ProductItem = resolvedData?.product || ({} as ProductItem);
+  const config: SinglePageConfig = resolvedData?.config || ({} as SinglePageConfig);
 
   // Resolusi aktif Order Bumps / Cross-Selling Add-on (Kondisional Murni)
   const activeOrderBumps = useMemo(() => {
@@ -788,9 +788,9 @@ function SingleProductContent() {
   });
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
-  const rawCategory = (product.category || '').toLowerCase();
-  const rawType = (product.type || '').toLowerCase();
-  const rawProductType = (product.product_type || '').toUpperCase();
+  const rawCategory = (product?.category || '').toLowerCase();
+  const rawType = (product?.type || '').toLowerCase();
+  const rawProductType = (product?.product_type || '').toUpperCase();
   const storeCat = (tenantCategory || '').toUpperCase();
 
   const isStoreFieldService = ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'TEKNISI'].some(k => storeCat.includes(k));
@@ -805,7 +805,7 @@ function SingleProductContent() {
 
   // PERSYARATAN STOREFRONT FULFILLMENT:
   // Blok pengiriman (Alamat, Pin Lokasi/Jarak KM, Pilihan Kurir Instan/Ekspedisi) aktif jika:
-  // product.requires_shipping === true || product.product_type === 'PHYSICAL' || product.product_type === 'FOOD' || tenant.category === 'FOOD'
+  // product?.requires_shipping === true || product?.product_type === 'PHYSICAL' || product?.product_type === 'FOOD' || tenant.category === 'FOOD'
   const isExplicitShippingRequired = Boolean(
     product.requires_shipping === true ||
     (product as any).requiresShipping === true ||
@@ -820,12 +820,12 @@ function SingleProductContent() {
   );
 
   const productType: ProductType = isExplicitShippingRequired
-    ? (product.product_type === 'FOOD' || rawProductType === 'FOOD' || storeCat === 'FOOD' || storeCat === 'FNB' ? 'FOOD' : 'PHYSICAL')
+    ? (product?.product_type === 'FOOD' || rawProductType === 'FOOD' || storeCat === 'FOOD' || storeCat === 'FNB' ? 'FOOD' : 'PHYSICAL')
     : (isStoreFieldService ? 'FIELD_SERVICE' :
        isStoreDigital ? 'DIGITAL' :
        isStoreProService ? 'PROFESSIONAL_SERVICE' :
        isStoreCreator ? 'AGENCY' :
-       (product.product_type || (
+       (product?.product_type || (
          isPhysicalCategory ? 'PHYSICAL' :
          (isServiceCategory ? 'SERVICE' : 'DIGITAL')
        )));
@@ -861,7 +861,7 @@ function SingleProductContent() {
   // Preset C: DIGITAL Preset
   const isFoodPreset = Boolean(
     productType === 'FOOD' ||
-    product.product_type === 'FOOD' ||
+    product?.product_type === 'FOOD' ||
     rawProductType === 'FOOD' ||
     rawProductType === 'FNB' ||
     storeCat === 'FOOD' ||
@@ -1067,11 +1067,11 @@ function SingleProductContent() {
 
   // Deteksi khusus jika produk adalah FnB / makanan segar mudah basi
   const isFnbProduct = useMemo(() => {
-    const rawCat = String(product.category || '').toLowerCase();
-    const rawTyp = String(product.product_type || '').toLowerCase();
-    const rawNm = String(product.name || '').toLowerCase();
-    const meta = (product.metadata || {}) as Record<string, any>;
-    const fMeta = (product.fulfillment_metadata || {}) as Record<string, any>;
+    const rawCat = String(product?.category || '').toLowerCase();
+    const rawTyp = String(product?.product_type || '').toLowerCase();
+    const rawNm = String(product?.name || '').toLowerCase();
+    const meta = (product?.metadata || {}) as Record<string, any>;
+    const fMeta = (product?.fulfillment_metadata || {}) as Record<string, any>;
 
     return Boolean(
       isStoreFnb ||
@@ -1098,7 +1098,7 @@ function SingleProductContent() {
       rawNm.includes('kue') ||
       rawNm.includes('roti')
     );
-  }, [isStoreFnb, product.category, product.product_type, product.name, product.metadata, product.fulfillment_metadata]);
+  }, [isStoreFnb, product?.category, product?.product_type, product?.name, product?.metadata, product?.fulfillment_metadata]);
 
   // Mode Direct Checkout / Cartless Funnel
   const isDirectCheckoutOnly = Boolean(
@@ -1153,7 +1153,7 @@ function SingleProductContent() {
 
   const isPhysicalItem = Boolean(
     productType === 'PHYSICAL' ||
-    product.product_type === 'PHYSICAL' ||
+    product?.product_type === 'PHYSICAL' ||
     rawProductType === 'PHYSICAL' ||
     isPhysicalPreset ||
     isStorePhysical ||
@@ -1430,10 +1430,10 @@ function SingleProductContent() {
   const cartPolicy = useMemo(() => {
     return evaluateCartPolicy({
       businessType: tenantData?.metadata?.category || (tenantData as any)?.business_type,
-      productType: product.product_type || product.type,
-      category: product.category,
+      productType: product?.product_type || product?.type,
+      category: product?.category,
       requiresShipping,
-      enableCart: isCartDisabled ? false : (product.metadata?.enable_cart ?? (product as any)?.enable_cart),
+      enableCart: isCartDisabled ? false : (product?.metadata?.enable_cart ?? (product as any)?.enable_cart),
     });
   }, [tenantData, product, requiresShipping, isCartDisabled]);
 

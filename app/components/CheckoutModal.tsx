@@ -751,15 +751,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
       : (isPhysical ? 'PHYSICAL' : 'DIGITAL');
 
     const resolvedAccessUrl =
-      product.download_url ||
-      product.link_digital ||
-      product.delivery_url ||
-      product.fulfillment_metadata?.access_url ||
+      product?.download_url ||
+      product?.link_digital ||
+      product?.delivery_url ||
+      product?.fulfillment_metadata?.access_url ||
       '';
 
     const resolvedFulfillmentMetadata = product?.slot
       ? {
-          ...(product.fulfillment_metadata || {}),
+          ...(product?.fulfillment_metadata || {}),
           delivery_type: 'CONSULTATION_SESSION',
           slot: product.slot,
           scheduled_at: product.slot.slotDate,
