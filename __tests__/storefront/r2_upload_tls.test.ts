@@ -14,7 +14,9 @@ describe('R2 OBJECT STORAGE TLS & SSL HANDSHAKE HARDENING', () => {
   let imageUploadCode: string;
 
   beforeAll(() => {
-    envLocalCode = fs.readFileSync(envLocalPath, 'utf-8');
+    envLocalCode = fs.existsSync(envLocalPath)
+      ? fs.readFileSync(envLocalPath, 'utf-8')
+      : (fs.existsSync(path.join(rootDir, '.env')) ? fs.readFileSync(path.join(rootDir, '.env'), 'utf-8') : '');
     uploadRouteCode = fs.readFileSync(uploadRoutePath, 'utf-8');
     imageUploadCode = fs.readFileSync(imageUploadPath, 'utf-8');
   });
