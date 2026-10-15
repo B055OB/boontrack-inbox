@@ -622,7 +622,7 @@ export async function processEvolutionWebhookEvent(
     if (key.fromMe === true) {
       if (!isGroup && senderPhone) {
         // Step 1: Detect bot outbound echo using tenantId + wa_message_id (with DB fallback for restarts)
-        const isEcho = await isBotOutboundAsync({
+        const echoResult = await isBotOutboundAsync({
           tenantId,
           messageId: key.id || undefined,
           recipientPhone: senderPhone,
@@ -630,11 +630,19 @@ export async function processEvolutionWebhookEvent(
           supabase,
         });
 
-        if (isEcho) {
+        if (echoResult === 'MATCH') {
           console.info(
             `[Evolution Webhook] Bot outbound echo detected for ${senderPhone} (tenant: ${tenantId}, msgId: ${key.id || 'n/a'}). Ignoring event seketika (NO-OP).`
           );
           // Return 200 / ignore event seketika: JANGAN evaluasi command, JANGAN trigger manual CS takeover, JANGAN set pause 24 jam!
+          continue;
+        }
+
+        if (echoResult === 'UNKNOWN') {
+          console.warn(
+            `[Evolution Webhook] Echo detection returned UNKNOWN (DB timeout/error) for ${senderPhone} (tenant: ${tenantId}, msgId: ${key.id || 'n/a'}). DILARANG memicu human takeover (preventing false self-pause). Quarantined / NO-OP.`
+          );
+          // Quarantined / NO-OP: JANGAN trigger manual CS takeover, JANGAN set status HUMAN_PAUSED!
           continue;
         }
 

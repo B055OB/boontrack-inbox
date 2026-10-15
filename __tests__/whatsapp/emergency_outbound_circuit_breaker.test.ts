@@ -11,6 +11,13 @@
  * 5. Identity Normalization & Echo Filter: Normalizes +62, 62, 08, JID to canonical identity; separates operator auth from echo filter.
  */
 
+
+let currentMockDb: any = null;
+
+jest.mock('@/lib/supabaseClient', () => ({
+  getSupabaseAdmin: jest.fn(() => currentMockDb),
+  getSupabase: jest.fn(() => currentMockDb),
+}));
 import {
   parseBotControlCommand,
   executeBotControl,
@@ -23,8 +30,10 @@ import {
   normalizeRegistryPhone,
   isOperatorBotControlText,
   isBotOutbound,
+  isBotOutboundAsync,
   clearOutboundRegistry,
 } from '@/lib/whatsapp/outbound-registry';
+import { processEvolutionWebhookEvent } from '@/lib/whatsapp/evolution-webhook-handler';
 import {
   OutboxWorker,
   verifyBotDispatchGate,
@@ -72,6 +81,7 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
       }),
     };
 
+    currentMockDb = null;
     mockDb = {
       rpc: jest.fn(async (fnName: string, args: Record<string, unknown> = {}) => {
         if (dbOutage) {
@@ -233,6 +243,7 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
         throw new Error(`Unexpected table: ${table}`);
       }),
     };
+    currentMockDb = mockDb;
   });
 
   // Helper to insert outbox message
@@ -525,6 +536,48 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain('CONTROL_VERSION_CHANGED');
     });
+
+    it('aborts dispatch via instantaneous atomic fence when pause is triggered precisely between initial gate check and adapter.send()', async () => {
+      const msg = enqueueMockOutbox({
+        id: 'job-atomic-fence',
+        recipientPhone: '628177777777',
+        isAi: true,
+        controlVersion: 1,
+      });
+
+      // Initially, tenant & session are ACTIVE
+      expect(mockTenant.bot_paused).toBe(false);
+
+      // Pre-send hook simulates an operator issuing #pause right after initial gate verification
+      const preSendHook = jest.fn(async () => {
+        setRuntimeSessionCache({
+          tenantId: 'tenant-alpha-uuid',
+          isPaused: true,
+          botStatus: 'BOT_DISABLED',
+        });
+        const state = getRuntimeSessionCache('tenant-alpha-uuid');
+        if (state) state.version = 2;
+      });
+
+      const worker = new OutboxWorker({ batchSize: 10 });
+      const summary = await worker.runOnce(mockAdapter, mockDb, preSendHook);
+
+      // Verify preSendHook was executed
+      expect(preSendHook).toHaveBeenCalledTimes(1);
+
+      // Summary must show SUPPRESSED and 0 sent
+      expect(summary.sent).toBe(0);
+      expect(summary.suppressed).toBe(1);
+
+      // Message row must be marked SUPPRESSED
+      const row = mockOutboxRows.get('job-atomic-fence');
+      expect(row?.status).toBe('SUPPRESSED');
+      expect(row?.last_error).toContain('ATOMIC_FENCE_');
+
+      // Crucial: Provider adapter must NEVER have been called!
+      expect(sentMessages.length).toBe(0);
+      expect(mockAdapter.send).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -563,4 +616,89 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
       expect(echoCheck).toBe(false);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Test 7: Tri-State Echo Detection ('MATCH' | 'NOT_MATCH' | 'UNKNOWN')
+  // -------------------------------------------------------------------------
+  describe('7. Tri-State Echo Detection & Quarantine', () => {
+    it('returns UNKNOWN when database queries fail or timeout during fallback check', async () => {
+      const brokenSupabase = {
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            eq: jest.fn(() => {
+              throw new Error('Database connection timeout / query execution timed out (ETIMEDOUT)');
+            }),
+          })),
+        })),
+      };
+
+      const result = await isBotOutboundAsync({
+        tenantId: 'tenant-alpha-uuid',
+        messageId: 'MSG-TIMEOUT-123',
+        recipientPhone: '628123456789',
+        supabase: brokenSupabase,
+      });
+
+      expect(result).toBe('UNKNOWN');
+    });
+
+    it('quarantines webhook event as NO-OP and forbids human takeover (HUMAN_PAUSED) when echo detection returns UNKNOWN', async () => {
+      // Supabase mock that fails during echo check in outbound_messages
+      const faultySupabase = {
+        from: jest.fn((table: string) => {
+          if (table === 'outbound_messages' || table === 'messages') {
+            return {
+              select: jest.fn(() => ({
+                eq: jest.fn(() => {
+                  throw new Error('Database pool error / timeout');
+                }),
+              })),
+            };
+          }
+          if (table === 'tenants') {
+            return {
+              select: jest.fn(() => ({
+                or: jest.fn(() => ({
+                  maybeSingle: jest.fn(async () => ({ data: mockTenant, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === 'conversation_sessions') {
+            return {
+              upsert: jest.fn(async (data: any) => {
+                mockSessions[data.user_identifier] = data;
+                return { data, error: null };
+              }),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const webhookEvent = {
+        event: 'messages.upsert',
+        instance: 'boontrack-shop',
+        data: {
+          key: {
+            remoteJid: '628999888777@s.whatsapp.net',
+            fromMe: true,
+            id: '3EB0_FROM_ME_UNKNOWN_TEST',
+          },
+          message: {
+            conversation: 'Pesan dari WhatsApp HP',
+          },
+        },
+      };
+
+      // Process event through Evolution Webhook Handler with faultySupabase simulating timeout
+      currentMockDb = faultySupabase;
+      await processEvolutionWebhookEvent(webhookEvent, 'boontrack-shop');
+
+      // Verify that NO human takeover was triggered: session for this customer was NOT created or marked HUMAN_PAUSED
+      const session = mockSessions['628999888777'];
+      expect(session).toBeUndefined();
+    });
+  });
+
 });

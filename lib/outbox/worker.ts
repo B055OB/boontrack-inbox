@@ -339,6 +339,45 @@ export async function verifyBotDispatchGate(
   }
 }
 
+
+/**
+ * Instantaneous Fencing Gate: Pre-send verification closing race condition windows.
+ * Executes synchronously right before adapter.send(message) to catch pauses triggered in-flight.
+ */
+export function verifyInstantaneousFence(message: OutboxMessage): { allowed: boolean; reason: string } {
+  const tenantId = message.tenant_id;
+  const rawRecipient = message.recipient_phone || message.recipient || '';
+  const recipientPhone = toCanonicalPhone(rawRecipient) || cleanCustomerPhone(rawRecipient) || rawRecipient;
+  const payload = (message.payload || {}) as Record<string, any>;
+  const jobControlVersion = payload.control_version ?? (message as any).control_version;
+
+  // 1. Check Global Tenant Cache Fencing
+  const cachedGlobal = getRuntimeSessionCache(tenantId);
+  if (cachedGlobal) {
+    if (cachedGlobal.isPaused) {
+      return { allowed: false, reason: 'ATOMIC_FENCE_TENANT_PAUSED' };
+    }
+    if (jobControlVersion !== undefined && cachedGlobal.version !== undefined && cachedGlobal.version > jobControlVersion) {
+      return { allowed: false, reason: `ATOMIC_FENCE_VERSION_CHANGED (job: ${jobControlVersion}, current: ${cachedGlobal.version})` };
+    }
+  }
+
+  // 2. Check Session / Contact Cache Fencing
+  if (recipientPhone) {
+    const cachedSession = getRuntimeSessionCache(tenantId, recipientPhone);
+    if (cachedSession) {
+      if (cachedSession.isPaused) {
+        return { allowed: false, reason: 'ATOMIC_FENCE_SESSION_PAUSED' };
+      }
+      if (jobControlVersion !== undefined && cachedSession.version !== undefined && cachedSession.version > jobControlVersion) {
+        return { allowed: false, reason: `ATOMIC_FENCE_VERSION_CHANGED (job: ${jobControlVersion}, current: ${cachedSession.version})` };
+      }
+    }
+  }
+
+  return { allowed: true, reason: 'ATOMIC_FENCE_PASSED' };
+}
+
 // ---------------------------------------------------------------------------
 // Per-Message Processor
 // ---------------------------------------------------------------------------
@@ -356,14 +395,34 @@ interface ProcessResult {
 async function processMessage(
   db: SupabaseAdminClient,
   message: OutboxMessage,
-  adapter: IProviderAdapter
+  adapter: IProviderAdapter,
+  preSendHook?: (msg: OutboxMessage) => Promise<void> | void
 ): Promise<ProcessResult> {
-  // FINAL DISPATCH GATE: Pre-dispatch status & circuit breaker verification
+  // FINAL DISPATCH GATE 1: Initial Pre-dispatch status & DB circuit breaker verification
   if (isAiOutboxMessage(message)) {
     const gateCheck = await verifyBotDispatchGate(db, message);
     if (!gateCheck.allowed) {
       console.warn(`[OutboxWorker Gate] AI Outbound SUPPRESSED for message id=${message.id} (${gateCheck.reason})`);
       await markSuppressed(db, message.id, gateCheck.reason);
+      return { outcome: 'suppressed' };
+    }
+  }
+
+  // Pre-send interception hook (allows simulating race condition events occurring between initial gate and adapter.send)
+  if (preSendHook) {
+    try {
+      await preSendHook(message);
+    } catch (hookErr: any) {
+      console.warn(`[OutboxWorker] Pre-send hook error for message id=${message.id}:`, hookErr?.message || hookErr);
+    }
+  }
+
+  // FINAL DISPATCH GATE 2: ATOMIC DISPATCH FENCING (instantaneous verification closing race condition window right before send)
+  if (isAiOutboxMessage(message)) {
+    const atomicFence = verifyInstantaneousFence(message);
+    if (!atomicFence.allowed) {
+      console.warn(`[OutboxWorker Atomic Fence] AI Outbound SUPPRESSED by atomic fence for message id=${message.id} (${atomicFence.reason})`);
+      await markSuppressed(db, message.id, atomicFence.reason);
       return { outcome: 'suppressed' };
     }
   }
@@ -427,7 +486,8 @@ export class OutboxWorker {
    */
   async runOnce(
     adapter?: IProviderAdapter,
-    db?: OutboxDbClient
+    db?: OutboxDbClient,
+    preSendHook?: (msg: OutboxMessage) => Promise<void> | void
   ): Promise<OutboxRunSummary> {
     const effectiveAdapter = adapter ?? multiProviderAdapter;
     const client: OutboxDbClient = db ?? (getSupabaseAdmin() as unknown as OutboxDbClient);
@@ -458,7 +518,7 @@ export class OutboxWorker {
 
     // Process all messages in the batch concurrently
     const results = await Promise.allSettled(
-      batch.map((msg) => processMessage(client, msg, effectiveAdapter))
+      batch.map((msg) => processMessage(client, msg, effectiveAdapter, preSendHook))
     );
 
     for (const result of results) {

@@ -423,7 +423,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
         supabase: mockSupabase,
       });
 
-      expect(result).toBe(true);
+      expect(result).toBe('MATCH');
       // Verify it re-populated the in-memory cache
       expect(getOutboundRegistrySize()).toBe(1);
     });
