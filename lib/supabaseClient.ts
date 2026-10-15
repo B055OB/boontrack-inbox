@@ -33,8 +33,16 @@ export const SUPABASE_SERVICE_ROLE_KEY: string =
     ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
     : '';
 
-// Direct export of browser-safe Supabase client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Direct export of browser-safe Supabase client (lazy initialization prevents eager WebSocket connections at module load)
+let _supabaseInstance: SupabaseClient | null = null;
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    if (!_supabaseInstance) {
+      _supabaseInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    return (_supabaseInstance as any)[prop];
+  },
+});
 
 const supabaseUrl = SUPABASE_URL;
 const supabaseAnonKey = SUPABASE_ANON_KEY;

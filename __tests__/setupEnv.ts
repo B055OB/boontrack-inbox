@@ -26,3 +26,28 @@ if (process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('sb_secret_')) {
   process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 }
 
+// Global WebSocket polyfill for Node.js < 22 environments (e.g. GitHub Actions Node 20)
+if (typeof (globalThis as any).WebSocket === 'undefined') {
+  class MockWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 1;
+    url = '';
+    onopen: any = null;
+    onclose: any = null;
+    onerror: any = null;
+    onmessage: any = null;
+    constructor(url?: string) {
+      this.url = url || '';
+    }
+    send() {}
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  (globalThis as any).WebSocket = MockWebSocket;
+}
+
+

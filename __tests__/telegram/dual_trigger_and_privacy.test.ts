@@ -1,3 +1,6 @@
+jest.unmock('@/lib/supabaseClient');
+jest.unmock('@supabase/supabase-js');
+
 import {
   dispatchOrderTelegramAlert,
   maskBuyerName,

@@ -9,6 +9,7 @@ const config: Config = {
   testEnvironment: 'node',
   rootDir: '.',
   setupFiles: ['<rootDir>/__tests__/setupEnv.ts'],
+  setupFilesAfterEnv: ['<rootDir>/__tests__/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx', '**/tests/**/*.test.ts'],
   moduleNameMapper: {
     // Resolve Next.js path aliases

@@ -10,6 +10,13 @@
  * The test environment loads .env / .env.local via setupEnv.ts (setupFiles),
  * so process.env vars are available when these modules are first imported.
  */
+
+// Unmock modules for this test file so it validates actual implementation contracts
+jest.unmock('@/lib/supabaseClient');
+jest.unmock('@/lib/supabase');
+jest.unmock('@/utils/supabase/client');
+jest.unmock('@supabase/supabase-js');
+
 import {
   supabase,
   SUPABASE_URL,

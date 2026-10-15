@@ -12,6 +12,9 @@
  *    - Topic thread binding verification (message_thread_id: 5)
  */
 
+jest.unmock('@/lib/supabaseClient');
+jest.unmock('@supabase/supabase-js');
+
 import {
   handleTelegramUpdate,
   generateAffiliateSalesAiReply,
