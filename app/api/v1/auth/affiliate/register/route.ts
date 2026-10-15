@@ -191,19 +191,74 @@ export async function POST(req: NextRequest) {
       updated_at: createdAt,
     };
 
-    // 5. Simpan akun mitra baru ke Supabase
-    const { data: createdAffiliate, error: insertError } = await supabase
-      .from('affiliates')
-      .insert(insertPayload)
-      .select('*')
-      .single();
+    // 5. P1 Security Foundation: Simpan via Core Backend Server-Side API (Supabase Service Role Key)
+    let createdAffiliate = null;
+    let coreAccessToken = `aff_${newAffiliateId}`;
 
-    if (insertError) {
-      console.error('[AffiliateRegister] Supabase insert error:', insertError);
-      return NextResponse.json(
-        { success: false, detail: `Gagal mendaftarkan akun affiliate: ${insertError.message || 'Kesalahan database'}` },
-        { status: 500 }
-      );
+    try {
+      const coreUrl = getBackendApiUrl('/api/v1/auth/affiliate/register');
+      const coreRes = await fetch(coreUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email,
+          phone,
+          custom_slug: finalRefCode,
+          referral_code: finalRefCode,
+          am_referral_code: amReferralCode,
+          parent_am_id: resolvedParentAm?.id || null,
+          region,
+          bank_name: bankName,
+          bank_account_number: bankAccountNumber,
+          bank_account_holder: bankAccountHolder,
+          experience_level: body.experience_level || 'BEGINNER',
+          agreed_to_rules: true,
+          tenant_id: resolvedTenantId,
+        }),
+      });
+
+      if (coreRes.ok) {
+        const coreData = await coreRes.json();
+        createdAffiliate = coreData.affiliate || insertPayload;
+        coreAccessToken = coreData.access_token || coreAccessToken;
+      } else {
+        console.warn('[AffiliateRegister] Core backend returned error status:', coreRes.status);
+      }
+    } catch (coreErr) {
+      console.warn('[AffiliateRegister] Core backend primary dispatch failed, falling back to service_role admin client:', coreErr);
+    }
+
+    // Fallback: Jika core backend offline, gunakan Server-Side Service Role Key (bukan anon!)
+    if (!createdAffiliate) {
+      let adminSupabase = null;
+      try {
+        adminSupabase = getSupabaseAdmin();
+      } catch (adminErr) {
+        console.error('[AffiliateRegister] Admin Supabase client acquisition failed:', adminErr);
+      }
+
+      if (!adminSupabase) {
+        return NextResponse.json(
+          { success: false, detail: 'Layanan pendaftaran sedang dalam pemeliharaan. Silakan coba kembali beberapa saat lagi.' },
+          { status: 503 }
+        );
+      }
+
+      const { data: fallbackAffiliate, error: insertError } = await adminSupabase
+        .from('affiliates')
+        .insert(insertPayload)
+        .select('*')
+        .single();
+
+      if (insertError) {
+        console.error('[AffiliateRegister] Supabase admin insert error:', insertError);
+        return NextResponse.json(
+          { success: false, detail: `Gagal mendaftarkan akun affiliate: ${insertError.message || 'Kesalahan database'}` },
+          { status: 500 }
+        );
+      }
+      createdAffiliate = fallbackAffiliate;
     }
 
     // 6. Trigger Notifikasi Email ke Parent AM (100% Non-blocking, isolated catch)
@@ -220,29 +275,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 7. Forward ke Core Backend secara asinkron dengan timeout ketat (non-blocking)
-    try {
-      const coreUrl = getBackendApiUrl('/api/v1/auth/affiliate/register');
-      const abortCtrl = new AbortController();
-      const timer = setTimeout(() => abortCtrl.abort(), 2500); // 2.5s hard timeout
-      fetch(coreUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: abortCtrl.signal,
-      })
-        .catch((coreErr) => console.warn('[AffiliateRegister] Core backend sync skipped (non-fatal):', coreErr))
-        .finally(() => clearTimeout(timer));
-    } catch (dispatchErr) {
-      console.warn('[AffiliateRegister] Core dispatch note:', dispatchErr);
-    }
-
     return NextResponse.json({
       success: true,
       message: 'Pendaftaran kemitraan affiliate BoonTrack berhasil!',
       affiliate: createdAffiliate,
       referral_code: finalRefCode,
-      access_token: `aff_${newAffiliateId}`,
+      access_token: coreAccessToken,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Terjadi gangguan internal saat pendaftaran affiliate.';

@@ -35,7 +35,6 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
-import { getSupabase } from "@/lib/supabaseClient";
 import BoonPilotVerificationPrompt from "@/components/BoonPilotVerificationPrompt";
 
 const STATIC_QRIS =
