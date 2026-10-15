@@ -189,6 +189,8 @@ export function runPreflightChecks(env = resolveEnv()) {
   if (errors.length > 0) {
     const isPreviewOrCi =
       (env.VERCEL_ENV || process.env.VERCEL_ENV) === 'preview' ||
+      (env.VERCEL_ENV || process.env.VERCEL_ENV) === 'development' ||
+      ((env.VERCEL || process.env.VERCEL) === '1' && (env.VERCEL_ENV || process.env.VERCEL_ENV) !== 'production') ||
       (env.CI || process.env.CI) === 'true' ||
       (env.CI || process.env.CI) === '1';
 
