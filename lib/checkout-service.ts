@@ -1,5 +1,5 @@
 import { createXenditDynamicQRIS } from "@/lib/payment/xendit-service";
-import { getSupabase, getSupabaseAdmin } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
@@ -94,35 +94,55 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     payload.customerPhone = normalizePhoneToE164(payload.customerPhone);
   }
 
-  // Jika dipanggil dari browser (client-side), utamakan gateway API internal /api/checkout/create-order
-  // Ini menghindari ketergantungan langsung browser terhadap service role key atau anon key quota issues.
+  // JALUR BROWSER (CLIENT-SIDE):
+  // Wajib menggunakan API route internal. Dilarang keras fallback ke direct Supabase client.
   if (typeof window !== 'undefined') {
-    try {
-      const response = await fetch('/api/checkout/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (response.ok) {
-        return await response.json();
+    const endpoints = ['/api/checkout/create-order', '/api/orders'];
+    let lastError: any = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const resJson = await response.json().catch(() => null);
+
+        if (response.ok && (resJson?.success !== false)) {
+          return {
+            orderId: resJson.orderId || resJson.order_id || resJson.id,
+            qrString: resJson.qrString || resJson.qr_string || '',
+            qr_string: resJson.qrString || resJson.qr_string || '',
+            qrCodeUrl: resJson.qrCodeUrl || resJson.qr_code_url || '',
+            invoiceUrl: resJson.invoiceUrl || resJson.invoice_url || `/checkout/${resJson.orderId || resJson.id}`,
+            referenceToken: resJson.referenceToken || resJson.reference_token || payload.reference_token || null,
+          };
+        }
+
+        if (resJson?.error) {
+          const customErr: any = new Error(resJson.error);
+          if (resJson.code) customErr.code = resJson.code;
+          if (resJson.isTrial) customErr.isTrial = resJson.isTrial;
+          throw customErr;
+        }
+      } catch (browserErr: any) {
+        if (browserErr?.code === 'TRIAL_LIMIT_EXCEEDED' || browserErr?.isTrial) {
+          throw browserErr;
+        }
+        lastError = browserErr;
       }
-      const errJson = await response.json().catch(() => null);
-      if (errJson?.error) {
-        const customErr: any = new Error(errJson.error);
-        if (errJson.code) customErr.code = errJson.code;
-        if (errJson.isTrial) customErr.isTrial = errJson.isTrial;
-        throw customErr;
-      }
-    } catch (browserErr: any) {
-      if (browserErr?.code === 'TRIAL_LIMIT_EXCEEDED' || browserErr?.isTrial) {
-        throw browserErr;
-      }
-      console.warn('[Checkout Service] Client-side fetch failed, fallback to direct supabase:', browserErr);
     }
+
+    throw lastError || new Error("Gagal memproses pesanan melalui gateway server. Silakan muat ulang halaman.");
   }
 
-  const supabase = typeof window === 'undefined' ? getSupabaseAdmin() : getSupabase();
-  if (!supabase) throw new Error("Supabase client not initialized");
+  // JALUR SERVER-SIDE ONLY:
+  // getSupabaseAdmin dimuat secara dinamis saat runtime server agar aman dari bundle browser
+  const { getSupabaseAdmin } = await import("@/lib/supabaseClient");
+  const supabase = getSupabaseAdmin() || getSupabase();
+  if (!supabase) throw new Error("Supabase client not initialized on server");
 
   const orderId = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -130,7 +150,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let resolvedTenantId: string | null = null;
   let tenantRowData: any = null;
   try {
-    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
     const tIdentifier = (payload.tenantSlug || "").trim();
     let tQuery = supabase.from('tenants').select('*');
     if (isUuid(tIdentifier)) {
@@ -204,7 +223,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   if (matchedProd && (payload.voucherCode || verifiedProductDiscount > 0)) {
     const activeVoucher = getProductActiveVoucher(matchedProd, matchedProd.single_page_config);
     if (!activeVoucher) {
-      // Seller mematikan voucher / voucher tidak aktif: diskon direset ke 0
       verifiedProductDiscount = 0;
       verifiedVoucherCode = null;
     } else if (payload.voucherCode && payload.voucherCode.trim().toUpperCase() === activeVoucher.code.toUpperCase()) {
@@ -217,7 +235,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         verifiedProductDiscount = activeVoucher.discount_value || 0;
       }
     } else if (!payload.voucherCode) {
-      // Tidak ada kode voucher namun ada klaim diskon klien
       verifiedProductDiscount = 0;
     }
   }
@@ -245,7 +262,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const netShippingCost = isNonShipping ? 0 : (payload.netShippingCost ?? Math.max(0, shippingCost - shippingSubsidy));
   const shippingCourier = isNonShipping ? null : (payload.shippingCourier || null);
 
-  // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
+  // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual
   const adminFee = 0;
 
   // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Gateway
@@ -258,23 +275,19 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     tenantRowData?.metadata?.payment_settings?.provider === 'xendit' ||
     tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
 
-  // Logika Dynamic QRIS: Potong nominal acak 3 digit ke bawah (1 - 999)
-  // Transfer manual: Tambah nominal unik verifikasi (1 - 999) dengan proteksi anti-duplikasi per tenant
-  // Xendit Dynamic QRIS / OnlineBoost: Wajib 0 (nominal bulat pas, tanpa mutasi 3 digit)
   const uniqueCode = isXenditGatewayTenant
     ? 0
     : (payload.uniqueCode !== undefined && payload.uniqueCode !== null
-        ? payload.uniqueCode
-        : await generateUniqueCodeForTenant({
-            tenantSlug: payload.tenantSlug,
-            tenantId: resolvedTenantId || undefined,
-            baseAmount: netProductPrice + netShippingCost,
-            paymentMethod: paymentMethod,
-          }));
+      ? payload.uniqueCode
+      : await generateUniqueCodeForTenant({
+        tenantSlug: payload.tenantSlug,
+        tenantId: resolvedTenantId || undefined,
+        baseAmount: netProductPrice + netShippingCost,
+        paymentMethod: paymentMethod,
+      }));
 
   let grossAmount = payload.amount;
   if (isXenditGatewayTenant) {
-    // Nominal bulat pas untuk payment gateway resmi
     grossAmount = netProductPrice + netShippingCost;
   } else if (!grossAmount || verifiedOrderBumps.length > 0) {
     if (paymentMethod === 'qris') {
@@ -286,7 +299,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     grossAmount = Math.max(1000, payload.amount - uniqueCode);
   }
 
-  // Komisi affiliate produk ritel toko dinonaktifkan sementara (transaksi berjalan direct store 100% ke seller)
   const affiliateCommission = payload.affiliateCommission ?? 0;
 
   const orderFulfillmentMeta = {
@@ -341,22 +353,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     created_at: new Date().toISOString()
   };
 
-  // Simpan ke localStorage dengan scoped key checkout:{tenant_id}:{order_id}
-  if (typeof window !== 'undefined') {
-    try {
-      const scopedKey = `checkout:${payload.tenantSlug}:${orderId}`;
-      localStorage.setItem(scopedKey, JSON.stringify(orderData));
-      localStorage.removeItem(`bt_order_${orderId}`); // Purge legacy unscoped key
-    } catch (e) {
-      console.warn("[Checkout Service] Failed to save local order backup:", e);
-    }
-  }
-
-  // 1. Simpan order ke database Supabase tabel orders (Single Source of Truth)
   const resolvedProductId = String(payload.productId || '').trim() || `prod_${Date.now()}`;
 
-  // Resolusi tenant_id (UUID) dari tabel tenants menggunakan tenant_slug
-  // WAJIB diisi untuk memastikan identitas ganda tenant_id + tenant_slug tidak NULL
+  // Resolusi tenant_id (UUID)
   if (!resolvedTenantId) {
     try {
       const { data: tenantRow } = await supabase
@@ -370,20 +369,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  if (!resolvedTenantId) {
-    console.warn(`[Checkout Service] tenant_id tidak ditemukan untuk slug '${payload.tenantSlug}'. Order akan disimpan hanya dengan tenant_slug.`);
-  }
-
-  // TRIAL QUOTA GUARD (BATCH 1 / Ticket 1.2)
-  // Hard-stop: blokir pembuatan order jika trial tenant sudah mencapai limit 30 pesanan.
-  // Non-trial / paid tenants always bypass (allowed: true).
+  // TRIAL QUOTA GUARD
   if (resolvedTenantId) {
     const quotaCheck = await checkTrialQuota(resolvedTenantId, 'order');
     if (!quotaCheck.allowed) {
-      console.warn(`[Checkout Service] TRIAL_LIMIT_EXCEEDED for tenant '${payload.tenantSlug}':`, {
-        currentUsage: quotaCheck.currentUsage,
-        limit: quotaCheck.limit,
-      });
       throw Object.assign(new Error(quotaCheck.message ?? 'Batas kuota trial tercapai.'), {
         code: quotaCheck.errorCode ?? 'TRIAL_LIMIT_EXCEEDED',
         currentUsage: quotaCheck.currentUsage,
@@ -402,13 +391,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   };
 
   const resolvedCity = payload.city || payload.customerCity || payload.shippingCity || null;
-  const resolvedSourceUrl = resolvedTrackingContext.source_url || (typeof window !== 'undefined' ? window.location.href : null);
+  const resolvedSourceUrl = resolvedTrackingContext.source_url || (process.env.NEXT_PUBLIC_APP_URL || null);
 
   const rawOrderData: any = {
     id: orderId,
-    tenant_slug: payload.tenantSlug,           // Selalu diisi: slug string toko
-    tenant_id: resolvedTenantId,               // Selalu diisi: UUID toko (tidak boleh NULL)
-    product_id: resolvedProductId,             // Wajib NOT NULL di skema PostgreSQL
+    tenant_slug: payload.tenantSlug,
+    tenant_id: resolvedTenantId,
+    product_id: resolvedProductId,
     product_title: payload.productTitle,
     quantity: orderQuantity,
     unit_price: unitPrice,
@@ -457,7 +446,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   };
 
   const dbOrderData = sanitizeOrderPayload(rawOrderData);
-  // Physical schema safety: hilangkan kolom yang tidak ada pada tabel fisik PostgreSQL orders
   delete (dbOrderData as any).fulfillment_type;
   delete (dbOrderData as any).unit_price;
   delete (dbOrderData as any).is_archived;
@@ -467,7 +455,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     .from("orders")
     .insert(dbOrderData);
 
-  // Fallback graceful: jika terjadi error schema cache atau kolom tak dikenal, retry dengan kolom inti minimal
   if (orderError) {
     console.warn("[Checkout Service] Primary orders insert error, retrying with core fields:", orderError);
     const coreOrderData = {
@@ -511,54 +498,54 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     throw new Error(`Gagal membuat order di database: ${orderError.message || 'Database error'}`);
   }
 
-  // 1b. Catat line item utama dan add-on ke tabel order_items (menyimpan snapshot item & tracking_context)
+  // 1b. Line items
   try {
     const lineItems = [
       ...(payload.items && payload.items.length > 0
         ? payload.items.map((it) => ({
+          order_id: orderId,
+          tenant_id: resolvedTenantId,
+          tenant_slug: payload.tenantSlug,
+          product_id: it.productId,
+          product_title: it.productTitle,
+          item_type: 'main',
+          price: it.unitPrice,
+          original_price: it.unitPrice,
+          quantity: it.quantity,
+          metadata: {
+            quantity: it.quantity,
+            unit_price: it.unitPrice,
+            product_subtotal: it.unitPrice * it.quantity,
+            variant_id: it.variantId || null,
+            variant_name: it.variantName || null,
+            selected_modifiers: it.selectedModifiers || [],
+            weight_grams: it.weightGrams,
+            tracking_context: resolvedTrackingContext,
+          },
+        }))
+        : [
+          {
             order_id: orderId,
             tenant_id: resolvedTenantId,
             tenant_slug: payload.tenantSlug,
-            product_id: it.productId,
-            product_title: it.productTitle,
+            product_id: resolvedProductId,
+            product_title: payload.productTitle,
             item_type: 'main',
-            price: it.unitPrice,
-            original_price: it.unitPrice,
-            quantity: it.quantity,
+            price: Math.max(0, netProductPrice - orderBumpsTotal),
+            original_price: basePrice,
+            quantity: orderQuantity,
             metadata: {
-              quantity: it.quantity,
-              unit_price: it.unitPrice,
-              product_subtotal: it.unitPrice * it.quantity,
-              variant_id: it.variantId || null,
-              variant_name: it.variantName || null,
-              selected_modifiers: it.selectedModifiers || [],
-              weight_grams: it.weightGrams,
-              tracking_context: resolvedTrackingContext,
-            },
-          }))
-        : [
-            {
-              order_id: orderId,
-              tenant_id: resolvedTenantId,
-              tenant_slug: payload.tenantSlug,
-              product_id: resolvedProductId,
-              product_title: payload.productTitle,
-              item_type: 'main',
-              price: Math.max(0, netProductPrice - orderBumpsTotal),
-              original_price: basePrice,
               quantity: orderQuantity,
-              metadata: {
-                quantity: orderQuantity,
-                unit_price: unitPrice,
-                product_subtotal: unitPrice * orderQuantity,
-                product_discount: productDiscount,
-                voucher_code: payload.voucherCode || null,
-                tracking_context: resolvedTrackingContext,
-                briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
-                customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
-              },
+              unit_price: unitPrice,
+              product_subtotal: unitPrice * orderQuantity,
+              product_discount: productDiscount,
+              voucher_code: payload.voucherCode || null,
+              tracking_context: resolvedTrackingContext,
+              briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
+              customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
             },
-          ]),
+          },
+        ]),
       ...verifiedOrderBumps.map((b) => ({
         order_id: orderId,
         tenant_id: resolvedTenantId,
@@ -577,21 +564,17 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       })),
     ];
 
-    const { error: itemsErr } = await supabase.from('order_items').insert(lineItems);
-    if (itemsErr) {
-      console.warn('[Checkout Service] Order items insert note:', itemsErr);
-    }
+    await supabase.from('order_items').insert(lineItems);
   } catch (orderItemsCatch) {
     console.warn('[Checkout Service] Order items exception:', orderItemsCatch);
   }
 
-  // 2. Request pembuatan QRIS / Invoice ke Backend API (jika QRIS)
+  // 2. Request QRIS
   let qrString = "";
   let qrCodeUrl = "";
   let invoiceUrl = `/checkout/${orderId}`;
 
   if (paymentMethod === 'qris') {
-    // 1. Prioritas Utama: Konfigurasi QRIS langsung dari data Tenant Supabase / Client Payload (Single Source of Truth)
     const pcfg = tenantRowData?.metadata?.payment_config;
     let tenantStaticQris =
       payload.tenantStaticQris ||
@@ -640,7 +623,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       !tenantStaticQris ||
       isPlatformDana;
 
-    // 1. Prioritas Utama: Xendit Dynamic QRIS untuk onlineboost & Payment Gateway
     if (isXenditGatewayTenant) {
       try {
         const xenditRes = await createXenditDynamicQRIS({
@@ -662,7 +644,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         console.warn("[Checkout Service] Xendit Dynamic QRIS generation error:", xErr);
       }
     } else if (tenantStaticQris && tenantStaticQris.startsWith("000201") && !isPlatformDana) {
-      // Direct Clinic Merchant QRIS
       qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     } else if (tenantQrisImageUrl) {
@@ -670,11 +651,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       qrCodeUrl = tenantQrisImageUrl;
     }
 
-    // 2. Jika belum mendapatkan QRIS, panggil Payment Gateway / Backend Core
     if (!qrString && !qrCodeUrl) {
-      const appBaseUrl = typeof window !== 'undefined'
-        ? window.location.origin
-        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const paymentEndpoints = [
         getBackendApiUrl("/api/v1/payments/qris/create"),
         `${appBaseUrl}/api/v1/payments/qris/create`,
@@ -739,7 +717,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }
     }
 
-    // 3. Fallback Xendit API jika endpoints gagal
     if (!qrString && !qrCodeUrl) {
       try {
         const xenditRes = await createXenditDynamicQRIS({
@@ -761,7 +738,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }
     }
 
-    // 4. Pastikan string QRIS valid tanpa merusak dynamic payload dari Xendit
     if (qrString) {
       const isPlatformDanaQr =
         qrString.includes('BoonTrack') ||
@@ -770,7 +746,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         qrString.includes('0940770000');
 
       if (qrString.startsWith("000201010211") && !isPlatformDanaQr) {
-        // Hanya inject nominal jika merupakan QRIS statis merchant klinik (010211)
         qrString = generateDynamicQRIS(qrString, grossAmount);
         qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
       } else if (!qrCodeUrl) {
@@ -780,34 +755,17 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }
     }
 
-    // Persist QR payload to local storage and DB
-    if (typeof window !== 'undefined') {
-      try {
-        const scopedKey = `checkout:${payload.tenantSlug}:${orderId}`;
-        const saved = localStorage.getItem(scopedKey) || localStorage.getItem(`bt_order_${orderId}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          parsed.qr_string = qrString;
-          parsed.qr_code_url = qrCodeUrl;
-          localStorage.setItem(scopedKey, JSON.stringify(parsed));
-          localStorage.removeItem(`bt_order_${orderId}`);
-        }
-      } catch {}
-    }
-
     try {
       await supabase.from("orders").update({
         qr_code_url: qrCodeUrl || null
       }).eq("id", orderId);
-    } catch {}
+    } catch { }
   }
 
-  // Trigger CAPI InitiateCheckout (Non-blocking) saat QRIS PT atau payment link diterbitkan
+  // Trigger CAPI InitiateCheckout (Non-blocking)
   try {
     const trackingCtwa = payload.ctwa_clid || payload.tracking?.ctwa_clid || null;
-    const capiUrl = typeof window !== 'undefined'
-      ? '/api/v1/tracking/capi'
-      : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/v1/tracking/capi`;
+    const capiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/v1/tracking/capi`;
     fetch(capiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -827,11 +785,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         ctwa_clid: trackingCtwa,
         fbp: resolvedTrackingContext.fbp,
         fbc: resolvedTrackingContext.fbc || (payload.tracking?.fbclid ? `fb.1.${Date.now()}.${payload.tracking.fbclid}` : undefined),
-        client_user_agent: resolvedTrackingContext.client_user_agent || (typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
+        client_user_agent: resolvedTrackingContext.client_user_agent || undefined,
         event_source_url: resolvedSourceUrl || undefined,
       }),
     }).catch((err) => console.warn('[Checkout Service] CAPI InitiateCheckout warning:', err));
-  } catch (_) {}
+  } catch (_) { }
 
   return {
     orderId,
