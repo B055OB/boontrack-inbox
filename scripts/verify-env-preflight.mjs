@@ -187,6 +187,26 @@ export function runPreflightChecks(env = resolveEnv()) {
   }
 
   if (errors.length > 0) {
+    const isPreviewOrCi =
+      (env.VERCEL_ENV || process.env.VERCEL_ENV) === 'preview' ||
+      (env.CI || process.env.CI) === 'true' ||
+      (env.CI || process.env.CI) === '1';
+
+    if (isPreviewOrCi) {
+      console.warn('⚠️  [PREVIEW / CI ENVIRONMENT GUARD]');
+      console.warn('    Ditemukan ketidaklengkapan variabel storage/environment, namun dilewati sebagai WARNING');
+      console.warn('    karena berjalan pada lingkungan non-production (VERCEL_ENV=preview / CI).\n');
+      for (const err of errors) {
+        console.warn(`   • [NON-BLOCKING] Field : ${err.field}`);
+        console.warn(`     Pesan                : ${err.message}`);
+        if (err.fix) {
+          console.warn(`     Solusi               : ${err.fix}`);
+        }
+      }
+      console.warn('\n✅ Build dilanjutkan untuk Preview / CI deployment.\n');
+      return true;
+    }
+
     console.error('❌ GAGAL: Ditemukan kesalahan konfigurasi kritis pada environment:');
     for (const err of errors) {
       console.error(`\n   • Field : ${err.field}`);

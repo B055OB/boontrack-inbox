@@ -28,11 +28,11 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(pesanPelanggan.isCollapsible).toBe(true);
 
       expect(kembangkanBisnis.id).toBe('kembangkan-bisnis');
-      expect(kembangkanBisnis.label).toBe('Kembangkan Bisnis');
+      expect(kembangkanBisnis.label).toBe('Marketing Tools');
       expect(kembangkanBisnis.isCollapsible).toBe(true);
     });
 
-    it('Kelola Toko harus memuat item wajib: Katalog & Produk, Pesanan, Unduhan & Lisensi, Tema', () => {
+    it('Kelola Toko harus memuat item wajib: Katalog & Produk, Pesanan, Keuangan, AI Knowledge, Tema', () => {
       const groups = buildMenuRegistry({
         capabilities: { shipping: false }, // suppress physical shipping to test core list
       });
@@ -42,11 +42,12 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       const itemIds = kelolaToko!.items.map((i) => i.id);
       expect(itemIds).toContain('catalog');
       expect(itemIds).toContain('orders');
-      expect(itemIds).toContain('downloads');
+      expect(itemIds).toContain('finance');
+      expect(itemIds).toContain('ai_knowledge');
       expect(itemIds).toContain('themes');
 
-      const downloadsItem = kelolaToko!.items.find((i) => i.id === 'downloads');
-      expect(downloadsItem?.label).toBe('Unduhan & Lisensi');
+      const financeItem = kelolaToko!.items.find((i) => i.id === 'finance');
+      expect(financeItem?.label).toBe('Keuangan');
 
       const themesItem = kelolaToko!.items.find((i) => i.id === 'themes');
       expect(themesItem?.label).toBe('Tema');
@@ -55,7 +56,7 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(ordersItem?.label).toBe('Pesanan');
     });
 
-    it('Pesan & Pelanggan harus memuat item wajib: Smart Chatbox, Pelanggan, Broadcast WhatsApp', () => {
+    it('Pesan & Pelanggan harus memuat item wajib: Smart Chatbox, Pelanggan, Whatsapp Connect, Telegram Connect', () => {
       const groups = buildMenuRegistry({});
       const group = groups.find((g) => g.id === 'pesan-pelanggan');
       expect(group).toBeDefined();
@@ -65,20 +66,20 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
         'Smart Chatbox',
         'Pelanggan',
         'Whatsapp Connect',
+        'Telegram Connect',
       ]);
     });
 
-    it('Kembangkan Bisnis harus memuat item wajib: AI & Knowledge, Ads Tracking, Reseller, Keuangan', () => {
+    it('Marketing Tools harus memuat item wajib: Ads Tracking, Broadcast WA, Program Reseller', () => {
       const groups = buildMenuRegistry({});
       const group = groups.find((g) => g.id === 'kembangkan-bisnis');
       expect(group).toBeDefined();
 
       const itemLabels = group!.items.map((i) => i.label);
       expect(itemLabels).toEqual([
-        'AI & Knowledge',
         'Ads Tracking',
-        'Reseller',
-        'Keuangan',
+        'Broadcast WA',
+        'Program Reseller',
       ]);
     });
   });
@@ -99,7 +100,8 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(findParentGroupId('catalog', groups)).toBe('kelola-toko');
       expect(findParentGroupId('products', groups)).toBe('kelola-toko');
       expect(findParentGroupId('orders', groups)).toBe('kelola-toko');
-      expect(findParentGroupId('downloads', groups)).toBe('kelola-toko');
+      expect(findParentGroupId('finance', groups)).toBe('kelola-toko');
+      expect(findParentGroupId('ai_knowledge', groups)).toBe('kelola-toko');
       expect(findParentGroupId('themes', groups)).toBe('kelola-toko');
       expect(findParentGroupId('storefront', groups)).toBe('kelola-toko');
 
@@ -108,13 +110,12 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(findParentGroupId('customers', groups)).toBe('pesan-pelanggan');
       expect(findParentGroupId('crm', groups)).toBe('pesan-pelanggan');
       expect(findParentGroupId('whatsapp', groups)).toBe('pesan-pelanggan');
-      expect(findParentGroupId('broadcast', groups)).toBe('pesan-pelanggan');
+      expect(findParentGroupId('telegram_alerts', groups)).toBe('pesan-pelanggan');
 
-      // Kembangkan Bisnis
-      expect(findParentGroupId('ai_knowledge', groups)).toBe('kembangkan-bisnis');
+      // Marketing Tools (kembangkan-bisnis)
       expect(findParentGroupId('ads_tracking', groups)).toBe('kembangkan-bisnis');
+      expect(findParentGroupId('broadcast', groups)).toBe('kembangkan-bisnis');
       expect(findParentGroupId('reseller', groups)).toBe('kembangkan-bisnis');
-      expect(findParentGroupId('finance', groups)).toBe('kembangkan-bisnis');
     });
 
     it('isTabActiveInItem harus mendukung targetTab dan matchedTabs aliases', () => {
@@ -129,9 +130,8 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       const whatsappItem = pesanGroup.items.find((i) => i.id === 'whatsapp')!;
 
       expect(isTabActiveInItem(whatsappItem, 'whatsapp')).toBe(true);
-      expect(isTabActiveInItem(whatsappItem, 'broadcast')).toBe(true);
+      expect(isTabActiveInItem(whatsappItem, 'auto_reply')).toBe(true);
       expect(isTabActiveInItem(whatsappItem, 'rotator')).toBe(true);
-      expect(isTabActiveInItem(whatsappItem, 'telegram_alerts')).toBe(true);
     });
 
     it('mengembalikan null jika activeTab tidak valid atau kosong', () => {
@@ -195,8 +195,8 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(customersItem.isLocked).toBe(true);
       expect(customersItem.badge?.isLock).toBe(true);
 
-      const kembangkanGroup = groups.find((g) => g.id === 'kembangkan-bisnis')!;
-      const financeItem = kembangkanGroup.items.find((i) => i.id === 'finance')!;
+      const kelolaGroup = groups.find((g) => g.id === 'kelola-toko')!;
+      const financeItem = kelolaGroup.items.find((i) => i.id === 'finance')!;
       expect(financeItem.isLocked).toBe(true);
       expect(financeItem.badge?.isLock).toBe(true);
     });

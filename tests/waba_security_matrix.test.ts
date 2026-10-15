@@ -68,39 +68,66 @@ jest.mock('@/lib/conversationEngine', () => ({
 const mockSupabaseClient = {
   from: jest.fn((tableName: string) => {
     if (tableName !== 'whatsapp_connections') {
-      return {
-        select: jest.fn(() => ({ eq: jest.fn(() => ({ single: jest.fn() })) })),
+      const genericBuilder: any = {
+        select: () => genericBuilder,
+        eq: () => genericBuilder,
+        in: () => genericBuilder,
+        order: () => genericBuilder,
+        limit: () => genericBuilder,
+        single: async () => ({ data: null, error: null }),
+        maybeSingle: async () => ({ data: null, error: null }),
       };
+      return genericBuilder;
     }
-    return {
-      select: jest.fn(() => ({
-        eq: jest.fn((field1: string, val1: string) => ({
-          eq: jest.fn((field2: string, val2: string) => ({
-            eq: jest.fn((field3: string, val3: string) => ({
-              single: jest.fn(async () => {
-                // Find matching mock connection
-                let match = null;
-                for (const key of Object.keys(mockConnections)) {
-                  const conn = mockConnections[key];
-                  if (
-                    conn[field1] === val1 &&
-                    conn[field2] === val2 &&
-                    conn[field3] === val3
-                  ) {
-                    match = conn;
-                    break;
-                  }
-                }
-                if (match) {
-                  return { data: match, error: null };
-                }
-                return { data: null, error: { message: 'Row not found' } };
-              }),
-            })),
-          })),
-        })),
-      })),
+
+    const filters: Array<{ field: string; val: any; type: 'eq' | 'in' }> = [];
+    const builder: any = {
+      select: () => builder,
+      eq: (field: string, val: any) => {
+        filters.push({ field, val, type: 'eq' });
+        return builder;
+      },
+      in: (field: string, val: any[]) => {
+        filters.push({ field, val, type: 'in' });
+        return builder;
+      },
+      order: () => builder,
+      limit: () => builder,
+      single: async () => {
+        let match = null;
+        for (const key of Object.keys(mockConnections)) {
+          const conn = mockConnections[key];
+          const matchesAll = filters.every(f => {
+            if (f.type === 'eq') return conn[f.field] === f.val;
+            if (f.type === 'in') return Array.isArray(f.val) && f.val.includes(conn[f.field]);
+            return true;
+          });
+          if (matchesAll) {
+            match = conn;
+            break;
+          }
+        }
+        if (match) return { data: match, error: null };
+        return { data: null, error: { message: 'Row not found' } };
+      },
+      maybeSingle: async () => {
+        let match = null;
+        for (const key of Object.keys(mockConnections)) {
+          const conn = mockConnections[key];
+          const matchesAll = filters.every(f => {
+            if (f.type === 'eq') return conn[f.field] === f.val;
+            if (f.type === 'in') return Array.isArray(f.val) && f.val.includes(conn[f.field]);
+            return true;
+          });
+          if (matchesAll) {
+            match = conn;
+            break;
+          }
+        }
+        return { data: match, error: null };
+      },
     };
+    return builder;
   }),
 };
 

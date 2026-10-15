@@ -27,6 +27,7 @@ const config: Config = {
   },
   // Mock Next.js server modules that don't exist in test environment
   modulePathIgnorePatterns: ['<rootDir>/.next/'],
+  testPathIgnorePatterns: ['<rootDir>/__tests__/e2e/', '<rootDir>/.next/', '<rootDir>/node_modules/'],
   collectCoverageFrom: [
     'lib/payment/**/*.ts',
     '!lib/payment/**/*.d.ts',

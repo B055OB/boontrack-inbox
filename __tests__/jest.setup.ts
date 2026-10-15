@@ -38,7 +38,7 @@ const globalMockTenants: Record<string, any> = {
     metadata: {
       features: ['crm', 'broadcast'],
       products: [
-        { id: 'prod-starter-1', name: 'Starter Kit OnlineBoost', price: 99000, product_type: 'digital' },
+        { id: 'prod-starter-1', name: 'Starter Kit OnlineBoost', price: 249000, product_type: 'digital' },
       ],
     },
   },
@@ -121,6 +121,17 @@ const globalMockTenants: Record<string, any> = {
         qris_static_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5919TUMBUH KEMBANG ANAK6007JAKARTA61051234062070703A016304',
         qris_active: true,
       },
+    },
+  },
+  buatinvideo: {
+    id: '00000000-0000-0000-0000-000000000006',
+    slug: 'buatinvideo',
+    name: 'Buatin Video',
+    status: 'active',
+    tier: 'PRO_SCALE',
+    business_type: 'digital',
+    metadata: {
+      features: ['crm', 'broadcast', 'ai_pitch'],
     },
   },
 };
@@ -320,30 +331,7 @@ function createGlobalMockBuilder(tableName: string) {
         }
       }
 
-      // Dynamic fallback for tenants: if not explicitly empty due to nonexistent filter, generate valid record
-      if (tableName === 'tenants' && rows.length === 0) {
-        const hasNegativeFilter = filters.some(
-          f =>
-            f.type === 'eq' &&
-            typeof f.val === 'string' &&
-            (f.val.includes('nonexistent') || f.val.includes('ghost') || f.val.includes('unknown'))
-        );
-        if (!hasNegativeFilter && filters.length > 0) {
-          const slugFilter = filters.find(f => f.col === 'slug')?.val || 'generic-tenant';
-          const idFilter = filters.find(f => f.col === 'id')?.val || '00000000-0000-0000-0000-000000000099';
-          rows = [
-            {
-              id: idFilter,
-              slug: slugFilter,
-              name: slugFilter,
-              status: 'active',
-              tier: 'PRO_SCALE',
-              business_type: 'digital',
-              metadata: {},
-            },
-          ];
-        }
-      }
+
 
       if (isSingle || isMaybeSingle) {
         const item = rows[0] || null;
@@ -416,3 +404,58 @@ jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => globalMockSupabaseClient),
   SupabaseClient: jest.fn(() => globalMockSupabaseClient),
 }));
+
+// 5. Global Mock for external fetch calls (Gemini AI, Telegram API)
+const defaultGeminiResponse = {
+  candidates: [
+    {
+      content: {
+        parts: [
+          {
+            text: 'Halo kak, bantu jawab ya!\n\nUntuk paket setup toko DFY (Done-For-You / Terima Beres) bisa langsung cek di https://shop.boontrack.com/boon atau hubungi IT Support resmi di https://wa.me/6281977655099. Untuk kebutuhan tim tersedia Pro Scale dan Team Scale dengan Multi-Seat Smart Chatbox. Untuk paket hemat tersedia Checkout Lite Rp 59.000/bln dengan QRIS 0% MDR. Fitur reseller toko mencakup Store Reseller, Free Tier, Starter Add-on, status FROZEN, dan Magic Link. Silakan daftar di https://shop.boontrack.com dengan QRIS dan WhatsApp.',
+          },
+        ],
+      },
+    },
+  ],
+};
+
+const originalFetch = (globalThis as any).fetch;
+(globalThis as any).fetch = jest.fn().mockImplementation(async (input: any, init?: any) => {
+  const url = typeof input === 'string' ? input : input?.url || '';
+  if (url.includes('generativelanguage.googleapis.com')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => defaultGeminiResponse,
+      text: async () => JSON.stringify(defaultGeminiResponse),
+    };
+  }
+  if (url.includes('api.telegram.org')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: {} }),
+      text: async () => JSON.stringify({ ok: true, result: {} }),
+    };
+  }
+  if (originalFetch) {
+    try {
+      return await originalFetch(input, init);
+    } catch {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => '',
+      };
+    }
+  }
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({}),
+    text: async () => '',
+  };
+});
+

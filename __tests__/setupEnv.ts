@@ -26,6 +26,13 @@ if (process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('sb_secret_')) {
   process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 }
 
+// Clear Gemini API keys by default in unit test environment to use deterministic engine
+delete process.env.GEMINI_API_KEY;
+delete process.env.GOOGLE_AI_API_KEY;
+delete process.env.GOOGLE_API_KEY;
+delete process.env.GEMINI_API_KEY_STUDIO;
+
+
 // Global WebSocket polyfill for Node.js < 22 environments (e.g. GitHub Actions Node 20)
 if (typeof (globalThis as any).WebSocket === 'undefined') {
   class MockWebSocket {
