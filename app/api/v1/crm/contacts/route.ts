@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { ContactService } from '@/lib/crm/contact.service';
+import { toE164 } from '@/lib/crm/phone-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,8 +85,42 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    tenantUuid = tenantRow.id;
+    const resolvedTenantUuid = tenantRow.id;
+    if (!resolvedTenantUuid) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant UUID tidak valid' },
+        { status: 400 }
+      );
+    }
+    tenantUuid = resolvedTenantUuid;
     tenantSlug = tenantRow.slug || null;
+
+    // Single contact lookup by phone or contact_id (Console CS / Customer Memory loader)
+    const singlePhone = searchParams.get('phone');
+    const singleContactId = searchParams.get('contact_id');
+    const customerName = searchParams.get('name') || undefined;
+
+    if (singlePhone || singleContactId) {
+      let contact: any = null;
+      if (singleContactId) {
+        contact = await ContactService.getContactWithDetails(resolvedTenantUuid, singleContactId, supabase);
+      } else if (singlePhone) {
+        const canonicalPhone = toE164(singlePhone);
+        const c = await ContactService.getOrCreateContactByPhone(resolvedTenantUuid, canonicalPhone, customerName, undefined, supabase);
+        contact = await ContactService.getContactWithDetails(resolvedTenantUuid, c.id, supabase);
+      }
+
+      const tenantTags = await ContactService.getTenantTags(resolvedTenantUuid, supabase);
+
+      return NextResponse.json({
+        success: true,
+        contact: contact || null,
+        tags: tenantTags || [],
+        tenant_tags: tenantTags || [],
+        tenant_id: resolvedTenantUuid,
+        tenant_slug: tenantSlug,
+      });
+    }
 
     // 1. Fetch all contacts — dual-clause: WHERE tenant_id = UUID OR tenant_slug = slug
     const orTokens: string[] = [];
@@ -130,24 +165,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Fetch tag mappings for all fetched contacts
-    const contactIds = (dbContacts || []).map((c: any) => c.id);
+    // 3. Fetch tag mappings for this tenant's tags (query by tag_id chunks to prevent massive URL limit errors)
+    const tagIds = Array.from(tagMap.keys());
     const contactTagsMap = new Map<string, string[]>();
 
-    if (contactIds.length > 0) {
-      const { data: mappingData } = await supabase
-        .from('contact_tags')
-        .select('contact_id, tag_id')
-        .in('contact_id', contactIds);
+    if (tagIds.length > 0) {
+      for (let i = 0; i < tagIds.length; i += 50) {
+        const tagChunk = tagIds.slice(i, i + 50);
+        const { data: mappingData } = await supabase
+          .from('contact_tags')
+          .select('contact_id, tag_id')
+          .in('tag_id', tagChunk);
 
-      if (Array.isArray(mappingData)) {
-        for (const m of mappingData) {
-          const tagName = tagMap.get(m.tag_id);
-          if (tagName) {
-            const current = contactTagsMap.get(m.contact_id) || [];
-            current.push(tagName);
-            contactTagsMap.set(m.contact_id, current);
-            allUniqueTagsSet.add(tagName);
+        if (Array.isArray(mappingData)) {
+          for (const m of mappingData) {
+            const tagName = tagMap.get(m.tag_id);
+            if (tagName) {
+              const current = contactTagsMap.get(m.contact_id) || [];
+              current.push(tagName);
+              contactTagsMap.set(m.contact_id, current);
+              allUniqueTagsSet.add(tagName);
+            }
           }
         }
       }
@@ -221,12 +259,29 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/v1/crm/contacts
- * Manually add/upsert a contact via ContactService
+ * Manually add/upsert a contact via ContactService or perform contact sub-actions
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { tenant_id, tenant_slug, name, phone, email, tags, initialNotes, productInterest } = body;
+    const {
+      tenant_id,
+      tenant_slug,
+      name,
+      phone,
+      email,
+      tags,
+      initialNotes,
+      productInterest,
+      action,
+      contact_id,
+      stage,
+      tag_id,
+      note_id,
+      color,
+      author_id,
+      author_name,
+    } = body;
 
     const rawTenant = tenant_id || tenant_slug;
     if (!rawTenant) {
@@ -236,18 +291,56 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!phone || !String(phone).trim()) {
-      return NextResponse.json(
-        { success: false, error: 'Nomor WhatsApp wajib diisi' },
-        { status: 400 }
-      );
-    }
-
     const tenantUuid = await ContactService.resolveTenantId(rawTenant);
     if (!tenantUuid) {
       return NextResponse.json(
         { success: false, error: 'Tenant tidak ditemukan' },
         { status: 404 }
+      );
+    }
+
+    const supabase = getDbClient();
+
+    // 1. Sub-actions from UI components (ContactSidebar / Console CS)
+    if (action === 'UPDATE_STAGE' && contact_id && stage) {
+      const updated = await ContactService.updateLifecycleStage(contact_id, stage, supabase);
+      return NextResponse.json({ success: true, contact: updated });
+    }
+
+    if (action === 'CREATE_AND_ADD_TAG' && contact_id && name) {
+      const tag = await ContactService.createTag(tenantUuid, name.trim(), color || '#4F46E5', supabase);
+      await ContactService.addTagToContact(contact_id, tag.id, supabase);
+      const updated = await ContactService.getContactWithDetails(tenantUuid, contact_id, supabase);
+      return NextResponse.json({ success: true, contact: updated, tag });
+    }
+
+    if (action === 'REMOVE_TAG' && contact_id && tag_id) {
+      await ContactService.removeTagFromContact(contact_id, tag_id, supabase);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'ADD_NOTE' && contact_id && body.body) {
+      const note = await ContactService.addContactNote(
+        contact_id,
+        tenantUuid,
+        body.body,
+        author_id,
+        author_name,
+        supabase
+      );
+      return NextResponse.json({ success: true, note });
+    }
+
+    if (action === 'DELETE_NOTE' && note_id) {
+      await ContactService.deleteContactNote(note_id, supabase);
+      return NextResponse.json({ success: true });
+    }
+
+    // 2. Default Action: Create or update full contact
+    if (!phone || !String(phone).trim()) {
+      return NextResponse.json(
+        { success: false, error: 'Nomor WhatsApp wajib diisi' },
+        { status: 400 }
       );
     }
 
@@ -262,7 +355,7 @@ export async function POST(req: NextRequest) {
         product_interest: productInterest || 'Katalog Toko',
         source: 'MANUAL_DASHBOARD',
       },
-    });
+    }, supabase);
 
     return NextResponse.json({
       success: true,

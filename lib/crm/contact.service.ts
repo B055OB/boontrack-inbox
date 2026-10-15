@@ -3,7 +3,7 @@
  * @description Core service layer for CRM V1 (Customer Memory Layer & Lifecycle Engine).
  */
 
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import {
   Contact,
   Tag,
@@ -17,6 +17,24 @@ import { toE164 } from './phone-utils';
 
 export class ContactService {
   /**
+   * Resolves the appropriate database client.
+   * On backend / worker runtime, prioritizes getSupabaseAdmin() (Service Role)
+   * to bypass RLS policy violations during WhatsApp contact profile synchronization.
+   */
+  public static getDbClient(client?: any): any {
+    if (client) return client;
+    if (typeof window === 'undefined') {
+      try {
+        const admin = getSupabaseAdmin();
+        if (admin) return admin;
+      } catch {
+        // Fallback to standard client if admin not available
+      }
+    }
+    return getSupabase();
+  }
+
+  /**
    * Finds or creates a contact by canonical E.164 phone number.
    * Auto-upserts contact details and updates last_interaction_at.
    */
@@ -24,9 +42,10 @@ export class ContactService {
     tenantId: string,
     rawPhone: string,
     defaultName?: string,
-    channelIdentity?: { channel: string; identifier: string }
+    channelIdentity?: { channel: string; identifier: string },
+    customClient?: any
   ): Promise<Contact> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const canonicalPhone = toE164(rawPhone);
@@ -34,14 +53,23 @@ export class ContactService {
       throw new Error(`Invalid phone number format: ${rawPhone}`);
     }
 
+    const digitsOnly = canonicalPhone.replace(/\D/g, '');
+    const phoneCandidates = Array.from(
+      new Set([
+        canonicalPhone,
+        digitsOnly,
+        digitsOnly.startsWith('62') ? '0' + digitsOnly.slice(2) : '',
+      ])
+    ).filter(Boolean);
+
     const now = new Date().toISOString();
 
-    // 1. Try to find existing contact
+    // 1. Try to find existing contact by candidate phone formats
     const { data: existing, error: findErr } = await supabase
       .from('contacts')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('phone_e164', canonicalPhone)
+      .in('phone_e164', phoneCandidates)
       .maybeSingle();
 
     if (findErr) {
@@ -130,9 +158,10 @@ export class ContactService {
    */
   public static async getContactWithDetails(
     tenantId: string,
-    phoneOrId: string
+    phoneOrId: string,
+    customClient?: any
   ): Promise<Contact | null> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) return null;
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(phoneOrId);
@@ -141,7 +170,10 @@ export class ContactService {
     if (isUuid) {
       query = query.eq('id', phoneOrId);
     } else {
-      query = query.eq('phone_e164', toE164(phoneOrId));
+      const canonicalPhone = toE164(phoneOrId);
+      const digitsOnly = canonicalPhone.replace(/\D/g, '');
+      const candidates = Array.from(new Set([canonicalPhone, digitsOnly])).filter(Boolean);
+      query = query.in('phone_e164', candidates);
     }
 
     const { data: contact, error: cErr } = await query.maybeSingle();
@@ -184,9 +216,10 @@ export class ContactService {
    */
   public static async updateLifecycleStage(
     contactId: string,
-    stage: LifecycleStage
+    stage: LifecycleStage,
+    customClient?: any
   ): Promise<Contact> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const now = new Date().toISOString();
@@ -211,8 +244,8 @@ export class ContactService {
   /**
    * Fetches all available tags for a tenant.
    */
-  public static async getTenantTags(tenantId: string): Promise<Tag[]> {
-    const supabase = getSupabase();
+  public static async getTenantTags(tenantId: string, customClient?: any): Promise<Tag[]> {
+    const supabase = this.getDbClient(customClient);
     if (!supabase) return [];
 
     const { data, error } = await supabase
@@ -235,9 +268,10 @@ export class ContactService {
   public static async createTag(
     tenantId: string,
     name: string,
-    color = '#6B7280'
+    color = '#6B7280',
+    customClient?: any
   ): Promise<Tag> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const trimmed = name.trim();
@@ -265,8 +299,8 @@ export class ContactService {
   /**
    * Associates a tag with a contact.
    */
-  public static async addTagToContact(contactId: string, tagId: string): Promise<void> {
-    const supabase = getSupabase();
+  public static async addTagToContact(contactId: string, tagId: string, customClient?: any): Promise<void> {
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const { error } = await supabase
@@ -286,8 +320,8 @@ export class ContactService {
   /**
    * Removes a tag association from a contact.
    */
-  public static async removeTagFromContact(contactId: string, tagId: string): Promise<void> {
-    const supabase = getSupabase();
+  public static async removeTagFromContact(contactId: string, tagId: string, customClient?: any): Promise<void> {
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const { error } = await supabase
@@ -310,9 +344,10 @@ export class ContactService {
     tenantId: string,
     body: string,
     authorId?: string | null,
-    authorName?: string | null
+    authorName?: string | null,
+    customClient?: any
   ): Promise<ContactNote> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const cleanBody = body.trim();
@@ -344,8 +379,8 @@ export class ContactService {
   /**
    * Deletes a contact note.
    */
-  public static async deleteContactNote(noteId: string): Promise<void> {
-    const supabase = getSupabase();
+  public static async deleteContactNote(noteId: string, customClient?: any): Promise<void> {
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const { error } = await supabase
@@ -362,12 +397,12 @@ export class ContactService {
   /**
    * Resolves a tenant slug or string ID to a canonical UUID from the tenants table.
    */
-  public static async resolveTenantId(slugOrId: string | null | undefined): Promise<string | null> {
+  public static async resolveTenantId(slugOrId: string | null | undefined, customClient?: any): Promise<string | null> {
     if (!slugOrId) return null;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId);
     if (isUuid) return slugOrId;
 
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) return null;
 
     const { data } = await supabase
@@ -384,9 +419,10 @@ export class ContactService {
    * Auto-upserts into Supabase contacts, tags, and contact_notes.
    */
   public static async createOrUpdateFullContact(
-    input: CreateContactInput
+    input: CreateContactInput,
+    customClient?: any
   ): Promise<Contact> {
-    const supabase = getSupabase();
+    const supabase = this.getDbClient(customClient);
     if (!supabase) throw new Error('Database client not available');
 
     const canonicalPhone = toE164(input.phone);
@@ -394,7 +430,7 @@ export class ContactService {
       throw new Error(`Format nomor WhatsApp tidak valid: ${input.phone}`);
     }
 
-    const tenantUuid = await this.resolveTenantId(input.tenantId);
+    const tenantUuid = await this.resolveTenantId(input.tenantId, supabase);
     if (!tenantUuid) {
       throw new Error(`Tenant tidak ditemukan untuk: ${input.tenantId}`);
     }
@@ -402,12 +438,21 @@ export class ContactService {
     const now = new Date().toISOString();
     const stage = input.lifecycleStage || 'LEAD';
 
+    const digitsOnly = canonicalPhone.replace(/\D/g, '');
+    const phoneCandidates = Array.from(
+      new Set([
+        canonicalPhone,
+        digitsOnly,
+        digitsOnly.startsWith('62') ? '0' + digitsOnly.slice(2) : '',
+      ])
+    ).filter(Boolean);
+
     // 1. Check existing contact by phone & tenant_id
     const { data: existing } = await supabase
       .from('contacts')
       .select('*')
       .eq('tenant_id', tenantUuid)
-      .eq('phone_e164', canonicalPhone)
+      .in('phone_e164', phoneCandidates)
       .maybeSingle();
 
     const existingMeta =
@@ -467,8 +512,8 @@ export class ContactService {
       for (const tagName of input.tags) {
         if (!tagName.trim()) continue;
         try {
-          const tag = await this.createTag(tenantUuid, tagName.trim());
-          await this.addTagToContact(contact.id, tag.id);
+          const tag = await this.createTag(tenantUuid, tagName.trim(), '#6B7280', supabase);
+          await this.addTagToContact(contact.id, tag.id, supabase);
         } catch (tErr) {
           console.warn('[ContactService] Tag association note:', tErr);
         }
@@ -483,7 +528,8 @@ export class ContactService {
           tenantUuid,
           input.initialNotes.trim(),
           null,
-          'Admin / Staff'
+          'Admin / Staff',
+          supabase
         );
       } catch (nErr) {
         console.warn('[ContactService] Initial note record note:', nErr);

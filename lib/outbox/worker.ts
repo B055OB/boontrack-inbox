@@ -493,4 +493,4 @@ export class OutboxWorker {
 export const outboxWorker = new OutboxWorker();
 
 // Re-export for convenience
-export { claimBatch, markSent, markRetry, markSuppressed, processMessage, verifyBotDispatchGate, isAiOutboxMessage };
+export { claimBatch, markSent, markRetry, processMessage };

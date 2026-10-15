@@ -49,32 +49,30 @@ jest.mock('@/lib/conversationEngine', () => ({
 const mockSupabaseClient = {
   from: jest.fn((tableName: string) => {
     if (tableName === 'whatsapp_connections') {
-      return {
-        select: jest.fn(() => ({
-          eq: jest.fn((field1: string, val1: string) => ({
-            eq: jest.fn((field2: string, val2: string) => ({
-              eq: jest.fn((field3: string, val3: string) => ({
-                single: jest.fn(async () => {
-                  let match = null;
-                  for (const key of Object.keys(mockConnections)) {
-                    const conn = mockConnections[key];
-                    if (
-                      conn[field1] === val1 &&
-                      conn[field2] === val2 &&
-                      conn[field3] === val3
-                    ) {
-                      match = conn;
-                      break;
-                    }
-                  }
-                  if (match) return { data: match, error: null };
-                  return { data: null, error: { message: 'Row not found' } };
-                }),
-              })),
-            })),
-          })),
-        })),
+      const createQueryBuilder = () => {
+        let phoneId: string | null = null;
+        const builder: any = {
+          select: jest.fn(() => builder),
+          eq: jest.fn((field: string, val: string) => {
+            if (field === 'phone_number_id') phoneId = val;
+            return builder;
+          }),
+          in: jest.fn(() => builder),
+          order: jest.fn(() => builder),
+          limit: jest.fn(() => builder),
+          maybeSingle: jest.fn(async () => {
+            const match = phoneId ? mockConnections[phoneId] : null;
+            return { data: match || null, error: null };
+          }),
+          single: jest.fn(async () => {
+            const match = phoneId ? mockConnections[phoneId] : null;
+            if (match) return { data: match, error: null };
+            return { data: null, error: { message: 'Row not found' } };
+          }),
+        };
+        return builder;
       };
+      return createQueryBuilder();
     }
 
     // Default table mock with safe chainable methods
@@ -108,6 +106,25 @@ jest.mock('@/services/waba', () => ({
   metaWabaAdapter: {
     dispatchTenantMessage: jest.fn(async () => ({ success: true, messageId: 'wamid.outbound' })),
   },
+}));
+
+const mockProcessBoonPilotPlatformChat = jest.fn().mockImplementation(async () => ({
+  reply: 'Halo dari tim support BoonTrack!',
+  role: 'SUPPORT',
+}));
+
+jest.mock('@/lib/boonpilot/platform-engine', () => ({
+  processBoonPilotPlatformChat: (...args: any[]) => mockProcessBoonPilotPlatformChat(...args),
+  resolveCommunityContext: jest.fn().mockResolvedValue({
+    binding_id: null,
+    community_name: 'BoonTrack Official Support',
+    registration_url: 'https://boontrack.com',
+    demo_store_url: 'https://demo.boontrack.com',
+  }),
+}));
+
+jest.mock('@/lib/whatsapp', () => ({
+  sendWhatsAppSessionMessage: jest.fn().mockResolvedValue({ success: true, messageId: 'wa_sess_msg_123' }),
 }));
 
 describe('Meta Webhook Normalizer & Handshake', () => {
@@ -662,12 +679,12 @@ describe('Meta Webhook Normalizer & Handshake', () => {
       const json = await res.json();
       expect(json.status).toBe('processed');
       expect(json.processed_messages).toBe(1);
-      expect(mockConversationEngineProcess).toHaveBeenCalledTimes(1);
-      expect(mockConversationEngineProcess).toHaveBeenCalledWith(
+      expect(mockProcessBoonPilotPlatformChat).toHaveBeenCalledTimes(1);
+      expect(mockProcessBoonPilotPlatformChat).toHaveBeenCalledWith(
         expect.objectContaining({
-          tenant_id: 'boon',
-          message: '@boon cara daftar paket starter gimana?',
-        })
+          message: expect.stringContaining('cara daftar paket starter gimana?'),
+        }),
+        expect.anything()
       );
     });
 

@@ -66,18 +66,34 @@ export default function ContactSidebar({
     setErrorMsg(null);
 
     try {
-      // 1. Get or create contact record
+      // 1. Prioritize authenticated server endpoint (uses Service Role, bypassing client RLS)
+      const queryParams = new URLSearchParams({
+        tenant_id: tenantId,
+        phone: canonicalPhone,
+        ...(customerName ? { name: customerName } : {}),
+      });
+
+      const res = await fetch(`/api/v1/crm/contacts?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.contact) {
+          setContact(data.contact);
+          setTenantTags(data.tenant_tags || data.tags || []);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 2. Fallback to direct ContactService if API route is unreachable
       const c = await ContactService.getOrCreateContactByPhone(
         tenantId,
         canonicalPhone,
         customerName
       );
 
-      // 2. Fetch full details (tags + notes)
       const full = await ContactService.getContactWithDetails(tenantId, c.id);
       setContact(full || c);
 
-      // 3. Fetch all tenant tags for autocomplete
       const tags = await ContactService.getTenantTags(tenantId);
       setTenantTags(tags);
     } catch (err: any) {
@@ -97,6 +113,27 @@ export default function ContactSidebar({
     if (!contact || contact.lifecycle_stage === newStage || isUpdatingStage) return;
     setIsUpdatingStage(true);
     try {
+      const res = await fetch('/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          action: 'UPDATE_STAGE',
+          contact_id: contact.id,
+          stage: newStage,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.contact) {
+          setContact((prev) => (prev ? { ...prev, lifecycle_stage: data.contact.lifecycle_stage } : prev));
+          if (onLifecycleStageChange) onLifecycleStageChange(newStage);
+          return;
+        }
+      }
+
+      // Fallback
       const updated = await ContactService.updateLifecycleStage(contact.id, newStage);
       setContact((prev) => (prev ? { ...prev, lifecycle_stage: updated.lifecycle_stage } : prev));
       if (onLifecycleStageChange) {
@@ -117,19 +154,36 @@ export default function ContactSidebar({
     const cleanName = tagName.trim();
 
     try {
-      // Create tag if not existing
+      const res = await fetch('/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          action: 'CREATE_AND_ADD_TAG',
+          contact_id: contact.id,
+          name: cleanName,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.contact) setContact(data.contact);
+          if (data.tag) {
+            setTenantTags((prev) => (prev.some((t) => t.id === data.tag.id) ? prev : [...prev, data.tag]));
+          }
+          setNewTagInput('');
+          return;
+        }
+      }
+
+      // Fallback
       const tag = await ContactService.createTag(tenantId, cleanName, '#4F46E5');
-
-      // Associate with contact
       await ContactService.addTagToContact(contact.id, tag.id);
-
-      // Refresh contact details
       const updated = await ContactService.getContactWithDetails(tenantId, contact.id);
       if (updated) {
         setContact(updated);
       }
-
-      // Update tenant tag list
       setTenantTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
       setNewTagInput('');
     } catch (err: any) {
@@ -144,6 +198,33 @@ export default function ContactSidebar({
   const handleRemoveTag = async (tagId: string) => {
     if (!contact) return;
     try {
+      const res = await fetch('/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          action: 'REMOVE_TAG',
+          contact_id: contact.id,
+          tag_id: tagId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setContact((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  tags: (prev.tags || []).filter((t) => t.id !== tagId),
+                }
+              : prev
+          );
+          return;
+        }
+      }
+
+      // Fallback
       await ContactService.removeTagFromContact(contact.id, tagId);
       setContact((prev) =>
         prev
@@ -165,6 +246,36 @@ export default function ContactSidebar({
     setIsSubmittingNote(true);
 
     try {
+      const res = await fetch('/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          action: 'ADD_NOTE',
+          contact_id: contact.id,
+          body: newNoteBody.trim(),
+          author_id: authorId,
+          author_name: authorName,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.note) {
+          setContact((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  notes: [data.note, ...(prev.notes || [])],
+                }
+              : prev
+          );
+          setNewNoteBody('');
+          return;
+        }
+      }
+
+      // Fallback
       const note = await ContactService.addContactNote(
         contact.id,
         tenantId,
@@ -194,6 +305,32 @@ export default function ContactSidebar({
   const handleDeleteNote = async (noteId: string) => {
     if (!contact) return;
     try {
+      const res = await fetch('/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          action: 'DELETE_NOTE',
+          note_id: noteId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setContact((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  notes: (prev.notes || []).filter((n) => n.id !== noteId),
+                }
+              : prev
+          );
+          return;
+        }
+      }
+
+      // Fallback
       await ContactService.deleteContactNote(noteId);
       setContact((prev) =>
         prev

@@ -8,16 +8,22 @@
  */
 export function toE164(raw: string | null | undefined): string {
   if (!raw) return '';
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
+  let str = String(raw).trim();
+  if (!str) return '';
 
-  // Remove non-digit characters, preserving a leading plus if present
-  let digits = trimmed.replace(/[^0-9+]/g, '');
-
-  if (digits.startsWith('+')) {
-    digits = '+' + digits.slice(1).replace(/[^0-9]/g, '');
-    return digits;
+  // Strip WhatsApp JID domain suffix (@s.whatsapp.net, @c.us, @g.us, etc.)
+  if (str.includes('@')) {
+    str = str.split('@')[0];
   }
+  // Strip WhatsApp multidevice suffix (:0, :1, etc.)
+  if (str.includes(':')) {
+    str = str.split(':')[0];
+  }
+
+  // Check if starts with +
+  const hasPlus = str.startsWith('+');
+  let digits = str.replace(/\D/g, '');
+  if (!digits) return '';
 
   // Handle local Indonesian prefixes
   if (digits.startsWith('0')) {
@@ -30,7 +36,15 @@ export function toE164(raw: string | null | undefined): string {
     return '+62' + digits;
   }
 
-  return '+' + digits;
+  return (hasPlus ? '+' : '+') + digits;
+}
+
+/**
+ * Normalizes phone numbers to standard raw digits without leading plus.
+ */
+export function toCanonicalDigits(raw: string | null | undefined): string {
+  const e164 = toE164(raw);
+  return e164.replace(/\D/g, '');
 }
 
 /**
