@@ -2,7 +2,7 @@ name: Inbox CI & Dispatch Test Suite
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'ci/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -15,6 +15,14 @@ jobs:
     name: Jest Unit Tests & Typecheck
     runs-on: ubuntu-latest
 
+    env:
+      CI: "true"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mpluzajlzpregmjwpjqr.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "test_ci_anon_key_mock_12345"
+      SUPABASE_SERVICE_ROLE_KEY: "test_ci_service_role_key_mock_12345"
+      EVOLUTION_API_KEY: "test_ci_evolution_api_key_placeholder"
+      BOONTRACK_HMAC_SECRET: "test_ci_secure_hmac_secret_for_pipeline_999"
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -26,10 +34,12 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: |
+          npm ci || npm install --legacy-peer-deps
+          npm install -D ts-node
 
       - name: Typecheck
         run: npm run typecheck || npx tsc --noEmit
 
-      - name: Run Jest Test Suite (61 tests)
+      - name: Run Jest Test Suite
         run: npm test -- --coverage
