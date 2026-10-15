@@ -1,0 +1,67 @@
+name: Inbox CI & Dispatch Test Suite
+
+on:
+  push:
+    branches: [ main, 'ci/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Jest Unit Tests & Typecheck
+    runs-on: ubuntu-latest
+
+    env:
+      CI: "true"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mpluzajlzpregmjwpjqr.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M"
+      SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjQxNzIzMiwiZXhwIjoyMTAxOTkzMjMyfQ.TJMAEJQXeAv33EcwCt6OVyaC0ZFTROWzuljvm07i0Qg"
+      EVOLUTION_API_KEY: "test_ci_evolution_api_key_placeholder"
+      BOONTRACK_HMAC_SECRET: "test_ci_secure_hmac_secret_for_pipeline_999"
+      TELEGRAM_BOT_TOKEN: "8012369915:AAGSvpGSqq4R2lATfYxhHYIx_CxVgdb29VI"
+      TELEGRAM_BOT_USERNAME: "boonshop_bot"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install --legacy-peer-deps
+          npm install -D ts-node
+
+      - name: Setup Mock Environment Files for CI
+        run: |
+          cat << 'EOF' > .env.local
+          NEXT_PUBLIC_META_BOT_NUMBER="6285181830080"
+          R2_ACCOUNT_ID="56303bb13200d0980da8695adcf08550"
+          R2_ACCESS_KEY_ID="7dc6469552203a6a0fd8f97a4fb4ca50"
+          R2_SECRET_ACCESS_KEY="f11df4ede442b3bc60a41eba10fad09efbbec6475062df52f896ddbc23d3eaec"
+          R2_BUCKET_NAME="boontrack-media"
+          R2_ENDPOINT_URL="https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com"
+          R2_ENDPOINT="https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com"
+          S3_ENDPOINT="https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com"
+          R2_PUBLIC_DOMAIN="https://assets.boontrack.com"
+          NEXT_PUBLIC_SUPABASE_URL="https://mpluzajlzpregmjwpjqr.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M"
+          SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjQxNzIzMiwiZXhwIjoyMTAxOTkzMjMyfQ.TJMAEJQXeAv33EcwCt6OVyaC0ZFTROWzuljvm07i0Qg"
+          TELEGRAM_BOT_TOKEN="8012369915:AAGSvpGSqq4R2lATfYxhHYIx_CxVgdb29VI"
+          TELEGRAM_BOT_USERNAME="boonshop_bot"
+          EOF
+          cp .env.local .env
+
+      - name: Typecheck
+        run: npm run typecheck || npx tsc --noEmit
+
+      - name: Run Jest Test Suite
+        run: npm test -- --coverage

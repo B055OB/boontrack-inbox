@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:payment": "jest payment_boundary --no-coverage",
     "test:waba": "jest waba_security_matrix --no-coverage",
@@ -44,6 +45,7 @@
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "browserslist": [

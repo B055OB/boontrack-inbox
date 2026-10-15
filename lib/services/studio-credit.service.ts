@@ -652,9 +652,11 @@ export class StudioCreditService {
     const bonusCredits = 15;
     const newBalance = currentBalance + bonusCredits;
 
-    // 2. Resolve upgraded tier (default: 'member')
+    // 2. Resolve upgraded tier: preserve paid tiers (PRO_SCALE, ENTERPRISE, etc.)
     const rawTier = String(tenant.tier || '').toUpperCase();
-    const upgradedTier = params.tier || 'member';
+    const paidTiers = ['PRO_SCALE', 'ENTERPRISE', 'TEAM_SCALE', 'ADS_PERFORMANCE', 'PRO', 'AGENCY'];
+    const isAlreadyPaidTier = paidTiers.includes(rawTier);
+    const resolvedTier = isAlreadyPaidTier ? tenant.tier : (params.tier || 'member');
 
     // 3. Update tenants table
     const existingMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? { ...tenant.metadata } : {};
@@ -669,9 +671,8 @@ export class StudioCreditService {
       const tenantUpdatePayload: Record<string, any> = {
         metadata: existingMeta,
       };
-      const validTenantTiers = ['FREE', 'STARTER', 'PRO_SCALE', 'ENTERPRISE', 'CHECKOUT_LITE'];
-      if (validTenantTiers.includes(upgradedTier.toUpperCase())) {
-        tenantUpdatePayload.tier = upgradedTier.toUpperCase();
+      if (!isAlreadyPaidTier) {
+        tenantUpdatePayload.tier = resolvedTier;
       }
       await supabase
         .from('tenants')
@@ -689,7 +690,7 @@ export class StudioCreditService {
         tenant_id: tenant.id,
         credits_remaining: isUnlimited ? 999999 : newBalance,
         is_unlimited: isUnlimited,
-        tier: isUnlimited ? 'FOUNDER' : upgradedTier,
+        tier: isUnlimited ? 'FOUNDER' : resolvedTier,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'tenant_id' });
 
@@ -710,8 +711,9 @@ export class StudioCreditService {
       amount: bonusCredits,
       balance_after: isUnlimited ? 999999 : newBalance,
       action: 'PROMO_SHOP_ACTIVATION_BONUS',
+      event: 'PROMO_SHOP_ACTIVATION_BONUS',
       description: 'Bonus langganan toko BoonTrack',
-      type: 'GRANT',
+      type: 'CREDIT_IN',
       actor_id: 'SYSTEM_ACTIVATION',
       actor_role: 'SYSTEM',
       reason: 'Bonus langganan toko BoonTrack',
@@ -736,7 +738,7 @@ export class StudioCreditService {
       alreadyGranted: false,
       creditsGranted: bonusCredits,
       newBalance: isUnlimited ? 999999 : newBalance,
-      tenantTier: upgradedTier,
+      tenantTier: resolvedTier,
       isShopMember: true,
       message: 'Bonus apresiasi 15 Kredit Studio berhasil diberikan.',
     };

@@ -148,6 +148,16 @@ jest.mock('@supabase/supabase-js', () => ({
   })),
 }));
 
+jest.mock('@/lib/supabaseClient', () => {
+  const actual = jest.requireActual('@/lib/supabaseClient');
+  return {
+    ...actual,
+    getSupabaseAdmin: jest.fn(() => require('@supabase/supabase-js').createClient()),
+    getSupabase: jest.fn(() => require('@supabase/supabase-js').createClient()),
+    supabase: require('@supabase/supabase-js').createClient(),
+  };
+});
+
 describe('SALES_REP_V1 Engine & Global Routing', () => {
   beforeEach(() => {
     currentMockTenant = mockBuzzerTenant;
