@@ -34,6 +34,7 @@ import {
   registerBotOutbound,
   isBotOutbound,
   isBotOutboundAsync,
+  toCanonicalPhone,
 } from '@/lib/whatsapp/outbound-registry';
 import { parsePaymentNotification } from '@/lib/payment-webhook-service';
 import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
@@ -638,10 +639,10 @@ export async function processEvolutionWebhookEvent(
         }
 
         // Step 2: Not an echo! Now evaluate whether admin/operator typed a bot control command from WhatsApp Web / bot device:
-        const controlAction = parseBotControlCommand(textBodyEarly);
-        if (controlAction) {
+        const controlCmd = parseBotControlCommand(textBodyEarly);
+        if (controlCmd) {
           // RBAC Gatekeeper: Pastikan isAuthorizedBotController() dijalankan sebelum executeBotControl()
-          const participantPhone = key.participant ? String(key.participant).split('@')[0].replace(/\D/g, '') : undefined;
+          const participantPhone = key.participant ? toCanonicalPhone(key.participant) : undefined;
           const candidateControllers = Array.from(new Set([botPhoneNumber, participantPhone, senderPhone].filter(Boolean))) as string[];
 
           let isAuthorized = false;
@@ -661,12 +662,15 @@ export async function processEvolutionWebhookEvent(
           }
 
           if (isAuthorized) {
-            console.info(`[Evolution Admin Override] Authorized Command ${controlAction} fromMe on tenant ${tenantId} by ${authorizedPhone}`);
+            console.info(`[Evolution Admin Override] Authorized Command ${controlCmd.action} (${controlCmd.scope}) fromMe on tenant ${tenantId} by ${authorizedPhone}`);
+            const targetScope = controlCmd.scope === 'TENANT' ? 'tenant' : 'conversation';
+            const targetCustomerPhone = controlCmd.scope === 'CONTACT' ? senderPhone : undefined;
             const ctrlRes = await executeBotControl({
-              action: controlAction,
-              scope: 'tenant',
+              action: controlCmd.action,
+              scope: targetScope,
               tenantId,
               tenantSlug,
+              customerPhone: targetCustomerPhone,
               senderPhone: authorizedPhone || senderPhone,
               source: 'admin_from_me',
               supabase,
@@ -674,11 +678,13 @@ export async function processEvolutionWebhookEvent(
 
             await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
             processedCount++;
-            continue;
+            continue; // Halt turn: prevent control command from reaching LLM context!
           } else {
             console.warn(
-              `[Evolution Admin Override] Unauthorized fromMe bot control attempt (${controlAction}) on tenant ${tenantId}. Candidate phones: ${candidateControllers.join(', ')}`
+              `[Evolution Admin Override] Unauthorized fromMe bot control attempt (${controlCmd.action} / ${controlCmd.scope}) on tenant ${tenantId}. Candidate phones: ${candidateControllers.join(', ')}`
             );
+            // DO NOT forward to LLM
+            continue;
           }
         }
 
@@ -771,8 +777,8 @@ export async function processEvolutionWebhookEvent(
     // 2C. Inbound Admin Command Handling from external phone (Customer/Owner chat)
     // =========================================================================
     if (!isGroup && senderPhone) {
-      const controlAction = parseBotControlCommand(textBodyEarly);
-      if (controlAction) {
+      const controlCmd = parseBotControlCommand(textBodyEarly);
+      if (controlCmd) {
         const isOwner = await isAuthorizedBotController({
           senderPhone,
           tenantId,
@@ -781,12 +787,15 @@ export async function processEvolutionWebhookEvent(
         });
 
         if (isOwner) {
-          console.info(`[Evolution Admin Ingress] Authorized Owner ${senderPhone} executed ${controlAction} on tenant ${tenantId}`);
+          console.info(`[Evolution Admin Ingress] Authorized Owner ${senderPhone} executed ${controlCmd.action} (${controlCmd.scope}) on tenant ${tenantId}`);
+          const targetScope = controlCmd.scope === 'TENANT' ? 'tenant' : 'conversation';
+          const targetCustomerPhone = controlCmd.scope === 'CONTACT' ? senderPhone : undefined;
           const ctrlRes = await executeBotControl({
-            action: controlAction,
-            scope: 'tenant',
+            action: controlCmd.action,
+            scope: targetScope,
             tenantId,
             tenantSlug,
+            customerPhone: targetCustomerPhone,
             senderPhone,
             source: 'owner_inbound_chat',
             supabase,
@@ -795,6 +804,11 @@ export async function processEvolutionWebhookEvent(
           await sendEvolutionTextMessage(instanceName, senderPhone, ctrlRes.message, resolvedApiKey, tenantId);
           processedCount++;
           continue; // Halt turn: prevent control command from reaching LLM context!
+        } else {
+          console.warn(`[Evolution Admin Ingress] Unauthorized control command attempt by ${senderPhone}: ${textBodyEarly}`);
+          // Crucial: Pastikan teks perintah kontrol tidak pernah diteruskan ke LLM sebagai percakapan!
+          processedCount++;
+          continue; // Drop / halt turn so command is NEVER passed to LLM!
         }
       }
     }
@@ -1397,28 +1411,33 @@ export async function processEvolutionWebhookEvent(
     }
 
     // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true / bot_paused == true)
+    // FAIL-CLOSED POLICY: If pause / tenant status check fails or cannot be verified, terminate processing immediately!
     if (supabase) {
       try {
         // A0. Cek Status Global Bot Toko (Global #pause / Dashboard Toggle)
         let isTenantGlobalPaused = false;
-        try {
-          const { data: tRow } = await supabase
-            .from('tenants')
-            .select('id, slug, bot_paused, is_bot_active, metadata')
-            .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
-            .maybeSingle();
+        const { data: tRow, error: tErr } = await supabase
+          .from('tenants')
+          .select('id, slug, bot_paused, is_bot_active, metadata')
+          .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
+          .maybeSingle();
 
-          const tenantDecision = await checkRuntimeBotDecisionGate({
-            tenant: tRow,
-            textBody,
-            senderPhone,
-            supabase,
-          });
+        if (tErr) {
+          console.error(`[Evolution Webhook Gate FAIL-CLOSED] Tenant status lookup failed for '${tenantId}':`, tErr);
+          processedCount++;
+          continue; // FAIL-CLOSED: Stop processing, do NOT schedule AI outbound!
+        }
 
-          if (tenantDecision.shouldBypass) {
-            isTenantGlobalPaused = true;
-          }
-        } catch (_) {}
+        const tenantDecision = await checkRuntimeBotDecisionGate({
+          tenant: tRow,
+          textBody,
+          senderPhone,
+          supabase,
+        });
+
+        if (tenantDecision.shouldBypass) {
+          isTenantGlobalPaused = true;
+        }
 
         if (isTenantGlobalPaused) {
           console.info(`[Evolution Webhook Muted] Bot toko '${tenantSlug || tenantId}' sedang DIJEDA GLOBAL (#pause / Dashboard Toggle). AI Bot tidak boleh membalas.`);
@@ -1426,7 +1445,7 @@ export async function processEvolutionWebhookEvent(
           continue;
         }
 
-        const cleanSender = senderPhone.replace(/\D/g, '');
+        const cleanSender = toCanonicalPhone(senderPhone) || senderPhone.replace(/\D/g, '');
         const phone62 = cleanSender.startsWith('0') ? '62' + cleanSender.slice(1) : cleanSender;
         const phone08 = cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender;
         const phoneVariants = Array.from(new Set([senderPhone, cleanSender, phone62, phone08])).filter(Boolean);
@@ -1465,7 +1484,14 @@ export async function processEvolutionWebhookEvent(
           sessQuery = sessQuery.limit(5);
         }
 
-        const { data: sessData } = await (sessQuery || Promise.resolve({ data: null }));
+        const sessRes = await (sessQuery || Promise.resolve({ data: null, error: null }));
+        if (sessRes?.error) {
+          console.error(`[Evolution Webhook Gate FAIL-CLOSED] Session status lookup failed for '${senderPhone}':`, sessRes.error);
+          processedCount++;
+          continue; // FAIL-CLOSED: Stop processing, do NOT schedule AI outbound!
+        }
+
+        const sessData = sessRes?.data;
         if (Array.isArray(sessData) && sessData.length > 0) {
           for (const s of sessData) {
             const sessionDecision = await checkRuntimeBotDecisionGate({
@@ -1507,7 +1533,14 @@ export async function processEvolutionWebhookEvent(
             convQuery = convQuery.limit(5);
           }
 
-          const { data: convData } = await convQuery;
+          const convRes = await convQuery;
+          if (convRes?.error) {
+            console.error(`[Evolution Webhook Gate FAIL-CLOSED] Conversation status lookup failed for '${senderPhone}':`, convRes.error);
+            processedCount++;
+            continue; // FAIL-CLOSED: Stop processing, do NOT schedule AI outbound!
+          }
+
+          const convData = convRes?.data;
           if (Array.isArray(convData) && convData.length > 0) {
             const pausedConv = convData.find((c: any) =>
               c.bot_paused === true ||
@@ -1563,8 +1596,14 @@ export async function processEvolutionWebhookEvent(
           continue;
         }
       } catch (checkErr) {
-        console.warn('[Evolution Webhook] Active pause check warning:', checkErr);
+        console.error('[Evolution Webhook Gate FAIL-CLOSED] Active pause check exception, halting AI outbound:', checkErr);
+        processedCount++;
+        continue; // FAIL-CLOSED: Stop execution, do NOT schedule AI outbound!
       }
+    } else {
+      console.error('[Evolution Webhook Gate FAIL-CLOSED] Database client unavailable, halting AI outbound');
+      processedCount++;
+      continue;
     }
 
     // 7. Teruskan ke Engine Chat / Dual-Role Platform / Gemini Multimodal Pipeline
@@ -1573,6 +1612,13 @@ export async function processEvolutionWebhookEvent(
       : textBody;
 
     if (!promptText && !hasImage) {
+      continue;
+    }
+
+    // Extra Guard: Pastikan teks perintah kontrol tidak pernah diteruskan ke LLM sebagai percakapan!
+    if (parseBotControlCommand(promptText)) {
+      console.info(`[Evolution Webhook Gate] Suppressed bot control command from reaching LLM context: "${promptText}"`);
+      processedCount++;
       continue;
     }
 

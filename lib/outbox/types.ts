@@ -15,7 +15,8 @@ export type OutboxStatus =
   | 'SENT'
   | 'DELIVERED'
   | 'FAILED'
-  | 'DEAD_LETTER';
+  | 'DEAD_LETTER'
+  | 'SUPPRESSED';
 
 // ---------------------------------------------------------------------------
 // Message Payload — mirrors JSONB contract in DB
@@ -118,6 +119,8 @@ export interface OutboxRunSummary {
   dead_lettered: number;
   /** Messages escalated to FAILED (alias for dead_lettered) */
   failed?: number;
+  /** Messages suppressed due to pause gate / circuit breaker */
+  suppressed?: number;
 }
 
 // ---------------------------------------------------------------------------

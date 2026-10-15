@@ -14,7 +14,12 @@ import { cleanCustomerPhone } from '@/lib/whatsapp/inbox-persistence';
 import { isManualOrderMessage } from '@/lib/whatsapp/order-interceptor';
 
 export type BotControlAction = 'PAUSE' | 'RESUME';
-export type BotControlScope = 'tenant' | 'conversation';
+export type BotControlScope = 'tenant' | 'conversation' | 'CONTACT' | 'TENANT';
+
+export type BotControlCommand = {
+  action: 'PAUSE' | 'RESUME';
+  scope: 'CONTACT' | 'TENANT';
+};
 export type TenantBotStatus = 'BOT_ACTIVE' | 'BOT_DISABLED';
 export type ConversationBotStatus = 'AI_ACTIVE' | 'HUMAN_HANDOVER';
 
@@ -144,25 +149,30 @@ export async function callAtomicBotControlRpc(params: {
  * PAUSE / OFF: '#pause', '#off', '!pause', '!off', '/pause', '/off', 'pause', 'off'
  * RESUME / ON: '#resume', '#on', '!resume', '!on', '/resume', '/on', 'resume', 'on'
  */
-export function parseBotControlCommand(text?: string | null): BotControlAction | null {
+export function parseBotControlCommand(text?: string | null): BotControlCommand | null {
   if (!text || typeof text !== 'string') return null;
 
   const clean = text.trim().toLowerCase();
 
-  const pauseCommands = new Set([
-    '#pause', '#off', '!pause', '!off', '/pause', '/off', 'pause', 'off'
-  ]);
-  const resumeCommands = new Set([
-    '#resume', '#on', '!resume', '!on', '/resume', '/on', 'resume', 'on'
-  ]);
+  // Contact Scope Commands (#off, #on with prefixes #, !, / or plain)
+  const contactPause = new Set(['#off', '!off', '/off', 'off']);
+  const contactResume = new Set(['#on', '!on', '/on', 'on']);
 
-  if (pauseCommands.has(clean)) return 'PAUSE';
-  if (resumeCommands.has(clean)) return 'RESUME';
+  // Tenant Scope Commands (#pause, #resume with prefixes #, !, / or plain)
+  const tenantPause = new Set(['#pause', '!pause', '/pause', 'pause']);
+  const tenantResume = new Set(['#resume', '!resume', '/resume', 'resume']);
+
+  if (contactPause.has(clean)) return { action: 'PAUSE', scope: 'CONTACT' };
+  if (contactResume.has(clean)) return { action: 'RESUME', scope: 'CONTACT' };
+  if (tenantPause.has(clean)) return { action: 'PAUSE', scope: 'TENANT' };
+  if (tenantResume.has(clean)) return { action: 'RESUME', scope: 'TENANT' };
 
   // Support prefix characters with trailing punctuation or spacing (e.g. "#pause!", "/off.")
-  const stripped = clean.replace(/^[#!\/]/, '').replace(/[!.\s]+$/, '');
-  if (stripped === 'pause' || stripped === 'off') return 'PAUSE';
-  if (stripped === 'resume' || stripped === 'on') return 'RESUME';
+  const stripped = clean.replace(/^[#/!]/, '').replace(/[!.\s]+$/, '');
+  if (stripped === 'off') return { action: 'PAUSE', scope: 'CONTACT' };
+  if (stripped === 'on') return { action: 'RESUME', scope: 'CONTACT' };
+  if (stripped === 'pause') return { action: 'PAUSE', scope: 'TENANT' };
+  if (stripped === 'resume') return { action: 'RESUME', scope: 'TENANT' };
 
   return null;
 }
@@ -317,9 +327,11 @@ export async function executeBotControl(params: {
   }
 
   // 1. Determine Scope
-  const scope: BotControlScope =
+  const rawScope =
     params.scope ||
     (params.conversationId || params.customerPhone ? 'conversation' : 'tenant');
+  const isTenantScope = rawScope === 'TENANT' || rawScope === 'tenant';
+  const scope: 'tenant' | 'conversation' = isTenantScope ? 'tenant' : 'conversation';
 
   // 2. RBAC Enforcement
   const role = (params.userRole || '').toLowerCase().trim();

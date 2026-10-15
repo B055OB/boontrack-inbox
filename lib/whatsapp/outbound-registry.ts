@@ -1,9 +1,13 @@
 /**
  * lib/whatsapp/outbound-registry.ts
  *
- * Outbound Message Registry
+ * Outbound Message Registry & Identity Normalizer
  * Tracks outbound messages sent by the bot/system to prevent self-pause loops
  * when Evolution API sends webhook events with key.fromMe = true.
+ *
+ * HOTFIX P0:
+ * - Decouples operator command authorization from in-memory echo detection.
+ * - Provides canonical phone identity normalizer (+62, 62, 08, JID format).
  */
 
 export interface BotOutboundEntry {
@@ -23,12 +27,30 @@ const outboundRegistry: BotOutboundEntry[] = [];
 const outboundKeyMap = new Map<string, number>();
 
 /**
- * Normalizes phone numbers to standard format (digits only, e.g. 62812345678)
+ * Normalizes phone numbers (+62, 62, 08, format JID) to a single canonical identity.
+ * Handles:
+ * - JID format: e.g. '62812345678@s.whatsapp.net', '62812345678:0@s.whatsapp.net', '0812345678@c.us'
+ * - Leading plus: '+62812345678'
+ * - Indonesian prefix '08...' -> '628...'
+ * - Raw '8...' -> '628...'
+ * - Returns clean canonical digits (e.g. '62812345678')
  */
-export function normalizeRegistryPhone(phone?: string | null): string {
+export function toCanonicalPhone(phone?: string | null): string {
   if (!phone) return '';
-  const digits = String(phone).replace(/\D/g, '');
+  let str = String(phone).trim();
+
+  // Strip JID domain suffix (@s.whatsapp.net, @c.us, @g.us, etc.)
+  if (str.includes('@')) {
+    str = str.split('@')[0];
+  }
+  // Strip WhatsApp multidevice suffix (:0, :1, etc.)
+  if (str.includes(':')) {
+    str = str.split(':')[0];
+  }
+  // Strip non-digits
+  const digits = str.replace(/\D/g, '');
   if (!digits) return '';
+
   if (digits.startsWith('0')) {
     return '62' + digits.slice(1);
   }
@@ -36,6 +58,13 @@ export function normalizeRegistryPhone(phone?: string | null): string {
     return '62' + digits;
   }
   return digits;
+}
+
+/**
+ * Alias for canonical identity normalization in registry lookups
+ */
+export function normalizeRegistryPhone(phone?: string | null): string {
+  return toCanonicalPhone(phone);
 }
 
 /**
@@ -48,6 +77,17 @@ export function normalizeRegistryText(text?: string | null): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .slice(0, 150); // Compare first 150 chars
+}
+
+/**
+ * Guard: Detects whether a message is an operator bot control command (#pause, #off, #resume, #on, etc.).
+ * Operator commands must NEVER be classified or suppressed as bot outbound echoes.
+ */
+export function isOperatorBotControlText(text?: string | null): boolean {
+  if (!text) return false;
+  const clean = text.trim().toLowerCase();
+  const stripped = clean.replace(/^[#/!]/, '').replace(/[!.\s]+$/, '');
+  return ['pause', 'resume', 'off', 'on'].includes(stripped);
 }
 
 /**
@@ -97,6 +137,7 @@ export function registerBotOutbound(params: {
 /**
  * Checks whether an incoming fromMe = true event matches a recorded bot outbound message.
  * Supports scoped checks using tenantId + messageId.
+ * Strictly separates operator commands from echo detection.
  */
 export function isBotOutbound(params: {
   tenantId?: string | null;
@@ -105,6 +146,11 @@ export function isBotOutbound(params: {
   text?: string | null;
   ttlMs?: number;
 }): boolean {
+  // Guard: Operator commands must NEVER be treated as bot echoes!
+  if (isOperatorBotControlText(params.text)) {
+    return false;
+  }
+
   const cleanPhone = normalizeRegistryPhone(params.recipientPhone);
   const cleanText = normalizeRegistryText(params.text);
   const msgId = params.messageId ? String(params.messageId).trim() : undefined;
@@ -203,6 +249,11 @@ export async function isBotOutboundAsync(params: {
   text?: string | null;
   supabase?: any;
 }): Promise<boolean> {
+  // Operator command is decoupled from echo registry - never treat as echo!
+  if (isOperatorBotControlText(params.text)) {
+    return false;
+  }
+
   if (isBotOutbound(params)) return true;
 
   const msgId = params.messageId ? String(params.messageId).trim() : undefined;
@@ -228,7 +279,10 @@ export async function isBotOutboundAsync(params: {
           }
         }
 
-        const { data, error } = await q.maybeSingle();
+        const res = typeof q.maybeSingle === 'function' ? await q.maybeSingle() : await q;
+        const data = res?.data;
+        const error = res?.error;
+
         if (!error && data?.id) {
           // Re-populate in-memory registry for subsequent duplicate webhooks
           registerBotOutbound({
@@ -247,11 +301,14 @@ export async function isBotOutboundAsync(params: {
     // B. Check messages table by external_id where sender in ['bot', 'system']
     if (msgId) {
       try {
-        const { data: msgData, error: msgErr } = await params.supabase
+        let msgQ = params.supabase
           .from('messages')
           .select('id, sender')
-          .eq('external_id', msgId)
-          .maybeSingle();
+          .eq('external_id', msgId);
+
+        const res = typeof msgQ.maybeSingle === 'function' ? await msgQ.maybeSingle() : await msgQ;
+        const msgData = res?.data;
+        const msgErr = res?.error;
 
         if (!msgErr && msgData?.id && (msgData.sender === 'bot' || msgData.sender === 'system')) {
           registerBotOutbound({
@@ -283,7 +340,9 @@ export async function isBotOutboundAsync(params: {
           recentQ = recentQ.eq('tenant_id', cleanTenantId);
         }
 
-        const { data: recData } = await recentQ.maybeSingle();
+        const res = typeof recentQ.maybeSingle === 'function' ? await recentQ.maybeSingle() : await recentQ;
+        const recData = res?.data;
+
         if (recData?.id) {
           if (msgId) {
             registerBotOutbound({
