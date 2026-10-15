@@ -699,6 +699,198 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
       const session = mockSessions['628999888777'];
       expect(session).toBeUndefined();
     });
+
+    it('returns UNKNOWN when params.supabase is missing/falsy and in-memory registry has no match', async () => {
+      // In-memory has no match for this message
+      const result = await isBotOutboundAsync({
+        tenantId: 'tenant-alpha-uuid',
+        messageId: 'MSG-NO-SUPABASE',
+        recipientPhone: '628123456789',
+        supabase: undefined,
+      });
+
+      // Must return UNKNOWN to prevent false human takeover when DB client is absent
+      expect(result).toBe('UNKNOWN');
+
+      const nullResult = await isBotOutboundAsync({
+        tenantId: 'tenant-alpha-uuid',
+        messageId: 'MSG-NULL-SUPABASE',
+        recipientPhone: '628123456789',
+        supabase: null,
+      });
+
+      expect(nullResult).toBe('UNKNOWN');
+    });
+
+    it('adds eq("tenant_id", cleanTenantId) on fallback query to messages table to prevent cross-tenant collision', async () => {
+      const eqMock = jest.fn().mockReturnThis();
+      const maybeSingleMock = jest.fn(async () => ({
+        data: null, // No message under tenant-alpha with this external_id
+        error: null,
+      }));
+
+      const mockSupabaseWithTenantCheck = {
+        from: jest.fn((table: string) => {
+          if (table === 'outbound_messages') {
+            return {
+              select: jest.fn(() => ({
+                eq: jest.fn(() => ({
+                  or: jest.fn(() => ({
+                    maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+                  })),
+                  eq: jest.fn(() => ({
+                    maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+                  })),
+                  maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === 'messages') {
+            return {
+              select: jest.fn(() => ({
+                eq: eqMock.mockImplementation((col: string, val: any) => {
+                  if (col === 'tenant_id') {
+                    // Verifies tenant_id filter is explicitly applied
+                    return { maybeSingle: maybeSingleMock };
+                  }
+                  return { eq: eqMock, maybeSingle: maybeSingleMock };
+                }),
+              })),
+            };
+          }
+          return {};
+        }),
+      };
+
+      const result = await isBotOutboundAsync({
+        tenantId: 'tenant-alpha',
+        messageId: 'EXTERNAL-COLLISION-ID-123',
+        recipientPhone: '628123456789',
+        supabase: mockSupabaseWithTenantCheck,
+      });
+
+      // Verify that eq('tenant_id', 'tenant-alpha') was called on messages query
+      expect(eqMock).toHaveBeenCalledWith('tenant_id', 'tenant-alpha');
+      expect(result).toBe('NOT_MATCH');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 8: Distributed / Persistent Dispatch Fencing (Multi-Worker Simulation)
+  // -------------------------------------------------------------------------
+  describe('8. Distributed & Persistent Dispatch Fencing (Multi-Worker Simulation)', () => {
+    it('Worker B aborts dispatch (SUPPRESSED) when Worker A/external trigger raises persistent control_version, with zero shared in-memory cache', async () => {
+      // 1. Worker A enqueued job with control_version: 1
+      enqueueMockOutbox({
+        id: 'job-multi-worker-version',
+        recipientPhone: '628155555555',
+        isAi: true,
+        controlVersion: 1,
+      });
+
+      // 2. Another worker/API process updates persistent tenant control_version to 2
+      mockTenant.metadata = {
+        ...mockTenant.metadata,
+        control_version: 2,
+        version: 2,
+      };
+
+      // 3. Clear local in-memory cache completely to simulate Worker B in a separate process/container
+      clearRuntimeSessionCache();
+
+      // 4. Worker B runs outbox processor
+      const workerB = new OutboxWorker({ batchSize: 10 });
+      const summary = await workerB.runOnce(mockAdapter, mockDb);
+
+      // Worker B must detect persistent control_version increment and abort dispatch
+      expect(summary.sent).toBe(0);
+      expect(summary.suppressed).toBe(1);
+
+      const row = mockOutboxRows.get('job-multi-worker-version');
+      expect(row?.status).toBe('SUPPRESSED');
+      expect(row?.last_error).toContain('CONTROL_VERSION_CHANGED');
+
+      // Crucial: Provider adapter must NEVER have been called!
+      expect(mockAdapter.send).not.toHaveBeenCalled();
+      expect(sentMessages.length).toBe(0);
+    });
+
+    it('Worker B aborts dispatch (SUPPRESSED) when persistent tenant is paused in DB, with zero shared in-memory cache', async () => {
+      // 1. Job created when bot was active
+      enqueueMockOutbox({
+        id: 'job-multi-worker-pause',
+        recipientPhone: '628166666666',
+        isAi: true,
+        controlVersion: 1,
+      });
+
+      // 2. Operator issues pause in DB (e.g. via dashboard or another worker instance)
+      mockTenant.bot_paused = true;
+      mockTenant.is_bot_active = false;
+      mockTenant.metadata = {
+        ...mockTenant.metadata,
+        bot_status: 'BOT_DISABLED',
+        bot_paused: true,
+        control_version: 2,
+      };
+
+      // 3. Clear local in-memory cache completely
+      clearRuntimeSessionCache();
+
+      // 4. Worker B runs outbox processor
+      const workerB = new OutboxWorker({ batchSize: 10 });
+      const summary = await workerB.runOnce(mockAdapter, mockDb);
+
+      expect(summary.sent).toBe(0);
+      expect(summary.suppressed).toBe(1);
+
+      const row = mockOutboxRows.get('job-multi-worker-pause');
+      expect(row?.status).toBe('SUPPRESSED');
+      expect(row?.last_error).toContain('TENANT_BOT_PAUSED');
+
+      expect(mockAdapter.send).not.toHaveBeenCalled();
+      expect(sentMessages.length).toBe(0);
+    });
+
+    it('aborts dispatch via persistent atomic fence when another worker updates DB in-flight between initial gate and send', async () => {
+      enqueueMockOutbox({
+        id: 'job-inflight-multi-worker',
+        recipientPhone: '628177777777',
+        isAi: true,
+        controlVersion: 1,
+      });
+
+      expect(mockTenant.bot_paused).toBe(false);
+
+      // Pre-send hook simulates Worker B updating persistent DB right after initial gate passed
+      const preSendHook = jest.fn(async () => {
+        // Persistent DB is updated by external worker
+        mockTenant.bot_paused = true;
+        mockTenant.is_bot_active = false;
+        mockTenant.metadata = {
+          ...mockTenant.metadata,
+          bot_status: 'BOT_DISABLED',
+          control_version: 2,
+        };
+        // Clear local in-memory cache to prove persistent fence catches it from DB
+        clearRuntimeSessionCache();
+      });
+
+      const worker = new OutboxWorker({ batchSize: 10 });
+      const summary = await worker.runOnce(mockAdapter, mockDb, preSendHook);
+
+      expect(preSendHook).toHaveBeenCalledTimes(1);
+      expect(summary.sent).toBe(0);
+      expect(summary.suppressed).toBe(1);
+
+      const row = mockOutboxRows.get('job-inflight-multi-worker');
+      expect(row?.status).toBe('SUPPRESSED');
+      expect(row?.last_error).toMatch(/ATOMIC_FENCE_PERSISTENT_/);
+
+      expect(mockAdapter.send).not.toHaveBeenCalled();
+      expect(sentMessages.length).toBe(0);
+    });
   });
 
 });

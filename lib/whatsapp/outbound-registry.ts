@@ -263,128 +263,136 @@ export async function isBotOutboundAsync(params: {
   const cleanPhone = normalizeRegistryPhone(params.recipientPhone);
   const cleanText = normalizeRegistryText(params.text);
 
+  // If supabase client is missing or invalid, DB fallback cannot run -> return UNKNOWN to prevent false takeover
+  if (!params.supabase || typeof params.supabase.from !== 'function') {
+    return 'UNKNOWN';
+  }
+
   let dbErrorOccurred = false;
 
   // Database Fallback: Required when worker restarts or instances clear in-memory cache
-  if (params.supabase) {
-    // A. Check outbound_messages table by wa_message_id
-    if (msgId) {
-      try {
-        let q = params.supabase
-          .from('outbound_messages')
-          .select('id, tenant_id')
-          .eq('wa_message_id', msgId);
+  // A. Check outbound_messages table by wa_message_id
+  if (msgId) {
+    try {
+      let q = params.supabase
+        .from('outbound_messages')
+        .select('id, tenant_id')
+        .eq('wa_message_id', msgId);
 
-        if (cleanTenantId) {
-          if (typeof q.or === 'function') {
-            q = q.or(`tenant_id.eq.${cleanTenantId}`);
-          } else if (typeof q.eq === 'function') {
-            q = q.eq('tenant_id', cleanTenantId);
-          }
+      if (cleanTenantId) {
+        if (typeof q.or === 'function') {
+          q = q.or(`tenant_id.eq.${cleanTenantId}`);
+        } else if (typeof q.eq === 'function') {
+          q = q.eq('tenant_id', cleanTenantId);
         }
-
-        const res = typeof q.maybeSingle === 'function' ? await q.maybeSingle() : await q;
-        const data = res?.data;
-        const error = res?.error;
-
-        if (error) {
-          dbErrorOccurred = true;
-          console.warn('[OutboundRegistry] Fallback query error on outbound_messages:', error);
-        } else if (data?.id) {
-          // Re-populate in-memory registry for subsequent duplicate webhooks
-          registerBotOutbound({
-            tenantId: cleanTenantId || data.tenant_id,
-            messageId: msgId,
-            recipientPhone: cleanPhone,
-            text: cleanText,
-          });
-          return 'MATCH';
-        }
-      } catch (err) {
-        dbErrorOccurred = true;
-        console.warn('[OutboundRegistry] Fallback exception on outbound_messages:', err);
       }
-    }
 
-    // B. Check messages table by external_id where sender in ['bot', 'system']
-    if (msgId) {
-      try {
-        let msgQ = params.supabase
-          .from('messages')
-          .select('id, sender')
-          .eq('external_id', msgId);
+      const res = typeof q.maybeSingle === 'function' ? await q.maybeSingle() : await q;
+      const data = res?.data;
+      const error = res?.error;
 
-        const res = typeof msgQ.maybeSingle === 'function' ? await msgQ.maybeSingle() : await msgQ;
-        const msgData = res?.data;
-        const msgErr = res?.error;
-
-        if (msgErr) {
-          dbErrorOccurred = true;
-          console.warn('[OutboundRegistry] Fallback query error on messages:', msgErr);
-        } else if (msgData?.id && (msgData.sender === 'bot' || msgData.sender === 'system')) {
-          registerBotOutbound({
-            tenantId: cleanTenantId,
-            messageId: msgId,
-            recipientPhone: cleanPhone,
-            text: cleanText,
-          });
-          return 'MATCH';
-        }
-      } catch (err) {
+      if (error) {
         dbErrorOccurred = true;
-        console.warn('[OutboundRegistry] Fallback exception on messages:', err);
+        console.warn('[OutboundRegistry] Fallback query error on outbound_messages:', error);
+      } else if (data?.id) {
+        // Re-populate in-memory registry for subsequent duplicate webhooks
+        registerBotOutbound({
+          tenantId: cleanTenantId || data.tenant_id,
+          messageId: msgId,
+          recipientPhone: cleanPhone,
+          text: cleanText,
+        });
+        return 'MATCH';
       }
+    } catch (err) {
+      dbErrorOccurred = true;
+      console.warn('[OutboundRegistry] Fallback exception on outbound_messages:', err);
     }
+  }
 
-    // C. Check recent bot message in outbound_messages for this recipient within 5 minutes
-    if (cleanPhone) {
-      try {
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        let recentQ: any = params.supabase
-          .from('outbound_messages')
-          .select('id, tenant_id');
+  // B. Check messages table by external_id where sender in ['bot', 'system']
+  if (msgId) {
+    try {
+      let msgQ: any = params.supabase
+        .from('messages')
+        .select('id, sender, tenant_id')
+        .eq('external_id', msgId);
 
+      // Wajib tambahkan filter eq('tenant_id', cleanTenantId) jika cleanTenantId tersedia untuk mencegah cross-tenant ID collision
+      if (cleanTenantId && typeof msgQ.eq === 'function') {
+        msgQ = msgQ.eq('tenant_id', cleanTenantId);
+      }
+
+      const res = typeof msgQ.maybeSingle === 'function' ? await msgQ.maybeSingle() : await msgQ;
+      const msgData = res?.data;
+      const msgErr = res?.error;
+
+      if (msgErr) {
+        dbErrorOccurred = true;
+        console.warn('[OutboundRegistry] Fallback query error on messages:', msgErr);
+      } else if (msgData?.id && (msgData.sender === 'bot' || msgData.sender === 'system')) {
+        registerBotOutbound({
+          tenantId: cleanTenantId || msgData.tenant_id,
+          messageId: msgId,
+          recipientPhone: cleanPhone,
+          text: cleanText,
+        });
+        return 'MATCH';
+      }
+    } catch (err) {
+      dbErrorOccurred = true;
+      console.warn('[OutboundRegistry] Fallback exception on messages:', err);
+    }
+  }
+
+  // C. Check recent bot message in outbound_messages for this recipient within 5 minutes
+  if (cleanPhone) {
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      let recentQ: any = params.supabase
+        .from('outbound_messages')
+        .select('id, tenant_id');
+
+      if (typeof recentQ.eq === 'function') {
+        recentQ = recentQ.eq('recipient_jid', cleanPhone);
         if (typeof recentQ.eq === 'function') {
-          recentQ = recentQ.eq('recipient_jid', cleanPhone);
-          if (typeof recentQ.eq === 'function') {
-            recentQ = recentQ.eq('source', 'bot');
-          }
+          recentQ = recentQ.eq('source', 'bot');
         }
-
-        if (typeof recentQ.gte === 'function') {
-          recentQ = recentQ.gte('created_at', fiveMinutesAgo);
-        }
-
-        if (cleanTenantId && typeof recentQ.eq === 'function') {
-          recentQ = recentQ.eq('tenant_id', cleanTenantId);
-        }
-
-        if (typeof recentQ.limit === 'function') {
-          recentQ = recentQ.limit(1);
-        }
-
-        const res = typeof recentQ.maybeSingle === 'function' ? await recentQ.maybeSingle() : await recentQ;
-        const recData = res?.data;
-        const recErr = res?.error;
-
-        if (recErr) {
-          dbErrorOccurred = true;
-          console.warn('[OutboundRegistry] Fallback query error on recent outbound:', recErr);
-        } else if (recData?.id) {
-          if (msgId) {
-            registerBotOutbound({
-              tenantId: cleanTenantId || recData.tenant_id,
-              messageId: msgId,
-              recipientPhone: cleanPhone,
-              text: cleanText,
-            });
-          }
-          return 'MATCH';
-        }
-      } catch (err: any) {
-        dbErrorOccurred = true;
-        console.warn('[OutboundRegistry] Fallback exception on recent outbound:', err?.message || err);
       }
+
+      if (typeof recentQ.gte === 'function') {
+        recentQ = recentQ.gte('created_at', fiveMinutesAgo);
+      }
+
+      if (cleanTenantId && typeof recentQ.eq === 'function') {
+        recentQ = recentQ.eq('tenant_id', cleanTenantId);
+      }
+
+      if (typeof recentQ.limit === 'function') {
+        recentQ = recentQ.limit(1);
+      }
+
+      const res = typeof recentQ.maybeSingle === 'function' ? await recentQ.maybeSingle() : await recentQ;
+      const recData = res?.data;
+      const recErr = res?.error;
+
+      if (recErr) {
+        dbErrorOccurred = true;
+        console.warn('[OutboundRegistry] Fallback query error on recent outbound:', recErr);
+      } else if (recData?.id) {
+        if (msgId) {
+          registerBotOutbound({
+            tenantId: cleanTenantId || recData.tenant_id,
+            messageId: msgId,
+            recipientPhone: cleanPhone,
+            text: cleanText,
+          });
+        }
+        return 'MATCH';
+      }
+    } catch (err: any) {
+      dbErrorOccurred = true;
+      console.warn('[OutboundRegistry] Fallback exception on recent outbound:', err?.message || err);
     }
   }
 
@@ -395,9 +403,6 @@ export async function isBotOutboundAsync(params: {
 
   return 'NOT_MATCH';
 }
-/**
- * Clears the registry (useful for unit tests)
- */
 export function clearOutboundRegistry(): void {
   outboundRegistry.length = 0;
   outboundKeyMap.clear();

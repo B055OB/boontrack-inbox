@@ -260,6 +260,25 @@ export async function verifyBotDispatchGate(
       return { allowed: false, reason: 'TENANT_BOT_PAUSED' };
     }
 
+    // Check Persistent Control Version on Tenant (Multi-Instance / Distributed Otoritatif)
+    const persistentTenantVersion =
+      (tenantRow as any).control_version ??
+      (tenantRow as any).bot_control_version ??
+      tenantRow.metadata?.control_version ??
+      tenantRow.metadata?.bot_control_version ??
+      tenantRow.metadata?.version;
+
+    if (
+      jobControlVersion !== undefined &&
+      persistentTenantVersion !== undefined &&
+      Number(persistentTenantVersion) > Number(jobControlVersion)
+    ) {
+      return {
+        allowed: false,
+        reason: `CONTROL_VERSION_CHANGED (job: ${jobControlVersion}, persistent_tenant: ${persistentTenantVersion})`,
+      };
+    }
+
     // B. Check Contact Permission (conversation_sessions & conversations)
     if (recipientPhone) {
       const canonicalPhone = toCanonicalPhone(recipientPhone);
@@ -297,6 +316,23 @@ export async function verifyBotDispatchGate(
             } else {
               return { allowed: false, reason: 'CONTACT_SESSION_PAUSED' };
             }
+          }
+
+          const persistentSessionVersion =
+            (s as any).control_version ??
+            (s as any).version ??
+            s.metadata?.control_version ??
+            s.metadata?.version;
+
+          if (
+            jobControlVersion !== undefined &&
+            persistentSessionVersion !== undefined &&
+            Number(persistentSessionVersion) > Number(jobControlVersion)
+          ) {
+            return {
+              allowed: false,
+              reason: `CONTROL_VERSION_CHANGED (job: ${jobControlVersion}, persistent_session: ${persistentSessionVersion})`,
+            };
           }
         }
       }
@@ -342,16 +378,20 @@ export async function verifyBotDispatchGate(
 
 /**
  * Instantaneous Fencing Gate: Pre-send verification closing race condition windows.
- * Executes synchronously right before adapter.send(message) to catch pauses triggered in-flight.
+ * Validates local in-memory cache AND distributed persistent database state (multi-instance authoritative)
+ * right before adapter.send(message) to catch pauses/version bumps triggered in-flight.
  */
-export function verifyInstantaneousFence(message: OutboxMessage): { allowed: boolean; reason: string } {
+export async function verifyInstantaneousFence(
+  message: OutboxMessage,
+  db?: SupabaseAdminClient | OutboxDbClient
+): Promise<{ allowed: boolean; reason: string }> {
   const tenantId = message.tenant_id;
   const rawRecipient = message.recipient_phone || message.recipient || '';
   const recipientPhone = toCanonicalPhone(rawRecipient) || cleanCustomerPhone(rawRecipient) || rawRecipient;
   const payload = (message.payload || {}) as Record<string, any>;
   const jobControlVersion = payload.control_version ?? (message as any).control_version;
 
-  // 1. Check Global Tenant Cache Fencing
+  // 1. Fast Local In-Memory Cache Fencing (< 0.1ms)
   const cachedGlobal = getRuntimeSessionCache(tenantId);
   if (cachedGlobal) {
     if (cachedGlobal.isPaused) {
@@ -362,7 +402,6 @@ export function verifyInstantaneousFence(message: OutboxMessage): { allowed: boo
     }
   }
 
-  // 2. Check Session / Contact Cache Fencing
   if (recipientPhone) {
     const cachedSession = getRuntimeSessionCache(tenantId, recipientPhone);
     if (cachedSession) {
@@ -372,6 +411,114 @@ export function verifyInstantaneousFence(message: OutboxMessage): { allowed: boo
       if (jobControlVersion !== undefined && cachedSession.version !== undefined && cachedSession.version > jobControlVersion) {
         return { allowed: false, reason: `ATOMIC_FENCE_VERSION_CHANGED (job: ${jobControlVersion}, current: ${cachedSession.version})` };
       }
+    }
+  }
+
+  // 2. Distributed / Persistent Verification Gate (Multi-Instance & Multi-Worker Authoritative State)
+  const supabase: any = typeof (db as any)?.from === 'function' ? db : (getSupabaseAdmin() || getSupabase());
+  if (supabase && typeof supabase.from === 'function') {
+    try {
+      // A. Authoritative Tenant Check
+      const { data: tenantRow, error: tenantErr } = await supabase
+        .from('tenants')
+        .select('id, slug, bot_paused, is_bot_active, metadata')
+        .or(`id.eq.${tenantId},slug.eq.${tenantId}`)
+        .maybeSingle();
+
+      if (tenantErr) {
+        return { allowed: false, reason: `ATOMIC_FENCE_FAIL_CLOSED_DB_ERROR: ${tenantErr.message || tenantErr}` };
+      }
+
+      if (tenantRow) {
+        const isTenantPaused =
+          tenantRow.bot_paused === true ||
+          tenantRow.is_bot_active === false ||
+          tenantRow.metadata?.bot_paused === true ||
+          tenantRow.metadata?.is_bot_paused === true ||
+          tenantRow.metadata?.is_bot_active === false;
+
+        if (isTenantPaused) {
+          return { allowed: false, reason: 'ATOMIC_FENCE_PERSISTENT_TENANT_PAUSED' };
+        }
+
+        const persistentTenantVersion =
+          (tenantRow as any).control_version ??
+          (tenantRow as any).bot_control_version ??
+          tenantRow.metadata?.control_version ??
+          tenantRow.metadata?.bot_control_version ??
+          tenantRow.metadata?.version;
+
+        if (
+          jobControlVersion !== undefined &&
+          persistentTenantVersion !== undefined &&
+          Number(persistentTenantVersion) > Number(jobControlVersion)
+        ) {
+          return {
+            allowed: false,
+            reason: `ATOMIC_FENCE_PERSISTENT_VERSION_CHANGED (job: ${jobControlVersion}, persistent: ${persistentTenantVersion})`,
+          };
+        }
+      }
+
+      // B. Authoritative Session Check
+      if (recipientPhone) {
+        const canonicalPhone = toCanonicalPhone(recipientPhone);
+        const phoneVariants = Array.from(new Set([recipientPhone, canonicalPhone, cleanCustomerPhone(recipientPhone)])).filter(Boolean);
+
+        const sessRes = await supabase
+          .from('conversation_sessions')
+          .select('session_id, is_paused, current_state, bot_status, paused_until, metadata')
+          .or(`tenant_id.eq.${tenantId}${tenantRow?.id ? `,tenant_id.eq.${tenantRow.id}` : ''}`)
+          .in('user_identifier', phoneVariants)
+          .limit(5);
+
+        if (sessRes?.error) {
+          return { allowed: false, reason: `ATOMIC_FENCE_FAIL_CLOSED_SESSION_ERROR: ${sessRes.error.message || sessRes.error}` };
+        }
+
+        const sessions = sessRes?.data;
+        if (Array.isArray(sessions) && sessions.length > 0) {
+          for (const s of sessions) {
+            const isPaused =
+              s.is_paused === true ||
+              s.current_state === 'HUMAN_PAUSED' ||
+              s.current_state === 'PAUSED' ||
+              s.current_state === 'HANDOVER_TO_HUMAN' ||
+              s.bot_status === 'HUMAN_PAUSED' ||
+              Boolean(s.metadata?.is_bot_paused);
+
+            if (isPaused) {
+              if (s.paused_until) {
+                const until = new Date(s.paused_until).getTime();
+                if (!isNaN(until) && until > Date.now()) {
+                  return { allowed: false, reason: 'ATOMIC_FENCE_PERSISTENT_SESSION_PAUSED' };
+                }
+              } else {
+                return { allowed: false, reason: 'ATOMIC_FENCE_PERSISTENT_SESSION_PAUSED' };
+              }
+            }
+
+            const persistentSessVer =
+              (s as any).control_version ??
+              (s as any).version ??
+              s.metadata?.control_version ??
+              s.metadata?.version;
+
+            if (
+              jobControlVersion !== undefined &&
+              persistentSessVer !== undefined &&
+              Number(persistentSessVer) > Number(jobControlVersion)
+            ) {
+              return {
+                allowed: false,
+                reason: `ATOMIC_FENCE_PERSISTENT_VERSION_CHANGED (job: ${jobControlVersion}, persistent_session: ${persistentSessVer})`,
+              };
+            }
+          }
+        }
+      }
+    } catch (dbErr: any) {
+      return { allowed: false, reason: `ATOMIC_FENCE_FAIL_CLOSED_EXCEPTION: ${dbErr?.message || dbErr}` };
     }
   }
 
@@ -419,7 +566,7 @@ async function processMessage(
 
   // FINAL DISPATCH GATE 2: ATOMIC DISPATCH FENCING (instantaneous verification closing race condition window right before send)
   if (isAiOutboxMessage(message)) {
-    const atomicFence = verifyInstantaneousFence(message);
+    const atomicFence = await verifyInstantaneousFence(message, db);
     if (!atomicFence.allowed) {
       console.warn(`[OutboxWorker Atomic Fence] AI Outbound SUPPRESSED by atomic fence for message id=${message.id} (${atomicFence.reason})`);
       await markSuppressed(db, message.id, atomicFence.reason);

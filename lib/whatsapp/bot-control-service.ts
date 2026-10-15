@@ -455,6 +455,9 @@ export async function executeBotControl(params: {
     meta.bot_paused = isPause;
     meta.is_bot_paused = isPause;
     meta.is_bot_active = !isPause;
+    const currentMetaVer = Number(meta.control_version ?? meta.version ?? 0);
+    meta.control_version = currentMetaVer + 1;
+    meta.version = currentMetaVer + 1;
 
     if (isPause) {
       meta.paused_at = nowIso;
@@ -619,6 +622,8 @@ export async function executeBotControl(params: {
           paused_reason: isHandover ? 'CS_HANDOVER' : null,
           updated_by: source,
           updated_at: nowIso,
+          control_version: (getRuntimeSessionCache(resolvedTenantUuid, targetPhone)?.version || 1),
+          version: (getRuntimeSessionCache(resolvedTenantUuid, targetPhone)?.version || 1),
         },
         updated_at: nowIso,
       };
