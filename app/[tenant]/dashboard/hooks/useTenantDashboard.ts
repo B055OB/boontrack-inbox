@@ -148,9 +148,13 @@ export function useTenantDashboard() {
   const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>('growth');
   const [isUrlCheckoutLite, setIsUrlCheckoutLite] = useState(false);
 
+  const cleanSelectedPlan = String(selectedPlan || '').toLowerCase();
+  const cleanTierUpper = String(tenantFeatureFlags.tier || '').toUpperCase();
+  const cleanTierLower = cleanTierUpper.toLowerCase();
+
   const isCheckoutLite =
-    String(tenantFeatureFlags.tier || '').toUpperCase() === 'CHECKOUT_LITE' ||
-    selectedPlan.toLowerCase().includes('checkout') ||
+    cleanTierUpper === 'CHECKOUT_LITE' ||
+    cleanSelectedPlan.includes('checkout') ||
     isUrlCheckoutLite;
 
   // Team Scale — DB canonical: 'ENTERPRISE' (ARCHITECTURE.md ADR)
@@ -158,10 +162,10 @@ export function useTenantDashboard() {
   const isTeamScale =
     !isCheckoutLite &&
     (planTier === 'team_scale' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ENTERPRISE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'TEAM_SCALE' ||
-      selectedPlan.toLowerCase().includes('enterprise') ||
-      selectedPlan.toLowerCase().includes('team'));
+      cleanTierUpper === 'ENTERPRISE' ||
+      cleanTierUpper === 'TEAM_SCALE' ||
+      cleanSelectedPlan.includes('enterprise') ||
+      cleanSelectedPlan.includes('team'));
 
   // Ads Performance — DB canonical: 'PRO_SCALE' (ARCHITECTURE.md ADR)
   // Backward-compat aliases: 'ADS_PERFORMANCE', 'GROWTH_PLUS'
@@ -170,12 +174,12 @@ export function useTenantDashboard() {
     !isCheckoutLite &&
     (isTeamScale ||
       planTier === 'ads_performance' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'PRO_SCALE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ADS_PERFORMANCE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'GROWTH_PLUS' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase().includes('ADS') ||
-      selectedPlan.toLowerCase().includes('ads') ||
-      selectedPlan.toLowerCase().includes('performance'));
+      cleanTierUpper === 'PRO_SCALE' ||
+      cleanTierUpper === 'ADS_PERFORMANCE' ||
+      cleanTierUpper === 'GROWTH_PLUS' ||
+      cleanTierUpper.includes('ADS') ||
+      cleanSelectedPlan.includes('ads') ||
+      cleanSelectedPlan.includes('performance'));
 
   const isProScale = isAdsPerformance;
   const isGrowthPlus = isAdsPerformance;
@@ -190,9 +194,9 @@ export function useTenantDashboard() {
       tenantFeatureFlags.tier === 'STARTER' ||
       tenantFeatureFlags.tier === 'SOLO' ||
       tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
-      selectedPlan.toLowerCase().includes('solo') ||
-      selectedPlan.toLowerCase().includes('starter') ||
-      (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial') && !tenantFeatureFlags.tier.toLowerCase().includes('ads') && !selectedPlan.toLowerCase().includes('ads')) ||
+      cleanSelectedPlan.includes('solo') ||
+      cleanSelectedPlan.includes('starter') ||
+      (cleanTierLower.includes('trial') && !cleanTierLower.includes('ads') && !cleanSelectedPlan.includes('ads')) ||
       isGrowth)
   );
 
@@ -924,7 +928,7 @@ export function useTenantDashboard() {
 
             // Gabungkan dengan prioritas metadata (update terbaru merchant)
             const metaIds = new Set(mappedMeta.map((m: any) => String(m.id)));
-            const metaSlugs = new Set(mappedMeta.map((m: any) => String(m.slug).toLowerCase()));
+            const metaSlugs = new Set(mappedMeta.filter(Boolean).map((m: any) => String(m?.slug ?? '').toLowerCase()));
             const nonDuplicates = hydratedProducts.filter((hp: any) => !metaIds.has(String(hp.id)) && !metaSlugs.has(String(hp.slug).toLowerCase()));
             hydratedProducts = [...mappedMeta, ...nonDuplicates];
           }
@@ -1717,7 +1721,7 @@ export function useTenantDashboard() {
                 .eq('tenant_id', tenantRow.id);
 
               if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-                const knownSlugs = new Set(allKnownProducts.map(p => (p.slug || '').toLowerCase()));
+                const knownSlugs = new Set(allKnownProducts.filter(Boolean).map((p: any) => String(p?.slug ?? '').toLowerCase()));
                 const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
 
                 for (const sp of sqlProds) {
@@ -3097,3 +3101,4 @@ export function useTenantDashboard() {
     handleProcessWithdraw,
   };
 }
+
