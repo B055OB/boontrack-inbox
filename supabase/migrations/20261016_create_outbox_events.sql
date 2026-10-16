@@ -91,6 +91,7 @@ CREATE OR REPLACE FUNCTION public.register_merchant_transactional(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_tenant_id UUID;
@@ -265,6 +266,7 @@ CREATE OR REPLACE FUNCTION public.claim_registration_outbox_batch(batch_size INT
 RETURNS SETOF public.outbox_events
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     RETURN QUERY
@@ -289,6 +291,11 @@ BEGIN
 END;
 $$;
 
+-- Explicit Least Privilege: Revoke public access, allow ONLY service_role
+REVOKE EXECUTE ON FUNCTION public.register_merchant_transactional(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.register_merchant_transactional(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT, JSONB) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.claim_registration_outbox_batch(INTEGER) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_registration_outbox_batch(INTEGER) TO service_role;
 
 
