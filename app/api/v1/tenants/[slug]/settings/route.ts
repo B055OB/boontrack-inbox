@@ -463,6 +463,7 @@ export async function PUT(
           action: targetAction,
           tenantId: existing.id || slug,
           tenantSlug: slug,
+          userRole: 'admin',
           source: 'settings_api',
           supabase,
         });

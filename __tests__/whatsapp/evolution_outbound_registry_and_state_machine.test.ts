@@ -810,6 +810,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
         action: 'PAUSE',
         scope: 'tenant',
         tenantId: 'solusiads',
+        userRole: 'owner',
         supabase: failingSupabase,
       });
 

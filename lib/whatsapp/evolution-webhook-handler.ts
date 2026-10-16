@@ -49,6 +49,7 @@ import {
   executeBotControl,
   checkRuntimeBotDecisionGate,
   setRuntimeSessionCache,
+  clearRuntimeSessionCache,
 } from '@/lib/whatsapp/bot-control-service';
 import {
   AUTO_REJECT_CALL_MESSAGE,
@@ -724,11 +725,13 @@ export async function processEvolutionWebhookEvent(
         const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_HANDOVER (24h sliding window).`);
         if (supabase) {
+          const tenantUuid = tenantRecordForHardening?.id || tenantId;
+          let dbErrorOccurred = false;
+
           try {
-            const tenantUuid = tenantRecordForHardening?.id || tenantId;
             const csTable = supabase.from('conversation_sessions');
             if (typeof csTable?.upsert === 'function') {
-              await csTable.upsert({
+              const { error: sessionErr } = await csTable.upsert({
                 tenant_id: tenantUuid,
                 session_id: `wa_${tenantUuid}_${senderPhone}`,
                 channel: 'WHATSAPP',
@@ -747,6 +750,11 @@ export async function processEvolutionWebhookEvent(
                 },
                 updated_at: nowIso,
               }, { onConflict: 'tenant_id,user_identifier' });
+
+              if (sessionErr) {
+                dbErrorOccurred = true;
+                console.error('[Human Takeover] Failed to upsert conversation_sessions:', sessionErr);
+              }
             }
 
             const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
@@ -766,14 +774,31 @@ export async function processEvolutionWebhookEvent(
               if (typeof uQ?.or === 'function') {
                 uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantUuid}`);
               }
+              let convErr: any = null;
               if (typeof uQ?.in === 'function') {
-                await uQ.in('customer_phone', phoneVariants);
+                const res = await uQ.in('customer_phone', phoneVariants);
+                convErr = res?.error;
               } else if (typeof uQ?.eq === 'function') {
-                await uQ.eq('customer_phone', senderPhone);
+                const res = await uQ.eq('customer_phone', senderPhone);
+                convErr = res?.error;
+              }
+
+              if (convErr) {
+                dbErrorOccurred = true;
+                console.error('[Human Takeover] Failed to update conversations table:', convErr);
               }
             }
+          } catch (dbEx) {
+            dbErrorOccurred = true;
+            console.error('[Human Takeover] Unexpected database exception during handover mutation:', dbEx);
+          }
 
-            // Database is Single Source of Truth: update cache ONLY AFTER db write confirms
+          if (dbErrorOccurred) {
+            // Rollback/clear cache if state is potentially dirty, and DO NOT set cache!
+            clearRuntimeSessionCache(tenantUuid, senderPhone);
+            console.error(`[Human Takeover] Database mutation failed for tenant ${tenantId}, sender ${senderPhone}. Cache NOT updated.`);
+          } else {
+            // Database is Single Source of Truth: update cache ONLY AND ONLY if entire DB write succeeded without error
             setRuntimeSessionCache({
               tenantId: tenantUuid,
               userIdentifier: senderPhone,
@@ -782,8 +807,10 @@ export async function processEvolutionWebhookEvent(
               pausedUntil: pausedUntilIso,
               pausedBy: 'cs_mobile_outbound',
             });
+          }
 
-            if (textBodyEarly) {
+          if (textBodyEarly) {
+            try {
               await persistOutboundMessage({
                 tenantId: tenantUuid,
                 tenantSlug: tenantSlug || tenantId,
@@ -793,9 +820,9 @@ export async function processEvolutionWebhookEvent(
                 messageBody: textBodyEarly,
                 externalId: key.id || undefined,
               });
+            } catch (pErr) {
+              console.warn('[Evolution Webhook] Error persisting outbound message:', pErr);
             }
-          } catch (hErr) {
-            console.warn('[Evolution Webhook] Mobile CS auto-pause error:', hErr);
           }
         }
         // Outbound message - don't increment processedCount (inbound counter)
@@ -1595,21 +1622,32 @@ export async function processEvolutionWebhookEvent(
                 updated_at: new Date().toISOString(),
               });
             let cQ = typeof cUpdate?.or === 'function' ? cUpdate.or(convOrClause) : cUpdate;
+            let cErr: any = null;
             if (typeof cQ?.in === 'function') {
-              await cQ.in('customer_phone', phoneVariants);
+              const res = await cQ.in('customer_phone', phoneVariants);
+              cErr = res?.error;
             } else if (typeof cQ?.eq === 'function') {
-              await cQ.eq('customer_phone', senderPhone);
+              const res = await cQ.eq('customer_phone', senderPhone);
+              cErr = res?.error;
             }
 
-            setRuntimeSessionCache({
-              tenantId,
-              userIdentifier: senderPhone,
-              isPaused: false,
-              botStatus: 'BOT_ACTIVE',
-              pausedUntil: null,
-              pausedBy: null,
-            });
-          } catch (_) {}
+            if (cErr) {
+              console.error('[Evolution Webhook] Error syncing conversations table on auto-resume:', cErr);
+              clearRuntimeSessionCache(tenantId, senderPhone);
+            } else {
+              setRuntimeSessionCache({
+                tenantId,
+                userIdentifier: senderPhone,
+                isPaused: false,
+                botStatus: 'BOT_ACTIVE',
+                pausedUntil: null,
+                pausedBy: null,
+              });
+            }
+          } catch (syncEx) {
+            console.error('[Evolution Webhook] Exception syncing conversations table on auto-resume:', syncEx);
+            clearRuntimeSessionCache(tenantId, senderPhone);
+          }
         }
 
         if (isSessionPaused || isConvPaused) {

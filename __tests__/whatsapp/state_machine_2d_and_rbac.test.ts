@@ -41,6 +41,7 @@ let mockConversations: Record<string, any> = {};
 let mockConnections: Record<string, any> = {};
 let mockOutboundMessages: any[] = [];
 let mockMessages: any[] = [];
+let mockDbError: Error | null = null;
 
 jest.mock('@/lib/supabaseClient', () => ({
   getSupabaseAdmin: jest.fn(() => ({
@@ -63,11 +64,13 @@ jest.mock('@/lib/supabaseClient', () => ({
           })),
           update: jest.fn((updateData: any) => ({
             or: jest.fn(async () => {
+              if (mockDbError) return { data: null, error: mockDbError };
               const t = Object.values(mockTenants)[0];
               if (t) Object.assign(t, updateData);
               return { data: updateData, error: null };
             }),
             eq: jest.fn(async (_f: string, val: string) => {
+              if (mockDbError) return { data: null, error: mockDbError };
               if (mockTenants[val]) Object.assign(mockTenants[val], updateData);
               return { data: updateData, error: null };
             }),
@@ -101,17 +104,20 @@ jest.mock('@/lib/supabaseClient', () => ({
             })),
           })),
           upsert: jest.fn(async (data: any) => {
+            if (mockDbError) return { data: null, error: mockDbError };
             const key = `${data.tenant_id}_${data.user_identifier}`;
             mockSessions[key] = { ...(mockSessions[key] || {}), ...data };
             return { data: mockSessions[key], error: null };
           }),
           update: jest.fn((data: any) => ({
             eq: jest.fn(async (_f: string, val: string) => {
+              if (mockDbError) return { data: null, error: mockDbError };
               const s = Object.values(mockSessions).find((item: any) => item.session_id === val);
               if (s) Object.assign(s, data);
               return { data, error: null };
             }),
             or: jest.fn(async () => {
+              if (mockDbError) return { data: null, error: mockDbError };
               Object.values(mockSessions).forEach((s: any) => Object.assign(s, data));
               return { data, error: null };
             }),
@@ -123,10 +129,19 @@ jest.mock('@/lib/supabaseClient', () => ({
         return {
           update: jest.fn((data: any) => ({
             or: jest.fn(() => ({
-              eq: jest.fn(async () => ({ data, error: null })),
-              in: jest.fn(async () => ({ data, error: null })),
+              eq: jest.fn(async () => {
+                if (mockDbError) return { data: null, error: mockDbError };
+                return { data, error: null };
+              }),
+              in: jest.fn(async () => {
+                if (mockDbError) return { data: null, error: mockDbError };
+                return { data, error: null };
+              }),
             })),
-            eq: jest.fn(async () => ({ data, error: null })),
+            eq: jest.fn(async () => {
+              if (mockDbError) return { data: null, error: mockDbError };
+              return { data, error: null };
+            }),
           })),
         };
       }
@@ -226,6 +241,7 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
     mockConnections = {};
     mockOutboundMessages = [];
     mockMessages = [];
+    mockDbError = null;
     jest.clearAllMocks();
   });
 
@@ -392,6 +408,51 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
       expect(resumeRes.success).toBe(true);
       expect(resumeRes.status).toBe('AI_ACTIVE');
       expect(resumeRes.bot_paused).toBe(false);
+    });
+
+    it('STRICT FAIL-CLOSED: rejects execution immediately when role is undefined, null, or empty string', async () => {
+      // 1. undefined role
+      const undefRes = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'tenant',
+        tenantId,
+        userRole: undefined,
+      });
+      expect(undefRes.success).toBe(false);
+      expect(undefRes.error).toBe('UNAUTHORIZED');
+
+      // 2. empty string role
+      const emptyRes = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'conversation',
+        tenantId,
+        customerPhone,
+        userRole: '',
+      });
+      expect(emptyRes.success).toBe(false);
+      expect(emptyRes.error).toBe('UNAUTHORIZED');
+
+      // 3. Unresolvable senderPhone without role
+      const unresolvableRes = await executeBotControl({
+        action: 'RESUME',
+        scope: 'tenant',
+        tenantId,
+        senderPhone: '628999999999', // Unknown phone not in tenant record or tenant_users
+      });
+      expect(unresolvableRes.success).toBe(false);
+      expect(unresolvableRes.error).toBe('UNAUTHORIZED');
+    });
+
+    it('STRICT FAIL-CLOSED: rejects arbitrary label merchant_cookie if not from dashboard_toggle session', async () => {
+      const arbitraryRes = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'tenant',
+        tenantId,
+        userRole: 'merchant_cookie',
+        source: 'untrusted_direct_call',
+      });
+      expect(arbitraryRes.success).toBe(false);
+      expect(arbitraryRes.error).toBe('FORBIDDEN_INVALID_SESSION');
     });
   });
 
@@ -671,6 +732,70 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
       expect(cached).not.toBeNull();
       expect(cached?.isPaused).toBe(true);
       expect(cached?.botStatus).toBe('BOT_DISABLED');
+    });
+
+    it('Mobile CS takeover does NOT update runtime cache if database returns { error: new Error("DB write failed") }', async () => {
+      const takeTenant = 'tenant-takeover-fail';
+      const targetPhone = '628777888999';
+      mockConnections['instance-takeover-fail'] = {
+        tenant_id: takeTenant,
+        tenant_slug: takeTenant,
+        instance_name: 'instance-takeover-fail',
+        phone_number: '628111111111',
+        status: 'CONNECTED',
+      };
+      mockTenants[takeTenant] = {
+        id: takeTenant,
+        slug: takeTenant,
+        phone: '628111111111',
+        bot_paused: false,
+        is_bot_active: true,
+      };
+
+      // Clear cache first
+      clearRuntimeSessionCache(takeTenant, targetPhone);
+      mockDbError = new Error('DB write failed');
+
+      const webhookPayload = {
+        event: 'messages.upsert',
+        instance: 'instance-takeover-fail',
+        owner: '628111111111',
+        data: {
+          key: {
+            remoteJid: `${targetPhone}@s.whatsapp.net`,
+            fromMe: true,
+            id: 'MSG_CS_FAIL_1',
+          },
+          message: {
+            conversation: 'Halo kak ini CS mau info stok ada',
+          },
+        },
+      };
+
+      await processEvolutionWebhookEvent(webhookPayload, 'instance-takeover-fail');
+
+      // Crucial: Cache MUST NOT be updated to HUMAN_HANDOVER when DB write failed!
+      const cached = getRuntimeSessionCache(takeTenant, targetPhone);
+      expect(cached).toBeNull();
+    });
+
+    it('executeBotControl does NOT update runtime cache if conversation_sessions mutation fails with error', async () => {
+      clearRuntimeSessionCache('tenant-cache-fail', '628123456789');
+      mockDbError = new Error('DB write failed');
+
+      const result = await executeBotControl({
+        action: 'PAUSE',
+        scope: 'conversation',
+        tenantId: 'tenant-cache-fail',
+        customerPhone: '628123456789',
+        userRole: 'cs',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('DB write failed');
+
+      const cached = getRuntimeSessionCache('tenant-cache-fail', '628123456789');
+      expect(cached).toBeNull();
     });
   });
 

@@ -383,7 +383,7 @@ export async function executeBotControl(params: {
   const isTenantScope = rawScope === 'TENANT' || rawScope === 'tenant';
   const scope: 'tenant' | 'conversation' = isTenantScope ? 'tenant' : 'conversation';
 
-  // 2. RBAC Enforcement
+  // 2. Strict Fail-Closed RBAC Enforcement
   let role = (params.userRole || '').toLowerCase().trim();
   if (!role && params.senderPhone) {
     const authRes = await resolveBotControllerRole({
@@ -397,31 +397,57 @@ export async function executeBotControl(params: {
     }
   }
 
-  if (role) {
-    if (scope === 'tenant') {
-      const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
-      if (!allowedTenantRoles.includes(role)) {
-        return {
-          success: false,
-          bot_paused: false,
-          scope: 'tenant',
-          status: 'BOT_DISABLED',
-          message: 'Akses ditolak: Hanya role Owner atau Admin yang diizinkan mengubah status bot tingkat tenant (Tenant-level).',
-          error: 'FORBIDDEN_TENANT_ROLE',
-        };
-      }
-    } else {
-      const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
-      if (!allowedConvRoles.includes(role)) {
-        return {
-          success: false,
-          bot_paused: false,
-          scope: 'conversation',
-          status: 'HUMAN_HANDOVER',
-          message: 'Akses ditolak: Role Anda tidak memiliki izin untuk mengontrol sesi percakapan.',
-          error: 'FORBIDDEN_CONVERSATION_ROLE',
-        };
-      }
+  // STRICT FAIL-CLOSED: Jika userRole tidak disediakan DAN senderPhone tidak dapat diresolusi menjadi role yang sah,
+  // JANGAN lanjutkan eksekusi ke database. Segera tolak dengan status 'UNAUTHORIZED'.
+  if (!role || role === 'none') {
+    return {
+      success: false,
+      bot_paused: false,
+      scope,
+      status: scope === 'tenant' ? 'BOT_DISABLED' : 'HUMAN_HANDOVER',
+      message: 'Akses ditolak: Identitas pengguna / role tidak terverifikasi (UNAUTHORIZED).',
+      error: 'UNAUTHORIZED',
+    };
+  }
+
+  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi (dashboard_toggle)
+  if (role === 'merchant_cookie') {
+    if (source !== 'dashboard_toggle') {
+      return {
+        success: false,
+        bot_paused: false,
+        scope,
+        status: scope === 'tenant' ? 'BOT_DISABLED' : 'HUMAN_HANDOVER',
+        message: 'Akses ditolak: Label arbitrer merchant_cookie tidak valid di luar sesi dashboard resmi.',
+        error: 'FORBIDDEN_INVALID_SESSION',
+      };
+    }
+  }
+
+  // Validasi RBAC berdasarkan scope yang diminta
+  if (scope === 'tenant') {
+    const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
+    if (!allowedTenantRoles.includes(role)) {
+      return {
+        success: false,
+        bot_paused: false,
+        scope: 'tenant',
+        status: 'BOT_DISABLED',
+        message: 'Akses ditolak: Hanya role Owner atau Admin yang diizinkan mengubah status bot tingkat tenant (Tenant-level).',
+        error: 'FORBIDDEN_TENANT_ROLE',
+      };
+    }
+  } else {
+    const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
+    if (!allowedConvRoles.includes(role)) {
+      return {
+        success: false,
+        bot_paused: false,
+        scope: 'conversation',
+        status: 'HUMAN_HANDOVER',
+        message: 'Akses ditolak: Role Anda tidak memiliki izin untuk mengontrol sesi percakapan.',
+        error: 'FORBIDDEN_CONVERSATION_ROLE',
+      };
     }
   }
 
