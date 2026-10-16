@@ -730,5 +730,131 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
         expect(cachedBySlug?.isPaused).toBe(false);
       });
     });
+
+    describe('Masalah D: Dashboard Toggle Source Whitelisting & Response Harmonization', () => {
+      it('allows dashboard_master_toggle and chat_detail_toggle for merchant_cookie role without 403 rejection', async () => {
+        const mockSupabase: any = {
+          from: jest.fn(() => ({
+            select: jest.fn(() => ({
+              or: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => ({ data: { id: 'tenant-dash-1', slug: 'dash-store' }, error: null })),
+              })),
+            })),
+          })),
+          rpc: jest.fn().mockResolvedValue({
+            data: { success: true, scope: 'tenant', status: 'BOT_DISABLED', bot_paused: true },
+            error: null,
+          }),
+        };
+
+        // 1. Test dashboard_master_toggle
+        const masterRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'tenant',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          userRole: 'merchant_cookie',
+          source: 'dashboard_master_toggle',
+          supabase: mockSupabase,
+        });
+
+        expect(masterRes.success).toBe(true);
+        expect(masterRes.bot_paused).toBe(true);
+        expect(masterRes.status).toBe('BOT_DISABLED');
+
+        // 2. Test chat_detail_toggle
+        const chatDetailRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'conversation',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          customerPhone: '628111222333',
+          userRole: 'merchant_cookie',
+          source: 'chat_detail_toggle',
+          supabase: mockSupabase,
+        });
+
+        expect(chatDetailRes.success).toBe(true);
+        expect(chatDetailRes.bot_paused).toBe(true);
+        expect(chatDetailRes.status).toBe('HUMAN_HANDOVER');
+
+        // 3. Test untrusted source is still rejected with fail-closed FORBIDDEN_INVALID_SESSION
+        const rejectedRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'tenant',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          userRole: 'merchant_cookie',
+          source: 'arbitrary_external_attacker',
+          supabase: mockSupabase,
+        });
+
+        expect(rejectedRes.success).toBe(false);
+        expect(rejectedRes.error).toBe('FORBIDDEN_INVALID_SESSION');
+      });
+    });
+
+    describe('Masalah E: True Atomicity on Human Takeover / CS Reply (fromMe = true)', () => {
+      it('human CS reply executes atomic takeover, marks status HUMAN_HANDOVER, and updates contact cache', async () => {
+        const tenantId = 'tenant-human-e';
+        const customerPhone = '628199988877';
+        let rpcCalledWith: any = null;
+
+        const mockSupabase: any = {
+          from: jest.fn(() => ({
+            select: jest.fn(() => ({
+              or: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => ({ data: { id: tenantId, slug: 'human-shop' }, error: null })),
+              })),
+            })),
+          })),
+          rpc: jest.fn(async (fnName: string, args: any) => {
+            if (fnName === 'fn_toggle_bot_session_state') {
+              rpcCalledWith = args;
+              return {
+                data: {
+                  success: true,
+                  scope: 'conversation',
+                  status: 'HUMAN_HANDOVER',
+                  bot_paused: true,
+                  customer_phone: customerPhone,
+                },
+                error: null,
+              };
+            }
+            return { data: null, error: null };
+          }),
+        };
+
+        const res = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'conversation',
+          tenantId,
+          tenantSlug: 'human-shop',
+          customerPhone,
+          userRole: 'cs',
+          source: 'cs_mobile_outbound',
+          supabase: mockSupabase,
+        });
+
+        expect(res.success).toBe(true);
+        expect(res.status).toBe('HUMAN_HANDOVER');
+        expect(res.bot_paused).toBe(true);
+
+        // Verify atomic RPC parameters
+        expect(rpcCalledWith).toBeDefined();
+        expect(rpcCalledWith.p_scope).toBe('conversation');
+        expect(rpcCalledWith.p_action).toBe('PAUSE');
+        expect(rpcCalledWith.p_is_paused).toBe(true);
+        expect(rpcCalledWith.p_customer_phone).toBe(customerPhone);
+        expect(rpcCalledWith.p_source).toBe('cs_mobile_outbound');
+
+        // Verify cache was immediately set to paused to prevent bot overlapping CS reply
+        const cached = getRuntimeSessionCache(tenantId, customerPhone);
+        expect(cached).not.toBeNull();
+        expect(cached?.isPaused).toBe(true);
+        expect(cached?.botStatus).toBe('HUMAN_HANDOVER');
+      });
+    });
   });
 });

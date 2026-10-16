@@ -420,9 +420,16 @@ export async function executeBotControl(params: {
     };
   }
 
-  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi (dashboard_toggle)
+  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi
   if (role === 'merchant_cookie') {
-    if (source !== 'dashboard_toggle') {
+    const allowedMerchantSources = [
+      'dashboard_toggle',
+      'dashboard_master_toggle',
+      'chat_detail_toggle',
+      'cs_dashboard_toggle',
+      'cs_chat_toggle',
+    ];
+    if (!allowedMerchantSources.includes(source)) {
       return {
         success: false,
         bot_paused: false,
@@ -808,7 +815,10 @@ export async function executeBotControl(params: {
         if (typeof updateChain?.or === 'function') {
           updateChain = updateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_slug.eq.${resolvedTenantSlug}`);
         }
-        if (typeof updateChain?.eq === 'function') {
+        const phoneVariants = Array.from(new Set([targetPhone, cleanCustomerPhone(params.customerPhone || ''), cleanCustomerPhone(params.senderPhone || ''), params.customerPhone, params.senderPhone].filter(Boolean))) as string[];
+        if (typeof updateChain?.in === 'function') {
+          updateChain = updateChain.in('customer_phone', phoneVariants);
+        } else if (typeof updateChain?.eq === 'function') {
           updateChain = updateChain.eq('customer_phone', targetPhone);
         }
       } else {
