@@ -36,17 +36,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!reference_no || !String(reference_no).trim()) {
-      return NextResponse.json(
-        { success: false, message: 'Nomor referensi / nomor SPK / invoice wajib diisi.' },
-        { status: 400 }
-      );
+    // Auto-generate reference number formatted as INV/BT/YYYY/MM/XXXX if not provided
+    let cleanRefNo = reference_no ? String(reference_no).trim() : '';
+    if (!cleanRefNo) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const randomSeq = Math.floor(1000 + Math.random() * 9000);
+      cleanRefNo = `INV/BT/${year}/${month}/${randomSeq}`;
     }
 
     const channel = payment_channel === 'CASH' ? 'CASH' : 'MANUAL_TRANSFER';
     const validCategories = ['SAAS_SUBSCRIPTION', 'B2B_CUSTOM_APP', 'SPECIAL_CASE'];
     const cat = validCategories.includes(category) ? category : 'SAAS_SUBSCRIPTION';
-    const cleanRefNo = String(reference_no).trim();
     const cleanNotes = notes ? String(notes).trim() : '';
 
     const supabase = getSupabaseAdmin();
@@ -121,6 +123,70 @@ export async function POST(req: NextRequest) {
       console.warn('[Offline Transaction] Warning recording ledger audit:', ledgerErr);
     }
 
+    // 4b. Sinkronisasi Pembukuan Ganda (Double-Entry) ke general_ledger: Kas BCA vs Pendapatan B2B
+    try {
+      const debitAccountCode = channel === 'CASH' ? '1001-KAS-TUNAI' : '1002-KAS-BCA';
+      const debitAccountName =
+        channel === 'CASH' ? 'Kas Tunai' : 'Kas Bank BCA (PT Boontrack Inovasi Digital)';
+
+      const creditAccountCode =
+        cat === 'SAAS_SUBSCRIPTION'
+          ? '4001-PENDAPATAN-SAAS'
+          : cat === 'B2B_CUSTOM_APP'
+          ? '4002-PENDAPATAN-B2B'
+          : '4003-PENDAPATAN-LAYANAN-KHUSUS';
+
+      const creditAccountName =
+        cat === 'SAAS_SUBSCRIPTION'
+          ? 'Pendapatan Langganan SaaS (BoonTrack)'
+          : cat === 'B2B_CUSTOM_APP'
+          ? 'Pendapatan Kontrak B2B / Custom App'
+          : 'Pendapatan Layanan Khusus / Pilot';
+
+      await supabase.from('general_ledger').insert([
+        {
+          tenant_id: tenant.id,
+          tenant_slug: tenant.slug,
+          transaction_id: transaction.id,
+          reference_no: cleanRefNo,
+          account_code: debitAccountCode,
+          account_name: debitAccountName,
+          entry_type: 'DEBIT',
+          debit: numericAmount,
+          credit: 0,
+          currency: 'IDR',
+          description: `[Kas Masuk] Penerimaan ${channel === 'CASH' ? 'Tunai' : 'Transfer BCA'} - ${cleanRefNo} - ${tenant.name}`,
+          source: 'OFFLINE_PAYMENT',
+          metadata: {
+            category: cat,
+            payment_channel: channel,
+            notes: cleanNotes || null,
+          },
+        },
+        {
+          tenant_id: tenant.id,
+          tenant_slug: tenant.slug,
+          transaction_id: transaction.id,
+          reference_no: cleanRefNo,
+          account_code: creditAccountCode,
+          account_name: creditAccountName,
+          entry_type: 'CREDIT',
+          debit: 0,
+          credit: numericAmount,
+          currency: 'IDR',
+          description: `[Pengakuan Pendapatan] ${creditAccountName} - ${cleanRefNo} - ${tenant.name}`,
+          source: 'OFFLINE_PAYMENT',
+          metadata: {
+            category: cat,
+            payment_channel: channel,
+            notes: cleanNotes || null,
+          },
+        },
+      ]);
+    } catch (glErr) {
+      console.warn('[Offline Transaction] Warning recording general_ledger double entry:', glErr);
+    }
+
     // 5. Jika kategori SAAS_SUBSCRIPTION, sinkronkan juga ke shop_subscriptions jika ada
     try {
       if (cat === 'SAAS_SUBSCRIPTION') {
@@ -172,7 +238,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Pembayaran offline Rp ${numericAmount.toLocaleString('id-ID')} untuk ${tenant.name} berhasil dicatat (SETTLED).`,
-      data: transaction,
+      data: {
+        ...transaction,
+        invoice_payload: {
+          client_name: tenant.name,
+          client_slug: tenant.slug,
+          amount: numericAmount,
+          payment_method: channel,
+          invoice_no: cleanRefNo,
+          notes: cleanNotes,
+          category: cat,
+          status: 'PAID',
+        },
+      },
     });
   } catch (err: any) {
     console.error('[Offline Transaction API] Unhandled error:', err);

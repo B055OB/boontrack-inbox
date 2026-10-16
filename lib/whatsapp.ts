@@ -26,16 +26,17 @@ export interface WhatsAppSendResult {
 /**
  * Normalisasi nomor WhatsApp ke standar format internasional (misal: 62812xxxx)
  */
-export function normalizeWhatsAppNumber(rawNumber?: string | null): string {
-  if (!rawNumber) return '';
-  let clean = String(rawNumber).replace(/[^0-9]/g, '');
-  if (clean.startsWith('0')) {
-    clean = '62' + clean.slice(1);
-  } else if (clean.startsWith('8')) {
-    clean = '62' + clean;
-  }
-  return clean;
-}
+export {
+  normalizeWhatsAppNumber,
+  extractActivationCode,
+  findTenantByActivationCode,
+  processStoreActivation,
+} from './whatsapp/activation';
+export type {
+  ActivationCodeExtraction,
+  ActivationResult,
+} from './whatsapp/activation';
+import { normalizeWhatsAppNumber } from './whatsapp/activation';
 
 /**
  * Mendapatkan nomor WhatsApp resmi BoonTrack WABA dari konfigurasi lingkungan

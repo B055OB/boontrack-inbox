@@ -19,6 +19,7 @@ import { ConversationEngine } from '@/lib/conversationEngine';
 import { metaWabaAdapter } from '@/services/waba';
 import { resolveTenantWabaCredential } from '@/lib/whatsapp/credential-resolver';
 import { sendWhatsAppSessionMessage } from '@/lib/whatsapp';
+import { extractActivationCode, processStoreActivation } from '@/lib/whatsapp/activation';
 import {
   isManualOrderMessage,
   getOrderConfirmationReply,
@@ -673,51 +674,18 @@ export async function processNormalizedMetaEvent(
       continue;
     }
 
-    // 2. Deteksi pola aktivasi platform (AKTIVASI BT-XXXX)
-    const activationMatch = textContent.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
-    if (activationMatch) {
-      const token = activationMatch[1].toUpperCase().trim();
-      try {
-        const tenantQuery = supabase.from('tenants');
-        if (tenantQuery && typeof (tenantQuery as any).select === 'function') {
-          const { data: tenant } = await (tenantQuery as any)
-            .select('id, slug, name, status, tier, trial_ends_at, metadata')
-            .eq('metadata->>wa_verification_token', token)
-            .maybeSingle();
+    // 2. Deteksi pola aktivasi platform (AKTIVASI BT-XXXX atau BT-XXXX)
+    const activation = extractActivationCode(textContent);
+    if (activation) {
+      const activationRes = await processStoreActivation({
+        codeOrText: textContent,
+        senderPhone,
+        customSupabase: supabase,
+      });
 
-          if (tenant) {
-            const currentMeta = tenant.metadata && typeof tenant.metadata === 'object' ? tenant.metadata : {};
-            const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-            const verifiedAt = new Date().toISOString();
-
-            await (tenantQuery as any)
-              .update({
-                status: 'active',
-                is_active: true,
-                trial_ends_at: trialEndsAt,
-                metadata: {
-                  ...currentMeta,
-                  wa_verification_status: 'verified',
-                  wa_verified_at: verifiedAt,
-                  wa_verified_phone: senderPhone,
-                  phone: senderPhone,
-                  whatsapp_number: senderPhone,
-                },
-                updated_at: verifiedAt,
-              })
-              .eq('id', tenant.id);
-
-            await sendWhatsAppSessionMessage(
-              senderPhone,
-              'Selamat! Nomor WhatsApp Anda berhasil diverifikasi. Akun toko Anda sudah aktif. Silakan kembali ke browser untuk mulai menggunakan BoonTrack.'
-            );
-            processedMessages++;
-            continue;
-          }
-        }
-      } catch {
-        // Fallback
-      }
+      await sendWhatsAppSessionMessage(senderPhone, activationRes.replyMessage);
+      processedMessages++;
+      continue;
     }
 
     // 3. Ingest into internal conversations & messages schema (BoonTrack Inbox Console)

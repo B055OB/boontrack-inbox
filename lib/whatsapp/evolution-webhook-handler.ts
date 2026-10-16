@@ -13,6 +13,7 @@ import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-format
  */
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { normalizeWhatsAppNumber, extractActivationCode, processStoreActivation } from '@/lib/whatsapp/activation';
 import { processMultimodalChat } from '@/lib/ai/multimodal-chat';
 import {
   isManualOrderMessage,
@@ -44,9 +45,11 @@ import { enqueueOutboxMessage } from '@/lib/outbox/enqueue';
 import {
   parseBotControlCommand,
   isAuthorizedBotController,
+  resolveBotControllerRole,
   executeBotControl,
   checkRuntimeBotDecisionGate,
   setRuntimeSessionCache,
+  clearRuntimeSessionCache,
 } from '@/lib/whatsapp/bot-control-service';
 import {
   AUTO_REJECT_CALL_MESSAGE,
@@ -561,7 +564,7 @@ export async function processEvolutionWebhookEvent(
     if (rawFrom === 'status@broadcast' || rawFrom.endsWith('@broadcast')) continue;
 
     const isGroup = rawFrom.includes('@g.us');
-    let senderPhone = rawFrom.split('@')[0].replace(/\D/g, '');
+    let senderPhone = normalizeWhatsAppNumber(rawFrom);
     if (isGroup) {
       const partJid = String(
         key.participantAlt ||
@@ -570,7 +573,7 @@ export async function processEvolutionWebhookEvent(
         item.participant ||
         ''
       );
-      const cleanPart = partJid.split('@')[0].replace(/\D/g, '');
+      const cleanPart = normalizeWhatsAppNumber(partJid);
       if (cleanPart) {
         senderPhone = cleanPart;
       }
@@ -649,37 +652,49 @@ export async function processEvolutionWebhookEvent(
         // Step 2: Not an echo! Now evaluate whether admin/operator typed a bot control command from WhatsApp Web / bot device:
         const controlCmd = parseBotControlCommand(textBodyEarly);
         if (controlCmd) {
-          // RBAC Gatekeeper: Pastikan isAuthorizedBotController() dijalankan sebelum executeBotControl()
+          // RBAC Gatekeeper: Pastikan validasi pengirim tidak mengizinkan role leak dari level percakapan ke tenant.
+          // Pada event fromMe = true, remoteJid (senderPhone) adalah nomor kontak pembeli.
+          // Pengirim sesungguhnya di perangkat adalah botPhoneNumber atau participantPhone (jika dalam group).
           const participantPhone = key.participant ? toCanonicalPhone(key.participant) : undefined;
-          const candidateControllers = Array.from(new Set([botPhoneNumber, participantPhone, senderPhone].filter(Boolean))) as string[];
+          const candidateControllers = Array.from(new Set([botPhoneNumber, participantPhone].filter(Boolean))) as string[];
 
-          let isAuthorized = false;
+          let resolvedAuth = {
+            authorized: false,
+            role: 'none',
+            canControlTenant: false,
+            canControlContact: false,
+          };
           let authorizedPhone = '';
+
           for (const cand of candidateControllers) {
-            const ok = await isAuthorizedBotController({
+            const authRes = await resolveBotControllerRole({
               senderPhone: cand,
               tenantId,
               tenantSlug,
               supabase,
             });
-            if (ok) {
-              isAuthorized = true;
+            if (authRes.authorized) {
+              resolvedAuth = authRes;
               authorizedPhone = cand;
               break;
             }
           }
 
-          if (isAuthorized) {
-            console.info(`[Evolution Admin Override] Authorized Command ${controlCmd.action} (${controlCmd.scope}) fromMe on tenant ${tenantId} by ${authorizedPhone}`);
-            const targetScope = controlCmd.scope === 'TENANT' ? 'tenant' : 'conversation';
-            const targetCustomerPhone = controlCmd.scope === 'CONTACT' ? senderPhone : undefined;
+          const isTenantScope = controlCmd.scope === 'TENANT';
+          const isPermitted = isTenantScope ? resolvedAuth.canControlTenant : resolvedAuth.canControlContact;
+
+          if (isPermitted) {
+            console.info(`[Evolution Admin Override] Authorized Command ${controlCmd.action} (${controlCmd.scope}) fromMe on tenant ${tenantId} by ${authorizedPhone} (role: ${resolvedAuth.role})`);
+            const targetScope = isTenantScope ? 'tenant' : 'conversation';
+            const targetCustomerPhone = !isTenantScope ? senderPhone : undefined;
             const ctrlRes = await executeBotControl({
               action: controlCmd.action,
               scope: targetScope,
               tenantId,
               tenantSlug,
               customerPhone: targetCustomerPhone,
-              senderPhone: authorizedPhone || senderPhone,
+              senderPhone: authorizedPhone,
+              userRole: resolvedAuth.role,
               source: 'admin_from_me',
               supabase,
             });
@@ -689,8 +704,17 @@ export async function processEvolutionWebhookEvent(
             continue; // Halt turn: prevent control command from reaching LLM context!
           } else {
             console.warn(
-              `[Evolution Admin Override] Unauthorized fromMe bot control attempt (${controlCmd.action} / ${controlCmd.scope}) on tenant ${tenantId}. Candidate phones: ${candidateControllers.join(', ')}`
+              `[Evolution Admin Override] Forbidden fromMe bot control attempt (${controlCmd.action} / ${controlCmd.scope}) on tenant ${tenantId}. Candidate phones: ${candidateControllers.join(', ')}, role: ${resolvedAuth.role}`
             );
+            if (resolvedAuth.authorized && isTenantScope && !resolvedAuth.canControlTenant) {
+              await sendEvolutionTextMessage(
+                instanceName,
+                senderPhone,
+                '⚠️ *[AKSES DITOLAK]* Perintah #on / #off tingkat toko (TENANT) hanya dapat dieksekusi oleh Owner atau Admin.',
+                resolvedApiKey,
+                tenantId
+              );
+            }
             // DO NOT forward to LLM
             continue;
           }
@@ -699,19 +723,21 @@ export async function processEvolutionWebhookEvent(
         // Step 3: Not an echo, and not a bot control command -> Real Human CS Mobile Outbound Message Takeover!
         const nowIso = new Date().toISOString();
         const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-        console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_PAUSED (24h sliding window).`);
+        console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_HANDOVER (24h sliding window).`);
         if (supabase) {
+          const tenantUuid = tenantRecordForHardening?.id || tenantId;
+          let dbErrorOccurred = false;
+
           try {
-            const tenantUuid = tenantRecordForHardening?.id || tenantId;
             const csTable = supabase.from('conversation_sessions');
             if (typeof csTable?.upsert === 'function') {
-              await csTable.upsert({
+              const { error: sessionErr } = await csTable.upsert({
                 tenant_id: tenantUuid,
                 session_id: `wa_${tenantUuid}_${senderPhone}`,
                 channel: 'WHATSAPP',
                 user_identifier: senderPhone,
                 current_state: 'HUMAN_PAUSED',
-                bot_status: 'HUMAN_PAUSED',
+                bot_status: 'HUMAN_HANDOVER',
                 is_paused: true,
                 paused_at: nowIso,
                 paused_by: 'cs_mobile_outbound',
@@ -724,6 +750,11 @@ export async function processEvolutionWebhookEvent(
                 },
                 updated_at: nowIso,
               }, { onConflict: 'tenant_id,user_identifier' });
+
+              if (sessionErr) {
+                dbErrorOccurred = true;
+                console.error('[Human Takeover] Failed to upsert conversation_sessions:', sessionErr);
+              }
             }
 
             const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
@@ -743,23 +774,43 @@ export async function processEvolutionWebhookEvent(
               if (typeof uQ?.or === 'function') {
                 uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantUuid}`);
               }
+              let convErr: any = null;
               if (typeof uQ?.in === 'function') {
-                await uQ.in('customer_phone', phoneVariants);
+                const res = await uQ.in('customer_phone', phoneVariants);
+                convErr = res?.error;
               } else if (typeof uQ?.eq === 'function') {
-                await uQ.eq('customer_phone', senderPhone);
+                const res = await uQ.eq('customer_phone', senderPhone);
+                convErr = res?.error;
+              }
+
+              if (convErr) {
+                dbErrorOccurred = true;
+                console.error('[Human Takeover] Failed to update conversations table:', convErr);
               }
             }
+          } catch (dbEx) {
+            dbErrorOccurred = true;
+            console.error('[Human Takeover] Unexpected database exception during handover mutation:', dbEx);
+          }
 
+          if (dbErrorOccurred) {
+            // Rollback/clear cache if state is potentially dirty, and DO NOT set cache!
+            clearRuntimeSessionCache(tenantUuid, senderPhone);
+            console.error(`[Human Takeover] Database mutation failed for tenant ${tenantId}, sender ${senderPhone}. Cache NOT updated.`);
+          } else {
+            // Database is Single Source of Truth: update cache ONLY AND ONLY if entire DB write succeeded without error
             setRuntimeSessionCache({
               tenantId: tenantUuid,
               userIdentifier: senderPhone,
               isPaused: true,
-              botStatus: 'HUMAN_PAUSED',
+              botStatus: 'HUMAN_HANDOVER',
               pausedUntil: pausedUntilIso,
               pausedBy: 'cs_mobile_outbound',
             });
+          }
 
-            if (textBodyEarly) {
+          if (textBodyEarly) {
+            try {
               await persistOutboundMessage({
                 tenantId: tenantUuid,
                 tenantSlug: tenantSlug || tenantId,
@@ -769,9 +820,9 @@ export async function processEvolutionWebhookEvent(
                 messageBody: textBodyEarly,
                 externalId: key.id || undefined,
               });
+            } catch (pErr) {
+              console.warn('[Evolution Webhook] Error persisting outbound message:', pErr);
             }
-          } catch (hErr) {
-            console.warn('[Evolution Webhook] Mobile CS auto-pause error:', hErr);
           }
         }
         // Outbound message - don't increment processedCount (inbound counter)
@@ -787,17 +838,20 @@ export async function processEvolutionWebhookEvent(
     if (!isGroup && senderPhone) {
       const controlCmd = parseBotControlCommand(textBodyEarly);
       if (controlCmd) {
-        const isOwner = await isAuthorizedBotController({
+        const authRes = await resolveBotControllerRole({
           senderPhone,
           tenantId,
           tenantSlug,
           supabase,
         });
 
-        if (isOwner) {
-          console.info(`[Evolution Admin Ingress] Authorized Owner ${senderPhone} executed ${controlCmd.action} (${controlCmd.scope}) on tenant ${tenantId}`);
-          const targetScope = controlCmd.scope === 'TENANT' ? 'tenant' : 'conversation';
-          const targetCustomerPhone = controlCmd.scope === 'CONTACT' ? senderPhone : undefined;
+        const isTenantScope = controlCmd.scope === 'TENANT';
+        const isPermitted = isTenantScope ? authRes.canControlTenant : authRes.canControlContact;
+
+        if (isPermitted) {
+          console.info(`[Evolution Admin Ingress] Authorized Command ${controlCmd.action} (${controlCmd.scope}) by ${senderPhone} (role: ${authRes.role}) on tenant ${tenantId}`);
+          const targetScope = isTenantScope ? 'tenant' : 'conversation';
+          const targetCustomerPhone = !isTenantScope ? senderPhone : undefined;
           const ctrlRes = await executeBotControl({
             action: controlCmd.action,
             scope: targetScope,
@@ -805,6 +859,7 @@ export async function processEvolutionWebhookEvent(
             tenantSlug,
             customerPhone: targetCustomerPhone,
             senderPhone,
+            userRole: authRes.role,
             source: 'owner_inbound_chat',
             supabase,
           });
@@ -813,7 +868,16 @@ export async function processEvolutionWebhookEvent(
           processedCount++;
           continue; // Halt turn: prevent control command from reaching LLM context!
         } else {
-          console.warn(`[Evolution Admin Ingress] Unauthorized control command attempt by ${senderPhone}: ${textBodyEarly}`);
+          console.warn(`[Evolution Admin Ingress] Unauthorized/forbidden control command attempt by ${senderPhone} (role: ${authRes.role}): ${textBodyEarly}`);
+          if (authRes.authorized && isTenantScope && !authRes.canControlTenant) {
+            await sendEvolutionTextMessage(
+              instanceName,
+              senderPhone,
+              '⚠️ *[AKSES DITOLAK]* Perintah #on / #off tingkat toko (TENANT) hanya dapat dieksekusi oleh Owner atau Admin.',
+              resolvedApiKey,
+              tenantId
+            );
+          }
           // Crucial: Pastikan teks perintah kontrol tidak pernah diteruskan ke LLM sebagai percakapan!
           processedCount++;
           continue; // Drop / halt turn so command is NEVER passed to LLM!
@@ -1003,43 +1067,20 @@ export async function processEvolutionWebhookEvent(
 
     const textBody = caption.trim() || rawMsg.conversation || rawMsg.extendedTextMessage?.text || '';
 
-    // Cek Pola Aktivasi Akun Toko: "AKTIVASI BT-XXXX"
-    const activationMatch = textBody.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
-    if (activationMatch && supabase) {
-      const token = activationMatch[1].toUpperCase().trim();
-      const { data: actTenant } = await supabase
-        .from('tenants')
-        .select('id, slug, name, metadata')
-        .eq('metadata->>wa_verification_token', token)
-        .maybeSingle();
-
-      if (actTenant) {
-        const curMeta = actTenant.metadata || {};
-        const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        const verifiedAt = new Date().toISOString();
-
-        await supabase
-          .from('tenants')
-          .update({
-            status: 'active',
-            is_active: true,
-            trial_ends_at: trialEndsAt,
-            metadata: {
-              ...curMeta,
-              wa_verification_status: 'verified',
-              wa_verified_at: verifiedAt,
-              wa_verified_phone: senderPhone,
-              phone: senderPhone,
-              whatsapp_number: senderPhone,
-            },
-            updated_at: verifiedAt,
-          })
-          .eq('id', actTenant.id);
+    // Cek Pola Aktivasi Akun Toko: "AKTIVASI BT-XXXX" atau "BT-XXXX" (hanya jika bukan order manual)
+    if (!isManualOrderMessage(textBody)) {
+      const activation = extractActivationCode(textBody);
+      if (activation && supabase) {
+        const activationRes = await processStoreActivation({
+          codeOrText: textBody,
+          senderPhone,
+          customSupabase: supabase,
+        });
 
         await sendEvolutionTextMessage(
           instanceName,
           senderPhone,
-          'Selamat! Nomor WhatsApp Anda berhasil diverifikasi. Akun toko Anda sudah aktif. Silakan kembali ke browser untuk mulai menggunakan BoonTrack.',
+          activationRes.replyMessage,
           resolvedApiKey
         );
 
@@ -1581,21 +1622,32 @@ export async function processEvolutionWebhookEvent(
                 updated_at: new Date().toISOString(),
               });
             let cQ = typeof cUpdate?.or === 'function' ? cUpdate.or(convOrClause) : cUpdate;
+            let cErr: any = null;
             if (typeof cQ?.in === 'function') {
-              await cQ.in('customer_phone', phoneVariants);
+              const res = await cQ.in('customer_phone', phoneVariants);
+              cErr = res?.error;
             } else if (typeof cQ?.eq === 'function') {
-              await cQ.eq('customer_phone', senderPhone);
+              const res = await cQ.eq('customer_phone', senderPhone);
+              cErr = res?.error;
             }
 
-            setRuntimeSessionCache({
-              tenantId,
-              userIdentifier: senderPhone,
-              isPaused: false,
-              botStatus: 'BOT_ACTIVE',
-              pausedUntil: null,
-              pausedBy: null,
-            });
-          } catch (_) {}
+            if (cErr) {
+              console.error('[Evolution Webhook] Error syncing conversations table on auto-resume:', cErr);
+              clearRuntimeSessionCache(tenantId, senderPhone);
+            } else {
+              setRuntimeSessionCache({
+                tenantId,
+                userIdentifier: senderPhone,
+                isPaused: false,
+                botStatus: 'BOT_ACTIVE',
+                pausedUntil: null,
+                pausedBy: null,
+              });
+            }
+          } catch (syncEx) {
+            console.error('[Evolution Webhook] Exception syncing conversations table on auto-resume:', syncEx);
+            clearRuntimeSessionCache(tenantId, senderPhone);
+          }
         }
 
         if (isSessionPaused || isConvPaused) {

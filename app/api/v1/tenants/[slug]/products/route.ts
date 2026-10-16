@@ -154,9 +154,9 @@ export async function POST(
       sku: body.sku || `SKU-${finalSlug}`,
       is_active: body.is_active !== false,
       order_bumps: cleanOrderBumps,
-      single_page_config: body.single_page_config
+      single_page_config: (body?.single_page_config && typeof body.single_page_config === 'object')
         ? (() => {
-            const spc = { ...body.single_page_config, slug: finalSlug };
+            const spc = { ...(body.single_page_config ?? {}), slug: finalSlug };
             const isCustomHtml = Boolean(
               (spc.enable_custom_html || spc.is_custom_html_enabled || spc.use_custom_html) &&
               spc.custom_html?.trim()
@@ -365,9 +365,9 @@ export async function POST(
             fulfillment_metadata: {
               ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
               ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
-              ...(body.single_page_config ? { single_page_config: body.single_page_config } : {}),
-              ...(Array.isArray(body.facilities) ? { facilities: body.facilities } : {}),
-              ...(Array.isArray(body.features) ? { features: body.features } : {}),
+              ...(body?.single_page_config ? { single_page_config: body.single_page_config } : {}),
+              ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
+              ...(Array.isArray(body?.features) ? { features: body.features } : {}),
             },
           };
 

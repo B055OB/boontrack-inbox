@@ -148,9 +148,13 @@ export function useTenantDashboard() {
   const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>('growth');
   const [isUrlCheckoutLite, setIsUrlCheckoutLite] = useState(false);
 
+  const cleanSelectedPlan = String(selectedPlan || '').toLowerCase();
+  const cleanTierUpper = String(tenantFeatureFlags.tier || '').toUpperCase();
+  const cleanTierLower = cleanTierUpper.toLowerCase();
+
   const isCheckoutLite =
-    String(tenantFeatureFlags.tier || '').toUpperCase() === 'CHECKOUT_LITE' ||
-    selectedPlan.toLowerCase().includes('checkout') ||
+    cleanTierUpper === 'CHECKOUT_LITE' ||
+    cleanSelectedPlan.includes('checkout') ||
     isUrlCheckoutLite;
 
   // Team Scale — DB canonical: 'ENTERPRISE' (ARCHITECTURE.md ADR)
@@ -158,10 +162,10 @@ export function useTenantDashboard() {
   const isTeamScale =
     !isCheckoutLite &&
     (planTier === 'team_scale' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ENTERPRISE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'TEAM_SCALE' ||
-      selectedPlan.toLowerCase().includes('enterprise') ||
-      selectedPlan.toLowerCase().includes('team'));
+      cleanTierUpper === 'ENTERPRISE' ||
+      cleanTierUpper === 'TEAM_SCALE' ||
+      cleanSelectedPlan.includes('enterprise') ||
+      cleanSelectedPlan.includes('team'));
 
   // Ads Performance — DB canonical: 'PRO_SCALE' (ARCHITECTURE.md ADR)
   // Backward-compat aliases: 'ADS_PERFORMANCE', 'GROWTH_PLUS'
@@ -170,12 +174,12 @@ export function useTenantDashboard() {
     !isCheckoutLite &&
     (isTeamScale ||
       planTier === 'ads_performance' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'PRO_SCALE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ADS_PERFORMANCE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'GROWTH_PLUS' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase().includes('ADS') ||
-      selectedPlan.toLowerCase().includes('ads') ||
-      selectedPlan.toLowerCase().includes('performance'));
+      cleanTierUpper === 'PRO_SCALE' ||
+      cleanTierUpper === 'ADS_PERFORMANCE' ||
+      cleanTierUpper === 'GROWTH_PLUS' ||
+      cleanTierUpper.includes('ADS') ||
+      cleanSelectedPlan.includes('ads') ||
+      cleanSelectedPlan.includes('performance'));
 
   const isProScale = isAdsPerformance;
   const isGrowthPlus = isAdsPerformance;
@@ -190,9 +194,9 @@ export function useTenantDashboard() {
       tenantFeatureFlags.tier === 'STARTER' ||
       tenantFeatureFlags.tier === 'SOLO' ||
       tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
-      selectedPlan.toLowerCase().includes('solo') ||
-      selectedPlan.toLowerCase().includes('starter') ||
-      (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial') && !tenantFeatureFlags.tier.toLowerCase().includes('ads') && !selectedPlan.toLowerCase().includes('ads')) ||
+      cleanSelectedPlan.includes('solo') ||
+      cleanSelectedPlan.includes('starter') ||
+      (cleanTierLower.includes('trial') && !cleanTierLower.includes('ads') && !cleanSelectedPlan.includes('ads')) ||
       isGrowth)
   );
 
@@ -924,7 +928,7 @@ export function useTenantDashboard() {
 
             // Gabungkan dengan prioritas metadata (update terbaru merchant)
             const metaIds = new Set(mappedMeta.map((m: any) => String(m.id)));
-            const metaSlugs = new Set(mappedMeta.map((m: any) => String(m.slug).toLowerCase()));
+            const metaSlugs = new Set(mappedMeta.filter(Boolean).map((m: any) => String(m?.slug ?? '').toLowerCase()));
             const nonDuplicates = hydratedProducts.filter((hp: any) => !metaIds.has(String(hp.id)) && !metaSlugs.has(String(hp.slug).toLowerCase()));
             hydratedProducts = [...mappedMeta, ...nonDuplicates];
           }
@@ -1612,7 +1616,7 @@ export function useTenantDashboard() {
       }
     }
 
-    const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name)).toLowerCase();
+    const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name) || 'produk').toLowerCase();
     const cleanImage = sanitizeImageUrl(safeForm.image);
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
     const currentPt = (safeForm.product_type || defaultProductType || '').toUpperCase();
@@ -1654,11 +1658,11 @@ export function useTenantDashboard() {
         payment_methods: safeForm.metadata?.payment_methods,
         enable_cart: isCartEnabled,
       },
-      single_page_config: safeForm.single_page_config
+      single_page_config: (safeForm.single_page_config && typeof safeForm.single_page_config === 'object')
         ? {
           ...safeForm.single_page_config,
           slug: finalSlug,
-          banner_url: sanitizeImageUrl(safeForm.single_page_config.banner_url || cleanImage),
+          banner_url: sanitizeImageUrl(safeForm.single_page_config?.banner_url || cleanImage),
         }
         : undefined,
     });
@@ -1717,7 +1721,7 @@ export function useTenantDashboard() {
                 .eq('tenant_id', tenantRow.id);
 
               if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-                const knownSlugs = new Set(allKnownProducts.map(p => (p.slug || '').toLowerCase()));
+                const knownSlugs = new Set(allKnownProducts.filter(Boolean).map((p: any) => String(p?.slug ?? '').toLowerCase()));
                 const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
 
                 for (const sp of sqlProds) {
@@ -1959,14 +1963,14 @@ export function useTenantDashboard() {
     if (!prod) return;
     setActiveSinglePageProduct(prod);
     const prodSlug = prod.slug || slugify(prod.name || '');
-    const existingVoucher = prod.single_page_config?.voucher;
+    const existingVoucher = prod?.single_page_config?.voucher;
     const fulfillment = resolveFulfillmentRequirements(
       prod?.product_type || (prod?.category?.toLowerCase() === 'fisik' || prod?.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (prod?.category?.toLowerCase() === 'jasa' || prod?.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))
     );
     const isPhysical = fulfillment.requiresShipping;
 
     const defaultVoucher: VoucherConfig = existingVoucher || {
-      code: prod.single_page_config?.discount_coupon || (isPhysical ? 'FREESHIP' : 'HEMAT50'),
+      code: prod?.single_page_config?.discount_coupon || (isPhysical ? 'FREESHIP' : 'HEMAT50'),
       discount_type: 'nominal',
       discount_value: isPhysical ? 20000 : 50000,
       shipping_discount_type: isPhysical ? 'free' : 'none',
@@ -1974,7 +1978,7 @@ export function useTenantDashboard() {
       min_spend: 50000,
     };
 
-    const cfg = prod.single_page_config || prod.fulfillment_metadata?.single_page_config || (prod as any).metadata?.single_page_config;
+    const cfg = prod?.single_page_config || prod?.fulfillment_metadata?.single_page_config || (prod as any)?.metadata?.single_page_config;
 
     const isCustomHtmlActive = Boolean(
       (cfg?.enable_custom_html || (cfg as any)?.is_custom_html_enabled || (cfg as any)?.use_custom_html) &&
@@ -2073,7 +2077,7 @@ export function useTenantDashboard() {
 
     setIsSavingSinglePage(true);
     const cleanSpForm = sanitizeProductPayload(singlePageForm);
-    const prodSlug = cleanSpForm.slug?.trim() || slugify(activeSinglePageProduct.name);
+    const prodSlug = cleanSpForm?.slug?.trim() || slugify(activeSinglePageProduct?.name || 'produk');
 
     // Rule: Jika Section #10 (custom_html) aktif dan terisi kode
     const hasCustomHtmlContent = Boolean(cleanSpForm.custom_html && cleanSpForm.custom_html.trim().length > 0);
@@ -3097,3 +3101,4 @@ export function useTenantDashboard() {
     handleProcessWithdraw,
   };
 }
+

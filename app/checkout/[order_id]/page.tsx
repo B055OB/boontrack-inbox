@@ -489,23 +489,44 @@ export default function CheckoutPage({ params }: Props) {
   }, [order?.tenant_slug, order?.tenant_id, order?.product_id, order?.download_url, order?.fulfillment_metadata?.access_url]);
 
   // Request dynamic QRIS jika belum ada qr_code_url atau qr_string
-  const ensureDynamicQris = React.useCallback(async () => {
+  const ensureDynamicQris = React.useCallback(async (isRetry = false) => {
     if (!order || order.payment_method === 'manual_transfer') return;
     const hasValidQr = Boolean(order.qr_string || (order.qr_code_url && extractRawQrString(order.qr_code_url)));
-    if (hasValidQr) return;
-    if (isGeneratingQris) return;
+    if (hasValidQr && !isRetry) return;
+    if (isGeneratingQris && !isRetry) return;
 
     setIsGeneratingQris(true);
     setQrisError(null);
+
+    // Timeout 8 detik untuk mencegah infinite request pending
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 8000);
+
+    const handleQrisFallback = (errorMessage: string) => {
+      setQrisError(errorMessage);
+      const availableAccounts = bankAccounts.length > 0 ? bankAccounts : extractTenantBankAccounts(tenant || order);
+      // Jika toko memiliki rekening bank dan bukan retry eksplisit, otomatis alihkan ke Transfer Bank Manual
+      if (availableAccounts.length > 0 && !isRetry) {
+        setOrder((prev: any) => ({
+          ...prev,
+          payment_method: 'manual_transfer',
+        }));
+      }
+    };
 
     try {
       const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
       const res = await fetch('/api/v1/payments/qris/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           external_id: orderId,
+          order_id: orderId,
           amount: gross,
+          total_amount: gross,
           tenant_slug: order.tenant_slug || order.tenant_id || '',
           tenant_id: order.tenant_id || '',
           customer_phone: order.customer_phone,
@@ -516,6 +537,8 @@ export default function CheckoutPage({ params }: Props) {
           productTitle: order.product_title,
         })
       });
+
+      clearTimeout(timeoutId);
 
       const data = await res.json().catch(() => null);
 
@@ -532,20 +555,26 @@ export default function CheckoutPage({ params }: Props) {
           }));
           setQrisError(null);
         } else {
-          setQrisError('Response QRIS tidak memuat kode barcode yang valid.');
+          handleQrisFallback('Response gateway QRIS tidak memuat kode barcode yang valid.');
         }
       } else {
         const errMsg = data?.error || data?.message || `Gagal memuat barcode QRIS resmi (HTTP ${res.status})`;
         console.error('[Checkout Page] Dynamic QRIS error:', errMsg);
-        setQrisError(errMsg);
+        handleQrisFallback(errMsg);
       }
     } catch (qErr: any) {
+      clearTimeout(timeoutId);
       console.error('[Checkout Page] Dynamic QRIS fetch note:', qErr);
-      setQrisError(qErr?.message || 'Gagal menghubungi gateway QRIS resmi. Silakan coba lagi.');
+      const isTimeout = qErr?.name === 'AbortError' || String(qErr?.message || '').toLowerCase().includes('aborted');
+      const errMsg = isTimeout
+        ? 'Waktu penyiapan barcode QRIS habis (timeout 8 detik).'
+        : (qErr?.message || 'Gagal menghubungi gateway QRIS resmi. Silakan coba lagi.');
+      handleQrisFallback(errMsg);
     } finally {
+      clearTimeout(timeoutId);
       setIsGeneratingQris(false);
     }
-  }, [order, orderId, isGeneratingQris]);
+  }, [order, orderId, isGeneratingQris, bankAccounts, tenant]);
 
   useEffect(() => {
     if (order && !order.qr_code_url && !order.qr_string && order.payment_method !== 'manual_transfer') {
@@ -1279,6 +1308,17 @@ export default function CheckoutPage({ params }: Props) {
                         </button>
                       </div>
                     ))}
+                    {/* Tombol beralih kembali ke QRIS jika diinginkan pembeli */}
+                    <div className="pt-1.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setOrder((prev: any) => ({ ...prev, payment_method: 'qris' }))}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Beralih ke Pembayaran QRIS Instan</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   /* Kondisi Jika Merchant Belum Mengisi Rekening Bank: JANGAN tampilkan rekening mock platform */
@@ -1375,6 +1415,18 @@ export default function CheckoutPage({ params }: Props) {
                   )}
                 </button>
               </div>
+              {bankAccounts.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100 w-full text-center">
+                  <button
+                    type="button"
+                    onClick={() => setOrder((prev: any) => ({ ...prev, payment_method: 'manual_transfer' }))}
+                    className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Ingin bayar via transfer bank? Beralih ke Transfer Bank Manual</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : candidateQrImageUrl ? (
             /* Gambar QRIS Toko Resmi (Fallback dari Upload Dashboard) */
@@ -1415,6 +1467,18 @@ export default function CheckoutPage({ params }: Props) {
                   )}
                 </button>
               </div>
+              {bankAccounts.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100 w-full text-center">
+                  <button
+                    type="button"
+                    onClick={() => setOrder((prev: any) => ({ ...prev, payment_method: 'manual_transfer' }))}
+                    className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Ingin bayar via transfer bank? Beralih ke Transfer Bank Manual</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             /* Fallback Platform QRIS Resmi BoonTrack (Jika QRIS Toko Belum Dikonfigurasi) */
@@ -1432,25 +1496,62 @@ export default function CheckoutPage({ params }: Props) {
                     includeMargin={true}
                   />
                 ) : qrisError ? (
-                  <div className="p-5 text-center text-xs text-red-600 bg-red-50/90 rounded-xl border border-red-200 space-y-2.5 max-w-[260px]">
+                  <div className="p-5 text-center text-xs text-red-600 bg-red-50/90 rounded-xl border border-red-200 space-y-2.5 max-w-[280px]">
                     <AlertTriangle className="w-6 h-6 text-red-500 mx-auto" />
                     <div className="space-y-1">
-                      <p className="font-bold text-red-800 text-[11px] uppercase tracking-wide">Gagal Menyiapkan QRIS</p>
+                      <p className="font-bold text-red-800 text-[11px] uppercase tracking-wide">Kendala Menyiapkan QRIS</p>
                       <p className="text-red-700 leading-relaxed text-[11px]">{qrisError}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => ensureDynamicQris()}
-                      className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Coba Muat Ulang</span>
-                    </button>
+                    <div className="pt-1 flex flex-col gap-2">
+                      {bankAccounts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setOrder((prev: any) => ({ ...prev, payment_method: 'manual_transfer' }))}
+                          className="w-full px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Building2 className="w-3.5 h-3.5" />
+                          <span>Bayar via Transfer Bank Manual</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => ensureDynamicQris(true)}
+                        className="w-full px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg text-[11px] transition inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Coba Muat Ulang QRIS</span>
+                      </button>
+                    </div>
                   </div>
-                ) : (
+                ) : isGeneratingQris ? (
                   <div className="p-6 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2.5">
                     <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-                    <span className="font-medium text-slate-600">Memuat barcode QRIS resmi...</span>
+                    <span className="font-medium text-slate-600">Menyiapkan barcode QRIS resmi...</span>
+                  </div>
+                ) : (
+                  <div className="p-5 text-center text-xs text-slate-600 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 max-w-[280px]">
+                    <QrCode className="w-6 h-6 text-slate-500 mx-auto" />
+                    <p className="font-medium text-slate-700 text-[11px]">Barcode QRIS belum termuat otomatis.</p>
+                    <div className="pt-1 flex flex-col gap-2">
+                      {bankAccounts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setOrder((prev: any) => ({ ...prev, payment_method: 'manual_transfer' }))}
+                          className="w-full px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Building2 className="w-3.5 h-3.5" />
+                          <span>Bayar via Transfer Bank Manual</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => ensureDynamicQris(true)}
+                        className="w-full px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Tampilkan QRIS</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

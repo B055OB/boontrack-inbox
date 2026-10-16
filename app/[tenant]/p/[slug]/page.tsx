@@ -240,18 +240,18 @@ function ClientLogosSection({ logos }: { logos: ClientLogoItem[] }) {
                 <div className="h-12 w-full flex items-center justify-center mb-2 overflow-hidden">
                   <img
                     src={logo.logo_url}
-                    alt={logo.name}
+                    alt={logo?.name || 'Brand'}
                     className="max-h-12 max-w-[120px] object-contain filter grayscale opacity-75 group-hover:grayscale-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
                     loading="lazy"
                   />
                 </div>
               ) : (
                 <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 font-black text-xs flex items-center justify-center mb-2 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300 shadow-2xs">
-                  {logo.name.slice(0, 2).toUpperCase()}
+                  {(logo?.name || 'Brand').slice(0, 2).toUpperCase()}
                 </div>
               )}
               <span className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                {logo.name}
+                {logo?.name || 'Brand'}
               </span>
               {logo.category && (
                 <span className="text-[10px] text-slate-500 font-medium mt-1 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
@@ -439,8 +439,8 @@ function SingleProductContent() {
         }
 
         if (match && isMounted) {
-            const cfg = match.single_page_config || {};
-            const builder = match.builder_metadata || match.metadata?.builder || match.metadata || {};
+            const cfg = match?.single_page_config ?? {};
+            const builder = match?.builder_metadata || match?.metadata?.builder || match?.metadata || {};
             const hero = match.hook_hero || builder.hook_hero || {};
             const ps = match.problem_solution || builder.problem_solution || {};
             const ob = match.offer_bonus || builder.offer_bonus || {};

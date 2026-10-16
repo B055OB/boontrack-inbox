@@ -5,6 +5,7 @@ import {
   normalizeWhatsAppNumber,
   sendWhatsAppSessionMessage,
 } from '@/lib/whatsapp';
+import { extractActivationCode, processStoreActivation } from '@/lib/whatsapp/activation';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -124,9 +125,9 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Deteksi pola aktivasi "AKTIVASI BT-XXXX" (case-insensitive)
-          const activationMatch = textBody.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
-          if (!activationMatch) {
+          // Deteksi pola aktivasi toko "AKTIVASI BT-XXXX" atau kode "BT-XXXX" (case-insensitive, whitespace-trimmed)
+          const activation = extractActivationCode(textBody);
+          if (!activation) {
             // Delegasikan pesan non-aktivasi (order manual / chat umum) ke normalized WABA processor
             const { parseMetaWebhookPayload, processNormalizedMetaEvent } = await import(
               '@/lib/whatsapp/meta-webhook-normalizer'
@@ -139,57 +140,7 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          const token = activationMatch[1].toUpperCase().trim();
-          console.log(`[WhatsApp Inbound] Extracted token: "${token}" from ${senderPhone}`);
-
-          // Cari tenant dengan token verifikasi tersebut di Supabase
-          const { data: tenant, error: searchErr } = await supabase
-            .from('tenants')
-            .select('id, slug, name, status, tier, trial_ends_at, metadata')
-            .eq('metadata->>wa_verification_token', token)
-            .maybeSingle();
-
-          if (searchErr) {
-            console.error('[WhatsApp Webhook] Search tenant error:', searchErr);
-            continue;
-          }
-
-          if (!tenant) {
-            console.warn(`[WhatsApp Webhook] Token "${token}" tidak ditemukan di database.`);
-            // Berikan balasan informatif
-            await sendWhatsAppSessionMessage(
-              senderPhone,
-              `Halo! Kode verifikasi ${token} tidak ditemukan atau sudah kedaluwarsa. Silakan periksa kembali kode aktivasi di browser Anda.`
-            );
-            continue;
-          }
-
-          // Toko ditemukan: Aktifkan toko & pertahankan tier dinamis (Ads Performance Trial 7 Hari)
-          const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
-          const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          const verifiedAt = new Date().toISOString();
-
-          // Dynamic Tier Mapping (Deterministic 4-Tier Canonical):
-          const rawTier = tenant.tier || currentMeta.tier || 'PRO_SCALE';
-          const resolvedTier = rawTier === 'ADS_PERFORMANCE' ? 'PRO_SCALE' : rawTier;
-          const resolvedPlanTier = currentMeta.plan_tier || resolvedTier;
-          const resolvedPlanLabel =
-            currentMeta.selected_plan ||
-            (resolvedTier === 'PRO_SCALE' || resolvedTier === 'ADS_PERFORMANCE'
-              ? 'Ads Performance Trial'
-              : resolvedTier === 'ENTERPRISE' || resolvedTier === 'TEAM_SCALE'
-              ? 'Team Scale'
-              : resolvedTier === 'CHECKOUT_LITE'
-              ? 'Paket Checkout'
-              : 'Paket Solo');
-
-          const isTrial = Boolean(
-            currentMeta.is_trial ||
-            tenant.trial_ends_at ||
-            resolvedTier === 'PRO_SCALE' ||
-            resolvedTier === 'ADS_PERFORMANCE' ||
-            resolvedPlanLabel.includes('Trial')
-          );
+          console.log(`[WhatsApp Inbound] Extracted token: "${activation.canonicalToken}" from ${senderPhone}`);
 
           // Tangkap atribusi ctwa_clid (Click-to-WhatsApp) jika ada
           const rawReferral = (message as any).referral;
@@ -197,71 +148,15 @@ export async function POST(req: NextRequest) {
           const textCtwaMatch = textBody.match(/ctwa:([A-Za-z0-9_-]+)/i);
           const ctwaClid = refCtwaClid || (textCtwaMatch ? textCtwaMatch[1] : undefined);
 
-          const updatedMetadata = {
-            ...currentMeta,
-            ...(ctwaClid ? { last_ctwa_clid: ctwaClid } : {}),
-            wa_verification_status: 'verified',
-            wa_verified_at: verifiedAt,
-            wa_verified_phone: senderPhone,
-            phone: senderPhone,
-            whatsapp_number: senderPhone,
-            tier: resolvedTier,
-            plan_tier: resolvedPlanTier,
-            selected_plan: resolvedPlanLabel,
-            subscription_status: isTrial ? 'trial' : 'active',
-            is_trial: isTrial,
-            trial_days: isTrial ? 7 : 0,
-            trial_ends_at: isTrial ? trialEndsAt : null,
-          };
+          // Jalankan proses aktivasi toko secara deterministik menggunakan Service Role
+          const activationRes = await processStoreActivation({
+            codeOrText: textBody,
+            senderPhone,
+            ctwaClid,
+            customSupabase: supabase,
+          });
 
-          const { error: updateErr } = await supabase
-            .from('tenants')
-            .update({
-              status: 'active',
-              is_active: true,
-              tier: resolvedTier,
-              subscription_status: isTrial ? 'trial' : 'active',
-              subscription_tier: resolvedTier,
-              trial_ends_at: isTrial ? trialEndsAt : null,
-              subscription_ends_at: isTrial ? trialEndsAt : undefined,
-              metadata: updatedMetadata,
-              updated_at: verifiedAt,
-            })
-            .eq('id', tenant.id);
-
-          if (updateErr) {
-            console.error('[WhatsApp Webhook] Failed to activate tenant:', updateErr);
-            continue;
-          }
-
-          // Sinkronisasi status langganan ke tabel shop_subscriptions jika trial
-          if (tenant.id && isTrial) {
-            try {
-              await supabase.from('shop_subscriptions').upsert({
-                tenant_id: tenant.id,
-                tier: resolvedTier,
-                status: 'TRIAL',
-                current_period_starts_at: verifiedAt,
-                current_period_ends_at: trialEndsAt,
-                expires_at: trialEndsAt,
-                amount_paid: 0,
-                metadata: {
-                  plan: resolvedPlanLabel,
-                  activated_via: 'whatsapp_webhook',
-                },
-              }, { onConflict: 'tenant_id,status' });
-            } catch (subErr) {
-              console.warn('[WhatsApp Webhook] Non-fatal sub sync note:', subErr);
-            }
-          }
-
-          console.log(`[WhatsApp Webhook] ✅ Toko "${tenant.slug}" berhasil diaktifkan dengan nomor ${senderPhone}!`);
-
-          // Balas otomatis via Meta Cloud API (Session Message Gratis 24 Jam)
-          const replyMessage =
-            'Selamat! Nomor WhatsApp Anda berhasil diverifikasi. Akun toko Anda sudah aktif. Silakan kembali ke browser untuk mulai menggunakan BoonTrack.';
-
-          await sendWhatsAppSessionMessage(senderPhone, replyMessage);
+          await sendWhatsAppSessionMessage(senderPhone, activationRes.replyMessage);
         }
       }
     }

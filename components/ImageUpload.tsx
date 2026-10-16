@@ -49,7 +49,8 @@ export async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight
           canvas.toBlob(
             (blob) => {
               if (blob) {
-                const cleanName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+                const rawName = file?.name || 'image';
+                const cleanName = rawName.replace(/\.[^/.]+$/, '') + '.webp';
                 const webpFile = new File([blob], cleanName, { type: 'image/webp' });
                 resolve(webpFile);
               } else {
@@ -126,7 +127,7 @@ export default function ImageUpload({
   const handleUploadFile = async (rawFile: File) => {
     setErrorMsg(null);
 
-    if (!rawFile.type.startsWith('image/')) {
+    if (!rawFile?.type?.startsWith('image/')) {
       setErrorMsg('File harus berupa gambar (JPG, PNG, WebP, dll.)');
       return;
     }
@@ -143,8 +144,9 @@ export default function ImageUpload({
       const activeTenant = getResolvedTenantSlug();
 
       const formData = new FormData();
-      formData.append('file', processedFile, processedFile.name);
-      formData.append('image', processedFile, processedFile.name);
+      const safeUploadName = processedFile?.name || rawFile?.name || 'image.webp';
+      formData.append('file', processedFile, safeUploadName);
+      formData.append('image', processedFile, safeUploadName);
       formData.append('tenant_slug', activeTenant);
       formData.append('tenant_id', activeTenant);
       formData.append('folder', folder || 'products');

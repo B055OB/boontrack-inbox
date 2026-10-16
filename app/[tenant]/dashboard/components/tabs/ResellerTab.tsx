@@ -317,23 +317,23 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
   // Filtered lists
   const filteredResellers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return resellers;
-    return resellers.filter(r => 
-      r.name.toLowerCase().includes(q) || 
-      r.code.toLowerCase().includes(q) || 
-      r.phone.includes(q)
+    if (!q) return Array.isArray(resellers) ? resellers : [];
+    return (Array.isArray(resellers) ? resellers : []).filter(r => 
+      Boolean(r.name && r.name.toLowerCase().includes(q)) || 
+      Boolean(r.code && r.code.toLowerCase().includes(q)) || 
+      Boolean(r.phone && r.phone.includes(q))
     );
   }, [resellers, searchQuery]);
 
   const filteredCommissions = useMemo(() => {
-    return commissions.filter(c => {
+    return (Array.isArray(commissions) ? commissions : []).filter(c => {
       if (commissionFilter === 'PENDING' && c.status === 'PAID') return false;
       if (commissionFilter === 'PAID' && c.status !== 'PAID') return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const rName = c.store_resellers?.name?.toLowerCase() || '';
         const rCode = c.store_resellers?.code?.toLowerCase() || '';
-        const oId = c.orders?.order_number?.toLowerCase() || c.order_id.toLowerCase();
+        const oId = c.orders?.order_number?.toLowerCase() || (c.order_id ? c.order_id.toLowerCase() : '');
         return rName.includes(q) || rCode.includes(q) || oId.includes(q);
       }
       return true;

@@ -367,7 +367,7 @@ export const globalMockSupabaseClient = {
       })),
       getPublicUrl: jest.fn((path: string) => ({
         data: {
-          publicUrl: `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/${bucket}/${path}`,
+          publicUrl: `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock-project.supabase.co'}/storage/v1/object/public/${bucket}/${path}`,
         },
       })),
       remove: jest.fn(async () => ({ data: [], error: null })),
@@ -387,9 +387,9 @@ jest.mock('@/lib/supabaseClient', () => {
     getSupabaseAdmin: jest.fn(() => globalMockSupabaseClient),
     getSupabase: jest.fn(() => globalMockSupabaseClient),
     supabase: globalMockSupabaseClient,
-    SUPABASE_URL: 'https://mpluzajlzpregmjwpjqr.supabase.co',
-    SUPABASE_ANON_KEY: 'test_ci_anon_key_mock_12345',
-    SUPABASE_SERVICE_ROLE_KEY: 'test_ci_service_role_key_mock_12345',
+    SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock-project.supabase.co',
+    SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key-test',
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-test',
     isValidUuid: (id: string) =>
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
     safeUuidOrNull: (id: any) =>

@@ -286,7 +286,7 @@ export default function WhatsAppRotatorManager({
     }
   };
 
-  const activeCSCount = csList.filter((c) => c.is_active && c.phone.trim().length >= 8).length;
+  const activeCSCount = csList.filter((c) => c.is_active && (c.phone || '').trim().length >= 8).length;
   const totalLeadsReceived = csList.reduce((acc, curr) => acc + (curr.lead_count || 0), 0);
 
   return (
@@ -468,7 +468,7 @@ export default function WhatsAppRotatorManager({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {csList.map((cs, idx) => {
-                  const isPhoneValid = cs.phone.trim().length >= 9;
+                  const isPhoneValid = (cs.phone || '').trim().length >= 9;
 
                   return (
                     <tr key={cs.id} className="hover:bg-slate-50/60 transition-colors">

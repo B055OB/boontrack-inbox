@@ -308,7 +308,7 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
             id: 'CMD_UNAUTH_1',
           },
           message: {
-            conversation: '#pause',
+            conversation: '#off',
           },
         },
       };
@@ -351,7 +351,7 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
             id: 'CMD_AUTH_1',
           },
           message: {
-            conversation: '#pause',
+            conversation: '#off',
           },
         },
       };

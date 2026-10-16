@@ -247,7 +247,7 @@ export default function AdsTrackingPro({
                   buyerName: name,
                   phone,
                   utmCampaign: utm,
-                  platform: source.toUpperCase().includes('META') ? 'Meta Ads' : source.toUpperCase().includes('TIKTOK') ? 'TikTok Ads' : source,
+                  platform: String(source || '').toUpperCase().includes('META') ? 'Meta Ads' : String(source || '').toUpperCase().includes('TIKTOK') ? 'TikTok Ads' : String(source || 'Direct'),
                   score: isPaid ? 98 : 75,
                   quality: isPaid ? 'HOT' : 'WARM',
                   intentAction: isPaid ? 'Checkout QRIS Lunas' : 'Menunggu Pembayaran',
@@ -271,11 +271,15 @@ export default function AdsTrackingPro({
   }, [tenantSlug]);
 
   const filteredCampaigns = useMemo(() => {
+    if (!Array.isArray(campaigns)) return [];
+    const q = (searchCampaign || '').toLowerCase();
     return campaigns.filter((c) => {
+      if (!c) return false;
       const matchPlat = selectedPlatform === 'all' || c.utmSource === selectedPlatform;
       const matchSearch =
-        c.campaignName.toLowerCase().includes(searchCampaign.toLowerCase()) ||
-        c.platformLabel.toLowerCase().includes(searchCampaign.toLowerCase());
+        !q ||
+        Boolean(c.campaignName && c.campaignName.toLowerCase().includes(q)) ||
+        Boolean(c.platformLabel && c.platformLabel.toLowerCase().includes(q));
       return matchPlat && matchSearch;
     });
   }, [campaigns, selectedPlatform, searchCampaign]);

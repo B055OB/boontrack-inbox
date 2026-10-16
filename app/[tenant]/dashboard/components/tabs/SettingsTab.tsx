@@ -364,7 +364,7 @@ export default function SettingsTab({
 
     const fullBankList: BankAccount[] = [
       ...(bankTransferData ? [bankTransferData] : []),
-      ...additionalBankAccounts.filter(b => b.account_number.trim() !== '')
+      ...additionalBankAccounts.filter(b => (b.account_number || '').trim() !== '')
     ];
 
     let savedMetadata: any = null;
@@ -1050,7 +1050,7 @@ export default function SettingsTab({
 
                 const fullAccounts: BankAccount[] = [
                   ...(bankTransferData ? [bankTransferData] : []),
-                  ...additionalBankAccounts.filter(b => b.account_number.trim() !== ''),
+                  ...additionalBankAccounts.filter(b => (b.account_number || '').trim() !== ''),
                 ];
 
                 const updatedMeta = {

@@ -731,7 +731,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
       expect(result.error).toBe('FORBIDDEN_TENANT_ROLE');
     });
 
-    it('permits tenant-level toggle for owner role and updates BOT_ACTIVE / BOT_DISABLED', async () => {
+    it('permits tenant-level toggle for owner role and updates BOT_ENABLED / BOT_DISABLED', async () => {
       const pauseRes = await executeBotControl({
         action: 'PAUSE',
         scope: 'tenant',
@@ -751,7 +751,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
       });
 
       expect(resumeRes.success).toBe(true);
-      expect(resumeRes.status).toBe('BOT_ACTIVE');
+      expect(resumeRes.status).toBe('BOT_ENABLED');
       expect(resumeRes.bot_paused).toBe(false);
     });
 
@@ -810,6 +810,7 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
         action: 'PAUSE',
         scope: 'tenant',
         tenantId: 'solusiads',
+        userRole: 'owner',
         supabase: failingSupabase,
       });
 

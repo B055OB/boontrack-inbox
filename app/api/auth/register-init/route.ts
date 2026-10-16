@@ -8,6 +8,7 @@ import {
 } from '@/lib/whatsapp';
 import { buildDefaultIndustryMenu } from '@/lib/zero-ai-engine';
 import { saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
+import { getBackendApiUrl } from '@/lib/api-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -364,6 +365,30 @@ export async function POST(req: NextRequest) {
         pickup_operational_hours: '08:00 - 21:00 WIB',
         pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
       }, supabase).catch(() => null);
+    }
+
+    // P1 Security Foundation: Sinkronkan inisiasi onboarding ke boontrack-core backend (menulis ke activation_codes & leads via Service Role)
+    try {
+      const coreUrl = getBackendApiUrl('/api/v1/onboarding/initiate');
+      const abortCtrl = new AbortController();
+      const timer = setTimeout(() => abortCtrl.abort(), 2500);
+      fetch(coreUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shop_name: shopName,
+          phone,
+          email: email || undefined,
+          category: rawCategory,
+          selected_plan: rawPlanInput,
+          referral_code: referralCode,
+          tenant_slug: baseSlug,
+        }),
+        signal: abortCtrl.signal,
+      }).catch((coreErr) => console.warn('[RegisterInit] Core backend onboarding sync note:', coreErr))
+        .finally(() => clearTimeout(timer));
+    } catch (dispatchErr) {
+      console.warn('[RegisterInit] Core dispatch note:', dispatchErr);
     }
 
     return NextResponse.json({

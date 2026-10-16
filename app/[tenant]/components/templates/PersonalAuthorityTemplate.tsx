@@ -186,7 +186,7 @@ export function HeroBannerSection({
                       {doc.photo_url || doc.avatar_url ? (
                         <img
                           src={sanitizeImageUrl(doc.photo_url || doc.avatar_url)}
-                          alt={doc.name}
+                          alt={doc?.name || 'Praktisi'}
                           className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                           onError={(e) => {
                             (e.currentTarget as HTMLElement).style.display = 'none';
@@ -194,7 +194,7 @@ export function HeroBannerSection({
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-purple-100 text-purple-700 font-black text-2xl">
-                          {doc.name.slice(0, 2)}
+                          {(doc?.name || 'Praktisi').slice(0, 2)}
                         </div>
                       )}
                       <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs px-2 py-0.5 rounded-full border border-purple-100 shadow-2xs flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold text-slate-800">
@@ -205,7 +205,7 @@ export function HeroBannerSection({
 
                     <div className="space-y-1">
                       <h3 className="font-black text-slate-900 text-xs sm:text-sm tracking-tight leading-snug">
-                        {doc.name}
+                        {doc?.name || 'Praktisi'}
                       </h3>
                       <p className="text-[10px] sm:text-[11px] font-bold text-purple-700 leading-tight">
                         {doc.title || doc.specialty || 'Praktisi Terverifikasi'}
@@ -628,7 +628,7 @@ export function FeaturedCatalogSection({
             >
               <img
                 src={(!productImgError && mainProduct.image) ? sanitizeImageUrl(mainProduct.image) : "/placeholder-product.png"}
-                alt={mainProduct.name}
+                alt={mainProduct?.name || 'Produk'}
                 onError={() => setProductImgError(true)}
                 className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
               />
@@ -648,7 +648,7 @@ export function FeaturedCatalogSection({
                   href={mainProductUrl}
                   className="hover:text-purple-600 transition-colors cursor-pointer"
                 >
-                  {mainProduct.name}
+                  {mainProduct?.name || mainProduct?.title || 'Produk'}
                 </Link>
               </h3>
             </div>
@@ -725,7 +725,7 @@ export function FeaturedCatalogSection({
                           if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                             try {
                               (window as any).fbq("track", "InitiateCheckout", {
-                                content_name: (mainProduct as any).title || mainProduct.name,
+                                content_name: (mainProduct as any)?.title || mainProduct?.name || 'Produk',
                                 content_ids: [mainProduct.id || (mainProduct as any).slug],
                                 content_type: "product",
                                 value: Number(mainProduct.price) || 0,
@@ -749,7 +749,7 @@ export function FeaturedCatalogSection({
                       onClick={() =>
                         onInitiateCheckout({
                           id: String(mainProduct.id),
-                          title: mainProduct.name,
+                          title: mainProduct?.name || mainProduct?.title || 'Produk',
                           price: Number(mainProduct.price),
                         })
                       }
@@ -794,7 +794,7 @@ export function FeaturedCatalogSection({
                       >
                         <img
                           src={(item.image && sanitizeImageUrl(item.image)) || "/placeholder-product.png"}
-                          alt={item.name}
+                          alt={item?.name || 'Produk'}
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
                           }}
@@ -813,7 +813,7 @@ export function FeaturedCatalogSection({
                             href={itemUrl}
                             className="hover:text-purple-600 transition-colors cursor-pointer"
                           >
-                            {item.name}
+                            {item?.name || item?.title || 'Produk'}
                           </Link>
                         </h4>
                         {item.description ? (
@@ -874,7 +874,7 @@ export function FeaturedCatalogSection({
                                 if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                                   try {
                                     (window as any).fbq("track", "InitiateCheckout", {
-                                      content_name: (item as any).title || item.name,
+                                      content_name: (item as any)?.title || item?.name || 'Produk',
                                       content_ids: [item.id || (item as any).slug],
                                       content_type: "product",
                                       value: Number(item.price) || 0,
@@ -898,7 +898,7 @@ export function FeaturedCatalogSection({
                             onClick={() =>
                               onInitiateCheckout({
                                 id: String(item.id),
-                                title: item.name,
+                                title: item?.name || item?.title || 'Produk',
                                 price: Number(item.price),
                               })
                             }
@@ -1047,7 +1047,7 @@ export function TestimonialsSection({
               </div>
 
               <div className="pt-3 border-t border-slate-200/60">
-                <h4 className="text-xs font-black text-slate-900">{testi.name}</h4>
+                <h4 className="text-xs font-black text-slate-900">{testi?.name || 'Pelanggan'}</h4>
                 {testi.role ? <p className="text-[10px] text-slate-400 font-medium">{testi.role}</p> : null}
               </div>
             </div>
@@ -1378,7 +1378,7 @@ export default function PersonalAuthorityTemplate({
     if (mainProduct) {
       onInitiateCheckout({
         id: String(mainProduct.id),
-        title: mainProduct.name,
+        title: mainProduct?.name || mainProduct?.title || 'Layanan',
         price: Number(mainProduct.price),
       });
     } else if (whatsappConsultationUrl) {
@@ -1401,8 +1401,8 @@ export default function PersonalAuthorityTemplate({
   const dynamicTestimonials: Array<{ name: string; role?: string; rating?: number; text: string }> =
     Array.isArray(tenantMetadata?.testimonials) && tenantMetadata.testimonials.length > 0
       ? tenantMetadata.testimonials
-      : (Array.isArray(tenantMetadata?.single_page_config?.testimonials) && tenantMetadata?.single_page_config?.testimonials && tenantMetadata.single_page_config.testimonials.length > 0
-        ? tenantMetadata?.single_page_config?.testimonials
+      : (Array.isArray(tenantMetadata?.single_page_config?.testimonials) && (tenantMetadata?.single_page_config?.testimonials?.length ?? 0) > 0
+        ? (tenantMetadata?.single_page_config?.testimonials ?? [])
         : []);
 
   const stats: Array<{ value: string; label: string }> | null =

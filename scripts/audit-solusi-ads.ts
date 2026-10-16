@@ -296,7 +296,7 @@ async function runAudit() {
   // Cek juga di metadata tenant jika ada konfigurasi single_page
   if (tenantBySlug && tenantBySlug.length > 0) {
     const meta = tenantBySlug[0].metadata || {};
-    if (meta.single_page || meta.single_page_builder || meta.single_page_config) {
+    if (meta?.single_page || meta?.single_page_builder || meta?.single_page_config) {
       console.log('  - [FOUND in tenants.metadata]: single_page config tersimpan di metadata');
     }
   }

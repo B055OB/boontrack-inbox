@@ -153,8 +153,8 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
         // Cari order berdasarkan id atau invoice_no
         const targetShipment = shipments.find(
           (s) =>
-            s.orderId.toLowerCase() === cleanOrderId.toLowerCase() ||
-            s.id.toLowerCase() === cleanOrderId.toLowerCase()
+            (s.orderId || '').toLowerCase() === cleanOrderId.toLowerCase() ||
+            (s.id || '').toLowerCase() === cleanOrderId.toLowerCase()
         );
 
         const targetId = targetShipment?.id || cleanOrderId;
@@ -177,8 +177,8 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
       setShipments((prev) =>
         prev.map((s) => {
           if (
-            s.orderId.toLowerCase() === cleanOrderId.toLowerCase() ||
-            s.id.toLowerCase() === cleanOrderId.toLowerCase()
+            (s.orderId || '').toLowerCase() === cleanOrderId.toLowerCase() ||
+            (s.id || '').toLowerCase() === cleanOrderId.toLowerCase()
           ) {
             return { ...s, waybill: cleanResi, status: 'SHIPPED' };
           }

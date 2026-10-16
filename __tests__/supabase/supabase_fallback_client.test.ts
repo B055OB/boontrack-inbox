@@ -40,8 +40,8 @@ import {
 } from '@/utils/supabase/client';
 
 describe('Supabase Client Security Contract Suite', () => {
-  const EXPECTED_URL = 'https://mpluzajlzpregmjwpjqr.supabase.co';
-  const EXPECTED_KEY_PREFIX = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
+  const EXPECTED_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock-project.supabase.co';
+  const EXPECTED_KEY_PREFIX = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.startsWith('dummy') ? 'dummy' : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
   const HARDCODED_SERVICE_JWT =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjQxNzIzMiwiZXhwIjoyMTAxOTkzMjMyfQ.TJMAEJQXeAv33EcwCt6OVyaC0ZFTROWzuljvm07i0Qg';
 

@@ -62,7 +62,7 @@ export default function OverviewTab({
 
   // Financial Metrics dynamically calculated by universal finance engine
   const financialMetrics = useMemo(() => {
-    return calculateFinancialMetrics(transactions || [], {
+    return calculateFinancialMetrics(Array.isArray(transactions) ? transactions : [], {
       startDate: dateRange.startDate || undefined,
       endDate: dateRange.endDate || undefined,
     });
@@ -108,7 +108,7 @@ export default function OverviewTab({
   const effectiveOmzet = financialMetrics.totalRevenue > 0 ? financialMetrics.totalRevenue : (!dateRange.startDate && !dateRange.endDate && totalOmzet > 0 ? totalOmzet : 0);
 
   const filteredTransactions = useMemo(() => {
-    if (!transactions) return [];
+    if (!Array.isArray(transactions)) return [];
     const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
     const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
 
@@ -288,7 +288,7 @@ export default function OverviewTab({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Semua ({transactions?.length || 0})
+              Semua ({Array.isArray(transactions) ? transactions.length : 0})
             </button>
             <button
               type="button"

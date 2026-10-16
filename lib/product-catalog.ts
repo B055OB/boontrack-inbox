@@ -395,7 +395,8 @@ export interface TransactionItem {
   [key: string]: any;
 }
 
-export function slugify(text: string): string {
+export function slugify(text?: string | null): string {
+  if (!text || typeof text !== 'string') return '';
   return text
     .toLowerCase()
     .replace(/[^\w\s-]/g, '')
@@ -910,7 +911,7 @@ export function resolveSinglePageProduct(
         if (match) {
           return {
             product: match,
-            config: match.single_page_config || {
+            config: match?.single_page_config || {
               slug: match.slug || slugify(match.name),
               headline: match.name,
               subheadline: match.description,
@@ -961,7 +962,7 @@ export function resolveSinglePageProduct(
     if (defaultMatch) {
       return {
         product: defaultMatch,
-        config: defaultMatch.single_page_config!,
+        config: defaultMatch?.single_page_config ?? {} as any,
       };
     }
   }
@@ -1013,10 +1014,10 @@ export function resolveProductExternalUrl(item: any): string | null {
 
   // Never treat internal checkout, landing page products, or CTWA mastery as external
   if (
-    item.checkout_type === 'internal' ||
-    item.single_page_config ||
-    item.slug === 'ctwa-mastery-7day' ||
-    item.id === 'c7ba0001-7de7-4888-9999-000000000001'
+    item?.checkout_type === 'internal' ||
+    item?.single_page_config ||
+    item?.slug === 'ctwa-mastery-7day' ||
+    item?.id === 'c7ba0001-7de7-4888-9999-000000000001'
   ) {
     return null;
   }

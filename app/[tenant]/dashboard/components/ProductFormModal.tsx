@@ -291,13 +291,16 @@ export default function ProductFormModal({
     }
     const safeName = typeof safeForm.name === 'string' ? safeForm.name.trim() : '';
     const generated = slugify(safeName || 'produk');
-    setProductForm((p) => ({
-      ...(p || {}),
-      slug: generated,
-      single_page_config: p?.single_page_config
-        ? { ...p.single_page_config, slug: generated }
-        : undefined,
-    }));
+    setProductForm((p) => {
+      const safeP = p || ({} as ProductItem);
+      return {
+        ...safeP,
+        slug: generated,
+        single_page_config: safeP.single_page_config
+          ? { ...(safeP.single_page_config || {}), slug: generated }
+          : undefined,
+      };
+    });
   };
 
   const handleMetadataChange = useCallback((key: keyof FulfillmentMetadata, value: string) => {
@@ -317,18 +320,18 @@ export default function ProductFormModal({
 
   // Resolve string for Materi & Fasilitas Utama
   const facilitiesString = useMemo(() => {
-    if (typeof productForm.facilities === 'string') return productForm.facilities;
-    if (Array.isArray(productForm.facilities)) return productForm.facilities.join('\n');
-    if (typeof productForm.features === 'string') return productForm.features;
-    if (Array.isArray(productForm.features)) return productForm.features.join('\n');
-    if (Array.isArray(productForm.single_page_config?.solution_points)) {
-      return productForm.single_page_config.solution_points.join('\n');
+    if (typeof productForm?.facilities === 'string') return productForm.facilities;
+    if (Array.isArray(productForm?.facilities)) return productForm.facilities.join('\n');
+    if (typeof productForm?.features === 'string') return productForm.features;
+    if (Array.isArray(productForm?.features)) return productForm.features.join('\n');
+    if (Array.isArray(productForm?.single_page_config?.solution_points)) {
+      return (productForm?.single_page_config?.solution_points || []).join('\n');
     }
-    const metaPts = productForm.metadata?.facilities || productForm.metadata?.features || productForm.metadata?.solution_points;
+    const metaPts = productForm?.metadata?.facilities || productForm?.metadata?.features || productForm?.metadata?.solution_points;
     if (Array.isArray(metaPts)) return metaPts.join('\n');
     if (typeof metaPts === 'string') return metaPts;
     return '';
-  }, [productForm.facilities, productForm.features, productForm.single_page_config, productForm.metadata]);
+  }, [productForm?.facilities, productForm?.features, productForm?.single_page_config, productForm?.metadata]);
 
   const handleFacilitiesChange = (val: string) => {
     const pointsArray = val
@@ -337,10 +340,11 @@ export default function ProductFormModal({
       .filter(Boolean);
 
     setProductForm((prev) => {
-      const currentConfig = prev.single_page_config || ({} as any);
-      const currentMeta = prev.metadata || {};
+      const safePrev = prev || ({} as ProductItem);
+      const currentConfig = safePrev.single_page_config || ({} as any);
+      const currentMeta = safePrev.metadata || {};
       return {
-        ...prev,
+        ...safePrev,
         facilities: pointsArray,
         features: pointsArray,
         single_page_config: {
@@ -490,10 +494,11 @@ export default function ProductFormModal({
 
   const handleCtaTextChange = (val: string) => {
     setProductForm((prev) => {
-      const currentMeta = prev.metadata || {};
-      const currentSpc = prev.single_page_config || ({} as any);
+      const safePrev = prev || ({} as ProductItem);
+      const currentMeta = safePrev.metadata || {};
+      const currentSpc = safePrev.single_page_config || ({} as any);
       return {
-        ...prev,
+        ...safePrev,
         cta_label: val,
         button_text: val,
         single_page_config: {
@@ -528,16 +533,16 @@ export default function ProductFormModal({
 
   useEffect(() => {
     if (isOpen) {
-      const rawV = productForm.metadata?.voucher_config || productForm.single_page_config?.voucher;
+      const rawV = productForm?.metadata?.voucher_config || productForm?.single_page_config?.voucher;
       const enabled = Boolean(
-        productForm.metadata?.voucher_config?.is_enabled ??
-        productForm.single_page_config?.voucher?.is_enabled ??
+        productForm?.metadata?.voucher_config?.is_enabled ??
+        productForm?.single_page_config?.voucher?.is_enabled ??
         (rawV && rawV.code && rawV.discount_value > 0)
       );
       setVoucherEnabled(enabled);
       setVoucherForm({
         is_enabled: enabled,
-        code: rawV?.code || productForm.single_page_config?.discount_coupon || '',
+        code: rawV?.code || productForm?.single_page_config?.discount_coupon || '',
         discount_type: rawV?.discount_type || 'nominal',
         discount_value: rawV?.discount_value ?? 20000,
         min_spend: rawV?.min_spend ?? 0,
@@ -545,10 +550,10 @@ export default function ProductFormModal({
         shipping_discount_value: rawV?.shipping_discount_value ?? 0,
       });
 
-      const pm = productForm.metadata?.payment_methods;
+      const pm = productForm?.metadata?.payment_methods;
       setPaymentMethods({
-        enable_qris: productForm.single_page_config?.enable_qris ?? pm?.enable_qris ?? true,
-        enable_manual_transfer: productForm.single_page_config?.enable_manual_transfer ?? pm?.enable_manual_transfer ?? true,
+        enable_qris: productForm?.single_page_config?.enable_qris ?? pm?.enable_qris ?? true,
+        enable_manual_transfer: productForm?.single_page_config?.enable_manual_transfer ?? pm?.enable_manual_transfer ?? true,
       });
     }
   }, [isOpen, editingProductId]);
@@ -559,10 +564,11 @@ export default function ProductFormModal({
       is_enabled: enabled,
     };
     setProductForm((prev) => {
-      const currentMeta = prev.metadata || {};
-      const currentSpc = prev.single_page_config || ({} as any);
+      const safePrev = prev || ({} as ProductItem);
+      const currentMeta = safePrev.metadata || {};
+      const currentSpc = safePrev.single_page_config || ({} as any);
       return {
-        ...prev,
+        ...safePrev,
         metadata: {
           ...currentMeta,
           voucher_config: updatedVoucher,
@@ -586,10 +592,11 @@ export default function ProductFormModal({
 
   const syncPaymentMethodsToProductForm = (pm: { enable_qris: boolean; enable_manual_transfer: boolean }) => {
     setProductForm((prev) => {
-      const currentMeta = prev.metadata || {};
-      const currentSpc = prev.single_page_config || ({} as any);
+      const safePrev = prev || ({} as ProductItem);
+      const currentMeta = safePrev.metadata || {};
+      const currentSpc = safePrev.single_page_config || ({} as any);
       return {
-        ...prev,
+        ...safePrev,
         metadata: {
           ...currentMeta,
           payment_methods: pm,
@@ -661,9 +668,12 @@ export default function ProductFormModal({
       ? (safeProductForm.features as string).split('\n').map((s) => s.trim()).filter(Boolean)
       : resolvedFacilities;
 
+    const resolvedSlug = (safeProductForm.slug?.trim() || slugify(trimmedName) || 'produk').toLowerCase();
+
     const cleanForm: ProductItem = {
       ...safeProductForm,
       name: trimmedName,
+      slug: resolvedSlug,
       product_type: safeProductForm.product_type || currentType || (isPhysical ? 'PHYSICAL' : (isServiceCluster ? 'FIELD_SERVICE' : 'DIGITAL')),
       type: safeProductForm.type || activeVerticalMeta.backendType,
       category: safeProductForm.category || activeVerticalMeta.defaultBadge,
@@ -778,18 +788,19 @@ export default function ProductFormModal({
               type="text"
               id="product-name-input"
               required
-              value={productForm.name}
+              value={productForm?.name || ''}
               onChange={(e) => {
                 const newName = e.target.value;
                 setProductForm((p) => {
-                  const shouldSyncSlug = !editingProductId && (!p.slug || p.slug === slugify(p.name));
-                  const updatedSlug = shouldSyncSlug ? slugify(newName) : p.slug;
+                  const safeP = p || ({} as ProductItem);
+                  const shouldSyncSlug = !editingProductId && (!safeP.slug || safeP.slug === slugify(safeP.name));
+                  const updatedSlug = shouldSyncSlug ? slugify(newName) : safeP.slug;
                   return {
-                    ...p,
+                    ...safeP,
                     name: newName,
                     slug: updatedSlug,
-                    single_page_config: p.single_page_config
-                      ? { ...p.single_page_config, slug: updatedSlug }
+                    single_page_config: safeP.single_page_config
+                      ? { ...(safeP.single_page_config || {}), slug: updatedSlug }
                       : undefined,
                   };
                 });
@@ -804,7 +815,7 @@ export default function ProductFormModal({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <LinkIcon className="w-3.5 h-3.5 text-blue-600" />
-                <span>URL / Slug Salespage Produk *</span>
+                <span>URL / Slug Salespage Produk</span>
               </label>
               <button
                 type="button"
@@ -822,24 +833,31 @@ export default function ProductFormModal({
               </span>
               <input
                 type="text"
-                required
-                value={productForm.slug || ''}
+                value={productForm?.slug || ''}
                 onChange={(e) => {
                   const s = slugify(e.target.value);
-                  setProductForm((p) => ({
-                    ...p,
-                    slug: s,
-                    single_page_config: p.single_page_config
-                      ? { ...p.single_page_config, slug: s }
-                      : undefined,
-                  }));
+                  setProductForm((p) => {
+                    const safeP = p || ({} as ProductItem);
+                    return {
+                      ...safeP,
+                      slug: s,
+                      single_page_config: safeP.single_page_config
+                        ? { ...(safeP.single_page_config || {}), slug: s }
+                        : undefined,
+                    };
+                  });
+                }}
+                onBlur={() => {
+                  if (!productForm?.slug?.trim()) {
+                    handleSyncSlug();
+                  }
                 }}
                 placeholder="nama-slug-produk"
                 className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-none focus:border-blue-600 font-mono"
               />
             </div>
             <p className="text-[10px] text-slate-400 font-sans">
-              Akses publik: <code className="text-blue-600 font-bold font-mono">{getProductPageUrl(tenantSlug || 'store', productForm.slug || slugify(productForm.name || 'produk'), customDomain)}</code>
+              Akses publik: <code className="text-blue-600 font-bold font-mono">{getProductPageUrl(tenantSlug || 'store', productForm?.slug || slugify(productForm?.name || 'produk'), customDomain)}</code>
             </p>
           </div>
 
@@ -1568,13 +1586,13 @@ export default function ProductFormModal({
                         <select
                           className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-amber-500"
                           onChange={(e) => {
-                            const sel = availableStoreProducts.find((p) => String(p.id) === e.target.value);
+                            const sel = availableStoreProducts.find((p) => String(p?.id) === e.target.value);
                             if (sel) {
                               handleUpdateBumpItem(index, {
-                                name: sel.name,
+                                name: sel.name || 'Produk Tambahan',
                                 original_price: sel.price,
-                                price: sel.promo_price && sel.promo_price < sel.price ? sel.promo_price : Math.round(sel.price * 0.7),
-                                description: sel.description || `Dapatkan tambahan bundling ${sel.name} dengan harga hemat!`,
+                                price: sel.promo_price && sel.promo_price < sel.price ? sel.promo_price : Math.round((sel.price || 0) * 0.7),
+                                description: sel.description || `Dapatkan tambahan bundling ${sel.name || 'produk'} dengan harga hemat!`,
                                 product_id: String(sel.id),
                               });
                             }
@@ -1583,8 +1601,8 @@ export default function ProductFormModal({
                         >
                           <option value="" disabled>-- Pilih produk toko atau isi manual di bawah --</option>
                           {availableStoreProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (Rp {p.price.toLocaleString('id-ID')})
+                            <option key={p?.id || Math.random()} value={p?.id}>
+                              {p?.name || 'Produk'} (Rp {Number(p?.price || 0).toLocaleString('id-ID')})
                             </option>
                           ))}
                         </select>
@@ -1718,24 +1736,25 @@ export default function ProductFormModal({
       isCheckoutLite={isCheckoutLite}
       onApply={(patch) => {
         setProductForm((prev) => {
+          const safePrev = prev || ({} as ProductItem);
           const facilitiesArr = Array.isArray(patch.facilities) ? patch.facilities : [];
-          const resolvedSlug = patch.slug || prev.slug;
-          const currentConfig = prev.single_page_config || ({} as any);
-          const currentMeta = prev.metadata || {};
+          const resolvedSlug = patch.slug || safePrev.slug;
+          const currentConfig = safePrev.single_page_config || ({} as any);
+          const currentMeta = safePrev.metadata || {};
           return {
-            ...prev,
+            ...safePrev,
             ...(patch.name ? { name: patch.name } : {}),
-            description: patch.description || prev.description,
+            description: patch.description || safePrev.description,
             slug: resolvedSlug,
             single_page_config: {
               ...currentConfig,
               slug: resolvedSlug,
               ...(patch.single_page_config || {}),
             },
-            promo: patch.promo || prev.promo,
-            cta_label: patch.cta_label || prev.cta_label,
-            facilities: facilitiesArr.length ? facilitiesArr : prev.facilities,
-            features: facilitiesArr.length ? facilitiesArr : prev.features,
+            promo: patch.promo || safePrev.promo,
+            cta_label: patch.cta_label || safePrev.cta_label,
+            facilities: facilitiesArr.length ? facilitiesArr : safePrev.facilities,
+            features: facilitiesArr.length ? facilitiesArr : safePrev.features,
             metadata: {
               ...currentMeta,
               ...(patch.metadata || {}),

@@ -9,6 +9,7 @@
 export interface Product {
   id: number | string;
   name: string;
+  title?: string;
   category: string;
   price: number;
   originalPrice?: number;

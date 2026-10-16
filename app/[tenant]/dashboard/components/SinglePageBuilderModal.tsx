@@ -284,7 +284,7 @@ export default function SinglePageBuilderModal({
                 🎨 Desain Halaman Produk (Landing Page)
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-800">{activeProduct.name}</strong>
+                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-800">{activeProduct?.name || 'Produk'}</strong>
               </p>
             </div>
           </div>
@@ -786,7 +786,7 @@ export default function SinglePageBuilderModal({
                         <label className="text-[10px] text-slate-600 font-bold block mb-1">Nama Brand / Klien *</label>
                         <input
                           type="text"
-                          value={logo.name}
+                          value={logo?.name || ''}
                           onChange={(e) => {
                             const logos = [...(singlePageForm.client_logos || [])];
                             logos[idx] = { ...logos[idx], name: e.target.value };
@@ -2028,7 +2028,7 @@ export default function SinglePageBuilderModal({
           {/* MODAL FOOTER ACTION BAR */}
           <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between gap-3">
             <a
-              href={getProductPageUrl(tenantSlug, singlePageForm.slug || slugify(activeProduct.name))}
+              href={getProductPageUrl(tenantSlug, singlePageForm.slug || slugify(activeProduct?.name || 'produk'))}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition flex items-center gap-1.5"

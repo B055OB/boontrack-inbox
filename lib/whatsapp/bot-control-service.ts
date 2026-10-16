@@ -20,8 +20,8 @@ export type BotControlCommand = {
   action: 'PAUSE' | 'RESUME';
   scope: 'CONTACT' | 'TENANT';
 };
-export type TenantBotStatus = 'BOT_ACTIVE' | 'BOT_DISABLED';
-export type ConversationBotStatus = 'AI_ACTIVE' | 'HUMAN_HANDOVER';
+export type TenantBotStatus = 'BOT_ENABLED' | 'BOT_DISABLED' | 'BOT_ACTIVE';
+export type ConversationBotStatus = 'AI_ACTIVE' | 'HUMAN_HANDOVER' | 'HUMAN_PAUSED';
 
 export interface RuntimeSessionState {
   tenantId: string;
@@ -71,7 +71,7 @@ export function setRuntimeSessionCache(state: {
     tenantId: state.tenantId,
     userIdentifier: state.userIdentifier,
     isPaused: state.isPaused,
-    botStatus: state.botStatus || (state.isPaused ? 'HUMAN_PAUSED' : 'BOT_ACTIVE'),
+    botStatus: state.botStatus || (state.isPaused ? 'HUMAN_HANDOVER' : 'BOT_ENABLED'),
     pausedUntil: state.pausedUntil || null,
     pausedBy: state.pausedBy || null,
     updatedAt: state.updatedAt || Date.now(),
@@ -145,57 +145,74 @@ export async function callAtomicBotControlRpc(params: {
 /**
  * Normalizes and parses bot control commands from WhatsApp text.
  *
- * Supported Variations:
- * PAUSE / OFF: '#pause', '#off', '!pause', '!off', '/pause', '/off', 'pause', 'off'
- * RESUME / ON: '#resume', '#on', '!resume', '!on', '/resume', '/on', 'resume', 'on'
+ * Deterministic Scope Separation:
+ * 1. TENANT Scope (#on, #off): Globally toggles bot for all conversations.
+ *    - PAUSE / OFF: '#off', '!off', '/off', 'off' -> BOT_DISABLED
+ *    - RESUME / ON: '#on', '!on', '/on', 'on' -> BOT_ENABLED
+ * 2. CONTACT Scope (#pause, #resume): Handover or resume for specific contact conversation.
+ *    - PAUSE: '#pause', '!pause', '/pause', 'pause' -> HUMAN_HANDOVER (with timer)
+ *    - RESUME: '#resume', '!resume', '/resume', 'resume' -> AI_ACTIVE
  */
 export function parseBotControlCommand(text?: string | null): BotControlCommand | null {
   if (!text || typeof text !== 'string') return null;
 
   const clean = text.trim().toLowerCase();
 
-  // Contact Scope Commands (#off, #on with prefixes #, !, / or plain)
-  const contactPause = new Set(['#off', '!off', '/off', 'off']);
-  const contactResume = new Set(['#on', '!on', '/on', 'on']);
+  // Tenant Scope Commands (#off, #on with prefixes #, !, / or plain)
+  const tenantPause = new Set(['#off', '!off', '/off', 'off']);
+  const tenantResume = new Set(['#on', '!on', '/on', 'on']);
 
-  // Tenant Scope Commands (#pause, #resume with prefixes #, !, / or plain)
-  const tenantPause = new Set(['#pause', '!pause', '/pause', 'pause']);
-  const tenantResume = new Set(['#resume', '!resume', '/resume', 'resume']);
+  // Contact Scope Commands (#pause, #resume with prefixes #, !, / or plain)
+  const contactPause = new Set(['#pause', '!pause', '/pause', 'pause']);
+  const contactResume = new Set(['#resume', '!resume', '/resume', 'resume']);
 
-  if (contactPause.has(clean)) return { action: 'PAUSE', scope: 'CONTACT' };
-  if (contactResume.has(clean)) return { action: 'RESUME', scope: 'CONTACT' };
   if (tenantPause.has(clean)) return { action: 'PAUSE', scope: 'TENANT' };
   if (tenantResume.has(clean)) return { action: 'RESUME', scope: 'TENANT' };
+  if (contactPause.has(clean)) return { action: 'PAUSE', scope: 'CONTACT' };
+  if (contactResume.has(clean)) return { action: 'RESUME', scope: 'CONTACT' };
 
-  // Support prefix characters with trailing punctuation or spacing (e.g. "#pause!", "/off.")
+  // Support prefix characters with trailing punctuation or spacing (e.g. "#off!", "/pause.")
   const stripped = clean.replace(/^[#/!]/, '').replace(/[!.\s]+$/, '');
-  if (stripped === 'off') return { action: 'PAUSE', scope: 'CONTACT' };
-  if (stripped === 'on') return { action: 'RESUME', scope: 'CONTACT' };
-  if (stripped === 'pause') return { action: 'PAUSE', scope: 'TENANT' };
-  if (stripped === 'resume') return { action: 'RESUME', scope: 'TENANT' };
+  if (stripped === 'off') return { action: 'PAUSE', scope: 'TENANT' };
+  if (stripped === 'on') return { action: 'RESUME', scope: 'TENANT' };
+  if (stripped === 'pause') return { action: 'PAUSE', scope: 'CONTACT' };
+  if (stripped === 'resume') return { action: 'RESUME', scope: 'CONTACT' };
 
   return null;
 }
 
+export interface BotControllerAuthResult {
+  authorized: boolean;
+  role: 'owner' | 'admin' | 'cs' | 'agent' | 'manager' | 'superuser' | 'none';
+  canControlTenant: boolean;     // Allowed for #on, #off (owner, admin, superuser)
+  canControlContact: boolean;    // Allowed for #pause, #resume, human reply (owner, admin, cs, agent, manager, superuser)
+  source?: string;
+}
+
 /**
- * RBAC Verification: Verifies whether the sender is an authorized Owner or Admin.
+ * RBAC Scope Resolver: Resolves controller identity and permissions deterministically.
  * Tolerates all phone formats: 628..., 08..., +628...
  * Checks:
- * 1. tenants.phone, tenants.whatsapp_number, tenants.metadata.owner_phone, tenants.metadata.phone, tenants.metadata.admin_phones
- * 2. tenant_users.phone where role in ['owner', 'admin', 'cs', 'manager']
+ * 1. tenants record (Owner / Primary Admin -> canControlTenant = true, canControlContact = true)
+ * 2. tenant_users record (role 'owner'/'admin'/'superuser' -> canControlTenant = true, canControlContact = true;
+ *                         role 'cs'/'agent'/'manager' -> canControlTenant = false, canControlContact = true)
  */
-export async function isAuthorizedBotController(params: {
+export async function resolveBotControllerRole(params: {
   senderPhone: string;
   tenantId: string;
   tenantSlug?: string;
   supabase?: any;
-}): Promise<boolean> {
+}): Promise<BotControllerAuthResult> {
   const { senderPhone, tenantId, tenantSlug } = params;
   const supabase = params.supabase || getSupabaseAdmin() || getSupabase();
-  if (!supabase || !senderPhone) return false;
+  if (!supabase || !senderPhone) {
+    return { authorized: false, role: 'none', canControlTenant: false, canControlContact: false };
+  }
 
   const normalizedSender = cleanCustomerPhone(senderPhone);
-  if (!normalizedSender) return false;
+  if (!normalizedSender) {
+    return { authorized: false, role: 'none', canControlTenant: false, canControlContact: false };
+  }
 
   const cleanDigits = senderPhone.replace(/\D/g, '');
   const senderVariants = new Set(
@@ -210,7 +227,7 @@ export async function isAuthorizedBotController(params: {
   );
 
   try {
-    // 1. Check tenants record
+    // 1. Check tenants record (Owner / Primary Admin)
     let tQuery = supabase
       .from('tenants')
       .select('id, slug, phone, whatsapp_number, metadata')
@@ -237,22 +254,36 @@ export async function isAuthorizedBotController(params: {
         return false;
       };
 
-      if (matchesPhone(tenantRow.phone)) return true;
-      if (matchesPhone(tenantRow.whatsapp_number)) return true;
-      if (matchesPhone((tenantRow as any).admin_phone)) return true;
+      if (
+        matchesPhone(tenantRow.phone) ||
+        matchesPhone(tenantRow.whatsapp_number) ||
+        matchesPhone((tenantRow as any).admin_phone)
+      ) {
+        return { authorized: true, role: 'owner', canControlTenant: true, canControlContact: true, source: 'tenant_record' };
+      }
 
       const meta = tenantRow.metadata || {};
-      if (matchesPhone(meta.owner_phone)) return true;
-      if (matchesPhone(meta.phone)) return true;
-      if (matchesPhone(meta.whatsapp_number)) return true;
-      if (matchesPhone(meta.admin_phone)) return true;
+      if (
+        matchesPhone(meta.owner_phone) ||
+        matchesPhone(meta.phone) ||
+        matchesPhone(meta.whatsapp_number)
+      ) {
+        return { authorized: true, role: 'owner', canControlTenant: true, canControlContact: true, source: 'tenant_metadata_owner' };
+      }
 
-      // Check admin_phones & explicit allowlist variations (array or delimited string)
-      if (checkAllowlist(meta.admin_phones)) return true;
-      if (checkAllowlist(meta.bot_control_allowlist)) return true;
-      if (checkAllowlist(meta.allowlist)) return true;
-      if (checkAllowlist(meta.authorized_phones)) return true;
-      if (checkAllowlist(meta.allowed_phones)) return true;
+      if (matchesPhone(meta.admin_phone)) {
+        return { authorized: true, role: 'admin', canControlTenant: true, canControlContact: true, source: 'tenant_metadata_admin' };
+      }
+
+      if (
+        checkAllowlist(meta.admin_phones) ||
+        checkAllowlist(meta.bot_control_allowlist) ||
+        checkAllowlist(meta.allowlist) ||
+        checkAllowlist(meta.authorized_phones) ||
+        checkAllowlist(meta.allowed_phones)
+      ) {
+        return { authorized: true, role: 'admin', canControlTenant: true, canControlContact: true, source: 'tenant_metadata_allowlist' };
+      }
     }
 
     // 2. Check tenant_users table
@@ -266,9 +297,14 @@ export async function isAuthorizedBotController(params: {
       for (const u of users) {
         const uPhone = cleanCustomerPhone(u.phone || '');
         if (senderVariants.has(uPhone) || senderVariants.has(u.phone)) {
-          const role = String(u.role || '').toLowerCase();
-          if (['owner', 'admin', 'cs', 'manager', 'superuser'].includes(role)) {
-            return true;
+          const rawRole = String(u.role || '').toLowerCase().trim();
+          if (['owner', 'admin', 'superuser', 'internal_admin'].includes(rawRole)) {
+            const role = rawRole === 'owner' ? 'owner' : rawRole === 'admin' ? 'admin' : 'superuser';
+            return { authorized: true, role, canControlTenant: true, canControlContact: true, source: 'tenant_users' };
+          }
+          if (['cs', 'agent', 'manager'].includes(rawRole)) {
+            const role = rawRole === 'cs' ? 'cs' : rawRole === 'agent' ? 'agent' : 'manager';
+            return { authorized: true, role, canControlTenant: false, canControlContact: true, source: 'tenant_users' };
           }
         }
       }
@@ -277,7 +313,21 @@ export async function isAuthorizedBotController(params: {
     console.warn('[BotControlService] RBAC check warning:', err);
   }
 
-  return false;
+  return { authorized: false, role: 'none', canControlTenant: false, canControlContact: false };
+}
+
+/**
+ * RBAC Verification: Verifies whether the sender is an authorized Bot Controller.
+ * Kept for backwards compatibility.
+ */
+export async function isAuthorizedBotController(params: {
+  senderPhone: string;
+  tenantId: string;
+  tenantSlug?: string;
+  supabase?: any;
+}): Promise<boolean> {
+  const auth = await resolveBotControllerRole(params);
+  return auth.authorized;
 }
 
 /**
@@ -333,31 +383,71 @@ export async function executeBotControl(params: {
   const isTenantScope = rawScope === 'TENANT' || rawScope === 'tenant';
   const scope: 'tenant' | 'conversation' = isTenantScope ? 'tenant' : 'conversation';
 
-  // 2. RBAC Enforcement
-  const role = (params.userRole || '').toLowerCase().trim();
-  if (role) {
-    if (scope === 'tenant') {
-      const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
-      if (!allowedTenantRoles.includes(role)) {
-        return {
-          success: false,
-          bot_paused: false,
-          scope: 'tenant',
-          message: 'Akses ditolak: Hanya role Owner atau Admin yang diizinkan mengubah status bot tingkat tenant (Tenant-level).',
-          error: 'FORBIDDEN_TENANT_ROLE',
-        };
-      }
-    } else {
-      const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
-      if (!allowedConvRoles.includes(role)) {
-        return {
-          success: false,
-          bot_paused: false,
-          scope: 'conversation',
-          message: 'Akses ditolak: Role Anda tidak memiliki izin untuk mengontrol sesi percakapan.',
-          error: 'FORBIDDEN_CONVERSATION_ROLE',
-        };
-      }
+  // 2. Strict Fail-Closed RBAC Enforcement
+  let role = (params.userRole || '').toLowerCase().trim();
+  if (!role && params.senderPhone) {
+    const authRes = await resolveBotControllerRole({
+      senderPhone: params.senderPhone,
+      tenantId,
+      tenantSlug,
+      supabase,
+    });
+    if (authRes.authorized) {
+      role = authRes.role;
+    }
+  }
+
+  // STRICT FAIL-CLOSED: Jika userRole tidak disediakan DAN senderPhone tidak dapat diresolusi menjadi role yang sah,
+  // JANGAN lanjutkan eksekusi ke database. Segera tolak dengan status 'UNAUTHORIZED'.
+  if (!role || role === 'none') {
+    return {
+      success: false,
+      bot_paused: false,
+      scope,
+      status: scope === 'tenant' ? 'BOT_DISABLED' : 'HUMAN_HANDOVER',
+      message: 'Akses ditolak: Identitas pengguna / role tidak terverifikasi (UNAUTHORIZED).',
+      error: 'UNAUTHORIZED',
+    };
+  }
+
+  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi (dashboard_toggle)
+  if (role === 'merchant_cookie') {
+    if (source !== 'dashboard_toggle') {
+      return {
+        success: false,
+        bot_paused: false,
+        scope,
+        status: scope === 'tenant' ? 'BOT_DISABLED' : 'HUMAN_HANDOVER',
+        message: 'Akses ditolak: Label arbitrer merchant_cookie tidak valid di luar sesi dashboard resmi.',
+        error: 'FORBIDDEN_INVALID_SESSION',
+      };
+    }
+  }
+
+  // Validasi RBAC berdasarkan scope yang diminta
+  if (scope === 'tenant') {
+    const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
+    if (!allowedTenantRoles.includes(role)) {
+      return {
+        success: false,
+        bot_paused: false,
+        scope: 'tenant',
+        status: 'BOT_DISABLED',
+        message: 'Akses ditolak: Hanya role Owner atau Admin yang diizinkan mengubah status bot tingkat tenant (Tenant-level).',
+        error: 'FORBIDDEN_TENANT_ROLE',
+      };
+    }
+  } else {
+    const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
+    if (!allowedConvRoles.includes(role)) {
+      return {
+        success: false,
+        bot_paused: false,
+        scope: 'conversation',
+        status: 'HUMAN_HANDOVER',
+        message: 'Akses ditolak: Role Anda tidak memiliki izin untuk mengontrol sesi percakapan.',
+        error: 'FORBIDDEN_CONVERSATION_ROLE',
+      };
     }
   }
 
@@ -400,16 +490,8 @@ export async function executeBotControl(params: {
     ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
     : (scope === 'tenant' ? new Date(now.getTime() - 60 * 1000).toISOString() : null);
 
-  // 1. Optimistic Cache Registration: Menutup celah konkurensi pesan masuk vs kontrol manual owner
-  setRuntimeSessionCache({
-    tenantId: resolvedTenantUuid,
-    userIdentifier: targetPhoneForCache,
-    isPaused: isPause,
-    botStatus: scope === 'tenant' ? (isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE') : (isPause ? 'HUMAN_HANDOVER' : 'AI_ACTIVE'),
-    pausedUntil: pausedUntilIso,
-    pausedBy: source,
-    updatedAt: now.getTime(),
-  });
+  // Database is Single Source of Truth: Runtime cache is NOT updated optimistically here!
+  // It is updated ONLY AFTER the DB mutation is successfully confirmed.
 
   // 2. Pemanggilan Fungsi RPC Atomik di Database Supabase
   const rpcResult = await callAtomicBotControlRpc({
@@ -425,12 +507,24 @@ export async function executeBotControl(params: {
   });
 
   if (rpcResult.rpcExecuted) {
-    const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE';
+    const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ENABLED';
     const convStatus: ConversationBotStatus = isPause ? 'HUMAN_HANDOVER' : 'AI_ACTIVE';
+
+    // Update runtime cache ONLY after confirmed RPC execution
+    setRuntimeSessionCache({
+      tenantId: resolvedTenantUuid,
+      userIdentifier: targetPhoneForCache,
+      isPaused: isPause,
+      botStatus: scope === 'tenant' ? tenantStatus : convStatus,
+      pausedUntil: pausedUntilIso,
+      pausedBy: source,
+      updatedAt: now.getTime(),
+    });
+
     const replyMsg = scope === 'tenant'
       ? (isPause
           ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (BOT_DISABLED). Semua percakapan dialihkan ke mode manual CS.'
-          : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan (BOT_ACTIVE).')
+          : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan (BOT_ENABLED).')
       : (isPause
           ? '⏸️ Percakapan dialihkan ke CS (HUMAN_HANDOVER). Bot AI dijeda selama 24 jam.'
           : '🤖 Percakapan diaktifkan kembali untuk Bot AI (AI_ACTIVE).');
@@ -445,10 +539,10 @@ export async function executeBotControl(params: {
   }
 
   // =========================================================================
-  // SCOPE A: TENANT-LEVEL MUTATION (BOT_ACTIVE / BOT_DISABLED)
+  // SCOPE A: TENANT-LEVEL MUTATION (BOT_ENABLED / BOT_DISABLED)
   // =========================================================================
   if (scope === 'tenant') {
-    const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE';
+    const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ENABLED';
 
     const meta = (tenantRow?.metadata && typeof tenantRow.metadata === 'object') ? { ...tenantRow.metadata } : {};
     meta.bot_status = tenantStatus;
@@ -505,7 +599,7 @@ export async function executeBotControl(params: {
       const sessionUpdatePayload: Record<string, any> = {
         is_paused: isPause,
         current_state: isPause ? 'HUMAN_PAUSED' : 'ACTIVE',
-        bot_status: isPause ? 'BOT_DISABLED' : 'BOT_ACTIVE',
+        bot_status: isPause ? 'BOT_DISABLED' : 'BOT_ENABLED',
         paused_until: pausedUntilIso,
         updated_at: nowIso,
       };
@@ -572,9 +666,20 @@ export async function executeBotControl(params: {
         };
       }
 
+      // Update runtime cache ONLY after confirmed DB updates
+      setRuntimeSessionCache({
+        tenantId: resolvedTenantUuid,
+        userIdentifier: undefined,
+        isPaused: isPause,
+        botStatus: tenantStatus,
+        pausedUntil: pausedUntilIso,
+        pausedBy: source,
+        updatedAt: now.getTime(),
+      });
+
       const replyMsg = isPause
         ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (BOT_DISABLED). Semua percakapan dialihkan ke mode manual CS.'
-        : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan (BOT_ACTIVE).';
+        : '🤖 *[SISTEM]* Bot AI aktif kembali untuk SEMUA percakapan (BOT_ENABLED).';
 
       return {
         success: true,
@@ -692,6 +797,17 @@ export async function executeBotControl(params: {
       }
     }
 
+    // Update runtime cache ONLY after confirmed DB updates
+    setRuntimeSessionCache({
+      tenantId: resolvedTenantUuid,
+      userIdentifier: targetPhone,
+      isPaused: isHandover,
+      botStatus: convStatus,
+      pausedUntil: pausedUntilIso,
+      pausedBy: source,
+      updatedAt: now.getTime(),
+    });
+
     return {
       success: true,
       scope: 'conversation',
@@ -716,11 +832,17 @@ export async function executeBotControl(params: {
 }
 
 /**
- * Runtime Decision Gate: Prevents zombie pause and enforces the hierarchy:
- * 1. Transaction Exception FIRST (Order & Payment confirmations must NOT be blocked)
- * 2. Tenant Level: if tenant.bot_paused === true OR tenant.is_bot_active === false -> BYPASS TOTAL
- * 3. Session Level: if session.is_paused === true AND session.paused_until > NOW() -> BYPASS TOTAL
- * 4. Auto-Resume: if session.paused_until <= NOW() -> AUTO-RESUME immediately (is_paused = false, bot_status = 'BOT_ACTIVE')
+ * Runtime Decision Gate: Prevents zombie pause and enforces the 2-Dimensional Hierarchy:
+ *
+ * DIMENSI 1: TENANT LEVEL GATE (BOT_ENABLED vs BOT_DISABLED)
+ * Single Source of Truth: Status Tenant adalah otoritas tertinggi!
+ * Aturan Kunci: Jika status tenant BOT_DISABLED, bot WAJIB bypass total.
+ * Kedaluwarsanya timer paused_until pada level kontak TIDAK BOLEH mengaktifkan bot!
+ *
+ * DIMENSI 2: CONTACT LEVEL GATE (AI_ACTIVE vs HUMAN_HANDOVER)
+ * Dievaluasi HANYA JIKA Dimensi Tenant berstatus BOT_ENABLED:
+ * - Jika timer paused_until masih aktif -> bypass total (SESSION_PAUSED).
+ * - Jika timer paused_until sudah kedaluwarsa -> auto-resume sesi ke AI_ACTIVE.
  */
 export async function checkRuntimeBotDecisionGate(params: {
   tenant: any;
@@ -736,42 +858,62 @@ export async function checkRuntimeBotDecisionGate(params: {
     return { shouldBypass: false, reason: 'TRANSACTION_EXCEPTION_ORDER' };
   }
 
-  // RULE 0.5: RUNTIME SESSION CACHE (Handles concurrency between incoming messages and manual owner control)
+  // =========================================================================
+  // DIMENSI 1: TENANT LEVEL GATE (BOT_ENABLED vs BOT_DISABLED)
+  // Single Source of Truth: Status Tenant adalah otoritas tertinggi!
+  // Aturan Kunci: Jika tenant BOT_DISABLED, bot WAJIB bypass total.
+  // Kedaluwarsanya timer paused_until pada kontak TIDAK BOLEH mengaktifkan bot!
+  // =========================================================================
   const tenantLookupId = tenant?.id || tenant?.slug || session?.tenant_id;
-  if (tenantLookupId) {
-    const cachedGlobal = getRuntimeSessionCache(tenantLookupId);
-    if (cachedGlobal && Date.now() - cachedGlobal.updatedAt < 60000) {
-      if (cachedGlobal.isPaused) {
-        return { shouldBypass: true, reason: 'TENANT_GLOBAL_PAUSED_CACHE' };
-      }
-    }
 
-    if (params.senderPhone) {
-      const cachedSession = getRuntimeSessionCache(tenantLookupId, params.senderPhone);
-      if (cachedSession && Date.now() - cachedSession.updatedAt < 60000) {
-        if (!cachedSession.isPaused) {
-          return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
-        }
-        if (cachedSession.isPaused) {
-          return { shouldBypass: true, reason: 'SESSION_PAUSED' };
-        }
-      }
-    }
-  }
-
-  // RULE 1: TENANT LEVEL GATE (Global Pause / Off)
-  const isTenantPaused =
+  const isTenantPausedInDb =
     tenant?.bot_paused === true ||
     tenant?.is_bot_active === false ||
+    tenant?.metadata?.bot_status === 'BOT_DISABLED' ||
     tenant?.metadata?.bot_paused === true ||
     tenant?.metadata?.is_bot_paused === true ||
     tenant?.metadata?.is_bot_active === false;
 
-  if (isTenantPaused) {
+  let isTenantPausedInCache = false;
+  if (tenantLookupId) {
+    const cachedGlobal = getRuntimeSessionCache(tenantLookupId);
+    if (cachedGlobal && Date.now() - cachedGlobal.updatedAt < 60000) {
+      if (cachedGlobal.isPaused || cachedGlobal.botStatus === 'BOT_DISABLED') {
+        isTenantPausedInCache = true;
+      }
+    }
+  }
+
+  if (isTenantPausedInCache && !isTenantPausedInDb) {
+    return { shouldBypass: true, reason: 'TENANT_GLOBAL_PAUSED_CACHE' };
+  }
+  if (isTenantPausedInDb || isTenantPausedInCache) {
     return { shouldBypass: true, reason: 'TENANT_GLOBAL_PAUSED' };
   }
 
-  // RULE 2: SESSION LEVEL GATE
+  // =========================================================================
+  // DIMENSI 2: CONTACT LEVEL GATE (AI_ACTIVE vs HUMAN_HANDOVER)
+  // Hanya dievaluasi jika Dimensi Tenant berada dalam kondisi BOT_ENABLED.
+  // =========================================================================
+
+  // Fast check: Contact-level cache
+  if (tenantLookupId && params.senderPhone) {
+    const cachedSession = getRuntimeSessionCache(tenantLookupId, params.senderPhone);
+    if (cachedSession && Date.now() - cachedSession.updatedAt < 60000) {
+      const isTimerExpired =
+        cachedSession.pausedUntil &&
+        new Date(cachedSession.pausedUntil).getTime() <= Date.now();
+
+      if (cachedSession.isPaused && !isTimerExpired) {
+        return { shouldBypass: true, reason: 'SESSION_PAUSED' };
+      }
+      if (!cachedSession.isPaused) {
+        return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
+      }
+    }
+  }
+
+  // Evaluate Contact Session from DB
   if (session) {
     const isSessionStatePaused =
       session.is_paused === true ||
@@ -779,6 +921,7 @@ export async function checkRuntimeBotDecisionGate(params: {
       session.current_state === 'HANDOVER_TO_HUMAN' ||
       session.current_state === 'PAUSED' ||
       session.bot_status === 'HUMAN_PAUSED' ||
+      session.bot_status === 'HUMAN_HANDOVER' ||
       Boolean(session.metadata?.is_bot_paused);
 
     if (isSessionStatePaused) {
@@ -825,7 +968,7 @@ export async function checkRuntimeBotDecisionGate(params: {
           } catch (_) {}
         }
 
-        // Sync runtime session cache
+        // Sync runtime session cache AFTER DB update
         if (tenantLookupId && (session.user_identifier || params.senderPhone)) {
           setRuntimeSessionCache({
             tenantId: tenantLookupId,
@@ -896,7 +1039,7 @@ export async function checkRuntimeBotDecisionGate(params: {
             tenantId: tenantLookupId,
             userIdentifier: session.user_identifier || params.senderPhone,
             isPaused: true,
-            botStatus: 'HUMAN_PAUSED',
+            botStatus: 'HUMAN_HANDOVER',
             pausedUntil: fallbackPausedUntil,
             pausedBy: pausedBy || 'owner',
           });
@@ -922,7 +1065,7 @@ export async function checkRuntimeBotDecisionGate(params: {
           tenantId: tenantLookupId,
           userIdentifier: session.user_identifier || params.senderPhone,
           isPaused: true,
-          botStatus: session.bot_status || 'HUMAN_PAUSED',
+          botStatus: session.bot_status || 'HUMAN_HANDOVER',
           pausedUntil: session.paused_until,
           pausedBy: session.paused_by || null,
         });

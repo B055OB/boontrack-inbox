@@ -107,7 +107,7 @@ export async function PATCH(
 
     // 3. Update kolom is_archived secara idempotent
     const nowIso = new Date().toISOString();
-    const { data: updatedOrder, error: updateErr } = await supabase
+    let { data: updatedOrder, error: updateErr } = await supabase
       .from('orders')
       .update({
         is_archived: isArchived,
@@ -116,6 +116,24 @@ export async function PATCH(
       .eq('id', order.id)
       .select('*')
       .maybeSingle();
+
+    // Fallback: Jika kolom is_archived belum ada di skema, simpan di metadata JSONB
+    if (updateErr && (updateErr.message?.includes('is_archived') || updateErr.message?.includes('does not exist'))) {
+      console.warn('[Archive Order API] Column update failed, persisting to metadata JSONB fallback:', updateErr.message);
+      const currentMeta = (typeof order.metadata === 'object' && order.metadata !== null) ? order.metadata : {};
+      const newMeta = { ...currentMeta, is_archived: isArchived };
+      const fallbackRes = await supabase
+        .from('orders')
+        .update({
+          metadata: newMeta,
+          updated_at: nowIso,
+        })
+        .eq('id', order.id)
+        .select('*')
+        .maybeSingle();
+      updatedOrder = fallbackRes.data;
+      updateErr = fallbackRes.error;
+    }
 
     if (updateErr) {
       console.error('[Archive Order API] Error updating order:', updateErr);

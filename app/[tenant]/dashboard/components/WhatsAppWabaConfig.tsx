@@ -84,7 +84,7 @@ export default function WhatsAppWabaConfig({
 
           if (conn.is_connected || conn.status === 'active' || conn.status === 'open') {
             setSuccessData({
-              verifiedName: conn.metadata?.verified_name || displayName.toUpperCase(),
+              verifiedName: conn.metadata?.verified_name || String(displayName || '').toUpperCase(),
               displayPhone: conn.phone_number || (conn.phone_number_id ? `ID: ${conn.phone_number_id}` : undefined),
               qualityRating: conn.metadata?.quality_rating || 'GREEN',
               message: 'Akun Meta WABA sudah terverifikasi dan aktif.',
@@ -108,7 +108,7 @@ export default function WhatsAppWabaConfig({
 
           if (cfg.status === 'CONNECTED') {
             setSuccessData({
-              verifiedName: cfg.verified_name || displayName.toUpperCase(),
+              verifiedName: cfg.verified_name || String(displayName || '').toUpperCase(),
               displayPhone: cfg.display_phone_number || cfg.phone_number_id,
               qualityRating: cfg.quality_rating || 'GREEN',
               message: 'Akun Meta WABA sudah terhubung.',
@@ -136,7 +136,7 @@ export default function WhatsAppWabaConfig({
 
           if (meta.waba_configured === true || meta.waba_active === true || Boolean(phoneId) || meta.waba_config?.status === 'CONNECTED') {
             setSuccessData({
-              verifiedName: meta.waba_config?.verified_name || displayName.toUpperCase(),
+              verifiedName: meta.waba_config?.verified_name || String(displayName || '').toUpperCase(),
               displayPhone: meta.waba_config?.display_phone_number || (phoneId ? `ID: ${phoneId}` : undefined),
               qualityRating: meta.waba_config?.quality_rating || 'GREEN (HIGH QUALITY)',
               message: 'Akun Meta Cloud API (WABA) resmi aktif dan terkonfigurasi pada tenant ini.',
@@ -197,7 +197,7 @@ export default function WhatsAppWabaConfig({
       }
 
       // Handshake sukses!
-      const resolvedVerifiedName = data.verified_name || displayName.toUpperCase();
+      const resolvedVerifiedName = data.verified_name || String(displayName || '').toUpperCase();
       const resolvedDisplayPhone = data.display_phone_number || cleanPhoneId;
       const resolvedQualityRating = data.quality_rating || 'GREEN';
 
@@ -299,7 +299,7 @@ export default function WhatsAppWabaConfig({
             <div className="p-2.5 bg-white/80 rounded-xl border border-emerald-200">
               <span className="text-[10px] font-bold text-slate-400 block uppercase">Nama Akun WABA</span>
               <strong className="text-slate-900 font-extrabold text-xs block truncate mt-0.5">
-                {successData.verifiedName || displayName.toUpperCase()}
+                {successData.verifiedName || String(displayName || '').toUpperCase()}
               </strong>
             </div>
 
