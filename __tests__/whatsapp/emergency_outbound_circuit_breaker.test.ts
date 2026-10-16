@@ -286,35 +286,35 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
   // Test 1: Parser Scope Differentiation (#off vs #pause)
   // -------------------------------------------------------------------------
   describe('1. Command Parser Scope Test (#off vs #pause)', () => {
-    it('parses #off, !off, /off, off as CONTACT scope PAUSE', () => {
+    it('parses #off, !off, /off, off as TENANT scope PAUSE', () => {
       const variations = ['#off', '!off', '/off', 'off', '#OFF', ' /off '];
-      for (const cmd of variations) {
-        const parsed = parseBotControlCommand(cmd);
-        expect(parsed).toEqual({ action: 'PAUSE', scope: 'CONTACT' });
-      }
-    });
-
-    it('parses #on, !on, /on, on as CONTACT scope RESUME', () => {
-      const variations = ['#on', '!on', '/on', 'on', '#ON', ' !on '];
-      for (const cmd of variations) {
-        const parsed = parseBotControlCommand(cmd);
-        expect(parsed).toEqual({ action: 'RESUME', scope: 'CONTACT' });
-      }
-    });
-
-    it('parses #pause, !pause, /pause, pause as TENANT scope PAUSE', () => {
-      const variations = ['#pause', '!pause', '/pause', 'pause', '#PAUSE', ' /pause '];
       for (const cmd of variations) {
         const parsed = parseBotControlCommand(cmd);
         expect(parsed).toEqual({ action: 'PAUSE', scope: 'TENANT' });
       }
     });
 
-    it('parses #resume, !resume, /resume, resume as TENANT scope RESUME', () => {
-      const variations = ['#resume', '!resume', '/resume', 'resume', '#RESUME', ' !resume '];
+    it('parses #on, !on, /on, on as TENANT scope RESUME', () => {
+      const variations = ['#on', '!on', '/on', 'on', '#ON', ' !on '];
       for (const cmd of variations) {
         const parsed = parseBotControlCommand(cmd);
         expect(parsed).toEqual({ action: 'RESUME', scope: 'TENANT' });
+      }
+    });
+
+    it('parses #pause, !pause, /pause, pause as CONTACT scope PAUSE', () => {
+      const variations = ['#pause', '!pause', '/pause', 'pause', '#PAUSE', ' /pause '];
+      for (const cmd of variations) {
+        const parsed = parseBotControlCommand(cmd);
+        expect(parsed).toEqual({ action: 'PAUSE', scope: 'CONTACT' });
+      }
+    });
+
+    it('parses #resume, !resume, /resume, resume as CONTACT scope RESUME', () => {
+      const variations = ['#resume', '!resume', '/resume', 'resume', '#RESUME', ' !resume '];
+      for (const cmd of variations) {
+        const parsed = parseBotControlCommand(cmd);
+        expect(parsed).toEqual({ action: 'RESUME', scope: 'CONTACT' });
       }
     });
 
@@ -328,13 +328,13 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
   // -------------------------------------------------------------------------
   // Test 2: Acceptance Criteria - Scope Test (Contact A paused vs Contact B active)
   // -------------------------------------------------------------------------
-  describe('2. Scope Test: #off stops AI for Contact A while Contact B gets normal response', () => {
-    it('#off locks AI only for target Contact A, allowing Contact B to be dispatched', async () => {
+  describe('2. Scope Test: #pause stops AI for Contact A while Contact B gets normal response', () => {
+    it('#pause locks AI only for target Contact A, allowing Contact B to be dispatched', async () => {
       const contactA = '628111111111';
       const contactB = '628222222222';
 
-      // Execute #off for Contact A
-      const parsedCmd = parseBotControlCommand('#off');
+      // Execute #pause for Contact A
+      const parsedCmd = parseBotControlCommand('#pause');
       expect(parsedCmd).toEqual({ action: 'PAUSE', scope: 'CONTACT' });
 
       // Contact A is paused
@@ -342,7 +342,7 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
         session_id: `wa_session_${contactA}`,
         is_paused: true,
         current_state: 'HUMAN_PAUSED',
-        bot_status: 'HUMAN_PAUSED',
+        bot_status: 'HUMAN_HANDOVER',
         paused_until: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
       };
       mockConversations[contactA] = {
@@ -357,7 +357,7 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
         tenantId: 'tenant-alpha-uuid',
         userIdentifier: contactA,
         isPaused: true,
-        botStatus: 'HUMAN_PAUSED',
+        botStatus: 'HUMAN_HANDOVER',
       });
 
       // Contact B is ACTIVE (not paused)
@@ -365,7 +365,7 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
         session_id: `wa_session_${contactB}`,
         is_paused: false,
         current_state: 'ACTIVE',
-        bot_status: 'BOT_ACTIVE',
+        bot_status: 'AI_ACTIVE',
       };
       mockConversations[contactB] = {
         id: 'conv-b-id',
@@ -405,17 +405,17 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
   });
 
   // -------------------------------------------------------------------------
-  // Test 3: Acceptance Criteria - Tenant Test (#pause cancels queued AI jobs)
+  // Test 3: Acceptance Criteria - Tenant Test (#off cancels queued AI jobs)
   // -------------------------------------------------------------------------
-  describe('3. Tenant Test: #pause cancels all AI responses including queued jobs', () => {
-    it('#pause cancels all pending AI messages in worker queue without sending any', async () => {
+  describe('3. Tenant Test: #off cancels all AI responses including queued jobs', () => {
+    it('#off cancels all pending AI messages in worker queue without sending any', async () => {
       // 3 AI jobs already queued in worker
       enqueueMockOutbox({ id: 'job-1', recipientPhone: '628100000001', isAi: true });
       enqueueMockOutbox({ id: 'job-2', recipientPhone: '628100000002', isAi: true });
       enqueueMockOutbox({ id: 'job-3', recipientPhone: '628100000003', isAi: true });
 
-      // Operator activates tenant-wide #pause
-      const parsedCmd = parseBotControlCommand('#pause');
+      // Operator activates tenant-wide #off
+      const parsedCmd = parseBotControlCommand('#off');
       expect(parsedCmd).toEqual({ action: 'PAUSE', scope: 'TENANT' });
 
       mockTenant.bot_paused = true;

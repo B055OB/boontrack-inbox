@@ -239,6 +239,18 @@ export function pruneOutboundRegistry(now: number = Date.now()): void {
   }
 }
 
+async function withDbTimeout<T = any>(promise: Promise<T> | any, timeoutMs = 2500): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('DB_TIMEOUT')), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Checks whether an incoming fromMe = true event matches a recorded bot outbound message,
  * checking in-memory registry first, then fallback to outbound_messages & messages tables in Supabase
@@ -287,7 +299,9 @@ export async function isBotOutboundAsync(params: {
         }
       }
 
-      const res = typeof q.maybeSingle === 'function' ? await q.maybeSingle() : await q;
+      const res: any = await withDbTimeout(
+        typeof q.maybeSingle === 'function' ? q.maybeSingle() : q
+      );
       const data = res?.data;
       const error = res?.error;
 
@@ -323,7 +337,9 @@ export async function isBotOutboundAsync(params: {
         msgQ = msgQ.eq('tenant_id', cleanTenantId);
       }
 
-      const res = typeof msgQ.maybeSingle === 'function' ? await msgQ.maybeSingle() : await msgQ;
+      const res: any = await withDbTimeout(
+        typeof msgQ.maybeSingle === 'function' ? msgQ.maybeSingle() : msgQ
+      );
       const msgData = res?.data;
       const msgErr = res?.error;
 
@@ -372,7 +388,9 @@ export async function isBotOutboundAsync(params: {
         recentQ = recentQ.limit(1);
       }
 
-      const res = typeof recentQ.maybeSingle === 'function' ? await recentQ.maybeSingle() : await recentQ;
+      const res: any = await withDbTimeout(
+        typeof recentQ.maybeSingle === 'function' ? recentQ.maybeSingle() : recentQ
+      );
       const recData = res?.data;
       const recErr = res?.error;
 
