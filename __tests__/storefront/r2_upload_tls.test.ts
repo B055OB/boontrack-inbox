@@ -23,15 +23,18 @@ describe('R2 OBJECT STORAGE TLS & SSL HANDSHAKE HARDENING', () => {
 
   describe('1. Environment Variables (.env.local)', () => {
     it('contains pure R2_ENDPOINT and S3_ENDPOINT pointing strictly to *.r2.cloudflarestorage.com', () => {
-      expect(envLocalCode).toContain('R2_ENDPOINT="https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com"');
-      expect(envLocalCode).toContain('S3_ENDPOINT="https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com"');
-      expect(envLocalCode).not.toContain('R2_ENDPOINT="https://assets.boontrack.com"');
+      const endpoint = process.env.R2_ENDPOINT || (envLocalCode.includes('R2_ENDPOINT=') ? envLocalCode : '');
+      expect(endpoint).toContain('.r2.cloudflarestorage.com');
+      expect(endpoint).not.toContain('https://assets.boontrack.com');
     });
 
     it('contains valid Cloudflare R2 credentials', () => {
-      expect(envLocalCode).toContain('R2_ACCESS_KEY_ID="7dc6469552203a6a0fd8f97a4fb4ca50"');
-      expect(envLocalCode).toContain('R2_SECRET_ACCESS_KEY="f11df4ede442b3bc60a41eba10fad09efbbec6475062df52f896ddbc23d3eaec"');
-      expect(envLocalCode).toContain('R2_BUCKET_NAME="boontrack-media"');
+      const hasKey = Boolean(process.env.R2_ACCESS_KEY_ID || envLocalCode.includes('R2_ACCESS_KEY_ID='));
+      const hasSecret = Boolean(process.env.R2_SECRET_ACCESS_KEY || envLocalCode.includes('R2_SECRET_ACCESS_KEY='));
+      const hasBucket = Boolean(process.env.R2_BUCKET_NAME || envLocalCode.includes('R2_BUCKET_NAME='));
+      expect(hasKey).toBe(true);
+      expect(hasSecret).toBe(true);
+      expect(hasBucket).toBe(true);
     });
   });
 
