@@ -15,15 +15,23 @@
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
+export interface ManagerAuthOptions {
+  allowMachine?: boolean;
+}
+
 export interface ManagerAuthResult {
   authorized: boolean;
-  role?: 'SUPERADMIN' | 'AFFILIATE_MANAGER';
+  role?: 'SUPERADMIN' | 'AFFILIATE_MANAGER' | 'INTERNAL_SERVICE';
   userId?: string;
+  isMachine?: boolean;
   errorStatus?: 401 | 403;
   errorMessage?: string;
 }
 
-export async function verifyManagerRole(req: NextRequest): Promise<ManagerAuthResult> {
+export async function verifyManagerRole(
+  req: NextRequest,
+  options: ManagerAuthOptions = {}
+): Promise<ManagerAuthResult> {
   // 1. Extract Bearer token from Authorization header or secure cookie
   const authHeader = req.headers.get('authorization')?.trim() || '';
   let token = '';
@@ -62,13 +70,23 @@ export async function verifyManagerRole(req: NextRequest): Promise<ManagerAuthRe
     };
   }
 
-  // 3. Optional internal machine-to-machine secret (strictly for trusted internal microservices)
+  // 3. Machine Identity Isolation (CTO Directive P1 - Blocker 5):
+  // Shared machine secret (ADMIN_INTERNAL_SECRET / INTERNAL_API_SECRET) is strictly isolated
+  // to machine-to-machine integrations and MUST NOT be granted universal SUPERADMIN privileges.
   const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
   if (envAdminSecret && token === envAdminSecret) {
+    if (options.allowMachine) {
+      return {
+        authorized: true,
+        role: 'INTERNAL_SERVICE',
+        userId: 'machine:internal-service',
+        isMachine: true,
+      };
+    }
     return {
-      authorized: true,
-      role: 'SUPERADMIN',
-      userId: 'system-internal-admin',
+      authorized: false,
+      errorStatus: 403,
+      errorMessage: 'Forbidden: Machine secret (ADMIN_INTERNAL_SECRET) dilarang digunakan untuk aksi manajerial universal SUPERADMIN.',
     };
   }
 
@@ -98,17 +116,17 @@ export async function verifyManagerRole(req: NextRequest): Promise<ManagerAuthRe
   const userId = user.id;
   const userEmail = (user.email || '').trim().toLowerCase();
 
-  // 5. Role Resolution directly from verified JWT metadata claims or Database SSOT
-  // DO NOT trust x-user-role from client request headers!
+  // 5. Strict app_metadata RBAC (CTO Directive P1 - Blocker 1):
+  // ZERO TRUST ON user_metadata: In Supabase Auth, user_metadata is mutable by end-users via client SDK
+  // and constitutes a severe Privilege Escalation vector. ONLY app_metadata (immutable by users, controlled
+  // strictly by backend service_role) and Database SSOT (affiliates table) are trusted!
   let resolvedRole: 'SUPERADMIN' | 'AFFILIATE_MANAGER' | null = null;
 
-  const appRole = String(user.app_metadata?.role || '').trim().toUpperCase();
-  const userRole = String(user.user_metadata?.role || '').trim().toUpperCase();
-  const directRole = appRole || userRole;
+  const appRole = String(user.app_metadata?.role || user.app_metadata?.user_role || '').trim().toUpperCase();
 
-  if (directRole === 'SUPERADMIN') {
+  if (appRole === 'SUPERADMIN') {
     resolvedRole = 'SUPERADMIN';
-  } else if (directRole === 'AFFILIATE_MANAGER' || directRole === 'AM') {
+  } else if (appRole === 'AFFILIATE_MANAGER' || appRole === 'AM') {
     resolvedRole = 'AFFILIATE_MANAGER';
   }
 

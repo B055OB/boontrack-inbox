@@ -259,6 +259,50 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
       const json = await res.json();
       expect(json.success).toBe(false);
     });
+
+    it('rejects privilege escalation attempts via user_metadata.role with 403 (Blocker 1)', async () => {
+      mockSupabaseAdmin.auth.getUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-escalate-001',
+            email: 'attacker@example.com',
+            user_metadata: { role: 'SUPERADMIN' }, // Client-controlled metadata
+            app_metadata: {}, // Empty secure app_metadata
+          },
+        },
+        error: null,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        headers: {
+          authorization: 'Bearer valid_attacker_session_token',
+        },
+      });
+      const res = await GET(req);
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('Forbidden');
+      expect(mockSupabaseAdmin.order).not.toHaveBeenCalled();
+    });
+
+    it('rejects ADMIN_INTERNAL_SECRET / INTERNAL_API_SECRET from claiming universal SUPERADMIN role on manager routes (Blocker 5)', async () => {
+      process.env.ADMIN_INTERNAL_SECRET = 'test-admin-internal-secret-999';
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        headers: {
+          authorization: 'Bearer test-admin-internal-secret-999',
+        },
+      });
+      const res = await GET(req);
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('ADMIN_INTERNAL_SECRET');
+      expect(mockSupabaseAdmin.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('3. Authorized Manager Access (HTTP 200)', () => {
@@ -289,13 +333,13 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
       expect(mockSupabaseAdmin.from).toHaveBeenCalledWith('affiliates');
     });
 
-    it('allows GET requests from AFFILIATE_MANAGER role (via user_metadata)', async () => {
+    it('allows GET requests from AFFILIATE_MANAGER role (via app_metadata)', async () => {
       mockSupabaseAdmin.auth.getUser.mockResolvedValue({
         data: {
           user: {
             id: 'user-am-002',
             email: 'am@boontrack.com',
-            user_metadata: { role: 'AFFILIATE_MANAGER' },
+            app_metadata: { role: 'AFFILIATE_MANAGER' },
           },
         },
         error: null,
