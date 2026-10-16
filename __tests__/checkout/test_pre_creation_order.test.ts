@@ -42,6 +42,14 @@ jest.mock('@/lib/affiliate-notification-service', () => ({
   sendOrderCommissionAlert: jest.fn(async () => ({ success: true })),
 }));
 
+jest.mock('@/lib/email/order-event-bus', () => ({
+  orderEventBus: {
+    publishOrderCreated: jest.fn(async () => null),
+    publishPaymentConfirmed: jest.fn(async () => null),
+    publishFlaggedManual: jest.fn(async () => null),
+  },
+}));
+
 // Build fluent Supabase Mock
 const mockSupabaseAdmin = {
   from: jest.fn((tableName: string) => {
@@ -154,12 +162,16 @@ const mockSupabaseAdmin = {
 
     if (tableName === 'products') {
       return {
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
+        select: jest.fn(() => {
+          const productQuery: any = {
+            eq: jest.fn(() => productQuery),
+            or: jest.fn(() => productQuery),
             maybeSingle: jest.fn(async () => ({
               data: {
                 id: 'prod_99',
                 title: 'Ecourse Digital Mastery',
+                price: 99000,
+                promo_price: 99000,
                 fulfillment_metadata: {
                   access_url: 'https://t.me/joinchat/digital_mastery',
                   instructions: 'Silakan bergabung ke grup VIP Telegram.',
@@ -167,8 +179,9 @@ const mockSupabaseAdmin = {
               },
               error: null,
             })),
-          })),
-        })),
+          };
+          return productQuery;
+        }),
       };
     }
 

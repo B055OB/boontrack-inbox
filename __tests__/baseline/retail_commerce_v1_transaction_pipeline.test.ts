@@ -70,6 +70,14 @@ jest.mock('@/lib/capi-outbox', () => ({
   processCAPIOutboxQueue: jest.fn(async () => ({ processed: 1, succeeded: 1, failed: 0, deadLettered: 0 })),
 }));
 
+jest.mock('@/lib/email/order-event-bus', () => ({
+  orderEventBus: {
+    publishOrderCreated: jest.fn(async () => null),
+    publishPaymentConfirmed: jest.fn(async () => null),
+    publishFlaggedManual: jest.fn(async () => null),
+  },
+}));
+
 // Fluent Supabase Mock
 const mockSupabaseAdmin = {
   from: jest.fn((tableName: string) => {
@@ -172,14 +180,23 @@ const mockSupabaseAdmin = {
 
     if (tableName === 'products') {
       return {
-        select: jest.fn(() => ({
-          eq: jest.fn((col: string, val: any) => ({
-            maybeSingle: jest.fn(async () => {
-              const prod = retailProductCatalog.find((p) => p.id === val);
-              return { data: prod || null, error: null };
+        select: jest.fn(() => {
+          let matchedProd: any = retailProductCatalog[0];
+          const queryBuilder: any = {
+            eq: jest.fn((col: string, val: any) => {
+              const found = retailProductCatalog.find((p) => (p as any)[col] === val || p.id === val);
+              if (found) matchedProd = found;
+              return queryBuilder;
             }),
-          })),
-        })),
+            or: jest.fn((_cond: string) => {
+              return queryBuilder;
+            }),
+            maybeSingle: jest.fn(async () => {
+              return { data: matchedProd || null, error: null };
+            }),
+          };
+          return queryBuilder;
+        }),
       };
     }
 

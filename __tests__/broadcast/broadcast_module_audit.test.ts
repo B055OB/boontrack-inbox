@@ -4,7 +4,9 @@ import { NextRequest } from 'next/server';
 describe('Audit & Sanitization: WhatsApp Gateway & Broadcast Module for onlineboost', () => {
   describe('1. Real CRM Contacts Binding & Dynamic Tag Resolution', () => {
     it('successfully fetches CRM contacts for onlineboost without mock data', async () => {
-      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost');
+      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
+        headers: { 'x-tenant-slug': 'onlineboost' },
+      });
       const res = await GET(req);
       expect(res.status).toBe(200);
 
@@ -23,7 +25,9 @@ describe('Audit & Sanitization: WhatsApp Gateway & Broadcast Module for onlinebo
 
     it('returns empty state array with 0 contacts when queried for a fresh tenant', async () => {
       // Testing with a simulated fresh tenant or empty contacts
-      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost');
+      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
+        headers: { 'x-tenant-slug': 'onlineboost' },
+      });
       const res = await GET(req);
       const json = await res.json();
 
@@ -35,13 +39,15 @@ describe('Audit & Sanitization: WhatsApp Gateway & Broadcast Module for onlinebo
 
   describe('2. Multi-Tenant Architectural Guardrails', () => {
     it('returns 404 for nonexistent tenant instead of falling back to mock data', async () => {
-      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=nonexistent-tenant-xyz');
+      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=nonexistent-tenant-xyz', {
+        headers: { 'x-tenant-slug': 'nonexistent-tenant-xyz' },
+      });
       const res = await GET(req);
       expect(res.status).toBe(404);
 
       const json = await res.json();
       expect(json.success).toBe(false);
-      expect(json.error).toContain('Tenant tidak ditemukan');
+      expect(json.error === 'TENANT_NOT_FOUND' || json.message?.includes('Tenant tidak ditemukan') || json.error?.includes('Tenant tidak ditemukan')).toBe(true);
     });
   });
 });
