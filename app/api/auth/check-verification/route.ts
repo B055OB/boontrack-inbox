@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { findTenantByActivationCode } from '@/lib/whatsapp/activation';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       const { data: t1, error: e1 } = await supabase
         .from('tenants')
         .select('id, slug, name, status, is_active, tier, metadata')
-        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken)
+        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>wa_verification_token.eq.' + tokenSuffix + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken + ',metadata->>activation_code.eq.AKTIVASI ' + canonicalToken)
         .maybeSingle();
 
       tenant = t1;
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
       const { data: t1, error: e1 } = await supabase
         .from('tenants')
         .select('id, slug, name, status, is_active, tier, metadata')
-        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken)
+        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>wa_verification_token.eq.' + tokenSuffix + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken + ',metadata->>activation_code.eq.AKTIVASI ' + canonicalToken)
         .maybeSingle();
 
       tenant = t1;

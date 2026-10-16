@@ -13,6 +13,7 @@ import { formatToWhatsAppMarkdown } from '@/lib/formatting/universal-chat-format
  */
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { normalizeWhatsAppNumber, extractActivationCode, processStoreActivation } from '@/lib/whatsapp/activation';
 import { processMultimodalChat } from '@/lib/ai/multimodal-chat';
 import {
   isManualOrderMessage,
@@ -561,7 +562,7 @@ export async function processEvolutionWebhookEvent(
     if (rawFrom === 'status@broadcast' || rawFrom.endsWith('@broadcast')) continue;
 
     const isGroup = rawFrom.includes('@g.us');
-    let senderPhone = rawFrom.split('@')[0].replace(/\D/g, '');
+    let senderPhone = normalizeWhatsAppNumber(rawFrom);
     if (isGroup) {
       const partJid = String(
         key.participantAlt ||
@@ -570,7 +571,7 @@ export async function processEvolutionWebhookEvent(
         item.participant ||
         ''
       );
-      const cleanPart = partJid.split('@')[0].replace(/\D/g, '');
+      const cleanPart = normalizeWhatsAppNumber(partJid);
       if (cleanPart) {
         senderPhone = cleanPart;
       }
@@ -1003,49 +1004,24 @@ export async function processEvolutionWebhookEvent(
 
     const textBody = caption.trim() || rawMsg.conversation || rawMsg.extendedTextMessage?.text || '';
 
-    // Cek Pola Aktivasi Akun Toko: "AKTIVASI BT-XXXX"
-    const activationMatch = textBody.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
-    if (activationMatch && supabase) {
-      const token = activationMatch[1].toUpperCase().trim();
-      const { data: actTenant } = await supabase
-        .from('tenants')
-        .select('id, slug, name, metadata')
-        .eq('metadata->>wa_verification_token', token)
-        .maybeSingle();
+    // Cek Pola Aktivasi Akun Toko: "AKTIVASI BT-XXXX" atau "BT-XXXX"
+    const activation = extractActivationCode(textBody);
+    if (activation && supabase) {
+      const activationRes = await processStoreActivation({
+        codeOrText: textBody,
+        senderPhone,
+        customSupabase: supabase,
+      });
 
-      if (actTenant) {
-        const curMeta = actTenant.metadata || {};
-        const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        const verifiedAt = new Date().toISOString();
+      await sendEvolutionTextMessage(
+        instanceName,
+        senderPhone,
+        activationRes.replyMessage,
+        resolvedApiKey
+      );
 
-        await supabase
-          .from('tenants')
-          .update({
-            status: 'active',
-            is_active: true,
-            trial_ends_at: trialEndsAt,
-            metadata: {
-              ...curMeta,
-              wa_verification_status: 'verified',
-              wa_verified_at: verifiedAt,
-              wa_verified_phone: senderPhone,
-              phone: senderPhone,
-              whatsapp_number: senderPhone,
-            },
-            updated_at: verifiedAt,
-          })
-          .eq('id', actTenant.id);
-
-        await sendEvolutionTextMessage(
-          instanceName,
-          senderPhone,
-          'Selamat! Nomor WhatsApp Anda berhasil diverifikasi. Akun toko Anda sudah aktif. Silakan kembali ke browser untuk mulai menggunakan BoonTrack.',
-          resolvedApiKey
-        );
-
-        processedCount++;
-        continue;
-      }
+      processedCount++;
+      continue;
     }
 
     // 6. Ingest ke Conversations & Messages Schema (Atomic Database Persistence)
