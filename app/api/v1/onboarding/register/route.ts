@@ -2,18 +2,22 @@
  * app/api/v1/onboarding/register/route.ts
  * Public Merchant Onboarding Registration Endpoint.
  *
- * Strict Architecture Guardrails (Clearance P1 CTO):
+ * Strict Architecture Guardrails (CTO P0/P1 Hardening Clearance):
  * 1. Zod schema validation for payload with strict fail-closed formatting.
- * 2. Server-side referral code validation to database (via body, URL param, or bt_ref cookie).
- * 3. Idempotency protection with Idempotency-Key header to prevent duplicate tenant creation.
- * 4. Atomic database transaction (tenants + affiliate_referrals + outbox_events) with rollback on failure.
- * 5. Decoupled Notification: NO synchronous email/WhatsApp calls inside HTTP request thread.
+ * 2. Zero Plaintext Password Policy: Password/PIN is hashed via standard SHA-256 before database insertion.
+ *    `password_raw` field is completely eliminated from database and metadata.
+ * 3. Server-side referral code validation to database (via body, URL param, or bt_ref cookie).
+ * 4. Idempotency protection with Idempotency-Key header to prevent duplicate tenant creation.
+ * 5. True DB Atomicity: Stored procedure `register_merchant_transactional` is the SOLE execution path.
+ *    No manual compensating fallback is permitted.
+ * 6. Decoupled Notification: NO synchronous email/WhatsApp calls inside HTTP request thread.
  */
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { hashPassword } from '@/lib/auth/password-hasher';
 
 export const dynamic = 'force-dynamic';
 
@@ -167,7 +171,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Outbox Notification Payload (For decoupled asynchronous notification worker)
+    // 6. Cryptographic Password Hashing (Zero Raw Password Policy)
+    const passwordHash = hashPassword(payload.password);
+
+    // 7. Outbox Notification Payload (For decoupled asynchronous notification worker)
     const outboxPayload = {
       event_type: 'MERCHANT_REGISTERED',
       store_name: payload.store_name,
@@ -184,188 +191,62 @@ export async function POST(req: NextRequest) {
       registered_at: new Date().toISOString(),
     };
 
-    // 7. Atomic Transaction Execution
-    // Try stored procedure register_merchant_transactional first for native DB-level transaction
-    let rpcSucceeded = false;
-    let finalResult: any = null;
+    // 8. True DB Atomicity: Stored procedure `register_merchant_transactional` is the SOLE execution path
+    const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('register_merchant_transactional', {
+      p_slug: payload.slug,
+      p_name: payload.store_name,
+      p_owner_name: payload.owner_name,
+      p_email: payload.email,
+      p_phone: payload.phone,
+      p_password: passwordHash, // Hashed password
+      p_ref_code: payload.ref_code,
+      p_category: payload.category,
+      p_business_type: payload.business_type,
+      p_trial_days: 7,
+      p_idempotency_key: idempotencyKey,
+      p_outbox_payload: outboxPayload,
+    });
 
-    try {
-      const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('register_merchant_transactional', {
-        p_slug: payload.slug,
-        p_name: payload.store_name,
-        p_owner_name: payload.owner_name,
-        p_email: payload.email,
-        p_phone: payload.phone,
-        p_password: payload.password,
-        p_ref_code: payload.ref_code,
-        p_category: payload.category,
-        p_business_type: payload.business_type,
-        p_trial_days: 7,
-        p_idempotency_key: idempotencyKey,
-        p_outbox_payload: outboxPayload,
-      });
+    if (rpcErr) {
+      console.error('[Onboarding Register] Stored procedure execution failed:', rpcErr);
 
-      if (!rpcErr && rpcData?.success) {
-        rpcSucceeded = true;
-        finalResult = rpcData;
-      } else if (rpcErr && rpcErr.message?.includes('sudah terdaftar')) {
+      if (rpcErr.message && rpcErr.message.includes('sudah terdaftar')) {
         return NextResponse.json(
           { success: false, message: rpcErr.message },
           { status: 409 }
         );
       }
-    } catch {
-      // Fall through to compensating transaction pattern
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Gagal memproses pendaftaran tenant secara atomik: ${rpcErr.message || 'Kesalahan database'}`,
+        },
+        { status: 500 }
+      );
     }
 
-    if (!rpcSucceeded) {
-      // Compensating Transaction Pattern (Guarantees atomicity and total rollback on failure)
-      let createdTenantId: string | null = null;
-      let createdReferralId: string | null = null;
-      let createdOutboxId: string | null = null;
-
-      try {
-        const trialDays = 7;
-        const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
-
-        // Step 1: Insert into public.tenants
-        const { data: newTenant, error: tenantErr } = await supabaseAdmin
-          .from('tenants')
-          .insert({
-            slug: payload.slug,
-            name: payload.store_name,
-            category: payload.category,
-            business_type: payload.business_type,
-            tier: 'PRO_SCALE',
-            status: 'ACTIVE',
-            subscription_status: 'trial',
-            subscription_tier: 'PRO_SCALE',
-            is_active: true,
-            trial_ends_at: trialEndsAt,
-            subscription_ends_at: trialEndsAt,
-            access_username: payload.slug,
-            access_password: payload.password,
-            metadata: {
-              store_name: payload.store_name,
-              shop_name: payload.store_name,
-              name: payload.store_name,
-              owner_name: payload.owner_name,
-              merchant_name: payload.owner_name,
-              email: payload.email,
-              phone: payload.phone,
-              wa_number: payload.phone,
-              whatsapp_number: payload.phone,
-              access_pin: payload.password,
-              pin: payload.password,
-              pin_hash: payload.password,
-              password_raw: payload.password,
-              tier: 'PRO_SCALE',
-              plan_tier: 'TRIAL_7D',
-              selected_plan: 'Trial 7 Hari',
-              subscription_status: 'trial',
-              is_trial: true,
-              trial_days: trialDays,
-              trial_ends_at: trialEndsAt,
-              is_active: true,
-              status: 'ACTIVE',
-              referral_code: payload.ref_code,
-              affiliate_id: resolvedAffiliate?.id || null,
-              created_via: 'public_onboarding_register',
-            },
-          })
-          .select()
-          .single();
-
-        if (tenantErr) throw tenantErr;
-        createdTenantId = newTenant?.id;
-
-        // Step 2: Insert into public.affiliate_referrals (if referral was provided)
-        if (payload.ref_code) {
-          const { data: newRef, error: refErr } = await supabaseAdmin
-            .from('affiliate_referrals')
-            .insert({
-              affiliate_id: resolvedAffiliate?.id || null,
-              referral_code: payload.ref_code,
-              referred_tenant_id: createdTenantId,
-              referred_tenant_slug: payload.slug,
-              customer_name: payload.owner_name,
-              customer_phone: payload.phone,
-              customer_email: payload.email,
-              metadata: {
-                ref_code: payload.ref_code,
-                registered_at: new Date().toISOString(),
-              },
-            })
-            .select()
-            .single();
-
-          if (refErr) throw refErr;
-          createdReferralId = newRef?.id;
-        }
-
-        // Step 3: Insert into public.outbox_events (event_type: MERCHANT_REGISTERED, status: PENDING)
-        const { data: newOutbox, error: outboxErr } = await supabaseAdmin
-          .from('outbox_events')
-          .insert({
-            event_type: 'MERCHANT_REGISTERED',
-            aggregate_type: 'tenant',
-            aggregate_id: payload.slug,
-            payload: outboxPayload,
-            status: 'PENDING',
-            idempotency_key: idempotencyKey,
-          })
-          .select()
-          .single();
-
-        if (outboxErr) throw outboxErr;
-        createdOutboxId = newOutbox?.id;
-
-        finalResult = {
-          success: true,
-          tenant_id: createdTenantId,
-          slug: payload.slug,
-          name: payload.store_name,
-          tier: 'PRO_SCALE',
-          status: 'ACTIVE',
-          outbox_event_id: createdOutboxId,
-        };
-      } catch (txErr: any) {
-        console.error('[Onboarding Register] Error during transaction. Executing TOTAL ROLLBACK...', txErr);
-
-        // Compensating rollback
-        if (createdOutboxId) {
-          try { await supabaseAdmin.from('outbox_events').delete().eq('id', createdOutboxId); } catch {}
-        }
-        if (createdReferralId) {
-          try { await supabaseAdmin.from('affiliate_referrals').delete().eq('id', createdReferralId); } catch {}
-        }
-        if (createdTenantId) {
-          try { await supabaseAdmin.from('tenants').delete().eq('id', createdTenantId); } catch {}
-        }
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Gagal memproses pendaftaran tenant: ${txErr.message || 'Kesalahan transaksi database'}`,
-          },
-          { status: 500 }
-        );
-      }
+    if (!rpcData || !rpcData.success) {
+      const errMsg = rpcData?.message || 'Transaksi database atomik tidak mengembalikan status berhasil.';
+      return NextResponse.json(
+        { success: false, message: errMsg },
+        { status: 500 }
+      );
     }
 
-    // 8. Return Success response immediately (Decoupled Notification Guard)
+    // 9. Return Success Response immediately (Decoupled Notification Guard)
     return NextResponse.json(
       {
         success: true,
         message: `Toko '${payload.store_name}' (${payload.slug}) berhasil didaftarkan dan diaktifkan!`,
         tenant: {
-          id: finalResult.tenant_id,
+          id: rpcData.tenant_id,
           slug: payload.slug,
           name: payload.store_name,
           tier: 'PRO_SCALE',
           status: 'ACTIVE',
         },
-        outbox_event_id: finalResult.outbox_event_id,
+        outbox_event_id: rpcData.outbox_event_id,
       },
       { status: 200 }
     );

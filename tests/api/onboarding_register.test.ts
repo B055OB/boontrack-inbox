@@ -2,14 +2,16 @@
  * tests/api/onboarding_register.test.ts
  * Unit & Integration Tests: Hardening Multi-Tenant Registration & Transactional Outbox.
  *
- * Directive P1 CTO Requirements:
- * 1. Valid registration request yields HTTP 200 and tenant/outbox rows are saved.
- * 2. Zod validation failure yields HTTP 400.
- * 3. Invalid referral code yields HTTP 400 (fail-closed server-side validation).
- * 4. Idempotent retry with the same Idempotency-Key avoids duplicate tenant creation.
- * 5. Simulated database error yields HTTP 500 and NO notification is sent.
- * 6. Decoupled Outbox worker consumes pending events asynchronously.
- * 7. Non-regression smoke test for tenant products route.
+ * Directive P0/P1 CTO Requirements:
+ * 1. True DB Atomicity: `register_merchant_transactional` RPC is the SOLE execution path.
+ * 2. Zero Raw Password Policy: Password is cryptographically hashed before passing to RPC; no password_raw.
+ * 3. Zod validation failure yields HTTP 400.
+ * 4. Invalid referral code yields HTTP 400 (fail-closed server-side validation).
+ * 5. Idempotent retry with the same Idempotency-Key returns 200 with idempotent_replay: true.
+ * 6. Database error on RPC yields HTTP 500 and NO notification is sent.
+ * 7. Atomic Outbox Worker: Claims pending events using `claim_registration_outbox_batch` RPC (or conditional CAS)
+ *    with locked_at and status: PROCESSING, then dispatches notification and marks COMPLETED.
+ * 8. Non-regression smoke test for tenant products route.
  */
 
 import { NextRequest } from 'next/server';
@@ -49,7 +51,7 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
 
     mockSupabase = {
       from: jest.fn((table: string) => {
-        return {
+        const queryBuilder: any = {
           select: jest.fn().mockReturnThis(),
           insert: jest.fn((payload: any) => {
             const row = { id: `id-${Date.now()}-${Math.random()}`, ...payload };
@@ -63,15 +65,34 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
               maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
             };
           }),
-          update: jest.fn((patch: any) => ({
-            eq: jest.fn((field: string, val: any) => {
-              if (table === 'outbox_events') {
-                const target = storedOutbox.find((o) => o[field] === val);
-                if (target) Object.assign(target, patch);
-              }
-              return Promise.resolve({ data: null, error: null });
-            }),
-          })),
+          update: jest.fn((patch: any) => {
+            let filterField: string | null = null;
+            let filterVal: any = null;
+            const updateBuilder: any = {
+              eq: jest.fn((field: string, val: any) => {
+                filterField = field;
+                filterVal = val;
+                return updateBuilder;
+              }),
+              select: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockImplementation(() => {
+                if (table === 'outbox_events') {
+                  const target = storedOutbox.find((o) => o.id === filterVal || o.status === filterVal);
+                  if (target) Object.assign(target, patch);
+                  return Promise.resolve({ data: target || null, error: null });
+                }
+                return Promise.resolve({ data: null, error: null });
+              }),
+              then: (resolve: any) => {
+                if (table === 'outbox_events' && filterField && filterVal) {
+                  const target = storedOutbox.find((o) => o[filterField!] === filterVal);
+                  if (target) Object.assign(target, patch);
+                }
+                return Promise.resolve({ data: null, error: null }).then(resolve);
+              },
+            };
+            return updateBuilder;
+          }),
           delete: jest.fn(() => ({
             eq: jest.fn((field: string, val: any) => {
               if (table === 'tenants') storedTenants = storedTenants.filter((t) => t[field] !== val);
@@ -94,7 +115,7 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
                 maybeSingle: jest.fn().mockResolvedValue({ data: found || null, error: null }),
               };
             }
-            return {
+            const filterBuilder: any = {
               eq: jest.fn().mockReturnThis(),
               lte: jest.fn().mockReturnThis(),
               order: jest.fn().mockReturnThis(),
@@ -104,6 +125,7 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
               }),
               maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
             };
+            return filterBuilder;
           }),
           ilike: jest.fn((field: string, val: string) => {
             if (table === 'affiliates' && field === 'referral_code') {
@@ -133,10 +155,63 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
             };
           }),
         };
+        return queryBuilder;
       }),
       rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
-        // Fall through to JS compensating transaction handler for mock flexibility
-        return Promise.reject(new Error('RPC mock fallback to compensating transaction'));
+        if (fnName === 'register_merchant_transactional') {
+          const tenantId = `tenant-${Date.now()}`;
+          const outboxId = `outbox-${Date.now()}`;
+
+          // Create tenant record in mock memory
+          storedTenants.push({
+            id: tenantId,
+            slug: args.p_slug,
+            name: args.p_name,
+            tier: 'PRO_SCALE',
+            status: 'ACTIVE',
+            access_password: args.p_password,
+          });
+
+          // Create outbox event in mock memory
+          storedOutbox.push({
+            id: outboxId,
+            event_type: 'MERCHANT_REGISTERED',
+            aggregate_id: args.p_slug,
+            status: 'PENDING',
+            idempotency_key: args.p_idempotency_key || null,
+            payload: args.p_outbox_payload || {},
+          });
+
+          return Promise.resolve({
+            data: {
+              success: true,
+              tenant_id: tenantId,
+              slug: args.p_slug,
+              name: args.p_name,
+              tier: 'PRO_SCALE',
+              status: 'ACTIVE',
+              outbox_event_id: outboxId,
+            },
+            error: null,
+          });
+        }
+
+        if (fnName === 'claim_registration_outbox_batch') {
+          const batchSize = args.batch_size || 10;
+          const pending = storedOutbox
+            .filter((o) => o.status === 'PENDING')
+            .slice(0, batchSize);
+
+          const claimed = pending.map((item) => {
+            item.status = 'PROCESSING';
+            item.locked_at = new Date().toISOString();
+            return { ...item };
+          });
+
+          return Promise.resolve({ data: claimed, error: null });
+        }
+
+        return Promise.resolve({ data: null, error: null });
       }),
     };
 
@@ -144,8 +219,8 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
     (supabaseClientModule.getSupabase as jest.Mock).mockReturnValue(mockSupabase);
   });
 
-  describe('1. Valid Registration & Transactional Outbox', () => {
-    it('creates tenant (ACTIVE / PRO_SCALE) and enqueues outbox event with status PENDING', async () => {
+  describe('1. Valid Registration & True DB Atomicity', () => {
+    it('executes via register_merchant_transactional RPC with hashed password and enqueues outbox event', async () => {
       const payload = {
         store_name: 'Toko Budi Sukses',
         slug: 'toko-budi-sukses',
@@ -170,18 +245,31 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
       expect(json.tenant.slug).toBe('toko-budi-sukses');
       expect(json.tenant.status).toBe('ACTIVE');
 
-      // Verify row saved in tenants
-      expect(storedTenants.length).toBe(1);
-      expect(storedTenants[0].slug).toBe('toko-budi-sukses');
-      expect(storedTenants[0].tier).toBe('PRO_SCALE');
-      expect(storedTenants[0].status).toBe('ACTIVE');
+      // 1. Verifikasi RPC dipanggil sebagai SATU-SATUNYA jalur transaksi atomik
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        'register_merchant_transactional',
+        expect.objectContaining({
+          p_slug: 'toko-budi-sukses',
+          p_name: 'Toko Budi Sukses',
+          p_owner_name: 'Budi Hartono',
+          p_email: 'budi.hartono@example.com',
+          p_phone: '081234567890',
+          p_ref_code: 'buzzerukm',
+        })
+      );
 
-      // Verify row saved in outbox_events with status PENDING
+      // 2. Verifikasi Password Hashing Standard (Zero Plaintext Password Policy)
+      const rpcArgs = mockSupabase.rpc.mock.calls.find(
+        (c: any[]) => c[0] === 'register_merchant_transactional'
+      )[1];
+      expect(rpcArgs.p_password).not.toBe('AmanPassword123!');
+      expect(rpcArgs.p_password).toHaveLength(64); // SHA-256 hex string
+
+      // 3. Verifikasi baris outbox tersimpan dengan status PENDING
       expect(storedOutbox.length).toBe(1);
-      expect(storedOutbox[0].event_type).toBe('MERCHANT_REGISTERED');
       expect(storedOutbox[0].status).toBe('PENDING');
 
-      // Crucial: sendNewAffiliateRegistrationNotification must NOT be called synchronously
+      // 4. Decoupled Notification: notification service TIDAK dipanggil secara sinkron di HTTP request
       expect(
         affiliateNotificationModule.sendNewAffiliateRegistrationNotification
       ).not.toHaveBeenCalled();
@@ -211,7 +299,7 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
       const json = await res.json();
       expect(json.success).toBe(false);
       expect(json.message).toContain('Validasi pendaftaran gagal');
-      expect(storedTenants.length).toBe(0);
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
     });
   });
 
@@ -239,12 +327,12 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
       const json = await res.json();
       expect(json.success).toBe(false);
       expect(json.message).toContain('tidak valid atau tidak aktif');
-      expect(storedTenants.length).toBe(0);
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
     });
   });
 
   describe('4. Idempotency Protection', () => {
-    it('returns idempotent replay without creating duplicate tenants when same Idempotency-Key is provided', async () => {
+    it('returns idempotent replay without duplicate execution when same Idempotency-Key is provided', async () => {
       const idempotencyKey = 'test-idemp-unique-12345';
       const payload = {
         store_name: 'Toko Idempotent',
@@ -292,61 +380,18 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
     });
   });
 
-  describe('5. Database Error Simulation & Total Rollback', () => {
-    it('executes compensating rollback and returns 500 when outbox insert fails', async () => {
-      // Mock outbox insert error
-      mockSupabase.from = jest.fn((table: string) => {
-        if (table === 'outbox_events') {
-          return {
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnThis(),
-              single: jest.fn().mockResolvedValue({
-                data: null,
-                error: { message: 'Simulated PostgreSQL disk failure / outbox error' },
-              }),
-            }),
-            delete: jest.fn().mockReturnValue({
-              eq: jest.fn().mockResolvedValue({ data: null, error: null }),
-            }),
-            select: jest.fn().mockReturnThis(),
-            eq: jest.fn().mockReturnValue({
-              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
-            }),
-          };
-        }
-        return {
-          insert: jest.fn((payload: any) => {
-            const row = { id: `id-${Date.now()}`, ...payload };
-            if (table === 'tenants') storedTenants.push(row);
-            return {
-              select: jest.fn().mockReturnThis(),
-              single: jest.fn().mockResolvedValue({ data: row, error: null }),
-            };
-          }),
-          delete: jest.fn(() => ({
-            eq: jest.fn((field: string, val: any) => {
-              if (table === 'tenants') storedTenants = [];
-              return Promise.resolve({ data: null, error: null });
-            }),
-          })),
-          select: jest.fn().mockReturnThis(),
-          eq: jest.fn().mockReturnValue({
-            maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-          ilike: jest.fn().mockReturnValue({
-            maybeSingle: jest.fn().mockResolvedValue({
-              data: { id: 'aff-1', referral_code: 'buzzerukm', status: 'ACTIVE' },
-              error: null,
-            }),
-          }),
-        };
+  describe('5. Database RPC Failure Handling (Strict No-Fallback)', () => {
+    it('returns HTTP 500 immediately without executing manual fallback when stored procedure fails', async () => {
+      mockSupabase.rpc = jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'Database transaction lock timeout in stored procedure' },
       });
 
       const payload = {
-        store_name: 'Toko Rollback Test',
-        slug: 'toko-rollback-test',
-        owner_name: 'Pak Test',
-        email: 'paktest@example.com',
+        store_name: 'Toko Gagal RPC',
+        slug: 'toko-gagal-rpc',
+        owner_name: 'Pak Gagal',
+        email: 'gagal@example.com',
         phone: '081234567890',
         password: 'Password123!',
         ref_code: 'buzzerukm',
@@ -361,18 +406,48 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
       const res = await POST(req);
       expect(res.status).toBe(500);
 
-      // Verify compensating rollback wiped the partially created tenant
-      expect(storedTenants.length).toBe(0);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('Gagal memproses pendaftaran tenant secara atomik');
 
       // Notification was NOT sent
       expect(
         affiliateNotificationModule.sendNewAffiliateRegistrationNotification
       ).not.toHaveBeenCalled();
     });
+
+    it('returns HTTP 409 Conflict if RPC reports slug already registered', async () => {
+      mockSupabase.rpc = jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'Slug toko toko-duplikat sudah terdaftar.' },
+      });
+
+      const payload = {
+        store_name: 'Toko Duplikat',
+        slug: 'toko-duplikat',
+        owner_name: 'Pak Duplikat',
+        email: 'duplikat@example.com',
+        phone: '081234567890',
+        password: 'Password123!',
+      };
+
+      const req = new NextRequest('http://localhost:3000/api/v1/onboarding/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(409);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('sudah terdaftar');
+    });
   });
 
-  describe('6. Decoupled Asynchronous Outbox Worker', () => {
-    it('consumes pending outbox event and dispatches notification without modifying tenant', async () => {
+  describe('6. Decoupled Asynchronous Outbox Worker with Atomic Locking', () => {
+    it('claims pending outbox event via claim_registration_outbox_batch RPC and dispatches notification', async () => {
       // Seed a pending outbox row
       storedOutbox.push({
         id: 'event-outbox-1',

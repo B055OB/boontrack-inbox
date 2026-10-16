@@ -20,6 +20,7 @@ async function main() {
   const email = 'budiawancorp@gmail.com';
   const phone = '6285183088404';
   const defaultPassword = 'BoonTrack123!';
+  const passwordHash = crypto.createHash('sha256').update(defaultPassword).digest('hex');
   const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   // 1. Check existing tenant
@@ -35,6 +36,7 @@ async function main() {
   }
 
   const existingMeta = existingTenant?.metadata || {};
+  delete existingMeta.password_raw;
 
   const updatedMetadata = {
     ...existingMeta,
@@ -50,10 +52,9 @@ async function main() {
     wa_verification_status: 'VERIFIED',
     status: 'ACTIVE',
     is_active: true,
-    access_pin: defaultPassword,
-    pin: defaultPassword,
-    pin_hash: defaultPassword,
-    password_raw: defaultPassword,
+    access_pin: passwordHash,
+    pin: passwordHash,
+    pin_hash: passwordHash,
     tier: 'PRO_SCALE',
     plan_tier: 'PRO_SCALE',
     selected_plan: 'Pro Scale (Trial 7 Hari)',
@@ -74,7 +75,7 @@ async function main() {
     trial_ends_at: existingTenant?.trial_ends_at || trialEndsAt,
     subscription_ends_at: existingTenant?.subscription_ends_at || trialEndsAt,
     access_username: slug,
-    access_password: defaultPassword,
+    access_password: passwordHash,
     metadata: updatedMetadata,
     updated_at: new Date().toISOString(),
   };

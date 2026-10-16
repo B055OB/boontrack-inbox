@@ -1,14 +1,19 @@
 /**
  * lib/auth/rbac-guard.ts
- * Fail-Closed RBAC & Session/Token Verification for Manager & Control Plane Endpoints.
+ * Strict Fail-Closed RBAC & Session Token Verification for Manager & Control Plane Endpoints.
  *
- * Strict Architecture Guardrails (Clearance P1 CTO):
- * - Must reject requests missing valid session/token with HTTP 401.
- * - Must reject valid requests lacking SUPERADMIN or AFFILIATE_MANAGER roles with HTTP 403.
- * - Admin database client (getSupabaseAdmin) must NEVER be invoked before this guard succeeds.
+ * Security Directives (CTO Hardening Clearance P0):
+ * 1. ZERO TRUST ON CLIENT HEADERS: Total elimination of `x-user-role` or client-supplied role claims.
+ * 2. NO SUBSTRING MATCHING: Prohibit weak heuristics like includes('admin') or includes('manager').
+ * 3. NO SERVICE ROLE AS BEARER: Explicitly reject SUPABASE_SERVICE_ROLE_KEY used as a human bearer token.
+ * 4. MANDATORY OFFICIAL SUPABASE AUTH: Validate token via `supabaseAdmin.auth.getUser(token)`
+ *    to resolve verified user_id, then resolve role directly from user metadata or database.
+ * 5. STRICT FAIL-CLOSED: Non-manager roles (e.g. AFFILIATE, CUSTOMER) rejected with 403.
+ *    Invalid/expired tokens rejected with 401.
  */
 
 import type { NextRequest } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
 export interface ManagerAuthResult {
   authorized: boolean;
@@ -19,57 +24,69 @@ export interface ManagerAuthResult {
 }
 
 export async function verifyManagerRole(req: NextRequest): Promise<ManagerAuthResult> {
-  // 1. Extract Bearer token from Authorization header
+  // 1. Extract Bearer token from Authorization header or secure cookie
   const authHeader = req.headers.get('authorization')?.trim() || '';
   let token = '';
-  if (authHeader.startsWith('Bearer ')) {
+
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
     token = authHeader.slice(7).trim();
   } else if (authHeader) {
-    token = authHeader;
+    token = authHeader.trim();
   }
 
-  // Fallback to custom manager header or cookies
-  const customToken = (
-    req.headers.get('x-manager-token') ||
-    req.headers.get('x-admin-token') ||
-    ''
-  ).trim();
+  if (!token) {
+    token = (
+      req.cookies.get('sb-access-token')?.value ||
+      req.cookies.get('bt_manager_token')?.value ||
+      req.headers.get('x-manager-token') ||
+      ''
+    ).trim();
+  }
 
-  const cookieAuth = (
-    req.cookies.get('bt_manager_auth')?.value ||
-    req.cookies.get('bt_admin_token')?.value ||
-    ''
-  ).trim();
-
-  const resolvedToken = token || customToken || cookieAuth;
-
-  // Fail-closed: reject if no token or session exists
-  if (!resolvedToken) {
+  // Fail-closed: Reject immediately if no token is presented
+  if (!token) {
     return {
       authorized: false,
       errorStatus: 401,
-      errorMessage: 'Unauthorized: Sesi atau token autentikasi manajerial tidak ditemukan.',
+      errorMessage: 'Unauthorized: Sesi atau token autentikasi tidak ditemukan.',
     };
   }
 
-  // 2. Internal / Environment Secrets (Platform Superadmin level)
-  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-
-  if (
-    (envAdminSecret && resolvedToken === envAdminSecret) ||
-    (serviceRoleKey && resolvedToken === serviceRoleKey)
-  ) {
-    return { authorized: true, role: 'SUPERADMIN' };
+  // 2. Security Guard: SUPABASE_SERVICE_ROLE_KEY is strictly forbidden as a human bearer token
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (serviceRoleKey && token === serviceRoleKey) {
+    return {
+      authorized: false,
+      errorStatus: 401,
+      errorMessage: 'Unauthorized: SUPABASE_SERVICE_ROLE_KEY dilarang keras digunakan sebagai token login pengguna.',
+    };
   }
 
-  // 3. Reject known invalid/bad tokens immediately
-  if (
-    resolvedToken === 'invalid' ||
-    resolvedToken === 'invalid_token' ||
-    resolvedToken.startsWith('bad_') ||
-    resolvedToken.startsWith('fake_')
-  ) {
+  // 3. Optional internal machine-to-machine secret (strictly for trusted internal microservices)
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  if (envAdminSecret && token === envAdminSecret) {
+    return {
+      authorized: true,
+      role: 'SUPERADMIN',
+      userId: 'system-internal-admin',
+    };
+  }
+
+  // 4. Validate Token via Official Supabase Auth Session
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = getSupabaseAdmin();
+  } catch (adminClientErr) {
+    console.error('[RBAC Guard] Failed to acquire Supabase Admin client:', adminClientErr);
+    return {
+      authorized: false,
+      errorStatus: 401,
+      errorMessage: 'Unauthorized: Database auth engine unreachable.',
+    };
+  }
+
+  const { data: authData, error: authErr } = await supabaseAdmin.auth.getUser(token);
+  if (authErr || !authData?.user) {
     return {
       authorized: false,
       errorStatus: 401,
@@ -77,41 +94,59 @@ export async function verifyManagerRole(req: NextRequest): Promise<ManagerAuthRe
     };
   }
 
-  // 4. Role Evaluation (Header or Token Claims)
-  const headerRole = req.headers.get('x-user-role')?.trim().toUpperCase();
+  const user = authData.user;
+  const userId = user.id;
+  const userEmail = (user.email || '').trim().toLowerCase();
 
-  if (headerRole) {
-    if (headerRole === 'SUPERADMIN' || headerRole === 'AFFILIATE_MANAGER') {
-      return { authorized: true, role: headerRole as 'SUPERADMIN' | 'AFFILIATE_MANAGER' };
-    } else {
-      return {
-        authorized: false,
-        errorStatus: 403,
-        errorMessage: `Forbidden: Role '${headerRole}' tidak memiliki hak akses manajerial.`,
-      };
+  // 5. Role Resolution directly from verified JWT metadata claims or Database SSOT
+  // DO NOT trust x-user-role from client request headers!
+  let resolvedRole: 'SUPERADMIN' | 'AFFILIATE_MANAGER' | null = null;
+
+  const appRole = String(user.app_metadata?.role || '').trim().toUpperCase();
+  const userRole = String(user.user_metadata?.role || '').trim().toUpperCase();
+  const directRole = appRole || userRole;
+
+  if (directRole === 'SUPERADMIN') {
+    resolvedRole = 'SUPERADMIN';
+  } else if (directRole === 'AFFILIATE_MANAGER' || directRole === 'AM') {
+    resolvedRole = 'AFFILIATE_MANAGER';
+  }
+
+  // If not declared in token claims, query Single Source of Truth in database (affiliates table)
+  if (!resolvedRole) {
+    try {
+      const { data: affRow, error: affErr } = await supabaseAdmin
+        .from('affiliates')
+        .select('id, role, status')
+        .or(`id.eq.${userId},email.eq.${userEmail}`)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
+
+      if (!affErr && affRow) {
+        const dbRole = String(affRow.role || '').trim().toUpperCase();
+        if (dbRole === 'SUPERADMIN') {
+          resolvedRole = 'SUPERADMIN';
+        } else if (dbRole === 'AM' || dbRole === 'AFFILIATE_MANAGER') {
+          resolvedRole = 'AFFILIATE_MANAGER';
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[RBAC Guard] Database role check warning:', dbErr);
     }
   }
 
-  // 5. Token string claim inspection
-  const lowerToken = resolvedToken.toLowerCase();
-  if (lowerToken.includes('superadmin') || lowerToken.includes('admin')) {
-    return { authorized: true, role: 'SUPERADMIN' };
-  }
-  if (lowerToken.includes('affiliate_manager') || lowerToken.includes('manager') || lowerToken === 'verified') {
-    return { authorized: true, role: 'AFFILIATE_MANAGER' };
-  }
-  if (lowerToken.includes('affiliate') || lowerToken.includes('merchant') || lowerToken.includes('user') || lowerToken.includes('customer')) {
+  // 6. Fail-Closed Role Enforcement
+  if (!resolvedRole) {
     return {
       authorized: false,
       errorStatus: 403,
-      errorMessage: 'Forbidden: Role affiliate atau pengguna biasa tidak memiliki izin ke modul manajer.',
+      errorMessage: 'Forbidden: Pengguna terautentikasi tidak memiliki role manajerial (SUPERADMIN atau AFFILIATE_MANAGER).',
     };
   }
 
-  // Default fail-closed
   return {
-    authorized: false,
-    errorStatus: 401,
-    errorMessage: 'Unauthorized: Kredensial autentikasi manajer tidak valid.',
+    authorized: true,
+    role: resolvedRole,
+    userId,
   };
 }

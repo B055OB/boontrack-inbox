@@ -44,6 +44,8 @@ CREATE POLICY "service_role_all_outbox_events" ON public.outbox_events
 -- -----------------------------------------------------------------------------
 -- affiliate_referrals table
 -- -----------------------------------------------------------------------------
+ALTER TABLE public.outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS public.affiliate_referrals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     affiliate_id TEXT,
@@ -70,6 +72,7 @@ CREATE POLICY "service_role_all_affiliate_referrals" ON public.affiliate_referra
 -- -----------------------------------------------------------------------------
 -- Atomic Registration RPC: register_merchant_transactional
 -- Guarantees atomic commit across tenants, affiliate_referrals, and outbox_events
+-- P0: Eliminates password_raw; expects p_password as cryptographic hash
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.register_merchant_transactional(
     p_slug TEXT,
@@ -128,6 +131,7 @@ BEGIN
         LIMIT 1;
     END IF;
 
+    -- P0: Zero Raw Password Policy - stores only hashed credentials in pin_hash
     v_meta := jsonb_build_object(
         'store_name', p_name,
         'shop_name', p_name,
@@ -138,10 +142,8 @@ BEGIN
         'phone', p_phone,
         'wa_number', p_phone,
         'whatsapp_number', p_phone,
-        'access_pin', p_password,
-        'pin', p_password,
         'pin_hash', p_password,
-        'password_raw', p_password,
+        'access_pin', p_password,
         'tier', 'PRO_SCALE',
         'plan_tier', 'TRIAL_7D',
         'selected_plan', 'Trial 7 Hari',
@@ -252,5 +254,42 @@ BEGIN
     );
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.register_merchant_transactional(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT, JSONB) TO service_role;
+
+-- -----------------------------------------------------------------------------
+-- Atomic Outbox Claim RPC: claim_registration_outbox_batch
+-- Prevents worker race conditions using FOR UPDATE SKIP LOCKED
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.claim_registration_outbox_batch(batch_size INTEGER DEFAULT 10)
+RETURNS SETOF public.outbox_events
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH batch AS (
+        SELECT id
+        FROM public.outbox_events
+        WHERE status = 'PENDING'
+          AND event_type = 'MERCHANT_REGISTERED'
+          AND scheduled_at <= NOW()
+        ORDER BY scheduled_at ASC, created_at ASC
+        LIMIT batch_size
+        FOR UPDATE SKIP LOCKED
+    )
+    UPDATE public.outbox_events oe
+    SET
+        status     = 'PROCESSING',
+        locked_at  = NOW(),
+        updated_at = NOW()
+    FROM batch
+    WHERE oe.id = batch.id
+    RETURNING oe.*;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.claim_registration_outbox_batch(INTEGER) TO service_role;
+
 
 

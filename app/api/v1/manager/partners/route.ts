@@ -4,6 +4,7 @@ import { PartnerItem, isValidSlugFormat } from '@/lib/partner-service';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendNewAffiliateRegistrationNotification } from '@/lib/affiliate-notification-service';
 import { verifyManagerRole } from '@/lib/auth/rbac-guard';
+import { hashPassword } from '@/lib/auth/password-hasher';
 
 export async function GET(req: NextRequest) {
   // 1. RBAC Guard: Hanya izinkan SUPERADMIN atau AFFILIATE_MANAGER
@@ -146,58 +147,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Hubungkan Jembatan Auto-Provisioning ke Tabel tenants
-    // Buat/pastikan row di tabel tenants dengan status ACTIVE dan tier TRIAL_7D / PRO_SCALE
-    const { error: tenantError } = await supabaseAdmin
-      .from('tenants')
-      .upsert(
-        {
-          slug: targetSlug,
-          name: storeName,
-          category: body.category || 'COMMERCE',
-          business_type: body.business_type || 'COMMERCE',
-          tier: 'PRO_SCALE', // Canonical enum tier (PRO_SCALE / TRIAL_7D)
-          status: 'ACTIVE',
-          subscription_status: 'trial',
-          subscription_tier: 'PRO_SCALE',
-          is_active: true,
-          trial_ends_at: trialEndsAt,
-          subscription_ends_at: trialEndsAt,
-          access_username: targetSlug,
-          access_password: defaultPassword,
-          metadata: {
-            store_name: storeName,
-            shop_name: storeName,
-            name: storeName,
-            email: email?.trim() || null,
-            phone: phone.trim(),
-            wa_number: phone.trim(),
-            whatsapp_number: phone.trim(),
-            access_pin: defaultPassword,
-            pin: defaultPassword,
-            pin_hash: defaultPassword,
-            password_raw: defaultPassword,
-            tier: 'PRO_SCALE',
-            plan_tier: 'TRIAL_7D',
-            selected_plan: 'Trial 7 Hari',
-            subscription_status: 'trial',
-            is_trial: true,
-            trial_days: trialDays,
-            trial_ends_at: trialEndsAt,
-            is_active: true,
-            status: 'ACTIVE',
-            referral_code: cleanCode,
-            am_pembina: am_pembina || null,
-            auto_provisioned: true,
-            created_via: 'partner_auto_provision',
-          },
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'slug' }
-      );
+    // 2. Hubungkan Jembatan Auto-Provisioning ke Tabel tenants via Atomic RPC
+    // P1: Menggunakan register_merchant_transactional & password hashing standard (Zero Raw Password)
+    const hashedPassword = hashPassword(defaultPassword);
 
-    if (tenantError) {
-      console.error('[Tenant Auto-Provisioning Warning]', tenantError);
+    const outboxPayload = {
+      event_type: 'MERCHANT_REGISTERED',
+      store_name: storeName,
+      slug: targetSlug,
+      owner_name: name.trim(),
+      email: email?.trim() || null,
+      phone: phone.trim(),
+      tier: 'PRO_SCALE',
+      referral_code: cleanCode,
+      affiliate_id: newPartner.id,
+      registered_at: new Date().toISOString(),
+      source: 'manager_partner_registration',
+    };
+
+    const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('register_merchant_transactional', {
+      p_slug: targetSlug,
+      p_name: storeName,
+      p_owner_name: name.trim(),
+      p_email: email?.trim() || null,
+      p_phone: phone.trim(),
+      p_password: hashedPassword,
+      p_ref_code: cleanCode,
+      p_category: body.category || 'COMMERCE',
+      p_business_type: body.business_type || 'COMMERCE',
+      p_trial_days: trialDays,
+      p_idempotency_key: null,
+      p_outbox_payload: outboxPayload,
+    });
+
+    if (rpcErr) {
+      console.warn('[Manager Partner Auto-Provision RPC Note]', rpcErr.message || rpcErr);
     }
 
     // Aturan Kritis: Pengiriman email notifikasi (sendNewAffiliateRegistrationNotification)
