@@ -166,14 +166,18 @@ export default function ProductsTab({
     addBtnText = 'Tambah Produk Baru';
   }
 
-  const filteredProducts = products.filter((p) => {
-    const q = searchQuery.toLowerCase();
+  const safeProducts = Array.isArray(products) ? products : [];
+  const filteredProducts = safeProducts.filter((p) => {
+    if (!p) return false;
+    const q = (searchQuery || '').toLowerCase();
     const matchSearch =
       !searchQuery ||
-      p.name.toLowerCase().includes(q) ||
-      (p.sku && p.sku.toLowerCase().includes(q)) ||
-      (p.description && p.description.toLowerCase().includes(q));
-    const matchCat = categoryFilter === 'ALL' || p.category?.toLowerCase() === categoryFilter.toLowerCase();
+      Boolean(p.name && p.name.toLowerCase().includes(q)) ||
+      Boolean(p.sku && p.sku.toLowerCase().includes(q)) ||
+      Boolean(p.description && p.description.toLowerCase().includes(q));
+    const matchCat =
+      categoryFilter === 'ALL' ||
+      Boolean(p.category && p.category.toLowerCase() === (categoryFilter || '').toLowerCase());
     return matchSearch && matchCat;
   });
 

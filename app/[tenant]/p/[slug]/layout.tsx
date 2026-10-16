@@ -77,20 +77,20 @@ export async function generateMetadata({
     }
 
     if (product) {
-      const productName = product.name || product.title || cleanSlug;
+      const productName = product?.name || product?.title || cleanSlug;
       const productDesc =
-        product.single_page_config?.subheadline ||
-        product.description ||
-        product.single_page_config?.headline ||
+        product?.single_page_config?.subheadline ||
+        product?.description ||
+        product?.single_page_config?.headline ||
         metaObj.description ||
         `Pesan ${productName} resmi di ${storeName}. Pemesanan online praktis via WhatsApp dan pembayaran aman terverifikasi.`;
 
       const rawProductImage =
-        product.single_page_config?.banner_url ||
-        product.image ||
-        product.image_url ||
-        (Array.isArray(product.images) && product.images[0]) ||
-        product.single_page_config?.hero_image ||
+        product?.single_page_config?.banner_url ||
+        product?.image ||
+        product?.image_url ||
+        (Array.isArray(product?.images) && product.images[0]) ||
+        product?.single_page_config?.hero_image ||
         metaObj.og_image ||
         (cleanTenant === 'tumbuh-kembang-anak' ? '/tenants/tumbuh-kembang-anak/og-image.png' : null) ||
         storeLogo ||

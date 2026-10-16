@@ -98,8 +98,8 @@ export function mapRawOrder(o: any): OrderItem {
     quantity: Number(o.quantity || o.metadata?.quantity || (Array.isArray(o.order_items) && o.order_items[0]?.quantity) || 1),
     total_amount: extractOrderAmount(o),
     payment_method: o.payment_method || 'QRIS Dinamis',
-    payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
-    status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
+    payment_status: String(o.status || o.payment_status || 'PENDING').toUpperCase(),
+    status: String(o.status || o.payment_status || 'PENDING').toUpperCase(),
     shipping_status: o.shipping_status,
     product_type: o?.product_type,
     shipping_address: o.shipping_address,
@@ -190,9 +190,11 @@ export default function OrdersTab({
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        const rawList = Array.isArray(data) ? data : (data.orders || data.data || []);
+        const rawList = Array.isArray(data) ? data : (Array.isArray(data?.orders) ? data.orders : Array.isArray(data?.data) ? data.data : []);
         const mappedList: OrderItem[] = rawList.map(mapRawOrder);
         setInternalOrders(mappedList);
+      } else {
+        setInternalOrders([]);
       }
     } catch (err) {
       console.warn('Gagal memuat daftar pesanan:', err);
@@ -293,13 +295,15 @@ export default function OrdersTab({
     }
   };
 
-  const filteredOrders = orders.filter((o) => {
-    const query = searchQuery.toLowerCase();
+  const safeOrdersList = Array.isArray(orders) ? orders : [];
+  const filteredOrders = safeOrdersList.filter((o) => {
+    if (!o) return false;
+    const query = (searchQuery || '').toLowerCase();
     const matchSearch =
       !searchQuery ||
-      o.invoice_no?.toLowerCase().includes(query) ||
-      o.customer_name?.toLowerCase().includes(query) ||
-      o.customer_phone?.includes(searchQuery);
+      Boolean(o.invoice_no && o.invoice_no.toLowerCase().includes(query)) ||
+      Boolean(o.customer_name && o.customer_name.toLowerCase().includes(query)) ||
+      Boolean(o.customer_phone && o.customer_phone.includes(searchQuery));
     
     const pStatus = o.payment_status || o.status;
     const matchStatus = 

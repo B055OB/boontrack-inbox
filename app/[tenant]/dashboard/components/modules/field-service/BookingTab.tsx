@@ -496,11 +496,12 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
       const bDate = (b.date || '').toLowerCase();
       const matchedDay = daySlots.find((d) => d.dateStr === selectedDayFilter);
       if (matchedDay) {
-        const matchIso = bDate.includes(matchedDay.dateStr);
-        const matchRelative = bDate.includes(matchedDay.relativeLabel.toLowerCase());
-        const matchDisplay =
-          bDate.includes(matchedDay.displayDay.toLowerCase()) ||
-          bDate.includes(matchedDay.displayDate.toLowerCase());
+        const matchIso = matchedDay.dateStr ? bDate.includes(matchedDay.dateStr) : false;
+        const matchRelative = Boolean(matchedDay.relativeLabel && bDate.includes(matchedDay.relativeLabel.toLowerCase()));
+        const matchDisplay = Boolean(
+          (matchedDay.displayDay && bDate.includes(matchedDay.displayDay.toLowerCase())) ||
+          (matchedDay.displayDate && bDate.includes(matchedDay.displayDate.toLowerCase()))
+        );
         if (!matchIso && !matchRelative && !matchDisplay) return false;
       } else if (!bDate.includes(selectedDayFilter)) {
         return false;

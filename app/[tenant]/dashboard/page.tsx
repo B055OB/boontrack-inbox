@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTierAccess } from '@/lib/subscription-tiers';
 
@@ -688,6 +689,7 @@ export default function TenantDashboardPage() {
         <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0 w-full">
           {/* KOLOM 2: CANVAS FORM MODUL AKTIF (Full Width on Mobile) */}
           <div className="flex-1 min-w-0 w-full">
+            <ErrorBoundary key={activeTab} name={`DashboardTab:${activeTab}`}>
           {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
       {(activeTab === 'dashboard' || activeTab === 'overview') && (
         <DashboardOverviewTab
@@ -1359,6 +1361,7 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
             )}
+            </ErrorBoundary>
           </div>
 
           {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (SPLIT-SCREEN DUA KOLOM, >= lg) */}

@@ -587,12 +587,12 @@ export default function TeamChatTab({
 
   // Filtered Quick Replies for Slash Trigger
   const filteredQuickReplies = useMemo(() => {
-    if (!slashQuery) return quickReplies;
+    if (!slashQuery) return Array.isArray(quickReplies) ? quickReplies : [];
     const q = slashQuery.toLowerCase();
-    return quickReplies.filter(
+    return (Array.isArray(quickReplies) ? quickReplies : []).filter(
       (item) =>
-        item.shortcut.toLowerCase().includes(q) ||
-        item.title.toLowerCase().includes(q)
+        Boolean(item.shortcut && item.shortcut.toLowerCase().includes(q)) ||
+        Boolean(item.title && item.title.toLowerCase().includes(q))
     );
   }, [quickReplies, slashQuery]);
 
@@ -1220,9 +1220,9 @@ export default function TeamChatTab({
       // Filter by search keyword
       if (searchKeyword.trim()) {
         const query = searchKeyword.toLowerCase();
-        const matchName = (c.customerName || '').toLowerCase().includes(query);
-        const matchPhone = c.customerPhone.includes(query);
-        const matchMsg = c.lastMessage.toLowerCase().includes(query);
+        const matchName = Boolean(c.customerName && c.customerName.toLowerCase().includes(query));
+        const matchPhone = Boolean(c.customerPhone && c.customerPhone.includes(query));
+        const matchMsg = Boolean(c.lastMessage && c.lastMessage.toLowerCase().includes(query));
         return matchName || matchPhone || matchMsg;
       }
 

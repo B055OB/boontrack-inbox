@@ -392,11 +392,33 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       expect(res.status).toBe(404);
       const json = await res.json();
       expect(json.success).toBe(false);
-      expect(json.error).toContain('Tenant tidak ditemukan');
+      expect(json.error).toBe('TENANT_NOT_FOUND');
+    });
+
+    it('2b. returns 401 when unauthorized or cross-tenant session attempts access', async () => {
+      // Missing auth cookie / header
+      const unauthReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost');
+      const unauthRes = await GET(unauthReq);
+      expect(unauthRes.status).toBe(401);
+      const unauthJson = await unauthRes.json();
+      expect(unauthJson.success).toBe(false);
+      expect(unauthJson.error).toBe('UNAUTHORIZED');
+
+      // Cross-tenant attacker cookie
+      const crossReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
+        headers: { cookie: 'merchant_store=attacker-tenant' },
+      });
+      const crossRes = await GET(crossReq);
+      expect(crossRes.status).toBe(401);
+      const crossJson = await crossRes.json();
+      expect(crossJson.success).toBe(false);
+      expect(crossJson.error).toBe('UNAUTHORIZED');
     });
 
     it('3. successfully returns dynamic CRM contacts and unique tags for onlineboost (list query)', async () => {
-      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost');
+      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost', {
+        headers: { cookie: 'merchant_store=onlineboost' },
+      });
       const res = await GET(req);
       expect(res.status).toBe(200);
       const json = await res.json();
@@ -415,7 +437,9 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
     });
 
     it('4. returns single contact with details when queried by phone', async () => {
-      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&phone=081234567890');
+      const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&phone=081234567890', {
+        headers: { cookie: 'merchant_store=onlineboost' },
+      });
       const res = await GET(req);
       expect(res.status).toBe(200);
       const json = await res.json();
@@ -429,7 +453,9 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
     });
 
     it('5. returns single contact with details when queried by contact_id', async () => {
-      const req = new NextRequest(`http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&contact_id=${MOCK_CONTACT_1_ID}`);
+      const req = new NextRequest(`http://localhost:3000/api/v1/crm/contacts?tenant_id=onlineboost&contact_id=${MOCK_CONTACT_1_ID}`, {
+        headers: { cookie: 'merchant_store=onlineboost' },
+      });
       const res = await GET(req);
       expect(res.status).toBe(200);
       const json = await res.json();
@@ -467,13 +493,33 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       expect(res.status).toBe(404);
       const json = await res.json();
       expect(json.success).toBe(false);
-      expect(json.error).toContain('Tenant tidak ditemukan');
+      expect(json.error).toBe('TENANT_NOT_FOUND');
+    });
+
+    it('7b. returns 401 when unauthorized session attempts POST', async () => {
+      const unauthReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: 'onlineboost',
+          phone: '08129998877',
+          name: 'Attacker Prospek',
+        }),
+      });
+      const unauthRes = await POST(unauthReq);
+      expect(unauthRes.status).toBe(401);
+      const unauthJson = await unauthRes.json();
+      expect(unauthJson.success).toBe(false);
+      expect(unauthJson.error).toBe('UNAUTHORIZED');
     });
 
     it('8. handles action UPDATE_STAGE and updates contact lifecycle stage', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           action: 'UPDATE_STAGE',
@@ -495,7 +541,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
     it('9. handles action CREATE_AND_ADD_TAG and returns updated contact with new tag', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           action: 'CREATE_AND_ADD_TAG',
@@ -517,7 +566,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
     it('10. handles action REMOVE_TAG from contact', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           action: 'REMOVE_TAG',
@@ -538,7 +590,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       // 11.a Add Note
       const addReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           action: 'ADD_NOTE',
@@ -559,7 +614,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       // 11.b Delete Note
       const delReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           action: 'DELETE_NOTE',
@@ -577,7 +635,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       // 12.a Missing phone rejects with 400
       const missingPhoneReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           name: 'Kontak Tanpa Nomor',
@@ -592,7 +653,10 @@ describe('CRM Contacts API Suite (/api/v1/crm/contacts)', () => {
       // 12.b Valid payload creates full contact
       const validReq = new NextRequest('http://localhost:3000/api/v1/crm/contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_store=onlineboost',
+        },
         body: JSON.stringify({
           tenant_id: 'onlineboost',
           phone: '08129998877',

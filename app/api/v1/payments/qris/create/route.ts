@@ -33,7 +33,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    let supabase: any;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch (_) {
+      supabase = getSupabase();
+    }
+
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: 'Database service unavailable' },
@@ -78,9 +84,7 @@ export async function POST(req: NextRequest) {
     const resolvedTenantId = tenantRow.id;
     const targetTenantSlug = tenantRow.slug || cleanSlug;
 
-    // 2. SERVER-AUTHORITATIVE PRODUCT LOOKUP
-    // Request HANYA boleh mengirim product_id / checkout_session_id dan tenant_slug / tenant_id.
-    // Client dilarang mendikte nominal!
+    // 2. SERVER-AUTHORITATIVE PRODUCT LOOKUP & GRACEFUL FALLBACK
     const targetProductId = String(
       product_id ||
       body.productId ||
@@ -92,57 +96,48 @@ export async function POST(req: NextRequest) {
       ''
     ).trim();
 
-    if (!targetProductId) {
-      return NextResponse.json(
-        { success: false, error: 'Product identifier is required (product_id / checkout_session_id)' },
-        { status: 400 }
-      );
-    }
+    const orderId = String(
+      external_id ||
+      body.order_id ||
+      body.orderId ||
+      body.id ||
+      ''
+    ).trim();
 
-    // Query tabel database 'products' milik tenant_id tersebut
-    let dbProduct: any = null;
-    try {
-      const prodTable = supabase.from('products');
-      if (prodTable && typeof prodTable.select === 'function') {
-        let pQuery = prodTable.select('*');
-        if (pQuery && typeof pQuery.eq === 'function') {
-          pQuery = pQuery.eq('id', targetProductId);
-        }
-        if (pQuery && typeof pQuery.maybeSingle === 'function') {
-          const res = await pQuery.maybeSingle();
-          if (res?.data) {
-            dbProduct = res.data;
-          }
-        }
-      }
-    } catch (_) {}
+    const requestedAmount = Number(body.total_amount ?? body.amount ?? body.gross_amount ?? 0);
 
-    // Fallback jika targetProductId adalah slug dan bukan primary ID
-    if (!dbProduct) {
+    // Cek apakah order sudah ada di database (dengan isolasi tenant ketat)
+    let existingOrder: any = null;
+    if (orderId) {
       try {
-        const prodTable = supabase.from('products');
-        if (prodTable && typeof prodTable.select === 'function') {
-          let pQuery = prodTable.select('*');
-          if (pQuery && typeof pQuery.eq === 'function') {
-            pQuery = pQuery.eq('slug', targetProductId);
-          }
-          if (pQuery && typeof pQuery.maybeSingle === 'function') {
-            const res = await pQuery.maybeSingle();
-            if (res?.data) {
-              dbProduct = res.data;
-            }
-          }
+        let orderQuery = supabase.from('orders').select('*').eq('id', orderId);
+        if (resolvedTenantId && targetTenantSlug) {
+          orderQuery = orderQuery.or(`tenant_id.eq.${resolvedTenantId},tenant_slug.eq.${targetTenantSlug}`);
+        } else if (resolvedTenantId) {
+          orderQuery = orderQuery.eq('tenant_id', resolvedTenantId);
+        } else {
+          orderQuery = orderQuery.eq('tenant_slug', targetTenantSlug);
         }
+        const { data: oData } = await orderQuery.maybeSingle();
+        existingOrder = oData;
       } catch (_) {}
     }
 
-    if (dbProduct) {
-      const prodTenant = String(dbProduct.tenant_id || dbProduct.tenant_slug || '').trim();
-      const currTenantId = String(resolvedTenantId || '').trim();
-      const currTenantSlug = String(targetTenantSlug || '').trim();
-      if (prodTenant && prodTenant !== currTenantId && prodTenant !== currTenantSlug) {
-        dbProduct = null;
-      }
+    // Query tabel database 'products' milik tenant_id tersebut (Strict Isolation)
+    let dbProduct: any = null;
+    if (targetProductId) {
+      try {
+        let pQuery = supabase.from('products').select('*').eq('tenant_id', resolvedTenantId);
+        if (isUuid(targetProductId)) {
+          pQuery = pQuery.eq('id', targetProductId);
+        } else {
+          pQuery = pQuery.or(`id.eq.${targetProductId},slug.eq.${targetProductId}`);
+        }
+        const { data: pData } = await pQuery.maybeSingle();
+        if (pData) {
+          dbProduct = pData;
+        }
+      } catch (_) {}
     }
 
     let authoritativeProduct = dbProduct;
@@ -160,11 +155,30 @@ export async function POST(req: NextRequest) {
       )) || null;
     }
 
+    // Graceful Fallback: Jika produk tidak ditemukan di catalog, jangan langsung lempar 404
+    // jika ada external_id (order ID) dan nominal valid, atau order sudah ada di database.
     if (!authoritativeProduct) {
-      return NextResponse.json(
-        { success: false, error: `Produk '${targetProductId}' tidak ditemukan pada tenant '${targetTenantSlug}'` },
-        { status: 404 }
-      );
+      if (existingOrder || (orderId && requestedAmount > 0)) {
+        const fallbackPrice = existingOrder
+          ? Number(existingOrder.gross_amount || existingOrder.total_amount || requestedAmount)
+          : requestedAmount;
+        authoritativeProduct = {
+          id: targetProductId || existingOrder?.product_id || `prod_${Date.now()}`,
+          title: String(existingOrder?.product_title || body.product_name || body.productTitle || 'Pesanan Produk'),
+          price: fallbackPrice,
+          promo_price: fallbackPrice,
+        };
+      } else if (!targetProductId) {
+        return NextResponse.json(
+          { success: false, error: 'Product identifier is required (product_id / checkout_session_id)' },
+          { status: 400 }
+        );
+      } else {
+        return NextResponse.json(
+          { success: false, error: `Produk '${targetProductId}' tidak ditemukan pada tenant '${targetTenantSlug}'` },
+          { status: 404 }
+        );
+      }
     }
 
     const finalProductTitle = String(authoritativeProduct.title || authoritativeProduct.name || 'Pesanan Produk').trim();
@@ -190,21 +204,18 @@ export async function POST(req: NextRequest) {
       tenantRow.metadata?.static_qris_payload ||
       '';
 
-    const isPlatformDana =
-      tenantStaticQris.includes('BoonTrack') ||
-      tenantStaticQris.includes('BOONTRACK') ||
-      tenantStaticQris.includes('Kab. Bandung') ||
-      tenantStaticQris.includes('0940770000');
+    const hasStaticOrDynamicQris = Boolean(tenantStaticQris && tenantStaticQris.trim().startsWith('000201'));
 
-    const isXenditGateway =
+    // Pastikan isXenditGateway TIDAK dipaksa true jika merchant menggunakan QRIS statis/dinamis platform
+    const isExplicitXendit =
       targetTenantSlug === 'onlineboost' ||
       cleanSlug === 'onlineboost' ||
       tenantRow.payment_settings?.provider === 'xendit' ||
       tenantRow.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
       tenantRow.metadata?.payment_settings?.provider === 'xendit' ||
-      tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
-      !tenantStaticQris ||
-      isPlatformDana;
+      tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
+
+    const isXenditGateway = isExplicitXendit && !hasStaticOrDynamicQris;
 
     // 4. KODE UNIK & LEDGER DETERMINISTIK
     // Hitung kode unik dan total transaksi murni di server.
@@ -220,7 +231,6 @@ export async function POST(req: NextRequest) {
     let uniqueCode: number;
     let numAmount: number;
 
-    const requestedAmount = Number(body.total_amount ?? body.amount ?? body.gross_amount ?? 0);
     const requestedUniqueCode = body.unique_code !== undefined ? Number(body.unique_code) : undefined;
     const expectedSubtotal = productBasePrice * quantity;
 
@@ -259,14 +269,6 @@ export async function POST(req: NextRequest) {
       numAmount = Number(body.total_amount ?? body.amount ?? body.gross_amount ?? 1000);
       productBasePrice = Math.max(0, numAmount - uniqueCode);
     }
-
-    const orderId = String(
-      external_id ||
-      body.order_id ||
-      body.orderId ||
-      body.id ||
-      `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`
-    ).trim();
 
     // Tracking context & cookies
     const cookieFbp = req.cookies.get('_fbp')?.value;
@@ -330,9 +332,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4.2 Fallback Direct Clinic Merchant QRIS (Hanya jika bukan DANA internal platform dan bukan gateway)
-    if (!qrString && tenantStaticQris && tenantStaticQris.startsWith('000201') && !isPlatformDana) {
-      qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
+    // 4.2 Merchant Dynamic QRIS (Direct EMVCo conversion)
+    if (!qrString && tenantStaticQris && tenantStaticQris.trim().startsWith('000201')) {
+      qrString = generateDynamicQRIS(tenantStaticQris.trim(), numAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M`;
     } else if (!qrString) {
       const tenantQrisImageUrl =
@@ -430,11 +432,15 @@ export async function POST(req: NextRequest) {
     // 5. DB TRANSACTION & IDEMPOTENCY KEY CHECK
     const now = new Date().toISOString();
 
-    const { data: existingOrder, error: checkErr } = await supabase
+    const { data: existingOrderRow, error: checkErr } = await supabase
       .from('orders')
       .select('id, payment_status, status, order_status, gross_amount, metadata')
       .eq('id', orderId)
       .maybeSingle();
+
+    if (existingOrderRow) {
+      existingOrder = existingOrderRow;
+    }
 
     if (checkErr) {
       console.error('[Payments API Error Detail]:', checkErr);

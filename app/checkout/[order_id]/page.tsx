@@ -489,11 +489,11 @@ export default function CheckoutPage({ params }: Props) {
   }, [order?.tenant_slug, order?.tenant_id, order?.product_id, order?.download_url, order?.fulfillment_metadata?.access_url]);
 
   // Request dynamic QRIS jika belum ada qr_code_url atau qr_string
-  const ensureDynamicQris = React.useCallback(async () => {
+  const ensureDynamicQris = React.useCallback(async (isRetry = false) => {
     if (!order || order.payment_method === 'manual_transfer') return;
     const hasValidQr = Boolean(order.qr_string || (order.qr_code_url && extractRawQrString(order.qr_code_url)));
-    if (hasValidQr) return;
-    if (isGeneratingQris) return;
+    if (hasValidQr && !isRetry) return;
+    if (isGeneratingQris && !isRetry) return;
 
     setIsGeneratingQris(true);
     setQrisError(null);
@@ -505,7 +505,9 @@ export default function CheckoutPage({ params }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           external_id: orderId,
+          order_id: orderId,
           amount: gross,
+          total_amount: gross,
           tenant_slug: order.tenant_slug || order.tenant_id || '',
           tenant_id: order.tenant_id || '',
           customer_phone: order.customer_phone,
@@ -1440,17 +1442,30 @@ export default function CheckoutPage({ params }: Props) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => ensureDynamicQris()}
+                      onClick={() => ensureDynamicQris(true)}
                       className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       <span>Coba Muat Ulang</span>
                     </button>
                   </div>
-                ) : (
+                ) : isGeneratingQris ? (
                   <div className="p-6 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2.5">
                     <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-                    <span className="font-medium text-slate-600">Memuat barcode QRIS resmi...</span>
+                    <span className="font-medium text-slate-600">Menyiapkan barcode QRIS resmi...</span>
+                  </div>
+                ) : (
+                  <div className="p-5 text-center text-xs text-slate-600 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 max-w-[260px]">
+                    <QrCode className="w-6 h-6 text-slate-500 mx-auto" />
+                    <p className="font-medium text-slate-700 text-[11px]">Barcode QRIS belum termuat otomatis.</p>
+                    <button
+                      type="button"
+                      onClick={() => ensureDynamicQris(true)}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Tampilkan QRIS</span>
+                    </button>
                   </div>
                 )}
               </div>

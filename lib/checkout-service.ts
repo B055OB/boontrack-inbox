@@ -221,7 +221,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let verifiedVoucherCode = payload.voucherCode || null;
 
   if (matchedProd && (payload.voucherCode || verifiedProductDiscount > 0)) {
-    const activeVoucher = getProductActiveVoucher(matchedProd, matchedProd.single_page_config);
+    const activeVoucher = getProductActiveVoucher(matchedProd, matchedProd?.single_page_config);
     if (!activeVoucher) {
       verifiedProductDiscount = 0;
       verifiedVoucherCode = null;

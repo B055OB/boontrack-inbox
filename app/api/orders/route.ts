@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: true, orders: [], count: 0 });
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database tidak tersedia.', orders: [], count: 0 },
+        { status: 503 }
+      );
     }
 
     const limitParam = searchParams.get('limit');
@@ -32,34 +35,8 @@ export async function GET(req: NextRequest) {
     let targetSlug = tenantSlug || tenantParam.trim();
     let tenantUuid: string | null = null;
 
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSlug);
-
-    // Resolve BOTH tenant_slug and tenant_id (UUID) from Supabase tenants table
-    try {
-      let tenantQuery = supabase.from('tenants').select('id, slug');
-      if (isUuid) {
-        tenantQuery = tenantQuery.eq('id', targetSlug);
-      } else {
-        tenantQuery = tenantQuery.eq('slug', targetSlug);
-      }
-      const { data: tenantRow } = await tenantQuery.maybeSingle();
-
-      if (tenantRow) {
-        targetSlug = tenantRow.slug || targetSlug;
-        tenantUuid = tenantRow.id || null;
-      } else if (isUuid) {
-        tenantUuid = targetSlug;
-      }
-    } catch (resolveErr) {
-      console.warn('[Orders API] Tenant resolution note:', resolveErr);
-    }
-
-    if (!targetSlug && !tenantUuid) {
-      return NextResponse.json({ success: true, orders: [], count: 0 });
-    }
-
     // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY) ──
-    const cleanCookie = (val?: string) => {
+    const cleanCookie = (val?: string | null) => {
       if (!val) return '';
       try {
         return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
@@ -73,11 +50,93 @@ export async function GET(req: NextRequest) {
       cleanCookie(req.cookies.get('merchant_session')?.value) ||
       cleanCookie(req.cookies.get('bt_tenant')?.value);
 
-    const normalizedTarget = (targetSlug || '').toLowerCase().trim();
+    const headerTenant = cleanCookie(
+      req.headers.get('x-tenant-slug') || req.headers.get('x-tenant-id')
+    );
 
-    if (!cookieStore || cookieStore !== normalizedTarget) {
+    const authHeader = req.headers.get('authorization')?.trim();
+    const internalSecret = req.headers.get('x-internal-secret')?.trim();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+
+    const isInternalAuth =
+      (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
+      (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`);
+
+    const normalizedReqSlug = targetSlug.toLowerCase().trim();
+
+    // Early fail-closed on missing authentication
+    if (!isInternalAuth && !cookieStore && !headerTenant) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.' },
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
+        { status: 401 }
+      );
+    }
+
+    // Early fail-closed on cross-tenant mismatch
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSlug);
+    const cookieMatchesReqSlug = cookieStore === normalizedReqSlug;
+    const headerMatchesReqSlug = headerTenant === normalizedReqSlug;
+    if (!isInternalAuth && !isUuid && !cookieMatchesReqSlug && !headerMatchesReqSlug) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Akses ditolak untuk tenant ini.', orders: [], count: 0 },
+        { status: 401 }
+      );
+    }
+
+    // Resolve BOTH tenant_slug and tenant_id (UUID) from Supabase tenants table
+    let tenantRow: any = null;
+    let tenantErr: any = null;
+    try {
+      let tenantQuery = supabase.from('tenants').select('id, slug');
+      if (isUuid) {
+        tenantQuery = tenantQuery.eq('id', targetSlug);
+      } else {
+        tenantQuery = tenantQuery.eq('slug', targetSlug);
+      }
+      const { data, error: tErr } = await tenantQuery.maybeSingle();
+      tenantRow = data;
+      tenantErr = tErr;
+
+      if (tenantRow) {
+        targetSlug = tenantRow.slug || targetSlug;
+        tenantUuid = tenantRow.id || null;
+      } else if (isUuid) {
+        tenantUuid = targetSlug;
+      }
+    } catch (resolveErr) {
+      console.warn('[Orders API] Tenant resolution note:', resolveErr);
+    }
+
+    if (tenantErr) {
+      console.error('[Orders API] Tenant lookup error:', tenantErr);
+      return NextResponse.json(
+        { success: false, error: 'TENANT_LOOKUP_FAILED', message: tenantErr.message, orders: [], count: 0 },
+        { status: 503 }
+      );
+    }
+
+    if (!tenantRow) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_NOT_FOUND', message: `Tenant tidak ditemukan untuk: ${targetSlug}`, orders: [], count: 0 },
+        { status: 404 }
+      );
+    }
+
+    targetSlug = String(tenantRow.slug || targetSlug);
+    tenantUuid = String(tenantRow.id || '');
+
+    const normalizedTargetSlug = (targetSlug || '').toLowerCase().trim();
+    const normalizedTargetUuid = (tenantUuid || '').toLowerCase().trim();
+
+    const isAuthorized =
+      isInternalAuth ||
+      (cookieStore && (cookieStore === normalizedTargetSlug || cookieStore === normalizedTargetUuid)) ||
+      (headerTenant && (headerTenant === normalizedTargetSlug || headerTenant === normalizedTargetUuid));
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: 'UNAUTHORIZED', message: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
         { status: 401 }
       );
     }
@@ -116,48 +175,86 @@ export async function GET(req: NextRequest) {
       query = query.or('is_archived.is.null,is_archived.eq.false');
     }
 
-    const { data: ordersData, error: ordersErr } = await query
+    let { data: ordersData, error: ordersErr } = await query
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (ordersErr) {
-      console.error('[Orders API] Database query error:', ordersErr);
-      return NextResponse.json({ success: false, error: ordersErr.message, orders: [], count: 0 }, { status: 500 });
+    // Resilient Schema Fallback: Jika database/kolom is_archived belum ada atau melempar error,
+    // ulangi query tanpa klausa is_archived agar tidak melempar 500 error ke dashboard merchant.
+    if (ordersErr && (ordersErr.message?.includes('is_archived') || ordersErr.message?.includes('does not exist'))) {
+      console.warn('[Orders API] is_archived query fallback triggered:', ordersErr.message);
+      let fallbackQuery = supabase.from('orders').select('*');
+      if (targetSlug && tenantUuid) {
+        fallbackQuery = fallbackQuery.or(`tenant_slug.eq.${targetSlug},tenant_id.eq.${tenantUuid}`);
+      } else if (targetSlug) {
+        fallbackQuery = fallbackQuery.eq('tenant_slug', targetSlug);
+      } else if (tenantUuid) {
+        fallbackQuery = fallbackQuery.eq('tenant_id', tenantUuid);
+      }
+      if (startDate) fallbackQuery = fallbackQuery.gte('created_at', startDate);
+      if (endDate) fallbackQuery = fallbackQuery.lte('created_at', endDate);
+
+      const retryRes = await fallbackQuery
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      ordersData = retryRes.data;
+      ordersErr = retryRes.error;
+
+      // In-memory filter untuk metadata.is_archived jika filter aktif
+      if (Array.isArray(ordersData)) {
+        if (archiveParam === 'true' || archiveParam === 'only') {
+          ordersData = ordersData.filter((o: any) => Boolean(o.is_archived || o.metadata?.is_archived));
+        } else if (!includeArchivedParam) {
+          ordersData = ordersData.filter((o: any) => !Boolean(o.is_archived || o.metadata?.is_archived));
+        }
+      }
     }
 
-    const rawOrders = ordersData || [];
+    if (ordersErr) {
+      console.error('[Orders API] Database query error:', ordersErr);
+      return NextResponse.json(
+        { success: false, error: 'ORDER_LOOKUP_FAILED', message: ordersErr.message, orders: [], count: 0 },
+        { status: 503 }
+      );
+    }
+
+    const rawOrders = Array.isArray(ordersData) ? ordersData : [];
 
     // Normalisasi kolom UI riil
     const normalizedOrders = rawOrders.map((o: any) => {
       const orderId = String(o.id || o.order_id || o.invoice_no || '');
+      const orderNum = String(o.order_number || o.id || o.order_id || orderId);
       const rawStatus = String(o.status || o.payment_status || 'PENDING').toUpperCase();
       const grossAmount = extractOrderAmount(o);
+      const buyerName = String(o.customer_name || 'Pelanggan Toko');
 
       return {
         id: orderId,
         order_id: orderId,
-        invoice_no: orderId,
-        tenant_slug: o.tenant_slug || targetSlug,
-        product_id: o.product_id || '',
-        product_name: o.product_title || o.product_name || 'Pesanan Produk',
-        product_title: o.product_title || o.product_name || 'Pesanan Produk',
-        items_summary: o.product_title || o.product_name || 'Pesanan Produk',
-        customer_name: o.customer_name || 'Pelanggan Toko',
-        customer_phone: o.customer_phone || '',
-        customer_email: o.customer_email || '',
+        order_number: orderNum,
+        invoice_no: orderNum,
+        tenant_slug: String(o.tenant_slug || targetSlug),
+        product_id: String(o.product_id || ''),
+        product_name: String(o.product_title || o.product_name || 'Pesanan Produk'),
+        product_title: String(o.product_title || o.product_name || 'Pesanan Produk'),
+        items_summary: String(o.product_title || o.product_name || 'Pesanan Produk'),
+        customer_name: buyerName,
+        buyer_name: buyerName,
+        customer_phone: String(o.customer_phone || ''),
+        customer_email: String(o.customer_email || ''),
         gross_amount: grossAmount,
         total_amount: grossAmount,
         status: rawStatus,
         payment_status: rawStatus,
-        payment_method: o.payment_method || 'QRIS Dinamis',
+        payment_method: String(o.payment_method || 'QRIS Dinamis'),
         shipping_address: o.shipping_address || null,
         shipping_courier: o.shipping_courier || null,
         shipping_cost: Number(o.shipping_cost || 0),
         unique_code: Number(o.unique_code || 0),
         briefing_url: o.briefing_url || o.customer_briefing?.briefing_url || null,
         customer_briefing: o.customer_briefing || (o.briefing_url ? { briefing_url: o.briefing_url } : null),
-        is_archived: Boolean(o.is_archived),
-        created_at: o.created_at || new Date().toISOString(),
+        is_archived: Boolean(o.is_archived || o.metadata?.is_archived),
+        created_at: String(o.created_at || new Date().toISOString()),
       };
     });
 

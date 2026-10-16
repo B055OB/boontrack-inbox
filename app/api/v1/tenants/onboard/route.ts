@@ -540,7 +540,7 @@ export async function POST(req: NextRequest) {
               } : {}),
             },
             single_page_config: {
-              ...(existingMeta.single_page_config || {}),
+              ...(existingMeta?.single_page_config || {}),
               ...(isFood ? {
                 template: 'FOOD',
                 product_preset: 'FOOD',

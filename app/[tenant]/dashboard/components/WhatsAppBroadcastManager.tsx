@@ -351,16 +351,23 @@ export default function WhatsAppBroadcastManager({
 
   // Filtered contacts in directory tab
   const filteredDirectoryContacts = useMemo(() => {
+    if (!Array.isArray(contacts)) return [];
+    const q = (searchContact || '').toLowerCase();
+    const tagFilter = (selectedTagFilter || '').toLowerCase();
+
     return contacts.filter((c) => {
+      if (!c) return false;
       const matchSearch =
-        c.name.toLowerCase().includes(searchContact.toLowerCase()) ||
-        c.phone.includes(searchContact) ||
-        c.productInterest.toLowerCase().includes(searchContact.toLowerCase());
+        !q ||
+        Boolean(c.name && c.name.toLowerCase().includes(q)) ||
+        Boolean(c.phone && c.phone.includes(searchContact)) ||
+        Boolean(c.productInterest && c.productInterest.toLowerCase().includes(q));
 
       const matchTag =
-        selectedTagFilter === 'all' ||
-        c.tags.some((t) => t.toLowerCase().includes(selectedTagFilter.toLowerCase())) ||
-        c.quality.toLowerCase() === selectedTagFilter.toLowerCase();
+        !tagFilter ||
+        tagFilter === 'all' ||
+        (Array.isArray(c.tags) && c.tags.some((t) => (t || '').toLowerCase().includes(tagFilter))) ||
+        (c.quality ? c.quality.toLowerCase() === tagFilter : false);
 
       return matchSearch && matchTag;
     });

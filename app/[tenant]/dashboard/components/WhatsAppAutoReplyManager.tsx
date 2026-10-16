@@ -116,7 +116,7 @@ export default function WhatsAppAutoReplyManager({
     setFeedback(null);
 
     // Filter out completely empty rules
-    const cleanRules = rules.filter((r) => r.trigger.trim() !== '' || r.reply_text.trim() !== '');
+    const cleanRules = rules.filter((r) => (r.trigger || '').trim() !== '' || (r.reply_text || '').trim() !== '');
 
     try {
       let savedSuccessfully = false;
@@ -213,8 +213,8 @@ export default function WhatsAppAutoReplyManager({
     if (!searchFilter.trim()) return true;
     const q = searchFilter.toLowerCase();
     return (
-      r.trigger.toLowerCase().includes(q) ||
-      r.reply_text.toLowerCase().includes(q)
+      (r.trigger || '').toLowerCase().includes(q) ||
+      (r.reply_text || '').toLowerCase().includes(q)
     );
   });
 

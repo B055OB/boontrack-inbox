@@ -1616,7 +1616,7 @@ export function useTenantDashboard() {
       }
     }
 
-    const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name)).toLowerCase();
+    const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name) || 'produk').toLowerCase();
     const cleanImage = sanitizeImageUrl(safeForm.image);
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
     const currentPt = (safeForm.product_type || defaultProductType || '').toUpperCase();
@@ -1658,11 +1658,11 @@ export function useTenantDashboard() {
         payment_methods: safeForm.metadata?.payment_methods,
         enable_cart: isCartEnabled,
       },
-      single_page_config: safeForm.single_page_config
+      single_page_config: (safeForm.single_page_config && typeof safeForm.single_page_config === 'object')
         ? {
           ...safeForm.single_page_config,
           slug: finalSlug,
-          banner_url: sanitizeImageUrl(safeForm.single_page_config.banner_url || cleanImage),
+          banner_url: sanitizeImageUrl(safeForm.single_page_config?.banner_url || cleanImage),
         }
         : undefined,
     });
@@ -1963,14 +1963,14 @@ export function useTenantDashboard() {
     if (!prod) return;
     setActiveSinglePageProduct(prod);
     const prodSlug = prod.slug || slugify(prod.name || '');
-    const existingVoucher = prod.single_page_config?.voucher;
+    const existingVoucher = prod?.single_page_config?.voucher;
     const fulfillment = resolveFulfillmentRequirements(
       prod?.product_type || (prod?.category?.toLowerCase() === 'fisik' || prod?.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (prod?.category?.toLowerCase() === 'jasa' || prod?.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))
     );
     const isPhysical = fulfillment.requiresShipping;
 
     const defaultVoucher: VoucherConfig = existingVoucher || {
-      code: prod.single_page_config?.discount_coupon || (isPhysical ? 'FREESHIP' : 'HEMAT50'),
+      code: prod?.single_page_config?.discount_coupon || (isPhysical ? 'FREESHIP' : 'HEMAT50'),
       discount_type: 'nominal',
       discount_value: isPhysical ? 20000 : 50000,
       shipping_discount_type: isPhysical ? 'free' : 'none',
@@ -1978,7 +1978,7 @@ export function useTenantDashboard() {
       min_spend: 50000,
     };
 
-    const cfg = prod.single_page_config || prod.fulfillment_metadata?.single_page_config || (prod as any).metadata?.single_page_config;
+    const cfg = prod?.single_page_config || prod?.fulfillment_metadata?.single_page_config || (prod as any)?.metadata?.single_page_config;
 
     const isCustomHtmlActive = Boolean(
       (cfg?.enable_custom_html || (cfg as any)?.is_custom_html_enabled || (cfg as any)?.use_custom_html) &&
@@ -2077,7 +2077,7 @@ export function useTenantDashboard() {
 
     setIsSavingSinglePage(true);
     const cleanSpForm = sanitizeProductPayload(singlePageForm);
-    const prodSlug = cleanSpForm.slug?.trim() || slugify(activeSinglePageProduct.name);
+    const prodSlug = cleanSpForm?.slug?.trim() || slugify(activeSinglePageProduct?.name || 'produk');
 
     // Rule: Jika Section #10 (custom_html) aktif dan terisi kode
     const hasCustomHtmlContent = Boolean(cleanSpForm.custom_html && cleanSpForm.custom_html.trim().length > 0);

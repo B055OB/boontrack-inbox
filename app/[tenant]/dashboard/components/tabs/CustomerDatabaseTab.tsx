@@ -633,19 +633,19 @@ export default function CustomerDatabaseTab({
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (c) =>
-          c.customerName.toLowerCase().includes(q) ||
-          c.customerPhone.includes(q) ||
-          c.tags.some((t) => t.toLowerCase().includes(q))
+          Boolean(c.customerName && c.customerName.toLowerCase().includes(q)) ||
+          Boolean(c.customerPhone && c.customerPhone.includes(q)) ||
+          (Array.isArray(c.tags) && c.tags.some((t) => (t || '').toLowerCase().includes(q)))
       );
     }
 
     return [...list].sort((a, b) => {
       if (sortBy === 'dueToday') {
-        if (a.followUp.isDueToday && !b.followUp.isDueToday) return -1;
-        if (!a.followUp.isDueToday && b.followUp.isDueToday) return 1;
+        if (a.followUp?.isDueToday && !b.followUp?.isDueToday) return -1;
+        if (!a.followUp?.isDueToday && b.followUp?.isDueToday) return 1;
       }
-      if (sortBy === 'name') return a.customerName.localeCompare(b.customerName, 'id');
-      if (sortBy === 'orders') return b.totalOrders - a.totalOrders;
+      if (sortBy === 'name') return (a.customerName || '').localeCompare(b.customerName || '', 'id');
+      if (sortBy === 'orders') return (b.totalOrders || 0) - (a.totalOrders || 0);
       const da = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const db = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
       return db - da;
