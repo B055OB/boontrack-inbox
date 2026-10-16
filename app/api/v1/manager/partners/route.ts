@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Hubungkan Jembatan Auto-Provisioning ke Tabel tenants via Atomic RPC
     // P1: Menggunakan register_merchant_transactional & password hashing standard (Zero Raw Password)
-    const hashedPassword = hashPassword(defaultPassword);
+    const hashedPassword = await hashPassword(defaultPassword);
 
     const outboxPayload = {
       event_type: 'MERCHANT_REGISTERED',

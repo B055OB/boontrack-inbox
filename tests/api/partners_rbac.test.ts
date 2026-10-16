@@ -436,10 +436,11 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
         })
       );
 
-      // 3. Verifikasi password yang dikirim ke RPC adalah hash SHA-256 (bukan plaintext 'SecretPassword123!')
+      // 3. Verifikasi password yang dikirim ke RPC adalah hash bcrypt (bukan plaintext 'SecretPassword123!' atau raw SHA-256)
       const rpcArgs = mockSupabaseAdmin.rpc.mock.calls[0][1];
       expect(rpcArgs.p_password).not.toBe('SecretPassword123!');
-      expect(rpcArgs.p_password).toHaveLength(64); // SHA-256 hex string length
+      expect(rpcArgs.p_password).toHaveLength(60); // bcrypt hash length
+      expect(rpcArgs.p_password).toMatch(/^\$2[ab]\$\d{2}\$[./A-Za-z0-9]{53}$/);
     });
   });
 });

@@ -258,12 +258,13 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
         })
       );
 
-      // 2. Verifikasi Password Hashing Standard (Zero Plaintext Password Policy)
+      // 2. Verifikasi Password Hashing Standard bcrypt (Zero Plaintext Password Policy)
       const rpcArgs = mockSupabase.rpc.mock.calls.find(
         (c: any[]) => c[0] === 'register_merchant_transactional'
       )[1];
       expect(rpcArgs.p_password).not.toBe('AmanPassword123!');
-      expect(rpcArgs.p_password).toHaveLength(64); // SHA-256 hex string
+      expect(rpcArgs.p_password).toHaveLength(60); // bcrypt hash length
+      expect(rpcArgs.p_password).toMatch(/^\$2[ab]\$\d{2}\$[./A-Za-z0-9]{53}$/);
 
       // 3. Verifikasi baris outbox tersimpan dengan status PENDING
       expect(storedOutbox.length).toBe(1);
