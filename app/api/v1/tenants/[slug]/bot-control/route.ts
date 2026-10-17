@@ -265,7 +265,7 @@ export async function GET(
       tenant.metadata?.is_bot_active === false;
 
     const tenantPauseReason =
-      tenant.pause_reason ||
+      (tenant as any).pause_reason ||
       tenant.metadata?.pause_reason ||
       (isPaused ? 'TENANT_DISABLED' : null);
 

@@ -27,7 +27,7 @@ import {
   processEvolutionWebhookEvent,
 } from '@/lib/whatsapp/evolution-webhook-handler';
 import { GET, POST, PUT } from '@/app/api/v1/tenants/[slug]/bot-control/route';
-import { updateBotState, resolveBotControllerRole } from '@/lib/whatsapp/bot-control-service';
+import { updateBotState, resolveBotControllerRole, normalizePhoneNumber } from '@/lib/whatsapp/bot-control-service';
 
 // Mock Supabase Client for bot-control route and service
 const mockTenantData = {
@@ -498,25 +498,25 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(result.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
     });
 
-    it('16. updateBotState rejects with UNAUTHORIZED when caller passes source: system_internal without valid system context (Temuan A)', async () => {
-      const result = await updateBotState({
+    it('16. updateBotState rejects with UNAUTHORIZED when caller passes isSystemContext: true or source: system_internal without valid server secret (Blocker A)', async () => {
+      // 1. Calling with source: 'system_internal' without server secret
+      const resSource = await updateBotState({
         tenantId: 'uuid-1234',
         tenantSlug: 'toko-sukses',
         action: 'RESUME',
         scope: 'conversation',
         customerPhone: '6281234567890',
         source: 'system_internal',
-        // userRole deliberately omitted, and no system context/secret provided!
+        // userRole omitted, no server secret
         supabase: mockSupabase,
       });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('UNAUTHORIZED');
-      expect(result.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
-    });
+      expect(resSource.success).toBe(false);
+      expect(resSource.error).toBe('UNAUTHORIZED');
+      expect(resSource.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
 
-    it('17. updateBotState permits mutation with role system_internal ONLY when valid system context or secret is provided', async () => {
-      const result = await updateBotState({
+      // 2. Calling with isSystemContext: true without server secret (boolean bypass attempt)
+      const resBool = await updateBotState({
         tenantId: 'uuid-1234',
         tenantSlug: 'toko-sukses',
         action: 'RESUME',
@@ -527,20 +527,84 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
         supabase: mockSupabase,
       });
 
+      expect(resBool.success).toBe(false);
+      expect(resBool.error).toBe('UNAUTHORIZED');
+      expect(resBool.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
+    });
+
+    it('17. updateBotState permits mutation with role system_internal ONLY when valid server secret is provided (Blocker A)', async () => {
+      const result = await updateBotState({
+        tenantId: 'uuid-1234',
+        tenantSlug: 'toko-sukses',
+        action: 'RESUME',
+        scope: 'conversation',
+        customerPhone: '6281234567890',
+        source: 'timeout_expired',
+        internalSecret: 'test-internal-secret-token',
+        supabase: mockSupabase,
+      });
+
       expect(result.success).toBe(true);
       expect(result.bot_paused).toBe(false);
       expect(result.last_state_updated_by).toBe('timeout_expired');
     });
   });
 
-  describe('Security Remediation: Bot Business Number Isolation (CTO Directive Temuan B)', () => {
-    it('18. resolveBotControllerRole strictly denies owner role to bot device whatsapp_number (Anti-Impersonation)', async () => {
+  describe('Security Remediation: Bot Business Number Isolation (CTO Directive Temuan B & Blocker B)', () => {
+    it('18. normalizePhoneNumber correctly standardizes 08xx, 628xx, and +628xx formats', () => {
+      expect(normalizePhoneNumber('081234567890')).toBe('6281234567890');
+      expect(normalizePhoneNumber('+6281234567890')).toBe('6281234567890');
+      expect(normalizePhoneNumber('6281234567890')).toBe('6281234567890');
+      expect(normalizePhoneNumber('+62 812-3456-7890')).toBe('6281234567890');
+      expect(normalizePhoneNumber('0812-3456-7890')).toBe('6281234567890');
+    });
+
+    it('19. resolveBotControllerRole strictly denies owner role to bot device whatsapp_number across all formats (Anti-Impersonation)', async () => {
       // mockTenantData has whatsapp_number: '6281234567890'
+      const formats = ['6281234567890', '081234567890', '+6281234567890', '+62 812-3456-7890'];
+      for (const phone of formats) {
+        const auth = await resolveBotControllerRole({
+          senderPhone: phone,
+          tenantId: 'tenant-uuid-1234',
+          tenantSlug: 'toko-sukses',
+          supabase: mockSupabase,
+        });
+
+        expect(auth.authorized).toBe(false);
+        expect(auth.role).toBe('none');
+        expect(auth.canControlTenant).toBe(false);
+        expect(auth.canControlContact).toBe(false);
+        expect(auth.source).toBe('bot_business_device_denied');
+      }
+    });
+
+    it('20. PRIORITY RULE ENFORCEMENT: denies bot device number EVEN IF accidentally listed in metadata owner_phone / admin_phones', async () => {
+      const botDevicePhone = '6281234567890';
+      const mockTenantWithConflictedMetadata = {
+        from: () => ({
+          select: () => ({
+            or: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: 'tenant-uuid-1234',
+                  slug: 'toko-sukses',
+                  whatsapp_number: botDevicePhone,
+                  metadata: {
+                    owner_phone: '081234567890', // bot number accidentally in owner_phone!
+                    admin_phones: ['+6281234567890'], // bot number accidentally in admin_phones!
+                  },
+                },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+
       const auth = await resolveBotControllerRole({
-        senderPhone: '6281234567890', // bot's own WhatsApp business number
+        senderPhone: '+6281234567890',
         tenantId: 'tenant-uuid-1234',
-        tenantSlug: 'toko-sukses',
-        supabase: mockSupabase,
+        supabase: mockTenantWithConflictedMetadata as any,
       });
 
       expect(auth.authorized).toBe(false);

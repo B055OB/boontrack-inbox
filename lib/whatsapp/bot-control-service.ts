@@ -210,6 +210,21 @@ export interface BotControllerAuthResult {
 }
 
 /**
+ * Normalizes phone numbers in various formats ('08xx', '628xx', '+628xx')
+ * to standard canonical E.164 format ('628xx') before comparison.
+ */
+export function normalizePhoneNumber(phone?: string | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('0')) {
+    digits = '62' + digits.slice(1);
+  } else if (digits.startsWith('8')) {
+    digits = '62' + digits;
+  }
+  return digits;
+}
+
+/**
  * RBAC Scope Resolver: Resolves controller identity and permissions deterministically.
  * Tolerates all phone formats: 628..., 08..., +628...
  * Checks:
@@ -229,7 +244,7 @@ export async function resolveBotControllerRole(params: {
     return { authorized: false, role: 'none', canControlTenant: false, canControlContact: false };
   }
 
-  const normalizedSender = cleanCustomerPhone(senderPhone);
+  const normalizedSender = normalizePhoneNumber(senderPhone);
   if (!normalizedSender) {
     return { authorized: false, role: 'none', canControlTenant: false, canControlContact: false };
   }
@@ -259,6 +274,8 @@ export async function resolveBotControllerRole(params: {
       const meta = (tenantRow.metadata || {}) as Record<string, any>;
       const matchesPhone = (p?: any) => {
         if (!p) return false;
+        const norm = normalizePhoneNumber(p);
+        if (norm && norm === normalizedSender) return true;
         const str = String(p).trim();
         const cleaned = cleanCustomerPhone(str);
         return senderVariants.has(str) || senderVariants.has(cleaned);
@@ -275,11 +292,23 @@ export async function resolveBotControllerRole(params: {
         return false;
       };
 
-      // 1. ISOLASI NOMOR BISNIS BOT (CTO Directive Temuan B):
-      // Nomor whatsapp_number (nomor perangkat bot) DILARANG KERAS otomatis diberi role 'owner'.
-      // Pesan fromMe atau nomor bot bisnis dilarang mengeksekusi kontrol bot sebagai owner.
-      const botDeviceNumber = tenantRow.whatsapp_number || meta.whatsapp_number;
-      if (botDeviceNumber && matchesPhone(botDeviceNumber)) {
+      // 1. ISOLASI NOMOR BISNIS BOT (CTO Directive Temuan B & Blocker B):
+      // Enforce Rule Prioritas: Jika nomor pengirim cocok dengan whatsapp_number (nomor bot),
+      // sistem HARUS langsung menolak (bot_business_device_denied), MESKIPUN nomor tersebut
+      // tidak sengaja terdaftar di metadata owner_phone / admin_phones.
+      const botDeviceNumbers = [
+        tenantRow.whatsapp_number,
+        meta.whatsapp_number,
+        meta.bot_phone,
+        meta.bot_number,
+      ].filter(Boolean);
+
+      const isBotDevice = botDeviceNumbers.some((num) => {
+        const normNum = normalizePhoneNumber(num);
+        return (normNum && normNum === normalizedSender) || matchesPhone(num);
+      });
+
+      if (isBotDevice) {
         return {
           authorized: false,
           role: 'none',
@@ -397,10 +426,12 @@ export async function executeBotControl(params: {
   bot_paused: boolean;
   is_bot_active?: boolean;
   paused_until?: string | null;
+  pause_reason?: string | null;
   last_state_updated_by?: string;
   message: string;
   scope?: BotControlScope;
   status?: string;
+  source?: string;
   error?: string;
 }> {
   const { tenantId, tenantSlug, source = 'admin_command' } = params;
@@ -1031,8 +1062,6 @@ export async function updateBotState(
       (envAdminSecret && providedSecret && providedSecret === envAdminSecret) ||
       (serviceRoleKey && providedSecret && providedSecret === serviceRoleKey)
     ) {
-      userRole = 'system_internal';
-    } else if (resolvedParams.isSystemContext === true) {
       userRole = 'system_internal';
     }
   }
