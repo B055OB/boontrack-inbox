@@ -12,6 +12,7 @@ import {
   Search,
   Bot,
   User,
+  Receipt,
   Phone,
   ExternalLink,
   QrCode,
@@ -2991,7 +2992,7 @@ export default function TeamChatTab({
                   </div>
                 </div>
 
-                {/* Detail CS Toggle Button on < xl (Split-screen / Tablet) */}
+                {/* Profil & Quick POS Toggle Button on < xl (Split-screen / Tablet) */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
@@ -3001,10 +3002,14 @@ export default function TeamChatTab({
                         ? 'bg-indigo-600 text-white border-indigo-600'
                         : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
                     }`}
-                    title="Buka / Tutup Console CS & Quick POS"
+                    title="Buka / Tutup Profil & Quick POS"
                   >
-                    <ShoppingBag className="w-3.5 h-3.5" />
-                    <span>Detail CS</span>
+                    <div className="flex items-center gap-1">
+                      <User className="w-3.5 h-3.5" />
+                      <Receipt className="w-3.5 h-3.5 opacity-80" />
+                    </div>
+                    <span className="hidden sm:inline">Profil & Quick POS</span>
+                    <span className="sm:hidden">Profil/POS</span>
                   </button>
                 </div>
               </div>
@@ -3577,14 +3582,14 @@ export default function TeamChatTab({
         <div
           className={`${
             isCsConsoleOpen
-              ? 'fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 xl:static xl:z-auto xl:w-80 xl:w-88 2xl:w-96 xl:max-w-none xl:shadow-none xl:border-l xl:bg-slate-50/60 xl:animate-none xl:h-full xl:shrink-0'
+              ? 'fixed inset-y-0 right-0 z-50 w-[360px] max-w-[90vw] bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 xl:static xl:z-auto xl:w-80 xl:w-88 2xl:w-96 xl:max-w-none xl:shadow-none xl:border-l xl:bg-slate-50/60 xl:animate-none xl:h-full xl:shrink-0'
               : 'hidden xl:flex xl:w-80 xl:w-88 2xl:w-96 shrink-0 flex-col bg-slate-50/60 h-full overflow-y-auto border-l border-slate-200 p-3.5 space-y-3'
           }`}
         >
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-              <ShoppingBag className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Console CS</span>
+              <User className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Profil & Quick POS</span>
             </span>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg text-[10px] font-bold">
@@ -3597,19 +3602,21 @@ export default function TeamChatTab({
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span>Pelanggan (CRM)</span>
+                  <User className="w-2.5 h-2.5" />
+                  <span>Pelanggan</span>
                   {!isCrmEnabled && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => setRightPanelTab('pos')}
-                  className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
                     rightPanelTab === 'pos'
                       ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Quick POS
+                  <Receipt className="w-2.5 h-2.5" />
+                  <span>Quick POS</span>
                 </button>
               </div>
 
@@ -3617,8 +3624,9 @@ export default function TeamChatTab({
               <button
                 type="button"
                 onClick={() => setIsCsConsoleOpen(false)}
-                className="xl:hidden p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                title="Tutup Console CS"
+                className="xl:hidden w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                title="Tutup Profil & Quick POS"
+                aria-label="Tutup Profil & Quick POS"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -4304,11 +4312,12 @@ export default function TeamChatTab({
         </div>
       </div>
 
-      {/* Backdrop overlay saat Console CS Drawer terbuka di layar < xl */}
+      {/* Backdrop overlay saat Profil & Quick POS Drawer terbuka di layar < xl */}
       {isCsConsoleOpen && (
         <div
           className="xl:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
           onClick={() => setIsCsConsoleOpen(false)}
+          title="Klik untuk menutup drawer"
         />
       )}
 
