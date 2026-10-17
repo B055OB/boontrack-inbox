@@ -31,6 +31,7 @@ import {
   isOperatorBotControlText,
   isBotOutbound,
   isBotOutboundAsync,
+  registerBotOutbound,
   clearOutboundRegistry,
 } from '@/lib/whatsapp/outbound-registry';
 import { processEvolutionWebhookEvent } from '@/lib/whatsapp/evolution-webhook-handler';
@@ -604,6 +605,12 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
       expect(isOperatorBotControlText('/on')).toBe(true);
       expect(isOperatorBotControlText('pause')).toBe(true);
       expect(isOperatorBotControlText('off')).toBe(true);
+      expect(isOperatorBotControlText('on')).toBe(true);
+      expect(isOperatorBotControlText('resume')).toBe(true);
+      expect(isOperatorBotControlText('#pause 30')).toBe(true);
+      expect(isOperatorBotControlText('/pause 45 menit')).toBe(true);
+      expect(isOperatorBotControlText('!pause 15m')).toBe(true);
+      expect(isOperatorBotControlText('pause 60')).toBe(true);
       expect(isOperatorBotControlText('halo bot')).toBe(false);
 
       // Operator command is NEVER matched as an outbound echo
@@ -614,6 +621,76 @@ describe('[P0 HOTFIX] Emergency Outbound Circuit Breaker & Bot Control Dispatch 
         text: '#pause',
       });
       expect(echoCheck).toBe(false);
+    });
+
+    it('bot messages containing command keywords are NEVER classified as operator manual commands', () => {
+      // Natural messages starting with command keywords
+      expect(isOperatorBotControlText('On boarding akan segera dimulai')).toBe(false);
+      expect(isOperatorBotControlText('Off white sneakers ready size 42 ya kak')).toBe(false);
+      expect(isOperatorBotControlText('On delivery ya kak paketnya')).toBe(false);
+      expect(isOperatorBotControlText('On process pengecekan oleh tim admin kami')).toBe(false);
+      expect(isOperatorBotControlText('On schedule pengiriman besok pagi')).toBe(false);
+      expect(isOperatorBotControlText('Pause pesanan kaka sudah kami catat')).toBe(false);
+      expect(isOperatorBotControlText('Resume CV lamaran kerja kaka sudah kami terima')).toBe(false);
+
+      // Natural messages containing commands in sentence
+      expect(isOperatorBotControlText('Ketik #pause untuk menjeda bot atau #resume untuk lanjut')).toBe(false);
+      expect(isOperatorBotControlText('Status bot saat ini: #on')).toBe(false);
+      expect(isOperatorBotControlText('Tolong cek apakah toko buka atau off hari ini')).toBe(false);
+      expect(isOperatorBotControlText('Bisa pause pesanan saya sebentar?')).toBe(false);
+      expect(isOperatorBotControlText('Online store kami aktif 24 jam')).toBe(false);
+      expect(isOperatorBotControlText('Offline store kami buka jam 09:00')).toBe(false);
+      expect(isOperatorBotControlText('Pesanan sedang on the way')).toBe(false);
+
+      // Empty or non-string inputs
+      expect(isOperatorBotControlText(null)).toBe(false);
+      expect(isOperatorBotControlText(undefined)).toBe(false);
+      expect(isOperatorBotControlText('')).toBe(false);
+      expect(isOperatorBotControlText('   ')).toBe(false);
+    });
+
+    it('bot messages with command keywords are correctly recognized as bot outbound echoes', () => {
+      const tenantId = 'tenant-keywords-test';
+      const recipientPhone = '628999888777';
+      const msgIdOn = 'msg-on-delivery-123';
+      const textOn = 'On delivery ya kak paketnya sedang diantar kurir';
+
+      // 1. Bot registers outbound message containing keyword "on"
+      registerBotOutbound({
+        tenantId,
+        messageId: msgIdOn,
+        recipientPhone,
+        text: textOn,
+        source: 'bot',
+      });
+
+      // 2. Outbound echo verification: must match as bot echo, NOT blocked as operator command!
+      const echoCheckOn = isBotOutbound({
+        tenantId,
+        messageId: msgIdOn,
+        recipientPhone,
+        text: textOn,
+      });
+      expect(echoCheckOn).toBe(true);
+
+      // 3. Bot registers message starting with "Off white"
+      const msgIdOff = 'msg-off-white-456';
+      const textOff = 'Off white sneakers size 42 ready kak';
+      registerBotOutbound({
+        tenantId,
+        messageId: msgIdOff,
+        recipientPhone,
+        text: textOff,
+        source: 'bot',
+      });
+
+      const echoCheckOff = isBotOutbound({
+        tenantId,
+        messageId: msgIdOff,
+        recipientPhone,
+        text: textOff,
+      });
+      expect(echoCheckOff).toBe(true);
     });
   });
 

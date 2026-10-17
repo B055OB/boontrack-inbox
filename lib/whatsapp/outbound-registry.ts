@@ -86,13 +86,28 @@ export function normalizeRegistryText(text?: string | null): string {
 /**
  * Guard: Detects whether a message is an operator bot control command (#pause, #pause 30, #off, #resume, #on, etc.).
  * Operator commands must NEVER be classified or suppressed as bot outbound echoes.
+ *
+ * Strictly matches:
+ * 1. Exact commands (#pause, #resume, #off, #on with #, !, / or plain, and optional trailing punctuation)
+ * 2. Pause with duration (#pause 30, /pause 45 menit, pause 15m)
+ *
+ * Normal bot messages or sentences containing command keywords
+ * (e.g. "on boarding", "off white", "on delivery", "on process", "pause pesanan", "on schedule")
+ * must NEVER be classified as operator commands!
  */
 export function isOperatorBotControlText(text?: string | null): boolean {
-  if (!text) return false;
+  if (!text || typeof text !== 'string') return false;
   const clean = text.trim().toLowerCase();
+  if (!clean) return false;
+
+  // 1. Support #pause with duration (e.g. "#pause 30", "!pause 15m", "/pause 45 menit", "pause 60")
+  if (/^[#/!]?pause\s+(\d+)(?:\s*(?:m|mnt|menit|min|minutes?))?[!.\s]*$/i.test(clean)) {
+    return true;
+  }
+
+  // 2. Exact single-word commands (#pause, #resume, #off, #on) with optional prefix and trailing punctuation
   const stripped = clean.replace(/^[#/!]/, '').replace(/[!.\s]+$/, '');
-  const firstWord = stripped.split(/\s+/)[0];
-  return ['pause', 'resume', 'off', 'on'].includes(stripped) || ['pause', 'resume', 'off', 'on'].includes(firstWord);
+  return ['pause', 'resume', 'off', 'on'].includes(stripped);
 }
 
 /**
