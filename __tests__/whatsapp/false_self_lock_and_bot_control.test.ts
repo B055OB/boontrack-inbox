@@ -72,20 +72,24 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
             }
             if (isPaused) {
               mockConversationsTable.forEach((c) => {
-                c.bot_paused = true;
-                c.is_paused = true;
-                c.is_bot_paused = true;
-                c.is_bot_active = false;
-                c.paused_until = pausedUntil;
-                c.pause_reason = 'TENANT_DISABLED';
-                c.last_state_updated_by = source;
+                if (!c.pause_reason || c.pause_reason !== 'HUMAN_HANDOVER') {
+                  c.bot_paused = true;
+                  c.is_paused = true;
+                  c.is_bot_paused = true;
+                  c.is_bot_active = false;
+                  c.paused_until = pausedUntil;
+                  c.pause_reason = 'TENANT_DISABLED';
+                  c.last_state_updated_by = source;
+                }
               });
               mockSessionsTable.forEach((s) => {
-                s.is_paused = true;
-                s.bot_status = 'HUMAN_HANDOVER';
-                s.paused_until = pausedUntil;
-                s.pause_reason = 'TENANT_DISABLED';
-                s.paused_by = source;
+                if (!s.pause_reason || s.pause_reason !== 'HUMAN_HANDOVER') {
+                  s.is_paused = true;
+                  s.bot_status = 'BOT_DISABLED';
+                  s.paused_until = pausedUntil;
+                  s.pause_reason = 'TENANT_DISABLED';
+                  s.paused_by = source;
+                }
               });
             } else {
               // Reconcile ONLY sessions/conversations with pause_reason = 'TENANT_DISABLED'
@@ -819,6 +823,155 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
         });
         expect(csGate.shouldBypass).toBe(true);
         expect(csGate.reason).toBe('SESSION_PAUSED');
+      });
+
+      it('Acceptance C: Full Lifecycle: Sesi A (HUMAN_HANDOVER) & Sesi B (BOT_ACTIVE) -> #off -> #on preserves Sesi A HUMAN_HANDOVER while unpausing Sesi B', async () => {
+        const mockSupabase = createMockSupabase();
+        clearRuntimeSessionCache();
+
+        const phoneA = '628111111111'; // CS Handover customer
+        const phoneB = '628222222222'; // Regular active customer
+
+        const csPauseUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+        // Initialize Sesi A: HUMAN_HANDOVER (paused by CS)
+        const sessionA = {
+          tenant_id: tenantId,
+          session_id: `wa_${tenantId}_${phoneA}`,
+          user_identifier: phoneA,
+          is_paused: true,
+          current_state: 'HUMAN_PAUSED',
+          bot_status: 'HUMAN_HANDOVER',
+          pause_reason: 'HUMAN_HANDOVER',
+          paused_until: csPauseUntil,
+          paused_by: 'cs_agent',
+        };
+        const convA = {
+          id: 'conv-a',
+          tenant_id: tenantId,
+          customer_phone: phoneA,
+          is_paused: true,
+          bot_paused: true,
+          is_bot_paused: true,
+          is_bot_active: false,
+          pause_reason: 'HUMAN_HANDOVER',
+          paused_until: csPauseUntil,
+        };
+
+        // Initialize Sesi B: BOT_ACTIVE (active AI conversation)
+        const sessionB = {
+          tenant_id: tenantId,
+          session_id: `wa_${tenantId}_${phoneB}`,
+          user_identifier: phoneB,
+          is_paused: false,
+          current_state: 'BOT_ACTIVE',
+          bot_status: 'BOT_ACTIVE',
+          pause_reason: null,
+          paused_until: null,
+          paused_by: null,
+        };
+        const convB = {
+          id: 'conv-b',
+          tenant_id: tenantId,
+          customer_phone: phoneB,
+          is_paused: false,
+          bot_paused: false,
+          is_bot_paused: false,
+          is_bot_active: true,
+          pause_reason: null,
+          paused_until: null,
+        };
+
+        mockSessionsTable.length = 0;
+        mockSessionsTable.push(sessionA, sessionB);
+        mockConversationsTable.length = 0;
+        mockConversationsTable.push(convA, convB);
+
+        // Tenant initially active
+        mockTenantsTable[0].bot_paused = false;
+        mockTenantsTable[0].is_bot_active = true;
+        mockTenantsTable[0].metadata = { bot_status: 'BOT_ENABLED' };
+
+        // =========================================================================
+        // STEP 1: Owner executes #off (tenant-level PAUSE)
+        // =========================================================================
+        const offRes = await updateBotState({
+          scope: 'tenant',
+          action: 'PAUSE',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_off_command',
+          supabase: mockSupabase,
+        });
+        expect(offRes.success).toBe(true);
+        expect(offRes.bot_paused).toBe(true);
+        expect(mockTenantsTable[0].bot_paused).toBe(true);
+
+        // VERIFIKASI SIKLUS STEP 1:
+        // Sesi A WAJIB TETAP berstatus HUMAN_HANDOVER (tidak boleh ditimpa menjadi TENANT_DISABLED!)
+        expect(sessionA.is_paused).toBe(true);
+        expect(sessionA.pause_reason).toBe('HUMAN_HANDOVER');
+        expect(convA.pause_reason).toBe('HUMAN_HANDOVER');
+
+        // Sesi B ditandai jeda akibat tenant disabled
+        expect(sessionB.is_paused).toBe(true);
+        expect(sessionB.pause_reason).toBe('TENANT_DISABLED');
+        expect(convB.pause_reason).toBe('TENANT_DISABLED');
+
+        // =========================================================================
+        // STEP 2: Owner executes #on (tenant-level RESUME)
+        // =========================================================================
+        const onRes = await updateBotState({
+          scope: 'tenant',
+          action: 'RESUME',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_on_command',
+          supabase: mockSupabase,
+        });
+        expect(onRes.success).toBe(true);
+        expect(onRes.bot_paused).toBe(false);
+        expect(mockTenantsTable[0].bot_paused).toBe(false);
+
+        // VERIFIKASI SIKLUS STEP 2:
+        // 1. Sesi B kembali BOT_ACTIVE (karena pause_reason sebelumnya adalah TENANT_DISABLED)
+        expect(sessionB.is_paused).toBe(false);
+        expect(sessionB.current_state).toBe('BOT_ACTIVE');
+        expect(sessionB.pause_reason).toBeNull();
+        expect(convB.is_paused).toBe(false);
+        expect(convB.bot_paused).toBe(false);
+        expect(convB.pause_reason).toBeNull();
+
+        // 2. Sesi A WAJIB TETAP HUMAN_HANDOVER (tidak ter-unpause / tidak bocor ke bot!)
+        expect(sessionA.is_paused).toBe(true);
+        expect(sessionA.pause_reason).toBe('HUMAN_HANDOVER');
+        expect(convA.is_paused).toBe(true);
+        expect(convA.bot_paused).toBe(true);
+        expect(convA.pause_reason).toBe('HUMAN_HANDOVER');
+
+        // 3. Runtime Decision Gate verification for both sessions:
+        // Sesi B: Bot aktif membalas
+        const gateB = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: sessionB,
+          senderPhone: phoneB,
+          textBody: 'Halo mau tanya harga promo',
+          supabase: mockSupabase,
+        });
+        expect(gateB.shouldBypass).toBe(false);
+
+        // Sesi A: Bot tetap dibypass agar tidak mengganggu CS
+        const gateA = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: sessionA,
+          senderPhone: phoneA,
+          textBody: 'Halo CS apakah pesanan saya sudah dikirim?',
+          supabase: mockSupabase,
+        });
+        expect(gateA.shouldBypass).toBe(true);
+        expect(gateA.reason).toBe('SESSION_PAUSED');
       });
     });
   });

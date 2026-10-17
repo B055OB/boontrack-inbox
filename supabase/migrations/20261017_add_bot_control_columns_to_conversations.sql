@@ -131,7 +131,8 @@ BEGIN
                     'last_state_updated_by', p_source
                 ),
                 updated_at = v_now
-            WHERE tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id;
+            WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
+              AND (pause_reason IS NULL OR pause_reason != 'HUMAN_HANDOVER');
 
             -- 3. Synchronize conversations table ONLY WHEN PAUSING TENANT
             UPDATE public.conversations
@@ -145,7 +146,8 @@ BEGIN
                 bot_mode = 'HUMAN_ACTIVE',
                 status = 'HUMAN_PAUSED',
                 updated_at = v_now
-            WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id);
+            WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
+              AND (pause_reason IS NULL OR pause_reason != 'HUMAN_HANDOVER');
         ELSE
             -- Saat tenant di-RESUME (#on), otomatis aktifkan kembali
             -- HANYA untuk sesi/percakapan yang memiliki pause_reason = 'TENANT_DISABLED'.
