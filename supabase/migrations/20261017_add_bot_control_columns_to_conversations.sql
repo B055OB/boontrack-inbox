@@ -1,6 +1,7 @@
 -- Migration: 20261017_add_bot_control_columns_to_conversations.sql
 -- Description: Adds bot control columns (paused_until, last_state_updated_by, is_bot_active, is_paused, is_bot_paused)
---              to conversations table for unified SSOT state machine, and synchronizes fn_toggle_bot_session_state RPC.
+--              to conversations table for unified SSOT state machine, completes conversation_sessions schema,
+--              and synchronizes fn_toggle_bot_session_state RPC with Anti-NULL predicates & explicit input validation.
 
 ALTER TABLE IF EXISTS public.conversations
   ADD COLUMN IF NOT EXISTS paused_until TIMESTAMPTZ,
@@ -10,10 +11,20 @@ ALTER TABLE IF EXISTS public.conversations
   ADD COLUMN IF NOT EXISTS is_bot_paused BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS pause_reason TEXT,
   ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS current_state TEXT;
+  ADD COLUMN IF NOT EXISTS current_state TEXT DEFAULT 'ACTIVE';
 
 ALTER TABLE IF EXISTS public.conversation_sessions
-  ADD COLUMN IF NOT EXISTS pause_reason TEXT;
+  ADD COLUMN IF NOT EXISTS pause_reason TEXT,
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS current_state TEXT DEFAULT 'BOT_ACTIVE',
+  ADD COLUMN IF NOT EXISTS bot_status TEXT DEFAULT 'BOT_ACTIVE',
+  ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS paused_until TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS paused_by TEXT;
+
+ALTER TABLE IF EXISTS public.conversation_sessions
+  ALTER COLUMN current_state DROP NOT NULL;
 
 -- Update fn_toggle_bot_session_state to persist paused_until, last_state_updated_by, and pause_reason
 CREATE OR REPLACE FUNCTION public.fn_toggle_bot_session_state(
@@ -37,17 +48,33 @@ DECLARE
     v_tenant_status TEXT;
     v_conv_status TEXT;
     v_pause_reason TEXT;
+    v_norm_scope TEXT;
+    v_norm_action TEXT;
 BEGIN
-    -- 0. Input Parameter Validation & Contradiction Guards
-    IF p_scope NOT IN ('tenant', 'conversation') THEN
+    -- 0. Explicit Input Parameter Validation & Anti-NULL Guards (CTO War Room Clearance)
+    IF p_tenant_id IS NULL OR TRIM(p_tenant_id) = '' THEN
+        RAISE EXCEPTION 'INVALID_TENANT_ID: tenant_id cannot be NULL or empty';
+    END IF;
+
+    IF p_scope IS NULL OR LOWER(TRIM(p_scope)) NOT IN ('session', 'conversation', 'global', 'tenant') THEN
         RAISE EXCEPTION 'INVALID_SCOPE: %', p_scope;
     END IF;
 
-    IF p_action NOT IN ('PAUSE', 'RESUME') THEN
+    IF p_action IS NULL OR LOWER(TRIM(p_action)) NOT IN ('pause', 'resume') THEN
         RAISE EXCEPTION 'INVALID_ACTION: %', p_action;
     END IF;
 
-    IF (p_action = 'PAUSE' AND p_is_paused IS FALSE) OR (p_action = 'RESUME' AND p_is_paused IS TRUE) THEN
+    IF p_is_paused IS NULL THEN
+        RAISE EXCEPTION 'INVALID_IS_PAUSED: p_is_paused cannot be NULL';
+    END IF;
+
+    v_norm_scope := CASE 
+        WHEN LOWER(TRIM(p_scope)) IN ('global', 'tenant') THEN 'tenant'
+        ELSE 'conversation'
+    END;
+    v_norm_action := UPPER(TRIM(p_action));
+
+    IF (v_norm_action = 'PAUSE' AND p_is_paused IS FALSE) OR (v_norm_action = 'RESUME' AND p_is_paused IS TRUE) THEN
         RAISE EXCEPTION 'CONTRADICTION: action % conflicts with is_paused %', p_action, p_is_paused;
     END IF;
 
@@ -73,14 +100,14 @@ BEGIN
     v_conv_status := CASE WHEN p_is_paused THEN 'HUMAN_HANDOVER' ELSE 'AI_ACTIVE' END;
     v_pause_reason := CASE 
         WHEN p_is_paused THEN
-            CASE WHEN p_scope = 'tenant' THEN 'TENANT_DISABLED' ELSE 'HUMAN_HANDOVER' END
+            CASE WHEN v_norm_scope = 'tenant' THEN 'TENANT_DISABLED' ELSE 'HUMAN_HANDOVER' END
         ELSE NULL
     END;
 
     -- =========================================================================
-    -- SCOPE A: TENANT-LEVEL ATOMIC MUTATION
+    -- SCOPE A: TENANT-LEVEL ATOMIC MUTATION (TENANT / GLOBAL)
     -- =========================================================================
-    IF p_scope = 'tenant' THEN
+    IF v_norm_scope = 'tenant' THEN
         -- 1. Mutate tenants table atomically, synchronizing all metadata flags
         UPDATE public.tenants
         SET bot_paused = p_is_paused,
@@ -124,6 +151,7 @@ BEGIN
         -- When resuming at tenant level (#on / RESUME), NEVER reset is_paused or paused_until
         -- at conversation level! Individual conversations that were paused by CS operators (#pause or handover)
         -- must retain their own pause state so CS handovers are never disrupted.
+        -- ANTI-NULL PREDICATE ENFORCEMENT: Uses 'IS DISTINCT FROM' and COALESCE to prevent UNKNOWN evaluation.
         IF p_is_paused THEN
             UPDATE public.conversation_sessions
             SET is_paused = true,
@@ -147,15 +175,11 @@ BEGIN
                 ),
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND NOT (
-                pause_reason = 'HUMAN_HANDOVER'
-                OR (metadata IS NOT NULL AND (
-                      metadata->>'pause_reason' = 'HUMAN_HANDOVER'
-                      OR metadata->>'is_handover' = 'true'
-                      OR metadata->>'handover' = 'true'
-                   ))
-                OR current_state IN ('HANDOVER', 'HUMAN_HANDOVER')
-              );
+              AND (pause_reason IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'pause_reason', '') IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'is_handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(metadata->>'handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(current_state, '') NOT IN ('HANDOVER', 'HUMAN_HANDOVER'));
 
             -- 3. Synchronize conversations table ONLY WHEN PAUSING TENANT
             UPDATE public.conversations
@@ -170,19 +194,16 @@ BEGIN
                 status = 'HUMAN_PAUSED',
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND NOT (
-                pause_reason = 'HUMAN_HANDOVER'
-                OR (metadata IS NOT NULL AND (
-                      metadata->>'pause_reason' = 'HUMAN_HANDOVER'
-                      OR metadata->>'is_handover' = 'true'
-                      OR metadata->>'handover' = 'true'
-                   ))
-                OR current_state IN ('HANDOVER', 'HUMAN_HANDOVER')
-              );
+              AND (pause_reason IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'pause_reason', '') IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'is_handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(metadata->>'handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(current_state, '') NOT IN ('HANDOVER', 'HUMAN_HANDOVER'));
         ELSE
             -- Saat tenant di-RESUME (#on), otomatis aktifkan kembali
             -- HANYA untuk sesi/percakapan yang memiliki pause_reason = 'TENANT_DISABLED'.
             -- Percakapan dengan pause_reason = 'HUMAN_HANDOVER' WAJIB DIBIARKAN TETAP PAUSED!
+            -- ANTI-NULL PREDICATE: Menggunakan IS DISTINCT FROM dan COALESCE
             UPDATE public.conversation_sessions
             SET is_paused = false,
                 current_state = 'BOT_ACTIVE',
@@ -202,13 +223,11 @@ BEGIN
                 ),
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND pause_reason = 'TENANT_DISABLED'
-              AND NOT (
-                metadata IS NOT NULL AND (
-                  metadata->>'pause_reason' = 'HUMAN_HANDOVER'
-                  OR metadata->>'is_handover' = 'true'
-                )
-              );
+              AND (pause_reason = 'TENANT_DISABLED')
+              AND (COALESCE(metadata->>'pause_reason', '') IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'is_handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(metadata->>'handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(current_state, '') NOT IN ('HANDOVER', 'HUMAN_HANDOVER'));
 
             UPDATE public.conversations
             SET bot_paused = false,
@@ -219,16 +238,14 @@ BEGIN
                 pause_reason = NULL,
                 last_state_updated_by = p_source,
                 bot_mode = 'AI_ACTIVE',
-                status = 'ACTIVE',
+                status = 'active',
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND pause_reason = 'TENANT_DISABLED'
-              AND NOT (
-                metadata IS NOT NULL AND (
-                  metadata->>'pause_reason' = 'HUMAN_HANDOVER'
-                  OR metadata->>'is_handover' = 'true'
-                )
-              );
+              AND (pause_reason = 'TENANT_DISABLED')
+              AND (COALESCE(metadata->>'pause_reason', '') IS DISTINCT FROM 'HUMAN_HANDOVER')
+              AND (COALESCE(metadata->>'is_handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(metadata->>'handover', 'false') IS DISTINCT FROM 'true')
+              AND (COALESCE(current_state, '') NOT IN ('HANDOVER', 'HUMAN_HANDOVER'));
         END IF;
 
         RETURN jsonb_build_object(
@@ -244,7 +261,7 @@ BEGIN
         );
 
     -- =========================================================================
-    -- SCOPE B: CONVERSATION-LEVEL ATOMIC MUTATION (CS Takeover & Command)
+    -- SCOPE B: CONVERSATION-LEVEL ATOMIC MUTATION (CONVERSATION / SESSION)
     -- =========================================================================
     ELSE
         v_clean_phone := regexp_replace(COALESCE(p_customer_phone, ''), '\D', '', 'g');
@@ -270,7 +287,7 @@ BEGIN
                 'wa_' || v_tenant_uuid::TEXT || '_' || v_clean_phone,
                 'WHATSAPP',
                 v_clean_phone,
-                CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'ACTIVE' END,
+                CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'BOT_ACTIVE' END,
                 v_conv_status,
                 p_is_paused,
                 CASE WHEN p_is_paused THEN v_now ELSE NULL END,
@@ -356,7 +373,7 @@ BEGIN
                 status = CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'active' END,
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND regexp_replace(customer_phone, '\D', '', 'g') = v_clean_phone;
+              AND regexp_replace(COALESCE(customer_phone, ''), '\D', '', 'g') = v_clean_phone;
         END IF;
 
         RETURN jsonb_build_object(

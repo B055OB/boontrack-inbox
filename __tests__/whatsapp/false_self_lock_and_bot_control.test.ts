@@ -59,15 +59,22 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
         if (fnName === 'fn_toggle_bot_session_state') {
           // 0. Input Parameter Validation & Contradiction Guards
-          if (!['tenant', 'conversation'].includes(args.p_scope)) {
+          if (!args.p_tenant_id || String(args.p_tenant_id).trim() === '') {
+            return { data: null, error: { message: 'INVALID_TENANT_ID: tenant_id cannot be NULL or empty' } };
+          }
+          if (!args.p_scope || !['tenant', 'conversation', 'global', 'session'].includes(String(args.p_scope).toLowerCase().trim())) {
             return { data: null, error: { message: `INVALID_SCOPE: ${args.p_scope}` } };
           }
-          if (!['PAUSE', 'RESUME'].includes(args.p_action)) {
+          if (!args.p_action || !['pause', 'resume'].includes(String(args.p_action).toLowerCase().trim())) {
             return { data: null, error: { message: `INVALID_ACTION: ${args.p_action}` } };
           }
+          if (args.p_is_paused === null || args.p_is_paused === undefined) {
+            return { data: null, error: { message: 'INVALID_IS_PAUSED: p_is_paused cannot be NULL' } };
+          }
+          const normAction = String(args.p_action).toUpperCase().trim();
           if (
-            (args.p_action === 'PAUSE' && args.p_is_paused === false) ||
-            (args.p_action === 'RESUME' && args.p_is_paused === true)
+            (normAction === 'PAUSE' && args.p_is_paused === false) ||
+            (normAction === 'RESUME' && args.p_is_paused === true)
           ) {
             return {
               data: null,
@@ -1187,6 +1194,42 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
           p_is_paused: true,
         });
         expect(contradictionRes2.error?.message).toContain('CONTRADICTION');
+
+        // 5. Explicit NULL Scope Validation (CTO Mandate)
+        const nullScopeRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: null,
+          p_action: 'PAUSE',
+          p_is_paused: true,
+        });
+        expect(nullScopeRes.error?.message).toContain('INVALID_SCOPE');
+
+        // 6. Explicit NULL Action Validation (CTO Mandate)
+        const nullActionRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'tenant',
+          p_action: null,
+          p_is_paused: true,
+        });
+        expect(nullActionRes.error?.message).toContain('INVALID_ACTION');
+
+        // 7. Explicit NULL is_paused Validation (CTO Mandate)
+        const nullIsPausedRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'tenant',
+          p_action: 'PAUSE',
+          p_is_paused: null,
+        });
+        expect(nullIsPausedRes.error?.message).toContain('INVALID_IS_PAUSED');
+
+        // 8. Explicit NULL Tenant ID Validation
+        const nullTenantRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: null,
+          p_scope: 'tenant',
+          p_action: 'PAUSE',
+          p_is_paused: true,
+        });
+        expect(nullTenantRes.error?.message).toContain('INVALID_TENANT_ID');
       });
     });
   });
