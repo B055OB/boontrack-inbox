@@ -58,10 +58,56 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       },
       rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
         if (fnName === 'fn_toggle_bot_session_state') {
+          // 0. Input Parameter Validation & Contradiction Guards
+          if (!['tenant', 'conversation'].includes(args.p_scope)) {
+            return { data: null, error: { message: `INVALID_SCOPE: ${args.p_scope}` } };
+          }
+          if (!['PAUSE', 'RESUME'].includes(args.p_action)) {
+            return { data: null, error: { message: `INVALID_ACTION: ${args.p_action}` } };
+          }
+          if (
+            (args.p_action === 'PAUSE' && args.p_is_paused === false) ||
+            (args.p_action === 'RESUME' && args.p_is_paused === true)
+          ) {
+            return {
+              data: null,
+              error: { message: `CONTRADICTION: action ${args.p_action} conflicts with is_paused ${args.p_is_paused}` },
+            };
+          }
+
           const isPaused = args.p_is_paused;
           const targetPhone = args.p_customer_phone;
           const pausedUntil = args.p_paused_until;
           const source = args.p_source || 'rpc_test';
+
+          const isHandover = (record: any) => {
+            if (!record) return false;
+            if (record.pause_reason === 'HUMAN_HANDOVER') return true;
+            if (['HANDOVER', 'HUMAN_HANDOVER'].includes(record.current_state)) return true;
+            if (record.metadata) {
+              const m = record.metadata;
+              if (
+                m.pause_reason === 'HUMAN_HANDOVER' ||
+                m.is_handover === 'true' ||
+                m.is_handover === true ||
+                m.handover === 'true' ||
+                m.handover === true
+              ) {
+                return true;
+              }
+            }
+            return false;
+          };
+
+          const hasHandoverMetadata = (record: any) => {
+            if (!record || !record.metadata) return false;
+            const m = record.metadata;
+            return (
+              m.pause_reason === 'HUMAN_HANDOVER' ||
+              m.is_handover === 'true' ||
+              m.is_handover === true
+            );
+          };
 
           if (args.p_scope === 'tenant') {
             const t = mockTenantsTable.find((x) => x.id === args.p_tenant_id || x.slug === args.p_tenant_id);
@@ -72,7 +118,7 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
             }
             if (isPaused) {
               mockConversationsTable.forEach((c) => {
-                if (!c.pause_reason || c.pause_reason !== 'HUMAN_HANDOVER') {
+                if (!isHandover(c)) {
                   c.bot_paused = true;
                   c.is_paused = true;
                   c.is_bot_paused = true;
@@ -83,7 +129,7 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
                 }
               });
               mockSessionsTable.forEach((s) => {
-                if (!s.pause_reason || s.pause_reason !== 'HUMAN_HANDOVER') {
+                if (!isHandover(s)) {
                   s.is_paused = true;
                   s.bot_status = 'BOT_DISABLED';
                   s.paused_until = pausedUntil;
@@ -94,7 +140,7 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
             } else {
               // Reconcile ONLY sessions/conversations with pause_reason = 'TENANT_DISABLED'
               mockConversationsTable.forEach((c) => {
-                if (c.pause_reason === 'TENANT_DISABLED') {
+                if (c.pause_reason === 'TENANT_DISABLED' && !hasHandoverMetadata(c)) {
                   c.bot_paused = false;
                   c.is_paused = false;
                   c.is_bot_paused = false;
@@ -104,7 +150,7 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
                 }
               });
               mockSessionsTable.forEach((s) => {
-                if (s.pause_reason === 'TENANT_DISABLED') {
+                if (s.pause_reason === 'TENANT_DISABLED' && !hasHandoverMetadata(s)) {
                   s.is_paused = false;
                   s.current_state = 'BOT_ACTIVE';
                   s.bot_status = 'BOT_ACTIVE';
@@ -972,6 +1018,175 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
         });
         expect(gateA.shouldBypass).toBe(true);
         expect(gateA.reason).toBe('SESSION_PAUSED');
+      });
+
+      it('Acceptance D: Legacy Handover Protection: Sesi Legacy (pause_reason = NULL, metadata.pause_reason = "HUMAN_HANDOVER", current_state = "HANDOVER") preserves pause across #off -> #on lifecycle', async () => {
+        const mockSupabase = createMockSupabase();
+        clearRuntimeSessionCache();
+
+        const phoneLegacy = '628333333333';
+        const phoneActive = '628444444444';
+        const legacyPauseUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+        // Initialize Sesi Legacy: pause_reason is NULL, but metadata.pause_reason = 'HUMAN_HANDOVER' and current_state = 'HANDOVER'
+        const sessionLegacy = {
+          tenant_id: tenantId,
+          session_id: `wa_${tenantId}_${phoneLegacy}`,
+          user_identifier: phoneLegacy,
+          is_paused: true,
+          current_state: 'HANDOVER',
+          bot_status: 'HUMAN_HANDOVER',
+          pause_reason: null, // Legacy format: NULL column
+          paused_until: legacyPauseUntil,
+          paused_by: 'cs_agent',
+          metadata: {
+            pause_reason: 'HUMAN_HANDOVER',
+            is_handover: 'true',
+          },
+        };
+        const convLegacy = {
+          id: 'conv-legacy',
+          tenant_id: tenantId,
+          customer_phone: phoneLegacy,
+          is_paused: true,
+          bot_paused: true,
+          is_bot_paused: true,
+          is_bot_active: false,
+          pause_reason: null, // Legacy format
+          paused_until: legacyPauseUntil,
+          metadata: {
+            pause_reason: 'HUMAN_HANDOVER',
+            is_handover: 'true',
+          },
+          current_state: 'HANDOVER',
+        };
+
+        // Initialize Sesi Active
+        const sessionActive = {
+          tenant_id: tenantId,
+          session_id: `wa_${tenantId}_${phoneActive}`,
+          user_identifier: phoneActive,
+          is_paused: false,
+          current_state: 'BOT_ACTIVE',
+          bot_status: 'BOT_ACTIVE',
+          pause_reason: null,
+          paused_until: null,
+          paused_by: null,
+        };
+        const convActive = {
+          id: 'conv-active',
+          tenant_id: tenantId,
+          customer_phone: phoneActive,
+          is_paused: false,
+          bot_paused: false,
+          is_bot_paused: false,
+          is_bot_active: true,
+          pause_reason: null,
+          paused_until: null,
+        };
+
+        mockSessionsTable.length = 0;
+        mockSessionsTable.push(sessionLegacy, sessionActive);
+        mockConversationsTable.length = 0;
+        mockConversationsTable.push(convLegacy, convActive);
+
+        mockTenantsTable[0].bot_paused = false;
+        mockTenantsTable[0].is_bot_active = true;
+
+        // Step 1: Owner runs #off (tenant-level PAUSE)
+        const offRes = await updateBotState({
+          scope: 'tenant',
+          action: 'PAUSE',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_off_cmd',
+          supabase: mockSupabase,
+        });
+        expect(offRes.success).toBe(true);
+        expect(mockTenantsTable[0].bot_paused).toBe(true);
+
+        // Verifikasi Step 1:
+        // Sesi legacy TIDAK boleh ditimpa menjadi TENANT_DISABLED
+        expect(sessionLegacy.is_paused).toBe(true);
+        expect(sessionLegacy.pause_reason).toBeNull(); // remains untouched
+        expect(sessionLegacy.metadata.pause_reason).toBe('HUMAN_HANDOVER');
+        expect(sessionActive.is_paused).toBe(true);
+        expect(sessionActive.pause_reason).toBe('TENANT_DISABLED');
+
+        // Step 2: Owner runs #on (tenant-level RESUME)
+        const onRes = await updateBotState({
+          scope: 'tenant',
+          action: 'RESUME',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_on_cmd',
+          supabase: mockSupabase,
+        });
+        expect(onRes.success).toBe(true);
+        expect(mockTenantsTable[0].bot_paused).toBe(false);
+
+        // Verifikasi Step 2:
+        // Sesi Active kembali BOT_ACTIVE
+        expect(sessionActive.is_paused).toBe(false);
+        expect(sessionActive.current_state).toBe('BOT_ACTIVE');
+
+        // Sesi Legacy WAJIB TETAP PAUSED! Tidak boleh unpaused / bocor ke bot!
+        expect(sessionLegacy.is_paused).toBe(true);
+        expect(sessionLegacy.current_state).toBe('HANDOVER');
+        expect(convLegacy.is_paused).toBe(true);
+
+        // Decision Gate: Bot dibypass untuk legacy handover
+        const gateLegacy = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: sessionLegacy,
+          senderPhone: phoneLegacy,
+          textBody: 'Halo apakah ada CS yang bisa bantu?',
+          supabase: mockSupabase,
+        });
+        expect(gateLegacy.shouldBypass).toBe(true);
+        expect(gateLegacy.reason).toBe('SESSION_PAUSED');
+      });
+
+      it('RPC Parameter Validation: rejects invalid scope, invalid action, and action/is_paused contradictions', async () => {
+        const mockSupabase = createMockSupabase();
+
+        // 1. Invalid scope
+        const invalidScopeRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'invalid_scope',
+          p_action: 'PAUSE',
+          p_is_paused: true,
+        });
+        expect(invalidScopeRes.error?.message).toContain('INVALID_SCOPE');
+
+        // 2. Invalid action
+        const invalidActionRes = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'tenant',
+          p_action: 'UNKNOWN_ACTION',
+          p_is_paused: true,
+        });
+        expect(invalidActionRes.error?.message).toContain('INVALID_ACTION');
+
+        // 3. Contradiction: PAUSE with is_paused = false
+        const contradictionRes1 = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'tenant',
+          p_action: 'PAUSE',
+          p_is_paused: false,
+        });
+        expect(contradictionRes1.error?.message).toContain('CONTRADICTION');
+
+        // 4. Contradiction: RESUME with is_paused = true
+        const contradictionRes2 = await mockSupabase.rpc('fn_toggle_bot_session_state', {
+          p_tenant_id: tenantId,
+          p_scope: 'tenant',
+          p_action: 'RESUME',
+          p_is_paused: true,
+        });
+        expect(contradictionRes2.error?.message).toContain('CONTRADICTION');
       });
     });
   });

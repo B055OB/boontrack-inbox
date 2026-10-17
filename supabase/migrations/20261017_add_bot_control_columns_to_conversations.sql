@@ -8,7 +8,9 @@ ALTER TABLE IF EXISTS public.conversations
   ADD COLUMN IF NOT EXISTS is_bot_active BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS is_bot_paused BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS pause_reason TEXT;
+  ADD COLUMN IF NOT EXISTS pause_reason TEXT,
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS current_state TEXT;
 
 ALTER TABLE IF EXISTS public.conversation_sessions
   ADD COLUMN IF NOT EXISTS pause_reason TEXT;
@@ -36,6 +38,19 @@ DECLARE
     v_conv_status TEXT;
     v_pause_reason TEXT;
 BEGIN
+    -- 0. Input Parameter Validation & Contradiction Guards
+    IF p_scope NOT IN ('tenant', 'conversation') THEN
+        RAISE EXCEPTION 'INVALID_SCOPE: %', p_scope;
+    END IF;
+
+    IF p_action NOT IN ('PAUSE', 'RESUME') THEN
+        RAISE EXCEPTION 'INVALID_ACTION: %', p_action;
+    END IF;
+
+    IF (p_action = 'PAUSE' AND p_is_paused IS FALSE) OR (p_action = 'RESUME' AND p_is_paused IS TRUE) THEN
+        RAISE EXCEPTION 'CONTRADICTION: action % conflicts with is_paused %', p_action, p_is_paused;
+    END IF;
+
     -- 1. Resolve tenant UUID (support slug or UUID string)
     BEGIN
         v_tenant_uuid := p_tenant_id::UUID;
@@ -132,7 +147,15 @@ BEGIN
                 ),
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND (pause_reason IS NULL OR pause_reason != 'HUMAN_HANDOVER');
+              AND NOT (
+                pause_reason = 'HUMAN_HANDOVER'
+                OR (metadata IS NOT NULL AND (
+                      metadata->>'pause_reason' = 'HUMAN_HANDOVER'
+                      OR metadata->>'is_handover' = 'true'
+                      OR metadata->>'handover' = 'true'
+                   ))
+                OR current_state IN ('HANDOVER', 'HUMAN_HANDOVER')
+              );
 
             -- 3. Synchronize conversations table ONLY WHEN PAUSING TENANT
             UPDATE public.conversations
@@ -147,7 +170,15 @@ BEGIN
                 status = 'HUMAN_PAUSED',
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND (pause_reason IS NULL OR pause_reason != 'HUMAN_HANDOVER');
+              AND NOT (
+                pause_reason = 'HUMAN_HANDOVER'
+                OR (metadata IS NOT NULL AND (
+                      metadata->>'pause_reason' = 'HUMAN_HANDOVER'
+                      OR metadata->>'is_handover' = 'true'
+                      OR metadata->>'handover' = 'true'
+                   ))
+                OR current_state IN ('HANDOVER', 'HUMAN_HANDOVER')
+              );
         ELSE
             -- Saat tenant di-RESUME (#on), otomatis aktifkan kembali
             -- HANYA untuk sesi/percakapan yang memiliki pause_reason = 'TENANT_DISABLED'.
@@ -171,7 +202,13 @@ BEGIN
                 ),
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND pause_reason = 'TENANT_DISABLED';
+              AND pause_reason = 'TENANT_DISABLED'
+              AND NOT (
+                metadata IS NOT NULL AND (
+                  metadata->>'pause_reason' = 'HUMAN_HANDOVER'
+                  OR metadata->>'is_handover' = 'true'
+                )
+              );
 
             UPDATE public.conversations
             SET bot_paused = false,
@@ -185,7 +222,13 @@ BEGIN
                 status = 'ACTIVE',
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
-              AND pause_reason = 'TENANT_DISABLED';
+              AND pause_reason = 'TENANT_DISABLED'
+              AND NOT (
+                metadata IS NOT NULL AND (
+                  metadata->>'pause_reason' = 'HUMAN_HANDOVER'
+                  OR metadata->>'is_handover' = 'true'
+                )
+              );
         END IF;
 
         RETURN jsonb_build_object(
