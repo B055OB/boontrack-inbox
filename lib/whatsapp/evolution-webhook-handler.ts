@@ -35,6 +35,8 @@ import {
   registerBotOutbound,
   isBotOutbound,
   isBotOutboundAsync,
+  isRegisteredOutboundMessage,
+  isOperatorBotControlText,
   toCanonicalPhone,
 } from '@/lib/whatsapp/outbound-registry';
 import { parsePaymentNotification } from '@/lib/payment-webhook-service';
@@ -47,6 +49,7 @@ import {
   isAuthorizedBotController,
   resolveBotControllerRole,
   executeBotControl,
+  updateBotState,
   checkRuntimeBotDecisionGate,
   setRuntimeSessionCache,
   clearRuntimeSessionCache,
@@ -337,7 +340,8 @@ export async function sendEvolutionMediaMessage(
   recipientPhone: string,
   mediaUrlOrBase64: string,
   caption?: string,
-  customApiKey?: string
+  customApiKey?: string,
+  tenantId?: string
 ): Promise<boolean> {
   const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
   const apiKey = getRequiredEvolutionApiKey(customApiKey);
@@ -357,8 +361,10 @@ export async function sendEvolutionMediaMessage(
 
   if (formattedCaption) {
     registerBotOutbound({
+      tenantId,
       recipientPhone: cleanNumber,
       text: formattedCaption,
+      source: 'bot',
     });
   }
 
@@ -378,6 +384,23 @@ export async function sendEvolutionMediaMessage(
       }),
       signal: AbortSignal.timeout(12000),
     });
+
+    if (res.ok) {
+      try {
+        const data = await res.json();
+        const returnedId = data?.key?.id || data?.id || data?.messageId;
+        if (returnedId) {
+          registerBotOutbound({
+            tenantId,
+            messageId: returnedId,
+            recipientPhone: cleanNumber,
+            text: formattedCaption,
+            source: 'bot',
+          });
+        }
+      } catch (_) {}
+    }
+
     return res.ok;
   } catch (err) {
     console.warn('[Evolution Send Media] Exception sending media:', err);
@@ -675,6 +698,28 @@ export async function processEvolutionWebhookEvent(
     // =========================================================================
     if (key.fromMe === true) {
       if (!isGroup && senderPhone) {
+        // Step 0: Ingress Webhook & Echo Filter Guard (TASK-101 & TASK-102)
+        // Check fast in-memory compound key registry (outbound:msg:{id}, tenant:id, raw id)
+        if (key.id && isRegisteredOutboundMessage(key.id, tenantId)) {
+          console.info(
+            `[Evolution Webhook] Bot outbound registered echo detected by message ID: ${key.id} (tenant: ${tenantId}). Direct NO-OP / HTTP 200 OK.`
+          );
+          continue; // Immediate drop: stop execution loop, do not forward to parser or AI agent
+        }
+
+        // Fast in-memory check without DB if not an operator control command
+        if (!isOperatorBotControlText(textBodyEarly) && isBotOutbound({
+          tenantId,
+          messageId: key.id || undefined,
+          recipientPhone: senderPhone,
+          text: textBodyEarly,
+        })) {
+          console.info(
+            `[Evolution Webhook] Bot outbound echo detected in-memory for ${senderPhone} (tenant: ${tenantId}, msgId: ${key.id || 'n/a'}). Direct NO-OP / HTTP 200 OK.`
+          );
+          continue;
+        }
+
         // Step 1: Detect bot outbound echo using tenantId + wa_message_id (with DB fallback for restarts)
         const echoResult = await isBotOutboundAsync({
           tenantId,
@@ -738,9 +783,10 @@ export async function processEvolutionWebhookEvent(
             console.info(`[Evolution Admin Override] Authorized Command ${controlCmd.action} (${controlCmd.scope}) fromMe on tenant ${tenantId} by ${authorizedPhone} (role: ${resolvedAuth.role})`);
             const targetScope = isTenantScope ? 'tenant' : 'conversation';
             const targetCustomerPhone = !isTenantScope ? senderPhone : undefined;
-            const ctrlRes = await executeBotControl({
+            const ctrlRes = await updateBotState({
               action: controlCmd.action,
               scope: targetScope,
+              durationMinutes: controlCmd.durationMinutes,
               tenantId,
               tenantSlug,
               customerPhone: targetCustomerPhone,
@@ -867,9 +913,10 @@ export async function processEvolutionWebhookEvent(
           console.info(`[Evolution Admin Ingress] Authorized Command ${controlCmd.action} (${controlCmd.scope}) by ${senderPhone} (role: ${authRes.role}) on tenant ${tenantId}`);
           const targetScope = isTenantScope ? 'tenant' : 'conversation';
           const targetCustomerPhone = !isTenantScope ? senderPhone : undefined;
-          const ctrlRes = await executeBotControl({
+          const ctrlRes = await updateBotState({
             action: controlCmd.action,
             scope: targetScope,
+            durationMinutes: controlCmd.durationMinutes,
             tenantId,
             tenantSlug,
             customerPhone: targetCustomerPhone,

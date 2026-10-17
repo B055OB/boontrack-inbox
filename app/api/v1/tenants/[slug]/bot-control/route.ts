@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
-import { executeBotControl } from '@/lib/whatsapp/bot-control-service';
+import { executeBotControl, updateBotState } from '@/lib/whatsapp/bot-control-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -199,6 +199,43 @@ export async function GET(
       );
     }
 
+    // Support query params for specific conversation status check
+    const searchParams = req.nextUrl.searchParams;
+    const conversationId = searchParams.get('conversation_id') || searchParams.get('conversationId');
+    const customerPhone = searchParams.get('customer_phone') || searchParams.get('customerPhone');
+
+    if (conversationId || customerPhone) {
+      let convQuery = supabase
+        .from('conversations')
+        .select('id, is_bot_active, is_paused, bot_paused, is_bot_paused, paused_until, last_state_updated_by')
+        .or(`tenant_id.eq.${tenant.id},tenant_slug.eq.${tenant.slug}`);
+      if (conversationId) {
+        convQuery = convQuery.eq('id', conversationId);
+      } else if (customerPhone) {
+        convQuery = convQuery.eq('customer_phone', customerPhone);
+      }
+      const { data: convData } = await (convQuery?.maybeSingle ? convQuery.maybeSingle() : Promise.resolve({ data: null }));
+      if (convData) {
+        const isConvPaused =
+          convData.bot_paused === true ||
+          convData.is_paused === true ||
+          convData.is_bot_paused === true ||
+          convData.is_bot_active === false;
+
+        return NextResponse.json({
+          success: true,
+          slug: tenant.slug,
+          tenant_id: tenant.id,
+          conversation_id: convData.id,
+          bot_paused: isConvPaused,
+          is_paused: isConvPaused,
+          is_bot_active: !isConvPaused,
+          paused_until: convData.paused_until || null,
+          last_state_updated_by: convData.last_state_updated_by || null,
+        });
+      }
+    }
+
     const isPaused =
       tenant.bot_paused === true ||
       tenant.is_bot_active === false ||
@@ -211,7 +248,10 @@ export async function GET(
       slug: tenant.slug,
       tenant_id: tenant.id,
       bot_paused: isPaused,
+      is_paused: isPaused,
       is_bot_active: !isPaused,
+      paused_until: tenant.metadata?.paused_until || null,
+      last_state_updated_by: tenant.metadata?.paused_by || null,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
@@ -243,7 +283,6 @@ export async function POST(
     }
 
     // Explicit Authorization Check via official session verification (Supabase auth / merchant session / internal secret)
-    // NOTE: candidatePhone extraction from body.phone, x-phone, or query params is REMOVED to prevent spoofing.
     const auth = await verifyUserSession(req, tenant, supabase);
     if (!auth.authorized) {
       return NextResponse.json(
@@ -271,15 +310,26 @@ export async function POST(
       action = 'PAUSE';
     }
 
+    const durationMinutes =
+      body.durationMinutes !== undefined
+        ? Number(body.durationMinutes)
+        : body.duration_minutes !== undefined
+        ? Number(body.duration_minutes)
+        : body.duration !== undefined
+        ? Number(body.duration)
+        : undefined;
+
     const resolvedSource = body.source || (scope === 'conversation' ? 'cs_chat_toggle' : 'dashboard_toggle');
 
-    const result = await executeBotControl({
-      action,
-      scope,
-      status: body.status,
+    // Centralized Service Function (Single Source of Truth per CTO Directive TASK-103)
+    const result = await updateBotState({
+      conversationId: body.conversation_id || body.conversationId,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
-      conversationId: body.conversation_id || body.conversationId,
+      action,
+      durationMinutes,
+      status: body.status,
+      scope,
       customerPhone: body.customer_phone || body.customerPhone,
       senderPhone: auth.user?.phone || undefined,
       userRole: auth.role,
@@ -296,6 +346,9 @@ export async function POST(
     return NextResponse.json({
       ...result,
       is_paused: result.bot_paused,
+      is_bot_active: result.is_bot_active ?? !result.bot_paused,
+      paused_until: result.paused_until ?? null,
+      last_state_updated_by: result.last_state_updated_by ?? null,
       source: resolvedSource,
     });
   } catch (err: any) {

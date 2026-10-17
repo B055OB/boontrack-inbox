@@ -15,17 +15,19 @@ export type EchoDetectionResult = 'MATCH' | 'NOT_MATCH' | 'UNKNOWN';
 export interface BotOutboundEntry {
   tenantId?: string;
   messageId?: string;
+  conversationId?: string;
   recipientPhone: string;
   textSnippet: string;
+  source?: 'system_generated' | 'bot' | string;
   timestamp: number;
 }
 
-const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL
-const MAX_REGISTRY_ENTRIES = 1000;
+const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes TTL per CTO Directive TASK-102
+const MAX_REGISTRY_ENTRIES = 2000;
 
 // In-memory registry of bot outbound messages
 const outboundRegistry: BotOutboundEntry[] = [];
-// In-memory fast-lookup map for compound keys: `${tenantId}:${wa_message_id}` -> timestamp
+// In-memory fast-lookup map for compound keys: `${tenantId}:${wa_message_id}` and `outbound:msg:${message_id}` -> timestamp
 const outboundKeyMap = new Map<string, number>();
 
 /**
@@ -82,30 +84,36 @@ export function normalizeRegistryText(text?: string | null): string {
 }
 
 /**
- * Guard: Detects whether a message is an operator bot control command (#pause, #off, #resume, #on, etc.).
+ * Guard: Detects whether a message is an operator bot control command (#pause, #pause 30, #off, #resume, #on, etc.).
  * Operator commands must NEVER be classified or suppressed as bot outbound echoes.
  */
 export function isOperatorBotControlText(text?: string | null): boolean {
   if (!text) return false;
   const clean = text.trim().toLowerCase();
   const stripped = clean.replace(/^[#/!]/, '').replace(/[!.\s]+$/, '');
-  return ['pause', 'resume', 'off', 'on'].includes(stripped);
+  const firstWord = stripped.split(/\s+/)[0];
+  return ['pause', 'resume', 'off', 'on'].includes(stripped) || ['pause', 'resume', 'off', 'on'].includes(firstWord);
 }
 
 /**
  * Registers an outbound message sent by the bot or system.
- * Uses compound key `${tenant_id}:${wa_message_id}` to prevent cross-tenant collision.
+ * Uses compound keys `${tenant_id}:${wa_message_id}`, `outbound:msg:${message_id}`, and raw `messageId`
+ * to prevent cross-tenant collision while enabling ultra-fast echo detection.
  */
 export function registerBotOutbound(params: {
   tenantId?: string | null;
   messageId?: string | null;
+  conversationId?: string | null;
   recipientPhone?: string | null;
   text?: string | null;
+  source?: 'system_generated' | 'bot' | string;
 }): void {
   const cleanPhone = normalizeRegistryPhone(params.recipientPhone);
   const cleanText = normalizeRegistryText(params.text);
   const msgId = params.messageId ? String(params.messageId).trim() : undefined;
+  const convId = params.conversationId ? String(params.conversationId).trim() : undefined;
   const cleanTenantId = params.tenantId ? String(params.tenantId).trim() : undefined;
+  const source = params.source || 'system_generated';
 
   if (!cleanPhone && !msgId) return;
 
@@ -114,19 +122,28 @@ export function registerBotOutbound(params: {
   // Prune expired entries
   pruneOutboundRegistry(now);
 
-  // Register compound key: `${tenant_id}:${wa_message_id}`
+  // Register keys with 15-minute TTL:
+  // 1. Redis-style key per directive: `outbound:msg:{message_id}`
+  if (msgId) {
+    outboundKeyMap.set(`outbound:msg:${msgId}`, now);
+    outboundKeyMap.set(msgId, now);
+  }
+  // 2. Compound key: `${tenant_id}:${wa_message_id}`
   if (cleanTenantId && msgId) {
     outboundKeyMap.set(`${cleanTenantId}:${msgId}`, now);
   }
-  if (msgId) {
-    outboundKeyMap.set(msgId, now);
+  // 3. Conversation-level mapping
+  if (convId && msgId) {
+    outboundKeyMap.set(`conv:${convId}:${msgId}`, now);
   }
 
   outboundRegistry.push({
     tenantId: cleanTenantId,
     messageId: msgId,
+    conversationId: convId,
     recipientPhone: cleanPhone,
     textSnippet: cleanText,
+    source,
     timestamp: now,
   });
 
@@ -160,10 +177,21 @@ export function isBotOutbound(params: {
   const ttl = params.ttlMs ?? DEFAULT_TTL_MS;
   const now = Date.now();
 
-  // 1. Fast check via compound key `${tenant_id}:${wa_message_id}`
+  // 1. Fast check via compound keys: `${tenant_id}:${wa_message_id}`
   if (cleanTenantId && msgId) {
     const compoundKey = `${cleanTenantId}:${msgId}`;
     const ts = outboundKeyMap.get(compoundKey);
+    if (ts !== undefined && now - ts <= ttl) {
+      return true;
+    }
+  } else if (!cleanTenantId && msgId) {
+    // Check global keys ONLY when cleanTenantId is not provided
+    const redisKey = `outbound:msg:${msgId}`;
+    const tsRedis = outboundKeyMap.get(redisKey);
+    if (tsRedis !== undefined && now - tsRedis <= ttl) {
+      return true;
+    }
+    const ts = outboundKeyMap.get(msgId);
     if (ts !== undefined && now - ts <= ttl) {
       return true;
     }
@@ -176,13 +204,13 @@ export function isBotOutbound(params: {
       continue;
     }
 
-    // Direct message ID match (scoped by tenant if both provide tenantId)
+    // Direct message ID match (scoped by tenant if cleanTenantId is provided)
     if (msgId && entry.messageId && entry.messageId === msgId) {
       if (cleanTenantId && entry.tenantId) {
         if (entry.tenantId === cleanTenantId) {
           return true;
         }
-      } else {
+      } else if (!cleanTenantId) {
         return true;
       }
     }
@@ -209,11 +237,40 @@ export function isBotOutbound(params: {
     }
   }
 
-  // 3. Fallback: check raw msgId in key map if tenantId wasn't known during registration
-  if (msgId && !cleanTenantId) {
-    const ts = outboundKeyMap.get(msgId);
-    if (ts !== undefined && now - ts <= ttl) {
-      return true;
+  return false;
+}
+
+/**
+ * Fast lookup to check if a messageId is registered as a bot outbound message with tenant scoping.
+ */
+export function isRegisteredOutboundMessage(messageId?: string | null, tenantId?: string | null): boolean {
+  if (!messageId) return false;
+  const msgId = String(messageId).trim();
+  const cleanTenant = tenantId ? String(tenantId).trim() : undefined;
+  const now = Date.now();
+  const ttl = DEFAULT_TTL_MS;
+
+  if (cleanTenant) {
+    const tsCompound = outboundKeyMap.get(`${cleanTenant}:${msgId}`);
+    if (tsCompound !== undefined && now - tsCompound <= ttl) return true;
+  } else {
+    const redisKey = `outbound:msg:${msgId}`;
+    const tsRedis = outboundKeyMap.get(redisKey);
+    if (tsRedis !== undefined && now - tsRedis <= ttl) return true;
+
+    const tsRaw = outboundKeyMap.get(msgId);
+    if (tsRaw !== undefined && now - tsRaw <= ttl) return true;
+  }
+
+  for (let i = outboundRegistry.length - 1; i >= 0; i--) {
+    const entry = outboundRegistry[i];
+    if (now - entry.timestamp > ttl) continue;
+    if (entry.messageId === msgId) {
+      if (cleanTenant && entry.tenantId) {
+        if (entry.tenantId === cleanTenant) return true;
+      } else if (!cleanTenant) {
+        return true;
+      }
     }
   }
 

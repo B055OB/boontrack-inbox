@@ -221,12 +221,11 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
       expect(resumeRes.success).toBe(true);
       expect(resumeRes.bot_paused).toBe(false);
 
-      // Verify dual-column reset on conversations table
-      expect(conversationsUpdatedData.bot_paused).toBe(false);
-      expect(conversationsUpdatedData.is_paused).toBe(false);
-      expect(conversationsUpdatedData.is_bot_paused).toBe(false);
-      expect(conversationsUpdatedData.is_bot_active).toBe(true);
-      expect(conversationsUpdatedData.status).toBe('active');
+      // Invariant: Conversations are NOT reset on tenant RESUME (2-Dimensional Hierarchy Decoupling)
+      // Any conversation paused remains paused!
+      expect(conversationsUpdatedData.bot_paused).toBe(true);
+      expect(conversationsUpdatedData.is_paused).toBe(true);
+      expect(conversationsUpdatedData.is_bot_paused).toBe(true);
     });
 
     it('synchronizes bot_paused and is_paused on conversation-level CS takeover', async () => {
@@ -554,10 +553,8 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
         expect(tenantUpdatePayload.metadata.bot_status).toBe('BOT_ENABLED');
         expect(tenantUpdatePayload.metadata.resumed_at).toBeDefined();
 
-        // Verify conversations table flags
-        expect(convUpdatePayload.is_bot_paused).toBe(false);
-        expect(convUpdatePayload.bot_paused).toBe(false);
-        expect(convUpdatePayload.is_bot_active).toBe(true);
+        // Invariant: Conversations table is NOT updated on tenant RESUME (conversation pause decoupled)
+        expect(convUpdatePayload).toBeNull();
       });
     });
 

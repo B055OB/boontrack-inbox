@@ -144,6 +144,19 @@ export class EvolutionProviderAdapter implements IProviderAdapter {
       const resObj = data as { key?: { id?: string }; messageId?: string; id?: string };
       const messageId = resObj.key?.id || resObj.messageId || resObj.id || `evo-${Date.now()}`;
 
+      // Register in Outbound Registry (TASK-102) to prevent false self-pause echo
+      try {
+        const { registerBotOutbound } = await import('@/lib/whatsapp/outbound-registry');
+        registerBotOutbound({
+          tenantId: message.tenant_id,
+          messageId,
+          recipientPhone: cleanNumber,
+          text: textBody,
+          conversationId: (message as any).conversation_id,
+          source: 'system_generated',
+        });
+      } catch (_) {}
+
       return {
         success: true,
         messageId,

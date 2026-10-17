@@ -582,6 +582,17 @@ export async function persistOutboundMessage(
     }
 
     if (convId) {
+      if (senderType === 'bot' || senderType === 'system') {
+        registerBotOutbound({
+          tenantId: tenantId ? String(tenantId) : undefined,
+          messageId: params.externalId,
+          conversationId: convId,
+          recipientPhone: phone,
+          text: messageBody,
+          source: 'system_generated',
+        });
+      }
+
       // Deduplication check for outbound replies within 30s
       if (params.externalId) {
         const { data: existingExternal } = await supabase
