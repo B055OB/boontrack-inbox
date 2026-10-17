@@ -265,6 +265,46 @@ jest.mock('@/lib/supabaseClient', () => {
           })),
         };
       }),
+      rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+        if (fnName === 'fn_toggle_bot_session_state') {
+          const isPaused = args.p_is_paused;
+          const targetPhone = args.p_customer_phone;
+          const tenantKey = args.p_tenant_id;
+          const source = args.p_source;
+          const pausedUntil = args.p_paused_until;
+
+          if (args.p_scope === 'tenant') {
+            if (mockTenants[tenantKey]) {
+              mockTenants[tenantKey].bot_paused = isPaused;
+              mockTenants[tenantKey].is_bot_active = !isPaused;
+            }
+          } else {
+            const sessionKey = `${tenantKey}_${targetPhone}`;
+            mockSessions[sessionKey] = {
+              ...(mockSessions[sessionKey] || {}),
+              tenant_id: tenantKey,
+              user_identifier: targetPhone,
+              is_paused: isPaused,
+              current_state: isPaused ? 'HUMAN_PAUSED' : 'ACTIVE',
+              bot_status: isPaused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE',
+              paused_until: pausedUntil,
+              paused_by: source,
+            };
+            for (const c of Object.values(mockConversations) as any[]) {
+              if (c.customer_phone === targetPhone || !targetPhone) {
+                c.bot_paused = isPaused;
+                c.is_paused = isPaused;
+                c.is_bot_paused = isPaused;
+                c.is_bot_active = !isPaused;
+                c.status = isPaused ? 'HUMAN_PAUSED' : 'active';
+                c.paused_until = pausedUntil;
+              }
+            }
+          }
+          return Promise.resolve({ data: { success: true }, error: null });
+        }
+        return Promise.resolve({ data: null, error: { message: 'not mocked' } });
+      }),
     })),
     getSupabase: jest.fn(() => ({
       from: jest.fn((tableName: string) => {

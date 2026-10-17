@@ -177,6 +177,26 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
             select: jest.fn(() => ({ or: jest.fn(() => ({ eq: jest.fn(async () => ({ data: [], error: null })) })) })),
           };
         }),
+        rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+          if (fnName === 'fn_toggle_bot_session_state') {
+            tenantsUpdatedData = { bot_paused: args.p_is_paused, is_bot_active: !args.p_is_paused };
+            if (args.p_is_paused) {
+              conversationsUpdatedData = {
+                bot_paused: true,
+                is_paused: true,
+                is_bot_paused: true,
+                is_bot_active: false,
+                status: 'HUMAN_PAUSED',
+              };
+              sessionsUpdatedData = {
+                is_paused: true,
+                bot_status: 'BOT_DISABLED',
+              };
+            }
+            return Promise.resolve({ data: { success: true }, error: null });
+          }
+          return Promise.resolve({ data: null, error: { message: 'not mocked' } });
+        }),
       };
 
       // Execute PAUSE
@@ -270,6 +290,22 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
             };
           }
           return {};
+        }),
+        rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+          if (fnName === 'fn_toggle_bot_session_state') {
+            sessionUpserted = {
+              is_paused: args.p_is_paused,
+              bot_status: args.p_is_paused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE',
+            };
+            convUpdated = {
+              bot_paused: args.p_is_paused,
+              is_paused: args.p_is_paused,
+              is_bot_paused: args.p_is_paused,
+              is_bot_active: !args.p_is_paused,
+            };
+            return Promise.resolve({ data: { success: true }, error: null });
+          }
+          return Promise.resolve({ data: null, error: { message: 'not mocked' } });
         }),
       };
 
@@ -531,6 +567,21 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
               };
             }
             return {};
+          }),
+          rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+            if (fnName === 'fn_toggle_bot_session_state') {
+              tenantUpdatePayload = {
+                metadata: {
+                  is_bot_paused: args.p_is_paused,
+                  bot_paused: args.p_is_paused,
+                  is_bot_active: !args.p_is_paused,
+                  bot_status: args.p_is_paused ? 'BOT_DISABLED' : 'BOT_ENABLED',
+                  resumed_at: new Date().toISOString(),
+                },
+              };
+              return Promise.resolve({ data: { success: true }, error: null });
+            }
+            return Promise.resolve({ data: null, error: { message: 'not mocked' } });
           }),
         };
 

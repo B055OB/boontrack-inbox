@@ -146,6 +146,44 @@ BEGIN
                 status = 'HUMAN_PAUSED',
                 updated_at = v_now
             WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id);
+        ELSE
+            -- Saat tenant di-RESUME (#on), otomatis aktifkan kembali
+            -- HANYA untuk sesi/percakapan yang memiliki pause_reason = 'TENANT_DISABLED'.
+            -- Percakapan dengan pause_reason = 'HUMAN_HANDOVER' WAJIB DIBIARKAN TETAP PAUSED!
+            UPDATE public.conversation_sessions
+            SET is_paused = false,
+                current_state = 'BOT_ACTIVE',
+                bot_status = 'BOT_ACTIVE',
+                paused_until = NULL,
+                pause_reason = NULL,
+                metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                    'bot_status', 'BOT_ACTIVE',
+                    'bot_paused', false,
+                    'is_bot_paused', false,
+                    'is_bot_active', true,
+                    'resumed_at', v_now,
+                    'resumed_by', p_source,
+                    'pause_reason', NULL,
+                    'paused_reason', NULL,
+                    'last_state_updated_by', p_source
+                ),
+                updated_at = v_now
+            WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
+              AND pause_reason = 'TENANT_DISABLED';
+
+            UPDATE public.conversations
+            SET bot_paused = false,
+                is_paused = false,
+                is_bot_paused = false,
+                is_bot_active = true,
+                paused_until = NULL,
+                pause_reason = NULL,
+                last_state_updated_by = p_source,
+                bot_mode = 'AI_ACTIVE',
+                status = 'ACTIVE',
+                updated_at = v_now
+            WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id)
+              AND pause_reason = 'TENANT_DISABLED';
         END IF;
 
         RETURN jsonb_build_object(

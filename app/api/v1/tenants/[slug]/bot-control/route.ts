@@ -347,6 +347,9 @@ export async function POST(
         : undefined;
 
     const resolvedSource = body.source || (scope === 'conversation' ? 'cs_chat_toggle' : 'dashboard_toggle');
+    const authHeader = req.headers.get('authorization')?.trim();
+    const bearerSecret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
+    const headerSecret = req.headers.get('x-internal-secret')?.trim() || bearerSecret;
 
     // Centralized Service Function (Single Source of Truth per CTO Directive TASK-103)
     const result = await updateBotState({
@@ -360,6 +363,8 @@ export async function POST(
       customerPhone: body.customer_phone || body.customerPhone,
       senderPhone: auth.user?.phone || undefined,
       userRole: auth.role,
+      internalSecret: headerSecret,
+      systemSecret: headerSecret,
       source: resolvedSource,
       supabase,
     });

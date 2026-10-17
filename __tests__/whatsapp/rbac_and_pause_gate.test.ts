@@ -115,6 +115,37 @@ jest.mock('@/lib/supabaseClient', () => {
           upsert: jest.fn(async () => ({ data: null, error: null })),
         };
       }),
+      rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+        if (fnName === 'fn_toggle_bot_session_state') {
+          const isPaused = args.p_is_paused;
+          const tenantKey = args.p_tenant_id;
+          const targetPhone = args.p_customer_phone;
+          const pausedUntil = args.p_paused_until;
+          const source = args.p_source;
+
+          if (args.p_scope === 'tenant') {
+            const t = mockTenants[tenantKey] || Object.values(mockTenants)[0];
+            if (t) {
+              t.bot_paused = isPaused;
+              t.is_bot_active = !isPaused;
+            }
+          } else {
+            const sessionKey = `${tenantKey}_${targetPhone}`;
+            mockSessions[sessionKey] = {
+              ...(mockSessions[sessionKey] || {}),
+              tenant_id: tenantKey,
+              user_identifier: targetPhone,
+              is_paused: isPaused,
+              current_state: isPaused ? 'HUMAN_PAUSED' : 'ACTIVE',
+              bot_status: isPaused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE',
+              paused_until: pausedUntil,
+              paused_by: source,
+            };
+          }
+          return Promise.resolve({ data: { success: true }, error: null });
+        }
+        return Promise.resolve({ data: null, error: { message: 'not mocked' } });
+      }),
     })),
     getSupabase: jest.fn(() => null),
   };

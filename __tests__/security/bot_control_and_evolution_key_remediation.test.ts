@@ -27,7 +27,13 @@ import {
   processEvolutionWebhookEvent,
 } from '@/lib/whatsapp/evolution-webhook-handler';
 import { GET, POST, PUT } from '@/app/api/v1/tenants/[slug]/bot-control/route';
-import { updateBotState, resolveBotControllerRole, normalizePhoneNumber } from '@/lib/whatsapp/bot-control-service';
+import {
+  updateBotState,
+  executeBotControl,
+  resumeBotState,
+  resolveBotControllerRole,
+  normalizePhoneNumber,
+} from '@/lib/whatsapp/bot-control-service';
 
 // Mock Supabase Client for bot-control route and service
 const mockTenantData = {
@@ -149,6 +155,23 @@ const mockSupabase = {
         eq: jest.fn(async () => ({ error: null })),
       })),
     };
+  }),
+  rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
+    if (fnName === 'fn_toggle_bot_session_state') {
+      const isPaused = args.p_is_paused;
+      if (args.p_scope === 'tenant') {
+        mockTenantData.bot_paused = isPaused;
+        mockTenantData.is_bot_active = !isPaused;
+        mockTenantData.metadata = {
+          ...(mockTenantData.metadata || {}),
+          bot_status: isPaused ? 'BOT_DISABLED' : 'BOT_ENABLED',
+          paused_until: args.p_paused_until,
+          paused_by: args.p_source,
+        };
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    }
+    return Promise.resolve({ data: null, error: { message: 'RPC not mocked' } });
   }),
 };
 
@@ -547,6 +570,49 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(result.success).toBe(true);
       expect(result.bot_paused).toBe(false);
       expect(result.last_state_updated_by).toBe('timeout_expired');
+    });
+
+    it('17b. executeBotControl with role system_internal WITHOUT server secret is rejected as UNAUTHORIZED (CTO Directive 3)', async () => {
+      const result = await executeBotControl({
+        tenantId: 'uuid-1234',
+        tenantSlug: 'toko-sukses',
+        action: 'RESUME',
+        scope: 'conversation',
+        customerPhone: '6281234567890',
+        userRole: 'system_internal',
+        source: 'untrusted_caller',
+        supabase: mockSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+      expect(result.message).toContain('Klaim role system_internal tidak memiliki kredensial server yang sah');
+    });
+
+    it('17c. resumeBotState with role system_internal WITHOUT server secret is rejected as UNAUTHORIZED (CTO Directive 3)', async () => {
+      const result = await resumeBotState(
+        'conv-uuid-1234',
+        'uuid-1234',
+        'timeout_expired',
+        mockSupabase
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.is_bot_active).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+    });
+
+    it('17d. executeBotControl and resumeBotState succeed when valid server secret is provided', async () => {
+      const res = await resumeBotState(
+        'conv-uuid-1234',
+        'uuid-1234',
+        'timeout_expired',
+        mockSupabase,
+        { systemSecret: 'test-internal-secret-token' }
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.is_bot_active).toBe(true);
     });
   });
 

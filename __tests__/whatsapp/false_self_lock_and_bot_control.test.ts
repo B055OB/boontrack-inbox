@@ -77,13 +77,36 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
                 c.is_bot_paused = true;
                 c.is_bot_active = false;
                 c.paused_until = pausedUntil;
+                c.pause_reason = 'TENANT_DISABLED';
                 c.last_state_updated_by = source;
               });
               mockSessionsTable.forEach((s) => {
                 s.is_paused = true;
                 s.bot_status = 'HUMAN_HANDOVER';
                 s.paused_until = pausedUntil;
+                s.pause_reason = 'TENANT_DISABLED';
                 s.paused_by = source;
+              });
+            } else {
+              // Reconcile ONLY sessions/conversations with pause_reason = 'TENANT_DISABLED'
+              mockConversationsTable.forEach((c) => {
+                if (c.pause_reason === 'TENANT_DISABLED') {
+                  c.bot_paused = false;
+                  c.is_paused = false;
+                  c.is_bot_paused = false;
+                  c.is_bot_active = true;
+                  c.paused_until = null;
+                  c.pause_reason = null;
+                }
+              });
+              mockSessionsTable.forEach((s) => {
+                if (s.pause_reason === 'TENANT_DISABLED') {
+                  s.is_paused = false;
+                  s.current_state = 'BOT_ACTIVE';
+                  s.bot_status = 'BOT_ACTIVE';
+                  s.paused_until = null;
+                  s.pause_reason = null;
+                }
               });
             }
           } else {
@@ -645,9 +668,9 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       expect(sessionRow.paused_until).toBe(pauseDurationUntil);
     });
 
-    it('does NOT reset conversation-level is_paused or paused_until when fallback path executes tenant RESUME (#on)', async () => {
+    it('fails closed and returns success: false without partial fallback writes when RPC fails (CTO Directive 2)', async () => {
       const mockSupabase = createMockSupabase();
-      // Force fallback by making RPC return error
+      // Force RPC failure
       mockSupabase.rpc.mockResolvedValueOnce({
         data: null,
         error: { code: 'PGRST202', message: 'Function not found' },
@@ -682,23 +705,121 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
         supabase: mockSupabase,
       });
 
-      expect(resumeResult.success).toBe(true);
-      expect(resumeResult.scope).toBe('tenant');
-      expect(resumeResult.bot_paused).toBe(false);
+      // True atomicity: fail-closed, no partial split-state
+      expect(resumeResult.success).toBe(false);
+      expect(resumeResult.error).toBeDefined();
 
-      // Verify tenant is resumed in DB
+      // Verify tenant is NOT mutated
       const tenantRow = mockTenantsTable[0];
-      expect(tenantRow.bot_paused).toBe(false);
-      expect(tenantRow.is_bot_active).toBe(true);
+      expect(tenantRow.bot_paused).toBe(true);
 
-      // Verify conversation row STILL has is_paused=true and paused_until intact in fallback!
+      // Verify conversation row remains intact
       const convRow = mockConversationsTable[0];
       expect(convRow.is_paused).toBe(true);
-      expect(convRow.bot_paused).toBe(true);
-      expect(convRow.is_bot_paused).toBe(true);
-      expect(convRow.is_bot_active).toBe(false);
       expect(convRow.paused_until).toBe(pauseDurationUntil);
-      expect(convRow.last_state_updated_by).toBe('cs_operator_handover');
+    });
+
+    describe('Acceptance Tests: State Reconciliation on #off -> #on (CTO Directive 1)', () => {
+      it('Acceptance A: Skenario #off -> #on: bot kembali membalas pesan masuk', async () => {
+        const mockSupabase = createMockSupabase();
+        clearRuntimeSessionCache();
+
+        // 1. Initial State: Tenant is BOT_DISABLED (#off)
+        mockTenantsTable[0].bot_paused = true;
+        mockTenantsTable[0].is_bot_active = false;
+        mockTenantsTable[0].metadata = { bot_status: 'BOT_DISABLED' };
+
+        // Session created while tenant was disabled has pause_reason = 'TENANT_DISABLED'
+        mockSessionsTable[0].is_paused = true;
+        mockSessionsTable[0].current_state = 'HUMAN_PAUSED';
+        mockSessionsTable[0].pause_reason = 'TENANT_DISABLED';
+        mockConversationsTable[0].is_paused = true;
+        mockConversationsTable[0].pause_reason = 'TENANT_DISABLED';
+
+        // When tenant is paused, decision gate MUST bypass bot
+        const gateWhileOff = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: mockSessionsTable[0],
+          senderPhone: customerPhone,
+          textBody: 'Halo mau beli produk',
+          supabase: mockSupabase,
+        });
+        expect(gateWhileOff.shouldBypass).toBe(true);
+        expect(gateWhileOff.reason).toBe('TENANT_GLOBAL_PAUSED');
+
+        // 2. Owner sends #on -> resumes tenant
+        const resumeRes = await updateBotState({
+          scope: 'tenant',
+          action: 'RESUME',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_on_command',
+          supabase: mockSupabase,
+        });
+        expect(resumeRes.success).toBe(true);
+        expect(resumeRes.bot_paused).toBe(false);
+
+        // 3. Customer sends message after #on -> Decision gate must NOT bypass bot! Bot returns to reply!
+        const gateAfterOn = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: mockSessionsTable[0],
+          senderPhone: customerPhone,
+          textBody: 'Halo bot apa kabar?',
+          supabase: mockSupabase,
+        });
+        expect(gateAfterOn.shouldBypass).toBe(false);
+      });
+
+      it('Acceptance B: Skenario #off -> #on dengan percakapan CS: sesi HUMAN_HANDOVER tetap paused', async () => {
+        const mockSupabase = createMockSupabase();
+        clearRuntimeSessionCache();
+
+        // 1. A customer conversation is in HUMAN_HANDOVER with CS operator
+        const csPauseUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour left
+        mockSessionsTable[0].is_paused = true;
+        mockSessionsTable[0].current_state = 'HUMAN_PAUSED';
+        mockSessionsTable[0].bot_status = 'HUMAN_HANDOVER';
+        mockSessionsTable[0].pause_reason = 'HUMAN_HANDOVER';
+        mockSessionsTable[0].paused_until = csPauseUntil;
+        mockSessionsTable[0].paused_by = 'cs_operator';
+
+        mockConversationsTable[0].is_paused = true;
+        mockConversationsTable[0].pause_reason = 'HUMAN_HANDOVER';
+        mockConversationsTable[0].paused_until = csPauseUntil;
+
+        // Tenant is paused (#off)
+        mockTenantsTable[0].bot_paused = true;
+        mockTenantsTable[0].is_bot_active = false;
+        mockTenantsTable[0].metadata = { bot_status: 'BOT_DISABLED' };
+
+        // 2. Owner sends #on -> resumes tenant
+        const resumeRes = await updateBotState({
+          scope: 'tenant',
+          action: 'RESUME',
+          tenantId,
+          tenantSlug,
+          userRole: 'owner',
+          source: 'owner_on_command',
+          supabase: mockSupabase,
+        });
+        expect(resumeRes.success).toBe(true);
+
+        // 3. Verify session was NOT unpaused: HUMAN_HANDOVER MUST REMAIN PAUSED!
+        expect(mockSessionsTable[0].is_paused).toBe(true);
+        expect(mockSessionsTable[0].pause_reason).toBe('HUMAN_HANDOVER');
+
+        // Decision gate for this conversation must CONTINUE to bypass bot for CS takeover!
+        const csGate = await checkRuntimeBotDecisionGate({
+          tenant: mockTenantsTable[0],
+          session: mockSessionsTable[0],
+          senderPhone: customerPhone,
+          textBody: 'Halo CS saya mau tanya',
+          supabase: mockSupabase,
+        });
+        expect(csGate.shouldBypass).toBe(true);
+        expect(csGate.reason).toBe('SESSION_PAUSED');
+      });
     });
   });
 });
