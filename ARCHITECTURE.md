@@ -2430,17 +2430,22 @@ Antarmuka menu **"AI Knowledge & Bot"** (`AiKnowledgeTab.tsx`) direstrukturisasi
 
 1. **Komponen Visual Kuota Sesi (`AiSessionQuotaMeter`)**:
    - Diposisikan di bagian paling atas tab untuk visibilitas langsung sisa kuota bulanan.
-   - Menyajikan bilah progres visual: Sisa Kuota Sesi (150 Solo, 300 Pro Scale, 600 Team Scale) + Tambahan Overage.
+   - Mengambil nilai kanonikal SSOT dari context tenant aktif:
+     * *ENTERPRISE / TEAM_SCALE*: Kuota Bulanan 600 Sesi, Mode: Active AI.
+     * *PRO_SCALE / ADS_PERFORMANCE*: Kuota Bulanan 300 Sesi.
+     * *STARTER / SOLO*: Kuota Bulanan 0 Sesi (Fallback Assistant Mode).
+   - Menghilangkan fallback hardcode 'STARTER' saat data subscription belum ter-cache dan menghilangkan badge 'Fallback Assistant Mode' jika tenant berada pada tier Team Scale dengan kuota tersedia.
+   - Menyajikan bilah progres visual: Sisa Kuota Sesi + Tambahan Overage/Top-Up.
    - Indikator visual dinamis:
      * *Healthy* (>20%): Bilah hijau emerald.
-     * *Low Warning* (â‰¤20%): Bilah oranye amber dengan tanda peringatan kuota menipis.
-     * *Depleted* (0): Bilah rose merah dengan status **Fallback Assistant Mode (Menu Statis Aktif)** yang mengamankan komunikasi agar bot tetap melayani menggunakan menu interaktif tanpa LLM.
+     * *Low Warning* (≤20%): Bilah oranye amber dengan tanda peringatan kuota menipis.
+     * *Depleted* (0): Bilah rose merah dengan status **Fallback Assistant Mode (Menu Statis Aktif)** (hanya berlaku jika kuota benar-benar habis dan bukan pada tier aktif dengan kuota tersedia).
    - Tombol CTA `+ Top-Up Kuota` membuka modal instan untuk pembelian paket +100 sesi (Rp 49.000) atau +250 sesi (Rp 99.000).
 2. **Konsolidasi 3 Tab Sederhana**:
    - **Tab 1 [Profil Bot]**:
      * Nama Asisten AI (`ai_name`).
      * Gaya Bahasa / Nada Bicara Terpadu (`tone`: casual, professional, persuasive, friendly).
-     * Salam Pembuka Otomatis (*Greeting Message*).
+     * Salam Pembuka Otomatis (*Greeting Message*) — dipusatkan secara eksklusif di sini (dicabut dari `WhatsAppTab.tsx`).
      * Instruksi Khusus Toko (*System Prompt Utama*).
    - **Tab 2 [Aturan Jual & Policy]**:
      * Mode Operasional Bot: Pilihan kartu visual **HYBRID** (AI Cerdas + Menu Cepat) vs **STATIC** (Deterministik Penuh 0-Token).

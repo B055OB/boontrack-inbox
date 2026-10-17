@@ -308,7 +308,7 @@ export default function DashboardSidebar({
       {/* 1. TOP SECTION: KARTU PROFIL TOKO & POPOVER (STICKY TOP) */}
       {/* ======================================================== */}
       <div
-        className={`${isEffectivelyCollapsed ? 'p-2' : 'p-3'} border-b border-slate-100 dark:border-slate-800 relative bg-white dark:bg-slate-900 shrink-0`}
+        className={`${isEffectivelyCollapsed ? 'p-2' : 'p-3'} border-b border-slate-200 dark:border-slate-800 relative bg-white dark:bg-slate-900 shrink-0`}
         ref={popoverRef}
       >
         {isEffectivelyCollapsed ? (
@@ -685,8 +685,8 @@ export default function DashboardSidebar({
                       onClick={() => handleSelectTab(ringkasanItem.targetTab)}
                       className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition cursor-pointer group ${
                         isRingkasanActive
-                          ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-medium shadow-2xs ring-1 ring-blue-500/20'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
+                          ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-700/50 shadow-2xs'
+                          : 'text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
                       }`}
                       title={ringkasanItem.description || 'Dashboard, metrik penting, aktivitas terbaru'}
                     >
@@ -738,13 +738,7 @@ export default function DashboardSidebar({
                 return (
                   <div
                     key={group.id}
-                    className={`rounded-2xl transition-all duration-200 border ${
-                      isOpen
-                        ? 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/90 dark:border-slate-800 shadow-2xs'
-                        : hasActiveChild
-                        ? 'border-blue-100 dark:border-blue-950/50 bg-blue-50/30 dark:bg-blue-950/20'
-                        : 'border-transparent hover:border-slate-100 dark:hover:border-slate-800/50'
-                    }`}
+                    className="bg-transparent dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800/80 rounded-2xl transition-all duration-200 overflow-hidden"
                   >
                     {/* Accordion Group Header (Single / Controlled Accordion) */}
                     <button
@@ -755,8 +749,8 @@ export default function DashboardSidebar({
                         isOpen
                           ? 'text-slate-900 dark:text-white'
                           : hasActiveChild
-                          ? 'text-blue-900 dark:text-blue-300'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
+                          ? 'text-blue-600 dark:text-blue-300'
+                          : 'text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/40'
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -794,8 +788,8 @@ export default function DashboardSidebar({
                           : 'grid-rows-[0fr] opacity-0 pointer-events-none'
                       }`}
                     >
-                      <div className="overflow-hidden">
-                        <div className="pt-0.5 pb-1.5 px-1.5 space-y-0.5">
+                      <div className="overflow-hidden bg-transparent">
+                        <div className="pt-0.5 pb-2 px-1.5 space-y-0.5 bg-transparent">
                           {group.items.map((item) => {
                             const isItemActive = isTabActiveInItem(item, activeTab);
                             const ItemIcon = item.icon;
@@ -807,8 +801,8 @@ export default function DashboardSidebar({
                                 onClick={() => handleSelectTab(item.targetTab)}
                                 className={`relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition cursor-pointer text-left ${
                                   isItemActive
-                                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-medium shadow-2xs ring-1 ring-blue-500/20'
-                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
+                                    ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-700/50 shadow-2xs'
+                                    : 'text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
                                 }`}
                               >
                                 {isItemActive && (
@@ -817,13 +811,15 @@ export default function DashboardSidebar({
                                 <div className="flex items-center gap-2 truncate min-w-0 flex-1 pr-1">
                                   <ItemIcon
                                     className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                                      isItemActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'
+                                      isItemActive ? 'text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'
                                     }`}
                                   />
                                   <div className="truncate text-left min-w-0">
                                     <span className="truncate block font-bold leading-tight">{item.label}</span>
                                     {item.subtitle && (
-                                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate block leading-tight mt-0.5">
+                                      <span className={`text-[11px] font-normal truncate block leading-tight mt-0.5 ${
+                                        isItemActive ? 'text-blue-600/70 dark:text-blue-300/70' : 'text-slate-500 dark:text-slate-400'
+                                      }`}>
                                         {item.subtitle}
                                       </span>
                                     )}
@@ -868,7 +864,7 @@ export default function DashboardSidebar({
       {/* 3. PINNED BOTTOM SECTION: PROFIL, AKUN & PENGATURAN TOKO */}
       {/* ======================================================== */}
       <div
-        className={`mt-auto shrink-0 sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 ${
+        className={`mt-auto shrink-0 sticky bottom-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 ${
           isEffectivelyCollapsed ? 'p-2 space-y-2' : 'p-2.5 sm:p-3 space-y-1.5'
         } z-10`}
       >
@@ -938,14 +934,14 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
                 title="Profil &amp; Akun Toko"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                     <User className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                  <span className="truncate text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                     Profil &amp; Akun
                   </span>
                 </div>
@@ -961,14 +957,14 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
                 title="Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran)"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 group-hover:bg-indigo-600 text-indigo-600 dark:text-indigo-400 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                     <Settings className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                  <span className="truncate text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                     Pengaturan Toko
                   </span>
                 </div>

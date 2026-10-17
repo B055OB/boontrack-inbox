@@ -81,6 +81,9 @@ export async function GET(
     } else if (typeof metadata.sessions_remaining === 'number') {
       remainingSessions = Math.max(0, metadata.sessions_remaining);
       usedSessions = Math.max(0, totalQuota - remainingSessions);
+    } else if (typeof metadata.ai_credits?.monthly_remaining === 'number') {
+      remainingSessions = Math.max(0, metadata.ai_credits.monthly_remaining);
+      usedSessions = Math.max(0, totalQuota - remainingSessions);
     } else {
       usedSessions = Number(metadata.ai_sessions_used || 0);
       remainingSessions = Math.max(0, totalQuota - usedSessions);

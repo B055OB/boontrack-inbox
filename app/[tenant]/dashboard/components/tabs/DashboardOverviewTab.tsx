@@ -799,7 +799,7 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
       </section>
 
       {/* ── VISUAL AI SESSION QUOTA METER (P0 SAAS MONETISASI) ── */}
-      <AiSessionQuotaMeter tenantSlug={tenantSlug} tierName={tierLabel} />
+      <AiSessionQuotaMeter tenantSlug={tenantSlug} tierName={tierLabel} isTeamScale={isTeamScale} />
 
       {/* WIDGET PENGELOLAAN TAUTAN BIO RESMI TOKO */}
       <StoreBioLinkWidget tenantSlug={tenantSlug} customDomain={customDomain} />

@@ -670,7 +670,7 @@ export default function SettingsTab({
   const whatsappSubMenu = (
     <div className="space-y-4 text-xs font-medium text-slate-600">
       {/* Visual Quota Sesi AI WhatsApp Meter */}
-      <AiSessionQuotaMeter tenantSlug={tenantSlug} />
+      <AiSessionQuotaMeter tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
 
       <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-2">
         <div className="flex items-center gap-2 text-emerald-900 font-bold">

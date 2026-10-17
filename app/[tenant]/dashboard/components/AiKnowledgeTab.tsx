@@ -394,7 +394,13 @@ export default function AiKnowledgeTab({
       {/* 1. VISUAL AI SESSION QUOTA METER (TOP POSITION) */}
       <AiSessionQuotaMeter
         tenantSlug={tenantSlug}
-        tierName={propTenant?.tier}
+        tierName={propTenant?.tier || propTenant?.subscription_tier}
+        isTeamScale={Boolean(
+          propTenant?.tier === 'ENTERPRISE' ||
+          propTenant?.tier === 'TEAM_SCALE' ||
+          propTenant?.subscription_tier === 'ENTERPRISE' ||
+          propTenant?.subscription_tier === 'TEAM_SCALE'
+        )}
       />
 
       {/* FEEDBACK BANNERS */}

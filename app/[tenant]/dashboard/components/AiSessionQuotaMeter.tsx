@@ -33,11 +33,13 @@ interface QuotaData {
 interface AiSessionQuotaMeterProps {
   tenantSlug: string;
   tierName?: string;
+  isTeamScale?: boolean;
 }
 
 export default function AiSessionQuotaMeter({
   tenantSlug,
   tierName,
+  isTeamScale: isTeamScaleProp = false,
 }: AiSessionQuotaMeterProps) {
   const [quota, setQuota] = useState<QuotaData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,7 +97,6 @@ export default function AiSessionQuotaMeter({
         setCreatedInvoiceUrl(data.invoice_url);
         setTopUpFeedback(`🎉 Invoice resmi Xendit berhasil diterbitkan! Membuka halaman pembayaran (QRIS & Virtual Account)...`);
 
-        // Buka tautan invoice resmi Xendit secara instan
         try {
           const opened = window.open(data.invoice_url, '_blank');
           if (!opened) {
@@ -121,17 +122,31 @@ export default function AiSessionQuotaMeter({
     }
   };
 
+  // SSOT Canonical Tier Resolution
+  const rawTier = (quota?.tier || tierName || '').toUpperCase();
+  const isEnterprise = Boolean(isTeamScaleProp) || rawTier.includes('ENTERPRISE') || rawTier.includes('TEAM');
+  const isProScale = !isEnterprise && (rawTier.includes('PRO') || rawTier.includes('ADS') || rawTier.includes('PERFORMANCE') || rawTier.includes('SCALE'));
+  const isStarter = Boolean(rawTier) && !isEnterprise && !isProScale && (rawTier.includes('STARTER') || rawTier.includes('SOLO') || rawTier.includes('LITE'));
 
-  const displayTier = (quota?.tier || tierName || 'STARTER').toUpperCase();
-  const isEnterprise = displayTier.includes('ENTERPRISE') || displayTier.includes('TEAM');
-  const isStarter = displayTier.includes('STARTER') || displayTier.includes('SOLO') || displayTier.includes('LITE');
-  const defaultBaseQuota = isEnterprise ? 600 : isStarter ? 0 : 300;
+  const displayTier = isEnterprise
+    ? 'Team Scale'
+    : isProScale
+    ? 'Ads Performance'
+    : isStarter
+    ? 'Solo / Starter'
+    : rawTier || 'Team Scale';
+
+  // Standard Baseline Quota per Directive
+  // Enterprise / Team Scale -> 600 sessions
+  // Pro Scale / Ads Performance -> 300 sessions
+  // Starter / Solo -> 0 sessions
+  const defaultBaseQuota = isEnterprise ? 600 : isProScale ? 300 : isStarter ? 0 : 600;
 
   const remaining = quota?.remaining_sessions ?? defaultBaseQuota;
   const total = quota?.total_quota ?? defaultBaseQuota;
-  const percentage = quota?.percentage ?? (total > 0 ? Math.round((remaining / total) * 100) : 0);
-  const isDepleted = quota?.is_depleted ?? (total === 0 || remaining <= 0);
-  const isLow = quota?.is_low ?? (total > 0 && remaining <= Math.ceil(total * 0.2));
+  const percentage = quota?.percentage ?? (total > 0 ? Math.min(100, Math.round((remaining / total) * 100)) : 0);
+  const isDepleted = !isLoading && (total === 0 || remaining <= 0);
+  const isLow = !isLoading && total > 0 && remaining > 0 && remaining <= Math.ceil(total * 0.2);
 
   // Visual styling based on quota health
   const getProgressColor = () => {
@@ -145,10 +160,10 @@ export default function AiSessionQuotaMeter({
       {/* Visual Meter Box */}
       <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
         isDepleted
-          ? 'bg-rose-50/70 border-rose-200 text-rose-950 shadow-2xs'
+          ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/60 text-rose-950 dark:text-rose-100 shadow-2xs'
           : isLow
-          ? 'bg-amber-50/70 border-amber-200 text-amber-950 shadow-2xs'
-          : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
+          ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60 text-amber-950 dark:text-amber-100 shadow-2xs'
+          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xs'
       }`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Sisi Kiri: Status & Visual Bar */}
@@ -156,10 +171,10 @@ export default function AiSessionQuotaMeter({
             <div className="flex items-center gap-2.5 flex-wrap">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                 isDepleted
-                  ? 'bg-rose-100 text-rose-600'
+                  ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
                   : isLow
-                  ? 'bg-amber-100 text-amber-600'
-                  : 'bg-blue-50 text-blue-600'
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                  : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400'
               }`}>
                 {isDepleted ? (
                   <ShieldAlert className="w-4 h-4" />
@@ -172,29 +187,44 @@ export default function AiSessionQuotaMeter({
 
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs sm:text-sm font-black tracking-tight">
+                  <h3 className="text-xs sm:text-sm font-black tracking-tight text-slate-900 dark:text-white">
                     Kuota Sesi Percakapan AI
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                     Paket {displayTier}
                   </span>
                   {quota?.days_remaining !== undefined && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                       {quota.days_remaining > 0 ? `Reset ${quota.days_remaining} hari lagi` : 'Reset hari ini'}
                     </span>
                   )}
-                  {isDepleted && (
+                  {/* Mode: Active AI badge for Enterprise / Team Scale */}
+                  {isEnterprise && remaining > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Mode: Active AI</span>
+                    </span>
+                  )}
+                  {/* Mode: Active AI badge for Pro Scale */}
+                  {!isEnterprise && isProScale && remaining > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span>Mode: Active AI</span>
+                    </span>
+                  )}
+                  {/* Fallback Assistant Mode only when depleted and NOT on active Team Scale */}
+                  {!isLoading && isDepleted && remaining <= 0 && !isEnterprise && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
                       Fallback Assistant Mode
                     </span>
                   )}
                   {!isDepleted && isLow && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
                       Sisa Menipis
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   {isStarter && total === 0
                     ? 'Paket Solo/Starter beroperasi dalam mode Auto-Reply deterministik (0 Sesi AI). Upgrade ke Ads Performance (300 sesi) atau Team Scale (600 sesi) untuk AI cerdas.'
                     : isDepleted
@@ -207,25 +237,25 @@ export default function AiSessionQuotaMeter({
             {/* Progress Bar & Numeric Indicator */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-extrabold text-slate-800">
-                  {isLoading ? 'Memuat...' : `${remaining.toLocaleString('id-ID')} / ${total.toLocaleString('id-ID')} Sesi Tersedia`}
+                <span className="font-extrabold text-slate-800 dark:text-slate-200">
+                  {isLoading ? 'Memuat kuota...' : `${remaining.toLocaleString('id-ID')} / ${total.toLocaleString('id-ID')} Sesi Tersedia`}
                 </span>
-                <span className="font-bold text-[11px] text-slate-500">
+                <span className="font-bold text-[11px] text-slate-500 dark:text-slate-400">
                   {isLoading ? '' : `${percentage}%`}
                 </span>
               </div>
-              <div className="w-full h-2.5 bg-slate-200/80 rounded-full overflow-hidden p-0.5">
+              <div className="w-full h-2.5 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${getProgressColor()}`}
                   style={{ width: `${Math.max(4, percentage)}%` }}
                 />
               </div>
               {quota?.current_period_ends_at && (
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium pt-0.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium pt-0.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span>
                     Siklus Kuota 30 Hari: Reset pada{' '}
-                    <strong className="text-slate-700 font-bold">
+                    <strong className="text-slate-700 dark:text-slate-300 font-bold">
                       {new Date(quota.current_period_ends_at).toLocaleDateString('id-ID', {
                         day: 'numeric',
                         month: 'short',
@@ -256,21 +286,21 @@ export default function AiSessionQuotaMeter({
       {/* Top-Up Modal */}
       {isTopUpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                   <Sparkles className="w-4 h-4 text-amber-500" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-slate-900">Top-Up Kuota Sesi AI</h4>
-                  <p className="text-[11px] text-slate-400">Tambahkan sesi interaksi bot WhatsApp secara instan</p>
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">Top-Up Kuota Sesi AI</h4>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Tambahkan sesi interaksi bot WhatsApp secara instan</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsTopUpOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -278,8 +308,8 @@ export default function AiSessionQuotaMeter({
 
             {topUpFeedback ? (
               <div className="space-y-3">
-                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 rounded-2xl text-xs font-bold flex items-center gap-2.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>{topUpFeedback}</span>
                 </div>
                 {createdInvoiceUrl && (
@@ -299,15 +329,15 @@ export default function AiSessionQuotaMeter({
             ) : (
               <>
                 <div className="space-y-3">
-                  <p className="text-xs font-bold text-slate-700">Pilih Paket Sesi:</p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Pilih Paket Sesi:</p>
 
                   {/* Pilihan 1: 100 Sesi */}
                   <label
                     onClick={() => setSelectedPackage('topup_100')}
                     className={`block p-4 rounded-2xl border cursor-pointer transition ${
                       selectedPackage === 'topup_100'
-                        ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                        ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -319,17 +349,17 @@ export default function AiSessionQuotaMeter({
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-slate-900">+100 Sesi AI</span>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-100 text-blue-800">
+                            <span className="text-xs font-black text-slate-900 dark:text-white">+100 Sesi AI</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                               Paling Fleksibel
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                             Cukup untuk melayani ~100-200 prospek chat baru
                           </p>
                         </div>
                       </div>
-                      <span className="text-sm font-black text-blue-600">Rp 49.000</span>
+                      <span className="text-sm font-black text-blue-600 dark:text-blue-400">Rp 49.000</span>
                     </div>
                   </label>
 
@@ -338,8 +368,8 @@ export default function AiSessionQuotaMeter({
                     onClick={() => setSelectedPackage('topup_250')}
                     className={`block p-4 rounded-2xl border cursor-pointer transition ${
                       selectedPackage === 'topup_250'
-                        ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                        ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -351,23 +381,23 @@ export default function AiSessionQuotaMeter({
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-slate-900">+250 Sesi AI</span>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800">
+                            <span className="text-xs font-black text-slate-900 dark:text-white">+250 Sesi AI</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                               Hemat 20%
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                             Pilihan terbaik untuk scale-up traffic iklan Meta/TikTok
                           </p>
                         </div>
                       </div>
-                      <span className="text-sm font-black text-blue-600">Rp 99.000</span>
+                      <span className="text-sm font-black text-blue-600 dark:text-blue-400">Rp 99.000</span>
                     </div>
                   </label>
                 </div>
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 flex items-start gap-2">
-                  <Layers className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2">
+                  <Layers className="w-4 h-4 text-slate-500 dark:text-slate-400 mt-0.5 shrink-0" />
                   <p>
                     Kuota top-up bersifat akumulatif, tidak pernah hangus di akhir bulan, dan otomatis digunakan setelah kuota dasar paket Anda habis.
                   </p>
@@ -377,7 +407,7 @@ export default function AiSessionQuotaMeter({
                   <button
                     type="button"
                     onClick={() => setIsTopUpOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
                   >
                     Batal
                   </button>
@@ -395,7 +425,7 @@ export default function AiSessionQuotaMeter({
                     ) : (
                       <>
                         <span>Konfirmasi &amp; Tambah Kuota</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-4 h-4" />
                       </>
                     )}
                   </button>

@@ -1066,18 +1066,18 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 5: WHATSAPP & BROADCAST UNIFIED HUB */}
-      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator' || activeTab === 'telegram_alerts') && (
+      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator') && (
         <div className="flex-1 flex flex-col">
           {/* Sub Navigation Hub */}
-          <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3 overflow-x-auto">
-            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 items-center">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3 overflow-x-auto">
+            <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 items-center">
               <button
                 type="button"
                 onClick={() => setActiveTab('whatsapp')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   activeTab === 'whatsapp'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Koneksi Gateway & Bot
@@ -1087,8 +1087,8 @@ export default function TenantDashboardPage() {
                 onClick={() => setActiveTab('auto_reply')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   activeTab === 'auto_reply'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Aturan Auto-Reply (Keyword)
@@ -1098,8 +1098,8 @@ export default function TenantDashboardPage() {
                 onClick={() => setActiveTab('broadcast')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   activeTab === 'broadcast'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Broadcast WA Massal
@@ -1109,25 +1109,14 @@ export default function TenantDashboardPage() {
                 onClick={() => setActiveTab('rotator')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'rotator'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <span>🔄 CS / WhatsApp Rotator</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('telegram_alerts')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'telegram_alerts'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>🔔 Notifikasi Telegram</span>
-              </button>
             </div>
-            <span className="text-[11px] text-slate-500 hidden sm:inline">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">
               Pusat automasi & penyiaran pesan pelanggan WhatsApp
             </span>
           </div>
@@ -1228,17 +1217,19 @@ export default function TenantDashboardPage() {
               />
             ))}
 
-          {activeTab === 'telegram_alerts' && (
-            <TelegramAlertManager
-              tenantSlug={tenantSlug}
-              displayName={displayName}
-              onSaved={(msg) => {
-                setSaveFeedback(msg);
-                setTimeout(() => setSaveFeedback(null), 4000);
-              }}
-            />
-          )}
         </div>
+      )}
+
+      {/* TAB: NOTIFIKASI TELEGRAM MULTI-TENANT */}
+      {activeTab === 'telegram_alerts' && (
+        <TelegramAlertManager
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 4000);
+          }}
+        />
       )}
 
       {/* TAB: ADS TRACKING PRO & CAPI */}
