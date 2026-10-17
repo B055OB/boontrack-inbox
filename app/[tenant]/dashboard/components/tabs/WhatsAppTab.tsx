@@ -49,6 +49,7 @@ interface WhatsAppTabProps {
   isLoadingAi?: boolean;
   strategyFeedback?: string | null;
   isProScale: boolean;
+  isTeamScale?: boolean;
   renderLockedFeatureCard: (props: {
     title: string;
     badge: string;
@@ -106,6 +107,7 @@ export default function WhatsAppTab({
   isLoadingAi,
   strategyFeedback,
   isProScale,
+  isTeamScale: isTeamScaleProp = false,
   renderLockedFeatureCard,
   onUpgradeTier,
   setSaveFeedback,
@@ -165,6 +167,8 @@ export default function WhatsAppTab({
   };
   // Check if official Meta WABA credentials are fully configured on this tenant
   const [hasWabaCredentials, setHasWabaCredentials] = useState<boolean>(false);
+  const [isDbTeamScale, setIsDbTeamScale] = useState<boolean>(false);
+  const isTeamScale = Boolean(isTeamScaleProp || isDbTeamScale);
   const [isInstanceDbActive, setIsInstanceDbActive] = useState<boolean>(false);
 
   React.useEffect(() => {
@@ -178,7 +182,7 @@ export default function WhatsAppTab({
         // 1. Check Meta WABA credentials in tenants table & tenant_whatsapp_channels & whatsapp_connections
         const { data: tenantData } = await supabase
           .from('tenants')
-          .select('id, metadata, waba_phone_number_id')
+          .select('id, metadata, waba_phone_number_id, plan_tier, subscription_plan')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
@@ -289,13 +293,13 @@ export default function WhatsAppTab({
   }, [tenantSlug, isMerchantConnected, qrCodeUrl, handleConnectGrowthSession, waMode]);
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-emerald-600" />
+          <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <span>Pengaturan Gateway WhatsApp Bot</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Pilih metode koneksi bot sesuai dengan kebutuhan dan paket langganan Anda.
           </p>
         </div>
@@ -304,20 +308,20 @@ export default function WhatsAppTab({
           <button
             type="button"
             onClick={() => setIsManualWabaModalOpen(true)}
-            className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            className="px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Hubungkan WABA Resmi (Manual Setup)</span>
           </button>
 
-          <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto items-center">
+          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 self-start sm:self-auto items-center">
             <button
               type="button"
               onClick={() => setWaMode('qr')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 waMode === 'qr'
-                  ? 'bg-white text-blue-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Smartphone className="w-3.5 h-3.5" />
@@ -325,44 +329,42 @@ export default function WhatsAppTab({
             </button>
             <button
               type="button"
-              disabled={!hasWabaCredentials}
+              disabled={!isTeamScale && !hasWabaCredentials}
               onClick={() => {
-                if (hasWabaCredentials) {
+                if (isTeamScale || hasWabaCredentials) {
                   setWaMode('meta');
                 }
               }}
               title={
-                !hasWabaCredentials
+                !isTeamScale && !hasWabaCredentials
                   ? 'Setup WABA Required: Kredensial Meta resmi (Phone Number ID & Access Token) belum terkonfigurasi pada tenant ini.'
                   : undefined
               }
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                !hasWabaCredentials
+                !isTeamScale && !hasWabaCredentials
                   ? 'opacity-50 cursor-not-allowed text-slate-400 bg-slate-100/60 border border-slate-200'
                   : waMode === 'meta'
                   ? 'bg-white text-emerald-600 shadow-xs cursor-pointer'
                   : 'text-slate-600 hover:text-slate-900 cursor-pointer'
               }`}
             >
-              {!hasWabaCredentials ? (
+              {!isTeamScale && !hasWabaCredentials ? (
                 <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              ) : !isProScale ? (
-                <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               ) : (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               )}
               <span>Meta Cloud API (WABA)</span>
-              {!hasWabaCredentials ? (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-200 text-slate-600 shrink-0">
-                  SETUP REQUIRED
-                </span>
-              ) : !isProScale ? (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                  PROSCALE
-                </span>
-              ) : (
+              {hasWabaCredentials ? (
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                   ACTIVE
+                </span>
+              ) : isTeamScale ? (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                  TEAM SCALE
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-200 text-slate-600 shrink-0">
+                  SETUP REQUIRED
                 </span>
               )}
             </button>
@@ -372,39 +374,39 @@ export default function WhatsAppTab({
 
       {/* GROWTH PLAN PANEL */}
       {waMode === 'qr' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-6">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 p-6 md:p-8 shadow-xs space-y-6">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-slate-900">BoonTrack Direct Connect</h3>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">BoonTrack Direct Connect</h3>
                 <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black border ${
                   waStatus === 'CONNECTED'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
                 }`}>
                   {waStatus === 'CONNECTED'
                     ? (waConnectionMode === 'SHARED' ? '● Shared Gateway Active' : '● Dedicated Engine Connected')
                     : 'BoonTrack WhatsApp Engine'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-xl">
                 Koneksi mandiri via BoonTrack WhatsApp Engine untuk menghasilkan sesi perangkat QR aktif dan sinkronisasi chat real-time.
               </p>
             </div>
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/40">
               <QrCode className="w-5 h-5" />
             </div>
           </div>
 
           {waStatus === 'DEGRADED' && (
-            <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+            <div className="p-5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-3">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-amber-900">BoonTrack WhatsApp Engine Belum Terjangkau</h4>
-                  <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                  <h4 className="text-xs font-black text-amber-900 dark:text-amber-200">BoonTrack WhatsApp Engine Belum Terjangkau</h4>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
                     {waErrorMessage || 'Layanan BoonTrack WhatsApp Engine sedang offline. QR Code tidak dapat dimuat sampai engine diaktifkan.'}
                   </p>
                 </div>
@@ -423,13 +425,13 @@ export default function WhatsAppTab({
           )}
 
           {/* WHATSAPP RUNTIME NUMBER & COEXISTENCE SELECTION (§4.2, §8.4, §9.8) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 rounded-2xl p-5 space-y-4">
             <div>
               <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-blue-600" />
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">WhatsApp Runtime Number</h4>
+                <Smartphone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">WhatsApp Runtime Number</h4>
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                 Gunakan nomor khusus untuk WhatsApp Bot agar operasional AI tidak bercampur dengan WhatsApp pribadi Owner.
               </p>
             </div>
@@ -440,24 +442,24 @@ export default function WhatsAppTab({
                 onClick={() => setRuntimeMode('dedicated')}
                 className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
                   runtimeMode === 'dedicated'
-                    ? 'bg-white border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
-                    : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                    ? 'bg-white dark:bg-slate-900 border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-white/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      runtimeMode === 'dedicated' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300'
+                      runtimeMode === 'dedicated' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'
                     }`}>
                       {runtimeMode === 'dedicated' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                     </div>
-                    <span className="text-xs font-bold text-slate-900">Recommended: Dedicated Bot Number</span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Recommended: Dedicated Bot Number</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shrink-0">
                     SOP RESMI
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   (Nomor ini digunakan oleh BoonTrack Runtime untuk menerima pesan pelanggan dan menjalankan AI Sales Representative.)
                 </p>
               </div>
@@ -467,24 +469,24 @@ export default function WhatsAppTab({
                 onClick={() => setRuntimeMode('coexistence')}
                 className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
                   runtimeMode === 'coexistence'
-                    ? 'bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
-                    : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                    ? 'bg-white dark:bg-slate-900 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'bg-white/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      runtimeMode === 'coexistence' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'
+                      runtimeMode === 'coexistence' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 dark:border-slate-600'
                     }`}>
                       {runtimeMode === 'coexistence' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                     </div>
-                    <span className="text-xs font-bold text-slate-900">Advanced: Gunakan nomor yang sama dengan WhatsApp pribadi Owner (Enable Coexistence Mode)</span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Advanced: Gunakan nomor yang sama dengan WhatsApp pribadi Owner (Enable Coexistence Mode)</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0">
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shrink-0">
                     COEXISTENCE
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   Mode ini membutuhkan mekanisme identity filtering tambahan (Layer 2 Self-Echo Protection) agar pesan fisik Owner tidak memicu auto-reply berulang.
                 </p>
               </div>
@@ -495,15 +497,15 @@ export default function WhatsAppTab({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
               <div className="md:col-span-6 space-y-4">
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
+                  <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
                     <span>Buka aplikasi <strong>WhatsApp</strong> di HP Anda.</span>
                   </div>
-                  <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
+                  <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
                     <span>Ketuk menu titik tiga (Android) atau <strong>Pengaturan</strong> (iPhone) &gt; pilih <strong>Perangkat Tertaut</strong>.</span>
                   </div>
-                  <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
+                  <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
                     <span>Arahkan kamera HP Anda ke QR Code di sebelah kanan.</span>
                   </div>
@@ -513,7 +515,7 @@ export default function WhatsAppTab({
                   <button
                     onClick={() => handleConnectGrowthSession(true)}
                     disabled={isQrLoading}
-                    className="px-5 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                    className="px-5 py-3 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer border border-transparent dark:border-slate-700"
                   >
                     {isQrLoading ? (
                       <>
@@ -530,10 +532,10 @@ export default function WhatsAppTab({
                 </div>
               </div>
 
-              <div className="md:col-span-6 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+              <div className="md:col-span-6 flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700">
                 {isQrLoading && !qrCodeUrl ? (
-                  <div className="flex flex-col items-center gap-3 py-12 text-xs text-slate-500 font-medium">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <div className="flex flex-col items-center gap-3 py-12 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
                     <span>{waLoadingMessage || 'Sedang menyiapkan sesi aman...'}</span>
                   </div>
                 ) : qrCodeUrl ? (
@@ -548,11 +550,11 @@ export default function WhatsAppTab({
                       />
                     </div>
                     <div className="space-y-1">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                         Dedicated Instance: {tenantSlug.toLowerCase()}
                       </span>
-                      <p className="text-[11px] font-medium text-slate-500">
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                         Buka WhatsApp &gt; Perangkat Tertaut &gt; Tautkan Perangkat
                       </p>
                     </div>
@@ -562,13 +564,13 @@ export default function WhatsAppTab({
                     {waErrorMessage ? (
                       <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
                     ) : (
-                      <Smartphone className="w-12 h-12 text-slate-300 mx-auto" />
+                      <Smartphone className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
                     )}
                     <div>
-                      <p className="text-xs font-bold text-slate-700">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                         {waErrorMessage ? 'Gagal Memuat QR Code' : 'Disediakan WhatsApp'}
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
                         {waErrorMessage
                           ? waErrorMessage
                           : 'Klik tombol di bawah untuk memuat QR Code otentikasi WhatsApp.'}
@@ -645,7 +647,7 @@ export default function WhatsAppTab({
 
       {/* PRO SCALE PANEL */}
       {waMode === 'meta' && (
-        !isProScale ? (
+        (!isTeamScale && !isProScale) ? (
           <div className="py-2 flex flex-col items-center justify-center space-y-4">
             <FeatureLockedTeaser
               featureTitle="WhatsApp Business API (Official WABA)"
@@ -720,20 +722,20 @@ export default function WhatsAppTab({
       )}
 
       {/* KUSTOMISASI TEKS SAPAAN WHATSAPP (GREETING MESSAGE) */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800/80 p-6 md:p-8 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-900/40 shrink-0">
               <MessageSquare className="w-4.5 h-4.5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-slate-900">Pesan Sapaan Otomatis (Greeting Message)</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">Pesan Sapaan Otomatis (Greeting Message)</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                   ● Respon Pertama
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Teks sapaan yang otomatis dikirim bot saat calon pembeli pertama kali mengirim pesan ke WhatsApp toko.
               </p>
             </div>
@@ -742,7 +744,7 @@ export default function WhatsAppTab({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <label className="font-bold text-slate-700">Teks Sapaan Toko</label>
+            <label className="font-bold text-slate-700 dark:text-slate-300">Teks Sapaan Toko</label>
             <button
               type="button"
               onClick={() => {
@@ -750,7 +752,7 @@ export default function WhatsAppTab({
                 setLocalGreeting(defaultMsg);
                 if (setGreetingMessage) setGreetingMessage(defaultMsg);
               }}
-              className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+              className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline cursor-pointer"
             >
               Gunakan Format Bawaan
             </button>
@@ -764,12 +766,12 @@ export default function WhatsAppTab({
               if (setGreetingMessage) setGreetingMessage(e.target.value);
             }}
             placeholder={`Halo! Selamat datang di [nama_toko] 👋\n\nAda yang bisa kami bantu seputar produk atau pesanan hari ini?`}
-            className="w-full p-3.5 border border-slate-200 rounded-2xl text-xs text-slate-800 font-sans focus:outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500/20 leading-relaxed transition"
+            className="w-full p-3.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl text-xs font-sans focus:outline-hidden focus:border-emerald-600 dark:focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 leading-relaxed transition"
           />
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-            <p className="text-[11px] text-slate-400">
-              💡 Gunakan variabel <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">[nama_toko]</code> atau <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">{'{nama_toko}'}</code> untuk menyebut nama toko Anda secara otomatis.
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              💡 Gunakan variabel <code className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1 py-0.5 rounded font-mono">[nama_toko]</code> atau <code className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1 py-0.5 rounded font-mono">{'{nama_toko}'}</code> untuk menyebut nama toko Anda secara otomatis.
             </p>
 
             <button

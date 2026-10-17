@@ -108,10 +108,13 @@ Ekosistem BoonTrack meresmikan standarisasi paket komersial yang mengikat seluru
 | **Paket Checkout Lite (Entry)** | `CHECKOUT_LITE` | Rp 59.000 / bulan | Checkout engine instan, single product page checkout, maksimal 3 produk aktif, QRIS dinamis, notifikasi order ringkas, checkout digital & fisik (lazy shipping maks 1 ekspedisi), basic Browser Pixel tracking. Tanpa Meta CAPI, tanpa AI bot, tanpa multi-seat. |
 | **Solo / Starter** | `STARTER` | Rp 0 (Trial 7 Hari Penuh) / Rp 199.000/bln | Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis, Bot WhatsApp auto-reply dasar. |
 | **Ads Performance** | `PRO_SCALE` | Rp 299.000 / bulan (Trial 7 Hari Promo) | Semua fitur STARTER + Meta & TikTok CAPI Server-Side, God Button konversi, 2 Seats CS Inbox, Advanced Analytics. |
-| **Team Scale** | `ENTERPRISE` | Rp 499.000 / bulan | Semua fitur PRO_SCALE + Unlimited Multi-Seat CS, Official Meta Cloud API (WABA), Broadcast WA, Custom Domain + SSL. |
+| **Team Scale** | `ENTERPRISE` | Rp 499.000 / bulan | Semua fitur PRO_SCALE + Unlimited Multi-Seat CS, Official Meta Cloud API (WABA) via Self-Serve 1-Click OAuth Pop-up Onboarding (tanpa konfigurasi kredensial manual di awal), Broadcast WA, Custom Domain + SSL. |
 
 > **ADR Database Invariant**:
 > Kolom `tenants.tier` dan `shop_subscriptions.plan_tier` di PostgreSQL Supabase serta enum SQLAlchemy/Pydantic di Core ENGINE mendukung canonical tier: `'CHECKOUT_LITE'`, `'STARTER'`, `'PRO_SCALE'`, dan `'ENTERPRISE'` (serta `'FREE'` untuk internal testing). Seluruh string legacy (seperti `GROWTH`, `growth_tracking`, `proscale`, `team_scale`, `solo`, `checkout_lite`, `lite`) wajib ditransformasikan melalui adapter/migrasi database ke enum resmi di atas.
+>
+> **WABA Entitlement & Onboarding Boundary Invariant (§ 3.1 & § 22)**:
+> Tenant tier `'ENTERPRISE'` (Team Scale) berhak mendapatkan akses langsung ke Official Meta Cloud API (WABA) melalui alur self-serve Meta Embedded Signup (1-Click OAuth Pop-up via Facebook JS SDK v21.0), tanpa kewajiban konfigurasi kredensial manual di awal. Seluruh batasan gembok UI (*disabled*) dan tooltip *"Setup WABA Required"* mutlak ditiadakan bagi tenant Team Scale.
 
 ### 3.1.1 CS Seat Entitlement & Live CS Inbox Access Rules (ADR 2026-10-01)
 Aturan alokasi kuota kursi CS (CS Seats) berlaku ketat dan deterministik di seluruh layer platform (Database `tenant_users`, API Gateway `/api/inbox/team-members`, dan Dashboard Frontend `TeamChatTab.tsx` / `InboxConsole.tsx`):
@@ -1115,11 +1118,11 @@ Terikat pada nomor telepon tenant yang terdaftar di database whatsapp_connection
 
 Mengalir ke TenantRuntimeContext, Conversation Engine (LLM/State Machine), katalog produk, dan CS multi-seat.
 
-Anti-Retry Storm & Safe Acknowledgment (P1 Rule):
+Anti-Retry Storm & Safe Acknowledgment (Directive P1 Enforcement):
 
-Jika phone_number_id yang masuk tidak dikenali di platform maupun tenant, backend DILARANG melempar HTTP 404/400 (yang memicu pengulangan kirim dari Meta berhari-hari).
-
-Backend wajib mencatat log audit peringatan dan mengembalikan HTTP 200 OK dengan respons aman {"status": "IGNORED_UNMAPPED"}.
+- **Ingress Webhook Safe ACK**: Ingress WABA callback wajib mengembalikan HTTP 200 OK safe-acknowledgment untuk unmapped number guna mencegah retry-storm Meta.
+- Jika `phone_number_id` yang masuk tidak dikenali di platform maupun tenant, backend DILARANG melempar HTTP 404/400 (yang memicu pengulangan kirim dari Meta berhari-hari).
+- Backend wajib mencatat log audit peringatan dan mengembalikan HTTP 200 OK dengan respons aman `{"status": "IGNORED_UNMAPPED"}`.
 
 Pemisahan Konseptual Messaging Window vs Token Expiry (P1 Rule):
 
@@ -1852,6 +1855,9 @@ Dokumentasi invarian arsitektur resmi hasil evaluasi dan persetujuan CTO Gate un
 3. **Connection-Driven Provider Resolver**:
    - Penentuan transport provider (Meta Cloud API / WABA vs Baileys / Evolution API) **diselesaikan secara dinamis langsung dari konfigurasi tabel `whatsapp_connections`** milik tenant.
    - Provider adapter bersifat terisolasi mutlak (`EvolutionProviderAdapter`, `WabaProviderAdapter`, `MultiProviderAdapter`) tanpa ketergantungan statis antarmuka.
+4. **Penegasan Kepatuhan Directive P1 (§ 13.1 & § 23.2)**:
+   - **24-Hour Messaging Window Compliance**: Pesan follow-up CRM (H+3 dan H+7) yang berada di luar jendela 24 jam interaksi wajib menggunakan WhatsApp HSM Approved Template resmi saat dikirim via WABA.
+   - **Outbox Asinkron**: Seluruh outbound messages (Quick POS dan CRM follow-up) wajib melalui antrean `message_outbox` dengan kunci idempotensi SHA-256.
 
 ### 23.3 Business Action Layer / Tool Gateway (P2)
 1. **Prinsip Fundamental: *"LLM Proposes; Deterministic Core Disposes"***:
@@ -1981,7 +1987,14 @@ Sebelum integrasi provider Meta Cloud API dinyatakan siap (*production-ready*) u
 - **Gate P3: Transactional Outbox Integration & Provider Dispatch Adapter**: Integrasi pengiriman pesan keluar asinkron via `message_outbox` menggunakan PostgreSQL `FOR UPDATE SKIP LOCKED`.
 - **Gate P4: Meta Template Engine**: Pengelolaan dan pengiriman template HSM terverifikasi (kategori *Authentication*, *Utility*, dan *Marketing*) sesuai regulasi Meta 24-hour messaging window.
 - **Gate P5: Media Upload & Attachment Resiliency**: Penanganan berkas gambar katalog dan bukti bayar (konversi CDN URL ke Meta Media ID dengan mekanisme caching).
-- **Gate P6: Embedded Signup & Meta OAuth Onboarding Flow**: Alur registrasi mandiri WABA merchant melalui Meta Embedded Signup SDK yang aman tanpa membocorkan System User Token ke antarmuka klien.
+- **Gate P6: Meta Embedded Signup & OAuth Onboarding**: **LIVE PRODUCTION CONTRACT (RELEASED)**.
+  * **Status Platform**: LIVE PRODUCTION CONTRACT (RELEASED) & CERTIFIED.
+  * **Konfigurasi Platform Resmi**:
+    - App ID: `1398832609107871`
+    - Config ID: `2169643500570820`
+    - Graph API Version: `v21.0`
+    - Callback Gateway: `/api/v1/whatsapp/embedded-signup-callback`
+  * **Fitur**: 1-Click Modal Pop-up via Facebook JS SDK, auto-token exchange ke Core backend, auto-subscribe WABA webhook, dan auto-save ke tabel `whatsapp_connections` (`provider = 'meta'`, `status = 'active'`, `is_connected = true`).
 - **Gate P7: Quality Rating, Tier Limit Monitoring & Webhook Status**: Penangkapan event webhook status nomor telepon Meta (`CONNECTED`, `FLAGGED`, `RESTRICTED`, `RATE_LIMITED`) dan pemantauan limit tier harian (Tier 1K, 10K, 100K, Unlimited).
 - **Gate P8: Multi-Provider Migration Path**: Prosedur migrasi tanpa jeda layanan (*zero-downtime*) bagi tenant yang berpindah dari Baileys (Evolution) ke Meta WABA resmi atau sebaliknya.
 - **Gate P9: Multi-Region High Availability & Enterprise SLA**: Redundansi tingkat regional, failover gateway, dan pemantauan latensi outbox <2 detik untuk tenant tier Enterprise.
@@ -4130,6 +4143,18 @@ Antarmuka kerja CS di dashboard menyediakan 3 aksi operasional terkoordinasi den
 
 ---
 
+#### 5. CS Workspace Layout, Breakpoint Standar & Dark Mode (ADR 2026-10-18)
+- **Breakpoint Drawer Kanan ("Profil & Quick POS")**:
+  * Standar breakpoint diubah dari `< 1400px` menjadi `< 2xl (< 1536px)` murni sebagai floating slide-over drawer (`hidden 2xl:flex`) dengan backdrop click-to-close dan tombol silang (X). Pada layar `>= 2xl (>= 1536px)`, drawer tampil persisten (docked) di kolom kanan.
+- **Dominansi Kolom Chat Tengah**:
+  * Kolom chat tengah ditetapkan dominan `flex-1 min-w-0 w-full overflow-hidden` dan kolom kiri antrean dirampingkan `w-72 sm:w-80 shrink-0` agar tahan terhadap himpitan split-screen pada desktop resolusi standar.
+- **Interactive Drop-up Popover Autocomplete (Canned Response)**:
+  * Baris teks statis diganti dengan `Interactive Drop-up Popover Autocomplete` melayang ke atas (`bottom-full`) saat mengetik shortcut `/`, didukung realtime search query dan navigasi keyboard (`ArrowUp` / `ArrowDown` / `Enter`).
+- **Dark Mode Slate-900 / Slate-950**:
+  * Standarisasi total tema gelap Slate-900 / Slate-950 di seluruh container obrolan, chat bubbles, composer, dan drawer.
+
+---
+
 ### 46.6 BoonTrack Shop Release Milestone: FnB Category & Instant Courier Share-Lock
 - **FnB Vertical Enabled**: Mendukung katalog dinamis untuk merchant kuliner & F&B lokal.
 - **Instant Delivery via Share-Location**: Sistem otomatis menghitung tarif kurir instan (GrabExpress/Gosend aggregator) langsung dari titik share lock koordinat pembeli.
@@ -4288,6 +4313,10 @@ Setiap engineer yang berkontribusi kode untuk fitur kreator, layanan publik, ata
 ### 48.3 External Audience & Data Sync Boundary (HOLD Directive)
 - Integrasi terus (tight coupling) antara Customer Lifecycle Engine dengan Meta CAPI atau platform iklan pihak ketiga ditangguhkan di peringkat Core.
 - Sebarang keperluan eksport audiens pada masa hadapan wajib diasingkan melalui lapisan perantara `Audience Export Adapter` demi pematuhan privasi data dan fleksibiliti pelbagai platform (Meta, TikTok, Google).
+
+### 48.4 CRM Lifecycle Isolation & Relokasi Follow-Up (ADR 2026-10-18)
+- **Pemisahan Domain**: Modul konfigurasi 'Aturan Follow-Up (H+3, H+7, Ucapan Ulang Tahun, dan Re-Aktivasi Kontak)' dicabut sepenuhnya dari WhatsApp Gateway dan dipindahkan secara permanen ke domain CRM Pelanggan (`CustomerDatabaseTab.tsx`).
+- **Fokus Tunggal Transport Gateway**: Gateway Whatsapp Connect difokuskan murni pada status transport, pairing, credentials, dan webhooks.
 
 ---
 
@@ -5018,12 +5047,12 @@ Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
     * **Toko Jasa & Booking**: Menampilkan sub-info jadwal reservasi, tanggal kedatangan/sesi, dan slot waktu booking pelanggan.
     * **Toko Produk Digital**: Menampilkan sub-info status pengiriman akses WhatsApp/Email, SKU lisensi, dan tautan materi instan.
 
-### 59.4 Responsive Smart Chatbox Console (Slide-Over Drawer Viewport < 1400px)
-- **Adaptivitas Viewport CS/CRM**:
-  - Console percakapan WhatsApp & Omnichannel Inbox menerapkan perilaku responsif berbasis breakpoint:
-    * **Viewport Lebar (>= 1400px)**: Tampilan dual-pane split-screen permanen (Daftar pesan/kontak di sisi kiri, kanvas percakapan aktif di sisi kanan).
-    * **Viewport Medium & Tablet (< 1400px)**: Chatbox beralih menjadi Slide-Over Drawer elegan dari sisi kanan dengan backdrop blur transparan.
-  - Memastikan operator CS dapat memantau database pelanggan atau transaksi sembari membalas chat secara simultan tanpa distorsi layout horizontal.
+### 59.4 Responsive Smart Chatbox Console (Slide-Over Drawer Viewport < 2xl / < 1536px)
+- **Standarisasi Breakpoint Responsif CS Workspace**:
+  - **Breakpoint Drawer Kanan ("Profil & Quick POS")**: Standar breakpoint resmi diubah dari `< 1400px` menjadi `< 2xl (< 1536px)` murni sebagai floating slide-over drawer (`hidden 2xl:flex`) dengan backdrop click-to-close dan tombol silang (X).
+  - **Kolom Chat Tengah**: Ditetapkan dominan `flex-1 min-w-0 w-full overflow-hidden` dan kolom kiri antrean dirampingkan `w-72 sm:w-80 shrink-0` agar tahan himpitan split-screen.
+  - **Canned Response**: Baris teks statis diganti dengan `Interactive Drop-up Popover Autocomplete` melayang ke atas (`bottom-full`) saat mengetik shortcut `/`, didukung realtime search query dan navigasi keyboard (`ArrowUp` / `ArrowDown` / `Enter`).
+  - **Dark Mode**: Standarisasi total tema gelap Slate-900 / Slate-950 di seluruh container obrolan, chat bubbles, composer, dan drawer.
 
 ### 59.5 Universal Checkout Trigger (`data-bt-checkout` / `href="#checkout"`)
 - **Interoperabilitas Kustom Landing Page**:

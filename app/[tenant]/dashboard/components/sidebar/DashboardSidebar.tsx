@@ -78,18 +78,18 @@ function NavBadgeRenderer({ badge }: { badge?: NavBadgeConfig | null }) {
   const variantClass = (() => {
     switch (badge.variant) {
       case 'info':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60';
       case 'success':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60';
       case 'warning':
-        return 'bg-amber-50 text-amber-800 border-amber-200';
+        return 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60';
       case 'purple':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
+        return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60';
       case 'locked':
-        return 'bg-slate-100 text-slate-500 border-slate-200';
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700';
       case 'neutral':
       default:
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700';
     }
   })();
 
@@ -302,13 +302,13 @@ export default function DashboardSidebar({
     <aside
       className={`${
         isEffectivelyCollapsed ? 'w-[72px] min-w-[72px] max-w-[72px]' : 'w-64 xl:w-72'
-      } bg-white border-r border-slate-200 h-screen sticky top-0 self-start flex flex-col justify-between shrink-0 select-none z-40 overflow-hidden transition-[width] duration-200 ${className}`}
+      } bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 h-screen sticky top-0 self-start flex flex-col justify-between shrink-0 select-none z-40 overflow-hidden transition-[width] duration-200 ${className}`}
     >
       {/* ======================================================== */}
       {/* 1. TOP SECTION: KARTU PROFIL TOKO & POPOVER (STICKY TOP) */}
       {/* ======================================================== */}
       <div
-        className={`${isEffectivelyCollapsed ? 'p-2' : 'p-3'} border-b border-slate-100 relative bg-white shrink-0`}
+        className={`${isEffectivelyCollapsed ? 'p-2' : 'p-3'} border-b border-slate-100 dark:border-slate-800 relative bg-white dark:bg-slate-900 shrink-0`}
         ref={popoverRef}
       >
         {isEffectivelyCollapsed ? (
@@ -317,7 +317,7 @@ export default function DashboardSidebar({
             <button
               type="button"
               onClick={toggleCollapse}
-              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 transition shadow-2xs cursor-pointer"
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition shadow-2xs cursor-pointer"
               title="Perlebar Sidebar"
               aria-label="Perlebar Sidebar"
             >
@@ -330,7 +330,9 @@ export default function DashboardSidebar({
                 type="button"
                 onClick={() => setIsPopoverOpen((prev) => !prev)}
                 className={`w-9 h-9 rounded-xl border transition cursor-pointer flex items-center justify-center overflow-hidden shadow-2xs ${
-                  isPopoverOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-slate-300'
+                  isPopoverOpen
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                 }`}
                 aria-expanded={isPopoverOpen}
                 aria-label={nameToShow}
@@ -359,7 +361,7 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 transition shadow-2xs cursor-pointer"
+                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition shadow-2xs cursor-pointer"
                 title="Pengaturan Toko"
                 aria-label="Pengaturan Toko"
               >
@@ -375,7 +377,7 @@ export default function DashboardSidebar({
               <Link
                 href={storefrontUrl}
                 target="_blank"
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-slate-600 hover:text-indigo-600 transition shadow-2xs"
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition shadow-2xs"
                 aria-label="Lihat Tampilan Toko"
               >
                 <Store className="w-4 h-4" />
@@ -393,8 +395,8 @@ export default function DashboardSidebar({
                 onClick={() => setIsPopoverOpen((prev) => !prev)}
                 className={`flex-1 min-w-0 flex items-center justify-between p-2 rounded-2xl border transition cursor-pointer text-left ${
                   isPopoverOpen
-                    ? 'bg-slate-50 border-indigo-400 shadow-sm ring-2 ring-indigo-500/10'
-                    : 'bg-white hover:bg-slate-50/90 border-slate-200 shadow-2xs'
+                    ? 'bg-slate-50 dark:bg-slate-800 border-indigo-400 dark:border-indigo-500 shadow-sm ring-2 ring-indigo-500/10'
+                    : 'bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 shadow-2xs'
                 }`}
                 aria-expanded={isPopoverOpen}
               >
@@ -405,7 +407,7 @@ export default function DashboardSidebar({
                     <img
                       src={storeLogoUrl}
                       alt={nameToShow}
-                      className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0"
+                      className="w-8 h-8 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 text-white font-black text-xs flex items-center justify-center shrink-0 uppercase shadow-2xs">
@@ -415,7 +417,7 @@ export default function DashboardSidebar({
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-black text-slate-900 truncate">
+                      <span className="text-xs font-black text-slate-900 dark:text-white truncate">
                         {nameToShow}
                       </span>
                     </div>
@@ -423,18 +425,18 @@ export default function DashboardSidebar({
                       <span
                         className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
                           isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))
-                            ? 'bg-amber-50 text-amber-900 border-amber-300 font-extrabold shadow-2xs'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 font-extrabold shadow-2xs'
                             : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                             : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
-                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                             : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                            ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && (
-                          <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                          <Sparkles className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 shrink-0" />
                         )}
                         <span>
                           {tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout'
@@ -452,7 +454,7 @@ export default function DashboardSidebar({
                       </span>
 
                       {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && grantDaysLeft !== null && (
-                        <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/70 px-1 py-0.2 rounded border border-amber-300">
+                        <span className="text-[9px] font-mono font-bold text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/60 px-1 py-0.2 rounded border border-amber-300 dark:border-amber-800">
                           {grantDaysLeft > 0 ? `${grantDaysLeft}h` : 'Aktif'}
                         </span>
                       )}
@@ -471,7 +473,7 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 transition shadow-2xs cursor-pointer shrink-0"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition shadow-2xs cursor-pointer shrink-0"
                 title="Buka Pengaturan Toko (Profil, Jam Buka, Domain, Pembayaran)"
                 aria-label="Pengaturan Toko"
               >
@@ -482,7 +484,7 @@ export default function DashboardSidebar({
               <button
                 type="button"
                 onClick={toggleCollapse}
-                className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition shadow-2xs cursor-pointer shrink-0"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition shadow-2xs cursor-pointer shrink-0"
                 title="Ciutkan Sidebar"
                 aria-label="Ciutkan Sidebar"
               >
@@ -495,13 +497,13 @@ export default function DashboardSidebar({
               <Link
                 href={storefrontUrl}
                 target="_blank"
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-2xs"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-[11px] font-bold transition group shadow-2xs"
               >
                 <span className="flex items-center gap-2 truncate">
-                  <Store className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                  <Store className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 shrink-0" />
                   <span className="truncate">Lihat Tampilan Toko</span>
                 </span>
-                <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 shrink-0" />
               </Link>
             </div>
           </>
@@ -509,11 +511,11 @@ export default function DashboardSidebar({
 
         {/* POPOVER MENU (side="bottom" align="start") */}
         {isPopoverOpen && (
-          <div className="absolute top-full left-2 right-2 sm:left-3 sm:right-3 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
+          <div className="absolute top-full left-2 right-2 sm:left-3 sm:right-3 mt-1.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
             {/* Header info in popover */}
-            <div className="px-3 py-2 border-b border-slate-100">
-              <p className="text-xs font-black text-slate-900 truncate">{nameToShow}</p>
-              <p className="text-[10px] font-semibold text-slate-400 truncate">
+            <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+              <p className="text-xs font-black text-slate-900 dark:text-white truncate">{nameToShow}</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 truncate">
                 {effectiveCustomDomain
                   ? effectiveCustomDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
                   : `shop.boontrack.com/${tenantSlug}`}
@@ -528,9 +530,9 @@ export default function DashboardSidebar({
                 onOpenStoreSettings();
                 if (onCloseMobileDrawer) onCloseMobileDrawer();
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition text-left cursor-pointer"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 transition text-left cursor-pointer"
             >
-              <User className="w-3.5 h-3.5 text-slate-500" />
+              <User className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               <span>Akun &amp; Profil Toko</span>
             </button>
 
@@ -542,13 +544,13 @@ export default function DashboardSidebar({
                 onOpenUpgradeModal();
                 if (onCloseMobileDrawer) onCloseMobileDrawer();
               }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 hover:bg-purple-50 transition text-left cursor-pointer"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition text-left cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Crown className="w-3.5 h-3.5 text-purple-600" />
+                <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 <span>Billing &amp; Langganan</span>
               </div>
-              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">
+              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">
                 UPGRADE
               </span>
             </button>
@@ -561,9 +563,9 @@ export default function DashboardSidebar({
                   setIsPopoverOpen(false);
                   handleSelectTab('themes');
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition text-left cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 transition text-left cursor-pointer"
               >
-                <Globe className="w-3.5 h-3.5 text-slate-500" />
+                <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                 <span>Pengaturan Domain</span>
               </button>
             )}
@@ -578,7 +580,7 @@ export default function DashboardSidebar({
               }}
             />
 
-            <div className="h-[1px] bg-slate-100 my-1" />
+            <div className="h-[1px] bg-slate-100 dark:bg-slate-800 my-1" />
 
             {/* Menu 5: Keluar (Logout) */}
             <button
@@ -587,9 +589,9 @@ export default function DashboardSidebar({
                 setIsPopoverOpen(false);
                 handleLogout();
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition text-left cursor-pointer"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5 text-rose-500" />
+              <LogOut className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
               <span>Keluar (Logout)</span>
             </button>
           </div>
@@ -611,8 +613,8 @@ export default function DashboardSidebar({
                   onClick={() => handleSelectTab(ringkasanItem.targetTab)}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
                     isTabActiveInItem(ringkasanItem, activeTab)
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                      ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-2xs'
+                      : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                   }`}
                   aria-label={ringkasanItem.label}
                 >
@@ -625,7 +627,7 @@ export default function DashboardSidebar({
               </div>
             )}
 
-            <div className="w-8 h-[1px] bg-slate-200/80 my-1" />
+            <div className="w-8 h-[1px] bg-slate-200/80 dark:bg-slate-800 my-1" />
 
             {/* Collapsible Groups Flattened into Icons */}
             {collapsibleGroups.map((group) => (
@@ -641,8 +643,8 @@ export default function DashboardSidebar({
                         onClick={() => handleSelectTab(item.targetTab)}
                         className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
                           isItemActive
-                            ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-500/20'
-                            : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-100'
+                            ? 'bg-blue-600 text-white shadow-2xs ring-2 ring-blue-500/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                         aria-label={item.label}
                       >
@@ -652,7 +654,7 @@ export default function DashboardSidebar({
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold">{item.label}</span>
                           {item.badge?.text && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-500 text-white font-bold">
+                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-500 text-white font-bold">
                               {item.badge.text}
                             </span>
                           )}
@@ -664,7 +666,7 @@ export default function DashboardSidebar({
                     </div>
                   );
                 })}
-                <div className="w-6 h-[1px] bg-slate-100 my-0.5" />
+                <div className="w-6 h-[1px] bg-slate-100 dark:bg-slate-800 my-0.5" />
               </React.Fragment>
             ))}
           </div>
@@ -683,20 +685,20 @@ export default function DashboardSidebar({
                       onClick={() => handleSelectTab(ringkasanItem.targetTab)}
                       className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition cursor-pointer group ${
                         isRingkasanActive
-                          ? 'bg-indigo-50/90 text-indigo-900 font-semibold shadow-2xs ring-1 ring-indigo-500/20'
-                          : 'text-slate-700 hover:text-slate-900 hover:bg-slate-50/90 font-medium'
+                          ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-medium shadow-2xs ring-1 ring-blue-500/20'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
                       }`}
                       title={ringkasanItem.description || 'Dashboard, metrik penting, aktivitas terbaru'}
                     >
                       {isRingkasanActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-blue-600 dark:bg-blue-400 rounded-r" />
                       )}
                       <div className="flex items-center gap-2.5 truncate">
                         <div
                           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
                             isRingkasanActive
-                              ? 'bg-indigo-600 text-white shadow-2xs'
-                              : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100'
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50'
                           }`}
                         >
                           <RingkasanIcon className="w-4 h-4" />
@@ -705,7 +707,7 @@ export default function DashboardSidebar({
                           <span className="truncate block font-bold leading-tight">
                             {ringkasanItem.label}
                           </span>
-                          <span className="text-[11px] text-slate-400 font-normal truncate block leading-tight mt-0.5">
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate block leading-tight mt-0.5">
                             {ringkasanItem.subtitle || ringkasanItem.description || 'Aktivitas & Info Update'}
                           </span>
                         </div>
@@ -717,7 +719,7 @@ export default function DashboardSidebar({
               </div>
             )}
 
-            <div className="h-[1px] bg-slate-100" />
+            <div className="h-[1px] bg-slate-100 dark:bg-slate-800" />
 
             {/* ACCORDION GROUPS (Kelola Toko, Pesan & Pelanggan, Kembangkan Bisnis) */}
             <div className="space-y-1.5">
@@ -738,10 +740,10 @@ export default function DashboardSidebar({
                     key={group.id}
                     className={`rounded-2xl transition-all duration-200 border ${
                       isOpen
-                        ? 'bg-slate-50/70 border-slate-200/90 shadow-2xs'
+                        ? 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/90 dark:border-slate-800 shadow-2xs'
                         : hasActiveChild
-                        ? 'border-indigo-100 bg-indigo-50/30'
-                        : 'border-transparent hover:border-slate-100'
+                        ? 'border-blue-100 dark:border-blue-950/50 bg-blue-50/30 dark:bg-blue-950/20'
+                        : 'border-transparent hover:border-slate-100 dark:hover:border-slate-800/50'
                     }`}
                   >
                     {/* Accordion Group Header (Single / Controlled Accordion) */}
@@ -751,18 +753,18 @@ export default function DashboardSidebar({
                       aria-expanded={isOpen}
                       className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer select-none text-left ${
                         isOpen
-                          ? 'text-slate-900'
+                          ? 'text-slate-900 dark:text-white'
                           : hasActiveChild
-                          ? 'text-indigo-900'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+                          ? 'text-blue-900 dark:text-blue-300'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
                         <div
                           className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
                             isOpen || hasActiveChild
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-500'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                           }`}
                         >
                           <GroupIcon className="w-3.5 h-3.5" />
@@ -772,13 +774,13 @@ export default function DashboardSidebar({
 
                       <div className="flex items-center gap-1.5 shrink-0 ml-1">
                         {groupBadgeCount > 0 && !isOpen && (
-                          <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-indigo-100 text-indigo-700">
+                          <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                             {groupBadgeCount}
                           </span>
                         )}
                         <ChevronDown
-                          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
-                            isOpen ? 'rotate-180 text-indigo-600' : ''
+                          className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 transition-transform duration-200 shrink-0 ${
+                            isOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''
                           }`}
                         />
                       </div>
@@ -805,23 +807,23 @@ export default function DashboardSidebar({
                                 onClick={() => handleSelectTab(item.targetTab)}
                                 className={`relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition cursor-pointer text-left ${
                                   isItemActive
-                                    ? 'bg-white text-indigo-950 font-bold shadow-2xs ring-1 ring-indigo-500/20'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80 font-medium'
+                                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-medium shadow-2xs ring-1 ring-blue-500/20'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 font-medium'
                                 }`}
                               >
                                 {isItemActive && (
-                                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-indigo-600 rounded-r" />
+                                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-blue-600 dark:bg-blue-400 rounded-r" />
                                 )}
                                 <div className="flex items-center gap-2 truncate min-w-0 flex-1 pr-1">
                                   <ItemIcon
                                     className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                                      isItemActive ? 'text-indigo-600' : 'text-slate-400'
+                                      isItemActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'
                                     }`}
                                   />
                                   <div className="truncate text-left min-w-0">
                                     <span className="truncate block font-bold leading-tight">{item.label}</span>
                                     {item.subtitle && (
-                                      <span className="text-[11px] text-slate-400 font-normal truncate block leading-tight mt-0.5">
+                                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate block leading-tight mt-0.5">
                                         {item.subtitle}
                                       </span>
                                     )}
@@ -841,12 +843,12 @@ export default function DashboardSidebar({
 
             {/* Upgrade Callout Banner for Checkout Lite & Starter */}
             {isCheckoutLite && (
-              <div className="mt-4 p-3 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/5 to-indigo-500/10 border border-amber-200/70 text-slate-700 space-y-1.5">
-                <div className="flex items-center gap-1.5 font-black text-xs text-amber-900">
-                  <Crown className="w-3.5 h-3.5 text-amber-600" />
+              <div className="mt-4 p-3 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/5 to-indigo-500/10 dark:from-amber-950/20 dark:via-purple-950/10 dark:to-indigo-950/20 border border-amber-200/70 dark:border-amber-900/40 text-slate-700 dark:text-slate-300 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-black text-xs text-amber-900 dark:text-amber-300">
+                  <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   <span>Paket Checkout Lite</span>
                 </div>
-                <p className="text-[10px] text-slate-500 leading-relaxed">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   Buka WhatsApp Broadcast, CAPI Tracking, dan multi-seat CS dengan upgrade ke Pro.
                 </p>
                 <button
@@ -866,7 +868,7 @@ export default function DashboardSidebar({
       {/* 3. PINNED BOTTOM SECTION: PROFIL, AKUN & PENGATURAN TOKO */}
       {/* ======================================================== */}
       <div
-        className={`mt-auto shrink-0 sticky bottom-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 ${
+        className={`mt-auto shrink-0 sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 ${
           isEffectivelyCollapsed ? 'p-2 space-y-2' : 'p-2.5 sm:p-3 space-y-1.5'
         } z-10`}
       >
@@ -881,7 +883,7 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center transition shadow-2xs cursor-pointer"
                 aria-label="Profil & Akun Toko"
               >
                 <User className="w-4 h-4" />
@@ -899,7 +901,7 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-10 h-10 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center transition shadow-2xs cursor-pointer"
                 aria-label="Pengaturan Toko"
               >
                 <Settings className="w-4 h-4" />
@@ -936,18 +938,18 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs text-left"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
                 title="Profil &amp; Akun Toko"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-slate-100 group-hover:bg-slate-700 text-slate-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                     <User className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                  <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                     Profil &amp; Akun
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">
+                <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-black shrink-0">
                   👤
                 </span>
               </button>
@@ -959,18 +961,18 @@ export default function DashboardSidebar({
                   onOpenStoreSettings();
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                 }}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs text-left"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition cursor-pointer group shadow-2xs text-left"
                 title="Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran)"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-indigo-50 group-hover:bg-indigo-600 text-indigo-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 group-hover:bg-indigo-600 text-indigo-600 dark:text-indigo-400 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                     <Settings className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                  <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                     Pengaturan Toko
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">
+                <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-black shrink-0">
                   ⚙️
                 </span>
               </button>
@@ -986,7 +988,7 @@ export default function DashboardSidebar({
             />
 
             {/* Compact BoonTrack Shop Brand Footer */}
-            <div className="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-50/70 border border-slate-200/50">
+            <div className="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-800">
               <div className="w-5 h-5 shrink-0 flex items-center justify-center">
                 <Image
                   src="/logo-master.png"
@@ -999,10 +1001,10 @@ export default function DashboardSidebar({
               </div>
               <div className="min-w-0 flex-1 flex items-center justify-between">
                 <div className="flex items-center gap-1 leading-none">
-                  <span className="text-[11px] font-black text-slate-900 tracking-tight">BoonTrack</span>
-                  <span className="text-[11px] font-extrabold text-blue-600">Shop</span>
+                  <span className="text-[11px] font-black text-slate-900 dark:text-white tracking-tight">BoonTrack</span>
+                  <span className="text-[11px] font-extrabold text-blue-600 dark:text-blue-400">Shop</span>
                 </div>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">
+                <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                   ENGINE
                 </span>
               </div>
