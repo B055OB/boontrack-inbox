@@ -22,7 +22,7 @@ function sanitizeSlug(val: string): string {
 }
 
 interface PlanMapping {
-  dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE';
+  dbTier: 'ADS_PERFORMANCE' | 'PRO_SCALE' | 'STARTER' | 'ENTERPRISE';
   planLabel: string;
   planType: 'entry' | 'solo' | 'ads_performance' | 'team_scale';
   isTrial: boolean;
@@ -33,7 +33,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
   const normalized = String(rawInput || '').trim().toLowerCase();
 
   // 1. Ads Performance (Promo Pilihan Utama - Trial 7 Hari Rp 0)
-  // DB canonical (ADR): 'PRO_SCALE', is_trial: true
+  // DB canonical: 'ADS_PERFORMANCE' (enum tenant_tier_enum), is_trial: true
   if (
     normalized === 'ads_performance' ||
     normalized === 'pro_ads' ||
@@ -42,7 +42,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
     normalized.includes('performance')
   ) {
     return {
-      dbTier: 'PRO_SCALE',
+      dbTier: 'ADS_PERFORMANCE',
       planLabel: 'Ads Performance Trial',
       planType: 'ads_performance',
       isTrial: true,
@@ -51,7 +51,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
   }
 
   // 2. Paket Checkout / Entry
-  // DB canonical (ADR): 'STARTER' (metadata.plan_type: 'entry')
+  // DB canonical: 'STARTER' (metadata.plan_type: 'entry')
   if (
     normalized === 'checkout_lite' ||
     normalized === 'checkout' ||
@@ -71,7 +71,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
   }
 
   // 3. Paket Solo / Starter
-  // DB canonical (ADR): 'STARTER' (metadata.plan_type: 'solo')
+  // DB canonical: 'STARTER' (metadata.plan_type: 'solo')
   if (
     normalized === 'solo' ||
     normalized === 'starter' ||
@@ -89,7 +89,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
   }
 
   // 4. Paket Team Scale / Enterprise
-  // DB canonical (ADR): 'ENTERPRISE'
+  // DB canonical: 'ENTERPRISE'
   if (
     normalized === 'team_scale' ||
     normalized === 'scale' ||
@@ -109,7 +109,7 @@ export function resolveRegistrationPlan(rawInput: string | undefined): PlanMappi
 
   // Fallback: Ads Performance Trial
   return {
-    dbTier: 'PRO_SCALE',
+    dbTier: 'ADS_PERFORMANCE',
     planLabel: 'Ads Performance Trial',
     planType: 'ads_performance',
     isTrial: true,
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     // ── STRICT BACKEND TRIAL GUARD: HANYA ADS PERFORMANCE (Rp 0 TRIAL 7 HARI) ──
     // Hanya pendaftar dengan paket Ads Performance yang diizinkan memproses aktivasi trial WhatsApp Rp 0.
     // Paket Solo, Checkout Lite, dan Team Scale memerlukan pembayaran langganan langsung.
-    if (!planConfig.isTrial || planConfig.dbTier !== 'PRO_SCALE') {
+    if (!planConfig.isTrial || (planConfig.dbTier !== 'ADS_PERFORMANCE' && planConfig.dbTier !== 'PRO_SCALE')) {
       return NextResponse.json(
         {
           success: false,
@@ -210,17 +210,17 @@ export async function POST(req: NextRequest) {
     const isFood = ['FOOD', 'FNB', 'KULINER'].some(k => String(rawCategory || '').toUpperCase().includes(k));
     const defaultMenu = buildDefaultIndustryMenu(rawCategory, { name: shopName, slug: baseSlug });
 
-    // Simpan ke tabel tenants dengan status 'PENDING' & subscription_status 'trial' (Trial 7 Hari)
+    // Simpan ke tabel tenants dengan status 'active' & is_active = true (Trial 7 Hari Ads Performance)
     const tenantPayload = {
       slug: baseSlug,
       name: shopName,
       category: rawCategory,
       business_type: rawCategory,
-      tier: planConfig.dbTier, // 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' (ADR canonical)
-      status: 'PENDING',
+      tier: planConfig.dbTier, // 'ADS_PERFORMANCE' (enum valid)
+      status: 'active',
       subscription_status: planConfig.isTrial ? 'trial' : 'active',
-      subscription_tier: planConfig.dbTier,
-      is_active: false,
+      subscription_tier: planConfig.dbTier, // 'ADS_PERFORMANCE'
+      is_active: true,
       trial_ends_at: trialEndsAt,
       subscription_ends_at: trialEndsAt,
       access_username: baseSlug,
@@ -231,6 +231,7 @@ export async function POST(req: NextRequest) {
         name: shopName,
         merchant_name: body.merchant_name || shopName,
         phone,
+        merchant_phone: phone,
         wa_number: phone,
         whatsapp_number: phone,
         email: email || null,
@@ -240,7 +241,7 @@ export async function POST(req: NextRequest) {
         code: verificationToken,
         token: verificationToken,
         wa_verification_status: 'PENDING',
-        status: 'PENDING',
+        status: 'active',
         wa_verification_expires_at: tokenExpiresAt,
         official_waba_number: officialWaNumber,
         selected_plan: planConfig.planLabel,
@@ -333,6 +334,20 @@ export async function POST(req: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // Pastikan token aktivasi tersimpan di activation_codes sebelum pesan dikirimkan
+    if (upsertedTenant?.id && verificationToken) {
+      try {
+        await supabase.from('activation_codes').insert({
+          tenant_id: upsertedTenant.id,
+          code_hash: verificationToken,
+          status: 'PENDING',
+          expires_at: tokenExpiresAt,
+        });
+      } catch (actErr) {
+        console.warn('[RegisterInit] Non-fatal activation_codes insert note:', actErr);
+      }
     }
 
     // Sinkronisasi record langganan awal ke tabel shop_subscriptions (Status: TRIAL 7 Hari)

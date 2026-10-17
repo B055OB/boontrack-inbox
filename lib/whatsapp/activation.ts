@@ -285,8 +285,8 @@ export async function processStoreActivation(params: {
   const verifiedAt = new Date().toISOString();
 
   // Dynamic Tier Mapping (Deterministic 4-Tier Canonical):
-  const rawTier = tenant.tier || currentMeta.tier || 'PRO_SCALE';
-  const resolvedTier = rawTier === 'ADS_PERFORMANCE' ? 'PRO_SCALE' : rawTier;
+  const rawTier = tenant.tier || currentMeta.tier || 'ADS_PERFORMANCE';
+  const resolvedTier = rawTier;
   const resolvedPlanTier = currentMeta.plan_tier || resolvedTier;
   const resolvedPlanLabel =
     currentMeta.selected_plan ||
@@ -313,6 +313,7 @@ export async function processStoreActivation(params: {
     wa_verified_at: verifiedAt,
     wa_verified_phone: cleanPhone,
     phone: cleanPhone || currentMeta.phone,
+    merchant_phone: cleanPhone || currentMeta.merchant_phone || currentMeta.phone,
     whatsapp_number: cleanPhone || currentMeta.whatsapp_number,
     tier: resolvedTier,
     plan_tier: resolvedPlanTier,

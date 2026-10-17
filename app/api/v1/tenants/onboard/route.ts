@@ -29,18 +29,18 @@ export async function POST(req: NextRequest) {
       'ads_performance'
     ).trim().toLowerCase();
 
-    // Standarisasi Tier Resmi sesuai ARCHITECTURE.md ADR:
-    // - Ads Performance  → 'PRO_SCALE'     (is_trial: true, Trial 7 Hari)
-    // - Checkout Lite    → 'CHECKOUT_LITE' (plan_type: 'entry', PENDING_PAYMENT, wajib bayar)
-    // - Solo / Starter   → 'STARTER'       (plan_type: 'solo', PENDING_PAYMENT, wajib bayar)
-    // - Team Scale       → 'ENTERPRISE'    (plan_type: 'team_scale', PENDING_PAYMENT, wajib bayar)
-    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = 'PRO_SCALE';
-    let canonicalPlanTier: 'PRO_SCALE' | 'CHECKOUT_LITE' | 'STARTER' | 'ENTERPRISE' = 'PRO_SCALE';
+    // Standarisasi Tier Resmi:
+    // - Ads Performance  → 'ADS_PERFORMANCE' (is_trial: true, Trial 7 Hari)
+    // - Checkout Lite    → 'CHECKOUT_LITE'   (plan_type: 'entry', PENDING_PAYMENT, wajib bayar)
+    // - Solo / Starter   → 'STARTER'         (plan_type: 'solo', PENDING_PAYMENT, wajib bayar)
+    // - Team Scale       → 'ENTERPRISE'      (plan_type: 'team_scale', PENDING_PAYMENT, wajib bayar)
+    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' | 'ADS_PERFORMANCE' = 'ADS_PERFORMANCE';
+    let canonicalPlanTier: 'ADS_PERFORMANCE' | 'PRO_SCALE' | 'CHECKOUT_LITE' | 'STARTER' | 'ENTERPRISE' = 'ADS_PERFORMANCE';
     let planType: 'ads_performance' | 'entry' | 'solo' | 'team_scale' = 'ads_performance';
     let planPrice = 299000;
     let isTrial = false;
 
-    // 1. Ads Performance (Hero Promo Trial 7 Hari) - DB: 'PRO_SCALE'
+    // 1. Ads Performance (Hero Promo Trial 7 Hari) - DB: 'ADS_PERFORMANCE'
     if (
       rawPlan === 'ads_performance' ||
       rawPlan === 'pro_ads' ||
@@ -48,8 +48,8 @@ export async function POST(req: NextRequest) {
       rawPlan.includes('ads') ||
       rawPlan.includes('performance')
     ) {
-      dbTier = 'PRO_SCALE';
-      canonicalPlanTier = 'PRO_SCALE';
+      dbTier = 'ADS_PERFORMANCE';
+      canonicalPlanTier = 'ADS_PERFORMANCE';
       planType = 'ads_performance';
       planPrice = 299000;
       isTrial = true;
@@ -93,17 +93,17 @@ export async function POST(req: NextRequest) {
       isTrial = false;
     } else {
       // Default: Ads Performance Trial
-      dbTier = 'PRO_SCALE';
-      canonicalPlanTier = 'PRO_SCALE';
+      dbTier = 'ADS_PERFORMANCE';
+      canonicalPlanTier = 'ADS_PERFORMANCE';
       planType = 'ads_performance';
       planPrice = 299000;
       isTrial = true;
     }
 
     // STRICT TRIAL GATEKEEPER INVARIANT:
-    // HANYA tier 'PRO_SCALE' yang berhak atas status 'TRIAL' 7 hari.
+    // HANYA tier 'ADS_PERFORMANCE' atau 'PRO_SCALE' yang berhak atas status 'TRIAL' 7 hari.
     // Tier 'CHECKOUT_LITE', 'STARTER', dan 'ENTERPRISE' WAJIB berstatus 'PENDING_PAYMENT' / is_active = false.
-    if (canonicalPlanTier !== 'PRO_SCALE') {
+    if ((canonicalPlanTier as string) !== 'ADS_PERFORMANCE' && (canonicalPlanTier as string) !== 'PRO_SCALE') {
       isTrial = false;
     }
 
@@ -392,11 +392,11 @@ export async function POST(req: NextRequest) {
           name: storeName,
           category: resolvedBusinessType,
           business_type: resolvedBusinessType,
-          tier: dbTier,
-          status: tenantStatus,
+          tier: isTrial ? 'ADS_PERFORMANCE' : dbTier,
+          status: isTrial ? 'active' : tenantStatus,
           subscription_status: storeStatus,
-          subscription_tier: dbTier,
-          is_active: false,
+          subscription_tier: isTrial ? 'ADS_PERFORMANCE' : dbTier,
+          is_active: isTrial ? true : false,
           trial_ends_at: isTrial ? trialEndsAt : null,
           subscription_ends_at: subscriptionEndsAt,
           access_username: generatedSlug,
@@ -409,6 +409,7 @@ export async function POST(req: NextRequest) {
             whatsapp_number: formattedWa,
             wa_number: formattedWa,
             phone: formattedWa,
+            merchant_phone: formattedWa,
             email: customerEmail,
             email_verified: Boolean(existingMeta.email_verified),
             verification_token: verificationToken,
@@ -419,7 +420,7 @@ export async function POST(req: NextRequest) {
               code: incomingWaToken,
               token: incomingWaToken,
               wa_verification_status: 'PENDING',
-              status: isTrial ? 'PENDING' : 'PENDING_PAYMENT',
+              status: isTrial ? 'active' : 'PENDING_PAYMENT',
             } : {}),
             access_pin: pin,
             pin_hash: pin,
@@ -587,6 +588,20 @@ export async function POST(req: NextRequest) {
     }
 
     const effectiveTenantId = upsertedTenant?.id;
+
+    // Pastikan token aktivasi tersimpan di activation_codes sebelum digunakan
+    if (effectiveTenantId && incomingWaToken) {
+      try {
+        await supabase.from('activation_codes').insert({
+          tenant_id: effectiveTenantId,
+          code_hash: String(incomingWaToken).trim(),
+          status: 'PENDING',
+          expires_at: verificationExpiresAt,
+        });
+      } catch (actErr) {
+        console.warn('[Onboard] Non-fatal activation_codes sync note:', actErr);
+      }
+    }
 
     // Sinkronisasi status langganan ke tabel shop_subscriptions
     if (effectiveTenantId) {

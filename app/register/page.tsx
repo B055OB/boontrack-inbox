@@ -559,8 +559,10 @@ function WhatsAppVerificationModal({
 
   const officialDisplayNumber = "0851-8183-0080";
   const officialRawPhone = "6285181830080";
+  const cleanOfficial = (data.officialNumber || "").replace(/\D/g, "");
+  const targetWaNumber = cleanOfficial && cleanOfficial.length >= 10 ? cleanOfficial : officialRawPhone;
   const activationText = `AKTIVASI ${data.token}`;
-  const dynamicWaUrl = `https://wa.me/${officialRawPhone}?text=${encodeURIComponent(activationText)}`;
+  const dynamicWaUrl = data.waUrl || `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(activationText)}`;
 
   const checkStatus = useCallback(async () => {
     try {
@@ -676,18 +678,42 @@ function WhatsAppVerificationModal({
                   href={dynamicWaUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3.5 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all cursor-pointer"
+                  className="w-full py-4 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <MessageSquare className="w-5 h-5 text-slate-950 fill-slate-950" />
-                  <span>Buka WhatsApp &amp; Kirim Pesan</span>
+                  <span>Buka WhatsApp Langsung</span>
                   <ExternalLink className="w-4 h-4 ml-1 opacity-70" />
                 </a>
               </div>
 
               {/* GRID RESPONSIVE DESKTOP & MOBILE */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
-                {/* KOLOM KIRI (QR CODE GENERATOR - Prioritas Desktop) */}
-                <div className="md:col-span-6 bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-between text-center relative shadow-inner">
+                {/* TAMPILAN KHUSUS MOBILE: Card 'Buka WhatsApp Langsung' menggantikan Scan QR */}
+                <div className="block md:hidden bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 text-center relative shadow-inner space-y-3">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 text-[11px] font-bold text-emerald-400 border border-slate-700">
+                    <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Aktivasi Langsung via Ponsel</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Karena Anda membuka dari ponsel, klik tombol di bawah untuk langsung membuka WhatsApp dan mengirim pesan aktivasi tanpa perlu scan QR:
+                  </p>
+                  <a
+                    href={dynamicWaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4 text-slate-950 fill-slate-950" />
+                    <span>Buka WhatsApp Langsung</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-70 ml-1" />
+                  </a>
+                  <p className="text-[10px] text-slate-400">
+                    Format: <span className="font-mono text-emerald-400 font-bold">{activationText}</span>
+                  </p>
+                </div>
+
+                {/* TAMPILAN KHUSUS DESKTOP: QR CODE GENERATOR */}
+                <div className="hidden md:flex md:col-span-6 bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 flex-col items-center justify-between text-center relative shadow-inner">
                   <div className="w-full space-y-1 mb-2">
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 text-[11px] font-bold text-emerald-400 border border-slate-700">
                       <Scan className="w-3 h-3 text-emerald-400" />
