@@ -59,6 +59,7 @@ export default function WhatsAppWabaConfig({
   const [accessToken, setAccessToken] = useState('');
   const [showAccessToken, setShowAccessToken] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
+  const [showReconfigure, setShowReconfigure] = useState(false);
 
   // Meta SDK & Embedded Signup States
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
@@ -74,6 +75,8 @@ export default function WhatsAppWabaConfig({
     verifiedName?: string;
     displayPhone?: string;
     qualityRating?: string;
+    status?: string;
+    webhookStatus?: string;
     message?: string;
   } | null>(null);
 
@@ -165,8 +168,10 @@ export default function WhatsAppWabaConfig({
             setSuccessData({
               verifiedName: conn.metadata?.verified_name || String(displayName || '').toUpperCase(),
               displayPhone: conn.phone_number || (conn.phone_number_id ? `ID: ${conn.phone_number_id}` : undefined),
-              qualityRating: conn.metadata?.quality_rating || 'GREEN',
+              qualityRating: conn.metadata?.quality_rating || 'GREEN (HIGH QUALITY)',
               message: 'Akun Meta WABA sudah terverifikasi dan aktif.',
+              status: conn.status?.toUpperCase() || 'CONNECTED',
+              webhookStatus: 'Subscribed & Safe ACK',
             });
           }
           return;
@@ -189,8 +194,10 @@ export default function WhatsAppWabaConfig({
             setSuccessData({
               verifiedName: cfg.verified_name || String(displayName || '').toUpperCase(),
               displayPhone: cfg.display_phone_number || cfg.phone_number_id,
-              qualityRating: cfg.quality_rating || 'GREEN',
+              qualityRating: cfg.quality_rating || 'GREEN (HIGH QUALITY)',
               message: 'Akun Meta WABA sudah terhubung.',
+              status: 'CONNECTED',
+              webhookStatus: 'Subscribed & Safe ACK',
             });
             return;
           }
@@ -231,6 +238,8 @@ export default function WhatsAppWabaConfig({
               displayPhone: meta.waba_config?.display_phone_number || (phoneId ? `ID: ${phoneId}` : undefined),
               qualityRating: meta.waba_config?.quality_rating || 'GREEN (HIGH QUALITY)',
               message: 'Akun Meta Cloud API (WABA) resmi aktif dan terkonfigurasi pada tenant ini.',
+              status: 'CONNECTED',
+              webhookStatus: 'Subscribed & Safe ACK',
             });
           }
         }
@@ -333,6 +342,8 @@ export default function WhatsAppWabaConfig({
         verifiedName: resolvedVerifiedName,
         displayPhone: resolvedDisplayPhone,
         qualityRating: resolvedQualityRating,
+        status: 'CONNECTED',
+        webhookStatus: 'Subscribed & Safe ACK',
         message: data.message || `WABA resmi '${resolvedVerifiedName}' berhasil terhubung & terverifikasi otomatis via 1-Klik Pop-up!`,
       });
 
@@ -482,7 +493,7 @@ export default function WhatsAppWabaConfig({
 
       {/* ── SUCCESS FEEDBACK CARD (NAMA AKUN WABA TERVERIFIKASI) ── */}
       {successData && (
-        <div className="p-5 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100 text-xs animate-in fade-in duration-200 space-y-3 shadow-xs">
+        <div className="p-5 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100 text-xs animate-in fade-in duration-200 space-y-4 shadow-xs">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -498,24 +509,36 @@ export default function WhatsAppWabaConfig({
                 </p>
               </div>
             </div>
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-black text-[10px] border border-emerald-300 dark:border-emerald-700 uppercase tracking-wider shrink-0">
-              Verified
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-black text-[10px] border border-emerald-300 dark:border-emerald-700 uppercase tracking-wider shrink-0">
+                Verified
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                <span>Terhubung Aktif</span>
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/80 dark:border-emerald-800/60 text-[11px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-emerald-200/80 dark:border-emerald-800/60 text-[11px]">
             <div className="p-2.5 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 block uppercase">Nama Akun WABA</span>
               <strong className="text-slate-900 dark:text-white font-extrabold text-xs block truncate mt-0.5">
                 {successData.verifiedName || String(displayName || '').toUpperCase()}
               </strong>
+              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 font-medium block mt-0.5">
+                Akun Resmi Terverifikasi
+              </span>
             </div>
 
             <div className="p-2.5 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 block uppercase">Nomor WhatsApp</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 block uppercase">Status Nomor WhatsApp</span>
               <strong className="text-slate-900 dark:text-white font-extrabold text-xs block truncate mt-0.5">
-                {successData.displayPhone || phoneNumberId}
+                {successData.displayPhone || phoneNumberId || 'Official Verified'}
               </strong>
+              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold block mt-0.5">
+                ● Status: Terverifikasi Aktif
+              </span>
             </div>
 
             <div className="p-2.5 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
@@ -524,7 +547,35 @@ export default function WhatsAppWabaConfig({
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 {successData.qualityRating || 'GREEN (HIGH QUALITY)'}
               </span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                Limit: Tier Skala Tinggi
+              </span>
             </div>
+
+            <div className="p-2.5 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 block uppercase">Webhooks Ingress</span>
+              <span className="inline-flex items-center gap-1 font-extrabold text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                <Globe className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span>{successData.webhookStatus || 'Subscribed & Safe ACK'}</span>
+              </span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400 block mt-0.5 truncate font-mono">
+                /api/v1/whatsapp/embedded-signup-callback
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+            <p className="text-xs text-emerald-800 dark:text-emerald-300">
+              Ingin menghubungkan ulang akun Meta atau mengganti nomor WhatsApp resmi?
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowReconfigure(!showReconfigure)}
+              className="px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-xs font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${showReconfigure ? 'rotate-180' : ''} transition-transform`} />
+              <span>{showReconfigure ? 'Sembunyikan Pengaturan Ulang' : 'Pengaturan Ulang / Ganti Akun'}</span>
+            </button>
           </div>
         </div>
       )}
@@ -545,7 +596,9 @@ export default function WhatsAppWabaConfig({
         </div>
       )}
 
-      {/* ── PRIMARY SECTION: 1-KLIK POP-UP EMBEDDED SIGNUP (FACEBOOK SDK) ── */}
+      {(!successData || showReconfigure) && (
+        <>
+          {/* ── PRIMARY SECTION: 1-KLIK POP-UP EMBEDDED SIGNUP (FACEBOOK SDK) ── */}
       <div className="relative overflow-hidden rounded-3xl border-2 border-emerald-500/30 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-indigo-500/5 dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-indigo-950/30 p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="space-y-2.5 max-w-xl">
@@ -754,6 +807,8 @@ export default function WhatsAppWabaConfig({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 

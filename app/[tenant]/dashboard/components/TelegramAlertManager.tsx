@@ -262,7 +262,7 @@ export default function TelegramAlertManager({
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto w-full space-y-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-blue-700 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-600/90 to-indigo-600/90 dark:from-blue-950/60 dark:to-slate-900 dark:border dark:border-blue-900/40 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
         <div className="absolute -right-6 -bottom-10 opacity-10 pointer-events-none">
           <MessageCircle className="w-56 h-56 text-white" />
         </div>
@@ -297,15 +297,15 @@ export default function TelegramAlertManager({
         <div
           className={`p-4 rounded-xl text-sm font-medium flex items-center justify-between shadow-xs transition-all ${
             feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
+              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60'
           }`}
         >
           <div className="flex items-center gap-2.5">
             {feedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
             )}
             <span>{feedback.text}</span>
           </div>
@@ -313,30 +313,32 @@ export default function TelegramAlertManager({
       )}
 
       {/* Connection Status Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 dark:border-slate-800 gap-4">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-              isConnected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 text-slate-400'
+              isConnected
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
             }`}>
               <Bell className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Status Saluran Telegram</h2>
-              <p className="text-xs text-slate-500">
-                Toko: <span className="font-semibold text-slate-700">{displayName}</span> ({tenantSlug})
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Status Saluran Telegram</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Toko: <span className="font-semibold text-slate-700 dark:text-slate-200">{displayName}</span> ({tenantSlug})
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {isConnected ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Terhubung: {telegramChatId} {isGroup ? '(Grup)' : '(Personal)'}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 Belum Terhubung
               </span>
@@ -347,17 +349,17 @@ export default function TelegramAlertManager({
         {/* Action Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
           {/* Card 1: 1-Click Personal / Store Admin Link */}
-          <div className="flex flex-col justify-between p-5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
+          <div className="flex flex-col justify-between p-5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-800/50 space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Radio className="w-4 h-4 text-sky-600" />
-                <h3 className="text-sm font-bold text-slate-900">
+                <Radio className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Opsi 1: Sambung 1-Klik (Akun Personal)
                 </h3>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 Cukup klik tombol di bawah, aplikasi Telegram akan terbuka dan bot{' '}
-                <strong className="text-slate-800">@{botUsername}</strong> akan otomatis menghubungkan akun Anda ke toko ini tanpa input manual token bot.
+                <strong className="text-slate-800 dark:text-slate-100">@{botUsername}</strong> akan otomatis menghubungkan akun Anda ke toko ini tanpa input manual token bot.
               </p>
             </div>
 
@@ -377,12 +379,12 @@ export default function TelegramAlertManager({
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-[11px] font-medium text-slate-700 transition cursor-pointer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition cursor-pointer"
                 >
                   {copiedLink ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-600">Tautan Tersalin!</span>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Tautan Tersalin!</span>
                     </>
                   ) : (
                     <>
@@ -397,10 +399,10 @@ export default function TelegramAlertManager({
                     type="button"
                     onClick={handleSendTestAlert}
                     disabled={isSendingTest}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-[11px] font-medium text-sky-700 transition cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-[11px] font-medium text-sky-700 dark:text-sky-400 transition cursor-pointer"
                     title="Kirim pesan test ke Telegram"
                   >
-                    <Send className="w-3.5 h-3.5 text-sky-600" />
+                    <Send className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                     <span>{isSendingTest ? 'Mengirim...' : 'Tes Notif'}</span>
                   </button>
                 )}
@@ -409,20 +411,20 @@ export default function TelegramAlertManager({
           </div>
 
           {/* Card 2: Group Notification (Tim / Karyawan) */}
-          <div className="flex flex-col justify-between p-5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
+          <div className="flex flex-col justify-between p-5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-800/50 space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Users className="w-4 h-4 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-900">
+                <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Opsi 2: Telegram Group Chat ID (Opsional)
                 </h3>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed mb-3">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
                 Untuk toko yang ingin notifikasi pesanan masuk ke grup tim/karyawan, masukkan ID grup di bawah ini.
               </p>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
                   Telegram Group Chat ID
                 </label>
                 <div className="flex gap-2">
@@ -431,7 +433,7 @@ export default function TelegramAlertManager({
                     value={groupChatIdInput}
                     onChange={(e) => setGroupChatIdInput(e.target.value)}
                     placeholder="Contoh: -100123456789"
-                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
+                    className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 font-mono"
                   />
                   <button
                     type="button"
@@ -446,16 +448,16 @@ export default function TelegramAlertManager({
             </div>
 
             {/* Panduan Singkat */}
-            <div className="p-3 bg-white rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                <Info className="w-3.5 h-3.5 text-indigo-600" />
+            <div className="p-3 bg-white dark:bg-slate-800/70 rounded-lg border border-slate-200/80 dark:border-slate-700/70 text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                <Info className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>Panduan Menghubungkan Grup:</span>
               </div>
-              <ol className="list-decimal list-inside space-y-0.5 text-slate-500 pl-0.5">
-                <li>Undang <strong className="text-slate-700">@{botUsername}</strong> ke grup Anda.</li>
+              <ol className="list-decimal list-inside space-y-0.5 text-slate-500 dark:text-slate-400 pl-0.5">
+                <li>Undang <strong className="text-slate-700 dark:text-slate-200">@{botUsername}</strong> ke grup Anda.</li>
                 <li>Jadikan bot sebagai admin grup.</li>
-                <li>Ketik <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-700 font-semibold">/id</code> di grup untuk mendapatkan Chat ID grup.</li>
-                <li>Salin nomor ID (biasanya diawali tanda <code className="font-semibold text-slate-700">-</code>) ke form di atas lalu Simpan.</li>
+                <li>Ketik <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-indigo-700 dark:text-indigo-400 font-semibold">/id</code> di grup untuk mendapatkan Chat ID grup.</li>
+                <li>Salin nomor ID (biasanya diawali tanda <code className="font-semibold text-slate-700 dark:text-slate-300">-</code>) ke form di atas lalu Simpan.</li>
               </ol>
             </div>
           </div>
@@ -463,14 +465,14 @@ export default function TelegramAlertManager({
 
         {/* §42 — Granular Privacy Checkbox Config (visible when group chat ID is set) */}
         {groupChatIdInput && (
-          <div className="pt-5 border-t border-slate-100">
+          <div className="pt-5 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
                 <SlidersHorizontal className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Pengaturan Privasi Notifikasi Grup</h3>
-                <p className="text-[11px] text-slate-500">Kendalikan informasi apa yang tampil di pesan grup komunitas Anda.</p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Pengaturan Privasi Notifikasi Grup</h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Kendalikan informasi apa yang tampil di pesan grup komunitas Anda.</p>
               </div>
             </div>
 
@@ -523,8 +525,8 @@ export default function TelegramAlertManager({
                   key={key}
                   className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition select-none ${
                     groupConfig[key]
-                      ? 'bg-indigo-50 border-indigo-300'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800'
+                      : 'bg-white dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="relative flex-shrink-0 mt-0.5">
@@ -540,7 +542,7 @@ export default function TelegramAlertManager({
                       className={`w-4.5 h-4.5 rounded flex items-center justify-center border-2 transition ${
                         groupConfig[key]
                           ? 'bg-indigo-600 border-indigo-600'
-                          : 'bg-white border-slate-300'
+                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
                       }`}
                     >
                       {groupConfig[key] && (
@@ -549,10 +551,10 @@ export default function TelegramAlertManager({
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-800 leading-snug">{label}</div>
-                    <div className="text-[11px] text-slate-500 leading-tight mt-0.5">{desc}</div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug">{label}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">{desc}</div>
                     {defaultOff && !groupConfig[key] && (
-                      <span className="inline-block mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                      <span className="inline-block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 rounded-full px-2 py-0.5">
                         Default: Nonaktif
                       </span>
                     )}
@@ -562,8 +564,8 @@ export default function TelegramAlertManager({
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-[11px] text-slate-500 leading-relaxed max-w-sm">
-                Konfigurasi ini tersimpan di <code className="font-mono bg-slate-100 px-1 rounded">metadata.telegram_group_config</code> dan dibaca secara real-time oleh bot saat mengirim notifikasi ke grup.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm">
+                Konfigurasi ini tersimpan di <code className="font-mono bg-slate-100 dark:bg-slate-800 dark:text-slate-300 px-1 rounded">metadata.telegram_group_config</code> dan dibaca secara real-time oleh bot saat mengirim notifikasi ke grup.
               </p>
               <button
                 type="button"
@@ -580,18 +582,18 @@ export default function TelegramAlertManager({
 
         {/* Disconnect Option if Connected */}
         {isConnected && (
-          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>
-                Notifikasi pesanan aktif dikirimkan ke Chat ID <strong className="text-slate-700 font-mono">{telegramChatId}</strong>.
+                Notifikasi pesanan aktif dikirimkan ke Chat ID <strong className="text-slate-700 dark:text-slate-200 font-mono">{telegramChatId}</strong>.
               </span>
             </div>
             <button
               type="button"
               onClick={handleDisconnect}
               disabled={isSaving}
-              className="text-xs text-rose-600 hover:text-rose-700 font-semibold transition cursor-pointer hover:underline"
+              className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-semibold transition cursor-pointer hover:underline"
             >
               Putuskan Sambungan Telegram
             </button>
@@ -601,37 +603,37 @@ export default function TelegramAlertManager({
 
       {/* Feature Explainer */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold">
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-bold">
             ⚡
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-900 mb-0.5">Alert Real-Time 0.1 Detik</h4>
-            <p className="text-[11px] text-slate-500 leading-normal">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white mb-0.5">Alert Real-Time 0.1 Detik</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
               Notifikasi pesanan berformat flexing langsung dikirimkan ke Telegram saat checkout diselesaikan.
             </p>
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 font-bold">
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 font-bold">
             🛡️
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-900 mb-0.5">Aman Tanpa Token Pribadi</h4>
-            <p className="text-[11px] text-slate-500 leading-normal">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white mb-0.5">Aman Tanpa Token Pribadi</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
               Tenant tidak perlu membuat bot token sendiri. Cukup hubungkan via bot resmi BoonTrack.
             </p>
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center shrink-0 font-bold">
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-xs flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 font-bold">
             👥
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-900 mb-0.5">Dukungan Grup Tim</h4>
-            <p className="text-[11px] text-slate-500 leading-normal">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white mb-0.5">Dukungan Grup Tim</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
               Bisa disambungkan ke grup chat staf gudang, admin packing, atau tim operasional toko.
             </p>
           </div>
