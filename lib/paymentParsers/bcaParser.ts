@@ -31,8 +31,14 @@ function extractContent(input: BankParserInput): { text: string; dateHint?: Date
   return { text: parts.join('\n'), dateHint };
 }
 
-function parseIdrAmount(raw: string): number | null {
-  let cleaned = raw.trim();
+export function parseIdrAmount(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') {
+    return isNaN(raw) || raw <= 0 ? null : Math.floor(raw);
+  }
+  let cleaned = String(raw).trim();
+  // Hapus pola (\.00|,00)$ terlebih dahulu sebelum membersihkan karakter non-digit
+  cleaned = cleaned.replace(/(\.00|,00)$/, '');
   if (cleaned.endsWith(',00') || cleaned.endsWith('.00')) {
     cleaned = cleaned.slice(0, -3);
   }
@@ -41,6 +47,8 @@ function parseIdrAmount(raw: string): number | null {
   const parsed = parseInt(digits, 10);
   return isNaN(parsed) || parsed <= 0 ? null : parsed;
 }
+
+export const parseTransferProofAmount = parseIdrAmount;
 
 function parseDateFromText(text: string, fallback?: Date): Date {
   // Pattern 1: Tanggal: DD/MM/YYYY Jam: HH:mm:ss
@@ -98,8 +106,9 @@ export function parseBcaMutation(input: BankParserInput): ParsedBankMutation | n
   // Pattern A: Nominal/Jumlah: IDR 250.000,00 or Rp 250.000
   const amountPatternA = /(?:nominal|jumlah|transfer masuk|dana masuk|kredit|cr|sebesar)\s*[:=]?\s*(?:idr|rp\.?)?\s*([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]{4,})/i;
   const amountPatternB = /(?:idr|rp\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]{4,})/i;
+  const fallbackBare = /(?:idr|rp\.?)?\s*([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]{4,})/i;
 
-  const matchAmount = text.match(amountPatternA) || text.match(amountPatternB);
+  const matchAmount = text.match(amountPatternA) || text.match(amountPatternB) || text.match(fallbackBare);
   if (!matchAmount) return null;
 
   const amount = parseIdrAmount(matchAmount[1]);

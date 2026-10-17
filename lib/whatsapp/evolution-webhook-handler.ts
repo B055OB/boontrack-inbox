@@ -94,6 +94,57 @@ export function getRequiredEvolutionApiKey(customApiKey?: string): string {
 export const getEvolutionApiKey = getRequiredEvolutionApiKey;
 
 /**
+ * Resolves token balance for a tenant from tenant row or metadata.
+ * Returns null if no token balance is defined / configured.
+ * Returns number if explicitly defined.
+ */
+export function resolveTenantTokenBalance(tenantRow: any): number | null {
+  if (!tenantRow || typeof tenantRow !== 'object') return null;
+
+  // Direct column checks
+  if (typeof tenantRow.token_balance === 'number') {
+    return tenantRow.token_balance;
+  }
+  if (tenantRow.token_balance !== undefined && tenantRow.token_balance !== null && tenantRow.token_balance !== '') {
+    const parsed = Number(tenantRow.token_balance);
+    if (!isNaN(parsed)) return parsed;
+  }
+  if (typeof tenantRow.balance === 'number') {
+    return tenantRow.balance;
+  }
+  if (tenantRow.balance !== undefined && tenantRow.balance !== null && tenantRow.balance !== '') {
+    const parsed = Number(tenantRow.balance);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  // Metadata JSONB checks
+  const meta = (tenantRow.metadata && typeof tenantRow.metadata === 'object')
+    ? tenantRow.metadata
+    : {};
+
+  const candidates = [
+    meta.token_balance,
+    meta.tokens_balance,
+    meta.token_credits,
+    meta.ai_tokens,
+    meta.tokens,
+    meta.balance,
+  ];
+
+  for (const cand of candidates) {
+    if (typeof cand === 'number') {
+      return cand;
+    }
+    if (cand !== undefined && cand !== null && cand !== '') {
+      const parsed = Number(cand);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Downloads Base64 media from Evolution API v2.
  * Calls `POST /chat/getBase64FromMediaMessage/{instance}`.
  */
@@ -1425,6 +1476,7 @@ export async function processEvolutionWebhookEvent(
 
     // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true / bot_paused == true)
     // FAIL-CLOSED POLICY: If pause / tenant status check fails or cannot be verified, terminate processing immediately!
+    let currentTenantRow: any = tenantRecordForHardening;
     if (supabase) {
       try {
         // A0. Cek Status Global Bot Toko (Global #pause / Dashboard Toggle)
@@ -1439,6 +1491,10 @@ export async function processEvolutionWebhookEvent(
           console.error(`[Evolution Webhook Gate FAIL-CLOSED] Tenant status lookup failed for '${tenantId}':`, tErr);
           processedCount++;
           continue; // FAIL-CLOSED: Stop processing, do NOT schedule AI outbound!
+        }
+
+        if (tRow) {
+          currentTenantRow = tRow;
         }
 
         const tenantDecision = await checkRuntimeBotDecisionGate({
@@ -1768,6 +1824,82 @@ export async function processEvolutionWebhookEvent(
       } catch (histErr) {
         console.warn('[Evolution Webhook] Error fetching conversation history:', histErr);
       }
+    }
+
+    // 6.5 Token Balance Gate (Silent No-Op)
+    // Doktrin: Jika balance <= 0, jangan beralih ke bot statis, jangan kirim pesan apa pun ke pengguna (silent no-op, return 200),
+    // dan tandai sesi membutuhkan CS manusia.
+    const effectiveTenant = currentTenantRow || tenantRecordForHardening || resolvedTenant;
+    const tenantTokenBalance = resolveTenantTokenBalance(effectiveTenant);
+
+    if (tenantTokenBalance !== null && tenantTokenBalance <= 0) {
+      console.info(
+        `[Token Balance Gate] Tenant '${tenantSlug || tenantId}' token balance exhausted (${tenantTokenBalance} <= 0). Silent no-op, marking session as requiring human CS.`
+      );
+
+      const nowIso = new Date().toISOString();
+      const pausedUntilIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+      if (supabase) {
+        try {
+          const targetTenantId = tenantSlug || tenantId;
+          await supabase.from('conversation_sessions').upsert(
+            {
+              tenant_id: targetTenantId,
+              session_id: `wa_${targetTenantId}_${senderPhone}`,
+              channel: 'WHATSAPP',
+              user_identifier: senderPhone,
+              current_state: 'HANDOVER_TO_HUMAN',
+              is_paused: true,
+              paused_at: nowIso,
+              paused_by: 'token_balance_exhausted',
+              paused_until: pausedUntilIso,
+              metadata: {
+                handover_reason: 'token_balance_exhausted',
+                token_balance: tenantTokenBalance,
+                paused_at: nowIso,
+                trigger_text: promptText.slice(0, 100),
+              },
+              updated_at: nowIso,
+            },
+            { onConflict: 'tenant_id,user_identifier' }
+          );
+
+          if (convId) {
+            await supabase
+              .from('conversations')
+              .update({
+                bot_paused: true,
+                bot_mode: 'HUMAN_ACTIVE',
+                status: 'needs_cs',
+                updated_at: nowIso,
+              })
+              .eq('id', convId);
+          }
+        } catch (gateErr) {
+          console.warn('[Evolution Webhook] Token balance gate session lock warning:', gateErr);
+        }
+      }
+
+      setRuntimeSessionCache({
+        tenantId,
+        userIdentifier: senderPhone,
+        isPaused: true,
+        pausedUntil: pausedUntilIso,
+        pausedBy: 'token_balance_exhausted',
+      });
+      if (tenantSlug && tenantSlug !== tenantId) {
+        setRuntimeSessionCache({
+          tenantId: tenantSlug,
+          userIdentifier: senderPhone,
+          isPaused: true,
+          pausedUntil: pausedUntilIso,
+          pausedBy: 'token_balance_exhausted',
+        });
+      }
+
+      processedCount++;
+      continue; // Silent no-op: do not call AI, do not fallback to static bot, do not send message!
     }
 
     const aiResult = await processMultimodalChat({

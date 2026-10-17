@@ -96,6 +96,39 @@ export interface IngestEvidenceResult {
 }
 
 /**
+ * Normalizes and extracts nominal amount from transfer proof / OCR receipt text.
+ * Strips decimal patterns like (\.00|,00)$ before stripping non-digit characters,
+ * preventing naive regex from interpreting decimal cents as hundreds (e.g. "IDR 99,911.00" -> 9991100).
+ *
+ * Samples:
+ * - "IDR 99,911.00" -> 99911
+ * - "Rp 99.911,00" -> 99911
+ * - "99911" -> 99911
+ * - "Rp 99.911" -> 99911
+ */
+export function parseTransferProofAmount(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'number') {
+    return isNaN(raw) || raw <= 0 ? null : Math.floor(raw);
+  }
+
+  let cleaned = String(raw).trim();
+  if (!cleaned) return null;
+
+  // Hapus pola (\.00|,00)$ terlebih dahulu sebelum membersihkan karakter non-digit
+  cleaned = cleaned.replace(/(\.00|,00)$/, '');
+
+  // Bersihkan karakter non-digit
+  const digits = cleaned.replace(/[^0-9]/g, '');
+  if (!digits) return null;
+
+  const parsed = parseInt(digits, 10);
+  return isNaN(parsed) || parsed <= 0 ? null : parsed;
+}
+
+export const parseReceiptAmount = parseTransferProofAmount;
+
+/**
  * Normalizes and extracts external reference and its adapter type
  * without hardcoding bank-specific fields like 'RRN'.
  */
