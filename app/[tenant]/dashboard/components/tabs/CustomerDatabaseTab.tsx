@@ -749,10 +749,10 @@ export default function CustomerDatabaseTab({
               type="button"
               id="btn-followup-rules"
               onClick={() => setIsRulesModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs transition cursor-pointer active:scale-95"
               title="Atur jeda hari & template pesan WhatsApp"
             >
-              <CalendarClock className="w-3.5 h-3.5 text-emerald-600" />
+              <CalendarClock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>⚙️ Aturan Follow-Up (H+{followUpRules.h1Days}, H+{followUpRules.h2Days})</span>
             </button>
 
@@ -1445,16 +1445,22 @@ export default function CustomerDatabaseTab({
 
       {/* MODAL: PENGATURAN ATURAN FOLLOW-UP DINAMIS */}
       {isRulesModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-auto space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div
+          onClick={() => setIsRulesModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 dark:border-slate-800 my-auto space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <CalendarClock className="w-5 h-5 text-emerald-600" />
+                <CalendarClock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
                     Pengaturan Jadwal Follow-Up &amp; Siklus Pasien
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Kustomisasi jeda hari dan template pesan WhatsApp untuk {tenantName || tenantSlug}
                   </p>
                 </div>
@@ -1462,7 +1468,7 @@ export default function CustomerDatabaseTab({
               <button
                 type="button"
                 onClick={() => setIsRulesModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg cursor-pointer transition"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg cursor-pointer transition"
               >
                 <X className="w-4 h-4" />
               </button>

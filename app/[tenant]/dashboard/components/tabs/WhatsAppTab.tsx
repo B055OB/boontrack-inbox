@@ -20,7 +20,6 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 import TelegramAlertManager from '../TelegramAlertManager';
-import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -671,10 +670,10 @@ export default function WhatsAppTab({
             <button
               type="button"
               onClick={() => setIsManualWabaModalOpen(true)}
-              className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
+              className="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
             >
-              <Key className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Sudah Memiliki Kredensial Meta Sendiri? Buka Manual Setup WABA</span>
+              <Key className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Sudah Memiliki Akun Meta WABA? Hubungkan WhatsApp Resmi (1-Klik Pop-up / Manual)</span>
             </button>
           </div>
         ) : (
@@ -795,16 +794,6 @@ export default function WhatsAppTab({
         </div>
       </div>
 
-      {/* ATURAN OTOMASI FOLLOW-UP CRM & SIKLUS PELANGGAN */}
-      <div className="pt-2">
-        <FollowUpRulesConfig
-          tenantSlug={tenantSlug}
-          tenantDisplayName={displayName}
-          onSaved={() => {
-            if (setSaveFeedback) setSaveFeedback('✅ Aturan follow-up otomatis WhatsApp berhasil disimpan!');
-          }}
-        />
-      </div>
 
       {/* INTEGRASI NOTIFIKASI TELEGRAM MULTI-TENANT */}
       <div className="pt-2">
