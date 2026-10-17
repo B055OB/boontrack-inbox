@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Cryptographic Password Hashing (Zero Raw Password Policy)
-    const passwordHash = hashPassword(payload.password);
+    const passwordHash = await hashPassword(payload.password);
 
     // 7. Outbox Notification Payload (For decoupled asynchronous notification worker)
     const outboxPayload = {

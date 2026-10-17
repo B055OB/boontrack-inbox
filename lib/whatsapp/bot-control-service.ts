@@ -83,8 +83,18 @@ export function setRuntimeSessionCache(state: {
 
 export function clearRuntimeSessionCache(tenantId?: string, phone?: string): void {
   if (tenantId) {
-    const key = buildSessionCacheKey(tenantId, phone);
-    runtimeSessionCache.delete(key);
+    if (phone) {
+      const key = buildSessionCacheKey(tenantId, phone);
+      runtimeSessionCache.delete(key);
+    } else {
+      const cleanTenant = String(tenantId).trim().toLowerCase();
+      const prefix = `${cleanTenant}:`;
+      for (const key of runtimeSessionCache.keys()) {
+        if (key.startsWith(prefix)) {
+          runtimeSessionCache.delete(key);
+        }
+      }
+    }
   } else {
     runtimeSessionCache.clear();
   }
@@ -410,9 +420,16 @@ export async function executeBotControl(params: {
     };
   }
 
-  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi (dashboard_toggle)
+  // Audit label arbitrer: merchant_cookie HANYA sah jika berasal dari sesi dashboard resmi terverifikasi
   if (role === 'merchant_cookie') {
-    if (source !== 'dashboard_toggle') {
+    const allowedMerchantSources = [
+      'dashboard_toggle',
+      'dashboard_master_toggle',
+      'chat_detail_toggle',
+      'cs_dashboard_toggle',
+      'cs_chat_toggle',
+    ];
+    if (!allowedMerchantSources.includes(source)) {
       return {
         success: false,
         bot_paused: false,
@@ -511,7 +528,7 @@ export async function executeBotControl(params: {
     const convStatus: ConversationBotStatus = isPause ? 'HUMAN_HANDOVER' : 'AI_ACTIVE';
 
     // Update runtime cache ONLY after confirmed RPC execution
-    setRuntimeSessionCache({
+    const cachePayload = {
       tenantId: resolvedTenantUuid,
       userIdentifier: targetPhoneForCache,
       isPaused: isPause,
@@ -519,7 +536,20 @@ export async function executeBotControl(params: {
       pausedUntil: pausedUntilIso,
       pausedBy: source,
       updatedAt: now.getTime(),
-    });
+    };
+    setRuntimeSessionCache(cachePayload);
+    if (resolvedTenantSlug && resolvedTenantSlug !== resolvedTenantUuid) {
+      setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
+    }
+    // If resuming globally, clear contact-level paused cache entries for this tenant to eliminate multi-instance lag
+    if (scope === 'tenant' && !isPause) {
+      clearRuntimeSessionCache(resolvedTenantUuid);
+      if (resolvedTenantSlug) clearRuntimeSessionCache(resolvedTenantSlug);
+      setRuntimeSessionCache(cachePayload);
+      if (resolvedTenantSlug && resolvedTenantSlug !== resolvedTenantUuid) {
+        setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
+      }
+    }
 
     const replyMsg = scope === 'tenant'
       ? (isPause
@@ -667,7 +697,7 @@ export async function executeBotControl(params: {
       }
 
       // Update runtime cache ONLY after confirmed DB updates
-      setRuntimeSessionCache({
+      const cachePayload = {
         tenantId: resolvedTenantUuid,
         userIdentifier: undefined,
         isPaused: isPause,
@@ -675,7 +705,19 @@ export async function executeBotControl(params: {
         pausedUntil: pausedUntilIso,
         pausedBy: source,
         updatedAt: now.getTime(),
-      });
+      };
+      setRuntimeSessionCache(cachePayload);
+      if (resolvedTenantSlug && resolvedTenantSlug !== resolvedTenantUuid) {
+        setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
+      }
+      if (!isPause) {
+        clearRuntimeSessionCache(resolvedTenantUuid);
+        if (resolvedTenantSlug) clearRuntimeSessionCache(resolvedTenantSlug);
+        setRuntimeSessionCache(cachePayload);
+        if (resolvedTenantSlug && resolvedTenantSlug !== resolvedTenantUuid) {
+          setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
+        }
+      }
 
       const replyMsg = isPause
         ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (BOT_DISABLED). Semua percakapan dialihkan ke mode manual CS.'
@@ -773,7 +815,10 @@ export async function executeBotControl(params: {
         if (typeof updateChain?.or === 'function') {
           updateChain = updateChain.or(`tenant_id.eq.${resolvedTenantUuid},tenant_slug.eq.${resolvedTenantSlug}`);
         }
-        if (typeof updateChain?.eq === 'function') {
+        const phoneVariants = Array.from(new Set([targetPhone, cleanCustomerPhone(params.customerPhone || ''), cleanCustomerPhone(params.senderPhone || ''), params.customerPhone, params.senderPhone].filter(Boolean))) as string[];
+        if (typeof updateChain?.in === 'function') {
+          updateChain = updateChain.in('customer_phone', phoneVariants);
+        } else if (typeof updateChain?.eq === 'function') {
           updateChain = updateChain.eq('customer_phone', targetPhone);
         }
       } else {
@@ -798,7 +843,7 @@ export async function executeBotControl(params: {
     }
 
     // Update runtime cache ONLY after confirmed DB updates
-    setRuntimeSessionCache({
+    const cachePayload = {
       tenantId: resolvedTenantUuid,
       userIdentifier: targetPhone,
       isPaused: isHandover,
@@ -806,7 +851,11 @@ export async function executeBotControl(params: {
       pausedUntil: pausedUntilIso,
       pausedBy: source,
       updatedAt: now.getTime(),
-    });
+    };
+    setRuntimeSessionCache(cachePayload);
+    if (resolvedTenantSlug && resolvedTenantSlug !== resolvedTenantUuid) {
+      setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
+    }
 
     return {
       success: true,
@@ -874,12 +923,52 @@ export async function checkRuntimeBotDecisionGate(params: {
     tenant?.metadata?.is_bot_paused === true ||
     tenant?.metadata?.is_bot_active === false;
 
+  let isTenantActiveInRecentCache = false;
   let isTenantPausedInCache = false;
   if (tenantLookupId) {
     const cachedGlobal = getRuntimeSessionCache(tenantLookupId);
     if (cachedGlobal && Date.now() - cachedGlobal.updatedAt < 60000) {
       if (cachedGlobal.isPaused || cachedGlobal.botStatus === 'BOT_DISABLED') {
-        isTenantPausedInCache = true;
+        const dbUpdatedAt = tenant?.updated_at ? new Date(tenant.updated_at).getTime() : 0;
+        const dbResumedAt = (tenant?.resumed_at || tenant?.metadata?.resumed_at)
+          ? new Date(tenant.resumed_at || tenant.metadata.resumed_at).getTime()
+          : 0;
+        const dbLatestTime = Math.max(dbUpdatedAt, dbResumedAt);
+
+        // Multi-instance check: If DB says tenant is active (!isTenantPausedInDb),
+        // check whether DB was updated at or after cache, OR if cache entry is older than in-flight race window (> 5s).
+        if (!isTenantPausedInDb) {
+          const isStaleCache =
+            (dbLatestTime > 0 && dbLatestTime >= cachedGlobal.updatedAt) ||
+            (Date.now() - cachedGlobal.updatedAt > 5000);
+
+          if (isStaleCache) {
+            // Reconcile stale cache: DB is the SSOT (resumed on another instance / UI)
+            setRuntimeSessionCache({
+              tenantId: tenantLookupId,
+              isPaused: false,
+              botStatus: tenant?.metadata?.bot_status || 'BOT_ENABLED',
+              updatedAt: dbLatestTime > 0 ? dbLatestTime : Date.now(),
+            });
+            if (tenant?.slug && tenant.slug !== tenantLookupId) {
+              setRuntimeSessionCache({
+                tenantId: tenant.slug,
+                isPaused: false,
+                botStatus: tenant?.metadata?.bot_status || 'BOT_ENABLED',
+                updatedAt: dbLatestTime > 0 ? dbLatestTime : Date.now(),
+              });
+            }
+            isTenantPausedInCache = false;
+          } else {
+            // Recent in-flight pause command on this instance (< 5s and no newer DB update)
+            isTenantPausedInCache = true;
+          }
+        } else {
+          isTenantPausedInCache = true;
+        }
+      } else if (!cachedGlobal.isPaused) {
+        // Owner issued #resume in cache on this instance, unblock immediately without waiting for slow DB query
+        isTenantActiveInRecentCache = true;
       }
     }
   }
@@ -887,7 +976,7 @@ export async function checkRuntimeBotDecisionGate(params: {
   if (isTenantPausedInCache && !isTenantPausedInDb) {
     return { shouldBypass: true, reason: 'TENANT_GLOBAL_PAUSED_CACHE' };
   }
-  if (isTenantPausedInDb || isTenantPausedInCache) {
+  if (!isTenantActiveInRecentCache && (isTenantPausedInDb || isTenantPausedInCache)) {
     return { shouldBypass: true, reason: 'TENANT_GLOBAL_PAUSED' };
   }
 
@@ -903,6 +992,37 @@ export async function checkRuntimeBotDecisionGate(params: {
       const isTimerExpired =
         cachedSession.pausedUntil &&
         new Date(cachedSession.pausedUntil).getTime() <= Date.now();
+
+      // Check if DB session is already active (multi-instance resume)
+      const isDbSessionActive = session && (
+        session.is_paused === false &&
+        session.current_state !== 'HUMAN_PAUSED' &&
+        session.current_state !== 'HANDOVER_TO_HUMAN' &&
+        session.current_state !== 'PAUSED' &&
+        session.bot_status !== 'HUMAN_PAUSED' &&
+        session.bot_status !== 'HUMAN_HANDOVER' &&
+        !Boolean(session.metadata?.is_bot_paused)
+      );
+
+      const sessionDbUpdatedAt = session?.updated_at ? new Date(session.updated_at).getTime() : 0;
+      const isStaleContactCache = isDbSessionActive && (
+        (sessionDbUpdatedAt > 0 && sessionDbUpdatedAt >= cachedSession.updatedAt) ||
+        (Date.now() - cachedSession.updatedAt > 5000)
+      );
+
+      if (isStaleContactCache) {
+        // Reconcile stale contact cache with DB SSOT
+        setRuntimeSessionCache({
+          tenantId: tenantLookupId,
+          userIdentifier: params.senderPhone,
+          isPaused: false,
+          botStatus: session?.bot_status || 'BOT_ACTIVE',
+          pausedUntil: null,
+          pausedBy: null,
+          updatedAt: sessionDbUpdatedAt > 0 ? sessionDbUpdatedAt : Date.now(),
+        });
+        return { shouldBypass: false, reason: 'AUTO_RESUMED_EXPIRED' };
+      }
 
       if (cachedSession.isPaused && !isTimerExpired) {
         return { shouldBypass: true, reason: 'SESSION_PAUSED' };
@@ -932,52 +1052,104 @@ export async function checkRuntimeBotDecisionGate(params: {
       const autoResumeSession = async (resumeReason: string) => {
         console.info(`[BotControlService] Auto-resuming session ${session.session_id || 'unknown'} (${resumeReason})`);
         const nowIso = new Date().toISOString();
+        const targetTenantId = session.tenant_id || tenant?.id || tenantLookupId;
+        const targetTenantSlug = tenant?.slug;
+
         if (supabase && session.session_id) {
           try {
-            await supabase
+            let sUpdate = supabase
               .from('conversation_sessions')
               .update({
                 is_paused: false,
                 current_state: 'ACTIVE',
                 bot_status: 'BOT_ACTIVE',
                 paused_until: null,
+                metadata: {
+                  is_bot_paused: false,
+                  bot_paused: false,
+                  is_bot_active: true,
+                  bot_status: 'BOT_ACTIVE',
+                  resumed_at: nowIso,
+                  resumed_by: 'system_auto_resume',
+                },
                 updated_at: nowIso,
               })
               .eq('session_id', session.session_id);
+
+            if (targetTenantId && typeof sUpdate?.eq === 'function') {
+              const chained = sUpdate.eq('tenant_id', targetTenantId);
+              if (chained && typeof chained.then === 'function') {
+                await chained;
+              } else {
+                await sUpdate;
+              }
+            } else {
+              await sUpdate;
+            }
           } catch (updateErr) {
             console.warn('[BotControlService] Failed to auto-resume session record:', updateErr);
           }
         }
 
-        // Sync conversations table (atomik bot_paused dan is_paused)
+        // Sync conversations table (strictly locked to targetTenantId to prevent cross-tenant leak!)
         if (supabase && (session.user_identifier || params.senderPhone)) {
           const phone = cleanCustomerPhone(session.user_identifier || params.senderPhone);
-          try {
-            await supabase
-              .from('conversations')
-              .update({
-                bot_paused: false,
-                is_paused: false,
-                is_bot_paused: false,
-                is_bot_active: true,
-                bot_mode: 'AI_ACTIVE',
-                status: 'active',
-                updated_at: nowIso,
-              })
-              .eq('customer_phone', phone);
-          } catch (_) {}
+
+          // MULTI-TENANT ISOLATION: NEVER update conversations without tenant_id filter!
+          if (targetTenantId) {
+            try {
+              let cUpdateChain: any = supabase
+                .from('conversations')
+                .update({
+                  bot_paused: false,
+                  is_paused: false,
+                  is_bot_paused: false,
+                  is_bot_active: true,
+                  bot_mode: 'AI_ACTIVE',
+                  status: 'active',
+                  updated_at: nowIso,
+                });
+
+              // Support chaining or single filter depending on mock/client capabilities
+              if (typeof cUpdateChain?.eq === 'function') {
+                const phoneFiltered = cUpdateChain.eq('customer_phone', phone);
+                if (phoneFiltered && typeof phoneFiltered.eq === 'function') {
+                  if (targetTenantSlug && targetTenantSlug !== targetTenantId && typeof phoneFiltered.or === 'function') {
+                    cUpdateChain = phoneFiltered.or(`tenant_id.eq.${targetTenantId},tenant_slug.eq.${targetTenantSlug}`);
+                  } else {
+                    cUpdateChain = phoneFiltered.eq('tenant_id', targetTenantId);
+                  }
+                } else {
+                  cUpdateChain = phoneFiltered;
+                }
+              }
+
+              await cUpdateChain;
+            } catch (convErr) {
+              console.warn('[BotControlService] Failed to auto-resume conversation record:', convErr);
+            }
+          } else {
+            console.error('[BotControlService] Refusing to auto-resume conversation: missing targetTenantId (fail-closed multi-tenant guardrail)');
+          }
         }
 
-        // Sync runtime session cache AFTER DB update
-        if (tenantLookupId && (session.user_identifier || params.senderPhone)) {
-          setRuntimeSessionCache({
-            tenantId: tenantLookupId,
-            userIdentifier: session.user_identifier || params.senderPhone,
-            isPaused: false,
-            botStatus: 'BOT_ACTIVE',
-            pausedUntil: null,
-            pausedBy: null,
-          });
+        // Sync runtime session cache AFTER DB update for all tenant aliases
+        if (session.user_identifier || params.senderPhone) {
+          const userPhone = session.user_identifier || params.senderPhone;
+          const tenantKeysToSync = [targetTenantId, targetTenantSlug, tenantLookupId].filter(Boolean) as string[];
+          const uniqueTenantKeys = Array.from(new Set(tenantKeysToSync));
+
+          for (const tKey of uniqueTenantKeys) {
+            setRuntimeSessionCache({
+              tenantId: tKey,
+              userIdentifier: userPhone,
+              isPaused: false,
+              botStatus: 'BOT_ACTIVE',
+              pausedUntil: null,
+              pausedBy: null,
+              updatedAt: Date.now(),
+            });
+          }
         }
       };
 

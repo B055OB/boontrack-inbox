@@ -345,6 +345,30 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(json.bot_paused).toBe(true);
     });
 
+    it('8b. Allows mutation with source: dashboard_master_toggle and returns consistent is_paused and source in response', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'merchant_session=toko-sukses',
+        },
+        body: JSON.stringify({
+          scope: 'tenant',
+          action: 'PAUSE',
+          source: 'dashboard_master_toggle',
+        }),
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.is_paused).toBe(true);
+      expect(json.bot_paused).toBe(true);
+      expect(json.source).toBe('dashboard_master_toggle');
+    });
+
     it('9. Allows mutation when caller provides valid Supabase session token of tenant owner', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',

@@ -259,6 +259,50 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
       const json = await res.json();
       expect(json.success).toBe(false);
     });
+
+    it('rejects privilege escalation attempts via user_metadata.role with 403 (Blocker 1)', async () => {
+      mockSupabaseAdmin.auth.getUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-escalate-001',
+            email: 'attacker@example.com',
+            user_metadata: { role: 'SUPERADMIN' }, // Client-controlled metadata
+            app_metadata: {}, // Empty secure app_metadata
+          },
+        },
+        error: null,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        headers: {
+          authorization: 'Bearer valid_attacker_session_token',
+        },
+      });
+      const res = await GET(req);
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('Forbidden');
+      expect(mockSupabaseAdmin.order).not.toHaveBeenCalled();
+    });
+
+    it('rejects ADMIN_INTERNAL_SECRET / INTERNAL_API_SECRET from claiming universal SUPERADMIN role on manager routes (Blocker 5)', async () => {
+      process.env.ADMIN_INTERNAL_SECRET = 'test-admin-internal-secret-999';
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        headers: {
+          authorization: 'Bearer test-admin-internal-secret-999',
+        },
+      });
+      const res = await GET(req);
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('ADMIN_INTERNAL_SECRET');
+      expect(mockSupabaseAdmin.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('3. Authorized Manager Access (HTTP 200)', () => {
@@ -289,13 +333,13 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
       expect(mockSupabaseAdmin.from).toHaveBeenCalledWith('affiliates');
     });
 
-    it('allows GET requests from AFFILIATE_MANAGER role (via user_metadata)', async () => {
+    it('allows GET requests from AFFILIATE_MANAGER role (via app_metadata)', async () => {
       mockSupabaseAdmin.auth.getUser.mockResolvedValue({
         data: {
           user: {
             id: 'user-am-002',
             email: 'am@boontrack.com',
-            user_metadata: { role: 'AFFILIATE_MANAGER' },
+            app_metadata: { role: 'AFFILIATE_MANAGER' },
           },
         },
         error: null,
@@ -378,10 +422,7 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
       expect(json.success).toBe(true);
       expect(json.tenant_slug).toBe('partnersukses');
 
-      // 1. Verifikasi insert partner
-      expect(mockSupabaseAdmin.insert).toHaveBeenCalled();
-
-      // 2. Verifikasi auto-provisioning menggunakan atomic RPC register_merchant_transactional
+      // 1. Verifikasi auto-provisioning dan registrasi mitra dieksekusi via atomic RPC register_merchant_transactional
       expect(mockSupabaseAdmin.rpc).toHaveBeenCalledWith(
         'register_merchant_transactional',
         expect.objectContaining({
@@ -389,13 +430,101 @@ describe('RBAC & Security Isolation: /api/v1/manager/partners', () => {
           p_name: 'Partner Baru Sukses',
           p_ref_code: 'PARTNERSUKSES',
           p_password: expect.any(String),
+          p_partner_data: expect.objectContaining({
+            referral_code: 'PARTNERSUKSES',
+            role: 'AFFILIATE',
+          }),
         })
       );
 
-      // 3. Verifikasi password yang dikirim ke RPC adalah hash SHA-256 (bukan plaintext 'SecretPassword123!')
+      // 2. Verifikasi password yang dikirim ke RPC adalah hash bcrypt (bukan plaintext 'SecretPassword123!' atau raw SHA-256)
       const rpcArgs = mockSupabaseAdmin.rpc.mock.calls[0][1];
       expect(rpcArgs.p_password).not.toBe('SecretPassword123!');
-      expect(rpcArgs.p_password).toHaveLength(64); // SHA-256 hex string length
+      expect(rpcArgs.p_password).toHaveLength(60); // bcrypt hash length
+      expect(rpcArgs.p_password).toMatch(/^\$2[ab]\$\d{2}\$[./A-Za-z0-9]{53}$/);
+    });
+
+    it('returns HTTP 500 fail-closed when atomic RPC fails without leaving orphan data (Blocker 4)', async () => {
+      mockSupabaseAdmin.auth.getUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-superadmin-001',
+            email: 'admin@boontrack.com',
+            app_metadata: { role: 'SUPERADMIN' },
+          },
+        },
+        error: null,
+      });
+
+      // Simulate atomic RPC failure
+      mockSupabaseAdmin.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Database transaction lock timeout in stored procedure' },
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer superadmin_auth_token',
+        },
+        body: JSON.stringify({
+          name: 'Partner Gagal RPC',
+          phone: '081299887766',
+          email: 'gagal@example.com',
+          role: 'AFFILIATE',
+          ref_code: 'GAGALRPC',
+          password: 'SecretPassword123!',
+        }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('Database transaction lock timeout');
+      expect(json.partner).toBeUndefined();
+    });
+
+    it('returns HTTP 409 Conflict when atomic RPC reports duplicate slug (Blocker 4)', async () => {
+      mockSupabaseAdmin.auth.getUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-superadmin-001',
+            email: 'admin@boontrack.com',
+            app_metadata: { role: 'SUPERADMIN' },
+          },
+        },
+        error: null,
+      });
+
+      // Simulate duplicate slug error from atomic RPC
+      mockSupabaseAdmin.rpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Slug toko toko-duplikat sudah terdaftar.' },
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/manager/partners', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: 'Bearer superadmin_auth_token',
+        },
+        body: JSON.stringify({
+          name: 'Partner Duplikat',
+          phone: '081299887766',
+          email: 'duplikat@example.com',
+          role: 'AFFILIATE',
+          ref_code: 'DUPLIKAT',
+          password: 'SecretPassword123!',
+        }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.message).toContain('sudah terdaftar');
     });
   });
 });

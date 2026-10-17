@@ -722,51 +722,40 @@ export async function processEvolutionWebhookEvent(
 
         // Step 3: Not an echo, and not a bot control command -> Real Human CS Mobile Outbound Message Takeover!
         const nowIso = new Date().toISOString();
-        const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_HANDOVER (24h sliding window).`);
         if (supabase) {
           const tenantUuid = tenantRecordForHardening?.id || tenantId;
-          let dbErrorOccurred = false;
 
+          // 1. Atomic Human Handover via executeBotControl (RPC fn_toggle_bot_session_state with DB fallback & cache sync)
+          const handoverRes = await executeBotControl({
+            action: 'PAUSE',
+            scope: 'conversation',
+            tenantId: tenantUuid,
+            tenantSlug: tenantSlug || tenantId,
+            customerPhone: senderPhone,
+            senderPhone: botPhoneNumber || undefined,
+            userRole: 'cs',
+            source: 'cs_mobile_outbound',
+            supabase,
+          });
+
+          if (!handoverRes.success) {
+            console.error(
+              `[Human Takeover] Handover mutation warning for tenant ${tenantId}, sender ${senderPhone}:`,
+              handoverRes.error || handoverRes.message
+            );
+          } else {
+            console.info(
+              `[Human Takeover] Handover confirmed for tenant ${tenantId}, customer ${senderPhone}. Status: ${handoverRes.status}`
+            );
+          }
+
+          // 2. Synchronize last_message and last_message_at on conversations table
           try {
-            const csTable = supabase.from('conversation_sessions');
-            if (typeof csTable?.upsert === 'function') {
-              const { error: sessionErr } = await csTable.upsert({
-                tenant_id: tenantUuid,
-                session_id: `wa_${tenantUuid}_${senderPhone}`,
-                channel: 'WHATSAPP',
-                user_identifier: senderPhone,
-                current_state: 'HUMAN_PAUSED',
-                bot_status: 'HUMAN_HANDOVER',
-                is_paused: true,
-                paused_at: nowIso,
-                paused_by: 'cs_mobile_outbound',
-                paused_until: pausedUntilIso,
-                metadata: {
-                  auto_pause: true,
-                  triggered_by: 'cs_mobile_outbound',
-                  paused_at: nowIso,
-                  paused_until: pausedUntilIso,
-                },
-                updated_at: nowIso,
-              }, { onConflict: 'tenant_id,user_identifier' });
-
-              if (sessionErr) {
-                dbErrorOccurred = true;
-                console.error('[Human Takeover] Failed to upsert conversation_sessions:', sessionErr);
-              }
-            }
-
             const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
             const convTable = supabase.from('conversations');
             if (typeof convTable?.update === 'function') {
               let uQ = convTable.update({
-                bot_paused: true,
-                is_paused: true,
-                is_bot_paused: true,
-                is_bot_active: false,
-                bot_mode: 'HUMAN_ACTIVE',
-                status: 'HUMAN_PAUSED',
                 last_message: textBodyEarly || 'Pesan terkirim dari CS',
                 last_message_at: nowIso,
                 updated_at: nowIso,
@@ -774,39 +763,14 @@ export async function processEvolutionWebhookEvent(
               if (typeof uQ?.or === 'function') {
                 uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantUuid}`);
               }
-              let convErr: any = null;
               if (typeof uQ?.in === 'function') {
-                const res = await uQ.in('customer_phone', phoneVariants);
-                convErr = res?.error;
+                await uQ.in('customer_phone', phoneVariants);
               } else if (typeof uQ?.eq === 'function') {
-                const res = await uQ.eq('customer_phone', senderPhone);
-                convErr = res?.error;
-              }
-
-              if (convErr) {
-                dbErrorOccurred = true;
-                console.error('[Human Takeover] Failed to update conversations table:', convErr);
+                await uQ.eq('customer_phone', senderPhone);
               }
             }
-          } catch (dbEx) {
-            dbErrorOccurred = true;
-            console.error('[Human Takeover] Unexpected database exception during handover mutation:', dbEx);
-          }
-
-          if (dbErrorOccurred) {
-            // Rollback/clear cache if state is potentially dirty, and DO NOT set cache!
-            clearRuntimeSessionCache(tenantUuid, senderPhone);
-            console.error(`[Human Takeover] Database mutation failed for tenant ${tenantId}, sender ${senderPhone}. Cache NOT updated.`);
-          } else {
-            // Database is Single Source of Truth: update cache ONLY AND ONLY if entire DB write succeeded without error
-            setRuntimeSessionCache({
-              tenantId: tenantUuid,
-              userIdentifier: senderPhone,
-              isPaused: true,
-              botStatus: 'HUMAN_HANDOVER',
-              pausedUntil: pausedUntilIso,
-              pausedBy: 'cs_mobile_outbound',
-            });
+          } catch (lastMsgErr) {
+            console.warn('[Human Takeover] Non-fatal error updating last_message on conversation:', lastMsgErr);
           }
 
           if (textBodyEarly) {
@@ -1568,7 +1532,7 @@ export async function processEvolutionWebhookEvent(
         if (!isSessionExpired) {
           let convQuery: any = supabase
             .from('conversations')
-            .select('id, bot_paused, is_paused, is_bot_paused, is_bot_active, bot_mode, status');
+            .select('id, bot_paused, bot_mode, status');
 
           if (typeof convQuery?.or === 'function') {
             convQuery = convQuery.or(convOrClause);

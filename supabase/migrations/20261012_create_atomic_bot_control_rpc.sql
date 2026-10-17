@@ -1,6 +1,7 @@
 -- Migration: 20261012_create_atomic_bot_control_rpc.sql
 -- Description: Creates an atomic stored procedure to toggle bot / CS takeover state across
 --              tenants, conversation_sessions, and conversations tables within a single transaction.
+--              Synchronizes all metadata flags (is_bot_paused, bot_paused, is_bot_active, bot_status).
 
 CREATE OR REPLACE FUNCTION public.fn_toggle_bot_session_state(
     p_tenant_id TEXT,
@@ -14,6 +15,7 @@ CREATE OR REPLACE FUNCTION public.fn_toggle_bot_session_state(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_now TIMESTAMPTZ := NOW();
@@ -47,23 +49,39 @@ BEGIN
     -- SCOPE A: TENANT-LEVEL ATOMIC MUTATION
     -- =========================================================================
     IF p_scope = 'tenant' THEN
-        -- 1. Mutate tenants table atomically
+        -- 1. Mutate tenants table atomically, synchronizing all metadata flags
         UPDATE public.tenants
         SET bot_paused = p_is_paused,
             is_bot_active = NOT p_is_paused,
-            metadata = jsonb_set(
-                jsonb_set(
-                    COALESCE(metadata, '{}'::jsonb),
-                    '{bot_status}',
-                    to_jsonb(v_tenant_status)
-                ),
-                '{bot_paused}',
-                to_jsonb(p_is_paused)
+            metadata = COALESCE(metadata, '{}'::jsonb) || (
+                CASE WHEN p_is_paused THEN
+                    jsonb_build_object(
+                        'bot_status', v_tenant_status,
+                        'bot_paused', true,
+                        'is_bot_paused', true,
+                        'is_bot_active', false,
+                        'paused_at', v_now,
+                        'paused_by', p_source,
+                        'paused_until', p_paused_until
+                    )
+                ELSE
+                    jsonb_build_object(
+                        'bot_status', v_tenant_status,
+                        'bot_paused', false,
+                        'is_bot_paused', false,
+                        'is_bot_active', true,
+                        'resumed_at', v_now,
+                        'resumed_by', p_source,
+                        'loop_quarantine', false,
+                        'is_quarantined', false,
+                        'quarantined', false
+                    )
+                END
             ),
             updated_at = v_now
         WHERE id = v_tenant_uuid;
 
-        -- 2. Synchronize conversation_sessions
+        -- 2. Synchronize conversation_sessions metadata and columns
         UPDATE public.conversation_sessions
         SET is_paused = p_is_paused,
             current_state = CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'ACTIVE' END,
@@ -71,8 +89,30 @@ BEGIN
             paused_until = p_paused_until,
             paused_at = CASE WHEN p_is_paused THEN v_now ELSE NULL END,
             paused_by = CASE WHEN p_is_paused THEN p_source ELSE NULL END,
+            metadata = COALESCE(metadata, '{}'::jsonb) || (
+                CASE WHEN p_is_paused THEN
+                    jsonb_build_object(
+                        'bot_status', v_tenant_status,
+                        'bot_paused', true,
+                        'is_bot_paused', true,
+                        'is_bot_active', false,
+                        'paused_at', v_now,
+                        'paused_by', p_source,
+                        'paused_until', p_paused_until
+                    )
+                ELSE
+                    jsonb_build_object(
+                        'bot_status', v_tenant_status,
+                        'bot_paused', false,
+                        'is_bot_paused', false,
+                        'is_bot_active', true,
+                        'resumed_at', v_now,
+                        'resumed_by', p_source
+                    )
+                END
+            ),
             updated_at = v_now
-        WHERE tenant_id = v_tenant_uuid::TEXT;
+        WHERE tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id;
 
         -- 3. Synchronize conversations table (both bot_paused and is_paused)
         UPDATE public.conversations
@@ -83,7 +123,7 @@ BEGIN
             bot_mode = CASE WHEN p_is_paused THEN 'HUMAN_ACTIVE' ELSE 'AI_ACTIVE' END,
             status = CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'active' END,
             updated_at = v_now
-        WHERE tenant_id = v_tenant_uuid::TEXT;
+        WHERE (tenant_id = v_tenant_uuid::TEXT OR tenant_id = p_tenant_id);
 
         RETURN jsonb_build_object(
             'success', true,
@@ -100,7 +140,7 @@ BEGIN
         v_clean_phone := regexp_replace(COALESCE(p_customer_phone, ''), '\D', '', 'g');
 
         IF v_clean_phone IS NOT NULL AND v_clean_phone <> '' THEN
-            -- 1. Upsert conversation_sessions atomically
+            -- 1. Upsert conversation_sessions atomically with metadata sync
             INSERT INTO public.conversation_sessions (
                 tenant_id,
                 session_id,
@@ -112,6 +152,7 @@ BEGIN
                 paused_at,
                 paused_by,
                 paused_until,
+                metadata,
                 updated_at
             ) VALUES (
                 v_tenant_uuid::TEXT,
@@ -124,6 +165,26 @@ BEGIN
                 CASE WHEN p_is_paused THEN v_now ELSE NULL END,
                 p_source,
                 p_paused_until,
+                CASE WHEN p_is_paused THEN
+                    jsonb_build_object(
+                        'bot_status', v_conv_status,
+                        'bot_paused', true,
+                        'is_bot_paused', true,
+                        'is_bot_active', false,
+                        'paused_at', v_now,
+                        'paused_by', p_source,
+                        'paused_until', p_paused_until
+                    )
+                ELSE
+                    jsonb_build_object(
+                        'bot_status', v_conv_status,
+                        'bot_paused', false,
+                        'is_bot_paused', false,
+                        'is_bot_active', true,
+                        'resumed_at', v_now,
+                        'resumed_by', p_source
+                    )
+                END,
                 v_now
             )
             ON CONFLICT (tenant_id, user_identifier) DO UPDATE
@@ -133,6 +194,28 @@ BEGIN
                 paused_at = EXCLUDED.paused_at,
                 paused_by = EXCLUDED.paused_by,
                 paused_until = EXCLUDED.paused_until,
+                metadata = COALESCE(public.conversation_sessions.metadata, '{}'::jsonb) || (
+                    CASE WHEN p_is_paused THEN
+                        jsonb_build_object(
+                            'bot_status', v_conv_status,
+                            'bot_paused', true,
+                            'is_bot_paused', true,
+                            'is_bot_active', false,
+                            'paused_at', v_now,
+                            'paused_by', p_source,
+                            'paused_until', p_paused_until
+                        )
+                    ELSE
+                        jsonb_build_object(
+                            'bot_status', v_conv_status,
+                            'bot_paused', false,
+                            'is_bot_paused', false,
+                            'is_bot_active', true,
+                            'resumed_at', v_now,
+                            'resumed_by', p_source
+                        )
+                    END
+                ),
                 updated_at = v_now;
 
             -- 2. Synchronize conversations table (both bot_paused and is_paused)
@@ -158,3 +241,7 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- Security hardening
+REVOKE EXECUTE ON FUNCTION public.fn_toggle_bot_session_state(TEXT, TEXT, TEXT, BOOLEAN, TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_toggle_bot_session_state(TEXT, TEXT, TEXT, BOOLEAN, TEXT, TEXT, TIMESTAMPTZ) TO service_role;

@@ -271,6 +271,8 @@ export async function POST(
       action = 'PAUSE';
     }
 
+    const resolvedSource = body.source || (scope === 'conversation' ? 'cs_chat_toggle' : 'dashboard_toggle');
+
     const result = await executeBotControl({
       action,
       scope,
@@ -281,7 +283,7 @@ export async function POST(
       customerPhone: body.customer_phone || body.customerPhone,
       senderPhone: auth.user?.phone || undefined,
       userRole: auth.role,
-      source: body.source || (scope === 'conversation' ? 'cs_chat_toggle' : 'dashboard_toggle'),
+      source: resolvedSource,
       supabase,
     });
 
@@ -291,7 +293,11 @@ export async function POST(
       });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      is_paused: result.bot_paused,
+      source: resolvedSource,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

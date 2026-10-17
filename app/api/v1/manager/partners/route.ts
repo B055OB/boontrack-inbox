@@ -118,8 +118,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Simpan ke tabel affiliates dengan getSupabaseAdmin (Bypass RLS secara sah)
-    const { data, error } = await supabaseAdmin.from('affiliates').insert({
+    // 1. Persiapkan Password Hashing Standard & Payload Terverifikasi
+    const hashedPassword = await hashPassword(defaultPassword);
+
+    const partnerPayload = {
       id: newPartner.id,
       tenant_id: targetSlug,
       name: newPartner.name,
@@ -136,20 +138,7 @@ export async function POST(req: NextRequest) {
         slug: targetSlug,
         store_name: storeName,
       },
-      created_at: newPartner.created_at,
-    });
-
-    if (error) {
-      console.error('[Affiliate Registration Failed]', error);
-      return NextResponse.json(
-        { success: false, message: 'Gagal mencatat data ke database: ' + error.message },
-        { status: 500 }
-      );
-    }
-
-    // 2. Hubungkan Jembatan Auto-Provisioning ke Tabel tenants via Atomic RPC
-    // P1: Menggunakan register_merchant_transactional & password hashing standard (Zero Raw Password)
-    const hashedPassword = hashPassword(defaultPassword);
+    };
 
     const outboxPayload = {
       event_type: 'MERCHANT_REGISTERED',
@@ -165,6 +154,9 @@ export async function POST(req: NextRequest) {
       source: 'manager_partner_registration',
     };
 
+    // 2. True DB Atomicity (Blocker 4):
+    // Eksekusi auto-provisioning partner, tenant, dan outbox event secara atomik dalam 1 transaksi DB.
+    // Menghilangkan pre-insert manual parsial untuk mencegah orphan rows bila provisioning gagal.
     const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('register_merchant_transactional', {
       p_slug: targetSlug,
       p_name: storeName,
@@ -178,10 +170,22 @@ export async function POST(req: NextRequest) {
       p_trial_days: trialDays,
       p_idempotency_key: null,
       p_outbox_payload: outboxPayload,
+      p_partner_data: partnerPayload,
     });
 
+    // Fail-Closed Error Handling: Jangan telan kegagalan provisioning database!
     if (rpcErr) {
-      console.warn('[Manager Partner Auto-Provision RPC Note]', rpcErr.message || rpcErr);
+      console.error('[Manager Partner Auto-Provision Failed]', rpcErr);
+      const isDuplicate = rpcErr.message?.includes('sudah terdaftar');
+      return NextResponse.json(
+        {
+          success: false,
+          message: isDuplicate
+            ? `Slug toko '${targetSlug}' sudah terdaftar. Silakan pilih nama toko atau slug lain.`
+            : `Gagal mencatat data partner dan auto-provisioning toko: ${rpcErr.message}`,
+        },
+        { status: isDuplicate ? 409 : 500 }
+      );
     }
 
     // Aturan Kritis: Pengiriman email notifikasi (sendNewAffiliateRegistrationNotification)

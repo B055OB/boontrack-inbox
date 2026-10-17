@@ -474,4 +474,387 @@ describe('Target 3: Atomic RPC & Concurrency Race Condition Wiring Tests', () =>
       expect(orderDecision.reason).toBe('TRANSACTION_EXCEPTION_ORDER');
     });
   });
+
+  describe('4. P1 Hotfix: Bot Control State Sync & Multi-Tenant Isolation (Masalah A, B, C)', () => {
+    describe('Masalah A: Metadata Flags Synchronization on Resume', () => {
+      it('synchronizes metadata.is_bot_paused = false and is_bot_active = true on RESUME', async () => {
+        let tenantUpdatePayload: any = null;
+        let convUpdatePayload: any = null;
+
+        const mockSupabase: any = {
+          rpc: jest.fn().mockResolvedValue({
+            data: null,
+            error: { code: 'PGRST202', message: 'Function not found' },
+          }),
+          from: jest.fn((table: string) => {
+            if (table === 'tenants') {
+              return {
+                select: jest.fn(() => ({
+                  or: jest.fn(() => ({
+                    maybeSingle: jest.fn(async () => ({
+                      data: {
+                        id: 'tenant-uuid-meta',
+                        slug: 'meta-store',
+                        bot_paused: true,
+                        is_bot_active: false,
+                        metadata: { is_bot_paused: true, bot_paused: true, bot_status: 'BOT_DISABLED' },
+                      },
+                      error: null,
+                    })),
+                  })),
+                })),
+                update: jest.fn((data: any) => {
+                  tenantUpdatePayload = data;
+                  return {
+                    or: jest.fn(async () => ({ data, error: null })),
+                    eq: jest.fn(async () => ({ data, error: null })),
+                  };
+                }),
+              };
+            }
+            if (table === 'conversations') {
+              return {
+                update: jest.fn((data: any) => {
+                  convUpdatePayload = data;
+                  return {
+                    or: jest.fn(async () => ({ data, error: null })),
+                    eq: jest.fn(async () => ({ data, error: null })),
+                  };
+                }),
+              };
+            }
+            if (table === 'conversation_sessions') {
+              return {
+                update: jest.fn(() => ({
+                  or: jest.fn(async () => ({ error: null })),
+                  eq: jest.fn(async () => ({ error: null })),
+                })),
+              };
+            }
+            return {};
+          }),
+        };
+
+        const res = await executeBotControl({
+          action: 'RESUME',
+          scope: 'tenant',
+          tenantId: 'tenant-uuid-meta',
+          tenantSlug: 'meta-store',
+          userRole: 'owner',
+          supabase: mockSupabase,
+        });
+
+        expect(res.success).toBe(true);
+        expect(res.bot_paused).toBe(false);
+
+        // Verify tenant metadata flags
+        expect(tenantUpdatePayload.metadata.is_bot_paused).toBe(false);
+        expect(tenantUpdatePayload.metadata.bot_paused).toBe(false);
+        expect(tenantUpdatePayload.metadata.is_bot_active).toBe(true);
+        expect(tenantUpdatePayload.metadata.bot_status).toBe('BOT_ENABLED');
+        expect(tenantUpdatePayload.metadata.resumed_at).toBeDefined();
+
+        // Verify conversations table flags
+        expect(convUpdatePayload.is_bot_paused).toBe(false);
+        expect(convUpdatePayload.bot_paused).toBe(false);
+        expect(convUpdatePayload.is_bot_active).toBe(true);
+      });
+    });
+
+    describe('Masalah B: Multi-Instance Cache Reconciliation on Resume', () => {
+      it('reconciles stale tenant-level pause cache when DB is resumed on another instance', async () => {
+        const tenantId = 'tenant-multi-instance-1';
+        const nowIso = new Date().toISOString();
+
+        // Instance 1 previously cached tenant pause
+        setRuntimeSessionCache({
+          tenantId,
+          isPaused: true,
+          botStatus: 'BOT_DISABLED',
+          updatedAt: Date.now() - 10000, // 10s ago
+        });
+
+        // Incoming message arrives with fresh DB record resumed on Instance 2
+        const freshTenantFromDb = {
+          id: tenantId,
+          slug: 'multi-store',
+          bot_paused: false,
+          is_bot_active: true,
+          updated_at: nowIso,
+          metadata: { bot_status: 'BOT_ENABLED', is_bot_paused: false },
+        };
+
+        const decision = await checkRuntimeBotDecisionGate({
+          tenant: freshTenantFromDb,
+          session: { is_paused: false },
+          textBody: 'Halo ada barang ready?',
+          senderPhone: '628111222333',
+        });
+
+        // Multi-instance lag is eliminated: SSOT DB wins over stale cache
+        expect(decision.shouldBypass).toBe(false);
+
+        // In-memory cache is reconciled to active
+        const reconciled = getRuntimeSessionCache(tenantId);
+        expect(reconciled?.isPaused).toBe(false);
+        expect(reconciled?.botStatus).toBe('BOT_ENABLED');
+      });
+
+      it('reconciles stale contact-level pause cache when DB session is resumed on another instance', async () => {
+        const tenantId = 'tenant-multi-instance-2';
+        const customerPhone = '628999888777';
+        const nowIso = new Date().toISOString();
+
+        // Instance 1 previously cached contact pause
+        setRuntimeSessionCache({
+          tenantId,
+          userIdentifier: customerPhone,
+          isPaused: true,
+          botStatus: 'HUMAN_HANDOVER',
+          updatedAt: Date.now() - 10000, // 10s ago
+        });
+
+        // Incoming message arrives with active session in DB
+        const freshSessionFromDb = {
+          tenant_id: tenantId,
+          user_identifier: customerPhone,
+          is_paused: false,
+          current_state: 'ACTIVE',
+          bot_status: 'BOT_ACTIVE',
+          updated_at: nowIso,
+          metadata: { is_bot_paused: false },
+        };
+
+        const decision = await checkRuntimeBotDecisionGate({
+          tenant: { id: tenantId, bot_paused: false, is_bot_active: true },
+          session: freshSessionFromDb,
+          textBody: 'Mau tanya pricelist',
+          senderPhone: customerPhone,
+        });
+
+        // SSOT DB wins over stale contact cache
+        expect(decision.shouldBypass).toBe(false);
+
+        const reconciled = getRuntimeSessionCache(tenantId, customerPhone);
+        expect(reconciled?.isPaused).toBe(false);
+        expect(reconciled?.botStatus).toBe('BOT_ACTIVE');
+      });
+
+      it('owner global #resume in cache immediately unblocks without waiting for slow DB query', async () => {
+        const tenantId = 'tenant-resume-fast';
+
+        // Owner executed #resume (global) on this instance
+        setRuntimeSessionCache({
+          tenantId,
+          isPaused: false,
+          botStatus: 'BOT_ENABLED',
+          updatedAt: Date.now(),
+        });
+
+        // Stale tenant DB query still shows bot_paused = true
+        const decision = await checkRuntimeBotDecisionGate({
+          tenant: { id: tenantId, bot_paused: true, is_bot_active: false },
+          session: { is_paused: false },
+          textBody: 'Halo kak',
+          senderPhone: '628777666555',
+        });
+
+        expect(decision.shouldBypass).toBe(false);
+      });
+    });
+
+    describe('Masalah C: Multi-Tenant Isolation in autoResumeSession', () => {
+      it('strictly locks tenant_id filter when updating conversations in autoResumeSession', async () => {
+        const tenantA = 'tenant-store-alpha';
+        const customerPhone = '628123499999';
+        const eqCalls: Record<string, any> = {};
+
+        const mockSupabase: any = {
+          from: jest.fn((table: string) => {
+            if (table === 'conversation_sessions') {
+              return {
+                update: jest.fn(() => ({
+                  eq: jest.fn((col: string, val: any) => {
+                    return {
+                      eq: jest.fn(async () => ({ error: null })),
+                      then: (cb: any) => cb({ error: null }),
+                    };
+                  }),
+                })),
+              };
+            }
+            if (table === 'conversations') {
+              return {
+                update: jest.fn((data: any) => {
+                  const chain: any = {
+                    eq: jest.fn((col: string, val: any) => {
+                      eqCalls[col] = val;
+                      return chain;
+                    }),
+                  };
+                  return chain;
+                }),
+              };
+            }
+            return {};
+          }),
+        };
+
+        const expiredSession = {
+          session_id: 'wa_tenant-store-alpha_628123499999',
+          tenant_id: tenantA,
+          user_identifier: customerPhone,
+          is_paused: true,
+          current_state: 'HUMAN_PAUSED',
+          paused_until: new Date(Date.now() - 5000).toISOString(),
+        };
+
+        const decision = await checkRuntimeBotDecisionGate({
+          tenant: { id: tenantA, slug: 'alpha-shop', bot_paused: false, is_bot_active: true },
+          session: expiredSession,
+          textBody: 'Halo',
+          senderPhone: customerPhone,
+          supabase: mockSupabase,
+        });
+
+        expect(decision.shouldBypass).toBe(false);
+
+        // Verify conversation update query was strictly locked to tenantA!
+        expect(eqCalls['customer_phone']).toBe(customerPhone);
+        expect(eqCalls['tenant_id']).toBe(tenantA);
+
+        // Verify cache was synced for both tenant UUID and slug
+        const cachedByUuid = getRuntimeSessionCache(tenantA, customerPhone);
+        const cachedBySlug = getRuntimeSessionCache('alpha-shop', customerPhone);
+        expect(cachedByUuid?.isPaused).toBe(false);
+        expect(cachedBySlug?.isPaused).toBe(false);
+      });
+    });
+
+    describe('Masalah D: Dashboard Toggle Source Whitelisting & Response Harmonization', () => {
+      it('allows dashboard_master_toggle and chat_detail_toggle for merchant_cookie role without 403 rejection', async () => {
+        const mockSupabase: any = {
+          from: jest.fn(() => ({
+            select: jest.fn(() => ({
+              or: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => ({ data: { id: 'tenant-dash-1', slug: 'dash-store' }, error: null })),
+              })),
+            })),
+          })),
+          rpc: jest.fn().mockResolvedValue({
+            data: { success: true, scope: 'tenant', status: 'BOT_DISABLED', bot_paused: true },
+            error: null,
+          }),
+        };
+
+        // 1. Test dashboard_master_toggle
+        const masterRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'tenant',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          userRole: 'merchant_cookie',
+          source: 'dashboard_master_toggle',
+          supabase: mockSupabase,
+        });
+
+        expect(masterRes.success).toBe(true);
+        expect(masterRes.bot_paused).toBe(true);
+        expect(masterRes.status).toBe('BOT_DISABLED');
+
+        // 2. Test chat_detail_toggle
+        const chatDetailRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'conversation',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          customerPhone: '628111222333',
+          userRole: 'merchant_cookie',
+          source: 'chat_detail_toggle',
+          supabase: mockSupabase,
+        });
+
+        expect(chatDetailRes.success).toBe(true);
+        expect(chatDetailRes.bot_paused).toBe(true);
+        expect(chatDetailRes.status).toBe('HUMAN_HANDOVER');
+
+        // 3. Test untrusted source is still rejected with fail-closed FORBIDDEN_INVALID_SESSION
+        const rejectedRes = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'tenant',
+          tenantId: 'tenant-dash-1',
+          tenantSlug: 'dash-store',
+          userRole: 'merchant_cookie',
+          source: 'arbitrary_external_attacker',
+          supabase: mockSupabase,
+        });
+
+        expect(rejectedRes.success).toBe(false);
+        expect(rejectedRes.error).toBe('FORBIDDEN_INVALID_SESSION');
+      });
+    });
+
+    describe('Masalah E: True Atomicity on Human Takeover / CS Reply (fromMe = true)', () => {
+      it('human CS reply executes atomic takeover, marks status HUMAN_HANDOVER, and updates contact cache', async () => {
+        const tenantId = 'tenant-human-e';
+        const customerPhone = '628199988877';
+        let rpcCalledWith: any = null;
+
+        const mockSupabase: any = {
+          from: jest.fn(() => ({
+            select: jest.fn(() => ({
+              or: jest.fn(() => ({
+                maybeSingle: jest.fn(async () => ({ data: { id: tenantId, slug: 'human-shop' }, error: null })),
+              })),
+            })),
+          })),
+          rpc: jest.fn(async (fnName: string, args: any) => {
+            if (fnName === 'fn_toggle_bot_session_state') {
+              rpcCalledWith = args;
+              return {
+                data: {
+                  success: true,
+                  scope: 'conversation',
+                  status: 'HUMAN_HANDOVER',
+                  bot_paused: true,
+                  customer_phone: customerPhone,
+                },
+                error: null,
+              };
+            }
+            return { data: null, error: null };
+          }),
+        };
+
+        const res = await executeBotControl({
+          action: 'PAUSE',
+          scope: 'conversation',
+          tenantId,
+          tenantSlug: 'human-shop',
+          customerPhone,
+          userRole: 'cs',
+          source: 'cs_mobile_outbound',
+          supabase: mockSupabase,
+        });
+
+        expect(res.success).toBe(true);
+        expect(res.status).toBe('HUMAN_HANDOVER');
+        expect(res.bot_paused).toBe(true);
+
+        // Verify atomic RPC parameters
+        expect(rpcCalledWith).toBeDefined();
+        expect(rpcCalledWith.p_scope).toBe('conversation');
+        expect(rpcCalledWith.p_action).toBe('PAUSE');
+        expect(rpcCalledWith.p_is_paused).toBe(true);
+        expect(rpcCalledWith.p_customer_phone).toBe(customerPhone);
+        expect(rpcCalledWith.p_source).toBe('cs_mobile_outbound');
+
+        // Verify cache was immediately set to paused to prevent bot overlapping CS reply
+        const cached = getRuntimeSessionCache(tenantId, customerPhone);
+        expect(cached).not.toBeNull();
+        expect(cached?.isPaused).toBe(true);
+        expect(cached?.botStatus).toBe('HUMAN_HANDOVER');
+      });
+    });
+  });
 });
