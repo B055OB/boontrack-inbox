@@ -121,6 +121,10 @@ export interface ChatConversation {
   assignedTo?: 'my_chat' | 'unassigned' | string; // 'my_chat', 'unassigned', or other agent name
   assignedAgentName?: string;
   isBotActive?: boolean;
+  is_paused?: boolean;
+  bot_paused?: boolean;
+  is_bot_paused?: boolean;
+  pause_reason?: string | null;
   tag?: 'Hot Lead' | 'Repeat Buyer' | 'Konfirmasi Bayar' | 'Tanya Produk' | 'Keluhan' | string;
   unreadCount?: number;
   channelType?: string;
@@ -1264,43 +1268,106 @@ export default function TeamChatTab({
     setIsMobileChatOpen(true);
   };
 
+  // Dynamic Bot Pause State for current conversation (Pola TapTalk)
+  const isConversationPaused = useMemo(() => {
+    if (!currentConversation) return false;
+    return Boolean(
+      currentConversation.is_paused === true ||
+      currentConversation.bot_paused === true ||
+      currentConversation.isBotActive === false ||
+      currentConversation.is_bot_paused === true ||
+      (currentConversation as any)?.bot_mode === 'HUMAN_ACTIVE' ||
+      currentConversation.pause_reason
+    );
+  }, [
+    currentConversation?.is_paused,
+    currentConversation?.bot_paused,
+    currentConversation?.isBotActive,
+    currentConversation?.is_bot_paused,
+    currentConversation?.pause_reason,
+    (currentConversation as any)?.bot_mode,
+  ]);
+
   // Toggle Bot Pause / CS Takeover (Consolidated Server API & Optimistic Rollback)
   const handleToggleBot = async () => {
     if (!currentConversation) return;
-    const prevBotActive = Boolean(currentConversation.isBotActive);
-    const newBotState = !prevBotActive;
-    const isPaused = !newBotState;
+    const isCurrentlyPaused = Boolean(
+      currentConversation.is_paused === true ||
+      currentConversation.bot_paused === true ||
+      currentConversation.isBotActive === false ||
+      currentConversation.is_bot_paused === true ||
+      (currentConversation as any)?.bot_mode === 'HUMAN_ACTIVE' ||
+      currentConversation.pause_reason
+    );
+    const nextIsPaused = !isCurrentlyPaused;
+    const nextBotActive = !nextIsPaused;
+    const action = nextIsPaused ? 'PAUSE' : 'RESUME';
+    const status = nextIsPaused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE';
+    const pauseReason = nextIsPaused ? 'HUMAN_HANDOVER' : null;
     const targetSlug = resolvedTenant || tenantSlug || 'boon';
 
     // 1. Optimistic UI update
-    currentConversation.isBotActive = newBotState;
+    currentConversation.isBotActive = nextBotActive;
+    currentConversation.is_paused = nextIsPaused;
+    currentConversation.bot_paused = nextIsPaused;
+    currentConversation.is_bot_paused = nextIsPaused;
+    currentConversation.pause_reason = pauseReason;
+
     if (inbox.setConversations) {
       inbox.setConversations((prev) =>
-        prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: newBotState } : c))
+        prev.map((c) =>
+          c.id === currentConversation.id
+            ? {
+                ...c,
+                isBotActive: nextBotActive,
+                is_paused: nextIsPaused,
+                bot_paused: nextIsPaused,
+                is_bot_paused: nextIsPaused,
+                pause_reason: pauseReason,
+              }
+            : c
+        )
       );
     }
 
     try {
-      // 2. Centralized Server API Mutation
+      // 2. Centralized Server API Mutation (Calls updateBotState -> executeBotControl -> RPC fn_toggle_bot_session_state)
       const res = await fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scope: 'conversation',
-          action: isPaused ? 'PAUSE' : 'RESUME',
-          status: isPaused ? 'HUMAN_HANDOVER' : 'AI_ACTIVE',
+          action,
+          status,
+          is_paused: nextIsPaused,
           conversation_id: currentConversation.id,
           customer_phone: currentConversation.customerPhone,
-          source: 'cs_dashboard_toggle',
+          source: 'cs_takeover_banner',
+          pause_reason: pauseReason,
         }),
       });
 
       if (!res.ok) {
         // Rollback optimistic state if server returns failure
-        currentConversation.isBotActive = prevBotActive;
+        currentConversation.isBotActive = !nextBotActive;
+        currentConversation.is_paused = isCurrentlyPaused;
+        currentConversation.bot_paused = isCurrentlyPaused;
+        currentConversation.is_bot_paused = isCurrentlyPaused;
+        currentConversation.pause_reason = isCurrentlyPaused ? 'HUMAN_HANDOVER' : null;
         if (inbox.setConversations) {
           inbox.setConversations((prev) =>
-            prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: prevBotActive } : c))
+            prev.map((c) =>
+              c.id === currentConversation.id
+                ? {
+                    ...c,
+                    isBotActive: !nextBotActive,
+                    is_paused: isCurrentlyPaused,
+                    bot_paused: isCurrentlyPaused,
+                    is_bot_paused: isCurrentlyPaused,
+                    pause_reason: isCurrentlyPaused ? 'HUMAN_HANDOVER' : null,
+                  }
+                : c
+            )
           );
         }
         console.error('[TeamChatTab] Conversation bot toggle failed, rolled back optimistic state.');
@@ -1310,21 +1377,90 @@ export default function TeamChatTab({
       await inbox.refreshConversations();
     } catch (err) {
       // Rollback optimistic state on network exception
-      currentConversation.isBotActive = prevBotActive;
+      currentConversation.isBotActive = !nextBotActive;
+      currentConversation.is_paused = isCurrentlyPaused;
+      currentConversation.bot_paused = isCurrentlyPaused;
+      currentConversation.is_bot_paused = isCurrentlyPaused;
+      currentConversation.pause_reason = isCurrentlyPaused ? 'HUMAN_HANDOVER' : null;
       if (inbox.setConversations) {
         inbox.setConversations((prev) =>
-          prev.map((c) => (c.id === currentConversation.id ? { ...c, isBotActive: prevBotActive } : c))
+          prev.map((c) =>
+            c.id === currentConversation.id
+              ? {
+                  ...c,
+                  isBotActive: !nextBotActive,
+                  is_paused: isCurrentlyPaused,
+                  bot_paused: isCurrentlyPaused,
+                  is_bot_paused: isCurrentlyPaused,
+                  pause_reason: isCurrentlyPaused ? 'HUMAN_HANDOVER' : null,
+                }
+              : c
+          )
         );
       }
       console.warn('[TeamChatTab] Error toggling conversation bot:', err);
     }
   };
 
-  // Send Manual Reply
+  // Send Manual Reply (Auto-Pause Otomatis Saat CS Membalas Chat)
   const handleSendLocalMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const textToSend = inbox.replyText.trim() || localReplyText.trim() || (externalReplyText || '').trim();
     if (!textToSend || !currentConversation) return;
+
+    // Auto-Pause Otomatis Saat CS Mengirim Pesan (TASK-401 / TASK-402)
+    const isBotCurrentlyActive = !(
+      currentConversation.is_paused === true ||
+      currentConversation.bot_paused === true ||
+      currentConversation.isBotActive === false ||
+      currentConversation.is_bot_paused === true ||
+      (currentConversation as any)?.bot_mode === 'HUMAN_ACTIVE' ||
+      Boolean(currentConversation.pause_reason)
+    );
+
+    if (isBotCurrentlyActive) {
+      const targetSlug = resolvedTenant || tenantSlug || 'boon';
+      currentConversation.isBotActive = false;
+      currentConversation.is_paused = true;
+      currentConversation.bot_paused = true;
+      currentConversation.is_bot_paused = true;
+      currentConversation.pause_reason = 'agent_manual_reply';
+
+      if (inbox.setConversations) {
+        inbox.setConversations((prev) =>
+          prev.map((c) =>
+            c.id === currentConversation.id
+              ? {
+                  ...c,
+                  isBotActive: false,
+                  is_paused: true,
+                  bot_paused: true,
+                  is_bot_paused: true,
+                  pause_reason: 'agent_manual_reply',
+                }
+              : c
+          )
+        );
+      }
+
+      // Centralized API call to trigger RPC fn_toggle_bot_session_state
+      fetch(`/api/v1/tenants/${encodeURIComponent(targetSlug)}/bot-control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'conversation',
+          action: 'PAUSE',
+          status: 'HUMAN_HANDOVER',
+          is_paused: true,
+          conversation_id: currentConversation.id,
+          customer_phone: currentConversation.customerPhone,
+          source: 'agent_manual_reply',
+          pause_reason: 'agent_manual_reply',
+        }),
+      }).catch((err) => {
+        console.warn('[TeamChatTab] Auto-pause on CS reply warning:', err);
+      });
+    }
 
     await inbox.handleSendMessage(textToSend);
     setLocalReplyText('');
@@ -2514,143 +2650,35 @@ export default function TeamChatTab({
               </div>
             )}
 
-            {/* Search Box */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Cari nama atau nomor WhatsApp..."
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition"
-              />
-            </div>
-
-            {/* Omnichannel Channel Filter Pills (Horizontal Scroll + Right-Edge Indicator) */}
-            <div className="relative group">
-              <div
-                ref={channelScrollRef}
-                className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 px-1 whitespace-nowrap"
-              >
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter('all')}
-                  className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                    channelFilter === 'all'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-extrabold'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                  title="Semua kanal percakapan"
-                >
-                  <span>Semua</span>
-                  <span
-                    className={`text-[9px] px-1 rounded-full ${
-                      channelFilter === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {channelCounts.all}
-                  </span>
-                </button>
-
-                {activeChannels.hasWaba && (
-                  <button
-                    type="button"
-                    onClick={() => setChannelFilter('waba')}
-                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                      channelFilter === 'waba'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-extrabold'
-                        : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
-                    }`}
-                    title="Filter kanal resmi WABA (Meta Cloud API)"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                    <span>WABA</span>
-                    <span
-                      className={`text-[9px] px-1 rounded-full ${
-                        channelFilter === 'waba' ? 'bg-emerald-700 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
-                      }`}
-                    >
-                      {channelCounts.waba}
-                    </span>
-                  </button>
-                )}
-
-                {activeChannels.hasEngine && (
-                  <button
-                    type="button"
-                    onClick={() => setChannelFilter('engine')}
-                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                      channelFilter === 'engine'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
-                        : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                    }`}
-                    title="Filter kanal BoonTrack WhatsApp Engine (Nomor Pairing)"
-                  >
-                    <Zap className="w-2.5 h-2.5 text-current shrink-0" />
-                    <span>BoonTrack Engine</span>
-                    <span
-                      className={`text-[9px] px-1 rounded-full ${
-                        channelFilter === 'engine' ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-800'
-                      }`}
-                    >
-                      {channelCounts.engine}
-                    </span>
-                  </button>
-                )}
-
-                {activeChannels.hasWebchat && (
-                  <button
-                    type="button"
-                    onClick={() => setChannelFilter('webchat')}
-                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                      channelFilter === 'webchat'
-                        ? 'bg-sky-600 text-white border-sky-600 shadow-2xs font-extrabold'
-                        : 'bg-white text-sky-700 border-sky-200 hover:bg-sky-50'
-                    }`}
-                    title="Filter kanal Webchat (Widget Toko)"
-                  >
-                    <MessageSquare className="w-2.5 h-2.5 text-current shrink-0" />
-                    <span>Webchat</span>
-                    <span
-                      className={`text-[9px] px-1 rounded-full ${
-                        channelFilter === 'webchat' ? 'bg-sky-700 text-sky-100' : 'bg-sky-100 text-sky-800'
-                      }`}
-                    >
-                      {channelCounts.webchat}
-                    </span>
-                  </button>
-                )}
-
-                {activeChannels.hasTelegram && (
-                  <button
-                    type="button"
-                    onClick={() => setChannelFilter('telegram')}
-                    className={`py-1 px-2.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer border ${
-                      channelFilter === 'telegram'
-                        ? 'bg-sky-500 text-white border-sky-500 shadow-2xs font-extrabold'
-                        : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'
-                    }`}
-                    title="Filter kanal Telegram Bot"
-                  >
-                    <Send className="w-2.5 h-2.5 text-current shrink-0" />
-                    <span>Telegram</span>
-                    <span
-                      className={`text-[9px] px-1 rounded-full ${
-                        channelFilter === 'telegram' ? 'bg-sky-600 text-sky-100' : 'bg-sky-100 text-sky-700'
-                      }`}
-                    >
-                      {channelCounts.telegram}
-                    </span>
-                  </button>
-                )}
+            {/* Search Box & Unified Compact Omnichannel Dropdown Selector */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="Cari kontak / nomor WA..."
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500 transition"
+                />
               </div>
 
-              {/* Visual Fade Indicator di Ujung Kanan */}
-              <div
-                className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/80 to-transparent flex items-center justify-end pr-0.5 rounded-r-xl"
-                aria-hidden="true"
-              >
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-60" />
+              {/* 1 Dropdown Selector Terpadu Kompak */}
+              <div className="relative shrink-0">
+                <select
+                  value={channelFilter}
+                  onChange={(e) => setChannelFilter(e.target.value as any)}
+                  className="appearance-none bg-slate-50 hover:bg-slate-100/90 border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs font-bold text-slate-700 cursor-pointer focus:bg-white focus:outline-none focus:border-indigo-500 transition shadow-2xs"
+                  title="Filter Kanal Percakapan"
+                  aria-label="Filter Kanal Percakapan"
+                >
+                  <option value="all">Semua Kanal ({channelCounts.all})</option>
+                  <option value="waba">WABA ({channelCounts.waba})</option>
+                  <option value="engine">BoonTrack Engine ({channelCounts.engine})</option>
+                  <option value="telegram">Telegram ({channelCounts.telegram})</option>
+                  <option value="webchat">Webchat ({channelCounts.webchat})</option>
+                </select>
+                <ChevronRight className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 rotate-90 pointer-events-none" />
               </div>
             </div>
 
@@ -2963,46 +2991,8 @@ export default function TeamChatTab({
                   </div>
                 </div>
 
-                {/* Status Badge (AI Active vs CS Takeover) & Tombol Toggle Cepat (#on / #off) */}
+                {/* Detail CS Toggle Button on < xl (Split-screen / Tablet) */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {currentConversation.isBotActive ? (
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>AI Active</span>
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1.5 shadow-2xs">
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span>CS Takeover</span>
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleToggleBot}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
-                      currentConversation.isBotActive
-                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                    }`}
-                    title={currentConversation.isBotActive ? 'Jeda Bot khusus nomor ini (ekuivalen #off)' : 'Aktifkan Bot kembali untuk nomor ini (ekuivalen #on)'}
-                  >
-                    {currentConversation.isBotActive ? (
-                      <>
-                        <Pause className="w-3.5 h-3.5 text-amber-600" />
-                        <span className="hidden sm:inline">Jeda Bot (#off)</span>
-                        <span className="sm:hidden">#off</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="hidden sm:inline">Aktifkan Bot (#on)</span>
-                        <span className="sm:hidden">#on</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* Detail CS Toggle Button on < xl (Split-screen / Tablet) */}
                   <button
                     type="button"
                     onClick={() => setIsCsConsoleOpen((prev) => !prev)}
@@ -3464,6 +3454,57 @@ export default function TeamChatTab({
                     </div>
                   </div>
                 )}
+
+                {/* Banner Interaktif Take Over Case (Pola TapTalk - Tepat di Atas Composer) */}
+                <div
+                  className={`px-3.5 py-2 border-b flex items-center justify-between gap-3 transition-colors ${
+                    isConversationPaused
+                      ? 'bg-amber-50/95 border-amber-200 text-amber-950'
+                      : 'bg-slate-50/90 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isConversationPaused ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                        <span className="text-xs font-bold truncate flex items-center gap-1.5 text-amber-950">
+                          <span>⏸️</span>
+                          <span>Percakapan Ditangani Manual (Bot Dijeda)</span>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-xs font-semibold truncate flex items-center gap-1.5 text-slate-700">
+                          <span>🤖</span>
+                          <span>Chatbot Aktif — AI sedang menangani percakapan ini.</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleBot}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs active:scale-95 ${
+                      isConversationPaused
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-amber-500 hover:bg-amber-600 text-white'
+                    }`}
+                  >
+                    {isConversationPaused ? (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Aktifkan Bot Kembali</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                        <span>Ambil Alih / Jeda Bot</span>
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 {/* Quick Canned Responses Bar */}
                 <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
