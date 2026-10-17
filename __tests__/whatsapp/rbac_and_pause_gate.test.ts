@@ -321,7 +321,8 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
     });
 
     it('allows authorized owner fromMe command to mutate bot status', async () => {
-      // Instance bound to owner phone 628111111111
+      const personalOwnerPhone = '628777777777';
+      // Instance bound to bot phone 628111111111
       mockConnections['test-instance'] = {
         tenant_id: 'tenant-rb',
         tenant_slug: 'tenant-rb',
@@ -337,7 +338,7 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
         whatsapp_number: '628111111111',
         bot_paused: false,
         is_bot_active: true,
-        metadata: {},
+        metadata: { owner_phone: personalOwnerPhone },
       };
 
       const webhookPayload = {
@@ -348,6 +349,7 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
           key: {
             remoteJid: '628999999999@s.whatsapp.net',
             fromMe: true,
+            participant: `${personalOwnerPhone}@s.whatsapp.net`,
             id: 'CMD_AUTH_1',
           },
           message: {
@@ -356,7 +358,7 @@ describe('Target 2: P1 - RBAC & Pause Gate Tests', () => {
         },
       };
 
-      // Since phone is authorized owner, executeBotControl MUST be executed
+      // Since participant is authorized owner personal phone in metadata allowlist, executeBotControl MUST be executed
       await processEvolutionWebhookEvent(webhookPayload, 'test-instance');
 
       // Tenant bot status MUST be paused!

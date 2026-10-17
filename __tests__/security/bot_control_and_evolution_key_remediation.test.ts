@@ -27,7 +27,7 @@ import {
   processEvolutionWebhookEvent,
 } from '@/lib/whatsapp/evolution-webhook-handler';
 import { GET, POST, PUT } from '@/app/api/v1/tenants/[slug]/bot-control/route';
-import { updateBotState } from '@/lib/whatsapp/bot-control-service';
+import { updateBotState, resolveBotControllerRole } from '@/lib/whatsapp/bot-control-service';
 
 // Mock Supabase Client for bot-control route and service
 const mockTenantData = {
@@ -498,7 +498,24 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(result.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
     });
 
-    it('16. updateBotState permits mutation with role system_internal when called by system sources', async () => {
+    it('16. updateBotState rejects with UNAUTHORIZED when caller passes source: system_internal without valid system context (Temuan A)', async () => {
+      const result = await updateBotState({
+        tenantId: 'uuid-1234',
+        tenantSlug: 'toko-sukses',
+        action: 'RESUME',
+        scope: 'conversation',
+        customerPhone: '6281234567890',
+        source: 'system_internal',
+        // userRole deliberately omitted, and no system context/secret provided!
+        supabase: mockSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+      expect(result.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
+    });
+
+    it('17. updateBotState permits mutation with role system_internal ONLY when valid system context or secret is provided', async () => {
       const result = await updateBotState({
         tenantId: 'uuid-1234',
         tenantSlug: 'toko-sukses',
@@ -506,13 +523,31 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
         scope: 'conversation',
         customerPhone: '6281234567890',
         source: 'timeout_expired',
-        // userRole deliberately omitted, but source indicates system auto-resume
+        isSystemContext: true,
         supabase: mockSupabase,
       });
 
       expect(result.success).toBe(true);
       expect(result.bot_paused).toBe(false);
       expect(result.last_state_updated_by).toBe('timeout_expired');
+    });
+  });
+
+  describe('Security Remediation: Bot Business Number Isolation (CTO Directive Temuan B)', () => {
+    it('18. resolveBotControllerRole strictly denies owner role to bot device whatsapp_number (Anti-Impersonation)', async () => {
+      // mockTenantData has whatsapp_number: '6281234567890'
+      const auth = await resolveBotControllerRole({
+        senderPhone: '6281234567890', // bot's own WhatsApp business number
+        tenantId: 'tenant-uuid-1234',
+        tenantSlug: 'toko-sukses',
+        supabase: mockSupabase,
+      });
+
+      expect(auth.authorized).toBe(false);
+      expect(auth.role).toBe('none');
+      expect(auth.canControlTenant).toBe(false);
+      expect(auth.canControlContact).toBe(false);
+      expect(auth.source).toBe('bot_business_device_denied');
     });
   });
 });

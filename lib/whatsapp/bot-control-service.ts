@@ -256,6 +256,7 @@ export async function resolveBotControllerRole(params: {
     const { data: tenantRow } = await tQuery.maybeSingle();
 
     if (tenantRow) {
+      const meta = (tenantRow.metadata || {}) as Record<string, any>;
       const matchesPhone = (p?: any) => {
         if (!p) return false;
         const str = String(p).trim();
@@ -274,24 +275,32 @@ export async function resolveBotControllerRole(params: {
         return false;
       };
 
-      if (
-        matchesPhone(tenantRow.phone) ||
-        matchesPhone(tenantRow.whatsapp_number) ||
-        matchesPhone((tenantRow as any).admin_phone)
-      ) {
-        return { authorized: true, role: 'owner', canControlTenant: true, canControlContact: true, source: 'tenant_record' };
+      // 1. ISOLASI NOMOR BISNIS BOT (CTO Directive Temuan B):
+      // Nomor whatsapp_number (nomor perangkat bot) DILARANG KERAS otomatis diberi role 'owner'.
+      // Pesan fromMe atau nomor bot bisnis dilarang mengeksekusi kontrol bot sebagai owner.
+      const botDeviceNumber = tenantRow.whatsapp_number || meta.whatsapp_number;
+      if (botDeviceNumber && matchesPhone(botDeviceNumber)) {
+        return {
+          authorized: false,
+          role: 'none',
+          canControlTenant: false,
+          canControlContact: false,
+          source: 'bot_business_device_denied',
+        };
       }
 
-      const meta = tenantRow.metadata || {};
+      // Otorisasi perintah WhatsApp (#on, #off, #pause, #resume) HANYA diberikan jika nomor pengirim
+      // terdaftar di allowlist nomor owner/admin pribadi (owner_phone / admin_phones).
       if (
         matchesPhone(meta.owner_phone) ||
-        matchesPhone(meta.phone) ||
-        matchesPhone(meta.whatsapp_number)
+        matchesPhone(meta.owner_whatsapp) ||
+        matchesPhone(meta.personal_phone) ||
+        matchesPhone(meta.owner_mobile)
       ) {
         return { authorized: true, role: 'owner', canControlTenant: true, canControlContact: true, source: 'tenant_metadata_owner' };
       }
 
-      if (matchesPhone(meta.admin_phone)) {
+      if (matchesPhone(meta.admin_phone) || matchesPhone((tenantRow as any).admin_phone)) {
         return { authorized: true, role: 'admin', canControlTenant: true, canControlContact: true, source: 'tenant_metadata_admin' };
       }
 
@@ -946,6 +955,9 @@ export async function updateBotState(
     userRole?: string;
     source?: string;
     scope?: BotControlScope;
+    isSystemContext?: boolean;
+    systemSecret?: string;
+    internalSecret?: string;
     supabase?: any;
   },
   tenantId?: string,
@@ -959,6 +971,9 @@ export async function updateBotState(
     source?: string;
     scope?: BotControlScope;
     status?: string;
+    isSystemContext?: boolean;
+    systemSecret?: string;
+    internalSecret?: string;
     supabase?: any;
   }
 ): Promise<{
@@ -999,20 +1014,28 @@ export async function updateBotState(
   // Default scope
   const scope: BotControlScope = resolvedParams.scope || (resolvedParams.conversationId || resolvedParams.customerPhone ? 'conversation' : 'tenant');
 
-  // Default source and role: Fail-closed RBAC enforcement (CTO Directive B2)
+  // Default source: metadata audit only
   const source = resolvedParams.source || 'update_bot_state';
-  const isSystemCaller =
-    source === 'system' ||
-    source === 'system_internal' ||
-    source === 'system_auto_resume' ||
-    source === 'timeout_expired' ||
-    source === 'auto_resume' ||
-    source.startsWith('timeout_') ||
-    source.startsWith('system_');
 
-  // STRICT RBAC: Never fallback to 'admin'.
-  // Explicitly assign 'system_internal' for system callers; leave undefined for human callers so executeBotControl can fail-closed or resolve from senderPhone.
-  const userRole = resolvedParams.userRole || (isSystemCaller ? 'system_internal' : undefined);
+  // STRICT RBAC (CTO Directive Temuan A - Decouple Privilege from Source String):
+  // DILARANG KERAS memberikan userRole 'system_internal' hanya berdasarkan nilai string source ('timeout_expired' / 'system_internal')!
+  // Otorisasi sistem hanya boleh diberikan jika dipanggil melalui internal system context/credential yang valid, bukan dari string parameter source.
+  let userRole = resolvedParams.userRole;
+
+  if (!userRole) {
+    const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const providedSecret = (resolvedParams.systemSecret || resolvedParams.internalSecret)?.trim();
+
+    if (
+      (envAdminSecret && providedSecret && providedSecret === envAdminSecret) ||
+      (serviceRoleKey && providedSecret && providedSecret === serviceRoleKey)
+    ) {
+      userRole = 'system_internal';
+    } else if (resolvedParams.isSystemContext === true) {
+      userRole = 'system_internal';
+    }
+  }
 
   return executeBotControl({
     action: act,

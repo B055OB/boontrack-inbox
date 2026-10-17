@@ -290,6 +290,7 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
   // =========================================================================
   describe('2. RBAC Scope & Controller Resolution (Blocker A & C)', () => {
     const tenantId = 'tenant-rbac-test';
+    const botPhone = '6289999999998';
     const ownerPhone = '628111111111';
     const adminPhone = '628222222222';
     const csPhone = '628333333333';
@@ -299,8 +300,8 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
       mockTenants[tenantId] = {
         id: tenantId,
         slug: tenantId,
-        phone: ownerPhone,
-        whatsapp_number: ownerPhone,
+        phone: botPhone,
+        whatsapp_number: botPhone,
         bot_paused: false,
         is_bot_active: true,
         metadata: { owner_phone: ownerPhone },
@@ -310,6 +311,18 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
         { phone: adminPhone, role: 'admin', is_active: true },
         { phone: csPhone, role: 'cs', is_active: true },
       ];
+    });
+
+    it('STRICT ISOLATION (CTO Directive Temuan B): bot business number (whatsapp_number) is strictly prohibited from receiving owner role', async () => {
+      const botNumberAuth = await resolveBotControllerRole({
+        senderPhone: botPhone,
+        tenantId,
+      });
+      expect(botNumberAuth.authorized).toBe(false);
+      expect(botNumberAuth.role).toBe('none');
+      expect(botNumberAuth.canControlTenant).toBe(false);
+      expect(botNumberAuth.canControlContact).toBe(false);
+      expect(botNumberAuth.source).toBe('bot_business_device_denied');
     });
 
     it('resolves owner and admin as authorized for BOTH Tenant and Contact scopes', async () => {
@@ -489,8 +502,8 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
       ];
     });
 
-    it('fromMe event strictly validates bot device phone and prevents customer remoteJid from acting as controller', async () => {
-      // Baileys fromMe event: remoteJid is the customer phone
+    it('pesan fromMe dari nomor bot bisnis dilarang keras mendapatkan role owner (Temuan B)', async () => {
+      // Baileys fromMe event: remoteJid is the customer phone, message sent from bot device
       const webhookPayload = {
         event: 'messages.upsert',
         instance: 'instance-leak',
@@ -507,12 +520,35 @@ describe('P1 Architecture: 2-Dimensional State Machine & RBAC Bot Control', () =
         },
       };
 
-      // The message was sent fromMe by bot device (which is owner).
-      // If candidateControllers had included customerPhone, it could have evaluated permissions of the recipient!
-      // With our fix, candidateControllers = [botDevicePhone, participantPhone] ONLY.
+      // CTO Directive Temuan B: The bot device phone itself is strictly forbidden from receiving owner role
       await processEvolutionWebhookEvent(webhookPayload, 'instance-leak');
 
-      // Bot status should reflect action taken by authorized botDevicePhone
+      // Bot status should NOT be paused because bot business number is denied owner role
+      expect(mockTenants[tenantId].bot_paused).toBe(false);
+    });
+
+    it('fromMe event allows control when participant is registered in owner personal allowlist', async () => {
+      const personalOwnerPhone = '628777777777';
+      mockTenants[tenantId].metadata = { owner_phone: personalOwnerPhone };
+
+      const webhookPayload = {
+        event: 'messages.upsert',
+        instance: 'instance-leak',
+        owner: botDevicePhone,
+        data: {
+          key: {
+            remoteJid: `${customerPhone}@s.whatsapp.net`,
+            fromMe: true,
+            participant: `${personalOwnerPhone}@s.whatsapp.net`,
+            id: 'MSG_FROM_ME_2',
+          },
+          message: {
+            conversation: '#off',
+          },
+        },
+      };
+
+      await processEvolutionWebhookEvent(webhookPayload, 'instance-leak');
       expect(mockTenants[tenantId].bot_paused).toBe(true);
     });
   });
