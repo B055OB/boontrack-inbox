@@ -1831,6 +1831,15 @@ WhatsApp Gateway diposisikan murni sebagai **Transport Infrastructure**, bukan b
 
 ---
 
+### 22.5 WABA Entitlement, Embedded Signup & Onboarding Boundary (ADR 2026-10-18)
+1. **Direct Access for Team Scale**:
+   - Tenant tier `'ENTERPRISE'` (Team Scale) berhak mendapatkan akses langsung ke Official Meta Cloud API (WABA) melalui alur self-serve Meta Embedded Signup (1-Click OAuth Pop-up via Facebook JS SDK v21.0), tanpa kewajiban konfigurasi kredensial manual di awal.
+   - Mode WABA dapat langsung diakses dari antarmuka Dashboard. Jika kredensial belum ada, UI menampilkan Hero Card Onboarding 1-Klik Pop-up dengan accordion form manual di bawahnya.
+2. **Decoupled Identity vs Authority**:
+   - Otoritas bisnis mutlak dipegang oleh `TenantRuntimeContext`. Metadata dan kredensial Meta yang tersimpan di `whatsapp_connections` berfungsi murni sebagai lapisan *Transport Adapter*.
+
+---
+
 ## 23. Invarian Arsitektur & CTO Gate Review (Milestones P0, P1, P2)
 
 Dokumentasi invarian arsitektur resmi hasil evaluasi dan persetujuan CTO Gate untuk seluruh milestone rekayasa Core & Messaging BoonTrack:
