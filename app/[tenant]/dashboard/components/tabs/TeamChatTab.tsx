@@ -590,23 +590,36 @@ export default function TeamChatTab({
     }
   };
 
+  // Default Quick Replies Fallback (Zero Mock, purely local fallback if DB empty)
+  const allQuickReplies = useMemo(() => {
+    if (Array.isArray(quickReplies) && quickReplies.length > 0) return quickReplies;
+    return [
+      { shortcut: '/katalog', title: 'Katalog Produk', content: 'Halo kak, silakan cek katalog produk lengkap kami ya!' },
+      { shortcut: '/jam', title: 'Jam CS', content: 'Layanan CS aktif setiap hari pukul 08.00 - 21.00 WIB.' },
+      { shortcut: '/alamat', title: 'Alamat Toko', content: 'Lokasi gudang pusat pengiriman kami siap kirim hari ini.' },
+      { shortcut: '/garansi', title: 'Garansi & Retur', content: 'Syarat retur/garansi wajib menyertakan video unboxing utuh.' },
+      { shortcut: '/tanya', title: 'Form Tanya', content: 'Mohon isi data konsultasi awal agar dapat kami bantu ya kak.' },
+    ] as QuickReplyItem[];
+  }, [quickReplies]);
+
   // Filtered Quick Replies for Slash Trigger
   const filteredQuickReplies = useMemo(() => {
-    if (!slashQuery) return Array.isArray(quickReplies) ? quickReplies : [];
+    if (!slashQuery) return allQuickReplies;
     const q = slashQuery.toLowerCase();
-    return (Array.isArray(quickReplies) ? quickReplies : []).filter(
+    return allQuickReplies.filter(
       (item) =>
         Boolean(item.shortcut && item.shortcut.toLowerCase().includes(q)) ||
-        Boolean(item.title && item.title.toLowerCase().includes(q))
+        Boolean(item.title && item.title.toLowerCase().includes(q)) ||
+        Boolean(item.content && item.content.toLowerCase().includes(q))
     );
-  }, [quickReplies, slashQuery]);
+  }, [allQuickReplies, slashQuery]);
 
   // Handle select slash quick reply
   const handleSelectQuickReply = (item: QuickReplyItem) => {
     const currentVal = inbox.replyText || localReplyText || '';
     const slashIndex = currentVal.lastIndexOf('/');
     let nextVal = item.content;
-    if (slashIndex > 0) {
+    if (slashIndex >= 0) {
       nextVal = currentVal.slice(0, slashIndex) + item.content;
     }
     inbox.setReplyText(nextVal);
@@ -2606,34 +2619,34 @@ export default function TeamChatTab({
         </div>
       )}
 
-      {/* ── 3-PANEL WORKSPACE CONTAINER (BAKU FLEX 3-KOLOM DESKTOP >= XL) ─── */}
-      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-row min-h-[680px] lg:h-[calc(100vh-210px)] relative">
+      {/* ── 3-PANEL WORKSPACE CONTAINER (BAKU FLEX 3-KOLOM DESKTOP >= 2XL) ─── */}
+      <div className="w-full bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-row min-h-[680px] lg:h-[calc(100vh-210px)] relative">
         {/* =================================================================== */}
-        {/* KOLOM 1 (KIRI): ANTREAN PERCAKAPAN (w-80 / w-96, h-full)            */}
+        {/* KOLOM 1 (KIRI): ANTREAN PERCAKAPAN (w-72 sm:w-80 shrink-0)         */}
         {/* =================================================================== */}
-        <div className={`w-full md:w-80 xl:w-88 2xl:w-96 shrink-0 border-r border-slate-200 flex flex-col bg-slate-50/50 h-full overflow-hidden ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-72 sm:w-80 shrink-0 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-900/50 h-full overflow-hidden ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {/* Header Panel Kiri & Search */}
-          <div className="p-3.5 border-b border-slate-200 bg-white space-y-2.5">
+          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+              <span className="text-xs font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-blue-600" />
                 <span>Antrean Percakapan</span>
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                 {counts.all} Total
               </span>
             </div>
 
             {/* Mode Bot Toko Toggle Banner */}
             {handleToggleTenantBot && (
-              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-1.5">
                   {isTenantBotPaused ? (
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                   ) : (
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   )}
-                  <span className="text-[10px] font-bold text-slate-700">
+                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
                     {isTenantBotPaused ? 'CS Manual (Bot Jeda)' : 'Bot AI Otomatis Aktif'}
                   </span>
                 </div>
@@ -2642,8 +2655,8 @@ export default function TeamChatTab({
                   onClick={handleToggleTenantBot}
                   className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition cursor-pointer ${
                     isTenantBotPaused
-                      ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
-                      : 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-200'
+                      : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-200'
                   }`}
                 >
                   {isTenantBotPaused ? 'Aktifkan AI' : 'Jeda Bot (CS)'}
@@ -2660,7 +2673,7 @@ export default function TeamChatTab({
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
                   placeholder="Cari kontak / nomor WA..."
-                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
 
@@ -2669,7 +2682,7 @@ export default function TeamChatTab({
                 <select
                   value={channelFilter}
                   onChange={(e) => setChannelFilter(e.target.value as any)}
-                  className="appearance-none bg-slate-50 hover:bg-slate-100/90 border border-slate-200 rounded-xl pl-2.5 pr-6 py-1.5 text-xs font-bold text-slate-700 cursor-pointer focus:bg-white focus:outline-none focus:border-indigo-500 transition shadow-2xs"
+                  className="appearance-none bg-slate-50 dark:bg-slate-800 hover:bg-slate-100/90 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl pl-2.5 pr-6 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-500 transition shadow-2xs"
                   title="Filter Kanal Percakapan"
                   aria-label="Filter Kanal Percakapan"
                 >
@@ -2684,19 +2697,19 @@ export default function TeamChatTab({
             </div>
 
             {/* Filter Tabs Pills (Semua, Belum Dibaca, Follow-up, Paused) */}
-            <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
+            <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
               <button
                 type="button"
                 onClick={() => setFilterTab('all')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'all'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Semua percakapan"
               >
                 <span>Semua</span>
-                <span className="text-[9px] px-1 rounded-full bg-slate-200/70 text-slate-600">
+                <span className="text-[9px] px-1 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                   {counts.all}
                 </span>
               </button>
@@ -2706,15 +2719,15 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('unread')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'unread'
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Pesan belum dibaca"
               >
                 <span>Unread</span>
                 <span
                   className={`text-[9px] px-1 rounded-full ${
-                    counts.unread > 0 ? 'bg-blue-100 text-blue-700 font-extrabold' : 'bg-slate-200/70 text-slate-600'
+                    counts.unread > 0 ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-extrabold' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   {counts.unread}
@@ -2726,13 +2739,13 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('followup')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'followup'
-                    ? 'bg-white text-purple-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-400 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Chat butuh follow up / hot leads"
               >
                 <span>Follow-up</span>
-                <span className="text-[9px] px-1 rounded-full bg-purple-100 text-purple-700">
+                <span className="text-[9px] px-1 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
                   {counts.followup}
                 </span>
               </button>
@@ -2742,15 +2755,15 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('paused')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'paused'
-                    ? 'bg-white text-amber-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-400 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Chat dengan bot dijeda / CS takeover"
               >
                 <span>Paused</span>
                 <span
                   className={`text-[9px] px-1 rounded-full ${
-                    counts.paused > 0 ? 'bg-amber-100 text-amber-800 font-extrabold' : 'bg-slate-200/70 text-slate-600'
+                    counts.paused > 0 ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 font-extrabold' : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   {counts.paused}
@@ -2759,7 +2772,7 @@ export default function TeamChatTab({
             </div>
 
             {/* Sub-Filter Penugasan CS */}
-            <div className="flex items-center justify-between text-[10px] font-bold px-1 text-slate-400">
+            <div className="flex items-center justify-between text-[10px] font-bold px-1 text-slate-400 dark:text-slate-500">
               <span className="text-[9px] uppercase tracking-wider">Penugasan:</span>
               <div className="flex items-center gap-1">
                 <button
@@ -2767,8 +2780,8 @@ export default function TeamChatTab({
                   onClick={() => setFilterTab(filterTab === 'mine' ? 'all' : 'mine')}
                   className={`px-2 py-0.5 rounded-lg transition cursor-pointer border ${
                     filterTab === 'mine'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                      : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                      : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   Chat Saya ({counts.mine})
@@ -2778,8 +2791,8 @@ export default function TeamChatTab({
                   onClick={() => setFilterTab(filterTab === 'unassigned' ? 'all' : 'unassigned')}
                   className={`px-2 py-0.5 rounded-lg transition cursor-pointer border ${
                     filterTab === 'unassigned'
-                      ? 'bg-amber-50 text-amber-700 border-amber-300'
-                      : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
+                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                      : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   Unassigned ({counts.unassigned})
@@ -2836,8 +2849,8 @@ export default function TeamChatTab({
                     onClick={() => handleSelectConversation(c.id)}
                     className={`p-3 rounded-2xl border transition cursor-pointer relative ${
                       isSelected
-                        ? 'bg-white border-blue-500 shadow-sm ring-1 ring-blue-500/20'
-                        : 'bg-white/80 hover:bg-white border-slate-200/80 hover:border-slate-300'
+                        ? 'bg-white dark:bg-slate-800 border-blue-500 shadow-sm ring-1 ring-blue-500/20'
+                        : 'bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
@@ -2856,10 +2869,10 @@ export default function TeamChatTab({
                       {/* Detail Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-xs font-bold text-slate-900 truncate">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                             {c.customerName || c.customerPhone}
                           </span>
-                          <span className="text-[10px] text-slate-400 shrink-0 font-medium">
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-medium">
                             {c.time.split(' ')[0]}
                           </span>
                         </div>
@@ -2939,25 +2952,25 @@ export default function TeamChatTab({
         </div>
 
         {/* =================================================================== */}
-        {/* KOLOM 2 (TENGAH): CHAT AREA AKTIF (flex-1, h-full, min-w-0)         */}
+        {/* KOLOM 2 (TENGAH): CHAT AREA AKTIF (flex-1 min-w-0 w-full overflow-hidden) */}
         {/* =================================================================== */}
-        <div className={`flex-1 min-w-0 h-full flex flex-col bg-white overflow-hidden ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`flex-1 min-w-0 w-full h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {!currentConversation ? (
-            <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-400">
-              <MessageSquare className="w-10 h-10 text-slate-300 mb-2" />
-              <p className="text-sm font-bold text-slate-700">Pilih Percakapan</p>
-              <p className="text-xs text-slate-400">Pilih salah satu chat dari antrean sebelah kiri untuk mulai merespons.</p>
+            <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900">
+              <MessageSquare className="w-10 h-10 text-slate-300 dark:text-slate-600 mb-2" />
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Pilih Percakapan</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Pilih salah satu chat dari antrean sebelah kiri untuk mulai merespons.</p>
             </div>
           ) : (
             <>
               {/* Header Thread */}
-              <div className="p-3.5 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 w-full overflow-hidden">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 truncate">
                   {/* Mobile Back Button (< md) */}
                   <button
                     type="button"
                     onClick={() => setIsMobileChatOpen(false)}
-                    className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0"
+                    className="md:hidden p-1.5 -ml-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer shrink-0"
                     title="Kembali ke antrean chat"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -2966,12 +2979,12 @@ export default function TeamChatTab({
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs uppercase">
                     {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 truncate">
                         {currentConversation.customerName || `Customer (${currentConversation.customerPhone})`}
                       </h2>
-                      <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline truncate">
                         • {currentConversation.customerPhone}
                       </span>
                       <ChannelBadge
@@ -2980,27 +2993,27 @@ export default function TeamChatTab({
                       />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         <span>Sesi Aktif</span>
                       </span>
-                      <span className="text-slate-300">•</span>
-                      <span className="text-[10px] text-slate-500 font-semibold">
+                      <span className="text-slate-300 dark:text-slate-700">•</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
                         {currentConversation.assignedAgentName || currentConversation.assignedTo}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Profil & Quick POS Toggle Button on < xl (Split-screen / Tablet) */}
+                {/* Profil & Quick POS Toggle Button on < 2xl (Split-screen / Normal laptop) */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsCsConsoleOpen((prev) => !prev)}
-                    className={`xl:hidden px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
+                    className={`2xl:hidden px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 shrink-0 ${
                       isCsConsoleOpen
                         ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                        : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
                     }`}
                     title="Buka / Tutup Profil & Quick POS"
                   >
@@ -3015,7 +3028,7 @@ export default function TeamChatTab({
               </div>
 
               {/* Area Pesan Chat (Scrollable) */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/40">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50 dark:bg-slate-950/95">
                 {inbox.isLoadingMessages || (selectedConvId && messagesList.length === 0 && (inbox.isLoadingConversations || !inbox.activeConversationId || inbox.activeConversationId !== selectedConvId)) ? (
                   <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 my-auto">
                     <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
@@ -3071,9 +3084,9 @@ export default function TeamChatTab({
                         <div
                           className={`p-3.5 rounded-2xl max-w-[85%] sm:max-w-md shadow-2xs ${
                             isCustomer
-                              ? 'bg-white border border-slate-200 text-slate-900 rounded-tl-xs'
+                              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-tl-xs'
                               : isBot
-                              ? 'bg-violet-50/90 border border-violet-200 text-slate-900 rounded-tr-xs'
+                              ? 'bg-violet-50/90 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/60 text-slate-900 dark:text-slate-100 rounded-tr-xs'
                               : 'bg-indigo-600 text-white rounded-tr-xs'
                           }`}
                         >
@@ -3464,15 +3477,15 @@ export default function TeamChatTab({
                 <div
                   className={`px-3.5 py-2 border-b flex items-center justify-between gap-3 transition-colors ${
                     isConversationPaused
-                      ? 'bg-amber-50/95 border-amber-200 text-amber-950'
-                      : 'bg-slate-50/90 border-slate-200 text-slate-700'
+                      ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200'
+                      : 'bg-slate-50/90 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {isConversationPaused ? (
                       <>
                         <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                        <span className="text-xs font-bold truncate flex items-center gap-1.5 text-amber-950">
+                        <span className="text-xs font-bold truncate flex items-center gap-1.5 text-amber-950 dark:text-amber-200">
                           <span>⏸️</span>
                           <span>Percakapan Ditangani Manual (Bot Dijeda)</span>
                         </span>
@@ -3480,7 +3493,7 @@ export default function TeamChatTab({
                     ) : (
                       <>
                         <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="text-xs font-semibold truncate flex items-center gap-1.5 text-slate-700">
+                        <span className="text-xs font-semibold truncate flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
                           <span>🤖</span>
                           <span>Chatbot Aktif — AI sedang menangani percakapan ini.</span>
                         </span>
@@ -3511,95 +3524,126 @@ export default function TeamChatTab({
                   </button>
                 </div>
 
-                {/* Quick Canned Responses Bar */}
-                <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  <span className="text-[10px] font-bold text-slate-400 shrink-0">Shortcut /:</span>
-                  {(quickReplies.length > 0 ? quickReplies.slice(0, 5) : [
-                    { shortcut: '/katalog', title: 'Katalog', content: 'Halo kak, silakan cek katalog kami ya!' },
-                    { shortcut: '/jam', title: 'Jam CS', content: 'Layanan CS aktif pukul 08.00 - 21.00 WIB.' },
-                    { shortcut: '/alamat', title: 'Alamat Toko', content: 'Lokasi gudang pusat pengiriman.' },
-                    { shortcut: '/garansi', title: 'Garansi', content: 'Syarat retur sertakan video unboxing.' },
-                    { shortcut: '/tanya', title: 'Form Tanya', content: 'Mohon isi data konsultasi awal.' },
-                  ]).map((tpl, idx) => (
+                {/* Form Input Balasan Manual & Drop-up Popover Autocomplete */}
+                <div className="p-3 relative bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                  {/* Drop-up Popover untuk Shortcut "/" */}
+                  {slashPopoverOpen && (
+                    <div className="absolute bottom-full mb-2 left-3 right-3 z-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-2 max-h-56 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1">
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          <Zap className="w-3 h-3 text-indigo-500" />
+                          <span>Pilih Canned Response (/{slashQuery})</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                            Gunakan <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px]">↑</kbd> <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px]">↓</kbd> & <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px]">Enter</kbd>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickRepliesModalOpen(true)}
+                            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          >
+                            + Atur Template
+                          </button>
+                        </div>
+                      </div>
+
+                      {filteredQuickReplies.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">
+                          Tidak ada shortcut yang cocok dengan &quot;/{slashQuery}&quot;
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {filteredQuickReplies.map((item, idx) => {
+                            const isSelected = idx === selectedSlashIndex;
+                            return (
+                              <button
+                                key={item.id || item.shortcut || idx}
+                                type="button"
+                                onClick={() => handleSelectQuickReply(item)}
+                                onMouseEnter={() => setSelectedSlashIndex(idx)}
+                                className={`w-full text-left px-3 py-2 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-900 dark:text-indigo-200 ring-1 ring-indigo-500/30'
+                                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                      {item.shortcut}
+                                    </span>
+                                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                                      {item.title}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                    {item.content}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-mono">
+                                  Enter ↵
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <form
+                    onSubmit={handleSendLocalMessage}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      ref={chatInputRef}
+                      type="text"
+                      value={inbox.replyText || localReplyText}
+                      onChange={handleInputChange}
+                      onKeyDown={handleInputKeyDown}
+                      placeholder="Ketik balasan CS atau ketik '/' untuk panggil quick reply..."
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition"
+                    />
                     <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        inbox.setReplyText(tpl.content);
-                        setLocalReplyText(tpl.content);
-                        if (externalSetReplyText) externalSetReplyText(tpl.content);
-                        if (chatInputRef.current) chatInputRef.current.focus();
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-[10px] font-medium text-slate-600 hover:text-indigo-600 truncate shrink-0 transition cursor-pointer flex items-center gap-1"
-                      title={tpl.content}
+                      type="submit"
+                      disabled={(!inbox.replyText.trim() && !localReplyText.trim()) || inbox.isSending}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
                     >
-                      <span className="font-mono font-bold text-indigo-600">{tpl.shortcut}</span>
-                      <span className="text-slate-400">•</span>
-                      <span>{tpl.title}</span>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{inbox.isSending ? 'Mengirim...' : 'Kirim'}</span>
                     </button>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickRepliesModalOpen(true)}
-                    className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold shrink-0 transition cursor-pointer ml-auto flex items-center gap-1"
-                  >
-                    <span>+ Atur Template</span>
-                  </button>
+                  </form>
                 </div>
-
-                {/* Form Input Balasan Manual */}
-                <form
-                  onSubmit={handleSendLocalMessage}
-                  className="p-3 flex items-center gap-2"
-                >
-                  <input
-                    ref={chatInputRef}
-                    type="text"
-                    value={inbox.replyText || localReplyText}
-                    onChange={handleInputChange}
-                    onKeyDown={handleInputKeyDown}
-                    placeholder="Ketik balasan CS atau ketik '/' untuk panggil quick reply..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
-                  />
-                  <button
-                    type="submit"
-                    disabled={(!inbox.replyText.trim() && !localReplyText.trim()) || inbox.isSending}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{inbox.isSending ? 'Mengirim...' : 'Kirim'}</span>
-                  </button>
-                </form>
               </div>
             </>
           )}
         </div>
 
         {/* =================================================================== */}
-        {/* KOLOM 3 (KANAN): CONSOLE CS CRM + QUICK POS (BAKU 3-KOLOM / DRAWER) */}
+        {/* KOLOM 3 (KANAN): PROFIL & QUICK POS (SLIDE-OVER < 2XL / STATIC 2XL) */}
         {/* =================================================================== */}
         <div
           className={`${
             isCsConsoleOpen
-              ? 'fixed inset-y-0 right-0 z-50 w-[360px] max-w-[90vw] bg-white shadow-2xl border-l border-slate-200 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 xl:static xl:z-auto xl:w-80 xl:w-88 2xl:w-96 xl:max-w-none xl:shadow-none xl:border-l xl:bg-slate-50/60 xl:animate-none xl:h-full xl:shrink-0'
-              : 'hidden xl:flex xl:w-80 xl:w-88 2xl:w-96 shrink-0 flex-col bg-slate-50/60 h-full overflow-y-auto border-l border-slate-200 p-3.5 space-y-3'
+              ? 'fixed inset-y-0 right-0 z-50 w-[380px] max-w-[90vw] bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 2xl:static 2xl:z-auto 2xl:w-96 2xl:max-w-none 2xl:shadow-none 2xl:border-l 2xl:bg-slate-50/60 2xl:dark:bg-slate-900/60 2xl:animate-none 2xl:h-full 2xl:shrink-0 text-slate-900 dark:text-slate-100'
+              : 'hidden 2xl:flex 2xl:w-96 shrink-0 flex-col bg-slate-50/60 dark:bg-slate-900/60 h-full overflow-y-auto border-l border-slate-200 dark:border-slate-800 p-3.5 space-y-3 text-slate-900 dark:text-slate-100'
           }`}
         >
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-indigo-600" />
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+            <span className="text-xs font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>Profil & Quick POS</span>
             </span>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg text-[10px] font-bold">
+              <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 dark:bg-slate-800 rounded-lg text-[10px] font-bold">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab('crm')}
                   className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
                     rightPanelTab === 'crm'
-                      ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   <User className="w-2.5 h-2.5" />
@@ -3611,8 +3655,8 @@ export default function TeamChatTab({
                   onClick={() => setRightPanelTab('pos')}
                   className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
                     rightPanelTab === 'pos'
-                      ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   <Receipt className="w-2.5 h-2.5" />
@@ -3620,11 +3664,11 @@ export default function TeamChatTab({
                 </button>
               </div>
 
-              {/* Close Button for Slide-over Drawer on < xl */}
+              {/* Close Button for Slide-over Drawer on < 2xl */}
               <button
                 type="button"
                 onClick={() => setIsCsConsoleOpen(false)}
-                className="xl:hidden w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                className="2xl:hidden w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition cursor-pointer"
                 title="Tutup Profil & Quick POS"
                 aria-label="Tutup Profil & Quick POS"
               >
@@ -4312,10 +4356,10 @@ export default function TeamChatTab({
         </div>
       </div>
 
-      {/* Backdrop overlay saat Profil & Quick POS Drawer terbuka di layar < xl */}
+      {/* Backdrop overlay saat Profil & Quick POS Drawer terbuka di layar < 2xl */}
       {isCsConsoleOpen && (
         <div
-          className="xl:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
+          className="2xl:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in"
           onClick={() => setIsCsConsoleOpen(false)}
           title="Klik untuk menutup drawer"
         />
