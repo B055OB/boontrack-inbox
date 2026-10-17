@@ -10,21 +10,15 @@ interface Props {
   onSuccess?: (data: any) => void;
 }
 
-declare global {
-  interface Window {
-    fbAsyncInit: () => void;
-    FB: any;
-  }
-}
-
 export default function WhatsAppEmbeddedModal({ tenantSlug, onSuccess }: Props) {
   const [sdkReady, setSdkReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectedNumber, setConnectedNumber] = useState<string | null>(null);
 
   useEffect(() => {
-    window.fbAsyncInit = function () {
-      window.FB.init({
+    const win = window as any;
+    win.fbAsyncInit = function () {
+      win.FB?.init({
         appId: process.env.NEXT_PUBLIC_META_APP_ID || '',
         cookie: true,
         xfbml: true,
@@ -51,14 +45,15 @@ export default function WhatsAppEmbeddedModal({ tenantSlug, onSuccess }: Props) 
   }, []);
 
   const launchWhatsAppSignup = () => {
-    if (!window.FB) {
+    const win = window as any;
+    if (!win?.FB) {
       alert('Facebook SDK sedang dimuat. Silakan tunggu beberapa detik.');
       return;
     }
 
     setConnecting(true);
 
-    window.FB.login(
+    win.FB.login(
       (response: any) => {
         if (response.authResponse && response.authResponse.code) {
           const authCode = response.authResponse.code;
@@ -109,7 +104,8 @@ export default function WhatsAppEmbeddedModal({ tenantSlug, onSuccess }: Props) 
         src="https://connect.facebook.net/en_US/sdk.js"
         strategy="lazyOnload"
         onLoad={() => {
-          if (window.fbAsyncInit) window.fbAsyncInit();
+          const win = window as any;
+          if (win.fbAsyncInit) win.fbAsyncInit();
         }}
       />
 
