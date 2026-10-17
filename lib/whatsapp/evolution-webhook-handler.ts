@@ -1532,7 +1532,7 @@ export async function processEvolutionWebhookEvent(
         if (!isSessionExpired) {
           let convQuery: any = supabase
             .from('conversations')
-            .select('id, bot_paused, is_paused, is_bot_paused, is_bot_active, bot_mode, status');
+            .select('id, bot_paused, bot_mode, status');
 
           if (typeof convQuery?.or === 'function') {
             convQuery = convQuery.or(convOrClause);
