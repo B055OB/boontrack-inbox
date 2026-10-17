@@ -7,9 +7,13 @@ ALTER TABLE IF EXISTS public.conversations
   ADD COLUMN IF NOT EXISTS last_state_updated_by TEXT,
   ADD COLUMN IF NOT EXISTS is_bot_active BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS is_bot_paused BOOLEAN DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS is_bot_paused BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS pause_reason TEXT;
 
--- Update fn_toggle_bot_session_state to persist paused_until and last_state_updated_by directly into conversations
+ALTER TABLE IF EXISTS public.conversation_sessions
+  ADD COLUMN IF NOT EXISTS pause_reason TEXT;
+
+-- Update fn_toggle_bot_session_state to persist paused_until, last_state_updated_by, and pause_reason
 CREATE OR REPLACE FUNCTION public.fn_toggle_bot_session_state(
     p_tenant_id TEXT,
     p_scope TEXT,
@@ -30,6 +34,7 @@ DECLARE
     v_clean_phone TEXT;
     v_tenant_status TEXT;
     v_conv_status TEXT;
+    v_pause_reason TEXT;
 BEGIN
     -- 1. Resolve tenant UUID (support slug or UUID string)
     BEGIN
@@ -51,6 +56,11 @@ BEGIN
 
     v_tenant_status := CASE WHEN p_is_paused THEN 'BOT_DISABLED' ELSE 'BOT_ACTIVE' END;
     v_conv_status := CASE WHEN p_is_paused THEN 'HUMAN_HANDOVER' ELSE 'AI_ACTIVE' END;
+    v_pause_reason := CASE 
+        WHEN p_is_paused THEN
+            CASE WHEN p_scope = 'tenant' THEN 'TENANT_DISABLED' ELSE 'HUMAN_HANDOVER' END
+        ELSE NULL
+    END;
 
     -- =========================================================================
     -- SCOPE A: TENANT-LEVEL ATOMIC MUTATION
@@ -70,6 +80,8 @@ BEGIN
                         'paused_at', v_now,
                         'paused_by', p_source,
                         'paused_until', p_paused_until,
+                        'pause_reason', 'TENANT_DISABLED',
+                        'paused_reason', 'TENANT_DISABLED',
                         'last_state_updated_by', p_source
                     )
                 ELSE
@@ -80,6 +92,8 @@ BEGIN
                         'is_bot_active', true,
                         'resumed_at', v_now,
                         'resumed_by', p_source,
+                        'pause_reason', NULL,
+                        'paused_reason', NULL,
                         'last_state_updated_by', p_source,
                         'loop_quarantine', false,
                         'is_quarantined', false,
@@ -103,6 +117,7 @@ BEGIN
                 paused_until = p_paused_until,
                 paused_at = v_now,
                 paused_by = p_source,
+                pause_reason = 'TENANT_DISABLED',
                 metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
                     'bot_status', v_tenant_status,
                     'bot_paused', true,
@@ -111,6 +126,8 @@ BEGIN
                     'paused_at', v_now,
                     'paused_by', p_source,
                     'paused_until', p_paused_until,
+                    'pause_reason', 'TENANT_DISABLED',
+                    'paused_reason', 'TENANT_DISABLED',
                     'last_state_updated_by', p_source
                 ),
                 updated_at = v_now
@@ -123,6 +140,7 @@ BEGIN
                 is_bot_paused = true,
                 is_bot_active = false,
                 paused_until = p_paused_until,
+                pause_reason = 'TENANT_DISABLED',
                 last_state_updated_by = p_source,
                 bot_mode = 'HUMAN_ACTIVE',
                 status = 'HUMAN_PAUSED',
@@ -137,6 +155,7 @@ BEGIN
             'bot_paused', p_is_paused,
             'is_bot_active', NOT p_is_paused,
             'paused_until', p_paused_until,
+            'pause_reason', v_pause_reason,
             'last_state_updated_by', p_source,
             'tenant_id', v_tenant_uuid
         );
@@ -160,6 +179,7 @@ BEGIN
                 paused_at,
                 paused_by,
                 paused_until,
+                pause_reason,
                 metadata,
                 updated_at
             ) VALUES (
@@ -173,6 +193,7 @@ BEGIN
                 CASE WHEN p_is_paused THEN v_now ELSE NULL END,
                 p_source,
                 p_paused_until,
+                v_pause_reason,
                 CASE WHEN p_is_paused THEN
                     jsonb_build_object(
                         'bot_status', v_conv_status,
@@ -182,6 +203,8 @@ BEGIN
                         'paused_at', v_now,
                         'paused_by', p_source,
                         'paused_until', p_paused_until,
+                        'pause_reason', 'HUMAN_HANDOVER',
+                        'paused_reason', 'HUMAN_HANDOVER',
                         'last_state_updated_by', p_source
                     )
                 ELSE
@@ -192,6 +215,8 @@ BEGIN
                         'is_bot_active', true,
                         'resumed_at', v_now,
                         'resumed_by', p_source,
+                        'pause_reason', NULL,
+                        'paused_reason', NULL,
                         'last_state_updated_by', p_source
                     )
                 END,
@@ -204,6 +229,7 @@ BEGIN
                 paused_at = EXCLUDED.paused_at,
                 paused_by = EXCLUDED.paused_by,
                 paused_until = EXCLUDED.paused_until,
+                pause_reason = EXCLUDED.pause_reason,
                 metadata = COALESCE(public.conversation_sessions.metadata, '{}'::jsonb) || (
                     CASE WHEN p_is_paused THEN
                         jsonb_build_object(
@@ -214,6 +240,8 @@ BEGIN
                             'paused_at', v_now,
                             'paused_by', p_source,
                             'paused_until', p_paused_until,
+                            'pause_reason', 'HUMAN_HANDOVER',
+                            'paused_reason', 'HUMAN_HANDOVER',
                             'last_state_updated_by', p_source
                         )
                     ELSE
@@ -224,6 +252,8 @@ BEGIN
                             'is_bot_active', true,
                             'resumed_at', v_now,
                             'resumed_by', p_source,
+                            'pause_reason', NULL,
+                            'paused_reason', NULL,
                             'last_state_updated_by', p_source
                         )
                     END
@@ -237,6 +267,7 @@ BEGIN
                 is_bot_paused = p_is_paused,
                 is_bot_active = NOT p_is_paused,
                 paused_until = p_paused_until,
+                pause_reason = v_pause_reason,
                 last_state_updated_by = p_source,
                 bot_mode = CASE WHEN p_is_paused THEN 'HUMAN_ACTIVE' ELSE 'AI_ACTIVE' END,
                 status = CASE WHEN p_is_paused THEN 'HUMAN_PAUSED' ELSE 'active' END,
@@ -252,6 +283,7 @@ BEGIN
             'bot_paused', p_is_paused,
             'is_bot_active', NOT p_is_paused,
             'paused_until', p_paused_until,
+            'pause_reason', v_pause_reason,
             'last_state_updated_by', p_source,
             'customer_phone', v_clean_phone
         );

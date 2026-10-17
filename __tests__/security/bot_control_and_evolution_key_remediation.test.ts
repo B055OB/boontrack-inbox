@@ -27,6 +27,7 @@ import {
   processEvolutionWebhookEvent,
 } from '@/lib/whatsapp/evolution-webhook-handler';
 import { GET, POST, PUT } from '@/app/api/v1/tenants/[slug]/bot-control/route';
+import { updateBotState } from '@/lib/whatsapp/bot-control-service';
 
 // Mock Supabase Client for bot-control route and service
 const mockTenantData = {
@@ -301,22 +302,22 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(res.status).toBe(401);
     });
 
-    it('6. Returns 403 Forbidden when accessed with mismatching merchant session cookie', async () => {
+    it('6. Rejects with 401 Unauthorized when accessed with plain slug cookie without valid Supabase token (Anti-Hijack B1)', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_session=attacker-store; merchant_store=attacker-store',
+          cookie: 'merchant_session=toko-sukses; merchant_store=toko-sukses',
         },
         body: JSON.stringify({ action: 'PAUSE' }),
       });
 
       const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
 
       const json = await res.json();
       expect(json.success).toBe(false);
-      expect(json.error).toContain('Forbidden');
+      expect(json.error).toContain('cookie slug polos ditolak');
     });
 
     it('7. GET request returns 401 Unauthorized without session or credentials', async () => {
@@ -327,12 +328,12 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
   });
 
   describe('Authorized Requests via Official Sessions', () => {
-    it('8. Allows mutation when caller has valid matching merchant session cookie', async () => {
+    it('8. Allows mutation when caller has valid Supabase session token in cookie (sb-access-token)', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_session=toko-sukses',
+          cookie: 'sb-access-token=valid-owner-jwt-token',
         },
         body: JSON.stringify({ action: 'PAUSE' }),
       });
@@ -343,14 +344,15 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       const json = await res.json();
       expect(json.success).toBe(true);
       expect(json.bot_paused).toBe(true);
+      expect(json.pause_reason).toBe('TENANT_DISABLED');
     });
 
-    it('8b. Allows mutation with source: dashboard_master_toggle and returns consistent is_paused and source in response', async () => {
+    it('8b. Allows mutation with source: dashboard_master_toggle and returns consistent is_paused, pause_reason, and source in response', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_session=toko-sukses',
+          cookie: 'sb-access-token=valid-owner-jwt-token',
         },
         body: JSON.stringify({
           scope: 'tenant',
@@ -366,6 +368,7 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(json.success).toBe(true);
       expect(json.is_paused).toBe(true);
       expect(json.bot_paused).toBe(true);
+      expect(json.pause_reason).toBe('TENANT_DISABLED');
       expect(json.source).toBe('dashboard_master_toggle');
     });
 
@@ -442,7 +445,7 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
     it('13. GET endpoint returns 200 with bot status when caller has valid session', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         headers: {
-          cookie: 'merchant_session=toko-sukses',
+          cookie: 'sb-access-token=valid-owner-jwt-token',
         },
       });
 
@@ -468,13 +471,48 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_session=toko-sukses',
+          cookie: 'sb-access-token=valid-owner-jwt-token',
         },
         body: JSON.stringify({ action: 'PAUSE' }),
       });
 
       const authRes = await PUT(authReq, { params: Promise.resolve({ slug: 'toko-sukses' }) });
       expect(authRes.status).toBe(200);
+    });
+  });
+
+  describe('Security Remediation: No Admin Fallback & Explicit system_internal Role (CTO Directive B2)', () => {
+    it('15. updateBotState rejects with UNAUTHORIZED when userRole is omitted and caller is non-system (Fail-Closed, No Default Admin)', async () => {
+      const result = await updateBotState({
+        tenantId: 'uuid-1234',
+        tenantSlug: 'toko-sukses',
+        action: 'PAUSE',
+        scope: 'tenant',
+        source: 'external_unauthorized_call',
+        // userRole deliberately omitted!
+        supabase: mockSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+      expect(result.message).toContain('Akses ditolak: Identitas pengguna / role tidak terverifikasi');
+    });
+
+    it('16. updateBotState permits mutation with role system_internal when called by system sources', async () => {
+      const result = await updateBotState({
+        tenantId: 'uuid-1234',
+        tenantSlug: 'toko-sukses',
+        action: 'RESUME',
+        scope: 'conversation',
+        customerPhone: '6281234567890',
+        source: 'timeout_expired',
+        // userRole deliberately omitted, but source indicates system auto-resume
+        supabase: mockSupabase,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.bot_paused).toBe(false);
+      expect(result.last_state_updated_by).toBe('timeout_expired');
     });
   });
 });

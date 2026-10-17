@@ -457,7 +457,7 @@ export async function executeBotControl(params: {
 
   // Validasi RBAC berdasarkan scope yang diminta
   if (scope === 'tenant') {
-    const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'merchant_cookie'];
+    const allowedTenantRoles = ['owner', 'admin', 'superuser', 'internal_admin', 'system_internal', 'merchant_cookie'];
     if (!allowedTenantRoles.includes(role)) {
       return {
         success: false,
@@ -469,7 +469,7 @@ export async function executeBotControl(params: {
       };
     }
   } else {
-    const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'merchant_cookie', 'agent'];
+    const allowedConvRoles = ['owner', 'admin', 'cs', 'manager', 'superuser', 'internal_admin', 'system_internal', 'merchant_cookie', 'agent'];
     if (!allowedConvRoles.includes(role)) {
       return {
         success: false,
@@ -581,6 +581,10 @@ export async function executeBotControl(params: {
           ? `⏸️ Percakapan dialihkan ke CS (HUMAN_HANDOVER). Bot AI dijeda selama ${pauseDurationLabel}.`
           : '🤖 Percakapan diaktifkan kembali untuk Bot AI (AI_ACTIVE).');
 
+    const pauseReason = isPause
+      ? (scope === 'tenant' ? 'TENANT_DISABLED' : 'HUMAN_HANDOVER')
+      : null;
+
     return {
       success: true,
       scope,
@@ -588,6 +592,7 @@ export async function executeBotControl(params: {
       bot_paused: isPause,
       is_bot_active: !isPause,
       paused_until: pausedUntilIso,
+      pause_reason: pauseReason,
       last_state_updated_by: source,
       message: replyMsg,
     };
@@ -598,12 +603,15 @@ export async function executeBotControl(params: {
   // =========================================================================
   if (scope === 'tenant') {
     const tenantStatus: TenantBotStatus = isPause ? 'BOT_DISABLED' : 'BOT_ENABLED';
+    const pauseReason = isPause ? 'TENANT_DISABLED' : null;
 
     const meta = (tenantRow?.metadata && typeof tenantRow.metadata === 'object') ? { ...tenantRow.metadata } : {};
     meta.bot_status = tenantStatus;
     meta.bot_paused = isPause;
     meta.is_bot_paused = isPause;
     meta.is_bot_active = !isPause;
+    meta.pause_reason = pauseReason;
+    meta.paused_reason = pauseReason;
     const currentMetaVer = Number(meta.control_version ?? meta.version ?? 0);
     meta.control_version = currentMetaVer + 1;
     meta.version = currentMetaVer + 1;
@@ -661,6 +669,7 @@ export async function executeBotControl(params: {
           current_state: 'HUMAN_PAUSED',
           bot_status: 'BOT_DISABLED',
           paused_until: pausedUntilIso,
+          pause_reason: 'TENANT_DISABLED',
           paused_at: nowIso,
           paused_by: source,
           updated_at: nowIso,
@@ -695,6 +704,7 @@ export async function executeBotControl(params: {
           is_bot_paused: true,
           is_bot_active: false,
           paused_until: pausedUntilIso,
+          pause_reason: 'TENANT_DISABLED',
           last_state_updated_by: source,
           bot_mode: 'HUMAN_ACTIVE',
           status: 'HUMAN_PAUSED',
@@ -749,6 +759,7 @@ export async function executeBotControl(params: {
         bot_paused: isPause,
         is_bot_active: !isPause,
         paused_until: pausedUntilIso,
+        pause_reason: pauseReason,
         last_state_updated_by: source,
         message: replyMsg,
       };
@@ -786,9 +797,11 @@ export async function executeBotControl(params: {
         paused_at: isHandover ? nowIso : null,
         paused_by: source,
         paused_until: pausedUntilIso,
+        pause_reason: isHandover ? 'HUMAN_HANDOVER' : null,
         metadata: {
           status: convStatus,
-          paused_reason: isHandover ? 'CS_HANDOVER' : null,
+          pause_reason: isHandover ? 'HUMAN_HANDOVER' : null,
+          paused_reason: isHandover ? 'HUMAN_HANDOVER' : null,
           updated_by: source,
           updated_at: nowIso,
           control_version: (getRuntimeSessionCache(resolvedTenantUuid, targetPhone)?.version || 1),
@@ -827,6 +840,7 @@ export async function executeBotControl(params: {
         is_bot_paused: isHandover,
         is_bot_active: !isHandover,
         paused_until: isHandover ? pausedUntilIso : null,
+        pause_reason: isHandover ? 'HUMAN_HANDOVER' : null,
         last_state_updated_by: source,
         bot_mode: isHandover ? 'HUMAN_ACTIVE' : 'AI_ACTIVE',
         status: isHandover ? 'HUMAN_PAUSED' : 'active',
@@ -889,6 +903,7 @@ export async function executeBotControl(params: {
       bot_paused: isHandover,
       is_bot_active: !isHandover,
       paused_until: isHandover ? pausedUntilIso : null,
+      pause_reason: isHandover ? 'HUMAN_HANDOVER' : null,
       last_state_updated_by: source,
       message: isHandover
         ? `⏸️ Percakapan dialihkan ke CS (HUMAN_HANDOVER). Bot AI dijeda selama ${pauseDurationLabel}.`
@@ -951,6 +966,7 @@ export async function updateBotState(
   bot_paused: boolean;
   is_bot_active?: boolean;
   paused_until?: string | null;
+  pause_reason?: string | null;
   last_state_updated_by?: string;
   message: string;
   scope?: BotControlScope;
@@ -983,9 +999,20 @@ export async function updateBotState(
   // Default scope
   const scope: BotControlScope = resolvedParams.scope || (resolvedParams.conversationId || resolvedParams.customerPhone ? 'conversation' : 'tenant');
 
-  // Default source and role if not supplied
+  // Default source and role: Fail-closed RBAC enforcement (CTO Directive B2)
   const source = resolvedParams.source || 'update_bot_state';
-  const userRole = resolvedParams.userRole || 'admin';
+  const isSystemCaller =
+    source === 'system' ||
+    source === 'system_internal' ||
+    source === 'system_auto_resume' ||
+    source === 'timeout_expired' ||
+    source === 'auto_resume' ||
+    source.startsWith('timeout_') ||
+    source.startsWith('system_');
+
+  // STRICT RBAC: Never fallback to 'admin'.
+  // Explicitly assign 'system_internal' for system callers; leave undefined for human callers so executeBotControl can fail-closed or resolve from senderPhone.
+  const userRole = resolvedParams.userRole || (isSystemCaller ? 'system_internal' : undefined);
 
   return executeBotControl({
     action: act,
@@ -1017,7 +1044,7 @@ export async function resumeBotState(
     tenantId,
     action: 'RESUME',
     scope: 'conversation',
-    userRole: 'internal_admin',
+    userRole: 'system_internal',
     source: reason,
     supabase,
   });
@@ -1246,11 +1273,14 @@ export async function checkRuntimeBotDecisionGate(params: {
                 current_state: 'ACTIVE',
                 bot_status: 'BOT_ACTIVE',
                 paused_until: null,
+                pause_reason: null,
                 metadata: {
                   is_bot_paused: false,
                   bot_paused: false,
                   is_bot_active: true,
                   bot_status: 'BOT_ACTIVE',
+                  pause_reason: null,
+                  paused_reason: null,
                   resumed_at: nowIso,
                   resumed_by: 'system_auto_resume',
                 },
@@ -1289,6 +1319,8 @@ export async function checkRuntimeBotDecisionGate(params: {
                   is_bot_active: true,
                   bot_mode: 'AI_ACTIVE',
                   status: 'active',
+                  paused_until: null,
+                  pause_reason: null,
                   updated_at: nowIso,
                 });
 

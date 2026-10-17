@@ -40,6 +40,22 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
 
   const createMockSupabase = () => {
     return {
+      auth: {
+        getUser: jest.fn().mockImplementation(async (token: string) => {
+          if (token === 'valid-owner-jwt-token' || token === 'valid-token') {
+            return {
+              data: {
+                user: {
+                  id: 'owner-uuid-101',
+                  email: 'owner@tenant.com',
+                },
+              },
+              error: null,
+            };
+          }
+          return { data: { user: null }, error: { message: 'Invalid token' } };
+        }),
+      },
       rpc: jest.fn().mockImplementation((fnName: string, args: any) => {
         if (fnName === 'fn_toggle_bot_session_state') {
           const isPaused = args.p_is_paused;
@@ -262,6 +278,8 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       {
         id: tenantId,
         slug: tenantSlug,
+        user_id: 'owner-uuid-101',
+        owner_id: 'owner-uuid-101',
         phone: botNumber,
         whatsapp_number: botNumber,
         bot_paused: false,
@@ -458,12 +476,12 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       // Mock getSupabaseAdmin in route
       jest.spyOn(require('@/lib/supabaseClient'), 'getSupabaseAdmin').mockReturnValue(mockSupabase);
 
-      // Verify GET returns paused_until and last_state_updated_by for the conversation
+      // Verify GET returns paused_until, pause_reason, and last_state_updated_by for the conversation
       const req = new NextRequest(
         `https://boontrack.com/api/v1/tenants/${tenantSlug}/bot-control?conversation_id=conv-101`,
         {
           headers: {
-            cookie: `merchant_session=${tenantSlug}`,
+            authorization: 'Bearer valid-owner-jwt-token',
           },
         }
       );
@@ -475,6 +493,7 @@ describe('CTO Directive Verification: False Self-Lock & Bot Control State Machin
       expect(json.is_bot_active).toBe(false);
       expect(json.bot_paused).toBe(true);
       expect(json.paused_until).toBeDefined();
+      expect(json.pause_reason).toBe('HUMAN_HANDOVER');
       expect(json.last_state_updated_by).toBe('test_sync');
     });
   });
