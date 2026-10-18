@@ -333,7 +333,7 @@ export async function handleDashboardAiChat(
   const hasImage = Boolean(imagePart);
 
   // 3. Grounding Peta 8 Tab Navigation
-  const targetTab = detectTargetTab(userText);
+  let targetTab = detectTargetTab(userText);
 
   // 4. Grounding Hak Akses & Tier Entitlement
   const entitlementCheck = evaluateTierEntitlement(currentTier, userText);
@@ -343,17 +343,26 @@ export async function handleDashboardAiChat(
     .map((tab) => `• Tab '${tab.key}' (${tab.label}): ${tab.description}`)
     .join('\n');
 
-  let systemPrompt = `Anda adalah BoonPilot, AI Copilot & Business Architect resmi pada Dashboard BoonTrack.
+  let systemPrompt = `Anda adalah BoonPilot, Asisten Operasional Toko & AI Business Copilot resmi pada Dashboard BoonTrack.
 Konteks Toko:
 - Nama Toko: ${tenantName} (Slug: ${slug})
 - Paket Langganan Aktif (Ground-Truth Supabase): ${currentTier}
 - Hak Akses CAPI Server-Side: ${currentTier === 'PRO_SCALE' || currentTier === 'ENTERPRISE' ? 'AKTIF (Diizinkan)' : 'TIDAK TERSEDIA (Upgrade Required)'}
 - Hak Akses Multi-Seat CS: ${currentTier === 'ENTERPRISE' ? 'AKTIF' : 'TIDAK TERSEDIA (Khusus ENTERPRISE)'}
 
-STANDAR TONE OF VOICE & GAYA KOMUNIKASI (WAJIB DIPATUHI):
-1. Sapaan Ramah & Hangat: Selalu gunakan sapaan 'Kak' atau 'Kakak' kepada merchant. Hindari bahasa robotik/kaku atau birokratis.
-2. Format Jawaban Terstruktur (Step-by-Step): Sajikan panduan operasional dalam 3 hingga 5 langkah bernomor yang jelas, ringkas, dan mudah dieksekusi di layar dashboard.
-3. Penutup Solutif: Selalu akhiri respon dengan kalimat ramah menawarkan bantuan langkah berikutnya (misal: 'Ada yang ingin Kakak tanyakan lagi terkait setup varian atau pengaturan toko? Saya siap bantu, Kak!').
+PRINSIP UTAMA RESPON (OPERATIONAL & DIRECT TO-THE-POINT):
+1. JAWAB LANGSUNG TO-THE-POINT: Selalu jawab langsung sesuai pertanyaan atau kebutuhan operasional spesifik yang diajukan merchant.
+2. DILARANG KERAS MEMUNTAHKAN 8 TAB SEKALIGUS: Dilarang membuat greeting atau penjelasan kaku yang mendaftar seluruh 8 tab sekaligus secara membabi buta. Hanya sebutkan nama tab tertentu jika memang spesifik dan relevan dengan solusi yang ditanyakan.
+3. TONE OF VOICE: Ramah, santun, bersahabat khas asisten operasional (gunakan sapaan 'Kak' atau 'Kakak'). Sajikan panduan operasional dalam 2 hingga 4 langkah bernomor yang ringkas dan mudah dieksekusi.
+4. PENUTUP SOLUTIF: Akhiri jawaban dengan kalimat ramah dan solutif yang relevan dengan pertanyaan merchant.
+
+PANDUAN KHUSUS SMART BOX & JEDA AI (PANEL LIVE CHAT CS):
+- Jika merchant menanyakan tentang 'smart box', 'smartbox', 'live chat', 'inbox CS', atau 'cara jeda AI':
+  * JELASKAN FUNGSI PANEL: Smart Box / BoonTrack Live Chat Inbox (tab 'WhatsApp') adalah panel terpadu bagi CS manusia untuk memantau pesan pelanggan secara real-time dan melakukan takeover chat manual.
+  * JELASKAN 3 CARA JEDA AI (ZERO-FRICTION):
+    1. Auto-Pause Otomatis (Zero-Friction): Begitu admin mengetik dan mengirim pesan manual ke pelanggan via console dashboard ataupun langsung dari HP WhatsApp toko, sistem otomatis menjeda (PAUSE) AI selama 30 menit untuk pelanggan tersebut tanpa admin harus mencari atau mengklik tombol jeda secara manual.
+    2. Perintah Cepat WhatsApp: Kirim perintah '#pause 30' (jeda 30 menit), '#pause 60', atau durasi lainnya langsung di chat pelanggan WhatsApp. Kirim '#resume' untuk mengaktifkan AI kembali secara instan.
+    3. Tombol Toggle Manual di Dashboard: Klik tombol 'Jeda AI' pada panel detail percakapan di Smart Box dashboard jika ingin menjeda sesi chat secara manual.
 
 SOP PRODUK & VARIAN SKU (ATURAN MUTLAK §0.12 & §8.3):
 - Jika merchant bertanya mengenai cara upload, input, atau pengelolaan produk bervarian (misalnya pakaian/sepatu yang memiliki variasi warna, ukuran, dsb):
@@ -368,12 +377,11 @@ OMNICHANNEL UPSELL ROUTING (§24.3 & §27.4):
     https://wa.me/6281215567168?text=Halo%20Tim%20IT%20BoonTrack,%20saya%20pemilik%20toko%20${slug}%20ingin%20dibantu%20Setup%20Toko%20Terima%20Beres
   * Informasikan bahwa Tim IT akan bantu input foto, rapikan varian, setting bot WhatsApp, hingga uji coba QRIS toko sampai siap live jualan.
 
-BLUEPRINT PETA 8 TAB DASHBOARD BOONTRACK (GROUND-TRUTH §27.3):
+BLUEPRINT PETA 8 TAB DASHBOARD BOONTRACK (REFERENSI INTERNAL UNTUK NAVIGASI FITUR):
 ${tabsListBlueprint}
 
 ATURAN NAVIGASI & GROUNDING:
-1. Jika merchant menanyakan lokasi fitur atau cara konfigurasi, WAJIB arahkan ke salah satu dari 8 Tab resmi di atas secara presisi.
-   Contoh: "di mana letak input resi?" -> Jelaskan langkahnya pada tab 'orders' (Data pesanan, status settlement QRIS, dan input resi manual).
+1. Jika merchant menanyakan lokasi fitur atau cara konfigurasi, arahkan ke salah satu dari 8 Tab resmi di atas secara presisi sesuai kebutuhan merchant.
 2. Dilarang mengarang tab baru atau nama menu yang tidak ada di blueprint 8 tab.
 
 BATASAN HAK AKSES TIER (§3.1 & §5.1):
@@ -518,6 +526,24 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
         `4. Aktifkan opsi varian produk, lalu tambahkan opsi varian seperti Warna (contoh: Hitam, Putih, Navy) dan Ukuran (contoh: S, M, L, XL) beserta stok masing-masing.\n` +
         `5. Klik **'Simpan Produk'**. Seluruh varian akan otomatis tergabung rapi dalam 1 halaman checkout instan di storefront.\n\n` +
         `Apakah ada kendala saat input varian produknya, Kak? Beritahu saya ya jika Kakak butuh bantuan langkah berikutnya!`;
+    } else if (
+      userText.toLowerCase().includes('smart box') ||
+      userText.toLowerCase().includes('smartbox') ||
+      userText.toLowerCase().includes('live chat') ||
+      userText.toLowerCase().includes('jeda ai') ||
+      userText.toLowerCase().includes('pause ai') ||
+      userText.toLowerCase().includes('auto pause') ||
+      userText.toLowerCase().includes('balas manual') ||
+      userText.toLowerCase().includes('takeover')
+    ) {
+      targetTab = 'whatsapp';
+      modelResponseText =
+        `Halo Kak! **Smart Box / Live Chat CS** adalah panel live chat terpadu pada tab **WhatsApp** (BoonTrack Inbox) untuk memantau interaksi pelanggan secara real-time dan melakukan takeover chat manual oleh CS manusia.\n\n` +
+        `💡 **Cara Kerja & Fitur Jeda AI (Auto-Pause):**\n` +
+        `1. **Auto-Pause Zero-Friction (Otomatis)**: Begitu admin/CS mengetik dan membalas pesan secara manual ke pelanggan—baik melalui dashboard Smart Box maupun langsung via WhatsApp HP—sistem otomatis menjeda bot AI selama **30 menit** khusus untuk pelanggan tersebut tanpa perlu mencari atau menekan tombol jeda secara manual.\n` +
+        `2. **Perintah Cepat WhatsApp**: Ketik perintah \`#pause 30\` (jeda 30 menit), \`#pause 60\`, atau durasi lainnya langsung di chat pelanggan WhatsApp. Ketik \`#resume\` untuk mengaktifkan kembali bot AI secara instan.\n` +
+        `3. **Tombol Toggle di Dashboard**: Klik tombol **'Jeda AI'** pada panel percakapan pelanggan di Smart Box jika ingin mengaktifkan atau menonaktifkan jeda AI secara manual.\n\n` +
+        `Ada kendala saat membalas chat pelanggan atau mengatur sesi CS Kak? Beritahu saya ya, saya siap bantu! 😊`;
     } else if (targetTab) {
       // 8-Tab Grounding Fallback
       const tabDef = DASHBOARD_8_TABS[targetTab];
@@ -532,24 +558,15 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
         `Ada bagian tertentu di tab ini yang ingin Kakak tanyakan lebih detail? Saya siap bantu, Kak!`;
     } else {
       modelResponseText =
-        `Halo Kak! Saya **BoonPilot Copilot** resmi toko **${tenantName}** (Paket: **${currentTier}**).\n\n` +
-        `Saya siap membantu memandu operasional toko Kakak langkah demi langkah melalui 8 tab resmi dashboard:\n` +
-        `1. **Overview**: Ringkasan omset penjualan dan grafik performa toko.\n` +
-        `2. **Products**: Tambah produk, kelola 1 SKU untuk banyak varian warna/ukuran, dan atur stok.\n` +
-        `3. **Orders**: Pantau pesanan masuk, settlement pembayaran QRIS, dan input resi.\n` +
-        `4. **WhatsApp**: Kelola nomor CS, pesan sapaan otomatis, dan chat pelanggan via **BoonTrack Inbox**.\n` +
-        `5. **Shipping**: Atur titik jemput gudang pengiriman dan kurir aktif.\n` +
-        `6. **Payments**: Setup QRIS toko dan rekening pencairan.\n` +
-        `7. **Ads**: Pasang Meta Pixel, TikTok Pixel, dan Server-Side CAPI.\n` +
-        `8. **Settings**: Kelola profil toko, ganti email, dan PIN keamanan akun.\n\n` +
-        `Ada hal yang ingin Kakak tanyakan atau butuh bantuan langkah berikutnya? Saya siap bantu, Kak!`;
+        `Halo Kak! Saya BoonPilot, asisten operasional toko **${tenantName}** 😊\n\n` +
+        `Ada yang bisa saya bantu atau pandu di dashboard hari ini? Silakan tanyakan hal seputar operasional toko, katalog produk, live chat Smart Box, maupun pengaturan lainnya Kak!`;
     }
   }
 
   const defaultQuickActions = [
+    'Cara kerja Smart Box & Jeda AI',
     'Di mana letak input resi?',
     'Cara setting ongkir kurir',
-    'Evaluasi performa penjualan',
     'Cek status koneksi WhatsApp',
   ];
 

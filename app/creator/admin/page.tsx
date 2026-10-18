@@ -128,6 +128,10 @@ export default function CreatorAdminPage() {
   const [payoutModalOpen, setPayoutModalOpen] = useState(false);
   const [addedToBioSuccess, setAddedToBioSuccess] = useState<string | null>(null);
 
+  // Creator & Telegram State
+  const [creatorId, setCreatorId] = useState('');
+  const [telegramChatId, setTelegramChatId] = useState<string | null>(null);
+
   // Form State
   const [displayName, setDisplayName] = useState('Suzie Ray');
   const [handle, setHandle] = useState('suzieray_');
@@ -230,6 +234,8 @@ export default function CreatorAdminPage() {
             const result = await res.json();
             if (result.success && result.data) {
               const p = result.data;
+              if (p.id) setCreatorId(p.id);
+              if (p.telegram_chat_id) setTelegramChatId(p.telegram_chat_id);
               if (p.handle) setHandle(p.handle);
               if (p.bio) setBio(p.bio);
               if (p.social_links) {
@@ -547,6 +553,7 @@ export default function CreatorAdminPage() {
           links,
           theme: 'clean_light',
           is_verified: true,
+          telegram_chat_id: telegramChatId,
         }),
       });
 
@@ -780,6 +787,70 @@ export default function CreatorAdminPage() {
                     className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition resize-none leading-relaxed"
                   />
                 </div>
+
+                {/* Notifikasi Instan Telegram Creator (@booncreator_bot) */}
+                <div className="bg-sky-50/70 border border-sky-200/80 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center font-bold shadow-xs">
+                        <MessageCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-bold text-slate-900">
+                            Notifikasi Telegram (@booncreator_bot)
+                          </h3>
+                          {telegramChatId ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Terhubung
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
+                              Belum Terhubung
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Terima alert instan saat ada traktir donasi baru atau komisi penjualan produk affiliasi.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {telegramChatId ? (
+                    <div className="pt-3 border-t border-sky-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="font-mono text-slate-600">
+                        Chat ID: <span className="font-bold text-slate-900">{telegramChatId}</span>
+                      </div>
+                      <a
+                        href={`https://t.me/booncreator_bot?start=auth_${creatorId || handle.replace(/^@+/, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-sky-700 hover:text-sky-900 font-bold underline underline-offset-2"
+                      >
+                        Hubungkan Ulang
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="pt-3 border-t border-sky-100 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-slate-600">
+                        Sambungkan akun Telegram Anda dalam 1-klik untuk menerima notifikasi:
+                      </p>
+                      <a
+                        href={`https://t.me/booncreator_bot?start=auth_${creatorId || handle.replace(/^@+/, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 transition shadow-sm cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Hubungkan Telegram (@booncreator_bot)
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -862,6 +933,25 @@ export default function CreatorAdminPage() {
             {/* TAB 3: QRIS DONASI LANGSUNG (0% FEE) */}
             {activeTab === 'qris' && (
               <div className="space-y-6 animate-in fade-in duration-200">
+                {!telegramChatId && (
+                  <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <MessageCircle className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                      <p className="text-xs text-sky-900 font-medium">
+                        Aktifkan bot Telegram agar Anda langsung menerima notifikasi instan setiap ada traktir donasi QRIS masuk!
+                      </p>
+                    </div>
+                    <a
+                      href={`https://t.me/booncreator_bot?start=auth_${creatorId || handle.replace(/^@+/, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl flex-shrink-0 shadow-xs"
+                    >
+                      Hubungkan Bot (@booncreator_bot)
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
                 {/* 1. Pengaturan Barcode QRIS & Donasi */}
                 <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm space-y-5">
                   <div className="flex items-start justify-between border-b border-slate-100 pb-4">

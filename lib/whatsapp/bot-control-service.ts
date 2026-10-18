@@ -595,10 +595,11 @@ export async function executeBotControl(params: {
   }
   const targetPhoneForCache = scope === 'conversation' ? targetPhone : undefined;
   const durationMins = params.durationMinutes !== undefined && params.durationMinutes !== null ? Number(params.durationMinutes) : undefined;
+  const effectiveDurationMins = durationMins !== undefined
+    ? durationMins
+    : (scope === 'conversation' ? 30 : 24 * 60);
   const pausedUntilIso = isPause
-    ? (durationMins !== undefined
-        ? new Date(now.getTime() + durationMins * 60 * 1000).toISOString()
-        : new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString())
+    ? new Date(now.getTime() + effectiveDurationMins * 60 * 1000).toISOString()
     : (scope === 'tenant' ? new Date(now.getTime() - 60 * 1000).toISOString() : null);
 
   // Database is Single Source of Truth: Runtime cache is NOT updated optimistically here!
@@ -641,7 +642,9 @@ export async function executeBotControl(params: {
       setRuntimeSessionCache({ ...cachePayload, tenantId: resolvedTenantSlug });
     }
 
-    const pauseDurationLabel = durationMins !== undefined ? `${durationMins} menit` : '24 jam';
+    const pauseDurationLabel = durationMins !== undefined
+      ? `${durationMins} menit`
+      : (scope === 'conversation' ? '30 menit' : '24 jam');
     const replyMsg = scope === 'tenant'
       ? (isPause
           ? '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (BOT_DISABLED). Semua percakapan dialihkan ke mode manual CS.'

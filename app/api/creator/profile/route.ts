@@ -217,7 +217,7 @@ export async function POST(req: Request) {
       },
     };
 
-    const payload = {
+    const payload: Record<string, any> = {
       tenant_id: resolvedTenantId,
       handle: cleanHandle,
       display_name: displayName,
@@ -227,6 +227,10 @@ export async function POST(req: Request) {
       is_verified: Boolean(is_verified),
       updated_at: new Date().toISOString(),
     };
+
+    if (body.telegram_chat_id !== undefined) {
+      payload.telegram_chat_id = body.telegram_chat_id ? String(body.telegram_chat_id).trim() : null;
+    }
 
     let savedData = null;
 
