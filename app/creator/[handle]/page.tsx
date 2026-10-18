@@ -14,7 +14,16 @@ import {
   RefreshCw,
   Flame,
   ArrowRight,
-  ChevronRight
+  ChevronRight,
+  Upload,
+  AlertCircle,
+  ArrowLeft,
+  Heart,
+  Coffee,
+  X,
+  FileText,
+  Camera,
+  CheckCheck
 } from 'lucide-react';
 
 // ── Custom Social SVGs ───────────────────────────────────────────────
@@ -170,6 +179,19 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
   const [previewQrisModal, setPreviewQrisModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Tip / QRIS Donation State
+  const [tipStep, setTipStep] = useState<1 | 2 | 3>(1);
+  const [tipSenderName, setTipSenderName] = useState('');
+  const [tipAmount, setTipAmount] = useState<number>(10000);
+  const [customAmountStr, setCustomAmountStr] = useState('');
+  const [isCustomAmount, setIsCustomAmount] = useState(false);
+  const [tipMessage, setTipMessage] = useState('');
+  const [tipProofFile, setTipProofFile] = useState<File | null>(null);
+  const [tipProofPreview, setTipProofPreview] = useState<string | null>(null);
+  const [tipSubmitting, setTipSubmitting] = useState(false);
+  const [tipError, setTipError] = useState<string | null>(null);
+  const tipFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     let isMounted = true;
     params.then((p) => {
@@ -270,6 +292,118 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
     navigator.clipboard.writeText(fullUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // ── Donation / Tip Handlers ──────────────────────────────────────────
+  const resetTipForm = () => {
+    setTipStep(1);
+    setTipSenderName('');
+    setTipAmount(10000);
+    setCustomAmountStr('');
+    setIsCustomAmount(false);
+    setTipMessage('');
+    setTipProofFile(null);
+    setTipProofPreview(null);
+    setTipSubmitting(false);
+    setTipError(null);
+  };
+
+  const handleSelectChip = (val: number) => {
+    setIsCustomAmount(false);
+    setTipAmount(val);
+    setCustomAmountStr('');
+    setTipError(null);
+  };
+
+  const handleSelectCustomChip = () => {
+    setIsCustomAmount(true);
+    setTipError(null);
+    if (!customAmountStr) {
+      setTipAmount(0);
+    } else {
+      const parsed = parseInt(customAmountStr.replace(/\D/g, ''), 10) || 0;
+      setTipAmount(parsed);
+    }
+  };
+
+  const handleCustomAmountChange = (raw: string) => {
+    const digitsOnly = raw.replace(/\D/g, '');
+    setCustomAmountStr(digitsOnly);
+    const parsed = parseInt(digitsOnly, 10) || 0;
+    setTipAmount(parsed);
+    setTipError(null);
+  };
+
+  const handleProofFileSelect = (file: File) => {
+    if (!file) return;
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const fName = file.name.toLowerCase();
+    const isValidExt =
+      fName.endsWith('.jpg') ||
+      fName.endsWith('.jpeg') ||
+      fName.endsWith('.png') ||
+      fName.endsWith('.webp');
+
+    if (!validTypes.includes(file.type) && !isValidExt) {
+      setTipError('Format berkas harus berupa gambar (JPG, PNG, atau WebP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setTipError('Ukuran berkas melebihi batas maksimal 5MB.');
+      return;
+    }
+
+    setTipError(null);
+    setTipProofFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setTipProofPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitTip = async () => {
+    if (tipAmount <= 0) {
+      setTipError('Nominal dukungan harus lebih dari Rp 0.');
+      return;
+    }
+
+    if (!tipProofFile) {
+      setTipError('Bukti transfer wajib diunggah sebelum mengirim dukungan.');
+      return;
+    }
+
+    setTipSubmitting(true);
+    setTipError(null);
+
+    try {
+      const targetHandle = resolvedSlug || profile.handle.replace(/^@+/, '').trim().toLowerCase();
+      const formData = new FormData();
+      formData.append('sender_name', tipSenderName.trim() || 'Anonim');
+      formData.append('amount', String(tipAmount));
+      if (tipMessage.trim()) {
+        formData.append('message', tipMessage.trim());
+      }
+      formData.append('proof', tipProofFile);
+
+      const res = await fetch(`/api/v1/creators/${encodeURIComponent(targetHandle)}/tips`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTipStep(3);
+      } else {
+        setTipError(data.message || data.error || 'Gagal mengirim bukti dukungan.');
+      }
+    } catch (err: any) {
+      setTipError(err?.message || 'Terjadi kesalahan koneksi saat mengirim dukungan.');
+    } finally {
+      setTipSubmitting(false);
+    }
   };
 
   return (
@@ -480,53 +614,379 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
         </Link>
       </footer>
 
-      {/* ── QRIS SUPPORT MODAL ─────────────────────────────────── */}
+      {/* ── PRIVACY-FIRST QRIS DONATION & RECEIPT UPLOAD MODAL ── */}
       {previewQrisModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-sm w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-200 text-center">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-orange-600">
-                Dukungan & Traktir QRIS (0% Fee)
-              </span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-sm sm:max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-200 text-left my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <Coffee className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                    {tipStep === 3
+                      ? 'Dukungan Berhasil Dikirim!'
+                      : tipStep === 2
+                      ? 'Scan QRIS & Unggah Bukti'
+                      : `Dukung & Traktir ${displayName}`}
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span>0% Biaya Platform • Privasi Langsung</span>
+                  </span>
+                </div>
+              </div>
               <button
-                onClick={() => setPreviewQrisModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  setPreviewQrisModal(false);
+                  resetTipForm();
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-base font-extrabold text-slate-900">{displayName}</h3>
-              <p className="text-xs text-slate-500 font-mono">{qrisConfig.nmid || 'NMID Terverifikasi'}</p>
-            </div>
+            {/* Error Banner */}
+            {tipError && (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-start gap-2 animate-in fade-in duration-150">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <div className="flex-1 leading-snug">{tipError}</div>
+                <button
+                  type="button"
+                  onClick={() => setTipError(null)}
+                  className="text-rose-400 hover:text-rose-600 font-bold p-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
-            {/* QR Code Frame */}
-            <div className="w-52 h-52 mx-auto p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-inner flex items-center justify-center">
-              {qrisConfig.qr_image_url ? (
-                <img
-                  src={qrisConfig.qr_image_url}
-                  alt="QRIS Barcode"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
-                  <QrCode className="w-36 h-36 text-slate-700" />
-                  <span className="text-[10px] font-mono font-bold text-slate-500">Scan via App Apapun</span>
+            {/* ── STEP 1: INPUT DATA & PILIH NOMINAL ── */}
+            {tipStep === 1 && (
+              <div className="space-y-4">
+                {/* Nama Pengirim */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Nama / Panggilan Kamu
+                  </label>
+                  <input
+                    type="text"
+                    value={tipSenderName}
+                    onChange={(e) => setTipSenderName(e.target.value)}
+                    placeholder="Contoh: Budi (Boleh anonim)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
+                  />
                 </div>
-              )}
-            </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Buka aplikasi <strong>Gopay, OVO, Dana, ShopeePay, atau BCA Mobile</strong>, lalu scan barcode di atas.
-            </p>
+                {/* Chips Nominal */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Pilih Nominal Traktir
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectChip(10000)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                        !isCustomAmount && tipAmount === 10000
+                          ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs ring-1 ring-orange-500'
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                      }`}
+                    >
+                      <span>☕ Rp 10.000</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Kopi</span>
+                    </button>
 
-            <button
-              onClick={() => setPreviewQrisModal(false)}
-              className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition cursor-pointer"
-            >
-              Tutup
-            </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectChip(25000)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                        !isCustomAmount && tipAmount === 25000
+                          ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs ring-1 ring-orange-500'
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                      }`}
+                    >
+                      <span>🧋 Rp 25.000</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Boba</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSelectChip(50000)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                        !isCustomAmount && tipAmount === 50000
+                          ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs ring-1 ring-orange-500'
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                      }`}
+                    >
+                      <span>🍱 Rp 50.000</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Makan</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSelectCustomChip}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                        isCustomAmount
+                          ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs ring-1 ring-orange-500'
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                      }`}
+                    >
+                      <span>✨ Nominal Bebas</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Custom</span>
+                    </button>
+                  </div>
+
+                  {/* Custom Nominal Input */}
+                  {isCustomAmount && (
+                    <div className="pt-1.5 animate-in fade-in duration-150">
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">
+                          Rp
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={customAmountStr}
+                          onChange={(e) => handleCustomAmountChange(e.target.value)}
+                          placeholder="Masukkan nominal (min. 1.000)"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pesan Dukungan */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Catatan Pesan untuk Kreator (Opsional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={tipMessage}
+                    onChange={(e) => setTipMessage(e.target.value)}
+                    placeholder="Semangat terus bikin kontennya ya kak!"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition resize-none"
+                  />
+                </div>
+
+                {/* Tombol Lanjut ke QRIS */}
+                <button
+                  type="button"
+                  disabled={tipAmount <= 0}
+                  onClick={() => {
+                    if (tipAmount <= 0) {
+                      setTipError('Silakan pilih atau masukkan nominal traktir yang valid.');
+                      return;
+                    }
+                    setTipStep(2);
+                  }}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-extrabold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition cursor-pointer active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>Lanjut Pembayaran QRIS • Rp {tipAmount.toLocaleString('id-ID')}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* ── STEP 2: RENDER QRIS + UPLOAD BUKTI TRANSFER ── */}
+            {tipStep === 2 && (
+              <div className="space-y-4">
+                {/* Back Link & Summary Badge */}
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setTipStep(1)}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Ubah Nominal / Data</span>
+                  </button>
+                  <div className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 text-[11px] font-extrabold">
+                    Rp {tipAmount.toLocaleString('id-ID')}
+                  </div>
+                </div>
+
+                {/* QRIS Barcode Box */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 text-center space-y-2">
+                  <div className="w-44 h-44 mx-auto p-2.5 bg-white border-2 border-slate-200 rounded-xl shadow-inner flex items-center justify-center overflow-hidden">
+                    {qrisConfig.qr_image_url ? (
+                      <img
+                        src={qrisConfig.qr_image_url}
+                        alt="QRIS Barcode"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-400 gap-1.5">
+                        <QrCode className="w-24 h-24 text-slate-700" />
+                        <span className="text-[10px] font-mono font-bold text-slate-500">Scan via App Apapun</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-600 leading-tight">
+                    <p className="font-bold text-slate-800">{displayName}</p>
+                    <p className="font-mono text-[10px] text-slate-500">{qrisConfig.nmid || 'NMID Terverifikasi'}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Buka Gopay, OVO, Dana, ShopeePay, atau BCA Mobile untuk scan.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Komponen Upload Gambar Bukti Transfer */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Unggah Bukti Transfer <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      Wajib diunggah (Maks. 5MB)
+                    </span>
+                  </div>
+
+                  <input
+                    ref={tipFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleProofFileSelect(file);
+                      e.target.value = '';
+                    }}
+                  />
+
+                  {tipProofFile && tipProofPreview ? (
+                    /* Preview Bukti yang Sudah Dipilih */
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-xl bg-white border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        <img
+                          src={tipProofPreview}
+                          alt="Pratinjau Bukti Transfer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-800 truncate">
+                          {tipProofFile.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {(tipProofFile.size / 1024).toFixed(0)} KB • Siap dikirim
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => tipFileInputRef.current?.click()}
+                            className="text-[10px] font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+                          >
+                            Ganti Bukti
+                          </button>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTipProofFile(null);
+                              setTipProofPreview(null);
+                            }}
+                            className="text-[10px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    </div>
+                  ) : (
+                    /* Dropzone / Upload Trigger Button */
+                    <div
+                      onClick={() => tipFileInputRef.current?.click()}
+                      className="p-4 rounded-2xl border-2 border-dashed border-slate-200 hover:border-orange-400 bg-slate-50/60 hover:bg-orange-50/30 transition-all flex flex-col items-center justify-center text-center gap-2 cursor-pointer"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          Klik untuk Unggah Screenshot Bukti Transfer
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          Mendukung format gambar JPG, PNG, atau WebP
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tombol Kirim Dukungan (Validasi Wajib Bukti Transfer) */}
+                <div className="space-y-1.5 pt-1">
+                  <button
+                    type="button"
+                    disabled={!tipProofFile || tipSubmitting}
+                    onClick={handleSubmitTip}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-extrabold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition cursor-pointer active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {tipSubmitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Mengirim & Memverifikasi...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Heart className="w-4 h-4 fill-white" />
+                        <span>Kirim Dukungan Rp {tipAmount.toLocaleString('id-ID')}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {!tipProofFile && (
+                    <p className="text-[10px] text-center text-slate-400 italic">
+                      * Silakan unggah bukti transfer di atas agar tombol kirim aktif.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 3: ANIMASI SUKSES ── */}
+            {tipStep === 3 && (
+              <div className="py-4 text-center space-y-4 animate-in zoom-in-95 duration-200">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-md animate-bounce">
+                  <CheckCheck className="w-9 h-9" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Terima kasih banyak atas dukungan Anda! 🎉
+                  </h3>
+                  <p className="text-xs text-slate-600 max-w-xs mx-auto leading-relaxed">
+                    Dukungan sebesar <strong className="text-slate-900">Rp {tipAmount.toLocaleString('id-ID')}</strong> dari{' '}
+                    <strong className="text-slate-900">{tipSenderName.trim() || 'Anonim'}</strong> telah berhasil terkirim langsung ke kreator.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-800 text-[11px] leading-snug text-left flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <p>
+                    <strong>Privasi 100% Terjaga:</strong> Berkas bukti transfer Anda disimpan langsung ke inbox dashboard kreator tanpa perlu membuka WhatsApp.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewQrisModal(false);
+                    resetTipForm();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Selesai
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
