@@ -80,10 +80,25 @@ export async function POST(request: NextRequest) {
       String(payload.paymentMethod || '').trim().toLowerCase().includes('xendit') ||
       Boolean(payload.isGateway || payload.isXendit);
 
+    // Atribusi Reseller (Directive RE-01 / Sprint P0): Tangkap cookie bt_reseller_code atau payload data-bt-reseller
+    const cookieReseller = request.cookies.get('bt_reseller_code')?.value || null;
+    const resolvedResellerCode =
+      payload.reseller_code ||
+      payload['data-bt-reseller'] ||
+      payload.data_bt_reseller ||
+      payload.resellerCode ||
+      cookieReseller ||
+      undefined;
+
     const enrichedPayload = {
       ...payload,
       customerPhone: normalizedPhone,
       customerEmail: rawEmail,
+      ...(resolvedResellerCode ? {
+        reseller_code: resolvedResellerCode,
+        resellerCode: resolvedResellerCode,
+        'data-bt-reseller': resolvedResellerCode,
+      } : {}),
       ...(isXenditGateway ? { uniqueCode: 0, unique_code: 0 } : {}),
       tracking_context: {
         ...payload.tracking_context,

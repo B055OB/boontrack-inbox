@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock, Store, MapPin, Plus, Minus, Utensils } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
+import { getActiveAffiliateCode, getActiveResellerCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
@@ -849,7 +849,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
           : (isPhysical && !isPickup ? shippingCost : 0),
         affiliateCode: undefined, // Murni direct store ke toko merchant
-        reseller_code: (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('r') || new URLSearchParams(window.location.search).get('reseller') || '').trim().toUpperCase() : '') || (trackingWithSlot as any)?.reseller_code || undefined,
+        reseller_code: getActiveResellerCode() || (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('r') || new URLSearchParams(window.location.search).get('reseller') || '').trim() : '') || (trackingWithSlot as any)?.reseller_code || undefined,
+        'data-bt-reseller': getActiveResellerCode() || undefined,
+        data_bt_reseller: getActiveResellerCode() || undefined,
         tracking: trackingWithSlot,
         tracking_context: clientTrackingContext,
         productType: resolvedProductType,
