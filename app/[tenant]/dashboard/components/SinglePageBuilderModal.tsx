@@ -1031,6 +1031,85 @@ export default function SinglePageBuilderModal({
                 </button>
               </div>
 
+              {/* Kustomisasi Header & Judul Kolom */}
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+                <span className="font-bold text-slate-800 block text-xs">
+                  Kustomisasi Header &amp; Judul Kolom
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Modul Perbandingan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.comparison_title || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), comparison_title: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Kenapa Memilih Produk Kami Dibanding Merk Lain?' : 'Kenapa Memilih Solusi Kami Dibanding Cara Lain?'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Subjudul Modul Perbandingan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.comparison_subtitle || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), comparison_subtitle: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Perbandingan kualitas bahan & garansi:' : 'Perbedaan nyata efisiensi & hasil yang didapatkan:'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="text-[10px] font-bold text-rose-600 flex items-center gap-1 mb-1">
+                      <span>❌</span> Judul Kolom Kompetitor (Them)
+                    </label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.comparison_them_label || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), comparison_them_label: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Produk Pasaran / Lainnya' : 'Cara Lain / Lama'}
+                      className="w-full px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mb-1">
+                      <span>✅</span> Judul Kolom Produk Anda (Us)
+                    </label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.comparison_us_label || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), comparison_us_label: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Kelebihan Produk Ini' : 'Solusi Produk Ini'}
+                      className="w-full px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-3">
                 {(singlePageForm.comparison_rows || []).map((row, idx) => (
                   <div key={row.id || idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2">
@@ -1065,7 +1144,7 @@ export default function SinglePageBuilderModal({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-rose-600 flex items-center gap-1">
-                          <span>❌</span> Cara Lain / Lama (Them)
+                          <span>❌</span> {singlePageForm.labels?.comparison_them_label || (activeProduct.category === 'fisik' ? 'Produk Pasaran' : 'Cara Lain / Lama (Them)')}
                         </span>
                         <textarea
                           rows={2}
@@ -1082,7 +1161,7 @@ export default function SinglePageBuilderModal({
 
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                          <span>✅</span> Solusi Produk Ini (Us)
+                          <span>✅</span> {singlePageForm.labels?.comparison_us_label || (activeProduct.category === 'fisik' ? 'Kelebihan Produk Ini' : 'Solusi Produk Ini (Us)')}
                         </span>
                         <textarea
                           rows={2}
@@ -1116,6 +1195,79 @@ export default function SinglePageBuilderModal({
               <div>
                 <h4 className="font-bold text-slate-900 text-xs">Galeri Testimoni Visual (Hingga 3 Screenshot)</h4>
                 <p className="text-[10px] text-slate-500">Masukkan tautan gambar tangkapan layar chat WhatsApp, hasil omset, atau review pelanggan.</p>
+              </div>
+
+              {/* Kustomisasi Header & Label Ulasan */}
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+                <span className="font-bold text-slate-800 block text-xs">
+                  Kustomisasi Header &amp; Badge Ulasan
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Modul Ulasan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.testimonials_title || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), testimonials_title: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Apa Kata Pembeli Kami?' : 'Bukti Nyata & Kepuasan Pengguna'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Subjudul Modul Ulasan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.testimonials_subtitle || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), testimonials_subtitle: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Pengalaman langsung dari pembeli kami:' : 'Pengalaman dan hasil nyata dari mereka:'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Badge Header Ulasan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.social_proof_badge || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), social_proof_badge: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Ulasan Pembeli Terverifikasi' : 'Hasil Nyata Member'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Verifikasi Kartu</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.verified_user_label || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), verified_user_label: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Pembeli Terverifikasi' : 'Verified User'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -1921,6 +2073,82 @@ export default function SinglePageBuilderModal({
                 <p className="text-[10px] text-slate-400">
                   Label tombol aksi pembeli di landing page &amp; formulir checkout.
                 </p>
+              </div>
+
+              {/* D. Kustomisasi Label Finansial & Checkout Multi-Kategori */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div>
+                  <span className="font-bold text-slate-800 block text-xs">
+                    Kustomisasi Label Checkout &amp; Finansial Multi-Kategori
+                  </span>
+                  <p className="text-[10px] text-slate-500">Sesuaikan label harga, judul form, dan badge toko agar cocok dengan produk fisik, digital, atau kuliner/jasa.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Harga di Sticky Bar</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.price_label || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), price_label: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'TOTAL HARGA' : 'TOTAL INVESTASI'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Formulir Pemesanan</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.checkout_section_title || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), checkout_section_title: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Formulir Pengiriman & Pembayaran' : 'Form Pemesanan & Pembayaran'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Badge Keamanan Header</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.header_security_badge || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), header_security_badge: val }
+                        }));
+                      }}
+                      placeholder={activeProduct.category === 'fisik' ? 'Garansi 100% Produk Original' : 'Garansi Akses Resmi'}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Tombol Tambah Keranjang</label>
+                    <input
+                      type="text"
+                      value={singlePageForm.labels?.add_to_cart_label || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSinglePageForm(p => ({
+                          ...p,
+                          labels: { ...(p.labels || {}), add_to_cart_label: val }
+                        }));
+                      }}
+                      placeholder="+ Keranjang"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">

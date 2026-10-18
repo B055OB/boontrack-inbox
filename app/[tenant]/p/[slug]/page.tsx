@@ -83,7 +83,8 @@ import {
   getProductActiveVoucher,
   resolveProductDefaultCta,
   resolveProductCtaLabel,
-  normalizeBriefingUrl
+  normalizeBriefingUrl,
+  resolveCategoryLabels
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -620,6 +621,10 @@ function SingleProductContent() {
 
   const product: ProductItem = resolvedData?.product || ({} as ProductItem);
   const config: SinglePageConfig = resolvedData?.config || ({} as SinglePageConfig);
+
+  const categoryLabels = useMemo(() => {
+    return resolveCategoryLabels(config, product.product_type || product.type, product.category);
+  }, [config, product.product_type, product.type, product.category]);
 
   // Resolusi aktif Order Bumps / Cross-Selling Add-on (Kondisional Murni)
   const activeOrderBumps = useMemo(() => {
@@ -3004,7 +3009,7 @@ function SingleProductContent() {
         {variantList.length > 1 ? (
           <div className="pt-2 border-t border-slate-200/70">
             <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
-              Pilihan Varian / Paket:
+              {categoryLabels.variantSelectorLabel}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {variantList.map((v, i) => (
@@ -3026,7 +3031,7 @@ function SingleProductContent() {
         ) : variantList.length === 1 ? (
           <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-xs">
             <span className="text-[11px] font-semibold text-slate-500">
-              Paket Terpilih:
+              {categoryLabels.selectedVariantLabel}
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80 shadow-2xs">
               <Check className="w-3 h-3 text-blue-600" />
@@ -3039,7 +3044,7 @@ function SingleProductContent() {
         {!config?.limit_single_item && (
           <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold text-slate-700 block">Kuantitas:</span>
+              <span className="text-[11px] font-bold text-slate-700 block">{categoryLabels.quantityLabel}</span>
               <span className="text-[10px] text-slate-500">
                 {quantity > 1 ? (
                   <>Subtotal: <strong className="text-slate-900">Rp {productSubtotal.toLocaleString('id-ID')}</strong></>
@@ -3148,7 +3153,7 @@ function SingleProductContent() {
         {isDigitalPreset ? (
           <div>
             <label className="font-bold text-slate-700 block mb-1">
-              Alamat Email <span className="text-rose-500">* (Wajib untuk Pengiriman Akses)</span>
+              {categoryLabels.emailFieldLabel}
             </label>
             <input
               id="buyer-email-input"
@@ -3167,7 +3172,7 @@ function SingleProductContent() {
         ) : (
           <div>
             <label className="font-bold text-slate-700 block mb-1">
-              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional - notifikasi order via WhatsApp)</span>
+              {categoryLabels.emailFieldLabel}
             </label>
             <input
               id="buyer-email-input"
@@ -3187,11 +3192,11 @@ function SingleProductContent() {
         {/* Catatan Tambahan Universal di SEMUA Kategori */}
         <div>
           <label className="font-bold text-slate-700 block mb-1">
-            Catatan Tambahan / Briefing Singkat <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+            {categoryLabels.notesFieldLabel}
           </label>
           <textarea
             rows={3}
-            placeholder="Tulis catatan khusus untuk penjual di sini (contoh: request varian khusus, catatan rasa/pengiriman, atau detail briefing jasa)..."
+            placeholder={categoryLabels.notesPlaceholder}
             value={kitchenNotes}
             onChange={(e) => {
               const val = e.target.value;
@@ -4187,7 +4192,7 @@ function SingleProductContent() {
         ) : null}
 
         <div className="border-t border-slate-200 pt-2 flex justify-between items-baseline font-bold">
-          <span className="text-slate-900">Total Pembayaran</span>
+          <span className="text-slate-900">{categoryLabels.checkoutTotalLabel}</span>
           <span className="text-base font-black text-emerald-600">
             Rp {totalAmount.toLocaleString('id-ID')}
           </span>
@@ -4198,7 +4203,7 @@ function SingleProductContent() {
           <span>{appliedVoucher ? `Voucher: ${appliedVoucher.code}` : (config.discount_coupon ? `Kupon: ${config.discount_coupon}` : 'Direct Checkout')}</span>
           <span className="text-emerald-600 font-semibold flex items-center gap-1">
             <ShieldCheck className="w-3 h-3" />
-            <span>Direct Store (100% Toko Resmi)</span>
+            <span>{categoryLabels.directStoreBadge}</span>
           </span>
         </div>
       </div>
@@ -4393,7 +4398,7 @@ function SingleProductContent() {
         </div>
         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Garansi Akses Resmi</span>
+          <span>{categoryLabels.headerSecurityBadge}</span>
         </div>
       </header>
 
@@ -4488,7 +4493,7 @@ function SingleProductContent() {
                         <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-0.5 rounded-full">
                           {basePrice === 0 
                             ? (isFoodPreset ? 'Porsi Promo Spesial' : 'Akses Gratis / Freebie') 
-                            : (isFoodPreset ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini')}
+                            : categoryLabels.discountBadgeLabel}
                         </span>
                       </div>
 
@@ -4722,10 +4727,10 @@ function SingleProductContent() {
                   <section key="section-comparison" className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
                     <div>
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                        Kenapa Memilih Solusi Kami Dibanding Cara Lain?
+                        {categoryLabels.comparisonTitle}
                       </h2>
                       <p className="text-xs text-slate-500 mt-1">
-                        Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:
+                        {categoryLabels.comparisonSubtitle}
                       </p>
                     </div>
 
@@ -4740,7 +4745,7 @@ function SingleProductContent() {
                             <div className="p-3.5 bg-rose-50/40 flex items-start gap-2.5">
                               <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                               <div>
-                                <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Cara Lain / Lama</span>
+                                <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">{categoryLabels.comparisonThemLabel}</span>
                                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">{row.others}</p>
                               </div>
                             </div>
@@ -4748,7 +4753,7 @@ function SingleProductContent() {
                             <div className="p-3.5 bg-emerald-50/50 flex items-start gap-2.5 border-l-2 border-emerald-500 sm:border-l-0">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                               <div>
-                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Solusi Produk Ini</span>
+                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">{categoryLabels.comparisonUsLabel}</span>
                                 <p className="text-xs font-bold text-slate-900 mt-1 leading-relaxed">{row.us}</p>
                               </div>
                             </div>
@@ -4769,16 +4774,16 @@ function SingleProductContent() {
                             <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                           ))}
                         </div>
-                        <span className="text-slate-800 font-bold text-xs ml-1">5.0 / 5.0 Rating Kepuasan</span>
+                        <span className="text-slate-800 font-bold text-xs ml-1">{categoryLabels.ratingSummaryText}</span>
                       </div>
-                      <span className="text-[11px] font-semibold text-slate-500">Hasil Nyata Member</span>
+                      <span className="text-[11px] font-semibold text-slate-500">{categoryLabels.socialProofBadge}</span>
                     </div>
                     <div>
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                        Bukti Nyata &amp; Kepuasan Pengguna
+                        {categoryLabels.testimonialsTitle}
                       </h2>
                       <p className="text-xs text-slate-500 mt-1">
-                        Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
+                        {categoryLabels.testimonialsSubtitle}
                       </p>
                     </div>
 
@@ -4828,9 +4833,9 @@ function SingleProductContent() {
                               />
                             </div>
                             <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
-                              <span className="font-semibold text-slate-700">Verified User</span>
+                              <span className="font-semibold text-slate-700">{categoryLabels.verifiedUserLabel}</span>
                               <span className="text-emerald-600 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> Sukses
+                                <CheckCircle2 className="w-3 h-3" /> {categoryLabels.verifiedStatusLabel}
                               </span>
                             </div>
                           </div>
@@ -4845,10 +4850,10 @@ function SingleProductContent() {
                   <section key="section-offer-bonus" className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
                     <div>
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                        Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
+                        {categoryLabels.bonusTitle} Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
                       </h2>
                       <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                        Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:
+                        {categoryLabels.bonusSubtitle}
                       </p>
                     </div>
 
@@ -4875,7 +4880,7 @@ function SingleProductContent() {
 
                     {totalBonusValue > 0 && (
                       <div className="p-3 bg-amber-200/60 rounded-xl border border-amber-300/80 text-center text-xs font-bold text-amber-950">
-                        🎉 Total Nilai Semua Bonus: Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
+                        {categoryLabels.bonusTotalBanner}Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
                       </div>
                     )}
                   </section>
@@ -4887,7 +4892,7 @@ function SingleProductContent() {
                     <div className="flex items-center gap-2">
                       <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                        Pertanyaan yang Sering Diajukan (FAQ)
+                        {categoryLabels.faqTitle}
                       </h2>
                     </div>
                     <div className="space-y-3 pt-1">
@@ -4968,12 +4973,12 @@ function SingleProductContent() {
                               ? 'Beli Melalui Platform Partner / Web Resmi'
                               : isPaid
                               ? 'Status Pemesanan & Akses Layanan'
-                              : 'Form Pemesanan & Pembayaran'}
+                              : categoryLabels.checkoutSectionTitle}
                           </h2>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400 block font-semibold">
-                            {isPaid ? 'Status Tagihan' : 'Total Tagihan'}
+                            {isPaid ? 'Status Tagihan' : categoryLabels.billStatusLabel}
                           </span>
                           <span className="text-sm font-black text-emerald-600">
                             {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
@@ -5048,6 +5053,8 @@ function SingleProductContent() {
       {config.enable_payment !== false && (config as any).enable_sticky_button !== false && (
         <StickyBuyButton
           totalAmount={totalAmount}
+          priceLabel={categoryLabels.priceLabel}
+          addToCartLabel={categoryLabels.addToCartLabel}
           dynamicCtaPrefix={dynamicCtaPrefix}
           ctaText={
             isCustomLinkMode
@@ -5055,7 +5062,7 @@ function SingleProductContent() {
               : actionMode === 'WHATSAPP'
               ? (config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order via WhatsApp'))
               : totalAmount === 0
-              ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Sekarang (Gratis)'))
+              ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : categoryLabels.freeCtaLabel))
               : undefined
           }
           isAffiliateProduct={isAffiliateProduct}
@@ -5096,6 +5103,10 @@ function SingleProductContent() {
           cart={cartState.cart}
           onUpdateQty={cartState.updateQuantity}
           onRemoveItem={cartState.removeItem}
+          cartTitle={categoryLabels.cartTitle}
+          cartEmptyText={categoryLabels.cartEmptyText}
+          cartSubtotalLabel={categoryLabels.cartSubtotalLabel}
+          cartCheckoutButton={categoryLabels.cartCheckoutButton}
           onCheckout={() => {
             cartState.closeCart();
             if (cartState.cart && cartState.cart.items.length > 0) {
@@ -5112,7 +5123,7 @@ function SingleProductContent() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
                 <Lock className="w-4 h-4 text-blue-600" />
-                <span>Single Page Checkout Form</span>
+                <span>{categoryLabels.checkoutSectionTitle}</span>
               </h3>
               <button 
                 type="button"

@@ -12,6 +12,10 @@ export interface CartDrawerProps {
   onRemoveItem: (itemId: string) => void;
   onCheckout: () => void;
   loading?: boolean;
+  cartTitle?: string;
+  cartEmptyText?: string;
+  cartSubtotalLabel?: string;
+  cartCheckoutButton?: string;
 }
 
 export default function CartDrawer({
@@ -22,6 +26,10 @@ export default function CartDrawer({
   onRemoveItem,
   onCheckout,
   loading = false,
+  cartTitle = 'Keranjang Belanja',
+  cartEmptyText = 'Keranjang masih kosong',
+  cartSubtotalLabel = 'Subtotal',
+  cartCheckoutButton = 'Lanjut ke Checkout',
 }: CartDrawerProps) {
   if (!isOpen) return null;
 
@@ -43,7 +51,7 @@ export default function CartDrawer({
               <ShoppingBag className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900">Keranjang Belanja</h2>
+              <h2 className="text-sm font-black text-slate-900">{cartTitle}</h2>
               <p className="text-[11px] text-slate-500">{totalCount} item siap di-checkout</p>
             </div>
           </div>
@@ -64,7 +72,7 @@ export default function CartDrawer({
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
                 <ShoppingBag className="w-8 h-8 text-slate-300" />
               </div>
-              <p className="text-sm font-bold text-slate-700">Keranjang masih kosong</p>
+              <p className="text-sm font-bold text-slate-700">{cartEmptyText}</p>
               <p className="text-xs text-slate-400 mt-1">Pilih menu atau produk favorit Anda dan tambahkan ke keranjang.</p>
             </div>
           ) : (
@@ -159,7 +167,7 @@ export default function CartDrawer({
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Subtotal ({totalCount} item):</span>
+              <span className="text-xs font-bold text-slate-600">{cartSubtotalLabel} ({totalCount} item):</span>
               <span className="text-base font-black text-slate-900">
                 Rp {subtotal.toLocaleString('id-ID')}
               </span>
@@ -171,7 +179,7 @@ export default function CartDrawer({
               disabled={loading || items.length === 0}
               className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              <span>Lanjut ke Checkout</span>
+              <span>{cartCheckoutButton}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
