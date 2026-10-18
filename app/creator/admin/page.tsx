@@ -34,7 +34,10 @@ import {
   UserCheck,
   ShieldCheck,
   Upload,
-  AlertCircle
+  AlertCircle,
+  Coffee,
+  Heart,
+  FileText
 } from 'lucide-react';
 
 // ── Custom Social SVGs ───────────────────────────────────────────────
@@ -92,6 +95,17 @@ interface BioLinkItem {
   is_active: boolean;
 }
 
+export interface CreatorTipItem {
+  id: string;
+  creator_id: string;
+  sender_name: string;
+  amount: number;
+  message?: string | null;
+  proof_image_url: string;
+  status: 'UNREAD' | 'READ' | 'VERIFIED';
+  created_at: string;
+}
+
 export default function CreatorAdminPage() {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -139,6 +153,18 @@ export default function CreatorAdminPage() {
   const [qrisUploadError, setQrisUploadError] = useState<string | null>(null);
   const [isDraggingQris, setIsDraggingQris] = useState(false);
   const qrisFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Creator Tips / Donasi Masuk State
+  const [creatorTips, setCreatorTips] = useState<CreatorTipItem[]>([]);
+  const [tipsLoading, setTipsLoading] = useState(false);
+  const [tipsFilter, setTipsFilter] = useState<'ALL' | 'UNREAD' | 'READ'>('ALL');
+  const [tipsMetrics, setTipsMetrics] = useState({
+    total_amount: 0,
+    total_tips: 0,
+    unread_count: 0,
+  });
+  const [viewingProofTip, setViewingProofTip] = useState<CreatorTipItem | null>(null);
+  const [updatingTipId, setUpdatingTipId] = useState<string | null>(null);
 
   // Bio Links
   const [links, setLinks] = useState<BioLinkItem[]>([
@@ -229,10 +255,74 @@ export default function CreatorAdminPage() {
 
       fetchProfile();
       fetchResellerApplications(urlHandle || 'suzieray_');
+      fetchCreatorTips(urlHandle || 'suzieray_');
     } catch {
       // Fallback
     }
   }, []);
+
+  // Refresh tips when switching to QRIS tab
+  useEffect(() => {
+    if (activeTab === 'qris') {
+      fetchCreatorTips();
+    }
+  }, [activeTab]);
+
+  // ── Creator Tips Handlers ───────────────────────────────────────────
+  const fetchCreatorTips = async (targetHandle?: string) => {
+    const rawHandle = targetHandle || handle;
+    const cleanHandle = (rawHandle || '').replace(/^@+/, '').trim().toLowerCase();
+    if (!cleanHandle) return;
+
+    setTipsLoading(true);
+    try {
+      const res = await fetch(`/api/v1/creators/${encodeURIComponent(cleanHandle)}/tips`, { cache: 'no-store' });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          if (Array.isArray(result.tips)) setCreatorTips(result.tips);
+          if (result.metrics) setTipsMetrics(result.metrics);
+        }
+      }
+    } catch (err) {
+      console.warn('[Creator Admin] Error fetching creator tips:', err);
+    } finally {
+      setTipsLoading(false);
+    }
+  };
+
+  const handleUpdateTipStatus = async (tipId: string, status: 'READ' | 'VERIFIED') => {
+    const cleanHandle = (handle || '').replace(/^@+/, '').trim().toLowerCase();
+    if (!cleanHandle) return;
+
+    setUpdatingTipId(tipId);
+    try {
+      const res = await fetch(`/api/v1/creators/${encodeURIComponent(cleanHandle)}/tips/${encodeURIComponent(tipId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCreatorTips((prev) =>
+          prev.map((t) => (t.id === tipId ? { ...t, status } : t))
+        );
+        setTipsMetrics((prev) => ({
+          ...prev,
+          unread_count: Math.max(0, prev.unread_count - 1),
+        }));
+        if (viewingProofTip?.id === tipId) {
+          setViewingProofTip((prev) => (prev ? { ...prev, status } : null));
+        }
+      } else {
+        alert(result.message || 'Gagal memperbarui status traktir.');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan koneksi: ' + err.message);
+    } finally {
+      setUpdatingTipId(null);
+    }
+  };
 
   // ── Reseller Curation Handlers ──────────────────────────────────────
   const fetchResellerApplications = async (targetHandle?: string) => {
@@ -771,228 +861,469 @@ export default function CreatorAdminPage() {
 
             {/* TAB 3: QRIS DONASI LANGSUNG (0% FEE) */}
             {activeTab === 'qris' && (
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm space-y-5 animate-in fade-in duration-200">
-                <div className="flex items-start justify-between border-b border-slate-100 pb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-extrabold text-slate-900">Dukungan & Traktir QRIS</h2>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        0% Platform Fee
-                      </span>
+              <div className="space-y-6 animate-in fade-in duration-200">
+                {/* 1. Pengaturan Barcode QRIS & Donasi */}
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm space-y-5">
+                  <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-extrabold text-slate-900">Pengaturan Barcode QRIS</h2>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          0% Platform Fee
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Terima donasi, tip, dan traktir kopi langsung ke rekening / e-wallet kamu tanpa potongan penahanan platform.
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Terima donasi, tip, dan traktir kopi langsung ke rekening / e-wallet kamu tanpa potongan penahanan platform.
-                    </p>
+
+                    {/* Toggle Switch */}
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                      <input
+                        type="checkbox"
+                        checked={qrisConfig.enabled}
+                        onChange={(e) => setQrisConfig({ ...qrisConfig, enabled: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
                   </div>
 
-                  {/* Toggle Switch */}
-                  <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                    <input
-                      type="checkbox"
-                      checked={qrisConfig.enabled}
-                      onChange={(e) => setQrisConfig({ ...qrisConfig, enabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
-                </div>
-
-                {qrisConfig.enabled ? (
-                  <div className="space-y-4 pt-1">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">Label Tombol Traktir</label>
-                      <input
-                        type="text"
-                        value={qrisConfig.button_label}
-                        onChange={(e) => setQrisConfig({ ...qrisConfig, button_label: e.target.value })}
-                        placeholder="e.g., Traktir Kopi / Dukung Karya ☕"
-                        className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition"
-                      />
-                    </div>
-
-                    {/* Barcode QRIS File Upload & Dropzone */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold text-slate-700">
-                          Berkas Barcode QRIS (JPG, PNG, WebP • Maks. 3MB)
-                        </label>
-                        {qrisConfig.qr_image_url && (
-                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Barcode Terpasang</span>
-                          </span>
-                        )}
+                  {qrisConfig.enabled ? (
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-700">Label Tombol Traktir</label>
+                        <input
+                          type="text"
+                          value={qrisConfig.button_label}
+                          onChange={(e) => setQrisConfig({ ...qrisConfig, button_label: e.target.value })}
+                          placeholder="e.g., Traktir Kopi / Dukung Karya ☕"
+                          className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-orange-500 focus:bg-white transition"
+                        />
                       </div>
 
-                      {/* Hidden File Input */}
-                      <input
-                        ref={qrisFileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleQrisFileUpload(file);
-                          e.target.value = '';
-                        }}
-                      />
+                      {/* Barcode QRIS File Upload & Dropzone */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-700">
+                            Berkas Barcode QRIS (JPG, PNG, WebP • Maks. 3MB)
+                          </label>
+                          {qrisConfig.qr_image_url && (
+                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Barcode Terpasang</span>
+                            </span>
+                          )}
+                        </div>
 
-                      {/* State A: Gambar Sudah Terunggah / Ada di State */}
-                      {qrisConfig.qr_image_url ? (
-                        <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 flex flex-col sm:flex-row items-center gap-4 transition-all">
-                          {/* Thumbnail Preview Proporsional */}
-                          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-white p-2 border-2 border-slate-200 shadow-inner flex items-center justify-center shrink-0 overflow-hidden relative group">
-                            <img
-                              src={qrisConfig.qr_image_url}
-                              alt="Barcode QRIS Kreator"
-                              className="w-full h-full object-contain"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/images/placeholder-qris.png';
-                              }}
-                            />
-                            {qrisUploading && (
-                              <div className="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center gap-1">
-                                <RefreshCw className="w-5 h-5 text-orange-500 animate-spin" />
-                                <span className="text-[9px] font-bold text-slate-700">Mengunggah...</span>
+                        {/* Hidden File Input */}
+                        <input
+                          ref={qrisFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleQrisFileUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+
+                        {/* State A: Gambar Sudah Terunggah / Ada di State */}
+                        {qrisConfig.qr_image_url ? (
+                          <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 flex flex-col sm:flex-row items-center gap-4 transition-all">
+                            {/* Thumbnail Preview Proporsional */}
+                            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-white p-2 border-2 border-slate-200 shadow-inner flex items-center justify-center shrink-0 overflow-hidden relative group">
+                              <img
+                                src={qrisConfig.qr_image_url}
+                                alt="Barcode QRIS Kreator"
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = '/images/placeholder-qris.png';
+                                }}
+                              />
+                              {qrisUploading && (
+                                <div className="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center gap-1">
+                                  <RefreshCw className="w-5 h-5 text-orange-500 animate-spin" />
+                                  <span className="text-[9px] font-bold text-slate-700">Mengunggah...</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Info & Action Buttons */}
+                            <div className="flex-1 space-y-2 text-center sm:text-left min-w-0">
+                              <div>
+                                <h4 className="text-xs font-extrabold text-slate-900 truncate flex items-center justify-center sm:justify-start gap-1.5">
+                                  <span>Barcode QRIS Siap Dipindai</span>
+                                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                </h4>
+                                <p className="text-[11px] text-slate-500 break-all line-clamp-1 font-mono mt-0.5">
+                                  {qrisConfig.qr_image_url}
+                                </p>
                               </div>
-                            )}
-                          </div>
 
-                          {/* Info & Action Buttons */}
-                          <div className="flex-1 space-y-2 text-center sm:text-left min-w-0">
-                            <div>
-                              <h4 className="text-xs font-extrabold text-slate-900 truncate flex items-center justify-center sm:justify-start gap-1.5">
-                                <span>Barcode QRIS Siap Dipindai</span>
-                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                              </h4>
-                              <p className="text-[11px] text-slate-500 break-all line-clamp-1 font-mono mt-0.5">
-                                {qrisConfig.qr_image_url}
+                              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  disabled={qrisUploading}
+                                  onClick={() => qrisFileInputRef.current?.click()}
+                                  className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold shadow-2xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                  {qrisUploading ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                                  ) : (
+                                    <Upload className="w-3.5 h-3.5 text-slate-600" />
+                                  )}
+                                  <span>{qrisUploading ? 'Mengunggah...' : 'Ganti Gambar'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={qrisUploading}
+                                  onClick={() => {
+                                    if (confirm('Hapus barcode QRIS saat ini?')) {
+                                      setQrisConfig({ ...qrisConfig, qr_image_url: '' });
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-bold transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Hapus</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* State B: Dropzone & Upload Button */
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setIsDraggingQris(true);
+                            }}
+                            onDragLeave={() => setIsDraggingQris(false)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setIsDraggingQris(false);
+                              const file = e.dataTransfer.files?.[0];
+                              if (file) handleQrisFileUpload(file);
+                            }}
+                            className={`p-6 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center gap-3 cursor-pointer ${
+                              isDraggingQris
+                                ? 'border-orange-500 bg-orange-50/50'
+                                : 'border-slate-200 hover:border-orange-400 bg-slate-50/50 hover:bg-slate-50'
+                            }`}
+                            onClick={() => {
+                              if (!qrisUploading) qrisFileInputRef.current?.click();
+                            }}
+                          >
+                            <div className="w-12 h-12 rounded-2xl bg-orange-100/70 text-orange-600 flex items-center justify-center shadow-xs">
+                              {qrisUploading ? (
+                                <RefreshCw className="w-6 h-6 animate-spin" />
+                              ) : (
+                                <Upload className="w-6 h-6" />
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-xs font-extrabold text-slate-800">
+                                {qrisUploading
+                                  ? 'Sedang mengunggah berkas ke storage...'
+                                  : 'Klik atau seret & lepas (Drag & Drop) barcode QRIS di sini'}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Mendukung format PNG, JPG, atau WebP (Maksimal 3MB)
                               </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
-                              <button
-                                type="button"
-                                disabled={qrisUploading}
-                                onClick={() => qrisFileInputRef.current?.click()}
-                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold shadow-2xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
-                              >
-                                {qrisUploading ? (
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-500" />
-                                ) : (
-                                  <Upload className="w-3.5 h-3.5 text-slate-600" />
-                                )}
-                                <span>{qrisUploading ? 'Mengunggah...' : 'Ganti Gambar'}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={qrisUploading}
-                                onClick={() => {
-                                  if (confirm('Hapus barcode QRIS saat ini?')) {
-                                    setQrisConfig({ ...qrisConfig, qr_image_url: '' });
-                                  }
-                                }}
-                                className="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-bold transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Hapus</span>
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              disabled={qrisUploading}
+                              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition active:scale-95 flex items-center gap-1.5 pointer-events-none"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>Unggah Barcode QRIS</span>
+                            </button>
                           </div>
-                        </div>
-                      ) : (
-                        /* State B: Dropzone & Upload Button */
-                        <div
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setIsDraggingQris(true);
-                          }}
-                          onDragLeave={() => setIsDraggingQris(false)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setIsDraggingQris(false);
-                            const file = e.dataTransfer.files?.[0];
-                            if (file) handleQrisFileUpload(file);
-                          }}
-                          className={`p-6 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center gap-3 cursor-pointer ${
-                            isDraggingQris
-                              ? 'border-orange-500 bg-orange-50/50'
-                              : 'border-slate-200 hover:border-orange-400 bg-slate-50/50 hover:bg-slate-50'
-                          }`}
-                          onClick={() => {
-                            if (!qrisUploading) qrisFileInputRef.current?.click();
-                          }}
-                        >
-                          <div className="w-12 h-12 rounded-2xl bg-orange-100/70 text-orange-600 flex items-center justify-center shadow-xs">
-                            {qrisUploading ? (
-                              <RefreshCw className="w-6 h-6 animate-spin" />
-                            ) : (
-                              <Upload className="w-6 h-6" />
-                            )}
+                        )}
+
+                        {/* Error Banner */}
+                        {qrisUploadError && (
+                          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-start gap-2 animate-in fade-in duration-150">
+                            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                            <div className="flex-1 leading-snug">{qrisUploadError}</div>
+                            <button
+                              type="button"
+                              onClick={() => setQrisUploadError(null)}
+                              className="text-rose-400 hover:text-rose-600 font-bold p-0.5"
+                            >
+                              ✕
+                            </button>
                           </div>
+                        )}
+                      </div>
 
-                          <div className="space-y-1">
-                            <p className="text-xs font-extrabold text-slate-800">
-                              {qrisUploading
-                                ? 'Sedang mengunggah berkas ke storage...'
-                                : 'Klik atau seret & lepas (Drag & Drop) barcode QRIS di sini'}
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              Mendukung format PNG, JPG, atau WebP (Maksimal 3MB)
-                            </p>
-                          </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-700">NMID / Nama Merchant Terdaftar (Opsional)</label>
+                        <input
+                          type="text"
+                          value={qrisConfig.nmid}
+                          onChange={(e) => setQrisConfig({ ...qrisConfig, nmid: e.target.value })}
+                          placeholder="e.g., ID102003920199 (Suzie Ray)"
+                          className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
+                        />
+                      </div>
 
-                          <button
-                            type="button"
-                            disabled={qrisUploading}
-                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition active:scale-95 flex items-center gap-1.5 pointer-events-none"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>Unggah Barcode QRIS</span>
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Error Banner */}
-                      {qrisUploadError && (
-                        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-start gap-2 animate-in fade-in duration-150">
-                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <div className="flex-1 leading-snug">{qrisUploadError}</div>
-                          <button
-                            type="button"
-                            onClick={() => setQrisUploadError(null)}
-                            className="text-rose-400 hover:text-rose-600 font-bold p-0.5"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
+                      <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-800 flex items-start gap-2.5">
+                        <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <p className="leading-relaxed">
+                          Saat audiens mengetuk tombol ini di ponsel, popup modal QRIS akan terbuka otomatis dengan panduan scan Gopay, OVO, Dana, ShopeePay, dan BCA.
+                        </p>
+                      </div>
                     </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">NMID / Nama Merchant Terdaftar (Opsional)</label>
-                      <input
-                        type="text"
-                        value={qrisConfig.nmid}
-                        onChange={(e) => setQrisConfig({ ...qrisConfig, nmid: e.target.value })}
-                        placeholder="e.g., ID102003920199 (Suzie Ray)"
-                        className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
-                      />
+                  ) : (
+                    <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+                      Fitur traktir QRIS saat ini dinonaktifkan. Aktifkan sakelar di atas untuk memunculkan tombol dukungan di halaman bio.
                     </div>
+                  )}
+                </div>
 
-                    <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-800 flex items-start gap-2.5">
-                      <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <p className="leading-relaxed">
-                        Saat audiens mengetuk tombol ini di ponsel, popup modal QRIS akan terbuka otomatis dengan panduan scan Gopay, OVO, Dana, ShopeePay, dan BCA.
+                {/* 2. Kotak Masuk Pesan & Traktir Masuk (Privacy-First) */}
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                          <Coffee className="w-4 h-4" />
+                        </div>
+                        <h2 className="text-base font-extrabold text-slate-900">
+                          Kotak Masuk Pesan & Traktir Masuk
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          Privasi Terjaga 100%
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Daftar donasi dan traktir QRIS langsung dari audiens. Bukti transfer diunggah langsung ke platform (tanpa membuka chat WhatsApp).
                       </p>
                     </div>
+
+                    <button
+                      type="button"
+                      disabled={tipsLoading}
+                      onClick={() => fetchCreatorTips()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer self-start sm:self-auto disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${tipsLoading ? 'animate-spin text-orange-500' : ''}`} />
+                      <span>{tipsLoading ? 'Memperbarui...' : 'Segarkan Data'}</span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
-                    Fitur traktir QRIS saat ini dinonaktifkan. Aktifkan sakelar di atas untuk memunculkan tombol dukungan di halaman bio.
+
+                  {/* Summary Metrics Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 to-emerald-50/20 border border-emerald-100 space-y-1">
+                      <div className="flex items-center justify-between text-emerald-600">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider">
+                          Total Traktir Diterima
+                        </span>
+                        <Wallet className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl font-black text-slate-900 font-mono">
+                        Rp {Number(tipsMetrics.total_amount || 0).toLocaleString('id-ID')}
+                      </div>
+                      <p className="text-[10px] text-slate-500">100% masuk ke rekening/e-wallet kamu</p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-orange-50/70 to-orange-50/20 border border-orange-100 space-y-1">
+                      <div className="flex items-center justify-between text-orange-600">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider">
+                          Total Dukungan Masuk
+                        </span>
+                        <Coffee className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl font-black text-slate-900 font-mono">
+                        {tipsMetrics.total_tips || 0} Traktir
+                      </div>
+                      <p className="text-[10px] text-slate-500">Dari penonton & audiens setia</p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/70 to-amber-50/20 border border-amber-100 space-y-1">
+                      <div className="flex items-center justify-between text-amber-600">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider">
+                          Belum Dilihat
+                        </span>
+                        <Eye className="w-4 h-4" />
+                      </div>
+                      <div className="text-xl font-black text-slate-900 font-mono flex items-center gap-2">
+                        <span>{tipsMetrics.unread_count || 0} Baru</span>
+                        {tipsMetrics.unread_count > 0 && (
+                          <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500">Perlu ditinjau bukti transfer</p>
+                    </div>
                   </div>
-                )}
+
+                  {/* Filter Tabs */}
+                  <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                    <button
+                      type="button"
+                      onClick={() => setTipsFilter('ALL')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        tipsFilter === 'ALL'
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Semua ({creatorTips.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipsFilter('UNREAD')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tipsFilter === 'UNREAD'
+                          ? 'bg-amber-500 text-white shadow-2xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>Belum Dilihat</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                        {creatorTips.filter((t) => t.status === 'UNREAD').length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipsFilter('READ')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tipsFilter === 'READ'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>Sudah Selesai</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                        {creatorTips.filter((t) => t.status !== 'UNREAD').length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Tips List / Table */}
+                  {tipsLoading ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-center space-y-2 text-slate-400">
+                      <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
+                      <p className="text-xs font-bold">Memuat daftar bukti transfer & traktir...</p>
+                    </div>
+                  ) : creatorTips.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-3xl space-y-2 p-6">
+                      <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-400 mx-auto flex items-center justify-center">
+                        <Coffee className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-700">Belum Ada Traktir Masuk</h4>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                        Saat audiens mengirim dukungan via QRIS di halaman bio link Anda, bukti transfer dan pesan semangat mereka akan langsung muncul di sini.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {creatorTips
+                        .filter((tip) => {
+                          if (tipsFilter === 'UNREAD') return tip.status === 'UNREAD';
+                          if (tipsFilter === 'READ') return tip.status !== 'UNREAD';
+                          return true;
+                        })
+                        .map((tip) => (
+                          <div
+                            key={tip.id}
+                            className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                              tip.status === 'UNREAD'
+                                ? 'bg-amber-50/30 border-amber-200/90 hover:border-amber-300'
+                                : 'bg-slate-50/50 border-slate-200/80 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center flex-shrink-0">
+                                  {(tip.sender_name || 'A').slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-xs font-extrabold text-slate-900">
+                                      {tip.sender_name || 'Anonim'}
+                                    </h4>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
+                                        tip.status === 'UNREAD'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-emerald-100 text-emerald-800'
+                                      }`}
+                                    >
+                                      {tip.status === 'UNREAD' ? 'Baru / Belum Dilihat' : 'Sudah Dilihat ✓'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400">
+                                    {new Date(tip.created_at).toLocaleString('id-ID', {
+                                      dateStyle: 'medium',
+                                      timeStyle: 'short',
+                                    })}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 font-black text-xs font-mono">
+                                  Rp {Number(tip.amount).toLocaleString('id-ID')}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Message Quote */}
+                            {tip.message ? (
+                              <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 text-xs text-slate-700 flex items-start gap-2">
+                                <MessageCircle className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                <p className="italic leading-relaxed">"{tip.message}"</p>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-400 italic">
+                                — Tanpa catatan pesan —
+                              </p>
+                            )}
+
+                            {/* Action Row */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                              <button
+                                type="button"
+                                onClick={() => setViewingProofTip(tip)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-orange-500" />
+                                <span>Lihat Bukti Transfer</span>
+                              </button>
+
+                              {tip.status === 'UNREAD' ? (
+                                <button
+                                  type="button"
+                                  disabled={updatingTipId === tip.id}
+                                  onClick={() => handleUpdateTipStatus(tip.id, 'READ')}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 disabled:opacity-50"
+                                >
+                                  {updatingTipId === tip.id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Tandai Sudah Dilihat</span>
+                                </button>
+                              ) : (
+                                <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Selesai Ditinjau</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1643,6 +1974,95 @@ export default function CreatorAdminPage() {
               >
                 Batal
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL PRATINJAU BUKTI TRANSFER DONASI ──────────────── */}
+      {viewingProofTip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-200 my-auto text-left">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <Coffee className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Bukti Transfer dari {viewingProofTip.sender_name || 'Anonim'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    Rp {Number(viewingProofTip.amount).toLocaleString('id-ID')} •{' '}
+                    {new Date(viewingProofTip.created_at).toLocaleString('id-ID', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingProofTip(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Gambar Bukti Transfer */}
+            <div className="w-full max-h-[60vh] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-200/80 p-2 relative group">
+              <img
+                src={viewingProofTip.proof_image_url}
+                alt={`Bukti transfer dari ${viewingProofTip.sender_name}`}
+                className="max-h-[55vh] w-auto max-w-full object-contain rounded-xl"
+              />
+            </div>
+
+            {/* Pesan Donatur */}
+            {viewingProofTip.message && (
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700">
+                <span className="font-bold text-slate-900 block mb-0.5">Catatan Pesan:</span>
+                <p className="italic">"{viewingProofTip.message}"</p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <a
+                href={viewingProofTip.proof_image_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Buka Gambar Ukuran Asli</span>
+              </a>
+
+              <div className="flex items-center gap-2">
+                {viewingProofTip.status === 'UNREAD' && (
+                  <button
+                    type="button"
+                    disabled={updatingTipId === viewingProofTip.id}
+                    onClick={() => handleUpdateTipStatus(viewingProofTip.id, 'READ')}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    {updatingTipId === viewingProofTip.id ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    <span>Tandai Sudah Dilihat</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingProofTip(null)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>
