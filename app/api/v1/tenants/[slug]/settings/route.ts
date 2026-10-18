@@ -2,9 +2,20 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
+
+export function sanitizePhoneNumber(raw: unknown): string {
+  if (!raw) return '';
+  let clean = String(raw).replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  } else if (clean.startsWith('8')) {
+    clean = '62' + clean;
+  }
+  return clean;
+}
 
 type TierEnum = 'SOLO' | 'ADS_PERFORMANCE' | 'TEAM_SCALE';
 
@@ -294,8 +305,8 @@ export async function PUT(
       follow_up_rules,
     } = body;
 
-    const supabase = getSupabase();
-    const { data: existing } = await supabase
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: existing } = await supabaseAdmin
       .from('tenants')
       .select('*')
       .eq('slug', slug)
@@ -304,6 +315,17 @@ export async function PUT(
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
+
+    const rawIncomingPhone =
+      body.whatsapp_number ??
+      body.whatsapp ??
+      body.phone ??
+      body.metadata?.whatsapp_number ??
+      body.metadata?.phone ??
+      body.cs_phone ??
+      undefined;
+
+    const sanitizedPhone = rawIncomingPhone !== undefined ? sanitizePhoneNumber(rawIncomingPhone) : undefined;
 
     const updatedTier = plan_tier || existing.tier;
     const updatedFeatures = features || existing.metadata?.features || {};
@@ -411,8 +433,12 @@ export async function PUT(
       } : {}),
       ...(effectiveLogo !== undefined ? { logo_url: effectiveLogo, store_logo_url: effectiveLogo, avatar_url: effectiveLogo } : {}),
       ...(bio !== undefined ? { bio } : {}),
-      ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
-      ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
+      ...(sanitizedPhone !== undefined ? {
+        phone: sanitizedPhone,
+        whatsapp_number: sanitizedPhone,
+        whatsapp: sanitizedPhone,
+        wa_number: sanitizedPhone,
+      } : {}),
       ...(greeting_message !== undefined || custom_greeting_message !== undefined ? {
         greeting_message: greeting_message !== undefined ? greeting_message : custom_greeting_message,
         custom_greeting_message: custom_greeting_message !== undefined ? custom_greeting_message : greeting_message,
@@ -445,13 +471,56 @@ export async function PUT(
       updateFields.telegram_chat_id = telegram_chat_id || null;
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedTenants, error: updateError } = await supabaseAdmin
       .from('tenants')
       .update(updateFields)
-      .eq('slug', slug);
+      .eq('id', existing.id)
+      .select('id, slug, name, metadata');
 
-    if (updateError) {
-      return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+    if (updateError || !updatedTenants || updatedTenants.length === 0) {
+      console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);
+      return NextResponse.json(
+        { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: updateError?.message || 'Gagal memperbarui pengaturan toko.' },
+        { status: 400 }
+      );
+    }
+
+    // Sync WhatsApp CS number ke tabel whatsapp_connections agar persistent across dashboard reload
+    if (sanitizedPhone) {
+      try {
+        const { data: existingWaConn } = await supabaseAdmin
+          .from('whatsapp_connections')
+          .select('id')
+          .or(`tenant_slug.eq.${slug},tenant_id.eq.${existing.id}`)
+          .maybeSingle();
+
+        if (existingWaConn?.id) {
+          await supabaseAdmin
+            .from('whatsapp_connections')
+            .update({
+              phone_number: sanitizedPhone,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingWaConn.id);
+        } else {
+          await supabaseAdmin
+            .from('whatsapp_connections')
+            .insert({
+              tenant_id: existing.id,
+              tenant_slug: slug,
+              instance_name: slug,
+              provider: 'EVOLUTION',
+              channel_type: 'BAILEYS',
+              phone_number: sanitizedPhone,
+              status: 'open',
+              is_connected: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+        }
+      } catch (waConnErr) {
+        console.warn('[Settings Route] Non-fatal whatsapp_connections sync warning:', waConnErr);
+      }
     }
 
     // Sync dual-level session and conversations if bot_paused or is_bot_active changed
@@ -465,7 +534,7 @@ export async function PUT(
           tenantSlug: slug,
           userRole: 'admin',
           source: 'settings_api',
-          supabase,
+          supabase: supabaseAdmin,
         });
       } catch (bErr) {
         console.warn('[SettingsRoute] Bot control sync warning:', bErr);
@@ -481,7 +550,7 @@ export async function PUT(
       const guardrailsList = effectivePolicy?.custom_do_and_donts ? [effectivePolicy.custom_do_and_donts] : [];
 
       if (pName || tVal || sPrompt || guardrailsList.length > 0) {
-        await supabase
+        await supabaseAdmin
           .from('bot_profiles')
           .upsert({
             tenant_slug: slug,

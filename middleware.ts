@@ -583,18 +583,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (pathname.startsWith('/@')) {
     const handle = pathname.replace(/^\/@+/, '').trim();
     if (handle) {
+      const refCode = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r') || handle;
       // Jika hostname BUKAN creator.boontrack.com (misal shop.boontrack.com atau boontrack.com)
       // -> Lakukan 301 Canonical Redirect ke https://creator.boontrack.com/@${handle}
       if (!isCreatorHost) {
         const targetUrl = new URL(`https://creator.boontrack.com/@${handle}`, req.url);
         targetUrl.search = req.nextUrl.search;
-        return NextResponse.redirect(targetUrl, 301);
+        const res = NextResponse.redirect(targetUrl, 301);
+        if (refCode) {
+          setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
+        }
+        return res;
       }
 
       // Jika hostname SUDAH creator.boontrack.com -> rewrite ke /creator/${handle}
       const url = req.nextUrl.clone();
       url.pathname = `/creator/${handle}`;
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url);
+      if (refCode) {
+        setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
+      }
+      return res;
     }
   }
 
@@ -629,7 +638,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     // 3. Root landing page -> /creator
     if (pathname === '/' || pathname === '') {
       url.pathname = '/creator';
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url);
+      const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r');
+      if (refParam) {
+        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      }
+      return res;
     }
 
     // 4. Creator Admin Workspace -> /creator/admin
@@ -659,14 +673,24 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       ? pathname.slice('/creator/'.length)
       : pathname.replace(/^\/+/, '');
     const cleanSlug = relativePath.replace(/^@+/, '').trim();
+    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r');
+    const refCode = refParam || cleanSlug;
 
     if (cleanSlug) {
       url.pathname = `/creator/${cleanSlug}`;
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url);
+      if (refCode) {
+        setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
+      }
+      return res;
     }
 
     url.pathname = `/creator${pathname}`;
-    return NextResponse.rewrite(url);
+    const res = NextResponse.rewrite(url);
+    if (refParam) {
+      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    }
+    return res;
   }
 
   // ===========================================================================

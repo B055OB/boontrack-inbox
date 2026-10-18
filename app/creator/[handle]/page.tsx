@@ -72,6 +72,69 @@ interface BioLinkItem {
   is_active: boolean;
 }
 
+/**
+ * Auto-enriches outbound URLs pointing to internal BoonTrack domains (boontrack.com, shop.boontrack.com, relative paths)
+ * with the creator's referral and reseller parameters (?ref=${handle}&r=${handle}).
+ * Leaves third-party URLs (Shopee, Tokopedia, WhatsApp wa.me, etc.) completely untouched.
+ */
+export function enrichOutboundLink(rawUrl: string, creatorHandle: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  const cleanHandle = (creatorHandle || '').replace(/^@+/, '').trim().toLowerCase();
+  if (!cleanHandle) return rawUrl;
+
+  try {
+    // Relative URLs (e.g. /toko/p/gamis or /[tenant]/p/[slug])
+    if (rawUrl.startsWith('/') && !rawUrl.startsWith('//')) {
+      const dummyBase = 'https://shop.boontrack.com';
+      const parsed = new URL(rawUrl, dummyBase);
+      if (!parsed.searchParams.has('ref')) parsed.searchParams.set('ref', cleanHandle);
+      if (!parsed.searchParams.has('r')) parsed.searchParams.set('r', cleanHandle);
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase();
+
+    // Check third-party domains first - leave untouched
+    const isThirdParty =
+      host.includes('shopee') ||
+      host.includes('shope.ee') ||
+      host.includes('tokopedia') ||
+      host.includes('wa.me') ||
+      host.includes('whatsapp') ||
+      host.includes('tiktok') ||
+      host.includes('instagram') ||
+      host.includes('youtube') ||
+      host.includes('twitter') ||
+      host.includes('x.com') ||
+      host.includes('facebook') ||
+      host.includes('fb.me');
+
+    if (isThirdParty) {
+      return rawUrl;
+    }
+
+    // Check if internal domain
+    const isInternal =
+      host === 'boontrack.com' ||
+      host === 'www.boontrack.com' ||
+      host === 'shop.boontrack.com' ||
+      host.endsWith('.boontrack.com') ||
+      host === 'localhost' ||
+      host.endsWith('.localhost');
+
+    if (isInternal) {
+      if (!parsed.searchParams.has('ref')) parsed.searchParams.set('ref', cleanHandle);
+      if (!parsed.searchParams.has('r')) parsed.searchParams.set('r', cleanHandle);
+      return parsed.toString();
+    }
+
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
 interface CreatorData {
   id: string;
   handle: string;
@@ -348,7 +411,7 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
           {links.filter((l) => l.is_active !== false).map((link) => (
             <a
               key={link.id}
-              href={link.url}
+              href={enrichOutboundLink(link.url, profile.handle)}
               target="_blank"
               rel="noreferrer"
               className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md hover:border-orange-300 transition-all flex items-center justify-between gap-3 group active:scale-99 block"

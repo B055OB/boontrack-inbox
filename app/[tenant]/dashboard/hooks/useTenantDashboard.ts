@@ -1423,16 +1423,29 @@ export function useTenantDashboard() {
         }).catch(() => null);
         if (res && res.ok) {
           const data = await res.json();
-          const rawPhone = String(data.connected_phone || data.phone_number || '');
+          const rawPhone = String(
+            data.phone_number ||
+            data.connected_phone ||
+            tenantData?.whatsapp_number ||
+            tenantData?.metadata?.whatsapp_number ||
+            tenantData?.metadata?.wa_number ||
+            storeWhatsapp ||
+            ''
+          ).trim();
           const isPlatform =
             rawPhone.includes('85181830080') ||
             rawPhone.includes('85179555449') ||
             rawPhone.includes('85139555449') ||
             data.mode === 'SHARED';
 
-          if (data.status === 'CONNECTED' && !isPlatform && rawPhone && isMounted) {
+          const isConnected =
+            (data.status === 'CONNECTED' || data.status === 'open' || data.state === 'open' || data.connected === true || data.is_connected === true) &&
+            !isPlatform;
+
+          if (isConnected && isMounted) {
             setWaStatus('CONNECTED');
-            setConnectedPhone(rawPhone);
+            const finalPhone = rawPhone || (typeof storeWhatsapp === 'string' && storeWhatsapp ? storeWhatsapp : null);
+            setConnectedPhone(finalPhone);
           } else if (isMounted) {
             setWaStatus('DISCONNECTED');
             setConnectedPhone(null);
@@ -1679,186 +1692,9 @@ export function useTenantDashboard() {
       is_active: isTargetActive,
     });
 
-    let updatedProducts: ProductItem[];
-    if (editingProductId !== null && editingProductId !== undefined) {
-      updatedProducts = products.map(p => (String(p.id) === String(editingProductId) ? fullProductItem : p));
-      setProducts(updatedProducts);
-      setSaveFeedback('✅ Produk berhasil diperbarui!');
-    } else {
-      updatedProducts = [fullProductItem, ...products];
-      setProducts(updatedProducts);
-      setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
-    }
+    setSaveFeedback('⏳ Sedang menyimpan perubahan produk...');
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updatedProducts)));
-    }
-
-    // 1. Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow?.id) {
-          // Fetch existing products from DB metadata
-          const existingMetaProducts: ProductItem[] = Array.isArray(tenantRow.metadata?.products)
-            ? tenantRow.metadata.products
-            : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
-
-          let allKnownProducts: ProductItem[] = [...existingMetaProducts];
-
-          // Fetch products from relational SQL table ONLY if existing metadata is empty to prevent resurrecting deleted products
-          if (allKnownProducts.length === 0) {
-            try {
-              const { data: sqlProds } = await supabase
-                .from('products')
-                .select('*')
-                .eq('tenant_id', tenantRow.id);
-
-              if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-                const knownSlugs = new Set(allKnownProducts.filter(Boolean).map((p: any) => String(p?.slug ?? '').toLowerCase()));
-                const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
-
-                for (const sp of sqlProds) {
-                  const spSlug = (sp.slug || '').toLowerCase();
-                  const spId = String(sp.id);
-                  const spPt = (sp?.product_type || '').toUpperCase();
-                  if (!knownSlugs.has(spSlug) && !knownIds.has(spId)) {
-                    allKnownProducts.push({
-                      id: sp.id,
-                      name: sp.title || `Produk`,
-                      title: sp.title,
-                      slug: sp.slug,
-                      category: sp.category || 'digital',
-                      product_type: (sp?.product_type || 'DIGITAL') as ProductType,
-                      type: spPt === 'PHYSICAL' ? 'physical' : (spPt === 'SERVICE' || spPt === 'FIELD_SERVICE' || spPt === 'PROFESSIONAL_SERVICE' || spPt === 'AGENCY' ? 'service' : (spPt === 'FOOD' ? 'fnb' : 'digital')),
-                      price: Number(sp.price) || 0,
-                      promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-                      sku: sp.sku || `SKU-${sp.id}`,
-                      is_active: sp.is_active !== false,
-                      requires_shipping: Boolean(sp.requires_shipping),
-                      image: sp.image || sp.image_url || '',
-                      image_url: sp.image || sp.image_url || '',
-                      description: sp.description || '',
-                      download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-                      stock: sp.stock ?? 999999,
-                      is_unlimited: sp.is_unlimited_stock ?? true,
-                      fulfillment_metadata: sp.fulfillment_metadata,
-                      single_page_config: sp.fulfillment_metadata?.single_page_config,
-                    });
-                  }
-                }
-              }
-            } catch (sqlReadErr) {
-              console.debug('[Dashboard] SQL products read note:', sqlReadErr);
-            }
-          }
-
-          // APPEND or UPDATE fullProductItem cleanly based on target SKU, ID, or slug
-          const targetSku = (fullProductItem.sku || '').trim().toLowerCase();
-          const targetId = String(fullProductItem.id || '').trim().toLowerCase();
-          const targetSlug = finalSlug.trim().toLowerCase();
-
-          const editIndex = allKnownProducts.findIndex(
-            p =>
-              (editingProductId && String(p.id).toLowerCase() === String(editingProductId).toLowerCase()) ||
-              (targetSku && (p.sku || '').trim().toLowerCase() === targetSku) ||
-              (targetId && String(p.id).toLowerCase() === targetId) ||
-              (targetSlug && (p.slug || '').toLowerCase() === targetSlug)
-          );
-
-          let finalMergedProducts: ProductItem[];
-          if (editIndex >= 0) {
-            finalMergedProducts = [...allKnownProducts];
-            finalMergedProducts[editIndex] = {
-              ...finalMergedProducts[editIndex],
-              ...fullProductItem,
-            };
-          } else {
-            // APPEND to array, NEVER replace total
-            finalMergedProducts = [fullProductItem, ...allKnownProducts];
-          }
-
-          const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
-          setProducts(cleanFinalMerged);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(cleanFinalMerged));
-          }
-
-          const updatedMeta = {
-            ...(tenantRow.metadata || {}),
-            products: cleanFinalMerged,
-            product: cleanFinalMerged[0] || fullProductItem,
-          };
-
-          const { error: tErr } = await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('id', tenantRow.id);
-
-          if (tErr) {
-            console.error('[Dashboard] Direct Supabase product update failed:', tErr);
-          }
-
-          // Sync juga ke tabel SQL `products` jika ada
-          try {
-            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(fullProductItem.id));
-            const sqlPayload = {
-              ...(isUuid ? { id: String(fullProductItem.id) } : {}),
-              tenant_id: tenantRow.id,
-              title: fullProductItem.name,
-              slug: finalSlug,
-              description: fullProductItem.description || '',
-              price: Number(fullProductItem.price),
-              promo_price: fullProductItem.promo_price ? Number(fullProductItem.promo_price) : 0,
-              image: cleanImage,
-              image_url: cleanImage,
-              category: fullProductItem.category || 'digital',
-              stock: fullProductItem.stock !== undefined ? Number(fullProductItem.stock) : 999999,
-              is_unlimited_stock: fullProductItem.is_unlimited ?? true,
-              asset_reference: `product:${finalSlug}`,
-              license_status: 'UNVERIFIED',
-              product_type: mapToDbProductType(fullProductItem?.product_type, fullProductItem?.category),
-              sku: fullProductItem.sku || `SKU-${finalSlug}`,
-              is_active: isTargetActive,
-              requires_shipping: Boolean(fullProductItem.requires_shipping),
-              fulfillment_metadata: fullProductItem.fulfillment_metadata || {},
-            };
-
-            const orFilters: string[] = [];
-            if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
-            if (fullProductItem.sku) orFilters.push(`sku.eq.${fullProductItem.sku}`);
-            if (isUuid) orFilters.push(`id.eq.${fullProductItem.id}`);
-
-            const { data: existingSql } = orFilters.length > 0
-              ? await supabase
-                  .from('products')
-                  .select('id')
-                  .eq('tenant_id', tenantRow.id)
-                  .or(orFilters.join(','))
-                  .maybeSingle()
-              : { data: null };
-
-            if (existingSql?.id) {
-              await supabase.from('products').update(sqlPayload).eq('id', existingSql.id);
-            } else {
-              await supabase.from('products').insert(sqlPayload);
-            }
-          } catch (pTableErr) {
-            console.debug('[Dashboard] SQL products table sync note:', pTableErr);
-          }
-        }
-      }
-    } catch (dbErr) {
-      console.warn('Direct Supabase product save error:', dbErr);
-    }
-
-    // 2. Sync via API Route Gateway (forward ke core backend)
+    // Mutasi database WAJIB melalui API Route Gateway ber-service role key (bukan client anon yang terblokir RLS)
     try {
       const cleanProdPayload = sanitizeProductPayload(fullProductItem);
       const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
@@ -1866,16 +1702,45 @@ export function useTenantDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: safeJsonStringify(cleanProdPayload),
       });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
-        console.warn('[Dashboard] Gagal sync produk ke API route:', errJson);
-      }
-    } catch (err) {
-      console.warn('Gagal sync produk ke API route:', err);
-    }
 
-    setIsProductModalOpen(false);
-    setTimeout(() => setSaveFeedback(null), 3000);
+      const resData = await res.json().catch(() => ({}));
+
+      if (!res.ok || resData.success === false) {
+        const errorMsg = resData?.message || resData?.error || 'Gagal menyimpan produk ke database.';
+        console.error('[Dashboard] Gagal menyimpan produk:', errorMsg);
+        setSaveFeedback(`❌ ${errorMsg}`);
+        return;
+      }
+
+      // Mutasi sukses di database -> update state lokal & localStorage
+      let updatedProducts: ProductItem[];
+      const returnedProduct = resData.product || fullProductItem;
+
+      if (editingProductId !== null && editingProductId !== undefined) {
+        updatedProducts = products.map(p =>
+          (String(p.id) === String(editingProductId) || (p.slug && p.slug === finalSlug))
+            ? { ...p, ...returnedProduct }
+            : p
+        );
+        setProducts(updatedProducts);
+        setSaveFeedback('✅ Produk berhasil diperbarui!');
+      } else {
+        updatedProducts = [returnedProduct, ...products];
+        setProducts(updatedProducts);
+        setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updatedProducts)));
+      }
+
+      setIsProductModalOpen(false);
+      setTimeout(() => setSaveFeedback(null), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kendala jaringan saat menyimpan produk.';
+      console.error('[Dashboard] Exception saat simpan produk:', err);
+      setSaveFeedback(`❌ ${msg}`);
+    }
   };
 
   const handleDeleteProduct = async (id: number | string) => {
@@ -1888,70 +1753,27 @@ export function useTenantDashboard() {
     if (confirm('Hapus produk ini dari etalase toko?')) {
       const targetProd = products.find(p => String(p.id) === String(id));
       const targetSlug = targetProd?.slug;
-      const targetSku = targetProd?.sku;
-
-      const updated = products.filter(p => String(p.id) !== String(id) && (!targetSlug || p.slug !== targetSlug));
-      setProducts(updated);
-      setSaveFeedback('🗑️ Produk telah dihapus.');
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updated)));
-      }
-
-      // Direct delete ke database Supabase
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const currentMetaProducts = Array.isArray(tenantRow.metadata?.products) ? tenantRow.metadata.products : [];
-            const filteredMeta = currentMetaProducts.filter((p: any) =>
-              String(p.id) !== String(id) &&
-              (!targetSlug || (p.slug || '').toLowerCase() !== targetSlug.toLowerCase()) &&
-              (!targetSku || (p.sku || '').toLowerCase() !== targetSku.toLowerCase())
-            );
-
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              products: filteredMeta,
-              product: filteredMeta[0] || null,
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-
-            // Hapus juga secara atomik dari tabel SQL products
-            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
-            const deleteFilters: string[] = [];
-            if (isUuid) deleteFilters.push(`id.eq.${id}`);
-            if (targetSlug) deleteFilters.push(`slug.eq.${targetSlug}`);
-            if (targetSku) deleteFilters.push(`sku.eq.${targetSku}`);
-
-            if (deleteFilters.length > 0) {
-              await supabase
-                .from('products')
-                .delete()
-                .eq('tenant_id', tenantRow.id)
-                .or(deleteFilters.join(','));
-            }
-          }
-        }
-      } catch (dbErr) {
-        console.warn('Direct Supabase delete error:', dbErr);
-      }
 
       try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products?id=${encodeURIComponent(id)}`, {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
-      } catch (err) {
-        console.warn('Gagal panggil DELETE produk:', err);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.message || errData?.error || 'Gagal menghapus produk dari database.');
+        }
+
+        const updated = products.filter(p => String(p.id) !== String(id) && (!targetSlug || p.slug !== targetSlug));
+        setProducts(updated);
+        setSaveFeedback('🗑️ Produk telah dihapus.');
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`bt_products_${tenantSlug}`, safeJsonStringify(sanitizeProductPayload(updated)));
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Gagal menghapus produk.';
+        console.error('[Dashboard] Delete product error:', err);
+        setSaveFeedback(`❌ ${msg}`);
       }
 
       setTimeout(() => setSaveFeedback(null), 3000);
@@ -2687,19 +2509,18 @@ export function useTenantDashboard() {
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
-      const primaryUrl = `${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect${isReload ? '?force=true' : ''}`;
-
+      const connectUrl = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload&force=true' : ''}`;
       let res: Response;
       try {
-        res = await fetch(primaryUrl, {
+        res = await fetch(connectUrl, {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
           signal: controller.signal,
         });
       } catch {
-        // Fallback ke server gateway proxy internal jika direct fetch terhalang
-        const fallbackUrl = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
+        // Fallback ke direct coreBase jika gateway proxy gagal
+        const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
+        const fallbackUrl = `${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect${isReload ? '?force=true' : ''}`;
         res = await fetch(fallbackUrl, {
           method: 'GET',
           headers: { 'Accept': 'application/json' },
@@ -2723,7 +2544,15 @@ export function useTenantDashboard() {
         if (data.provider) setWaProvider(data.provider);
         if (data.mode) setWaConnectionMode(data.mode);
 
-        const rawPhone = String(data.phone_number || data.connected_phone || '').trim();
+        const rawPhone = String(
+          data.phone_number ||
+          data.connected_phone ||
+          tenantData?.whatsapp_number ||
+          tenantData?.metadata?.whatsapp_number ||
+          tenantData?.metadata?.wa_number ||
+          storeWhatsapp ||
+          ''
+        ).trim();
         const isPlatform =
           rawPhone.includes('85181830080') ||
           rawPhone.includes('85179555449') ||
@@ -2731,13 +2560,13 @@ export function useTenantDashboard() {
           data.mode === 'SHARED';
 
         const isConnected =
-          (data.status === 'CONNECTED' || data.status === 'open' || data.connected === true) &&
-          !isPlatform &&
-          Boolean(rawPhone);
+          (data.status === 'CONNECTED' || data.status === 'open' || data.state === 'open' || data.connected === true || data.is_connected === true) &&
+          !isPlatform;
 
         if (isConnected) {
           setWaStatus('CONNECTED');
-          setConnectedPhone(rawPhone || null);
+          const finalPhone = rawPhone || (typeof storeWhatsapp === 'string' && storeWhatsapp ? storeWhatsapp : null);
+          setConnectedPhone(finalPhone);
           setQrCodeUrl(null);
           setQrImgError(false);
           setWaErrorMessage(null);
@@ -2821,8 +2650,7 @@ export function useTenantDashboard() {
     let consecutiveErrors = 0;
     let isCancelled = false;
 
-    const coreBase = (process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com').replace(/\/+$/, '');
-    const pollUrl = `${coreBase}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect`;
+    const pollUrl = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`;
 
     const pollInterval = setInterval(async () => {
       if (isCancelled) return;
@@ -2861,19 +2689,34 @@ export function useTenantDashboard() {
         if (data.provider) setWaProvider(data.provider);
         if (data.mode) setWaConnectionMode(data.mode);
 
-        const rawPhone = String(data.phone_number || data.connected_phone || '');
+        const rawPhone = String(
+          data.phone_number ||
+          data.connected_phone ||
+          tenantData?.whatsapp_number ||
+          tenantData?.metadata?.whatsapp_number ||
+          tenantData?.metadata?.wa_number ||
+          storeWhatsapp ||
+          ''
+        ).trim();
         const isPlatform =
           rawPhone.includes('85181830080') ||
           rawPhone.includes('85179555449') ||
           rawPhone.includes('85139555449') ||
           data.mode === 'SHARED';
 
-        if ((data.status === 'CONNECTED' || data.connected === true) && !isPlatform) {
+        const isConnected =
+          (data.status === 'CONNECTED' || data.status === 'open' || data.state === 'open' || data.connected === true || data.is_connected === true) &&
+          !isPlatform;
+
+        if (isConnected) {
           setWaStatus('CONNECTED');
-          setConnectedPhone(rawPhone || null);
+          const finalPhone = rawPhone || (typeof storeWhatsapp === 'string' && storeWhatsapp ? storeWhatsapp : null);
+          setConnectedPhone(finalPhone);
           setQrCodeUrl(null);
           setQrImgError(false);
           setWaErrorMessage(null);
+          setIsQrLoading(false);
+          setWaLoadingMessage(null);
           clearInterval(pollInterval);
         } else {
           const rawBase64 =

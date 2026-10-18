@@ -367,103 +367,15 @@ export default function SettingsTab({
       ...additionalBankAccounts.filter(b => (b.account_number || '').trim() !== '')
     ];
 
-    let savedMetadata: any = null;
+    let cleanWhatsapp = storeWhatsapp ? storeWhatsapp.replace(/[^0-9]/g, '') : '';
+    if (cleanWhatsapp.startsWith('0')) {
+      cleanWhatsapp = '62' + cleanWhatsapp.slice(1);
+    } else if (cleanWhatsapp.startsWith('8')) {
+      cleanWhatsapp = '62' + cleanWhatsapp;
+    }
+
     try {
-      // 1. Direct Persist ke database Supabase (tenants table & metadata)
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              bank_settings: bankTransferData,
-              bank_transfer: bankTransferData,
-              bank_accounts: fullBankList,
-              accounts: fullBankList,
-              manual_bank_accounts: fullBankList,
-              is_bank_transfer_active: isBankTransferActive,
-              payment_config: {
-                ...(tenantRow.metadata?.payment_config || {}),
-                bank_accounts: fullBankList,
-                enable_manual_transfer: isBankTransferActive,
-                enable_bank_transfer: isBankTransferActive,
-              },
-              payment_settings: {
-                ...(tenantRow.metadata?.payment_settings || {}),
-                bank_accounts: fullBankList,
-                enable_manual_transfer: isBankTransferActive,
-                enable_bank_transfer: isBankTransferActive,
-              },
-              ...(cleanAcc ? {
-                bank_name: effBank,
-                bank_account: cleanAcc,
-                bank_holder: cleanHolder || trimmed,
-              } : {}),
-              store_name: trimmed,
-              bio: storeBio,
-              whatsapp_number: storeWhatsapp,
-              whatsapp: storeWhatsapp,
-              greeting_message: localGreeting,
-              custom_greeting_message: localGreeting,
-              basic_shipping: {
-                origin_city: originCity,
-                origin_address: originAddress,
-                selected_courier: selectedCourier,
-              },
-              ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl, store_logo_url: storeLogoUrl } : {}),
-              ...(storeQrisUrl ? {
-                qris_image_url: storeQrisUrl,
-                qris_url: storeQrisUrl,
-                qris_image: storeQrisUrl,
-                is_qris_active: true,
-                qris_enabled: true,
-                ...(localQrisPayload ? {
-                  qris_payload: localQrisPayload,
-                  qris_static_string: localQrisPayload,
-                } : {}),
-                payment_settings: {
-                  ...(tenantRow.metadata?.payment_settings || {}),
-                  qris: storeQrisUrl,
-                  is_qris_active: true,
-                },
-                payment_config: {
-                  ...(tenantRow.metadata?.payment_config || {}),
-                  enable_qris: true,
-                  qris_image_url: storeQrisUrl,
-                  ...(localQrisPayload ? {
-                    qris_payload: localQrisPayload,
-                    raw_qris_string: localQrisPayload,
-                    static_qris_payload: localQrisPayload,
-                  } : {}),
-                },
-              } : {}),
-            };
-            savedMetadata = updatedMeta;
-
-            const { error: sbUpdateErr } = await supabase
-              .from('tenants')
-              .update({
-                name: trimmed,
-                metadata: updatedMeta,
-              })
-              .eq('id', tenantRow.id);
-
-            if (sbUpdateErr) {
-              console.warn('Direct Supabase update warning:', sbUpdateErr);
-            }
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Direct Supabase save exception:', sbErr);
-      }
-
-      // 2. Simpan ke database tenants & sync metadata melalui unified settings route
+      // Simpan ke database tenants & sync metadata melalui unified settings route (service role key)
       const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -471,8 +383,14 @@ export default function SettingsTab({
           name: trimmed,
           store_name: trimmed,
           bio: storeBio,
-          whatsapp: storeWhatsapp,
-          whatsapp_number: storeWhatsapp,
+          phone: cleanWhatsapp,
+          whatsapp: cleanWhatsapp,
+          whatsapp_number: cleanWhatsapp,
+          metadata: {
+            phone: cleanWhatsapp,
+            whatsapp: cleanWhatsapp,
+            whatsapp_number: cleanWhatsapp,
+          },
           greeting_message: localGreeting,
           custom_greeting_message: localGreeting,
           bank_settings: bankTransferData,
@@ -500,11 +418,12 @@ export default function SettingsTab({
         }),
       });
 
-      if (!settingsRes.ok) {
-        const errData = await settingsRes.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || 'Gagal menyimpan profil ke database.');
+      const resData = await settingsRes.json().catch(() => ({}));
+      if (!settingsRes.ok || resData.success === false) {
+        throw new Error(resData.error || resData.message || 'Gagal menyimpan profil ke database.');
       }
 
+      const savedMetadata = resData?.settings?.metadata || resData?.tenant?.metadata || null;
       if (typeof window !== 'undefined') {
         if (savedMetadata) {
           try {

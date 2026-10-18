@@ -84,8 +84,9 @@ function RegisterFormContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenant_id: 'creator',
+          tenant_id: cleanHandle,
           handle: cleanHandle,
+          is_registration: true,
           display_name: finalDisplayName,
           displayName: finalDisplayName,
           whatsapp: cleanWa,
