@@ -208,6 +208,153 @@ export interface SinglePageConfig {
 
   /** Section #10: Custom HTML / AI Landing Page (v0 / Lovable / Custom) */
   custom_html?: string;
+
+  /** Dynamic Multi-Category Labels & Copywriting Customization */
+  labels?: SinglePageLabelsConfig;
+}
+
+export interface SinglePageLabelsConfig {
+  // Finansial & Sticky Bar
+  price_label?: string;
+  checkout_total_label?: string;
+  bill_status_label?: string;
+  cta_label?: string;
+  free_cta_label?: string;
+  add_to_cart_label?: string;
+  affiliate_cta_label?: string;
+
+  // Keamanan & Trust Badges
+  header_security_badge?: string;
+  direct_store_badge?: string;
+  discount_badge_label?: string;
+
+  // Modul Perbandingan (Them vs Us)
+  comparison_title?: string;
+  comparison_subtitle?: string;
+  comparison_them_label?: string;
+  comparison_us_label?: string;
+
+  // Modul Bukti Sosial & Ulasan
+  testimonials_title?: string;
+  testimonials_subtitle?: string;
+  social_proof_badge?: string;
+  rating_summary_text?: string;
+  verified_user_label?: string;
+  verified_status_label?: string;
+
+  // Modul Penawaran & Bonus
+  bonus_title?: string;
+  bonus_subtitle?: string;
+  bonus_item_badge?: string;
+  bonus_total_banner?: string;
+
+  // Modul FAQ
+  faq_title?: string;
+
+  // Form Pemesanan & Fields
+  checkout_section_title?: string;
+  variant_selector_label?: string;
+  selected_variant_label?: string;
+  quantity_label?: string;
+  email_field_label?: string;
+  notes_field_label?: string;
+  notes_placeholder?: string;
+
+  // Cart Drawer
+  cart_title?: string;
+  cart_empty_text?: string;
+  cart_subtotal_label?: string;
+  cart_checkout_button?: string;
+}
+
+export interface ResolvedCategoryLabels {
+  priceLabel: string;
+  checkoutTotalLabel: string;
+  billStatusLabel: string;
+  ctaLabel: string;
+  freeCtaLabel: string;
+  addToCartLabel: string;
+  affiliateCtaLabel: string;
+  headerSecurityBadge: string;
+  directStoreBadge: string;
+  discountBadgeLabel: string;
+  comparisonTitle: string;
+  comparisonSubtitle: string;
+  comparisonThemLabel: string;
+  comparisonUsLabel: string;
+  testimonialsTitle: string;
+  testimonialsSubtitle: string;
+  socialProofBadge: string;
+  ratingSummaryText: string;
+  verifiedUserLabel: string;
+  verifiedStatusLabel: string;
+  bonusTitle: string;
+  bonusSubtitle: string;
+  bonusItemBadge: string;
+  bonusTotalBanner: string;
+  faqTitle: string;
+  checkoutSectionTitle: string;
+  variantSelectorLabel: string;
+  selectedVariantLabel: string;
+  quantityLabel: string;
+  emailFieldLabel: string;
+  notesFieldLabel: string;
+  notesPlaceholder: string;
+  cartTitle: string;
+  cartEmptyText: string;
+  cartSubtotalLabel: string;
+  cartCheckoutButton: string;
+}
+
+export function resolveCategoryLabels(
+  config?: SinglePageConfig | null,
+  productType?: string,
+  category?: string
+): ResolvedCategoryLabels {
+  const norm = `${productType || ''} ${category || ''}`.toUpperCase().trim();
+  const isPhysical = norm.includes('PHYSICAL') || norm.includes('FISIK') || norm.includes('RETAIL');
+  const isFnb = norm.includes('FOOD') || norm.includes('KULINER') || norm.includes('FNB');
+  const isService = norm.includes('SERVICE') || norm.includes('JASA') || norm.includes('AGENCY') || norm.includes('BOOKING');
+  const custom = config?.labels || {};
+
+  return {
+    priceLabel: custom.price_label || (isPhysical || isFnb ? 'TOTAL HARGA' : isService ? 'TOTAL INVESTASI / BIAYA' : 'TOTAL INVESTASI'),
+    checkoutTotalLabel: custom.checkout_total_label || (isPhysical ? 'Total Pembayaran Belanja' : isFnb ? 'Total Pembayaran Menu' : 'Total Pembayaran'),
+    billStatusLabel: custom.bill_status_label || (isPhysical || isFnb ? 'Total Tagihan' : isService ? 'Total Biaya Layanan' : 'Total Tagihan'),
+    ctaLabel: custom.cta_label || (isPhysical ? 'Beli Sekarang' : isFnb ? 'Pesan Menu Sekarang' : isService ? 'Booking Jadwal Sekarang' : 'Beli Sekarang'),
+    freeCtaLabel: custom.free_cta_label || (isPhysical ? 'Klaim Sampel Gratis' : isFnb ? 'Klaim Porsi Gratis' : isService ? 'Konsultasi Gratis Sekarang' : 'Klaim Sekarang (Gratis)'),
+    addToCartLabel: custom.add_to_cart_label || '+ Keranjang',
+    affiliateCtaLabel: custom.affiliate_cta_label || (isPhysical ? 'Beli di Mitra / Marketplace Resmi' : 'Beli Sekarang (Mitra Resmi)'),
+    headerSecurityBadge: custom.header_security_badge || (isPhysical ? 'Garansi 100% Produk Original' : isFnb ? 'Jaminan Mutu & Higienis' : isService ? 'Layanan Profesional Terverifikasi' : 'Garansi Akses Resmi'),
+    directStoreBadge: custom.direct_store_badge || (isPhysical ? 'Direct Store (100% Toko Resmi)' : isFnb ? 'Dapur Resmi Terverifikasi' : 'Direct Store (100% Toko Resmi)'),
+    discountBadgeLabel: custom.discount_badge_label || (isPhysical ? 'Promo Diskon Hari Ini' : isFnb ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini'),
+    comparisonTitle: custom.comparison_title || (isPhysical ? 'Kenapa Memilih Produk Kami Dibanding Merk Lain?' : isFnb ? 'Kenapa Memilih Menu Kami Dibanding Lainnya?' : isService ? 'Kenapa Memilih Layanan Kami Dibanding Cara Lain?' : 'Kenapa Memilih Solusi Kami Dibanding Cara Lain?'),
+    comparisonSubtitle: custom.comparison_subtitle || (isPhysical ? 'Perbandingan kualitas bahan, daya tahan, dan garansi:' : isFnb ? 'Perbandingan kualitas rasa, kesegaran bahan, dan porsi:' : isService ? 'Perbedaan nyata efisiensi, akurasi, dan profesionalitas hasil:' : 'Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:'),
+    comparisonThemLabel: custom.comparison_them_label || (isPhysical ? 'Produk Pasaran / Lainnya' : isFnb ? 'Menu Lain / Pasaran' : isService ? 'Cara Lain / Konvensional' : 'Cara Lain / Lama'),
+    comparisonUsLabel: custom.comparison_us_label || (isPhysical ? 'Kelebihan Produk Ini' : isFnb ? 'Keunggulan Menu Kami' : isService ? 'Solusi Layanan Ini' : 'Solusi Produk Ini'),
+    testimonialsTitle: custom.testimonials_title || (isPhysical ? 'Apa Kata Pembeli Kami?' : isFnb ? 'Apa Kata Penikmat Kuliner Kami?' : isService ? 'Kepuasan & Ulasan Klien Kami' : 'Bukti Nyata & Kepuasan Pengguna'),
+    testimonialsSubtitle: custom.testimonials_subtitle || (isPhysical ? 'Pengalaman langsung dari pembeli yang telah menggunakan produk kami:' : isFnb ? 'Pengalaman pelanggan yang telah mencicipi sajian menu kami:' : isService ? 'Pengalaman nyata dari klien yang telah mempercayakan jasanya:' : 'Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:'),
+    socialProofBadge: custom.social_proof_badge || (isPhysical ? 'Ulasan Pembeli Terverifikasi' : isFnb ? 'Ulasan Penikmat Kuliner' : isService ? 'Testimoni Klien Terverifikasi' : 'Hasil Nyata Member'),
+    ratingSummaryText: custom.rating_summary_text || (isPhysical ? '4.9 / 5.0 Rating Pembeli' : isFnb ? '4.9 / 5.0 Rating Rasa & Layanan' : '5.0 / 5.0 Rating Kepuasan'),
+    verifiedUserLabel: custom.verified_user_label || (isPhysical ? 'Pembeli Terverifikasi' : isFnb ? 'Pelanggan Terverifikasi' : isService ? 'Klien Terverifikasi' : 'Verified User'),
+    verifiedStatusLabel: custom.verified_status_label || (isPhysical ? 'Pesanan Selesai' : isFnb ? 'Puas & Kenyang' : isService ? 'Pengerjaan Tuntas' : 'Sukses'),
+    bonusTitle: custom.bonus_title || (isPhysical ? 'Dapatkan Hadiah & Ekstra Bonus Pembelian' : isFnb ? 'Dapatkan Ekstra Topping / Bonus Menu' : isService ? 'Dapatkan Fasilitas & Ekstra Bonus Layanan' : 'Dapatkan Ekstra Bonus Eksklusif'),
+    bonusSubtitle: custom.bonus_subtitle || (isPhysical ? 'Semua hadiah ekstra di bawah ini otomatis dikirim 100% GRATIS bersama paket pesanan Anda:' : isFnb ? 'Semua pelengkap ekstra di bawah ini otomatis disertakan 100% GRATIS bersama pesanan Anda:' : isService ? 'Semua fasilitas tambahan di bawah ini otomatis menjadi hak Anda 100% GRATIS saat memesan sekarang:' : 'Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:'),
+    bonusItemBadge: custom.bonus_item_badge || 'GRATIS',
+    bonusTotalBanner: custom.bonus_total_banner || (isPhysical ? '🎉 Total Nilai Hadiah Tambahan: ' : '🎉 Total Nilai Semua Bonus: '),
+    faqTitle: custom.faq_title || (isPhysical ? 'Pertanyaan Seputar Produk & Pengiriman (FAQ)' : isFnb ? 'Pertanyaan Seputar Menu & Pengantaran (FAQ)' : isService ? 'Pertanyaan Seputar Layanan & Pengerjaan (FAQ)' : 'Pertanyaan yang Sering Diajukan (FAQ)'),
+    checkoutSectionTitle: custom.checkout_section_title || (isPhysical ? 'Formulir Pengiriman & Pembayaran' : isFnb ? 'Formulir Pemesanan Menu & Antar' : isService ? 'Formulir Booking & Pembayaran Layanan' : 'Form Pemesanan & Pembayaran'),
+    variantSelectorLabel: custom.variant_selector_label || (isPhysical ? 'Pilihan Varian / Ukuran / Warna:' : isFnb ? 'Pilihan Varian / Porsi:' : isService ? 'Pilihan Paket Layanan:' : 'Pilihan Varian / Paket:'),
+    selectedVariantLabel: custom.selected_variant_label || (isPhysical ? 'Varian Terpilih:' : isFnb ? 'Menu Terpilih:' : isService ? 'Paket Terpilih:' : 'Paket Terpilih:'),
+    quantityLabel: custom.quantity_label || (isPhysical ? 'Jumlah Barang (Qty):' : isFnb ? 'Jumlah Porsi:' : isService ? 'Jumlah Sesi / Unit:' : 'Kuantitas:'),
+    emailFieldLabel: custom.email_field_label || (isPhysical ? 'Alamat Email (Opsional - Bukti Pembelian)' : isFnb ? 'Alamat Email (Opsional)' : isService ? 'Alamat Email * (Wajib untuk Konfirmasi Jadwal)' : 'Alamat Email * (Wajib untuk Pengiriman Akses)'),
+    notesFieldLabel: custom.notes_field_label || (isPhysical ? 'Catatan Pengiriman (Warna/Patokan Alamat Opsional)' : isFnb ? 'Catatan Dapur / Selera (Pedas/Alergi/Waktu Kirim)' : isService ? 'Catatan Kebutuhan / Briefing Singkat' : 'Catatan Tambahan / Briefing Singkat (Opsional)'),
+    notesPlaceholder: custom.notes_placeholder || (isPhysical ? 'Contoh: Tolong packing bubble wrap tebal, jika rumah sepi titipkan ke pos satpam...' : isFnb ? 'Contoh: Sambal dipisah, jangan pakai bawang goreng, antar jam 12 siang...' : isService ? 'Contoh: Detail kendala teknis, lokasi lantai 2, tangga sudah disediakan...' : 'Tulis catatan khusus untuk penjual di sini (contoh: request varian khusus, catatan rasa/pengiriman, atau detail briefing jasa)...'),
+    cartTitle: custom.cart_title || 'Keranjang Belanja',
+    cartEmptyText: custom.cart_empty_text || 'Keranjang masih kosong',
+    cartSubtotalLabel: custom.cart_subtotal_label || 'Subtotal',
+    cartCheckoutButton: custom.cart_checkout_button || (isPhysical ? 'Lanjut ke Pengiriman & Bayar' : 'Lanjut ke Checkout'),
+  };
 }
 
 export type ProductType =

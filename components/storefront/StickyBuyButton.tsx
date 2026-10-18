@@ -5,6 +5,7 @@ import { ArrowRight, ExternalLink, MessageCircle, ShoppingBag } from 'lucide-rea
 
 export interface StickyBuyButtonProps {
   totalAmount: number;
+  priceLabel?: string;
   ctaText?: string;
   dynamicCtaPrefix?: string;
   isAffiliateProduct?: boolean;
@@ -20,6 +21,7 @@ export interface StickyBuyButtonProps {
   onWhatsAppClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   allowAddToCart?: boolean;
   onAddToCart?: () => void;
+  addToCartLabel?: string;
   isCustomLinkMode?: boolean;
   customCtaUrl?: string;
   customCtaLabel?: string;
@@ -38,6 +40,7 @@ export interface StickyBuyButtonProps {
  */
 export function StickyBuyButton({
   totalAmount,
+  priceLabel = 'Total Investasi',
   ctaText,
   dynamicCtaPrefix = 'Beli Sekarang',
   isAffiliateProduct = false,
@@ -53,6 +56,7 @@ export function StickyBuyButton({
   onWhatsAppClick,
   allowAddToCart = false,
   onAddToCart,
+  addToCartLabel = '+ Keranjang',
   isCustomLinkMode = false,
   customCtaUrl,
   customCtaLabel,
@@ -155,7 +159,7 @@ export function StickyBuyButton({
         {/* Left: Total Amount Display */}
         <div className="text-left shrink-0">
           <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
-            Total Investasi
+            {priceLabel}
           </span>
           <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
             {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
@@ -176,10 +180,10 @@ export function StickyBuyButton({
               }}
               disabled={disabled}
               className="py-3 px-3 sm:px-3.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-300 transition cursor-pointer shrink-0"
-              title="Tambah ke Keranjang"
+              title={addToCartLabel || 'Tambah ke Keranjang'}
             >
               <ShoppingBag className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">+ Keranjang</span>
+              <span className="hidden sm:inline">{addToCartLabel}</span>
             </button>
           )}
 

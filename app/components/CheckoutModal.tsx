@@ -8,7 +8,7 @@ import { getActiveAffiliateCode, getActiveResellerCode, getTrackingData, getClie
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
-import { normalizeBriefingUrl } from "@/lib/product-catalog";
+import { normalizeBriefingUrl, resolveCategoryLabels } from "@/lib/product-catalog";
 import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
@@ -226,6 +226,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     Boolean((product as any)?.requires_shipping) ||
     Boolean((product as any)?.requiresShipping));
   const isDigital = !isPhysical && !isBookingOrService;
+
+  const singlePageConfig = (product as any)?.metadata?.single_page_config || (product as any)?.single_page_config || checkoutContext?.single_page_config;
+  const categoryLabels = resolveCategoryLabels(
+    singlePageConfig,
+    product?.product_type || product?.type,
+    product?.category
+  );
 
   const handleCopy = (text: string, field: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -1047,7 +1054,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                   Pembayaran Terverifikasi (Lunas)
                 </span>
                 <h4 className="font-black text-white text-base">
-                  {isBookingOrService ? 'Sesi Konsultasi Berhasil Terjadwal!' : 'Akses Program Kelas Resmi Aktif!'}
+                  {isBookingOrService
+                    ? 'Sesi Konsultasi Berhasil Terjadwal!'
+                    : isFood
+                    ? 'Pesanan Menu Berhasil Diterima!'
+                    : isPhysical
+                    ? 'Pesanan Anda Berhasil Diterima!'
+                    : 'Akses Program Kelas Resmi Aktif!'}
                 </h4>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: #{paymentData.orderId}</p>
               </div>
@@ -1055,11 +1068,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               {/* Rincian Ringkas Invoice & Akses */}
               <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3 shadow-inner">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
-                  <span className="text-slate-400">Total Pembayaran</span>
+                  <span className="text-slate-400">{categoryLabels.checkoutTotalLabel}</span>
                   <span className="font-black text-emerald-400 font-mono text-sm">Rp {totalAmount.toLocaleString('id-ID')}</span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
-                  <span className="text-slate-400">Kode Akses Ringkas</span>
+                  <span className="text-slate-400">
+                    {isBookingOrService ? 'Kode Booking' : isPhysical ? 'Nomor Order / Referensi' : 'Kode Akses Ringkas'}
+                  </span>
                   <div className="flex items-center gap-1.5 font-mono font-bold text-sky-400 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/40">
                     <span>VIP-{paymentData.orderId.replace(/[^0-9]/g, '').slice(-4) || 'ACCESS'}</span>
                     <button
@@ -2230,7 +2245,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 </div>
               ) : null}
               <div className="border-t border-slate-800 pt-1.5 flex justify-between font-bold text-white">
-                <span>Total Pembayaran</span>
+                <span>{categoryLabels.checkoutTotalLabel}</span>
                 <span className="text-emerald-400 text-sm">Rp {totalAmount.toLocaleString("id-ID")}</span>
               </div>
             </div>
@@ -2251,8 +2266,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                     {isFood
                       ? `Pesan Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`
                       : isPhysical
-                      ? `Konfirmasi & Lanjut ke WhatsApp / QRIS (Rp ${totalAmount.toLocaleString("id-ID")})`
-                      : `Bayar Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`}
+                      ? `Konfirmasi & Pesan Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`
+                      : `${categoryLabels.ctaLabel || 'Bayar Sekarang'} (Rp ${totalAmount.toLocaleString("id-ID")})`}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
