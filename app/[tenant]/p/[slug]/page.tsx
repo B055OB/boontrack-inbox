@@ -148,6 +148,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
   fulfillmentType?: string | null;
   quantity?: number | null;
   kitchenNotes?: string | null;
+  activeRef?: string | null;
 }): { text: string; url: string; number: string } {
   const rawNumber = params.tenantWhatsApp || params.botNumber || '';
   const num = normalizeStorefrontWhatsAppNumber(rawNumber);
@@ -158,6 +159,25 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Resto (Self-Pickup)' : '';
   const notesLine = params.kitchenNotes ? `\n- Catatan / Briefing: ${params.kitchenNotes}` : '';
   const qtyLine = params.quantity && params.quantity > 1 ? `\n- Jumlah (Qty): ${params.quantity} pcs` : '';
+
+  // Tangkap nilai referral aktif (dari params, URL query param, atau shared cookie)
+  let resolvedRef = (params.activeRef || '').trim();
+  if (!resolvedRef && typeof window !== 'undefined') {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const qRef = sp.get('ref') || sp.get('aff') || sp.get('ref_id') || sp.get('referral') || sp.get('r');
+      if (qRef) {
+        resolvedRef = qRef.trim();
+      } else {
+        const cookieMatch = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (cookieMatch && cookieMatch[1]) {
+          resolvedRef = decodeURIComponent(cookieMatch[1]).trim();
+        } else if (tSlug) {
+          resolvedRef = (sessionStorage.getItem(`bt_ref_${tSlug.toLowerCase()}`) || localStorage.getItem(`bt_ref_${tSlug.toLowerCase()}`) || '').trim();
+        }
+      }
+    } catch {}
+  }
 
   let text: string;
   if (refToken) {
@@ -176,7 +196,10 @@ export function buildWabaStorefrontConsultationUrl(params: {
         .replace(/\{qty\}/gi, String(params.quantity || 1))
         .replace(/\{quantity\}/gi, String(params.quantity || 1))
         .replace(/\{ref\}/gi, refToken)
-        .replace(/\{reference_token\}/gi, refToken);
+        .replace(/\{reference_token\}/gi, refToken)
+        .replace(/\{ref_by\}/gi, resolvedRef || '-')
+        .replace(/\{refby\}/gi, resolvedRef || '-')
+        .replace(/\{referral\}/gi, resolvedRef || '-');
 
       // Sisipkan token ini ke baris pertama draf pesan WhatsApp yang dibuka
       if (custom.includes(`[Ref: ${refToken}]`)) {
@@ -190,7 +213,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
       }
     } else {
       // Format standar: "Halo Admin, konfirmasi pesanan [Ref: BT-XXXXX]..."
-      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${notesLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
+      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${notesLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}${resolvedRef ? `\n- Referral: ${resolvedRef}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
     }
   } else if (params.customMessage && params.customMessage.trim()) {
     text = params.customMessage
@@ -202,10 +225,18 @@ export function buildWabaStorefrontConsultationUrl(params: {
       .replace(/\{qty\}/gi, String(params.quantity || 1))
       .replace(/\{quantity\}/gi, String(params.quantity || 1))
       .replace(/\{tenant\}/gi, tSlug)
-      .replace(/\{slug\}/gi, pSlug);
+      .replace(/\{slug\}/gi, pSlug)
+      .replace(/\{ref_by\}/gi, resolvedRef || '-')
+      .replace(/\{refby\}/gi, resolvedRef || '-')
+      .replace(/\{referral\}/gi, resolvedRef || '-');
   } else {
-    // Format standar: "Halo Kak, saya tertarik dengan [NAMA_PRODUK]. Boleh minta info lebih detail? (Ref: [tenant_slug]#[product_slug])"
-    text = `Halo Kak, saya tertarik dengan ${pName}. Boleh minta info lebih detail? (Ref: ${tSlug}#${pSlug})`;
+    // Format standar: "Halo Kak, saya tertarik dengan [NAMA_PRODUK]. Boleh minta info lebih detail? (Ref: [tenant_slug]#[product_slug] | RefBy: [activeRef || '-'])"
+    const refSuffix = params.activeRef !== undefined
+      ? ` | RefBy: ${params.activeRef || '-'}`
+      : resolvedRef
+      ? ` | RefBy: ${resolvedRef}`
+      : '';
+    text = `Halo Kak, saya tertarik dengan ${pName}. Boleh minta info lebih detail? (Ref: ${tSlug}#${pSlug}${refSuffix})`;
   }
 
   if (!num) {
@@ -215,6 +246,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const url = `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
   return { text, url, number: num };
 }
+
+export const buildStorefrontWaUrl = buildWabaStorefrontConsultationUrl;
 
 function ClientLogosSection({ logos }: { logos: ClientLogoItem[] }) {
   if (!logos || logos.length === 0) return null;
@@ -1670,6 +1703,7 @@ function SingleProductContent() {
     productSlug: product.slug || slug,
     tenantWhatsApp: rawStoreWhatsApp,
     customMessage: config.whatsapp_custom_message,
+    activeRef: affiliateCode || resellerCode || '-',
   });
 
   const actionMode: 'DIRECT' | 'WHATSAPP' | 'HYBRID' =
@@ -2282,6 +2316,7 @@ function SingleProductContent() {
         productSlug: product.slug || slug,
         tenantWhatsApp: rawStoreWhatsApp,
         customMessage: config.whatsapp_custom_message,
+        activeRef: affiliateCode || resellerCode || '-',
         referenceToken: refToken,
         buyerName: buyerName.trim(),
         buyerPhone: cleanPhoneE164,
@@ -2362,6 +2397,7 @@ function SingleProductContent() {
         productSlug: product.slug || slug,
         tenantWhatsApp: rawStoreWhatsApp,
         customMessage: config.whatsapp_custom_message,
+        activeRef: affiliateCode || resellerCode || '-',
         referenceToken: refToken,
         buyerName: buyerName.trim(),
         buyerPhone: cleanPhoneE164,

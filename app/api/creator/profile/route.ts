@@ -7,18 +7,17 @@ const IS_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 /**
  * Resolves tenant UUID from slug or ID string using public.tenants (Single Source of Truth)
+ * STRICT FAIL-CLOSED (P0 SECURITY): Dilarang keras fallback ke tenant lain!
  */
 async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null): Promise<string | null> {
-  if (!tenantIdentifier) {
-    const { data: fallbackTenant } = await supabase
-      .from('tenants')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-    return fallbackTenant?.id || null;
+  if (!tenantIdentifier || typeof tenantIdentifier !== 'string') {
+    return null;
   }
 
   const cleanIdentifier = tenantIdentifier.trim().toLowerCase();
+  if (!cleanIdentifier) {
+    return null;
+  }
 
   // If already a valid UUID
   if (IS_UUID_REGEX.test(cleanIdentifier)) {
@@ -40,25 +39,26 @@ async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null
 
   if (tenantBySlug?.id) return tenantBySlug.id;
 
-  // Fallback to first available tenant if in standalone/dev mode
-  const { data: fallbackTenant } = await supabase
-    .from('tenants')
-    .select('id')
-    .limit(1)
-    .maybeSingle();
-
-  return fallbackTenant?.id || null;
+  // Fail-closed: tenant not found
+  return null;
 }
 
 /**
  * GET /api/creator/profile
- * Retrieves creator profile by handle or tenant_id
+ * Retrieves creator profile by handle or tenant_id (Fail-Closed)
  */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const handleParam = searchParams.get('handle');
     const tenantParam = searchParams.get('tenant_id') || searchParams.get('slug');
+
+    if (!handleParam && !tenantParam) {
+      return NextResponse.json(
+        { success: false, error: 'BAD_REQUEST', message: 'Parameter handle atau tenant_id/slug wajib disertakan.' },
+        { status: 400 }
+      );
+    }
 
     const supabase = getSupabaseAdmin();
 
@@ -70,9 +70,13 @@ export async function GET(req: Request) {
       query = query.or(`handle.eq.${cleanHandle},handle.eq.${baseHandle},handle.eq.${baseHandle}_`);
     } else if (tenantParam) {
       const resolvedTenantId = await resolveTenantUuid(supabase, tenantParam);
-      if (resolvedTenantId) {
-        query = query.eq('tenant_id', resolvedTenantId);
+      if (!resolvedTenantId) {
+        return NextResponse.json(
+          { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant not found / invalid tenant scope.' },
+          { status: 404 }
+        );
       }
+      query = query.eq('tenant_id', resolvedTenantId);
     }
 
     const { data: profile, error } = await query.order('updated_at', { ascending: false }).limit(1).maybeSingle();
@@ -101,6 +105,7 @@ export async function GET(req: Request) {
 /**
  * POST /api/creator/profile
  * Upserts creator profile into public.creator_profiles (ADR § 53)
+ * Fail-Closed: Requires valid tenant_id and isolates profiles strictly.
  */
 export async function POST(req: Request) {
   try {
@@ -115,7 +120,15 @@ export async function POST(req: Request) {
       links = [],
       theme = 'clean_light',
       is_verified = true,
+      is_registration = false,
     } = body;
+
+    if (!tenant_id || typeof tenant_id !== 'string' || !tenant_id.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_REQUIRED', message: 'Parameter tenant_id wajib disertakan.' },
+        { status: 400 }
+      );
+    }
 
     const displayName = (
       body.display_name ||
@@ -126,21 +139,48 @@ export async function POST(req: Request) {
     ).toString().trim() || 'Kreator BoonTrack';
 
     const rawHandle = handle || body.handle || displayName || 'creator';
-    const cleanHandle = rawHandle.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase() || 'creator';
+    const cleanHandle = rawHandle.replace(/^@+/, '').replace(/[^a-zA-Z0-9._-]/g, '').trim().toLowerCase();
 
-    if (!cleanHandle) {
+    if (!cleanHandle || cleanHandle.length < 3) {
       return NextResponse.json(
-        { success: false, error: 'INVALID_HANDLE', message: 'Handle bio link tidak boleh kosong.' },
+        { success: false, error: 'INVALID_HANDLE', message: 'Handle bio link minimal 3 karakter valid.' },
         { status: 400 }
       );
     }
 
     const supabase = getSupabaseAdmin();
-    const resolvedTenantId = await resolveTenantUuid(supabase, tenant_id);
+    let resolvedTenantId = await resolveTenantUuid(supabase, tenant_id);
+
+    // If new registration and tenant does not exist yet, provision dedicated creator tenant
+    if (!resolvedTenantId && (is_registration || tenant_id === cleanHandle || tenant_id === 'creator')) {
+      const { data: newTenant, error: createTenantErr } = await supabase
+        .from('tenants')
+        .insert({
+          slug: cleanHandle,
+          name: displayName,
+          category: 'CREATOR',
+          business_type: 'CREATOR',
+          tenant_kind: 'SAAS_CREATOR',
+          tier: 'SOLO',
+          status: 'active',
+          is_active: true,
+          metadata: {
+            whatsapp: (body.whatsapp || '').trim(),
+            display_name: displayName,
+            handle: cleanHandle,
+          },
+        })
+        .select('id')
+        .maybeSingle();
+
+      if (!createTenantErr && newTenant?.id) {
+        resolvedTenantId = newTenant.id;
+      }
+    }
 
     if (!resolvedTenantId) {
       return NextResponse.json(
-        { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant tidak ditemukan di basis data.' },
+        { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant not found / invalid tenant scope.' },
         { status: 404 }
       );
     }
@@ -148,10 +188,18 @@ export async function POST(req: Request) {
     // Check for existing profile by tenant_id or handle
     const { data: existingProfile } = await supabase
       .from('creator_profiles')
-      .select('id, handle')
+      .select('id, handle, tenant_id')
       .or(`tenant_id.eq.${resolvedTenantId},handle.eq.${cleanHandle}`)
       .limit(1)
       .maybeSingle();
+
+    // Pastikan isolasi: jika handle sudah dipakai oleh tenant lain, tolak keras (409 Conflict)
+    if (existingProfile && existingProfile.tenant_id !== resolvedTenantId) {
+      return NextResponse.json(
+        { success: false, error: 'HANDLE_CONFLICT', message: `Handle @${cleanHandle} sudah digunakan oleh akun lain.` },
+        { status: 409 }
+      );
+    }
 
     const themeConfig = {
       theme: theme || 'clean_light',
@@ -187,6 +235,7 @@ export async function POST(req: Request) {
         .from('creator_profiles')
         .update(payload)
         .eq('id', existingProfile.id)
+        .eq('tenant_id', resolvedTenantId)
         .select('*')
         .single();
 

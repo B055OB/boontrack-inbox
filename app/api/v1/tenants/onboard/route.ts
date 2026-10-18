@@ -40,11 +40,16 @@ export async function POST(req: NextRequest) {
     let planPrice = 299000;
     let isTrial = false;
 
-    // 1. Ads Performance (Hero Promo Trial 7 Hari) - DB: 'ADS_PERFORMANCE'
-    if (
+    // 1. Ads Performance & Pro Scale (Hero Promo Trial 7 Hari)
+    if (rawPlan === 'pro_scale') {
+      dbTier = 'PRO_SCALE';
+      canonicalPlanTier = 'PRO_SCALE';
+      planType = 'ads_performance';
+      planPrice = 299000;
+      isTrial = true;
+    } else if (
       rawPlan === 'ads_performance' ||
       rawPlan === 'pro_ads' ||
-      rawPlan === 'pro_scale' ||
       rawPlan.includes('ads') ||
       rawPlan.includes('performance')
     ) {
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
     // STRICT TRIAL GATEKEEPER INVARIANT:
     // HANYA tier 'ADS_PERFORMANCE' atau 'PRO_SCALE' yang berhak atas status 'TRIAL' 7 hari.
     // Tier 'CHECKOUT_LITE', 'STARTER', dan 'ENTERPRISE' WAJIB berstatus 'PENDING_PAYMENT' / is_active = false.
-    if ((canonicalPlanTier as string) !== 'ADS_PERFORMANCE' && (canonicalPlanTier as string) !== 'PRO_SCALE') {
+    if (canonicalPlanTier !== 'ADS_PERFORMANCE' && canonicalPlanTier !== 'PRO_SCALE') {
       isTrial = false;
     }
 
