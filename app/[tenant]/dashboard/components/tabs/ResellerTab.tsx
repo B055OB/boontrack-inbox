@@ -25,7 +25,12 @@ import {
   Coins,
   ChevronRight,
   Filter,
-  CheckCircle
+  CheckCircle,
+  UserCheck,
+  XCircle,
+  MessageCircle,
+  Sparkles,
+  X
 } from 'lucide-react';
 import ResellerComplianceModal from '../ResellerComplianceModal';
 
@@ -78,6 +83,37 @@ interface ResellerCommissionRecord {
   };
 }
 
+interface ResellerApplicationRecord {
+  id: string;
+  tenant_id: string;
+  creator_id: string;
+  creator_handle: string;
+  product_id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED';
+  commission_type: 'FIXED' | 'PERCENTAGE';
+  commission_amount: number;
+  created_at: string;
+  updated_at: string;
+  creator?: {
+    id: string;
+    handle: string;
+    display_name: string;
+    avatar_url: string;
+    bio?: string;
+    whatsapp?: string;
+  };
+  product?: {
+    id: string;
+    title: string;
+    slug: string;
+    price: number;
+    promo_price?: number;
+    image_url?: string;
+  };
+  estimated_commission_nominal?: number;
+  commission_label?: string;
+}
+
 interface ResellerTabProps {
   tenantSlug: string;
   tenantData?: any;
@@ -94,9 +130,13 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
   const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
 
   // ── Workspace State ──
-  const [activeSubView, setActiveSubView] = useState<'members' | 'commissions'>('members');
+  const [activeSubView, setActiveSubView] = useState<'members' | 'commissions' | 'applications'>('members');
   const [resellers, setResellers] = useState<ResellerMember[]>([]);
   const [commissions, setCommissions] = useState<ResellerCommissionRecord[]>([]);
+  const [applications, setApplications] = useState<ResellerApplicationRecord[]>([]);
+  const [applicationFilter, setApplicationFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [mutatingAppId, setMutatingAppId] = useState<string | null>(null);
+  const [appMutationFeedback, setAppMutationFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [metrics, setMetrics] = useState({
     active_resellers: 0,
     frozen_resellers: 0,
@@ -155,9 +195,10 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
     else setIsLoading(true);
 
     try {
-      const [membersRes, commsRes] = await Promise.all([
+      const [membersRes, commsRes, appsRes] = await Promise.all([
         fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/reseller/members`),
         fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/reseller/commissions`),
+        fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/resellers`),
       ]);
 
       if (membersRes.ok) {
@@ -184,6 +225,13 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
               total_paid_commission: cData.metrics.total_paid_commission || 0,
             });
           }
+        }
+      }
+
+      if (appsRes.ok) {
+        const aData = await appsRes.json();
+        if (aData.success && Array.isArray(aData.partnerships)) {
+          setApplications(aData.partnerships);
         }
       }
     } catch (err) {
@@ -314,6 +362,44 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
     }
   };
 
+  // Handle Kurasi Application Status Mutation
+  const handleMutateApplication = async (appId: string, targetStatus: 'APPROVED' | 'REJECTED' | 'REVOKED') => {
+    setMutatingAppId(appId);
+    setAppMutationFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/resellers/${encodeURIComponent(appId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setAppMutationFeedback({
+          type: 'success',
+          message:
+            targetStatus === 'APPROVED'
+              ? 'Kemitraan berhasil disetujui! Kreator kini dapat membagikan link produk toko Anda.'
+              : targetStatus === 'REJECTED'
+              ? 'Permohonan kemitraan berhasil ditolak.'
+              : 'Akses kemitraan reseller berhasil dicabut.',
+        });
+        await loadData(true);
+      } else {
+        setAppMutationFeedback({
+          type: 'error',
+          message: result.message || 'Gagal mengubah status permohonan.',
+        });
+      }
+    } catch (err: any) {
+      setAppMutationFeedback({
+        type: 'error',
+        message: err?.message || 'Terjadi kesalahan sistem.',
+      });
+    } finally {
+      setMutatingAppId(null);
+    }
+  };
+
   // Filtered lists
   const filteredResellers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -339,6 +425,22 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
       return true;
     });
   }, [commissions, commissionFilter, searchQuery]);
+
+  const filteredApplications = useMemo(() => {
+    return (Array.isArray(applications) ? applications : []).filter((app) => {
+      if (applicationFilter !== 'ALL' && app.status !== applicationFilter) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const handle = (app.creator_handle || '').toLowerCase();
+        const cName = (app.creator?.display_name || '').toLowerCase();
+        const pTitle = (app.product?.title || '').toLowerCase();
+        return handle.includes(q) || cName.includes(q) || pTitle.includes(q);
+      }
+      return true;
+    });
+  }, [applications, applicationFilter, searchQuery]);
 
   // ─────────────────────────────────────────────────────────────
   // 1. PINTU GERBANG: JIKA BELUM AKTIF / BELUM ACCEPT ToS
@@ -537,11 +639,11 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
       {/* Sub-view Navigation Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl w-fit">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl w-fit overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => setActiveSubView('members')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeSubView === 'members'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
@@ -554,7 +656,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
           <button
             type="button"
             onClick={() => setActiveSubView('commissions')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeSubView === 'commissions'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
@@ -562,6 +664,24 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
           >
             <Coins className="w-3.5 h-3.5" />
             <span>Buku Besar Komisi / Ledger ({commissions.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubView('applications')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              activeSubView === 'applications'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Permohonan Kurasi</span>
+            {applications.filter((a) => a.status === 'PENDING').length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                {applications.filter((a) => a.status === 'PENDING').length} Baru
+              </span>
+            )}
           </button>
         </div>
 
@@ -593,18 +713,81 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
             </div>
           )}
 
+          {activeSubView === 'applications' && (
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setApplicationFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] ${applicationFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}
+              >
+                Semua ({applications.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setApplicationFilter('PENDING')}
+                className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] ${applicationFilter === 'PENDING' ? 'bg-white text-amber-700 shadow-xs' : 'text-slate-500'}`}
+              >
+                Menunggu ({applications.filter((a) => a.status === 'PENDING').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setApplicationFilter('APPROVED')}
+                className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] ${applicationFilter === 'APPROVED' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500'}`}
+              >
+                Disetujui ({applications.filter((a) => a.status === 'APPROVED').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setApplicationFilter('REJECTED')}
+                className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] ${applicationFilter === 'REJECTED' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-500'}`}
+              >
+                Ditolak
+              </button>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Cari nama, kode, atau order..."
+              placeholder={
+                activeSubView === 'applications'
+                  ? 'Cari nama atau produk...'
+                  : 'Cari nama, kode, atau order...'
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs w-52 focus:outline-none focus:border-indigo-500 bg-white"
+              className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs w-48 sm:w-56 focus:outline-none focus:border-indigo-500 bg-white"
             />
           </div>
         </div>
       </div>
+
+      {/* Mutation Feedback Banner */}
+      {appMutationFeedback && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between animate-in fade-in duration-200 ${
+            appMutationFeedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {appMutationFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600" />
+            )}
+            <span>{appMutationFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setAppMutationFeedback(null)}
+            className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ─────────────────────────────────────────────────────────────
           C. TABEL DAFTAR RESELLER
@@ -899,6 +1082,243 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                               )}
                               <span>Tandai Sudah Ditransfer</span>
                             </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          D. TABEL PERMOHONAN RESELLER / KURASI KREATOR
+         ───────────────────────────────────────────────────────────── */}
+      {activeSubView === 'applications' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs space-y-0">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <span>Pusat Kurasi Kemitraan Reseller</span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-bold">
+                  {filteredApplications.length} Permohonan
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Tinjau kreator yang mengajukan kurasi untuk menjual produk Anda. Saat disetujui, link referral unik langsung aktif.
+              </p>
+            </div>
+
+            <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Check className="w-3 h-3" /> Zero Leakage
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <ShieldCheck className="w-3 h-3" /> Strict Isolation
+              </span>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="p-12 text-center text-xs text-slate-400">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+              Memuat permohonan kemitraan kurasi...
+            </div>
+          ) : filteredApplications.length === 0 ? (
+            <div className="p-12 text-center space-y-3">
+              <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto" />
+              <div className="text-slate-700 font-bold text-sm">Tidak Ada Permohonan Kurasi</div>
+              <p className="text-slate-400 text-xs max-w-sm mx-auto">
+                {applicationFilter !== 'ALL'
+                  ? `Tidak ada permohonan dengan status '${applicationFilter}'.`
+                  : 'Belum ada kreator yang mengajukan kemitraan untuk produk Anda saat ini.'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Kreator Pemohon</th>
+                    <th className="py-3 px-4">Produk Diajukan</th>
+                    <th className="py-3 px-4">Skema Komisi</th>
+                    <th className="py-3 px-4 text-center">Status Kurasi</th>
+                    <th className="py-3 px-4">Tanggal Pengajuan</th>
+                    <th className="py-3 px-4 text-right">Keputusan Merchant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filteredApplications.map((app) => {
+                    const isMutating = mutatingAppId === app.id;
+                    const isPending = app.status === 'PENDING';
+                    const isApproved = app.status === 'APPROVED';
+                    const isRejected = app.status === 'REJECTED';
+                    const isRevoked = app.status === 'REVOKED';
+
+                    return (
+                      <tr key={app.id} className="hover:bg-slate-50/60 transition">
+                        {/* Kreator Pemohon */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                              {app.creator?.avatar_url ? (
+                                <img
+                                  src={app.creator.avatar_url}
+                                  alt={app.creator.display_name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <Users className="w-4 h-4 text-slate-400" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                <span>{app.creator?.display_name || app.creator_handle}</span>
+                                <a
+                                  href={`https://boontrack.com/@${app.creator_handle}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-slate-400 hover:text-indigo-600 transition"
+                                  title="Lihat Bio Link Kreator"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-500">
+                                @{app.creator_handle}
+                              </div>
+                              {app.creator?.whatsapp && (
+                                <a
+                                  href={`https://wa.me/${app.creator.whatsapp.replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-bold hover:underline mt-0.5"
+                                >
+                                  <MessageCircle className="w-2.5 h-2.5" />
+                                  <span>Chat WA</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Produk Diajukan */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5 max-w-xs">
+                            {app.product?.image_url && (
+                              <img
+                                src={app.product.image_url}
+                                alt={app.product.title}
+                                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 truncate">
+                                {app.product?.title || 'Produk'}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                Rp {Number(app.product?.price || 0).toLocaleString('id-ID')}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Skema Komisi */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-mono font-bold text-emerald-600">
+                            {app.commission_type === 'PERCENTAGE'
+                              ? `${app.commission_amount}% (est. Rp ${Number(app.estimated_commission_nominal || 0).toLocaleString('id-ID')})`
+                              : `Rp ${Number(app.commission_amount || 0).toLocaleString('id-ID')}`}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Per penjualan terverifikasi
+                          </div>
+                        </td>
+
+                        {/* Status Kurasi */}
+                        <td className="py-3.5 px-4 text-center">
+                          {isPending ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="w-3 h-3 animate-pulse text-amber-600" />
+                              <span>MENUNGGU PERSETUJUAN</span>
+                            </span>
+                          ) : isApproved ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>DISETUJUI (AKTIF)</span>
+                            </span>
+                          ) : isRejected ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              <XCircle className="w-3 h-3 text-rose-600" />
+                              <span>DITOLAK TOKO</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                              <span>DICABUT (REVOKED)</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Tanggal Pengajuan */}
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-slate-500">
+                          {new Date(app.created_at).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </td>
+
+                        {/* Keputusan Merchant */}
+                        <td className="py-3.5 px-4 text-right">
+                          {isPending ? (
+                            <div className="inline-flex items-center gap-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleMutateApplication(app.id, 'APPROVED')}
+                                disabled={isMutating}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                title="Setujui permohonan kemitraan reseller kreator ini"
+                              >
+                                {isMutating ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <UserCheck className="w-3 h-3" />
+                                )}
+                                <span>Setujui (ACC)</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleMutateApplication(app.id, 'REJECTED')}
+                                disabled={isMutating}
+                                className="px-2.5 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-[11px] inline-flex items-center gap-1 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                title="Tolak permohonan kreator ini"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                <span>Tolak</span>
+                              </button>
+                            </div>
+                          ) : isApproved ? (
+                            <button
+                              type="button"
+                              onClick={() => handleMutateApplication(app.id, 'REVOKED')}
+                              disabled={isMutating}
+                              className="px-2.5 py-1 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 font-bold text-[10px] inline-flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                              title="Cabut izin penjualan reseller untuk produk ini"
+                            >
+                              {isMutating ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
+                              <span>Cabut Izin</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 font-medium italic">
+                              Tidak Ada Aksi
+                            </span>
                           )}
                         </td>
                       </tr>

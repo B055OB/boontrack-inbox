@@ -26,7 +26,13 @@ import {
   Link as LinkIcon,
   X,
   ChevronRight,
-  Store
+  Store,
+  Coins,
+  Wallet,
+  Clock,
+  CheckCheck,
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 
 // ── Custom Social SVGs ───────────────────────────────────────────────
@@ -89,9 +95,22 @@ export default function CreatorAdminPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [tenantDisplay, setTenantDisplay] = useState('');
-  const [activeTab, setActiveTab] = useState<'profile' | 'socials' | 'qris' | 'links'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'socials' | 'qris' | 'links' | 'commissions'>('profile');
   const [previewQrisModal, setPreviewQrisModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Reseller Products / Komisi Curation State
+  const [commissionsLoading, setCommissionsLoading] = useState(false);
+  const [creatorWallet, setCreatorWallet] = useState({
+    balance_ready: 0,
+    products_sold: 0,
+    total_earned: 0,
+  });
+  const [tenantProducts, setTenantProducts] = useState<any[]>([]);
+  const [applyingProductId, setApplyingProductId] = useState<string | null>(null);
+  const [copiedProductRef, setCopiedProductRef] = useState<string | null>(null);
+  const [payoutModalOpen, setPayoutModalOpen] = useState(false);
+  const [addedToBioSuccess, setAddedToBioSuccess] = useState<string | null>(null);
 
   // Form State
   const [displayName, setDisplayName] = useState('Suzie Ray');
@@ -203,10 +222,97 @@ export default function CreatorAdminPage() {
       };
 
       fetchProfile();
+      fetchResellerApplications(urlHandle || 'suzieray_');
     } catch {
       // Fallback
     }
   }, []);
+
+  // ── Reseller Curation Handlers ──────────────────────────────────────
+  const fetchResellerApplications = async (targetHandle?: string) => {
+    const rawHandle = targetHandle || handle;
+    const cleanHandle = (rawHandle || '').replace(/^@+/, '').trim().toLowerCase();
+    if (!cleanHandle) return;
+
+    setCommissionsLoading(true);
+    try {
+      const res = await fetch(`/api/v1/creators/${encodeURIComponent(cleanHandle)}/reseller-applications`);
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          if (result.wallet) setCreatorWallet(result.wallet);
+          if (Array.isArray(result.products)) setTenantProducts(result.products);
+        }
+      }
+    } catch (err) {
+      console.warn('[Creator Admin] Error fetching reseller applications:', err);
+    } finally {
+      setCommissionsLoading(false);
+    }
+  };
+
+  const handleApplyReseller = async (productId: string) => {
+    const cleanHandle = handle.replace(/^@+/, '').trim().toLowerCase();
+    if (!cleanHandle) {
+      alert('Handle kreator belum terisi.');
+      return;
+    }
+    setApplyingProductId(productId);
+    try {
+      const res = await fetch(`/api/v1/creators/${encodeURIComponent(cleanHandle)}/reseller-applications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setTenantProducts((prev) =>
+          prev.map((p) => (p.id === productId ? { ...p, partnership_status: 'PENDING' } : p))
+        );
+      } else {
+        alert(result.message || 'Gagal mengajukan reseller.');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan koneksi: ' + err.message);
+    } finally {
+      setApplyingProductId(null);
+    }
+  };
+
+  const handleInstallToBio = (product: any) => {
+    const cleanHandle = handle.replace(/^@+/, '').trim().toLowerCase();
+    const referralUrl =
+      product.referral_url ||
+      `https://shop.boontrack.com/${product.tenant_slug}/p/${product.slug || product.id}?ref=${cleanHandle}`;
+
+    const newLink: BioLinkItem = {
+      id: `partner-${product.id}-${Date.now()}`,
+      title: product.title,
+      subtitle: `Tersedia di ${product.tenant_name} • ${product.commission_label}`,
+      url: referralUrl,
+      category: 'custom_web',
+      badge: 'Produk Mitra',
+      is_active: true,
+    };
+
+    const isDuplicate = links.some((l) => l.url === referralUrl);
+    if (!isDuplicate) {
+      setLinks((prev) => [newLink, ...prev]);
+    }
+
+    setAddedToBioSuccess(product.id);
+    setTimeout(() => setAddedToBioSuccess(null), 3000);
+  };
+
+  const handleCopyReferral = (product: any) => {
+    const cleanHandle = handle.replace(/^@+/, '').trim().toLowerCase();
+    const referralUrl =
+      product.referral_url ||
+      `https://shop.boontrack.com/${product.tenant_slug}/p/${product.slug || product.id}?ref=${cleanHandle}`;
+    navigator.clipboard.writeText(referralUrl);
+    setCopiedProductRef(product.id);
+    setTimeout(() => setCopiedProductRef(null), 2000);
+  };
 
   // CRUD Bio Links
   const addLink = () => {
@@ -413,6 +519,23 @@ export default function CreatorAdminPage() {
                 }`}
               >
                 4. Kelola Kartu Bio ({links.length})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('commissions');
+                  fetchResellerApplications();
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'commissions'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 text-emerald-600" />
+                <span>5. Komisi Produk</span>
+                {tenantProducts.some((p) => p.partnership_status === 'APPROVED') && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                )}
               </button>
             </div>
 
@@ -762,6 +885,273 @@ export default function CreatorAdminPage() {
                 )}
               </div>
             )}
+
+            {/* TAB 5: KOMISI PRODUK (PUSAT RESELLER TERKURASI) */}
+            {activeTab === 'commissions' && (
+              <div className="space-y-6 animate-in fade-in duration-200">
+                {/* 1. Bagian Atas: Dompet Ringkas */}
+                <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-7 border border-indigo-500/30 shadow-xl relative overflow-hidden">
+                  <div className="absolute -right-10 -bottom-10 w-44 h-44 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/10 relative z-10">
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold mb-2">
+                        <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Dompet Kreator Non-Custodial</span>
+                      </div>
+                      <h2 className="text-lg font-black text-white tracking-tight">
+                        Pusat Komisi &amp; Mitra Reseller
+                      </h2>
+                      <p className="text-xs text-slate-300">
+                        Pilih produk toko mitra, ajukan kurasi, pasang ke Bio Link, dan tarik komisi hasil penjualan.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPayoutModalOpen(true)}
+                      className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                    >
+                      <Coins className="w-4 h-4" />
+                      <span>Tarik Saldo</span>
+                    </button>
+                  </div>
+
+                  {/* 3 Metrik Dompet Ringkas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-5 relative z-10">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+                      <span className="text-[11px] text-slate-400 font-semibold block">Saldo Siap Tarik</span>
+                      <div className="text-lg sm:text-xl font-black text-emerald-400 font-mono">
+                        Rp {Number(creatorWallet.balance_ready || 0).toLocaleString('id-ID')}
+                      </div>
+                      <span className="text-[10px] text-slate-400">Komisi disetujui siap ditarik</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+                      <span className="text-[11px] text-slate-400 font-semibold block">Total Produk Terjual</span>
+                      <div className="text-lg sm:text-xl font-black text-sky-400 font-mono">
+                        {Number(creatorWallet.products_sold || 0).toLocaleString('id-ID')} <span className="text-xs font-sans font-bold text-slate-300">Pcs</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">Atribusi link @{handle}</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+                      <span className="text-[11px] text-slate-400 font-semibold block">Total Komisi Cair</span>
+                      <div className="text-lg sm:text-xl font-black text-amber-400 font-mono">
+                        Rp {Number(creatorWallet.total_earned || 0).toLocaleString('id-ID')}
+                      </div>
+                      <span className="text-[10px] text-slate-400">Telah ditransfer ke rekening</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Bagian Bawah: Etalase Produk Tenant */}
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <span>Etalase Produk Tenant (Buka Komisi)</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
+                          {tenantProducts.length} Produk
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Ajukan diri menjadi reseller resmi produk di bawah. Setelah disetujui toko, link referral otomatis aktif.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fetchResellerApplications()}
+                      disabled={commissionsLoading}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition flex items-center gap-1.5 self-start cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${commissionsLoading ? 'animate-spin' : ''}`} />
+                      <span>Segarkan Katalog</span>
+                    </button>
+                  </div>
+
+                  {/* Feedback Toast Notification when Installed to Bio */}
+                  {addedToBioSuccess && (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between animate-in slide-in-from-top-2 duration-200">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Produk berhasil dipasang ke Kartu Bio Anda! Cek di Tab 4 atau Live Preview.</span>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('links')}
+                        className="underline text-emerald-700 hover:text-emerald-900 cursor-pointer text-xs"
+                      >
+                        Buka Tab Bio &rarr;
+                      </button>
+                    </div>
+                  )}
+
+                  {commissionsLoading && tenantProducts.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-2">
+                      <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
+                      <span>Memuat etalase produk tenant terkurasi...</span>
+                    </div>
+                  ) : tenantProducts.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                      <ShoppingBag className="w-8 h-8 mx-auto text-slate-300" />
+                      <p className="font-bold text-slate-700 text-sm">Belum Ada Produk Tenant Buka Reseller</p>
+                      <p className="text-slate-500 max-w-sm mx-auto">
+                        Tenant toko di ekosistem BoonTrack sedang menyiapkan katalog komisi mereka. Silakan periksa kembali nanti.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {tenantProducts.map((prod) => {
+                        const isApplying = applyingProductId === prod.id;
+                        const isApproved = prod.partnership_status === 'APPROVED';
+                        const isPending = prod.partnership_status === 'PENDING';
+                        const isRejected = prod.partnership_status === 'REJECTED';
+                        const isRevoked = prod.partnership_status === 'REVOKED';
+                        const isCopied = copiedProductRef === prod.id;
+
+                        return (
+                          <div
+                            key={prod.id}
+                            className={`rounded-2xl border transition-all flex flex-col justify-between overflow-hidden bg-white shadow-xs ${
+                              isApproved
+                                ? 'border-emerald-300 ring-1 ring-emerald-400/30'
+                                : isPending
+                                ? 'border-amber-200 bg-amber-50/20'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="p-4 space-y-3">
+                              {/* Product Thumbnail & Tenant Badge */}
+                              <div className="flex items-start gap-3">
+                                <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center">
+                                  {prod.image_url ? (
+                                    <img
+                                      src={prod.image_url}
+                                      alt={prod.title}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <ShoppingBag className="w-6 h-6 text-slate-400" />
+                                  )}
+                                </div>
+
+                                <div className="space-y-1 flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                                    <Store className="w-3 h-3 text-indigo-500" />
+                                    <span className="truncate">{prod.tenant_name || prod.tenant_slug}</span>
+                                  </div>
+                                  <h4 className="text-xs font-black text-slate-900 leading-snug line-clamp-2">
+                                    {prod.title}
+                                  </h4>
+                                  <div className="flex items-center gap-1.5 pt-0.5">
+                                    <span className="text-xs font-extrabold text-slate-900 font-mono">
+                                      Rp {Number(prod.promo_price || prod.price || 0).toLocaleString('id-ID')}
+                                    </span>
+                                    {prod.promo_price && (
+                                      <span className="text-[10px] text-slate-400 line-through font-mono">
+                                        Rp {Number(prod.price || 0).toLocaleString('id-ID')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Commission Pill Label */}
+                              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200/70 text-emerald-800 text-xs font-bold flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>{prod.commission_label}</span>
+                                </div>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-200/60 text-emerald-900 uppercase tracking-wider font-extrabold">
+                                  {prod.commission_type}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Card Footer / Action Buttons */}
+                            <div className="p-3 bg-slate-50/70 border-t border-slate-100 flex flex-col gap-2">
+                              {isApproved ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 px-1">
+                                    <span className="flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>Kemitraan Disetujui Toko</span>
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleInstallToBio(prod)}
+                                      className="px-2.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Pasang Bio Link</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyReferral(prod)}
+                                      className="px-2.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      {isCopied ? (
+                                        <>
+                                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                          <span className="text-emerald-700">Tersalin!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                          <span>Salin Link</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : isPending ? (
+                                <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
+                                  <Clock className="w-3.5 h-3.5 animate-pulse text-amber-600" />
+                                  <span>Menunggu Persetujuan Toko</span>
+                                </div>
+                              ) : isRejected ? (
+                                <div className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold">
+                                  <span>Pengajuan Ditolak Toko</span>
+                                </div>
+                              ) : isRevoked ? (
+                                <div className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold">
+                                  <span>Kemitraan Dicabut Toko</span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyReseller(prod.id)}
+                                  disabled={isApplying}
+                                  className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-xs transition active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                  {isApplying ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Mengirim Permohonan...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Ajukan Jadi Reseller</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── B. PANEL KANAN (LIVE SMARTPHONE PREVIEW - COL-SPAN-5) ─ */}
@@ -959,6 +1349,70 @@ export default function CreatorAdminPage() {
             >
               Tutup Preview
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL TARIK SALDO DOMPET KREATOR ─────────────────────── */}
+      {payoutModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-extrabold text-slate-900">Tarik Saldo Komisi Reseller</h3>
+              </div>
+              <button
+                onClick={() => setPayoutModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1 text-center">
+              <span className="text-xs text-slate-500 font-bold">Saldo Siap Dicairkan</span>
+              <div className="text-2xl font-black text-emerald-600 font-mono">
+                Rp {Number(creatorWallet.balance_ready || 0).toLocaleString('id-ID')}
+              </div>
+              <p className="text-[11px] text-slate-400">0% Potongan Biaya Admin Penarikan</p>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-600 leading-relaxed bg-amber-50/70 border border-amber-200/80 p-3.5 rounded-2xl text-amber-900">
+              <p className="font-bold flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Prinsip Non-Custodial Terverifikasi:</span>
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Pencairan komisi reseller diproses dan dikirimkan langsung oleh pemilik toko ke rekening bank atau nomor e-wallet yang terhubung dengan akun Anda.
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  alert(
+                    `Permintaan penarikan saldo sebesar Rp ${Number(
+                      creatorWallet.balance_ready || 0
+                    ).toLocaleString('id-ID')} telah dicatat. Pemilik toko terkait akan mentransfer langsung ke rekening Anda.`
+                  );
+                  setPayoutModalOpen(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition cursor-pointer"
+              >
+                Konfirmasi Penarikan Saldo
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayoutModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
           </div>
         </div>
       )}
