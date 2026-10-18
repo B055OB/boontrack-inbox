@@ -2,6 +2,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
 import { getTenantActionUrl } from '@/lib/checkout-link';
 import { getProductPageUrl } from '@/lib/storefront-urls';
+import { fetchActiveCatalog } from '@/lib/product-catalog';
 import {
   InteractiveMenu,
   InteractiveMenuOption,
@@ -989,41 +990,20 @@ export async function processZeroAiMessage(
   ) {
     let productLines: string[] = [];
 
-    // Query tabel products resmi
-    const tenantFilter = isValidUuid(tenant.id)
-      ? `tenant_id.eq.${tenant.id}`
-      : `tenant_id.eq.${tenant.slug}`;
+    // ZERO STALE CACHE: Ambil katalog produk aktual langsung dari tabel products
+    const liveProducts = await fetchActiveCatalog(tenant, { supabaseClient: supabase, limit: 10 });
 
-    const { data: dbProducts } = await supabase
-      .from('products')
-      .select('*')
-      .or(isValidUuid(tenant.id) && isValidUuid(tenant.slug) ? `tenant_id.eq.${tenant.id},tenant_id.eq.${tenant.slug}` : tenantFilter)
-      .eq('is_available', true)
-      .order('price', { ascending: true })
-      .limit(10);
-
-    if (dbProducts && dbProducts.length > 0) {
-      primaryProduct = { id: dbProducts[0].id, slug: dbProducts[0].slug };
+    if (liveProducts.length > 0) {
+      primaryProduct = { id: liveProducts[0].id, slug: liveProducts[0].slug };
       actionUrl = getTenantActionUrl(tenantDomainInfo, primaryProduct);
 
-      productLines = dbProducts.map((p: any, idx: number) => {
+      productLines = liveProducts.map((p: any, idx: number) => {
         const priceNum = Number(p.promo_price || p.price || 0);
         const priceStr = `Rp ${priceNum.toLocaleString('id-ID')}`;
         const desc = p.description ? ` - ${p.description.slice(0, 80)}` : '';
         const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
         return `*${idx + 1}.* *${p.title || p.name}*\n   💵 Harga: *${priceStr}*${desc}\n   🔗 Link: ${pUrl}`;
       });
-    } else if (Array.isArray(meta.products) && meta.products.length > 0) {
-      productLines = meta.products.map((p: any, idx: number) => {
-        const priceNum = Number(p.promo_price || p.price || 0);
-        const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
-        return `*${idx + 1}.* *${p.name || p.title}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*\n   🔗 Link: ${pUrl}`;
-      });
-    } else if (meta.product?.name) {
-      const p = meta.product;
-      const priceNum = Number(p.price || 0);
-      const pUrl = getProductPageUrl(tenant.slug, p.slug || p.id, tenantCustomDomain);
-      productLines.push(`*1.* *${p.name}*\n   💵 Harga: *Rp ${priceNum.toLocaleString('id-ID')}*\n   🔗 Link: ${pUrl}`);
     }
 
     let replyText = '';
