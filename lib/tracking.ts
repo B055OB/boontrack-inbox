@@ -16,7 +16,7 @@ export interface TrackingParams {
   reseller_code?: string;
 }
 
-// 1. Ekstraksi dan Penyimpanan Parameter URL (UTM & Click IDs Termasuk CTWA)
+// 1. Ekstraksi dan Penyimpanan Parameter URL (UTM & Click IDs Termasuk CTWA & Reseller)
 export function captureAffiliateReferral(): void {
   if (typeof window === "undefined") return;
 
@@ -30,15 +30,31 @@ export function captureAffiliateReferral(): void {
       } catch {}
     }
 
-    const resellerCode = urlParams.get("r") || urlParams.get("reseller");
-    if (resellerCode) {
+    // Capture query param ?r=KODE_RESELLER (Directive RE-01 / Sprint P0)
+    const rawResellerCode = urlParams.get("r") || urlParams.get("reseller");
+    if (rawResellerCode) {
       try {
-        const clean = resellerCode.trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase();
+        const clean = rawResellerCode.trim();
         if (clean) {
+          // Skema JSON penanda waktu: { "code": "KODE", "expires_at": Date.now() + (30 * 86400 * 1000) }
+          const expiresAt = Date.now() + (30 * 86400 * 1000);
+          const payload = { code: clean, expires_at: expiresAt };
+          localStorage.setItem("bt_reseller_attribution", JSON.stringify(payload));
+
+          // First-party cookie fallback: bt_reseller_code=KODE; path=/; max-age=2592000; SameSite=Lax
+          document.cookie = `bt_reseller_code=${encodeURIComponent(clean)}; path=/; max-age=2592000; SameSite=Lax`;
+
+          // Legacy storage fallback
           localStorage.setItem("boontrack_reseller_code", clean);
           sessionStorage.setItem("boontrack_reseller_code", clean);
         }
       } catch {}
+    }
+
+    // Auto-inject data-bt-reseller ke tombol CTA checkout drawer
+    const activeReseller = getActiveResellerCode();
+    if (activeReseller) {
+      injectResellerAttributeToCta(activeReseller);
     }
 
     const trackingKeys = [
@@ -76,6 +92,49 @@ export function captureAffiliateReferral(): void {
   }
 }
 
+/**
+ * Injeksi atribut data-bt-reseller="KODE" secara otomatis ke seluruh tombol CTA checkout drawer.
+ */
+export function injectResellerAttributeToCta(code: string): void {
+  if (typeof window === "undefined" || !code) return;
+
+  const applyAttr = () => {
+    try {
+      const selectors = [
+        'button[data-checkout]',
+        'button[data-cta-checkout]',
+        'button[data-checkout-trigger]',
+        'button.btn-checkout',
+        'a[data-checkout]',
+        'form[data-checkout]',
+        '[data-role="checkout-btn"]',
+        '[data-role="checkout-drawer-trigger"]',
+        '.checkout-drawer-btn',
+        '#btn-checkout',
+      ];
+      const elements = document.querySelectorAll(selectors.join(','));
+      elements.forEach((el) => {
+        el.setAttribute('data-bt-reseller', code);
+      });
+    } catch {}
+  };
+
+  // Immediate execution
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyAttr, { once: true });
+  } else {
+    applyAttr();
+  }
+
+  // Set up MutationObserver to handle dynamically rendered checkout buttons
+  try {
+    if (typeof MutationObserver !== 'undefined' && document.body) {
+      const observer = new MutationObserver(() => applyAttr());
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  } catch {}
+}
+
 export function getActiveAffiliateCode(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -88,6 +147,30 @@ export function getActiveAffiliateCode(): string | null {
 export function getActiveResellerCode(): string | null {
   if (typeof window === "undefined") return null;
   try {
+    // 1. Prioritas: bt_reseller_attribution di localStorage dengan validasi waktu aktif 30 hari
+    const rawAttribution = localStorage.getItem("bt_reseller_attribution");
+    if (rawAttribution) {
+      try {
+        const parsed = JSON.parse(rawAttribution);
+        if (parsed?.code && typeof parsed.expires_at === 'number') {
+          if (Date.now() < parsed.expires_at) {
+            return String(parsed.code).trim();
+          } else {
+            localStorage.removeItem("bt_reseller_attribution");
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Fallback: First-party cookie bt_reseller_code
+    if (typeof document !== 'undefined' && document.cookie) {
+      const match = document.cookie.match(/(?:^|;\s*)bt_reseller_code=([^;]+)/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]).trim();
+      }
+    }
+
+    // 3. Fallback: Legacy storage
     return sessionStorage.getItem("boontrack_reseller_code") || localStorage.getItem("boontrack_reseller_code") || null;
   } catch {
     return null;

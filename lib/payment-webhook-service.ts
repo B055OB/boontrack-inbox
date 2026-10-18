@@ -1453,6 +1453,18 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     console.warn(`[Webhook Reader ${logId}] Non-fatal: affiliate commission alert error:`, notifErr);
   }
 
+  // RECORD RESELLER COMMISSION LEDGER (DIRECTIVE RE-01 / SPRINT P0)
+  try {
+    const { recordResellerCommissionLedger } = await import('@/lib/attribution/reseller-attribution-service');
+    await recordResellerCommissionLedger({
+      orderId: String(orderId),
+      tenantId: matchedOrder.tenant_id,
+      supabaseClient: supabase,
+    });
+  } catch (resellerLedgerErr) {
+    console.warn(`[Webhook Reader ${logId}] Non-fatal: reseller commission ledger error:`, resellerLedgerErr);
+  }
+
   const successRes = {
     success: true,
     message: `Pesanan #${orderId} berhasil diverifikasi LUNAS (PAID) via BoonTrack Reader (nominal Rp ${totalAmount.toLocaleString('id-ID')}).`,

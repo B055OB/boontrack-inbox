@@ -48,6 +48,10 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'reseller_attribution_id',
   'reseller_id',
   'reseller_code',
+  'reseller_user_id',
+  'reseller_code_snapshot',
+  'reseller_commission_amount',
+  'attribution_type',
   'created_at',
   'updated_at',
 ]);

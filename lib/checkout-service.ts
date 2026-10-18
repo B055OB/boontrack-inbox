@@ -75,6 +75,13 @@ export interface CreateOrderPayload {
   reseller_code?: string;
   reseller_attribution_id?: string;
   reseller_id?: string;
+  reseller_user_id?: string;
+  reseller_code_snapshot?: string;
+  reseller_commission_amount?: number;
+  attribution_type?: 'DIRECT_CLICK' | 'ATTRIBUTION_LOCK' | 'NONE';
+  'data-bt-reseller'?: string;
+  data_bt_reseller?: string;
+  resellerCode?: string;
   items?: Array<{
     productId: string;
     productTitle: string;
@@ -393,6 +400,44 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const resolvedCity = payload.city || payload.customerCity || payload.shippingCity || null;
   const resolvedSourceUrl = resolvedTrackingContext.source_url || (process.env.NEXT_PUBLIC_APP_URL || null);
 
+  // ── RESELLER ATTRIBUTION & SNAPSHOT FREEZE (DIRECTIVE RE-01 / SPRINT P0) ──
+  let finalResellerUserId: string | null = payload.reseller_user_id || null;
+  let finalResellerCodeSnapshot: string | null = payload.reseller_code_snapshot || payload.reseller_code || payload.reseller_id || null;
+  let finalResellerCommissionAmount: number = Number(payload.reseller_commission_amount || 0);
+  let finalAttributionType: 'DIRECT_CLICK' | 'ATTRIBUTION_LOCK' | 'NONE' = payload.attribution_type || 'NONE';
+
+  if (resolvedTenantId && payload.customerPhone) {
+    try {
+      const { resolveOrderAttribution } = await import('@/lib/attribution/reseller-attribution-service');
+      const candidateCode =
+        payload.reseller_code ||
+        payload['data-bt-reseller'] ||
+        payload.data_bt_reseller ||
+        payload.resellerCode ||
+        payload.reseller_id ||
+        payload.affiliateCode ||
+        null;
+
+      const attrResult = await resolveOrderAttribution({
+        tenantId: resolvedTenantId,
+        customerPhone: payload.customerPhone,
+        resellerCodeFromPayload: candidateCode,
+        grossAmount: grossAmount,
+        customCommissionAmount: payload.reseller_commission_amount || payload.affiliateCommission,
+        supabaseClient: supabase,
+      });
+
+      if (attrResult.resellerUserId) {
+        finalResellerUserId = attrResult.resellerUserId;
+        finalResellerCodeSnapshot = attrResult.resellerCodeSnapshot;
+        finalResellerCommissionAmount = attrResult.resellerCommissionAmount;
+        finalAttributionType = attrResult.attributionType;
+      }
+    } catch (attrErr) {
+      console.warn('[Checkout Service] Reseller attribution resolution note:', attrErr);
+    }
+  }
+
   const rawOrderData: any = {
     id: orderId,
     tenant_slug: payload.tenantSlug,
@@ -407,9 +452,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     customer_email: payload.customerEmail || null,
     affiliate_code: payload.affiliateCode || null,
     manager_id: payload.managerId || null,
-    reseller_code: payload.reseller_code || null,
+    reseller_code: payload.reseller_code || finalResellerCodeSnapshot || null,
     reseller_attribution_id: payload.reseller_attribution_id || null,
-    reseller_id: payload.reseller_id || null,
+    reseller_id: payload.reseller_id || finalResellerCodeSnapshot || null,
+    reseller_user_id: finalResellerUserId,
+    reseller_code_snapshot: finalResellerCodeSnapshot,
+    reseller_commission_amount: finalResellerCommissionAmount,
+    attribution_type: finalAttributionType,
     utm_source: payload.tracking?.utm_source || null,
     utm_medium: payload.tracking?.utm_medium || null,
     utm_campaign: payload.tracking?.utm_campaign || null,
@@ -437,9 +486,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       product_subtotal: unitPrice * orderQuantity,
       order_notes: payload.order_notes || payload.notes || payload.kitchen_notes || null,
       kitchen_notes: payload.kitchen_notes || payload.order_notes || null,
-      reseller_code: payload.reseller_code || undefined,
+      reseller_code: payload.reseller_code || finalResellerCodeSnapshot || undefined,
       reseller_attribution_id: payload.reseller_attribution_id || undefined,
       reseller_id: payload.reseller_id || undefined,
+      reseller_user_id: finalResellerUserId || undefined,
+      reseller_code_snapshot: finalResellerCodeSnapshot || undefined,
+      reseller_commission_amount: finalResellerCommissionAmount || undefined,
+      attribution_type: finalAttributionType,
     },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
@@ -467,6 +520,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
       customer_email: payload.customerEmail || null,
+      reseller_user_id: finalResellerUserId,
+      reseller_code_snapshot: finalResellerCodeSnapshot,
+      reseller_commission_amount: finalResellerCommissionAmount,
+      attribution_type: finalAttributionType,
       quantity: orderQuantity,
       payment_status: "PENDING",
       order_status: "PENDING",
@@ -485,6 +542,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         unit_price: unitPrice,
         product_subtotal: unitPrice * orderQuantity,
         payment_method: paymentMethod,
+        reseller_user_id: finalResellerUserId || undefined,
+        reseller_code_snapshot: finalResellerCodeSnapshot || undefined,
+        reseller_commission_amount: finalResellerCommissionAmount || undefined,
+        attribution_type: finalAttributionType,
       },
       created_at: orderData.created_at,
       updated_at: orderData.created_at,
