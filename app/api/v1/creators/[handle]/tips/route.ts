@@ -126,7 +126,7 @@ export async function GET(
     const baseHandle = cleanHandle.replace(/_+$/, '');
     const { data: creator, error: creatorErr } = await supabaseAdmin
       .from('creator_profiles')
-      .select('id, tenant_id, handle, display_name')
+      .select('id, tenant_id, handle, display_name, telegram_chat_id')
       .or(`handle.eq.${cleanHandle},handle.eq.${baseHandle},handle.eq.${baseHandle}_`)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -213,7 +213,7 @@ export async function POST(
     const baseHandle = cleanHandle.replace(/_+$/, '');
     const { data: creator, error: creatorErr } = await supabaseAdmin
       .from('creator_profiles')
-      .select('id, tenant_id, handle, display_name')
+      .select('id, tenant_id, handle, display_name, telegram_chat_id')
       .or(`handle.eq.${cleanHandle},handle.eq.${baseHandle},handle.eq.${baseHandle}_`)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -323,6 +323,23 @@ export async function POST(
         { success: false, error: 'INSERT_FAILED', message: insertErr?.message || 'Gagal mencatat data traktir.' },
         { status: 500 }
       );
+    }
+
+    if (creator.telegram_chat_id) {
+      try {
+        const { sendCreatorMessage } = await import('@/lib/telegram/boonpilot-telegram');
+        const tipText =
+          `🎁 *TRAKTIR TIP BARU MASUK!*\n\n` +
+          `Dari: *${senderName}*\n` +
+          `Nominal: *Rp${amount.toLocaleString('id-ID')}*\n` +
+          (message ? `Pesan: _"${message}"_\n\n` : '\n') +
+          `Status: Menunggu verifikasi di Dashboard Kreator.`;
+        sendCreatorMessage(creator.telegram_chat_id, tipText, { parseMode: 'Markdown' }).catch((e) => {
+          console.warn('[Creator Tip Notification Warning]:', e);
+        });
+      } catch (tgErr) {
+        console.warn('[Creator Tip Telegram Dispatch Note]:', tgErr);
+      }
     }
 
     return NextResponse.json({

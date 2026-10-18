@@ -819,7 +819,7 @@ export async function processEvolutionWebhookEvent(
 
         // Step 3: Not an echo, and not a bot control command -> Real Human CS Mobile Outbound Message Takeover!
         const nowIso = new Date().toISOString();
-        console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_HANDOVER (24h sliding window).`);
+        console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_HANDOVER (30m sliding window).`);
         if (supabase) {
           const tenantUuid = tenantRecordForHardening?.id || tenantId;
 
@@ -832,6 +832,7 @@ export async function processEvolutionWebhookEvent(
             customerPhone: senderPhone,
             senderPhone: botPhoneNumber || undefined,
             userRole: 'cs',
+            durationMinutes: 30,
             source: 'cs_mobile_outbound',
             supabase,
           });

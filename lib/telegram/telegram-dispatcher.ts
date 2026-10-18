@@ -8,7 +8,7 @@
  * 3. Fallback to platform superadmin (BOONPILOT_TG_SELLER_CHAT_ID) if tenant hasn't linked Telegram yet.
  */
 
-import { sendTelegramNotification } from '@/lib/telegram/boonpilot-telegram';
+import { sendTelegramNotification, sendOnlineBoostMessage } from '@/lib/telegram/boonpilot-telegram';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { resolveChannelBinding, hasCapability } from '@/lib/channels';
 
@@ -230,7 +230,10 @@ export async function dispatchOrderTelegramAlert(
         `🚀 Sistem sedang memproses & mengirim produk ke customer.`;
     }
 
-    const sendRes = await sendTelegramNotification(targetChatId, messageText);
+    const isOnlineBoost = (order.tenant_slug === 'onlineboost' || tenantData?.slug === 'onlineboost');
+    const sendRes = isOnlineBoost
+      ? await sendOnlineBoostMessage(targetChatId, messageText)
+      : await sendTelegramNotification(targetChatId, messageText);
     return {
       dispatched: sendRes.ok,
       targetChatId,

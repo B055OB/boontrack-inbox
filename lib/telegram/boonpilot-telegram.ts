@@ -38,6 +38,22 @@ export function getTelegramBotUsername(): string {
   return process.env.TELEGRAM_BOT_USERNAME || 'boonshop_bot';
 }
 
+export function getOnlineBoostBotToken(): string {
+  return (process.env.TELEGRAM_ONLINEBOOST_BOT_TOKEN || '8788492843:AAHV-VPCA7BSq0HlH5wPLLdsqFUGRH-e0Ek').trim();
+}
+
+export function getOnlineBoostBotUsername(): string {
+  return process.env.TELEGRAM_ONLINEBOOST_BOT_USERNAME || 'onlineboostbot';
+}
+
+export function getCreatorBotToken(): string {
+  return (process.env.TELEGRAM_CREATOR_BOT_TOKEN || '8868732988:AAFVOYtibyof2YlAyvhix-cwVSJC9mAH4SQ').trim();
+}
+
+export function getCreatorBotUsername(): string {
+  return process.env.TELEGRAM_CREATOR_BOT_USERNAME || 'booncreator_bot';
+}
+
 export interface TelegramButton {
   text: string;
   callback_data?: string;
@@ -50,6 +66,39 @@ export interface SendTelegramMessageOptions {
   buttons?: TelegramButton[][];
   disableWebPagePreview?: boolean;
   messageThreadId?: number;
+  botToken?: string;
+}
+
+/**
+ * Sends a message via the official OnlineBoost Bot (@onlineboostbot).
+ * Uses TELEGRAM_ONLINEBOOST_BOT_TOKEN.
+ */
+export async function sendOnlineBoostMessage(
+  chatId: number | string,
+  text: string,
+  options: Omit<SendTelegramMessageOptions, 'botToken'> = {}
+): Promise<{ ok: boolean; result?: any; error?: string }> {
+  const token = getOnlineBoostBotToken();
+  return sendTelegramMessage(chatId, text, {
+    ...options,
+    botToken: token,
+  });
+}
+
+/**
+ * Sends a message via the official Creator Boontrack Bot (@booncreator_bot).
+ * Uses TELEGRAM_CREATOR_BOT_TOKEN.
+ */
+export async function sendCreatorMessage(
+  chatId: number | string,
+  text: string,
+  options: Omit<SendTelegramMessageOptions, 'botToken'> = {}
+): Promise<{ ok: boolean; result?: any; error?: string }> {
+  const token = getCreatorBotToken();
+  return sendTelegramMessage(chatId, text, {
+    ...options,
+    botToken: token,
+  });
 }
 
 /**
@@ -62,7 +111,7 @@ export async function sendTelegramMessage(
   text: string,
   options: SendTelegramMessageOptions = {}
 ): Promise<{ ok: boolean; result?: any; error?: string }> {
-  const token = getTelegramBotToken();
+  const token = options.botToken || getTelegramBotToken();
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const cleanText = (text || '').trim();
 
@@ -451,7 +500,7 @@ export async function handleTelegramUpdate(
           `Tuntaskan poin 1–3, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5) untuk aktivasi bonus akses 1 bulan penuh!\n\n` +
           `Ketik /fase1 kapan saja untuk melihat checklist lengkapnya. Selamat berpraktik!`;
 
-        await sendTelegramMessage(chatId, welcomeText, {
+        await sendOnlineBoostMessage(chatId, welcomeText, {
           messageThreadId: fase1ThreadId,
           parseMode: 'HTML',
           disableWebPagePreview: true,
@@ -492,7 +541,7 @@ export async function handleTelegramUpdate(
       `Selesaikan seluruh tugas di <b>Fase 1</b> terlebih dahulu, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5).\n\n` +
       `Setelah diverifikasi oleh mentor, akses materi lanjutan akan otomatis terbuka! Ketik /fase1 kapan saja untuk melihat checklist praktikum.`;
 
-    await sendTelegramMessage(chatId, gatedText, {
+    await sendOnlineBoostMessage(chatId, gatedText, {
       messageThreadId: targetThreadId,
       replyToMessageId: message.message_id,
       parseMode: 'HTML',
@@ -520,7 +569,7 @@ export async function handleTelegramUpdate(
       `Tuntaskan poin 1–3, lalu kirimkan link toko Kakak di topik #Basic-Fase1 (thread ID: 5) untuk aktivasi bonus akses 1 bulan penuh!\n\n` +
       `Ketik /fase1 kapan saja untuk melihat checklist lengkapnya. Selamat berpraktik!`;
 
-    await sendTelegramMessage(chatId, checklistText, {
+    await sendOnlineBoostMessage(chatId, checklistText, {
       messageThreadId: targetThreadId,
       replyToMessageId: message.message_id,
       parseMode: 'HTML',
@@ -538,7 +587,74 @@ export async function handleTelegramUpdate(
   }
 
   // ── DEEP LINKING & COMMAND HANDLERS ──────────────────────────────────────
-  // 1. Deep linking handler: /start link_{tenant_id}
+  // 1.a Creator Pairing handler: /start auth_{creator_id} (via @booncreator_bot)
+  const creatorAuthMatch = rawText.match(/^\/start\s+auth_([a-zA-Z0-9_\-]+)/i);
+  if (creatorAuthMatch) {
+    const creatorRef = creatorAuthMatch[1].trim();
+    try {
+      const supabase = getSupabaseAdmin() || getSupabase();
+      if (supabase) {
+        let creatorQuery = supabase
+          .from('creator_profiles')
+          .select('id, handle, display_name, tenant_id, telegram_chat_id');
+
+        if (isValidUuid(creatorRef)) {
+          creatorQuery = creatorQuery.or(`id.eq.${creatorRef},tenant_id.eq.${creatorRef}`);
+        } else {
+          creatorQuery = creatorQuery.eq('handle', creatorRef.toLowerCase().replace(/^@+/, ''));
+        }
+
+        const { data: creator } = await creatorQuery.maybeSingle();
+
+        if (creator) {
+          await supabase
+            .from('creator_profiles')
+            .update({
+              telegram_chat_id: String(chatId),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', creator.id);
+
+          const creatorName = creator.display_name || creator.handle || 'Kreator';
+          const replyText =
+            `🎉 *Akun Kreator Berhasil Terhubung!*\n\n` +
+            `Halo *${creatorName}* (@${creator.handle}), akun Telegram ini telah tersambung resmi ke profil Bio Link BoonTrack Anda.\n\n` +
+            `🔔 *Notifikasi Aktif:*\n` +
+            `• Notifikasi traktir tip / donasi QRIS instan\n` +
+            `• Notifikasi komisi reseller & afiliate\n` +
+            `• Laporan transaksi bio link\n\n` +
+            `_Chat ID: \`${chatId}\`_`;
+
+          await sendCreatorMessage(chatId, replyText, { parseMode: 'Markdown' });
+
+          return {
+            handled: true,
+            chatId,
+            senderPhone: String(fromId),
+            reply: replyText,
+            role: 'COMMAND_HANDLER',
+            activeEngine: 'DEEP_LINK_CREATOR_AUTH_BIND',
+          };
+        }
+      }
+    } catch (dbErr) {
+      console.error('[CREATOR TELEGRAM AUTH BIND ERROR]:', dbErr);
+    }
+
+    const errorReply = `⚠️ Profil Kreator dengan rujukan \`${creatorRef}\` tidak ditemukan. Buka dashboard kreator Anda untuk mendapatkan link verifikasi terbaru.`;
+    await sendCreatorMessage(chatId, errorReply, { parseMode: 'Markdown' });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: errorReply,
+      role: 'COMMAND_HANDLER',
+      activeEngine: 'CREATOR_AUTH_BIND_ERROR',
+    };
+  }
+
+  // 1.b Deep linking handler: /start link_{tenant_id} (Merchant Shop pairing via @boonshop_bot)
   const deepLinkMatch = rawText.match(/^\/start\s+link_([a-zA-Z0-9_\-]+)/i);
   if (deepLinkMatch) {
     const tenantRef = deepLinkMatch[1].trim();

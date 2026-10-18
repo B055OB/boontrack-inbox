@@ -507,8 +507,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           created_at: nowIso,
         });
 
-        // 4b. Update conversations table and pause bot for human takeover (24-hour timeout sync)
-        const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        // 4b. Update conversations table and pause bot for human takeover (30-minute zero-friction auto-pause)
+        const pausedUntilIso = new Date(Date.now() + 30 * 60 * 1000).toISOString();
         await supabase
           .from('conversations')
           .update({
@@ -518,12 +518,32 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             is_paused: true,
             is_bot_paused: true,
             is_bot_active: false,
+            paused_until: pausedUntilIso,
             pause_reason: 'agent_manual_reply',
             last_state_updated_by: 'agent_manual_reply',
             bot_mode: 'HUMAN_ACTIVE',
             updated_at: nowIso,
           })
           .eq('id', activeConversation.id);
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeConversation.id
+              ? {
+                  ...c,
+                  lastMessage: body,
+                  lastMessageTime: 'Baru saja',
+                  bot_paused: true,
+                  is_paused: true,
+                  is_bot_paused: true,
+                  is_bot_active: false,
+                  paused_until: pausedUntilIso,
+                  pause_reason: 'agent_manual_reply',
+                  bot_mode: 'HUMAN_ACTIVE',
+                }
+              : c
+          )
+        );
 
         if (!isWebchat) {
           const targetTenantId = effectiveTenantId || effectiveTenantSlug;
