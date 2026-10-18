@@ -32,7 +32,9 @@ import {
   Clock,
   CheckCheck,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Upload,
+  AlertCircle
 } from 'lucide-react';
 
 // ── Custom Social SVGs ───────────────────────────────────────────────
@@ -133,6 +135,10 @@ export default function CreatorAdminPage() {
     button_label: 'Traktir Kopi / Dukung Suzie Ray ☕',
     nmid: 'ID102003920199',
   });
+  const [qrisUploading, setQrisUploading] = useState(false);
+  const [qrisUploadError, setQrisUploadError] = useState<string | null>(null);
+  const [isDraggingQris, setIsDraggingQris] = useState(false);
+  const qrisFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Bio Links
   const [links, setLinks] = useState<BioLinkItem[]>([
@@ -312,6 +318,82 @@ export default function CreatorAdminPage() {
     navigator.clipboard.writeText(referralUrl);
     setCopiedProductRef(product.id);
     setTimeout(() => setCopiedProductRef(null), 2000);
+  };
+
+  // ── QRIS File Upload Handler ────────────────────────────────────────
+  const handleQrisFileUpload = async (file: File) => {
+    setQrisUploadError(null);
+
+    // 1. Validasi Format Berkas
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const fileName = file.name.toLowerCase();
+    const isValidExt =
+      fileName.endsWith('.jpg') ||
+      fileName.endsWith('.jpeg') ||
+      fileName.endsWith('.png') ||
+      fileName.endsWith('.webp');
+
+    if (!validTypes.includes(file.type) && !isValidExt) {
+      setQrisUploadError(
+        'Format berkas tidak didukung. Harap unggah gambar barcode QRIS berformat JPG, PNG, atau WebP.'
+      );
+      return;
+    }
+
+    // 2. Validasi Ukuran Berkas (Maksimal 3MB)
+    const MAX_SIZE = 3 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      setQrisUploadError(
+        `Ukuran file melebihi batas maksimal 3MB (ukuran saat ini: ${sizeMB}MB). Harap kompres berkas Anda.`
+      );
+      return;
+    }
+
+    setQrisUploading(true);
+
+    try {
+      const cleanHandle = (handle || '').replace(/^@+/, '').trim().toLowerCase() || 'creator';
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('qris', file);
+      formData.append('folder', 'qris');
+      formData.append('tenant_slug', tenantId || cleanHandle);
+
+      // Coba endpoint khusus kreator terlebih dahulu
+      let res = await fetch(`/api/v1/creators/${encodeURIComponent(cleanHandle)}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      // Fallback ke general upload jika endpoint creator mengembalikan 404
+      if (!res.ok) {
+        res = await fetch('/api/v1/upload', {
+          method: 'POST',
+          body: formData,
+        });
+      }
+
+      const data = await res.json();
+
+      if (data.success || data.status === 'success') {
+        const uploadedUrl = data.url || data.public_url || data.qris_url || data.image_url;
+        if (uploadedUrl) {
+          setQrisConfig((prev) => ({
+            ...prev,
+            qr_image_url: uploadedUrl,
+          }));
+        } else {
+          setQrisUploadError('Upload berhasil tetapi URL publik tidak ditemukan.');
+        }
+      } else {
+        setQrisUploadError(data.message || data.detail || 'Gagal mengunggah barcode QRIS.');
+      }
+    } catch (err: any) {
+      setQrisUploadError(err?.message || 'Terjadi kesalahan koneksi saat mengunggah barcode.');
+    } finally {
+      setQrisUploading(false);
+    }
   };
 
   // CRUD Bio Links
@@ -728,15 +810,164 @@ export default function CreatorAdminPage() {
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">URL Gambar QRIS (Statis / Toko)</label>
+                    {/* Barcode QRIS File Upload & Dropzone */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Berkas Barcode QRIS (JPG, PNG, WebP • Maks. 3MB)
+                        </label>
+                        {qrisConfig.qr_image_url && (
+                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Barcode Terpasang</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Hidden File Input */}
                       <input
-                        type="text"
-                        value={qrisConfig.qr_image_url}
-                        onChange={(e) => setQrisConfig({ ...qrisConfig, qr_image_url: e.target.value })}
-                        placeholder="URL barcode QRIS JPG/PNG"
-                        className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition font-mono"
+                        ref={qrisFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleQrisFileUpload(file);
+                          e.target.value = '';
+                        }}
                       />
+
+                      {/* State A: Gambar Sudah Terunggah / Ada di State */}
+                      {qrisConfig.qr_image_url ? (
+                        <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/90 flex flex-col sm:flex-row items-center gap-4 transition-all">
+                          {/* Thumbnail Preview Proporsional */}
+                          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-white p-2 border-2 border-slate-200 shadow-inner flex items-center justify-center shrink-0 overflow-hidden relative group">
+                            <img
+                              src={qrisConfig.qr_image_url}
+                              alt="Barcode QRIS Kreator"
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/images/placeholder-qris.png';
+                              }}
+                            />
+                            {qrisUploading && (
+                              <div className="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center gap-1">
+                                <RefreshCw className="w-5 h-5 text-orange-500 animate-spin" />
+                                <span className="text-[9px] font-bold text-slate-700">Mengunggah...</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info & Action Buttons */}
+                          <div className="flex-1 space-y-2 text-center sm:text-left min-w-0">
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-900 truncate flex items-center justify-center sm:justify-start gap-1.5">
+                                <span>Barcode QRIS Siap Dipindai</span>
+                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                              </h4>
+                              <p className="text-[11px] text-slate-500 break-all line-clamp-1 font-mono mt-0.5">
+                                {qrisConfig.qr_image_url}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                              <button
+                                type="button"
+                                disabled={qrisUploading}
+                                onClick={() => qrisFileInputRef.current?.click()}
+                                className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-bold shadow-2xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                {qrisUploading ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                                ) : (
+                                  <Upload className="w-3.5 h-3.5 text-slate-600" />
+                                )}
+                                <span>{qrisUploading ? 'Mengunggah...' : 'Ganti Gambar'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={qrisUploading}
+                                onClick={() => {
+                                  if (confirm('Hapus barcode QRIS saat ini?')) {
+                                    setQrisConfig({ ...qrisConfig, qr_image_url: '' });
+                                  }
+                                }}
+                                className="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-bold transition active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* State B: Dropzone & Upload Button */
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDraggingQris(true);
+                          }}
+                          onDragLeave={() => setIsDraggingQris(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingQris(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleQrisFileUpload(file);
+                          }}
+                          className={`p-6 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center gap-3 cursor-pointer ${
+                            isDraggingQris
+                              ? 'border-orange-500 bg-orange-50/50'
+                              : 'border-slate-200 hover:border-orange-400 bg-slate-50/50 hover:bg-slate-50'
+                          }`}
+                          onClick={() => {
+                            if (!qrisUploading) qrisFileInputRef.current?.click();
+                          }}
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-orange-100/70 text-orange-600 flex items-center justify-center shadow-xs">
+                            {qrisUploading ? (
+                              <RefreshCw className="w-6 h-6 animate-spin" />
+                            ) : (
+                              <Upload className="w-6 h-6" />
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-xs font-extrabold text-slate-800">
+                              {qrisUploading
+                                ? 'Sedang mengunggah berkas ke storage...'
+                                : 'Klik atau seret & lepas (Drag & Drop) barcode QRIS di sini'}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              Mendukung format PNG, JPG, atau WebP (Maksimal 3MB)
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={qrisUploading}
+                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition active:scale-95 flex items-center gap-1.5 pointer-events-none"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Unggah Barcode QRIS</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Error Banner */}
+                      {qrisUploadError && (
+                        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-start gap-2 animate-in fade-in duration-150">
+                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="flex-1 leading-snug">{qrisUploadError}</div>
+                          <button
+                            type="button"
+                            onClick={() => setQrisUploadError(null)}
+                            className="text-rose-400 hover:text-rose-600 font-bold p-0.5"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
