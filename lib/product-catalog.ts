@@ -1,4 +1,6 @@
 import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
+import { getSupabaseAdmin, getSupabase } from './supabaseClient';
+import { isValidUuid } from './uuid-guard';
 
 export interface VoucherConfig {
   code: string;
@@ -515,6 +517,7 @@ export interface ProductItem {
   meta_pixel_id_override?: string;
   tiktok_pixel_id_override?: string;
   order_bumps?: OrderBumpConfig | OrderBumpItem[];
+  modules?: any[];
   metadata?: Record<string, any>;
 }
 
@@ -1553,7 +1556,7 @@ export function resolveTenantProductUrl(
  * Ensures all product links dynamically adhere to tenant custom domain hierarchy (§21.1 / §25.3).
  */
 export function formatProductCatalogForBotKnowledge(
-  tenant: { slug: string; custom_domain?: string | null; metadata?: any },
+  tenant: { slug?: string; custom_domain?: string | null; metadata?: any; [key: string]: any },
   products: any[]
 ): string {
   if (!Array.isArray(products) || products.length === 0) return '';
@@ -1567,20 +1570,220 @@ export function formatProductCatalogForBotKnowledge(
     ? String(customDomain).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')
     : null;
 
+  const tenantSlug = tenant.slug || tenant.metadata?.slug || '';
   const baseUrl = cleanDomain
     ? `https://${cleanDomain}`
-    : `https://shop.boontrack.com/${tenant.slug}`;
+    : `https://shop.boontrack.com/${tenantSlug}`;
 
   return products
     .map((p: any) => {
       const pSlug = p.slug || p.id || '';
       const fullUrl = pSlug ? `${baseUrl}/p/${pSlug}` : baseUrl;
-      const priceNum = Number(p.promo_price || p.price || 0);
-      const priceStr = priceNum > 0 ? `Rp ${priceNum.toLocaleString('id-ID')}` : 'Gratis';
+      const rawPrice = Number(p.price || 0);
+      const promoPrice = p.promo_price !== undefined && p.promo_price !== null && p.promo_price !== ''
+        ? Number(p.promo_price)
+        : undefined;
+
+      let priceStr = 'Gratis';
+      if (promoPrice !== undefined && promoPrice > 0 && rawPrice > promoPrice) {
+        priceStr = `Rp ${promoPrice.toLocaleString('id-ID')} (Promo dari Rp ${rawPrice.toLocaleString('id-ID')})`;
+      } else if (promoPrice !== undefined && promoPrice > 0) {
+        priceStr = `Rp ${promoPrice.toLocaleString('id-ID')}`;
+      } else if (rawPrice > 0) {
+        priceStr = `Rp ${rawPrice.toLocaleString('id-ID')}`;
+      }
+
       const desc = p.description ? ` — ${p.description}` : '';
       return `• ${p.name || p.title || 'Paket'}: ${priceStr}${desc}\n  Link Checkout Resmi: ${fullUrl}`;
     })
     .join('\n\n');
 }
+
+/**
+ * Fetches the active product catalog directly from PostgreSQL `products` table
+ * with zero stale cache. Serves as single source of truth for LLM context grounding,
+ * WhatsApp bot answering, and sales rep flows.
+ */
+export async function fetchActiveCatalog(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: {
+    supabaseClient?: any;
+    limit?: number;
+    includeUnavailable?: boolean;
+  }
+): Promise<ProductItem[]> {
+  try {
+    const supabase = options?.supabaseClient || getSupabaseAdmin() || getSupabase();
+    if (!supabase) return [];
+
+    let tenantId: string | null = null;
+    let tenantSlug: string | null = null;
+    let tenantMeta: any = {};
+
+    if (typeof tenantOrSlug === 'string') {
+      const cleanInput = tenantOrSlug.trim();
+      if (isValidUuid(cleanInput)) {
+        tenantId = cleanInput;
+      } else {
+        tenantSlug = cleanInput.toLowerCase();
+      }
+    } else if (tenantOrSlug && typeof tenantOrSlug === 'object') {
+      tenantId = tenantOrSlug.id && isValidUuid(tenantOrSlug.id) ? tenantOrSlug.id : null;
+      tenantSlug = tenantOrSlug.slug ? String(tenantOrSlug.slug).trim().toLowerCase() : null;
+      tenantMeta = tenantOrSlug.metadata || {};
+    }
+
+    // If we only have slug or only have id, attempt to resolve both to maximize SQL query precision
+    if (!tenantId && tenantSlug) {
+      try {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('id, slug, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        if (tRow) {
+          tenantId = tRow.id;
+          tenantSlug = tRow.slug;
+          tenantMeta = tRow.metadata || tenantMeta;
+        }
+      } catch (err) {
+        console.warn('[fetchActiveCatalog] Tenant lookup note:', err);
+      }
+    } else if (tenantId && !tenantSlug) {
+      try {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('id, slug, metadata')
+          .eq('id', tenantId)
+          .maybeSingle();
+        if (tRow) {
+          tenantId = tRow.id;
+          tenantSlug = tRow.slug;
+          tenantMeta = tRow.metadata || tenantMeta;
+        }
+      } catch (err) {
+        console.warn('[fetchActiveCatalog] Tenant lookup note:', err);
+      }
+    }
+
+    const filters: string[] = [];
+    if (tenantId) filters.push(`tenant_id.eq.${tenantId}`);
+    if (tenantSlug && tenantSlug !== tenantId) filters.push(`tenant_id.eq.${tenantSlug}`);
+
+    let query = supabase.from('products').select('*');
+
+    if (filters.length > 1) {
+      query = query.or(filters.join(','));
+    } else if (filters.length === 1) {
+      query = query.eq('tenant_id', tenantId || tenantSlug);
+    } else {
+      // Fallback to checking metadata.products if tenant has no database ID
+      const metaProds = Array.isArray(tenantMeta.products) ? tenantMeta.products : [];
+      return metaProds;
+    }
+
+    if (!options?.includeUnavailable) {
+      query = query.eq('is_available', true);
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    if (options?.limit && options.limit > 0) {
+      query = query.limit(options.limit);
+    }
+
+    const { data: sqlProds, error } = await query;
+    if (error) {
+      console.warn('[fetchActiveCatalog] Error fetching SQL products:', error);
+    }
+
+    const mappedProducts: ProductItem[] = [];
+    const seenSlugs = new Set<string>();
+    const seenIds = new Set<string>();
+
+    if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+      for (const p of sqlProds) {
+        if (!p) continue;
+        const pSlug = (p.slug || '').toLowerCase();
+        const pId = String(p.id);
+        if (pSlug) seenSlugs.add(pSlug);
+        if (pId) seenIds.add(pId);
+
+        const rawPrice = Number(p.price) || 0;
+        const promoPrice = p.promo_price !== undefined && p.promo_price !== null && p.promo_price !== ''
+          ? Number(p.promo_price)
+          : undefined;
+
+        mappedProducts.push({
+          id: p.id,
+          name: p.title || p.name || 'Produk',
+          title: p.title || p.name,
+          slug: p.slug,
+          is_active: p.is_available !== false,
+          category: p.category || 'digital',
+          type: p.type || 'digital',
+          product_type: p.product_type || (p.type ? String(p.type).toUpperCase() : 'DIGITAL'),
+          price: rawPrice,
+          promo_price: promoPrice,
+          description: p.description || '',
+          download_url: p.download_url || null,
+          image: p.image_url || p.image || '',
+          image_url: p.image_url || p.image || '',
+          stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
+          sku: p.sku || `SKU-${p.id}`,
+          requires_shipping: Boolean(p.requires_shipping),
+          features: Array.isArray(p.features) ? p.features : [],
+          modules: Array.isArray(p.modules) ? p.modules : undefined,
+          metadata: p.metadata || {},
+        });
+      }
+    }
+
+    // Dual-store fallback: ONLY if SQL products table is empty, fall back to metadata.products
+    if (mappedProducts.length === 0) {
+      const rawMetaProds = Array.isArray(tenantMeta.products) ? tenantMeta.products : [];
+      for (const mp of rawMetaProds) {
+        if (!mp || typeof mp !== 'object') continue;
+        mappedProducts.push({
+          ...mp,
+          id: mp.id || `meta-${Date.now()}`,
+          name: mp.name || mp.title || 'Produk',
+          title: mp.title || mp.name,
+          price: Number(mp.price || 0),
+          promo_price: mp.promo_price ? Number(mp.promo_price) : undefined,
+          description: mp.description || '',
+          category: mp.category || 'digital',
+          image: mp.image_url || mp.image || '',
+          stock: mp.stock !== undefined && mp.stock !== null ? Number(mp.stock) : 999,
+        });
+      }
+    }
+
+    return mappedProducts;
+  } catch (err) {
+    console.error('[fetchActiveCatalog] Unexpected failure:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetches real-time catalog from PostgreSQL and returns structured grounding text for LLM/bot.
+ * Ensures zero-hallucination links with tenant custom domain resolution.
+ */
+export async function fetchActiveCatalogGrounding(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: {
+    supabaseClient?: any;
+    limit?: number;
+    includeUnavailable?: boolean;
+  }
+): Promise<string> {
+  const tenantObj = typeof tenantOrSlug === 'string'
+    ? { slug: tenantOrSlug }
+    : tenantOrSlug;
+  const products = await fetchActiveCatalog(tenantOrSlug, options);
+  return formatProductCatalogForBotKnowledge(tenantObj, products);
+}
+
 
 

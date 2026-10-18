@@ -6,9 +6,10 @@
  * Handles inbound vision (product photos, payment receipts, screenshots) + text captions.
  */
 
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantActionUrl } from '@/lib/checkout-link';
+import { fetchActiveCatalog, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
 import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
 import {
   processConsultationLeadFunnel,
@@ -193,9 +194,7 @@ export async function processMultimodalChat(
         custom_domain: t?.custom_domain || t?.metadata?.custom_domain || null,
       };
       tenantMetadata = t?.metadata || {};
-      tenantProducts = Array.isArray(tenantMetadata.products)
-        ? tenantMetadata.products
-        : [];
+      tenantProducts = await fetchActiveCatalog(t || slug, { supabaseClient: supabase });
       if (t?.category || t?.business_type) {
         category = t.category || t.business_type;
       }
@@ -781,11 +780,9 @@ export async function processMultimodalChat(
 
   // Panggil Google Generative Language API (Gemini 3.8 Flash)
   if (!reply && process.env.GEMINI_API_KEY) {
+    let liveCatalogProducts: any[] = [];
     try {
-      // 1. Ambil katalog produk aktual dari Supabase
-      let productCatalogText = '';
-      const metaProducts: any[] = tenantProducts;
-
+      const supabaseAdmin = getSupabaseAdmin() || getSupabase();
       const tenantCustomDomain =
         (t as any)?.custom_domain ||
         tenantMetadata?.custom_domain ||
@@ -800,48 +797,16 @@ export async function processMultimodalChat(
         ? `https://${cleanCustomDomain}`
         : `https://shop.boontrack.com/${slug}`;
 
-      if (metaProducts.length > 0) {
-        productCatalogText = metaProducts
-          .map((p: any) => {
-            const pSlug = p.slug || p.id || '';
-            const pUrl = pSlug
-              ? `${baseStoreUrl}/p/${pSlug}`
-              : baseStoreUrl;
-            return `• ${p.name || p.title || 'Paket'}: Rp ${Number(
-              p.promo_price || p.price || 0
-            ).toLocaleString('id-ID')}${
-              p.description ? ' — ' + p.description : ''
-            }\n  Link Checkout Resmi: ${pUrl}`;
-          })
-          .join('\n\n');
-      } else {
-        try {
-          const supabase = getSupabase();
-          if (supabase) {
-            const { data: dbProds } = await supabase
-              .from('products')
-              .select('id, slug, title, name, price, promo_price, description')
-              .eq('tenant_id', slug)
-              .eq('is_available', true)
-              .limit(10);
-            if (dbProds && dbProds.length > 0) {
-              productCatalogText = dbProds
-                .map((p: any) => {
-                  const pSlug = p.slug || p.id || '';
-                  const pUrl = pSlug
-                    ? `${baseStoreUrl}/p/${pSlug}`
-                    : baseStoreUrl;
-                  return `• ${p.title || p.name || 'Paket'}: Rp ${Number(
-                    p.promo_price || p.price || 0
-                  ).toLocaleString('id-ID')}${
-                    p.description ? ' — ' + p.description : ''
-                  }\n  Link Checkout Resmi: ${pUrl}`;
-                })
-                .join('\n\n');
-            }
-          }
-        } catch {}
-      }
+      // 1. Ambil katalog produk aktual langsung dari tabel products (Zero Stale Cache Grounding)
+      liveCatalogProducts = await fetchActiveCatalog(t || slug, { supabaseClient: supabaseAdmin });
+      const productCatalogText = formatProductCatalogForBotKnowledge(
+        t || {
+          slug,
+          custom_domain: tenantCustomDomain,
+          metadata: tenantMetadata,
+        },
+        liveCatalogProducts
+      );
 
       const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
 
@@ -951,7 +916,7 @@ ATURAN TAUTAN & RUJUKAN:
 1. Hanya rujuk ke Portal Resmi: https://app.boontrack.com/margasari
 2. DILARANG KERAS membagikan tautan yang mengandung "shop.boontrack.com" atau "checkout".`;
         modelGreeting = `Sampurasun! Selamat datang Bapak/Ibu Warga di layanan Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung. Ada yang bisa kami bantu seputar pelayanan administrasi kependudukan atau pengurusan surat?`;
-      } else if (isClinicConsultationTenant(t, tenantMetadata, metaProducts)) {
+      } else if (isClinicConsultationTenant(t, tenantMetadata, liveCatalogProducts)) {
         systemPrompt = `${generateBoonPilotSystemPrompt(tenantMetadata)}\n\nKATALOG LAYANAN RESMI:\n${productCatalogText}\n`;
         modelGreeting = `Halo Ayah/Bunda! Selamat datang di Layanan Tumbuh Kembang & Nutrisi Anak. 😊 Boleh kami tahu sedang terhubung dengan Ayah/Bunda siapa, dan si kecil usianya berapa bulan/tahun ya?`;
       } else {
@@ -1062,7 +1027,7 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
           const candidateText = gData.candidates?.[0]?.content?.parts?.[0]?.text;
           if (candidateText && candidateText.trim().length > 0) {
             reply = candidateText.trim();
-            if (isClinicConsultationTenant(t, tenantMetadata, metaProducts)) {
+            if (isClinicConsultationTenant(t, tenantMetadata, liveCatalogProducts)) {
               const valResult = validateClinicBotOutput(reply, { tenant: t, meta: tenantMetadata });
               if (!valResult.isValid) {
                 console.warn(`[MultimodalChat] Post-LLM Safety Validator rejected candidate output:`, {

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getTenantCheckoutUrl, getTenantActionUrl } from '@/lib/checkout-link';
+import { fetchActiveCatalog } from '@/lib/product-catalog';
 import {
   InteractiveMenu,
   findMenuResponseAcrossMenus,
@@ -521,7 +522,8 @@ export class ConversationEngine {
         custom_domain: metadata.custom_domain || null,
         category: rawVertical || 'digital',
       };
-      const products: any[] = Array.isArray(metadata.products) ? metadata.products : [];
+      // ZERO STALE CACHE: Fetch real-time active catalog directly from SQL products table
+      const products: any[] = await fetchActiveCatalog(tenant || tenant_id, { supabaseClient: supabase });
       const aiKnowledge = metadata.ai_knowledge || {};
       const salesPolicy = metadata.sales_policy || metadata.playbook || {};
 
