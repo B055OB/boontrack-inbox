@@ -209,8 +209,8 @@ export default function WhatsAppTab({
         const dbActive = Boolean(
           channelActive || (
             connData &&
-            (connData.status === 'open' || connData.status === 'connected' || connData.status === 'ACTIVE') &&
-            connData.is_connected === true
+            (connData.status?.toLowerCase() === 'open' || connData.status?.toLowerCase() === 'connected' || connData.status?.toLowerCase() === 'active') &&
+            (connData.is_connected === true || connData.status?.toLowerCase() === 'connected' || connData.status?.toLowerCase() === 'open')
           )
         );
 
@@ -235,10 +235,10 @@ export default function WhatsAppTab({
     };
   }, [tenantSlug, waMode, setWaMode]);
 
-  // FIX: Hanya tampilkan CONNECTED jika waStatus CONNECTED, terdaftar aktif di DB, dan bukan nomor platform
+  // FIX: Hanya tampilkan CONNECTED jika waStatus CONNECTED, terdaftar aktif di DB atau nomor terdeteksi, dan bukan nomor platform
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
-    isInstanceDbActive &&
+    (isInstanceDbActive || Boolean(connectedPhone)) &&
     !isPlatformWaba(connectedPhone) &&
     waConnectionMode !== 'SHARED';
 

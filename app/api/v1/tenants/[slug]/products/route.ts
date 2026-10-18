@@ -194,8 +194,8 @@ export async function POST(
     let updatedProducts: ProductItem[] = [];
 
     try {
-      const supabase = getSupabaseAdmin() || getSupabase();
-      const { data: existing } = await supabase
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: existing } = await supabaseAdmin
         .from('tenants')
         .select('*')
         .eq('slug', slug)
@@ -226,7 +226,7 @@ export async function POST(
       let mergedExisting = [...existingProducts];
       if (existing?.id && mergedExisting.length === 0) {
         try {
-          const { data: sqlProds } = await supabase
+          const { data: sqlProds } = await supabaseAdmin
             .from('products')
             .select('*')
             .eq('tenant_id', existing.id);
@@ -323,88 +323,123 @@ export async function POST(
       };
 
       if (existing?.id) {
-        const { error: tUpdateErr } = await supabase
+        const { data: updatedTenants, error: tUpdateErr } = await supabaseAdmin
           .from('tenants')
           .update({
             name: existing?.name || slug,
             category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
             metadata: updatedMetadata,
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .select('id, metadata');
 
-        if (tUpdateErr) {
-          console.error('[Products Route] Failed to update tenant metadata:', tUpdateErr);
+        if (tUpdateErr || !updatedTenants || updatedTenants.length === 0) {
+          console.error('[Products Route] Failed to update tenant metadata or 0 rows affected:', tUpdateErr);
+          return NextResponse.json(
+            { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: tUpdateErr?.message || 'Gagal memperbarui metadata tenant.' },
+            { status: 400 }
+          );
         }
 
-        // Coba sync juga ke tabel SQL `products` jika memungkinkan
-        try {
-          const isUuidVal = isUuid(String(productId));
-          const dbProductType = mapToDbProductType(body.product_type || type, resolvedCategory);
+        // Sync ke tabel SQL `products` dengan validasi baris terpengaruh
+        const isUuidVal = isUuid(String(productId));
+        const dbProductType = mapToDbProductType(body.product_type || type, resolvedCategory);
 
-          const sqlProductPayload = {
-            ...(isUuidVal ? { id: String(productId) } : {}),
-            tenant_id: existing.id,
-            title: trimmedName,
-            name: trimmedName,
-            slug: finalSlug,
-            description: description || '',
-            price: sanitizedPrice,
-            promo_price: sanitizedPromoPrice ? Number(sanitizedPromoPrice) : 0,
-            image: body.image || body.image_url || '',
-            image_url: body.image || body.image_url || '',
-            category: resolvedCategory,
-            stock: body.stock !== undefined ? Number(body.stock) : 999999,
-            is_unlimited_stock: body.is_unlimited ?? true,
-            asset_reference: body.asset_reference || `product:${finalSlug}`,
-            license_status: 'UNVERIFIED',
-            product_type: dbProductType,
-            sku: productSku,
-            is_active: body.is_active !== false,
-            requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL')),
-            is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
-            fulfillment_metadata: {
-              ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
-              ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
-              ...(body?.single_page_config ? { single_page_config: body.single_page_config } : {}),
-              ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
-              ...(Array.isArray(body?.features) ? { features: body.features } : {}),
-            },
-          };
+        const sqlProductPayload = {
+          ...(isUuidVal ? { id: String(productId) } : {}),
+          tenant_id: existing.id,
+          title: trimmedName,
+          name: trimmedName,
+          slug: finalSlug,
+          description: description || '',
+          price: sanitizedPrice,
+          promo_price: sanitizedPromoPrice ? Number(sanitizedPromoPrice) : 0,
+          image: body.image || body.image_url || '',
+          image_url: body.image || body.image_url || '',
+          category: resolvedCategory,
+          stock: body.stock !== undefined ? Number(body.stock) : 999999,
+          is_unlimited_stock: body.is_unlimited ?? true,
+          asset_reference: body.asset_reference || `product:${finalSlug}`,
+          license_status: 'UNVERIFIED',
+          product_type: dbProductType,
+          sku: productSku,
+          is_active: body.is_active !== false,
+          requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL')),
+          is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
+          fulfillment_metadata: {
+            ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
+            ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
+            ...(body?.single_page_config ? { single_page_config: body.single_page_config } : {}),
+            ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
+            ...(Array.isArray(body?.features) ? { features: body.features } : {}),
+          },
+        };
 
-          const hasValidUuid = isUuid(String(productId || ''));
-          const orFilters: string[] = [];
-          if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
-          if (productSku) orFilters.push(`sku.eq.${productSku}`);
-          if (hasValidUuid) orFilters.push(`id.eq.${productId}`);
+        const hasValidUuid = isUuid(String(productId || ''));
+        const orFilters: string[] = [];
+        if (finalSlug) orFilters.push(`slug.eq.${finalSlug}`);
+        if (productSku) orFilters.push(`sku.eq.${productSku}`);
+        if (hasValidUuid) orFilters.push(`id.eq.${productId}`);
 
-          const { data: existingSql } = orFilters.length > 0
-            ? await supabase
-                .from('products')
-                .select('id')
-                .eq('tenant_id', existing.id)
-                .or(orFilters.join(','))
-                .maybeSingle()
-            : { data: null };
+        const { data: existingSql } = orFilters.length > 0
+          ? await supabaseAdmin
+              .from('products')
+              .select('id')
+              .eq('tenant_id', existing.id)
+              .or(orFilters.join(','))
+              .maybeSingle()
+          : { data: null };
 
-          if (existingSql?.id) {
-            await supabase.from('products').update(sqlProductPayload).eq('id', existingSql.id);
-          } else {
-            await supabase.from('products').insert(sqlProductPayload);
+        if (existingSql?.id) {
+          const { data: updatedRows, error: pUpdateErr } = await supabaseAdmin
+            .from('products')
+            .update(sqlProductPayload)
+            .eq('id', existingSql.id)
+            .eq('tenant_id', existing.id)
+            .select();
+
+          if (pUpdateErr || !updatedRows || updatedRows.length === 0) {
+            console.error('[Products Route] SQL products update failed or 0 rows affected:', pUpdateErr);
+            return NextResponse.json(
+              { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: pUpdateErr?.message || 'Gagal memperbarui baris produk di basis data.' },
+              { status: 400 }
+            );
           }
-        } catch (sqlErr) {
-          console.debug('[Products Route] SQL products table sync note:', sqlErr);
+        } else {
+          const { data: insertedRows, error: pInsertErr } = await supabaseAdmin
+            .from('products')
+            .insert(sqlProductPayload)
+            .select();
+
+          if (pInsertErr || !insertedRows || insertedRows.length === 0) {
+            console.error('[Products Route] SQL products insert failed or 0 rows affected:', pInsertErr);
+            return NextResponse.json(
+              { success: false, error: 'INSERT_FAILED_OR_ZERO_ROWS_AFFECTED', message: pInsertErr?.message || 'Gagal menambahkan baris produk di basis data.' },
+              { status: 400 }
+            );
+          }
         }
       } else {
-        await supabase.from('tenants').upsert({
+        const { data: upsertedTenant, error: upsertErr } = await supabaseAdmin.from('tenants').upsert({
           slug,
           name: existing?.name || slug,
           category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
           metadata: updatedMetadata,
-        }, { onConflict: 'slug' });
+        }, { onConflict: 'slug' }).select('id');
+
+        if (upsertErr || !upsertedTenant || upsertedTenant.length === 0) {
+          return NextResponse.json(
+            { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: upsertErr?.message || 'Gagal membuat/memperbarui tenant.' },
+            { status: 400 }
+          );
+        }
       }
     } catch (dbErr) {
-      console.warn('Supabase product save error:', dbErr);
-      updatedProducts = [newProduct];
+      console.error('[Products Route] Supabase product save error:', dbErr);
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_MUTATION_ERROR', message: dbErr instanceof Error ? dbErr.message : String(dbErr) },
+        { status: 500 }
+      );
     }
 
     // Forward/Sync to Railway Production Core Backend
@@ -462,8 +497,8 @@ export async function DELETE(
     let remainingProducts: ProductItem[] = [];
 
     try {
-      const supabase = getSupabaseAdmin() || getSupabase();
-      const { data: existing } = await supabase
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: existing } = await supabaseAdmin
         .from('tenants')
         .select('*')
         .eq('slug', slug)
@@ -487,12 +522,13 @@ export async function DELETE(
       };
 
       if (existing?.id) {
-        await supabase
+        await supabaseAdmin
           .from('tenants')
           .update({
             metadata: updatedMetadata,
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .select('id');
 
         // Hapus juga dari tabel SQL products Supabase
         try {
@@ -502,7 +538,7 @@ export async function DELETE(
           if (targetProduct?.sku) deleteConditions.push(`sku.eq.${targetProduct.sku}`);
 
           if (deleteConditions.length > 0) {
-            await supabase
+            await supabaseAdmin
               .from('products')
               .delete()
               .eq('tenant_id', existing.id)
@@ -512,7 +548,7 @@ export async function DELETE(
           console.debug('[Products Route] SQL products delete note:', delSqlErr);
         }
       } else {
-        await supabase.from('tenants').upsert({
+        await supabaseAdmin.from('tenants').upsert({
           slug,
           metadata: updatedMetadata,
         }, { onConflict: 'slug' });
@@ -651,5 +687,7 @@ export async function GET(
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
+
+export { POST as PUT, POST as PATCH };
 
 
