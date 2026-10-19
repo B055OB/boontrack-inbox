@@ -38,7 +38,7 @@ export type DomainVerticalKey =
 export function resolveDomainVertical(categoryOrType?: string): DomainVerticalKey {
   const norm = (categoryOrType || '').toUpperCase().trim();
 
-  if (['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => norm.includes(k))) {
+  if (['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO', 'CATERING'].some((k) => norm.includes(k))) {
     return 'fnb-culinary';
   }
   if (['DIGITAL_PRODUCT', 'DIGITAL_FILE', 'DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => norm.includes(k))) {
