@@ -503,7 +503,7 @@ export default function FollowUpRulesConfig({
           <div className="flex items-center gap-2 mb-3">
             <Cake className="w-4 h-4 text-rose-500" />
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              2. Ucapan Ulang Tahun Anak &amp; Re-Aktivasi Pasien Lama
+              2. Ucapan Ulang Tahun &amp; Re-Aktivasi Pelanggan Lama
             </h4>
           </div>
 
@@ -564,7 +564,7 @@ export default function FollowUpRulesConfig({
                   onChange={(e) =>
                     setRules((prev) => ({ ...prev, birthdayTemplate: e.target.value }))
                   }
-                  placeholder="Halo Ayah/Bunda [nama], Selamat Ulang Tahun untuk si kecil! 🎂🎉..."
+                  placeholder="Halo Kak [nama], Selamat Ulang Tahun! 🎂🎉..."
                   className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-hidden focus:border-rose-500 font-sans leading-relaxed"
                 />
               </div>
@@ -579,9 +579,9 @@ export default function FollowUpRulesConfig({
                   </span>
                   <div>
                     <span className="text-xs font-bold text-slate-800">
-                      Re-Aktivasi Pasien Lama (Retensi)
+                      Re-Aktivasi Pelanggan Lama (Retensi)
                     </span>
-                    <p className="text-[11px] text-slate-500">Untuk kunjungan &gt; {rules.h2Days * 2} hari lalu</p>
+                    <p className="text-[11px] text-slate-500">Untuk kunjungan / pesanan &gt; {rules.h2Days * 2} hari lalu</p>
                   </div>
                 </div>
 
