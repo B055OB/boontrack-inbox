@@ -592,8 +592,8 @@ export default function OrdersTab({
       </div>
 
       {/* Filter Bar & Tabel Pesanan */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
-        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -601,21 +601,21 @@ export default function OrdersTab({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari invoice, nama, WhatsApp..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
             {/* Opsi Tampilan Soft-Archive (SPRINT 3) */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold border border-slate-200/80">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-bold border border-slate-200/80 dark:border-slate-700">
               <button
                 type="button"
                 id="orders-filter-active-btn"
                 onClick={() => setArchiveFilter('ACTIVE')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
                   archiveFilter === 'ACTIVE'
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-indigo-600/20 text-blue-700 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan hanya pesanan aktif (default)"
               >
@@ -627,8 +627,8 @@ export default function OrdersTab({
                 onClick={() => setArchiveFilter('ARCHIVED')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] flex items-center gap-1 ${
                   archiveFilter === 'ARCHIVED'
-                    ? 'bg-white text-purple-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-indigo-600/20 text-purple-700 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan pesanan yang disembunyikan/diarsipkan"
               >
@@ -641,8 +641,8 @@ export default function OrdersTab({
                 onClick={() => setArchiveFilter('ALL')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
                   archiveFilter === 'ALL'
-                    ? 'bg-white text-slate-800 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-indigo-600/20 text-slate-800 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan semua pesanan tanpa terkecuali"
               >
@@ -657,7 +657,7 @@ export default function OrdersTab({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+                className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 font-bold focus:outline-none cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
@@ -671,7 +671,7 @@ export default function OrdersTab({
         <div className="overflow-x-auto w-full rounded-b-2xl">
           <table className="w-full min-w-[640px] text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+              <tr className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800/80">
                 <th className="py-2.5 px-3">Invoice</th>
                 <th className="py-2.5 px-3">Pelanggan</th>
                 <th className="py-2.5 px-3">Tipe / Pemenuhan</th>
@@ -681,12 +681,12 @@ export default function OrdersTab({
                 <th className="py-2.5 px-3 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {loading && orders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-10 text-slate-400 text-xs">
                     <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
                       <span>Memuat transaksi pesanan...</span>
                     </div>
                   </td>
@@ -707,8 +707,8 @@ export default function OrdersTab({
                   const needsManualConfirm = isManualPendingPayment(ord);
 
                   return (
-                    <tr key={ord.id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                    <tr key={ord.id} className="bg-slate-900/40 border-b border-slate-800/80 text-slate-200 hover:bg-slate-800/50 transition">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -716,19 +716,19 @@ export default function OrdersTab({
                             e.stopPropagation();
                             setSelectedOrder(ord);
                           }}
-                          className="hover:text-blue-600 hover:underline cursor-pointer text-left"
+                          className="hover:text-indigo-400 hover:underline cursor-pointer text-left"
                         >
                           {ord.invoice_no}
                         </button>
                       </td>
                       <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-900">{ord.customer_name || 'Pelanggan Toko'}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{ord.customer_phone || '-'}</div>
+                        <div className="font-semibold text-slate-200">{ord.customer_name || 'Pelanggan Toko'}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{ord.customer_phone || '-'}</div>
                         {ord.items_summary && (
-                          <div className="text-[10px] text-slate-500 font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
+                          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
                             <span className="truncate">{ord.items_summary}</span>
                             {ord.quantity && ord.quantity > 1 ? (
-                              <span className="bg-slate-100 text-slate-700 font-bold px-1 rounded text-[9px]">
+                              <span className="bg-slate-800 text-slate-300 font-bold px-1 rounded text-[9px] border border-slate-700">
                                 x{ord.quantity}
                               </span>
                             ) : null}
@@ -741,10 +741,10 @@ export default function OrdersTab({
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded border border-purple-200 transition cursor-pointer"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-800/50 transition cursor-pointer"
                               title="Buka Dokumen Briefing Klien"
                             >
-                              <FileText className="w-2.5 h-2.5 text-purple-600" />
+                              <FileText className="w-2.5 h-2.5 text-indigo-400" />
                               <span>Briefing Klien ↗</span>
                             </a>
                           </div>
@@ -752,21 +752,21 @@ export default function OrdersTab({
                       </td>
                       <td className="py-2.5 px-3">
                         {reqs.requiresShipping ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                            <Truck className="w-3 h-3 text-amber-600" />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-800/60">
+                            <Truck className="w-3 h-3 text-amber-400" />
                             <span>{ord.shipping_courier || 'Ekspedisi'}</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                            <Sparkles className="w-3 h-3 text-blue-600" />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-300 bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-800/60">
+                            <Sparkles className="w-3 h-3 text-indigo-400" />
                             <span>Digital / Direct</span>
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 font-black text-slate-900 font-mono whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-black text-slate-200 font-mono whitespace-nowrap">
                         Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
                       </td>
-                      <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-slate-600">
+                      <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-slate-400">
                         {ord.payment_method || 'QRIS / TRANSFER'}
                       </td>
                       <td className="py-2.5 px-3">

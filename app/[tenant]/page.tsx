@@ -504,7 +504,7 @@ export default function TenantStorefrontPage() {
   // STORE STATUS CHECKS
   if (storeStatus === "checking") {
     return (
-      <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
+      <div className="min-h-[100dvh] bg-slate-950 flex items-center justify-center text-xs text-slate-400 font-semibold">
         Memverifikasi portal {displayName}...
       </div>
     );
@@ -513,20 +513,20 @@ export default function TenantStorefrontPage() {
   if (storeStatus === "not_found") {
     const rawOrSlug = rawTenant || tenantSlug;
     return (
-      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
-        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
-          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
+      <div className="min-h-[100dvh] bg-slate-950 py-16 px-4 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-slate-900 p-8 rounded-3xl border border-slate-800/80 shadow-xl space-y-5">
+          <div className="w-14 h-14 bg-rose-950/50 text-rose-400 rounded-2xl flex items-center justify-center mx-auto border border-rose-900/40">
             <Layers className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Toko <span className="font-bold text-slate-800 font-mono">{rawOrSlug}</span> belum terdaftar di BoonTrack Shop.
+            <h2 className="text-xl font-black text-slate-100">Toko Belum Terdaftar</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Toko <span className="font-bold text-slate-200 font-mono">{rawOrSlug}</span> belum terdaftar di BoonTrack Shop.
             </p>
           </div>
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-2">
-            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand atau usaha ini?</span>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+          <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl text-left space-y-2">
+            <span className="text-[11px] font-bold text-slate-300 block">Apakah Anda pemilik brand atau usaha ini?</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
               Daftarkan toko Anda sekarang dan aktifkan etalase digital otomatis dengan checkout QRIS dan notifikasi WhatsApp terintegrasi.
             </p>
           </div>
@@ -540,7 +540,7 @@ export default function TenantStorefrontPage() {
             </a>
             <a
               href="https://boontrack.com"
-              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Kembali ke Beranda Utama (boontrack.com)</span>
             </a>
@@ -553,20 +553,20 @@ export default function TenantStorefrontPage() {
   // DOMAIN BOUNDARY GUARD (CTO Mandate)
   if (!runtime.isAllowedHost && runtime.statusCode === 404) {
     return (
-      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
-        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
-          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
+      <div className="min-h-[100dvh] bg-slate-950 py-16 px-4 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-slate-900 p-8 rounded-3xl border border-slate-800/80 shadow-xl space-y-5">
+          <div className="w-14 h-14 bg-rose-950/50 text-rose-400 rounded-2xl flex items-center justify-center mx-auto border border-rose-900/40">
             <Layers className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900">404 - Halaman Tidak Ditemukan</h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <h2 className="text-xl font-black text-slate-100">404 - Halaman Tidak Ditemukan</h2>
+            <p className="text-xs text-slate-400 mt-1">
               {runtime.errorMessage || `Alamat portal boontrack.com/${tenantSlug} tidak dapat diakses di domain ini.`}
             </p>
           </div>
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-1">
-            <span className="text-[11px] font-bold text-slate-700 block">Domain Routing Boundary</span>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+          <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl text-left space-y-1">
+            <span className="text-[11px] font-bold text-slate-300 block">Domain Routing Boundary</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
               Portal layanan publik atau aplikasi kustom tidak tersedia pada domain katalog commerce (shop.boontrack.com). Silakan akses melalui portal resmi.
             </p>
           </div>
