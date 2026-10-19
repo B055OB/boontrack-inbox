@@ -192,34 +192,34 @@ export default function OverviewTab({
       {/* METRIC CARDS: 4-COLUMN RESPONSIVE GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. TOTAL OMZET */}
-        <div className="bg-slate-900/50 p-5 rounded-3xl border border-slate-800/80 shadow-xs space-y-2">
+        <div className="bg-white dark:bg-slate-900/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
               Total Omzet Masuk {dateRange.preset !== 'all' ? `(${dateRange.label})` : ''}
             </span>
             <span className="p-2 bg-blue-50 text-blue-600 rounded-xl">
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-white">
+          <div className="text-2xl font-black text-slate-900 dark:text-white">
             Rp {Math.round(effectiveOmzet).toLocaleString('id-ID')}
           </div>
-          <p className="text-[11px] text-slate-400 font-medium">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
             {dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi lunas (WIB)'}
           </p>
         </div>
 
         {/* 2. TRANSAKSI SUKSES & AOV */}
-        <div className="bg-slate-900/50 p-5 rounded-3xl border border-slate-800/80 shadow-xs space-y-2">
+        <div className="bg-white dark:bg-slate-900/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Transaksi Berhasil & AOV</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Transaksi Berhasil & AOV</span>
             <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
               <CheckCircle2 className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-indigo-400">
+          <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
             {financialMetrics.totalSuccessfulOrders}{' '}
-            <span className="text-sm font-semibold text-slate-400">Order</span>
+            <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Order</span>
           </div>
           <p className="text-[11px] text-indigo-700 font-bold">
             AOV: Rp {Math.round(financialMetrics.aov).toLocaleString('id-ID')} / pesanan
@@ -232,60 +232,60 @@ export default function OverviewTab({
           className={`p-5 rounded-3xl border transition cursor-pointer space-y-2 ${
             statusFilter === 'PENDING_VERIFICATION'
               ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20 shadow-xs'
-              : 'bg-slate-900/50 border-slate-800/80 shadow-xs hover:border-slate-700'
+              : 'bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-800/80 shadow-xs hover:border-slate-300 dark:hover:border-slate-700'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-400">Menunggu Verifikasi</span>
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-400">Menunggu Verifikasi</span>
             <span className="p-2 bg-amber-100 text-amber-700 rounded-xl">
               <AlertCircle className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-amber-300">
+          <div className="text-2xl font-black text-amber-900 dark:text-amber-300">
             {financialMetrics.pendingVerificationCount}{' '}
             <span className="text-sm font-semibold text-amber-700">Order</span>
           </div>
-          <p className="text-[11px] text-amber-400/80 font-medium">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400/80 font-medium">
             Rp {Math.round(financialMetrics.pendingVerificationAmount).toLocaleString('id-ID')} (Pending Manual)
           </p>
         </div>
 
         {/* 4. SALDO SIAP TARIK */}
-        <div className="bg-slate-900/50 p-5 rounded-3xl border border-slate-800/80 shadow-xs space-y-2">
+        <div className="bg-white dark:bg-slate-900/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Saldo Siap Tarik</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Saldo Siap Tarik</span>
             <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
               <Wallet className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-emerald-400">
+          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
             Rp {Math.round(readyBalance).toLocaleString('id-ID')}
           </div>
-          <p className="text-[11px] text-emerald-400/80 font-medium">
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400/80 font-medium">
             Dana bersih realtime di rekening penampung
           </p>
         </div>
       </div>
 
       {/* TABEL RIWAYAT TRANSAKSI DENGAN STATUS FILTER */}
-      <div className="bg-slate-900/50 rounded-3xl border border-slate-800/80 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
+      <div className="bg-white dark:bg-slate-900/50 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-xs overflow-hidden">
+        <div className="p-5 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/60">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-600" />
               <span>Riwayat Transaksi &amp; Invoice Pembeli</span>
             </h3>
           </div>
 
           {/* Quick Filter Tabs */}
-          <div className="inline-flex p-1 bg-slate-950 border border-slate-800 rounded-xl items-center text-xs font-bold gap-1">
+          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl items-center text-xs font-bold gap-1">
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 statusFilter === 'ALL'
-                  ? 'bg-slate-800 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Semua ({Array.isArray(transactions) ? transactions.length : 0})
@@ -296,7 +296,7 @@ export default function OverviewTab({
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 statusFilter === 'PAID'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-emerald-400'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'
               }`}
             >
               Lunas ({financialMetrics.totalSuccessfulOrders})
@@ -307,7 +307,7 @@ export default function OverviewTab({
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 statusFilter === 'PENDING_VERIFICATION'
                   ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-amber-400'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'
               }`}
             >
               Menunggu Verifikasi ({financialMetrics.pendingVerificationCount})
@@ -317,8 +317,8 @@ export default function OverviewTab({
               onClick={() => setStatusFilter('PENDING')}
               className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 statusFilter === 'PENDING'
-                  ? 'bg-slate-700 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               Pending Bayar ({financialMetrics.pendingPaymentCount})
@@ -328,7 +328,7 @@ export default function OverviewTab({
           <button
             type="button"
             onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')}
-            className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+            className="px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -336,8 +336,8 @@ export default function OverviewTab({
         </div>
 
         <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[640px] text-left text-sm text-slate-200 bg-slate-900/50">
-            <thead className="bg-slate-900/60 border-b border-slate-800/60 text-slate-400 font-medium uppercase text-xs tracking-wider">
+          <table className="w-full min-w-[640px] text-left text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
+            <thead className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">Invoice / Waktu (WIB)</th>
                 <th className="px-5 py-3.5">Pembeli</th>
@@ -348,12 +348,12 @@ export default function OverviewTab({
                 <th className="px-5 py-3.5 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-sans">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-800/60 border border-slate-700/80 flex items-center justify-center text-slate-400 mb-1">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex items-center justify-center text-slate-500 dark:text-slate-400 mb-1">
                         <FileText className="w-5 h-5 text-slate-400" />
                       </div>
                       <p className="text-xs font-bold text-slate-300">
@@ -381,7 +381,7 @@ export default function OverviewTab({
                   const paymentMethod = t.payment_method || t.paymentMethod || 'QRIS Dinamis';
 
                   return (
-                    <tr key={t.id || invoiceNo} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                    <tr key={t.id || invoiceNo} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-400 font-mono">{invoiceNo}</div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
@@ -389,20 +389,20 @@ export default function OverviewTab({
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-200">{customerName}</div>
+                        <div className="font-bold text-slate-900 dark:text-slate-200">{customerName}</div>
                         <div className="text-[11px] text-slate-400 font-mono">
                           {customerPhone ? (String(customerPhone).startsWith('+') ? customerPhone : `+${customerPhone}`) : '-'}
                         </div>
                       </td>
                       <td className="px-5 py-4 max-w-[220px]">
-                        <div className="truncate font-semibold text-slate-200" title={productTitle}>{productTitle}</div>
+                        <div className="truncate font-semibold text-slate-800 dark:text-slate-200" title={productTitle}>{productTitle}</div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="text-[11px] text-slate-300 bg-slate-800/80 border border-slate-700/80 px-2 py-0.5 rounded font-mono">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 px-2 py-0.5 rounded font-mono">
                           {paymentMethod}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-right font-black text-slate-200 font-mono whitespace-nowrap">
+                      <td className="px-5 py-4 text-right font-black text-slate-900 dark:text-slate-200 font-mono whitespace-nowrap">
                         Rp {Math.round(grossAmount).toLocaleString('id-ID')}
                       </td>
                       <td className="px-5 py-4 text-center">
@@ -412,7 +412,7 @@ export default function OverviewTab({
                               ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
                               : isPendingVerif
                               ? 'bg-amber-950/60 text-amber-300 border-amber-800/60 font-extrabold animate-pulse'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                           }`}
                         >
                           {isPaid

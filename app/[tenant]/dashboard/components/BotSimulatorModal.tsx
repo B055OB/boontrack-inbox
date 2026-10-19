@@ -277,7 +277,7 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
         </div>
 
         {/* PANEL KANAN: STATE TRACE VISUAL & ENTITY INSPECTOR */}
-        <div className="w-full md:w-80 p-5 bg-slate-900 text-white flex flex-col justify-between overflow-y-auto">
+        <div className="w-full md:w-80 p-5 bg-white dark:bg-slate-900 text-slate-800 dark:text-white border-l border-slate-200 dark:border-slate-800 flex flex-col justify-between overflow-y-auto">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
@@ -301,7 +301,7 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
                         ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
                         : st === 'BOOKING_READY'
                         ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
-                        : 'bg-slate-800/80 text-slate-300 border-slate-700'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                     }`}
                   >
                     <span>{st}</span>
@@ -351,7 +351,7 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                     collectedEntities.status === 'BOOKING_READY' || collectedEntities.status === 'CHECKOUT_OFFERED'
                       ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-slate-800 text-slate-400'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                   }`}>
                     {collectedEntities.status || 'IN_PROGRESS'}
                   </span>

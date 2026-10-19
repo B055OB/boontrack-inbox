@@ -1167,7 +1167,7 @@ export default function SettingsTab({
       </div>
 
       {/* ── KREDENSIAL SENSITIF PAYMENT GATEWAY (BACKEND-CONTROLLED) ── */}
-      <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3 shadow-md">
+      <div className="p-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-slate-100">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -1184,7 +1184,7 @@ export default function SettingsTab({
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+          <div className="p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
             <div className="flex items-center justify-between text-[10px] text-slate-400">
               <span>Server API Key</span>
               <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
@@ -1194,7 +1194,7 @@ export default function SettingsTab({
             </div>
           </div>
 
-          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+          <div className="p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
             <div className="flex items-center justify-between text-[10px] text-slate-400">
               <span>Webhook Signing Secret</span>
               <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>

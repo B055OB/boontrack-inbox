@@ -109,7 +109,7 @@ export default function WhatsAppEmbeddedModal({ tenantSlug, onSuccess }: Props) 
         }}
       />
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4 text-slate-800 dark:text-slate-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-950/80 border border-emerald-800/50 flex items-center justify-center text-emerald-400">
