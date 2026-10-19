@@ -5568,3 +5568,86 @@ Saat notifikasi pembayaran Rp 249.000 terverifikasi lunas:
 3. **Automated Flexing Alert**:
    - Saat toko peserta inkubasi berhasil memecahkan rekor transaksi pertama (*pecah telur*), bot `@boonshop_bot` secara otomatis memancarkan kartu selebrasi ke supergroup Telegram pada topik `#General-Lounge` dan `#Fase1`.
 
+---
+
+## § 62. F&B HOME SERVICE, VILLA CATERING & DYNAMIC DELIVERY SLOT AVAILABILITY ENGINE (ADR 2026-10-20)
+
+> **Architectural Status**: 🔒 **ACTIVE PRODUCTION CONTRACT (F&B HOME SERVICE & CATERING VERTICAL)**  
+> **Core Principle**: *"Perishable food delivery and catering equipment rentals require deterministic schedule-trip slot constraints, multi-tenant database isolation, and instant availability calculation driven by real-time order states."*
+
+### 62.1 Konstitusi Skema Slot Pengantaran (`tenant_booking_slots`) & Isolasi Multi-Tenant
+1. **Single Source of Truth (SSOT)**:
+   - Seluruh batasan slot jam pengantaran untuk layanan katering dan peminjaman alat wajib disimpan pada tabel PostgreSQL `public.tenant_booking_slots`.
+   - Skema kolom:
+     * `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+     * `tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE`
+     * `slot_name TEXT NOT NULL` (contoh: "10:00 - 12:00 (Makan Siang Awal)")
+     * `max_quota INTEGER NOT NULL DEFAULT 4` (kapasitas trip kurir per slot jam)
+     * `is_active BOOLEAN NOT NULL DEFAULT TRUE`
+     * `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+     * `CONSTRAINT uq_tenant_booking_slots UNIQUE (tenant_id, slot_name)`
+2. **Row Level Security (RLS) Policy**:
+   - `anon` / `authenticated`: `SELECT` hanya untuk baris dengan `is_active = true`.
+   - `service_role`: Akses penuh (`ALL`) untuk operasional dashboard merchant dan background worker.
+
+---
+
+### 62.2 Mesin Ketersediaan Slot Dinamis (`GET /api/v1/tenants/[slug]/booking/slots`)
+1. **Endpoint Kontrak**:
+   - URL: `GET /api/v1/tenants/[slug]/booking/slots?date=YYYY-MM-DD`
+   - Parameter Wajib: `date` dengan validasi ketat regex `^\d{4}-\d{2}-\d{2}$`. Jika tidak valid, kembalikan HTTP 400 `INVALID_DATE_FORMAT`.
+2. **Algoritma Kalkulasi Ketersediaan**:
+   - Ambil data tenant aktif berdasarkan `slug` / `id` (Fail-Closed §0.12).
+   - Tarik slot aktif dari `tenant_booking_slots WHERE tenant_id = :tenant_id AND is_active = true`.
+   - Query transaksi pesanan non-batal (`orders WHERE tenant_id = :tenant_id AND status != 'CANCELLED'`) yang memiliki tanggal acara cocok dengan parameter `date`.
+   - Hitung matriks ketersediaan per slot:
+     * `booked_count`: Jumlah trip pesanan aktif yang terikat ke slot jam tersebut.
+     * `remaining_quota`: `MAX(0, max_quota - booked_count)`.
+     * `is_available`: `true` jika `remaining_quota > 0`, jika habis `false`.
+3. **Response Schema Standar (JSON)**:
+   ```json
+   {
+     "success": true,
+     "date": "2026-10-21",
+     "tenant_slug": "shabu-ajhi",
+     "slots": [
+       {
+         "id": "d5d8febe-c00d-4412-aa6d-c6906fad4e3b",
+         "slot_name": "10:00 - 12:00 (Makan Siang Awal)",
+         "max_quota": 4,
+         "booked_count": 0,
+         "remaining_quota": 4,
+         "is_available": true
+       }
+     ]
+   }
+   ```
+
+---
+
+### 62.3 Manajemen Kuota Trip & Kurir Fallback Logistik
+1. **Konfigurasi Logistik di Metadata Tenant (`tenants.metadata.logistics`)**:
+   - Pengaturan armada pengiriman dan kurir pihak ketiga dikonfigurasikan dinamis per tenant:
+     ```json
+     {
+       "logistics": {
+         "primary": "internal_fleet",
+         "fallback_provider": "biteship",
+         "allowed_couriers": ["lalamove"],
+         "max_internal_trip_per_slot": 4
+       }
+     }
+     ```
+2. **Aturan Fallback Otomatis**:
+   - Jika kuota armada internal (`internal_fleet`) per slot telah mencapai batas (`remaining_quota <= 0`), sistem secara otomatis mengalihkan pesanan baru ke mitra kurir on-demand (`lalamove` / Biteship) sesuai izin konfigurasi tenant.
+
+---
+
+### 62.4 Sinkronisasi Metadata F&B Catering (`fnb_catering`) & Zero Hardcoding Invariant
+1. **Zero Hardcoding Compliance**:
+   - DILARANG KERAS mengecek nama slug seperti `if (slug === 'shabu-ajhi')` pada layer router API maupun komponen UI.
+   - Deteksi tampilan storefront katering dilakukan murni berdasarkan keberadaan metadata `tenant.metadata.fnb_catering`.
+2. **Komponen Modular Storefront (`FnbCateringStorefrontView`)**:
+   - Menampilkan identitas logo resmi, trust badges (bebas cuci alat, sertifikasi Halal, jangkauan villa), widget booking di atas lipatan layar (*above-the-fold*), tab menu terpisah (Paket Mabar vs Paket Premium), pemilih kuah instan, add-ons pelengkap, serta bilah checkout sticky dengan integrasi percakapan WhatsApp dan modal faktur QRIS instan.
+
+
