@@ -22,8 +22,6 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
-const MASTER_PIN = '998877';
-
 interface StudioTenantItem {
   id: string;
   name: string;
@@ -49,6 +47,7 @@ export default function DirectoryStudioPage() {
   const [isAdminAuth, setIsAdminAuth] = useState(false);
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [studios, setStudios] = useState<StudioTenantItem[]>([]);
@@ -76,14 +75,34 @@ export default function DirectoryStudioPage() {
     }
   }, []);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
+    if (!adminPin.trim()) {
+      setPinError('PIN Super Admin wajib diisi!');
+      return;
+    }
+
+    setIsVerifyingPin(true);
+    setPinError('');
+
+    try {
+      const res = await fetch('/api/admin/studio/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: adminPin.trim() }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        sessionStorage.setItem('super_admin_auth', 'true');
+        setIsAdminAuth(true);
+      } else {
+        setPinError(data.message || 'PIN Super Admin salah atau tidak valid!');
+      }
+    } catch (err: any) {
+      setPinError('Gagal memverifikasi PIN: ' + (err.message || 'Kesalahan jaringan.'));
+    } finally {
+      setIsVerifyingPin(false);
     }
   };
 
@@ -277,9 +296,17 @@ export default function DirectoryStudioPage() {
             {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
             <button
               type="submit"
-              className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer"
+              disabled={isVerifyingPin}
+              className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer flex items-center justify-center gap-2"
             >
-              Buka Directory Studio
+              {isVerifyingPin ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Memverifikasi PIN...</span>
+                </>
+              ) : (
+                <span>Buka Directory Studio</span>
+              )}
             </button>
           </form>
         </div>

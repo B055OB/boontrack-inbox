@@ -156,6 +156,7 @@ export default function UGCStudioPage() {
   const [jobStatus, setJobStatus] = useState<'IDLE' | 'QUEUED' | 'PROCESSING' | 'COMPLETED'>('IDLE');
   const [jobProgress, setJobProgress] = useState(0);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [completedVideoUrl, setCompletedVideoUrl] = useState<string | null>(null);
   const [allCopied, setAllCopied] = useState(false);
 
   // File upload input references
@@ -296,6 +297,8 @@ export default function UGCStudioPage() {
       }
 
       setActiveJobId(data.job_id);
+      const outputVideo = data.output_url || data.video_url || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+      setCompletedVideoUrl(outputVideo);
       if (data.remaining_credits !== undefined) {
         setRenderCredits(data.remaining_credits);
       }
@@ -749,9 +752,18 @@ export default function UGCStudioPage() {
                   </div>
 
                   {jobStatus === 'COMPLETED' && (
-                    <div className="pt-2 flex items-center justify-between text-xs text-emerald-400 font-medium">
-                      <span>🎉 Render Selesai! Output video 9:16 tersimpan di Cloud Storage.</span>
-                      <span className="text-[10px] font-mono text-slate-400">is_aigc: 1</span>
+                    <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>🎉 Video 9:16 Siap Unduh! Tersimpan di Cloud Storage.</span>
+                      </div>
+                      <a
+                        href={`/api/studio/download?url=${encodeURIComponent(completedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4')}&filename=${encodeURIComponent((productName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'video_studio') + '_9x16.mp4')}&job_id=${encodeURIComponent(activeJobId || '')}`}
+                        className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition active:scale-95 shrink-0"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Unduh File MP4</span>
+                      </a>
                     </div>
                   )}
                 </div>

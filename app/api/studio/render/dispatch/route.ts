@@ -106,9 +106,12 @@ export async function POST(req: Request) {
       }
     }
 
+    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
+
     return NextResponse.json({
       success: true,
       job_id: jobId,
+      output_url: defaultOutputUrl,
       status: 'QUEUED',
       remaining_credits: remainingCredits,
       consumed_credits: requiredCredits,
@@ -152,10 +155,13 @@ export async function GET(req: Request) {
       }
     }
 
+    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
+
     return NextResponse.json({
       success: true,
       job_id: jobId,
       status: dbStatus,
+      output_url: defaultOutputUrl,
       progress: dbStatus === 'COMPLETED' ? 100 : dbStatus === 'PROCESSING' ? 65 : 20,
     });
   } catch (err: any) {

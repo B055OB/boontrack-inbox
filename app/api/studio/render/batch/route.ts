@@ -108,7 +108,7 @@ export async function POST(req: Request) {
       remainingCredits = creditRes.credits_remaining ?? 0;
 
       // Insert each variation into studio_jobs with standardized filename
-      const defaultVideoCdn = 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+      const defaultVideoCdn = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
       const jobInserts = formattedVariations.map(v => ({
         tenant_id: tenant.id,
         user_id: tenant.id,
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
 
     const batchId = `fcd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const zipArchiveName = `${productSlug}_FCD_BATCH_${Date.now()}.zip`;
-    const defaultOutputUrl = 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
 
     return NextResponse.json({
       success: true,
