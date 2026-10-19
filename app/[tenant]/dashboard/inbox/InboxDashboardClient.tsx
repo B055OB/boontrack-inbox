@@ -58,7 +58,7 @@ export default function InboxDashboardClient({
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <div className="flex-1 p-3 sm:p-5 max-w-7xl w-full mx-auto">
         <TeamChatTab
           initialTenant={initialTenant}
