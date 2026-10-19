@@ -84,7 +84,7 @@ const LIFECYCLE_FILTERS: { key: FilterStage; label: string; icon: React.ElementT
   { key: 'DUE_TODAY', label: 'Follow-Up Hari Ini', icon: Calendar, color: 'text-rose-600' },
   { key: 'LEAD', label: 'Lead', icon: UserPlus, color: 'text-blue-600' },
   { key: 'QUALIFIED', label: 'Qualified', icon: UserCheck, color: 'text-indigo-600' },
-  { key: 'CUSTOMER', label: 'Pasien / Customer', icon: ShoppingBag, color: 'text-emerald-600' },
+  { key: 'CUSTOMER', label: 'Pelanggan', icon: ShoppingBag, color: 'text-emerald-600' },
   { key: 'INACTIVE', label: 'Inactive', icon: Clock, color: 'text-slate-400' },
 ];
 
@@ -461,7 +461,7 @@ export default function CustomerDatabaseTab({
 
     const trimmedName = formName.trim();
     if (!trimmedName) {
-      setFormError('Nama lengkap pelanggan / pasien wajib diisi.');
+      setFormError('Nama lengkap pelanggan wajib diisi.');
       return;
     }
 
@@ -676,7 +676,7 @@ export default function CustomerDatabaseTab({
   // Render
   // -------------------------------------------------------------------
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F8FAFC] overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-[#F8FAFC] dark:bg-slate-950 overflow-hidden relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="absolute top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-slate-800 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -693,7 +693,7 @@ export default function CustomerDatabaseTab({
       )}
 
       {/* Header Toolbar */}
-      <div className="px-5 pt-5 pb-3 border-b border-slate-800/80 bg-slate-900/60 shrink-0 shadow-2xs">
+      <div className="px-5 pt-5 pb-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-xs text-white">
@@ -701,8 +701,8 @@ export default function CustomerDatabaseTab({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-white leading-tight">
-                  Database Pelanggan &amp; Pasien
+                <h1 className="text-base font-black text-slate-800 dark:text-slate-100 leading-tight">
+                  Database Pelanggan
                 </h1>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -718,7 +718,7 @@ export default function CustomerDatabaseTab({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Button Tambah Pelanggan / Pasien */}
+            {/* Button Tambah Pelanggan */}
             <button
               type="button"
               id="btn-add-customer"
@@ -729,7 +729,7 @@ export default function CustomerDatabaseTab({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>+ Tambah Pelanggan / Pasien</span>
+              <span>+ Tambah Pelanggan</span>
             </button>
 
             {/* Button Import CSV/Excel (Meta CA) */}
@@ -737,7 +737,7 @@ export default function CustomerDatabaseTab({
               type="button"
               id="btn-import-customers-ca"
               onClick={() => setIsBulkImportModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95"
               title="Import CSV/Excel untuk sinkronisasi Custom Audience Meta"
             >
               <Upload className="w-3.5 h-3.5" />
@@ -761,14 +761,14 @@ export default function CustomerDatabaseTab({
               <button
                 type="button"
                 onClick={() => setIsSortOpen((p) => !p)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 <Filter className="w-3 h-3 text-slate-400" />
                 <span>{SORT_LABELS[sortBy]}</span>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
               </button>
               {isSortOpen && (
-                <div className="absolute right-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl p-1 z-30 min-w-[170px] animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl p-1 z-30 min-w-[170px] animate-in fade-in zoom-in-95 duration-100">
                   {Object.entries(SORT_LABELS).map(([key, label]) => (
                     <button
                       key={key}
@@ -779,8 +779,8 @@ export default function CustomerDatabaseTab({
                       }}
                       className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
                         sortBy === key
-                          ? 'bg-indigo-50 text-indigo-700 font-bold'
-                          : 'text-slate-700 hover:bg-slate-50'
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
                       }`}
                     >
                       {label}
@@ -794,7 +794,7 @@ export default function CustomerDatabaseTab({
             <button
               type="button"
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition cursor-pointer"
+              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
               title="Refresh database"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} />
@@ -808,10 +808,10 @@ export default function CustomerDatabaseTab({
           <input
             id="customer-search-input"
             type="text"
-            placeholder="Cari nama pasien, nomor WhatsApp, atau label/tag..."
+            placeholder="Cari nama pelanggan, nomor WhatsApp, atau label/tag..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 placeholder:text-slate-400 transition"
+            className="w-full pl-9 pr-3 py-2 text-xs font-medium bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition"
           />
         </div>
 
@@ -828,7 +828,7 @@ export default function CustomerDatabaseTab({
                   ? key === 'DUE_TODAY'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <Icon className={`w-3 h-3 ${activeFilter === key ? 'text-white' : color}`} />
@@ -839,8 +839,8 @@ export default function CustomerDatabaseTab({
                     activeFilter === key
                       ? 'bg-white/20 text-white'
                       : key === 'DUE_TODAY'
-                      ? 'bg-rose-100 text-rose-700'
-                      : 'bg-slate-200 text-slate-700'
+                      ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   {counts[key]}
@@ -857,7 +857,7 @@ export default function CustomerDatabaseTab({
           <div className="flex flex-col items-center justify-center h-56 gap-3 text-slate-400">
             <Loader2 className="w-7 h-7 animate-spin text-indigo-600" />
             <span className="text-xs font-semibold text-slate-500">
-              Memuat database pasien &amp; riwayat kontak...
+              Memuat database pelanggan &amp; riwayat kontak...
             </span>
           </div>
         ) : filtered.length === 0 ? (
@@ -866,18 +866,18 @@ export default function CustomerDatabaseTab({
               <Users className="w-7 h-7" />
             </div>
             <div className="max-w-md">
-              <p className="text-sm font-bold text-slate-800">
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {searchQuery
                   ? 'Tidak ada hasil pencarian'
                   : activeFilter === 'DUE_TODAY'
                   ? 'Tidak ada follow-up yang jatuh tempo hari ini'
                   : 'Belum ada kontak terdaftar.'}
               </p>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                 {searchQuery
                   ? `Tidak ada kontak yang cocok dengan "${searchQuery}". Coba kata kunci lain.`
                   : activeFilter === 'DUE_TODAY'
-                  ? 'Semua jadwal evaluasi H+3, H+7, dan hari ulang tahun pasien terkendali rapi.'
+                  ? 'Semua jadwal evaluasi H+3, H+7, dan hari ulang tahun pelanggan terkendali rapi.'
                   : 'Belum ada kontak terdaftar. Mulai input data pelanggan secara manual, atau tunggu interaksi pesan masuk.'}
               </p>
               {!searchQuery && activeFilter !== 'DUE_TODAY' && (
@@ -887,17 +887,17 @@ export default function CustomerDatabaseTab({
                   className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
-                  <span>+ Tambah Pasien / Pelanggan Pertama</span>
+                  <span>+ Tambah Pelanggan Pertama</span>
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-slate-800/60">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {/* Table Header Row */}
-            <div className="hidden lg:grid grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-4 px-5 py-3 bg-slate-900/60 border-b border-slate-800/60 text-xs font-medium text-slate-400 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
+            <div className="hidden lg:grid grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-4 px-5 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
               <div className="w-9" />
-              <div>Pasien / Pelanggan</div>
+              <div>Pelanggan</div>
               <div>Follow-up Berikutnya</div>
               <div>Pesan Terakhir / Catatan</div>
               <div>Aktivitas</div>
@@ -913,7 +913,7 @@ export default function CustomerDatabaseTab({
                 <div
                   key={customer.id}
                   id={`customer-row-${customer.id}`}
-                  className="group grid grid-cols-1 lg:grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-3 lg:gap-4 items-center px-5 py-3.5 border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors cursor-default bg-slate-900/40"
+                  className="group grid grid-cols-1 lg:grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-3 lg:gap-4 items-center px-5 py-3.5 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850/60 border-b border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-sm transition-colors cursor-default"
                 >
                   {/* Avatar */}
                   <div className="hidden lg:flex">
@@ -934,7 +934,7 @@ export default function CustomerDatabaseTab({
                           {getInitials(customer.customerName)}
                         </div>
                       </div>
-                      <span className="text-xs font-black text-white truncate max-w-[200px]">
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100 truncate max-w-[200px]">
                         {customer.customerName}
                       </span>
                       <span
@@ -953,7 +953,7 @@ export default function CustomerDatabaseTab({
                     </div>
 
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500">
+                      <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
                         <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                         <span>{formatDisplayPhone(customer.customerPhone)}</span>
                       </div>
@@ -972,7 +972,7 @@ export default function CustomerDatabaseTab({
                         {customer.tags.map((t, idx) => (
                           <span
                             key={idx}
-                            className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200"
+                            className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                           >
                             #{t}
                           </span>
@@ -996,7 +996,7 @@ export default function CustomerDatabaseTab({
                       </span>
                     </div>
                     {customer.lastVisitDate && (
-                      <p className="text-[10px] text-slate-400 font-medium">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                         Kunjungan Terakhir: {formatDateIndo(customer.lastVisitDate)}
                       </p>
                     )}
@@ -1004,13 +1004,13 @@ export default function CustomerDatabaseTab({
 
                   {/* Pesan Terakhir */}
                   <div className="min-w-0">
-                    <p className="text-[11px] text-slate-600 truncate leading-snug">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate leading-snug">
                       {customer.lastMessage || (
-                        <span className="text-slate-300 italic">Belum ada obrolan pesan</span>
+                        <span className="text-slate-400 dark:text-slate-500 italic">Belum ada obrolan pesan</span>
                       )}
                     </p>
                     {customer.totalOrders > 0 && (
-                      <span className="text-[9px] font-semibold text-indigo-700 block mt-0.5">
+                      <span className="text-[9px] font-semibold text-indigo-700 dark:text-indigo-400 block mt-0.5">
                         {customer.totalOrders} Transaksi • {formatCurrency(customer.lifetimeValue)}
                       </span>
                     )}
@@ -1018,10 +1018,10 @@ export default function CustomerDatabaseTab({
 
                   {/* Aktivitas */}
                   <div className="min-w-0">
-                    <span className="text-[11px] text-slate-500 font-medium block">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium block">
                       {formatRelativeTime(customer.lastMessageAt || customer.lastVisitDate)}
                     </span>
-                    <span className="text-[9px] text-slate-400 block mt-0.5">
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-0.5">
                       {customer.assignedAgentName}
                     </span>
                   </div>
@@ -1033,7 +1033,7 @@ export default function CustomerDatabaseTab({
                       id={`btn-followup-${customer.id}`}
                       onClick={() => handleOpenFollowUp(customer)}
                       title="Follow-up via WhatsApp"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold transition border border-emerald-200 cursor-pointer active:scale-95 shadow-2xs"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold transition border border-emerald-200 dark:border-emerald-800/80 cursor-pointer active:scale-95 shadow-2xs"
                     >
                       <MessageSquare className="w-3 h-3 text-emerald-600" />
                       <span>Follow Up WA</span>
@@ -1044,7 +1044,7 @@ export default function CustomerDatabaseTab({
                       id={`open-inbox-${customer.id}`}
                       onClick={() => onOpenInbox(customer.customerPhone)}
                       title="Buka percakapan di Inbox"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold transition border border-indigo-200 cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold transition border border-indigo-200 dark:border-indigo-800/80 cursor-pointer"
                     >
                       <Inbox className="w-3 h-3 text-indigo-600" />
                       <span className="hidden sm:inline">Inbox</span>
@@ -1060,15 +1060,15 @@ export default function CustomerDatabaseTab({
 
       {/* Footer Summary */}
       {!isLoading && filtered.length > 0 && (
-        <div className="shrink-0 px-5 py-2.5 border-t border-slate-200 bg-white flex items-center justify-between text-xs">
-          <span className="text-[11px] text-slate-500 font-medium">
-            Menampilkan <strong className="text-slate-800">{filtered.length}</strong> dari{' '}
-            <strong className="text-slate-800">{customers.length}</strong> pasien / pelanggan
+        <div className="shrink-0 px-5 py-2.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            Menampilkan <strong className="text-slate-800 dark:text-slate-100">{filtered.length}</strong> dari{' '}
+            <strong className="text-slate-800 dark:text-slate-100">{customers.length}</strong> pelanggan
           </span>
           <button
             type="button"
             onClick={() => onOpenInbox()}
-            className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+            className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition cursor-pointer"
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span>Buka Smart Chatbox Lengkap</span>
@@ -1078,30 +1078,30 @@ export default function CustomerDatabaseTab({
       )}
 
       {/* =================================================================== */}
-      {/* MODAL: Tambah Pelanggan / Pasien                                     */}
+      {/* MODAL: Tambah Pelanggan                                             */}
       {/* =================================================================== */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-850/60">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-2xs">
                   <UserPlus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">
-                    Tambah Pelanggan / Pasien Baru
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                    Tambah Pelanggan Baru
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Simpan profil, keluhan, dan tanggal lahir untuk otomasi follow-up
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Simpan profil, preferensi, dan tanggal lahir untuk otomasi follow-up
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1118,22 +1118,22 @@ export default function CustomerDatabaseTab({
 
               {/* Nama Lengkap */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Nama Lengkap Pasien / Klien <span className="text-rose-500">*</span>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Nama Lengkap Pelanggan <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Ananda Rayhan / Bunda Sinta"
+                  placeholder="Contoh: Riana Putri / Ibu Sinta"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition"
                 />
               </div>
 
               {/* WhatsApp */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Nomor WhatsApp <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
@@ -1143,7 +1143,7 @@ export default function CustomerDatabaseTab({
                     placeholder="Contoh: 08123456789 atau 628123456789"
                     value={formPhone}
                     onChange={(e) => setFormPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-mono focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
@@ -1153,25 +1153,25 @@ export default function CustomerDatabaseTab({
 
               {/* Lifecycle Stage */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Status Lifecycle Pasien / Pelanggan
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Status Lifecycle Pelanggan
                 </label>
                 <select
                   value={formLifecycle}
                   onChange={(e) => setFormLifecycle(e.target.value as LifecycleStage)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
                 >
-                  <option value="LEAD">Lead (Baru Bertanya / Konsultasi Awal)</option>
-                  <option value="QUALIFIED">Qualified (Tertarik &amp; Menunggu Jadwal Sesi)</option>
-                  <option value="CUSTOMER">Customer / Pasien Aktif (Sudah Kunjungan/Sesi)</option>
-                  <option value="INACTIVE">Inactive (Tidak Aktif / Selesai Program)</option>
+                  <option value="LEAD">Lead (Baru Bertanya / Kontak Awal)</option>
+                  <option value="QUALIFIED">Qualified (Tertarik &amp; Menunggu Konfirmasi)</option>
+                  <option value="CUSTOMER">Pelanggan Aktif (Sudah Transaksi / Pesan)</option>
+                  <option value="INACTIVE">Inactive (Tidak Aktif / Selesai Transaksi)</option>
                 </select>
               </div>
 
               {/* Tanggal Lahir / Tanggal Lahir Anak */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Tanggal Lahir Anak / Pasien</span>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Tanggal Lahir / Hari Spesial Pelanggan</span>
                   <span className="text-[10px] font-normal text-slate-400">Opsional (Ulang Tahun)</span>
                 </label>
                 <div className="relative">
@@ -1179,7 +1179,7 @@ export default function CustomerDatabaseTab({
                     type="date"
                     value={formBirthDate}
                     onChange={(e) => setFormBirthDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
@@ -1189,8 +1189,8 @@ export default function CustomerDatabaseTab({
 
               {/* Tags Relasional */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Tags &amp; Kategori Layanan
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Tags &amp; Label Pelanggan
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {SUGGESTED_TAGS.map((tag) => {
@@ -1203,7 +1203,7 @@ export default function CustomerDatabaseTab({
                         className={`px-2 py-1 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
                           isSelected
                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                         }`}
                       >
                         {isSelected ? '✓ ' : '+ '}
@@ -1225,12 +1225,12 @@ export default function CustomerDatabaseTab({
                         handleAddCustomTag();
                       }
                     }}
-                    className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:border-indigo-400"
+                    className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:border-indigo-400"
                   />
                   <button
                     type="button"
                     onClick={handleAddCustomTag}
-                    className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 font-bold text-slate-700 text-xs transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold text-slate-700 dark:text-slate-200 text-xs transition cursor-pointer"
                   >
                     Tambah
                   </button>
@@ -1239,25 +1239,25 @@ export default function CustomerDatabaseTab({
 
               {/* Catatan Awal / Keluhan */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Catatan Awal / Keluhan Utama</span>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Catatan / Preferensi Pelanggan</span>
                   <span className="text-[10px] font-normal text-slate-400">Opsional</span>
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Contoh: Keterlambatan bicara 2.5 tahun, kontak mata minim, evaluasi stimulasi sensori integrasi..."
+                  placeholder="Contoh: Preferensi menu pedas sedang, jadwal kirim weekend, alergi kacang, catatan pengantaran khusus, dll..."
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition resize-none"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition resize-none"
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   Batal
                 </button>
@@ -1288,22 +1288,22 @@ export default function CustomerDatabaseTab({
       {/* MODAL: WhatsApp Follow-Up Quick Action                               */}
       {/* =================================================================== */}
       {activeFollowUpCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/70">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-emerald-50/70 dark:bg-emerald-950/40">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs">
                   <MessageSquare className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <span>Follow-Up WhatsApp</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
                       {activeFollowUpCustomer.followUp.label}
                     </span>
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Kirim pesan evaluasi ramah untuk {activeFollowUpCustomer.customerName} (
                     {formatDisplayPhone(activeFollowUpCustomer.customerPhone)})
                   </p>
@@ -1312,7 +1312,7 @@ export default function CustomerDatabaseTab({
               <button
                 type="button"
                 onClick={() => setActiveFollowUpCustomer(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1322,7 +1322,7 @@ export default function CustomerDatabaseTab({
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
               {/* Quick Template Switcher */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Pilih Cepat Template Pesan
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -1337,7 +1337,7 @@ export default function CustomerDatabaseTab({
                         })
                       );
                     }}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50 cursor-pointer"
                   >
                     Template H+{followUpRules.h1Days} (Evaluasi Layanan)
                   </button>
@@ -1353,7 +1353,7 @@ export default function CustomerDatabaseTab({
                         })
                       );
                     }}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
                   >
                     Template H+{followUpRules.h2Days} (Follow Up Lanjutan)
                   </button>
@@ -1369,7 +1369,7 @@ export default function CustomerDatabaseTab({
                           })
                         );
                       }}
-                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/50 cursor-pointer"
                     >
                       Template Birthday Reminder 🎂
                     </button>
@@ -1379,19 +1379,19 @@ export default function CustomerDatabaseTab({
 
               {/* Message Textarea */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Isi Pesan WhatsApp (Dapat Disesuaikan)
                 </label>
                 <textarea
                   rows={6}
                   value={followUpMessageText}
                   onChange={(e) => setFollowUpMessageText(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition resize-none leading-relaxed text-xs"
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 font-medium focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition resize-none leading-relaxed text-xs"
                 />
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1 text-[11px] text-slate-500">
-                <p className="font-bold text-slate-700 flex items-center gap-1.5">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                   <HeartHandshake className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Kanal Pengiriman Fleksibel:</span>
                 </p>
@@ -1405,7 +1405,7 @@ export default function CustomerDatabaseTab({
                 <button
                   type="button"
                   onClick={() => setActiveFollowUpCustomer(null)}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer text-center"
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer text-center"
                 >
                   Tutup
                 </button>
@@ -1423,7 +1423,7 @@ export default function CustomerDatabaseTab({
                   type="button"
                   onClick={handleSendViaGateway}
                   disabled={isSendingGateway}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer border border-transparent dark:border-slate-700"
                 >
                   {isSendingGateway ? (
                     <>
@@ -1458,7 +1458,7 @@ export default function CustomerDatabaseTab({
                 <CalendarClock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <div>
                   <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Pengaturan Jadwal Follow-Up &amp; Siklus Pasien
+                    Pengaturan Jadwal Follow-Up &amp; Siklus Pelanggan
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Kustomisasi jeda hari dan template pesan WhatsApp untuk {tenantName || tenantSlug}

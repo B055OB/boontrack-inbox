@@ -3991,13 +3991,13 @@ export default function TeamChatTab({
                         <div className="space-y-2 pt-2 border-t border-slate-200/60 animate-in fade-in duration-150">
                           <div>
                             <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                              Nama Pelanggan / Pasien Walk-in <span className="text-rose-500">*</span>
+                              Nama Pelanggan Walk-in <span className="text-rose-500">*</span>
                             </label>
                             <input
                               type="text"
                               value={walkInName}
                               onChange={(e) => setWalkInName(e.target.value)}
-                              placeholder="Contoh: Bunda Riana / Pasien Walk-in"
+                              placeholder="Contoh: Riana Putri / Pelanggan Walk-in"
                               className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-600"
                             />
                           </div>

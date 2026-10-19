@@ -447,11 +447,11 @@ export default function WhatsAppTab({
                 <div className="space-y-3">
                   <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                    <span>Buka aplikasi <strong>WhatsApp</strong> di HP Anda.</span>
+                    <span>Buka aplikasi <strong className="font-bold text-slate-900 dark:text-white">WhatsApp</strong> di HP Anda.</span>
                   </div>
                   <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                    <span>Ketuk menu titik tiga (Android) atau <strong>Pengaturan</strong> (iPhone) &gt; pilih <strong>Perangkat Tertaut</strong>.</span>
+                    <span>Ketuk menu titik tiga (Android) atau <strong className="font-bold text-slate-900 dark:text-white">Pengaturan</strong> (iPhone) &gt; pilih <strong className="font-bold text-slate-900 dark:text-white">Perangkat Tertaut</strong>.</span>
                   </div>
                   <div className="flex items-start gap-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
@@ -463,7 +463,7 @@ export default function WhatsAppTab({
                   <button
                     onClick={() => handleConnectGrowthSession(true)}
                     disabled={isQrLoading}
-                    className="px-5 py-3 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer border border-transparent dark:border-slate-700"
+                    className="px-5 py-3 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:bg-slate-100 text-slate-800 dark:text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs transition-all cursor-pointer border border-slate-200 dark:border-slate-700"
                   >
                     {isQrLoading ? (
                       <>
@@ -488,14 +488,16 @@ export default function WhatsAppTab({
                   </div>
                 ) : qrCodeUrl ? (
                   <div className="flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in duration-200">
-                    <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
-                      <img
-                        key={qrCodeUrl}
-                        src={qrCodeUrl.startsWith('data:') ? qrCodeUrl : `data:image/png;base64,${qrCodeUrl}`}
-                        alt="QR Code WhatsApp"
-                        className="w-64 h-64 mx-auto object-contain block"
-                        onLoad={() => handleSetQrImgError(false)}
-                      />
+                    <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm inline-block">
+                      <div className="p-3 bg-white rounded-lg inline-block">
+                        <img
+                          key={qrCodeUrl}
+                          src={qrCodeUrl.startsWith('data:') ? qrCodeUrl : `data:image/png;base64,${qrCodeUrl}`}
+                          alt="QR Code WhatsApp"
+                          className="w-60 h-60 mx-auto object-contain block"
+                          onLoad={() => handleSetQrImgError(false)}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
@@ -552,28 +554,28 @@ export default function WhatsAppTab({
           )}
 
           {isMerchantConnected && (
-            <div className="p-6 bg-emerald-50/90 border-2 border-emerald-300 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-xs">
+            <div className="p-6 bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-xs">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-black text-emerald-950">WhatsApp Terhubung Aktif</h4>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <h4 className="text-sm font-black text-emerald-950 dark:text-emerald-100">WhatsApp Terhubung Aktif</h4>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                       Dedicated Gateway Active
                     </span>
                     {waProvider && (
-                      <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-white text-emerald-700 border border-emerald-200">
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                         {waProvider}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-emerald-800 mt-1 font-medium">
-                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone}</strong> • Mode: <strong className="text-emerald-900">Dedicated Store Instance</strong>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-1 font-medium">
+                    Nomor: <strong className="font-mono text-emerald-950 dark:text-emerald-100">+{connectedPhone}</strong> • Mode: <strong className="text-emerald-900 dark:text-emerald-200">Dedicated Store Instance</strong>
                   </p>
-                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
                     Toko Anda terhubung langsung ke WhatsApp milik toko sendiri. Siap menerima pesan &amp; notifikasi order real-time.
                   </p>
                 </div>
@@ -584,7 +586,7 @@ export default function WhatsAppTab({
                   setWaStatus('DISCONNECTED');
                   setQrCodeUrl(null);
                 }}
-                className="px-4 py-2.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-xs"
+                className="px-4 py-2.5 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-xs"
               >
                 Putuskan Sesi
               </button>
