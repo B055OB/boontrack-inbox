@@ -592,7 +592,7 @@ export default function OrdersTab({
       </div>
 
       {/* Filter Bar & Tabel Pesanan */}
-      <div className="bg-slate-900/50 rounded-2xl border border-slate-800/80 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-xs overflow-hidden">
         <div className="p-3 sm:p-4 border-b border-slate-800/80 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -601,13 +601,13 @@ export default function OrdersTab({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari invoice, nama, WhatsApp..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
+              className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
             {/* Opsi Tampilan Soft-Archive (SPRINT 3) */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl text-xs font-bold border border-slate-800">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 id="orders-filter-active-btn"
@@ -657,7 +657,7 @@ export default function OrdersTab({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 font-bold focus:outline-none cursor-pointer"
+                className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 font-bold focus:outline-none cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
@@ -669,9 +669,9 @@ export default function OrdersTab({
         </div>
 
         <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[640px] text-left border-collapse text-sm text-slate-200 bg-slate-900/50">
+          <table className="w-full min-w-[640px] text-left border-collapse text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
             <thead>
-              <tr className="bg-slate-900/60 text-slate-400 font-medium uppercase text-xs border-b border-slate-800/60 tracking-wider">
+              <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs border-b border-slate-200 dark:border-slate-800/60 tracking-wider">
                 <th className="py-3 px-3">Invoice</th>
                 <th className="py-3 px-3">Pelanggan</th>
                 <th className="py-3 px-3">Tipe / Pemenuhan</th>
@@ -707,7 +707,7 @@ export default function OrdersTab({
                   const needsManualConfirm = isManualPendingPayment(ord);
 
                   return (
-                    <tr key={ord.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                    <tr key={ord.id} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
                         <button
                           type="button"
@@ -722,13 +722,13 @@ export default function OrdersTab({
                         </button>
                       </td>
                       <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-200">{ord.customer_name || 'Pelanggan Toko'}</div>
+                        <div className="font-semibold text-slate-900 dark:text-slate-200">{ord.customer_name || 'Pelanggan Toko'}</div>
                         <div className="text-[11px] text-slate-400 font-mono">{ord.customer_phone || '-'}</div>
                         {ord.items_summary && (
                           <div className="text-[10px] text-slate-400 font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
                             <span className="truncate">{ord.items_summary}</span>
                             {ord.quantity && ord.quantity > 1 ? (
-                              <span className="bg-slate-800 text-slate-300 font-bold px-1 rounded text-[9px] border border-slate-700">
+                              <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold px-1 rounded text-[9px] border border-slate-200 dark:border-slate-700">
                                 x{ord.quantity}
                               </span>
                             ) : null}

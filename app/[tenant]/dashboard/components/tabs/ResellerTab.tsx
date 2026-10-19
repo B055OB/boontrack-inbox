@@ -757,7 +757,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-800 text-xs w-48 sm:w-56 focus:outline-none focus:border-indigo-500 bg-slate-950 text-white placeholder-slate-500"
+              className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs w-48 sm:w-56 focus:outline-none focus:border-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -793,7 +793,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
           C. TABEL DAFTAR RESELLER
          ───────────────────────────────────────────────────────────── */}
       {activeSubView === 'members' && (
-        <div className="bg-slate-900/50 rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xs">
+        <div className="bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800/80 overflow-hidden shadow-2xs">
           {isLoading ? (
             <div className="p-12 text-center text-xs text-slate-400">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
@@ -816,8 +816,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-200 bg-slate-900/50">
-                <thead className="bg-slate-900/60 border-b border-slate-800/60 text-slate-400 font-medium uppercase text-xs tracking-wider">
+              <table className="w-full text-left text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Mitra Reseller</th>
                     <th className="py-3 px-4">Kode Unik</th>
@@ -832,7 +832,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                   {filteredResellers.map((reseller) => {
                     const isCopied = copiedCode === reseller.code;
                     return (
-                      <tr key={reseller.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                      <tr key={reseller.id} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                         {/* Nama & Kontak */}
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-white">{reseller.name}</div>
@@ -982,8 +982,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-200 bg-slate-900/50">
-                <thead className="bg-slate-900/60 border-b border-slate-800/60 text-slate-400 font-medium uppercase text-xs tracking-wider">
+              <table className="w-full text-left text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs tracking-wider">
                   <tr>
                     <th className="py-3 px-4">No Order &amp; Waktu</th>
                     <th className="py-3 px-4">Mitra Reseller</th>
@@ -999,7 +999,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                     const isPaid = comm.status === 'PAID';
 
                     return (
-                      <tr key={comm.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                      <tr key={comm.id} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                         {/* No Order & Waktu */}
                         <td className="py-3.5 px-4">
                           <div className="font-mono font-bold text-white">
@@ -1139,8 +1139,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-200 bg-slate-900/50">
-                <thead className="bg-slate-900/60 border-b border-slate-800/60 text-slate-400 font-medium uppercase text-xs tracking-wider">
+              <table className="w-full text-left text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Kreator Pemohon</th>
                     <th className="py-3 px-4">Produk Diajukan</th>
@@ -1159,7 +1159,7 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                     const isRevoked = app.status === 'REVOKED';
 
                     return (
-                      <tr key={app.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                      <tr key={app.id} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                         {/* Kreator Pemohon */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">

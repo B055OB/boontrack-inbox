@@ -2620,26 +2620,26 @@ export default function TeamChatTab({
       )}
 
       {/* ── 3-PANEL WORKSPACE CONTAINER (BAKU FLEX 3-KOLOM DESKTOP >= 2XL) ─── */}
-      <div className="w-full bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden flex flex-row min-h-[680px] lg:h-[calc(100vh-210px)] relative">
+      <div className="w-full bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-row min-h-[680px] lg:h-[calc(100vh-210px)] relative">
         {/* =================================================================== */}
         {/* KOLOM 1 (KIRI): ANTREAN PERCAKAPAN (w-72 sm:w-80 shrink-0)         */}
         {/* =================================================================== */}
-        <div className={`w-full md:w-72 sm:w-80 shrink-0 border-r border-slate-800 flex flex-col bg-slate-950/70 h-full overflow-hidden ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-72 sm:w-80 shrink-0 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/70 h-full overflow-hidden ${isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {/* Header Panel Kiri & Search */}
-          <div className="p-3.5 border-b border-slate-800 bg-slate-950 space-y-2.5">
+          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-slate-100 tracking-tight flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Antrean Percakapan</span>
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
                 {counts.all} Total
               </span>
             </div>
 
             {/* Mode Bot Toko Toggle Banner */}
             {handleToggleTenantBot && (
-              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-100/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80">
                 <div className="flex items-center gap-1.5">
                   {isTenantBotPaused ? (
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -2673,7 +2673,7 @@ export default function TeamChatTab({
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
                   placeholder="Cari kontak / nomor WA..."
-                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
 
@@ -2682,7 +2682,7 @@ export default function TeamChatTab({
                 <select
                   value={channelFilter}
                   onChange={(e) => setChannelFilter(e.target.value as any)}
-                  className="appearance-none bg-slate-900/90 hover:bg-slate-800/80 border border-slate-800 rounded-xl pl-2.5 pr-6 py-1.5 text-xs font-bold text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500 transition shadow-2xs"
+                  className="appearance-none bg-white dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl pl-2.5 pr-6 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer focus:outline-none focus:border-indigo-500 transition shadow-2xs"
                   title="Filter Kanal Percakapan"
                   aria-label="Filter Kanal Percakapan"
                 >
@@ -2697,19 +2697,19 @@ export default function TeamChatTab({
             </div>
 
             {/* Filter Tabs Pills (Semua, Belum Dibaca, Follow-up, Paused) */}
-            <div className="grid grid-cols-4 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800/80">
+            <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-900/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800/80">
               <button
                 type="button"
                 onClick={() => setFilterTab('all')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'all'
-                    ? 'bg-slate-800 text-white shadow-xs'
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Semua percakapan"
               >
                 <span>Semua</span>
-                <span className="text-[9px] px-1 rounded-full bg-slate-950 text-slate-300">
+                <span className="text-[9px] px-1 rounded-full bg-slate-200 dark:bg-slate-950 text-slate-700 dark:text-slate-300">
                   {counts.all}
                 </span>
               </button>
@@ -2719,7 +2719,7 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('unread')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'unread'
-                    ? 'bg-slate-800 text-indigo-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Pesan belum dibaca"
@@ -2727,7 +2727,7 @@ export default function TeamChatTab({
                 <span>Unread</span>
                 <span
                   className={`text-[9px] px-1 rounded-full ${
-                    counts.unread > 0 ? 'bg-indigo-950 text-indigo-300 font-extrabold' : 'bg-slate-950 text-slate-400'
+                    counts.unread > 0 ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-extrabold' : 'bg-slate-200 dark:bg-slate-950 text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   {counts.unread}
@@ -2739,13 +2739,13 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('followup')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'followup'
-                    ? 'bg-slate-800 text-purple-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Chat butuh follow up / hot leads"
               >
                 <span>Follow-up</span>
-                <span className="text-[9px] px-1 rounded-full bg-slate-950 text-purple-300">
+                <span className="text-[9px] px-1 rounded-full bg-slate-200 dark:bg-slate-950 text-purple-700 dark:text-purple-300">
                   {counts.followup}
                 </span>
               </button>
@@ -2755,7 +2755,7 @@ export default function TeamChatTab({
                 onClick={() => setFilterTab('paused')}
                 className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'paused'
-                    ? 'bg-slate-800 text-amber-300 shadow-xs'
+                    ? 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Chat dengan bot dijeda / CS takeover"
@@ -2763,7 +2763,7 @@ export default function TeamChatTab({
                 <span>Paused</span>
                 <span
                   className={`text-[9px] px-1 rounded-full ${
-                    counts.paused > 0 ? 'bg-slate-950 text-amber-300 font-extrabold' : 'bg-slate-950 text-slate-400'
+                    counts.paused > 0 ? 'bg-amber-100 dark:bg-slate-950 text-amber-800 dark:text-amber-300 font-extrabold' : 'bg-slate-200 dark:bg-slate-950 text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   {counts.paused}
@@ -2781,7 +2781,7 @@ export default function TeamChatTab({
                   className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer border ${
                     filterTab === 'mine'
                       ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
-                      : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800/60'
+                      : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   Chat Saya ({counts.mine})
@@ -2792,7 +2792,7 @@ export default function TeamChatTab({
                   className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer border ${
                     filterTab === 'unassigned'
                       ? 'bg-amber-950/60 text-amber-300 border-amber-800'
-                      : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800/60'
+                      : 'bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   Unassigned ({counts.unassigned})
@@ -2849,8 +2849,8 @@ export default function TeamChatTab({
                     onClick={() => handleSelectConversation(c.id)}
                     className={`p-3 rounded-2xl border transition-colors cursor-pointer relative ${
                       isSelected
-                        ? 'bg-slate-800/90 border-indigo-500/60 shadow-sm ring-1 ring-indigo-500/30'
-                        : 'bg-slate-900/60 border border-slate-800/80 hover:bg-slate-800/50'
+                        ? 'bg-indigo-50/80 dark:bg-slate-800/90 border-indigo-400 dark:border-indigo-500/60 shadow-sm ring-1 ring-indigo-500/30'
+                        : 'bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
@@ -2954,23 +2954,23 @@ export default function TeamChatTab({
         {/* =================================================================== */}
         {/* KOLOM 2 (TENGAH): CHAT AREA AKTIF (flex-1 min-w-0 w-full overflow-hidden) */}
         {/* =================================================================== */}
-        <div className={`flex-1 min-w-0 w-full h-full flex flex-col bg-slate-950 overflow-hidden ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`flex-1 min-w-0 w-full h-full flex flex-col bg-white dark:bg-slate-950 overflow-hidden ${!isMobileChatOpen ? 'hidden md:flex' : 'flex'}`}>
           {!currentConversation ? (
-            <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-500 bg-slate-950">
-              <MessageSquare className="w-10 h-10 text-slate-700 mb-2" />
-              <p className="text-sm font-bold text-slate-200">Pilih Percakapan</p>
+            <div className="flex-1 p-8 flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 bg-slate-50/30 dark:bg-slate-950">
+              <MessageSquare className="w-10 h-10 text-slate-400 mb-2" />
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Pilih Percakapan</p>
               <p className="text-xs text-slate-500">Pilih salah satu chat dari antrean sebelah kiri untuk mulai merespons.</p>
             </div>
           ) : (
             <>
               {/* Header Thread */}
-              <div className="p-3.5 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950 w-full overflow-hidden">
+              <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-white dark:bg-slate-950 w-full overflow-hidden">
                 <div className="flex items-center gap-2.5 min-w-0 flex-1 truncate">
                   {/* Mobile Back Button (< md) */}
                   <button
                     type="button"
                     onClick={() => setIsMobileChatOpen(false)}
-                    className="md:hidden p-1.5 -ml-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer shrink-0"
+                    className="md:hidden p-1.5 -ml-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer shrink-0"
                     title="Kembali ke antrean chat"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -3028,7 +3028,7 @@ export default function TeamChatTab({
               </div>
 
               {/* Area Pesan Chat (Scrollable) */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-950/95">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/40 dark:bg-slate-950/95">
                 {inbox.isLoadingMessages || (selectedConvId && messagesList.length === 0 && (inbox.isLoadingConversations || !inbox.activeConversationId || inbox.activeConversationId !== selectedConvId)) ? (
                   <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 my-auto">
                     <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
@@ -3084,7 +3084,7 @@ export default function TeamChatTab({
                         <div
                           className={`p-3.5 rounded-2xl max-w-[85%] sm:max-w-md shadow-2xs ${
                             isCustomer
-                              ? 'bg-slate-900/80 border border-slate-800 text-slate-100 rounded-tl-xs'
+                              ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-xs shadow-2xs'
                               : 'bg-indigo-950/70 border border-indigo-800/60 text-indigo-100 rounded-tr-xs'
                           }`}
                         >
@@ -3474,7 +3474,7 @@ export default function TeamChatTab({
                   className={`px-3.5 py-2 border-b flex items-center justify-between gap-3 transition-colors ${
                     isConversationPaused
                       ? 'bg-amber-950/40 border-amber-800/60 text-amber-200'
-                      : 'bg-slate-900/90 border-slate-800 text-slate-300'
+                      : 'bg-slate-50 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -3521,18 +3521,18 @@ export default function TeamChatTab({
                 </div>
 
                 {/* Form Input Balasan Manual & Drop-up Popover Autocomplete */}
-                <div className="p-3 relative bg-slate-950 border-t border-slate-800">
+                <div className="p-3 relative bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
                   {/* Drop-up Popover untuk Shortcut "/" */}
                   {slashPopoverOpen && (
-                    <div className="absolute bottom-full mb-2 left-3 right-3 z-40 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-2 max-h-56 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-150">
-                      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-800 mb-1">
+                    <div className="absolute bottom-full mb-2 left-3 right-3 z-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-2 max-h-56 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-800 mb-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                           <Zap className="w-3 h-3 text-indigo-400" />
                           <span>Pilih Canned Response (/{slashQuery})</span>
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-[9px] text-slate-500 hidden sm:inline">
-                            Gunakan <kbd className="px-1 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[9px]">↑</kbd> <kbd className="px-1 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[9px]">↓</kbd> & <kbd className="px-1 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[9px]">Enter</kbd>
+                            Gunakan <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px] border border-slate-200 dark:border-slate-700">↑</kbd> <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px] border border-slate-200 dark:border-slate-700">↓</kbd> & <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[9px] border border-slate-200 dark:border-slate-700">Enter</kbd>
                           </span>
                           <button
                             type="button"
@@ -3561,7 +3561,7 @@ export default function TeamChatTab({
                                 className={`w-full text-left px-3 py-2 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer ${
                                   isSelected
                                     ? 'bg-indigo-950/70 text-indigo-200 ring-1 ring-indigo-500/30'
-                                    : 'hover:bg-slate-800/60 text-slate-300'
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
                                 }`}
                               >
                                 <div className="min-w-0 flex-1">
@@ -3599,7 +3599,7 @@ export default function TeamChatTab({
                       onChange={handleInputChange}
                       onKeyDown={handleInputKeyDown}
                       placeholder="Ketik balasan CS atau ketik '/' untuk panggil quick reply..."
-                      className="flex-1 bg-slate-900/90 border border-slate-800 text-slate-100 placeholder:text-slate-500 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-indigo-500 transition"
+                      className="flex-1 bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-indigo-500 transition"
                     />
                     <button
                       type="submit"
@@ -3622,23 +3622,23 @@ export default function TeamChatTab({
         <div
           className={`${
             isCsConsoleOpen
-              ? 'fixed inset-y-0 right-0 z-50 w-[380px] max-w-[90vw] bg-slate-950 shadow-2xl border-l border-slate-800 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 2xl:static 2xl:z-auto 2xl:w-96 2xl:max-w-none 2xl:shadow-none 2xl:border-l 2xl:bg-slate-950/70 2xl:animate-none 2xl:h-full 2xl:shrink-0 text-slate-100'
-              : 'hidden 2xl:flex 2xl:w-96 shrink-0 flex-col bg-slate-950/70 h-full overflow-y-auto border-l border-slate-800 p-3.5 space-y-3 text-slate-100'
+              ? 'fixed inset-y-0 right-0 z-50 w-[380px] max-w-[90vw] bg-white dark:bg-slate-950 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col p-3.5 space-y-3 overflow-y-auto animate-in slide-in-from-right duration-200 2xl:static 2xl:z-auto 2xl:w-96 2xl:max-w-none 2xl:shadow-none 2xl:border-l 2xl:bg-slate-50/50 dark:2xl:bg-slate-950/70 2xl:animate-none 2xl:h-full 2xl:shrink-0 text-slate-900 dark:text-slate-100'
+              : 'hidden 2xl:flex 2xl:w-96 shrink-0 flex-col bg-slate-50/50 dark:bg-slate-950/70 h-full overflow-y-auto border-l border-slate-200 dark:border-slate-800 p-3.5 space-y-3 text-slate-900 dark:text-slate-100'
           }`}
         >
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
             <span className="text-xs font-black text-slate-100 tracking-tight flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-indigo-400" />
               <span>Profil & Quick POS</span>
             </span>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 p-0.5 bg-slate-900 rounded-lg text-[10px] font-bold border border-slate-800/80">
+              <div className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-900 rounded-lg text-[10px] font-bold border border-slate-200 dark:border-slate-800/80">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab('crm')}
                   className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
                     rightPanelTab === 'crm'
-                      ? 'bg-slate-800 text-indigo-300 shadow-2xs font-extrabold'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-2xs font-extrabold'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -3651,7 +3651,7 @@ export default function TeamChatTab({
                   onClick={() => setRightPanelTab('pos')}
                   className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
                     rightPanelTab === 'pos'
-                      ? 'bg-slate-800 text-indigo-300 shadow-2xs font-extrabold'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-2xs font-extrabold'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -3664,7 +3664,7 @@ export default function TeamChatTab({
               <button
                 type="button"
                 onClick={() => setIsCsConsoleOpen(false)}
-                className="2xl:hidden w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                className="2xl:hidden w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                 title="Tutup Profil & Quick POS"
                 aria-label="Tutup Profil & Quick POS"
               >
@@ -4340,7 +4340,7 @@ export default function TeamChatTab({
                     type="button"
                     onClick={handleTransferChat}
                     disabled={teamMembers.length === 0 || !targetAgent}
-                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                   >
                     <ArrowRightLeft className="w-3.5 h-3.5" />
                     <span>Transfer Percakapan Sekarang</span>
@@ -4537,7 +4537,7 @@ export default function TeamChatTab({
                       handleUpgradeTier('solo');
                       setIsPaywallModalOpen(false);
                     }}
-                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer text-center"
+                    className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer text-center"
                   >
                     Upgrade Solo (1 CS)
                   </button>
