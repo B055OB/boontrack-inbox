@@ -11,6 +11,7 @@ const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 import FloatingCartBar from '@/components/cart/FloatingCartBar';
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
+import FnbCateringStorefrontView from './FnbCateringStorefrontView';
 
 
 export interface StorefrontTemplateProps {
@@ -42,6 +43,26 @@ export function StorefrontTemplate({
 }: StorefrontTemplateProps) {
   const effectiveName = storeName || displayName || context?.tenant?.name || context?.tenantSlug || 'Toko';
   const effectiveSlug = tenantSlug || context?.tenantSlug || '';
+  const meta = tenantMetadata || context?.tenant?.metadata || tenant?.metadata;
+  const fnbCatering = meta?.fnb_catering;
+  const products = storeProducts || context?.tenant?.metadata?.products || [];
+
+  // Dynamic Vertical delegation: F&B Home Service & Catering
+  if (fnbCatering) {
+    return (
+      <FnbCateringStorefrontView
+        effectiveName={effectiveName}
+        effectiveSlug={effectiveSlug}
+        meta={meta}
+        tenant={tenant || context?.tenant}
+        fnbCatering={fnbCatering}
+        products={products}
+        onInitiateCheckout={onInitiateCheckout || props.onInitiateCheckout}
+        chatEnabled={props.chatEnabled}
+        dynamicQuickReplies={props.dynamicQuickReplies}
+      />
+    );
+  }
 
   // Internal Cart & Checkout state (Retail isolation)
   const [internalCart, setInternalCart] = useState<Array<{ product: Product; qty: number }>>([]);
@@ -57,7 +78,6 @@ export function StorefrontTemplate({
   const setIsCheckoutOpen = props.setIsCheckoutOpen || setInternalIsCheckoutOpen;
   const productForCheckout = props.productForCheckout || internalProductForCheckout;
   const setProductForCheckout = props.setProductForCheckout || setInternalProductForCheckout;
-  const products = storeProducts || context?.tenant?.metadata?.products || [];
 
   // Universal Headless Checkout Trigger ([data-bt-checkout] & [href="#checkout"])
   useEffect(() => {
@@ -253,9 +273,9 @@ export function StorefrontTemplate({
 
   // Standalone storefront render
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const meta = tenantMetadata || context?.tenant?.metadata || tenant?.metadata;
   const sections = resolveStorefrontSections(meta);
   const copy = resolveStorefrontCopy(meta, effectiveName);
+  const storeLogo = meta?.logo_url || meta?.store_logo_url || tenant?.logo_url;
 
   return (
     <div data-template={context?.templateCode || 'SHOP_V1'} className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
@@ -263,9 +283,16 @@ export function StorefrontTemplate({
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-sm">
-              {effectiveName.charAt(0).toUpperCase()}
-            </div>
+            {storeLogo ? (
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-xs shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={storeLogo} alt={effectiveName} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-sm shrink-0">
+                {effectiveName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <h1 className="font-black text-slate-900 text-base sm:text-lg">{effectiveName}</h1>
               <p className="text-[11px] text-slate-500">Official Store • shop.boontrack.com/{effectiveSlug}</p>
