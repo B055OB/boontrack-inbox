@@ -60,6 +60,7 @@ import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import OrdersTab from './components/tabs/OrdersTab';
 import CustomerDatabaseTab from './components/tabs/CustomerDatabaseTab';
 import ResellerTab from './components/tabs/ResellerTab';
+import DocumentationTab from './components/tabs/DocumentationTab';
 import {
   ModularVerticalTabDispatcher,
   FnbInstantCourier,
@@ -1327,6 +1328,16 @@ export default function TenantDashboardPage() {
         ) : (
           <ResellerTab tenantSlug={tenantSlug} tenantData={tenantData} />
         )
+      )}
+
+      {/* TAB: DOKUMENTASI & PANDUAN INTEGRASI (IN-DASHBOARD TAB) */}
+      {(activeTab === 'docs' || activeTab === 'documentation') && (
+        <DocumentationTab
+          tenant={tenant}
+          tenantSlug={tenantSlug}
+          displayName={storeDisplayName || displayName}
+          onNavigateTab={(tab) => setActiveTab(tab as any)}
+        />
       )}
 
             {/* MOBILE LIVE PHONE PREVIEW (< lg, smartphone) */}

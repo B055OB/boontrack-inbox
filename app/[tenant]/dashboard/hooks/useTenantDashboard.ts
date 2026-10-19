@@ -60,6 +60,8 @@ export type DashboardTab =
   | 'crm'
   | 'customers'
   | 'reseller'
+  | 'docs'
+  | 'documentation'
   | 'settings';
 
 export interface ConversationMessage {
@@ -376,6 +378,10 @@ export function useTenantDashboard() {
 
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab')?.toLowerCase();
+      if (tabParam && ['docs', 'documentation', 'inbox', 'orders', 'catalog', 'products', 'whatsapp', 'shipping', 'ads_tracking', 'settings'].includes(tabParam)) {
+        setActiveTab(tabParam as DashboardTab);
+      }
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
         if (tierParam.toUpperCase() === 'CHECKOUT_LITE') {

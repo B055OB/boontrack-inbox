@@ -908,19 +908,22 @@ export default function DashboardSidebar({
               </div>
             </div>
 
-            {/* Pinned 3: Dokumentasi & Panduan */}
+            {/* Pinned 3: Dokumentasi & Panduan (In-Dashboard Tab Trigger) */}
             <div className="relative group">
-              <a
-                href="/docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-10 h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800/60 text-slate-400 hover:text-white border border-slate-800/80 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+              <button
+                type="button"
+                onClick={() => handleSelectTab('docs')}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-2xs cursor-pointer ${
+                  activeTab === 'docs' || activeTab === 'documentation'
+                    ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 ring-1 ring-indigo-500/30 font-medium'
+                    : 'bg-slate-900/60 hover:bg-slate-800/60 text-slate-400 hover:text-white border border-slate-800/80'
+                }`}
                 aria-label="Dokumentasi & Panduan"
               >
-                <BookOpen className="w-4 h-4" />
-              </a>
+                <BookOpen className={`w-4 h-4 ${activeTab === 'docs' || activeTab === 'documentation' ? 'text-indigo-400' : ''}`} />
+              </button>
               <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2.5 z-50 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-xl transition group-hover:opacity-100">
-                Dokumentasi &amp; Panduan ↗
+                Dokumentasi &amp; Panduan
               </div>
             </div>
 
@@ -990,26 +993,40 @@ export default function DashboardSidebar({
                 </span>
               </button>
 
-              {/* Pinned 3: Dokumentasi & Panduan */}
-              <a
-                href="/docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent hover:border-slate-800/80 transition-colors cursor-pointer group shadow-2xs text-left"
-                title="Dokumentasi &amp; Panduan Integrasi (Buka tab baru)"
+              {/* Pinned 3: Dokumentasi & Panduan (In-Dashboard Tab Trigger) */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('docs')}
+                className={`relative w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer group shadow-2xs text-left ${
+                  activeTab === 'docs' || activeTab === 'documentation'
+                    ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30 font-medium'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent hover:border-slate-800/80'
+                }`}
+                title="Dokumentasi & Panduan Integrasi"
               >
+                {(activeTab === 'docs' || activeTab === 'documentation') && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-indigo-500 rounded-r" />
+                )}
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-slate-800 text-slate-400 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                    activeTab === 'docs' || activeTab === 'documentation'
+                      ? 'bg-indigo-600/30 text-indigo-300'
+                      : 'bg-slate-800 text-slate-400 group-hover:text-white'
+                  }`}>
                     <BookOpen className="w-3.5 h-3.5" />
                   </div>
-                  <span className="truncate text-xs font-bold text-slate-400 group-hover:text-white transition-colors">
+                  <span className="truncate text-xs font-bold transition-colors">
                     Dokumentasi &amp; Panduan
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 group-hover:text-white font-black shrink-0 transition-colors">
-                  ↗
+                <span className={`text-[10px] font-black shrink-0 transition-colors ${
+                  activeTab === 'docs' || activeTab === 'documentation'
+                    ? 'text-indigo-400'
+                    : 'text-slate-500 group-hover:text-white'
+                }`}>
+                  📖
                 </span>
-              </a>
+              </button>
             </div>
 
             {/* Tombol Install App / PWA di Footer */}
