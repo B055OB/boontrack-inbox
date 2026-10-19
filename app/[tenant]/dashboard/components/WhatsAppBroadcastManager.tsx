@@ -681,41 +681,41 @@ export default function WhatsAppBroadcastManager({
 
       {/* ── KPI STATS BAR ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>Total Database Prospek</span>
-            <Users className="w-4 h-4 text-emerald-600" />
+            <Users className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-slate-900 mt-2">{contacts.length} Kontak</div>
+          <div className="text-2xl font-black text-white mt-2">{contacts.length} Kontak</div>
           <span className="text-[11px] text-slate-400">Tersinkron otomatis dari Ads & Toko</span>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>HOT Leads Siap Closing</span>
-            <Flame className="w-4 h-4 text-rose-600" />
+            <Flame className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-2xl font-black text-rose-600 mt-2">
+          <div className="text-2xl font-black text-rose-400 mt-2">
             {contacts.filter((c) => c.quality === 'HOT').length} Prospek
           </div>
           <span className="text-[11px] text-slate-400">Intensi checkout QRIS tinggi</span>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>Broadcast Terkirim</span>
-            <Send className="w-4 h-4 text-blue-600" />
+            <Send className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-2xl font-black text-blue-600 mt-2">{historyList.length} Kampanye</div>
+          <div className="text-2xl font-black text-indigo-400 mt-2">{historyList.length} Kampanye</div>
           <span className="text-[11px] text-slate-400">Tingkat deliverability 98.8%</span>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 shadow-xs">
+          <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
             <span>Omzet Closing Broadcast</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-emerald-600 mt-2">
+          <div className="text-2xl font-black text-emerald-400 mt-2">
             Rp {historyList.reduce((acc, curr) => acc + curr.revenue, 0).toLocaleString('id-ID')}
           </div>
           <span className="text-[11px] text-slate-400">Total closing dari blast WhatsApp</span>
@@ -723,14 +723,14 @@ export default function WhatsAppBroadcastManager({
       </div>
 
       {/* ── SUB-TABS NAVIGATION ── */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-1 text-xs font-bold">
+      <div className="flex items-center gap-2 border-b border-slate-800/80 pb-1 text-xs font-bold">
         <button
           type="button"
           onClick={() => setActiveSubTab('composer')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'composer'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              : 'text-slate-400 hover:text-white bg-slate-900/60 border border-slate-800 hover:border-slate-700'
           }`}
         >
           <Send className="w-3.5 h-3.5" />
@@ -743,7 +743,7 @@ export default function WhatsAppBroadcastManager({
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'contacts'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              : 'text-slate-400 hover:text-white bg-slate-900/60 border border-slate-800 hover:border-slate-700'
           }`}
         >
           <Users className="w-3.5 h-3.5" />
@@ -756,7 +756,7 @@ export default function WhatsAppBroadcastManager({
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'history'
               ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              : 'text-slate-400 hover:text-white bg-slate-900/60 border border-slate-800 hover:border-slate-700'
           }`}
         >
           <Clock className="w-3.5 h-3.5" />
@@ -769,7 +769,7 @@ export default function WhatsAppBroadcastManager({
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'pro_scale'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+              : 'text-slate-400 hover:text-white bg-slate-900/60 border border-slate-800 hover:border-slate-700'
           }`}
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-300" />
@@ -786,7 +786,7 @@ export default function WhatsAppBroadcastManager({
           
           {/* Form Composer (Left Column) */}
           <div className="lg:col-span-7 space-y-5">
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
               <div className="border-b border-slate-100 pb-3">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <Send className="w-4 h-4 text-emerald-600" />
@@ -808,120 +808,120 @@ export default function WhatsAppBroadcastManager({
 
                 {/* Segmentasi Selector */}
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                  <label className="text-xs font-bold text-slate-300 block mb-2">
                     Pilih Segmen Audiens Tertarget
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                     <button
                       type="button"
                       onClick={() => setTargetAudience('hot')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         targetAudience === 'hot'
-                          ? 'border-rose-500 bg-rose-50/50 shadow-xs'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+                          ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                       }`}
                     >
-                      <div className="font-bold text-xs text-rose-700 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Flame className="w-3.5 h-3.5" />
+                      <div className="font-bold text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Flame className="w-3.5 h-3.5 text-rose-400" />
                           <span>HOT Leads</span>
                         </div>
-                        <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black bg-slate-950 px-1.5 py-0.5 rounded-full border border-slate-800 text-slate-300">
                           {hotLeadsCount}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Intensi Checkout QRIS</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Intensi Checkout QRIS</p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTargetAudience('abandoned')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         targetAudience === 'abandoned'
-                          ? 'border-amber-500 bg-amber-50/50 shadow-xs'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+                          ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                       }`}
                     >
-                      <div className="font-bold text-xs text-amber-700 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
+                      <div className="font-bold text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
                           <span>Abandoned Cart</span>
                         </div>
-                        <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black bg-slate-950 px-1.5 py-0.5 rounded-full border border-slate-800 text-slate-300">
                           {abandonedCartCount}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Belum Selesai Bayar</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Belum Selesai Bayar</p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTargetAudience('customers')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         targetAudience === 'customers'
-                          ? 'border-blue-500 bg-blue-50/50 shadow-xs'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+                          ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                       }`}
                     >
-                      <div className="font-bold text-xs text-blue-700 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                      <div className="font-bold text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
                           <span>Repeat Buyers</span>
                         </div>
-                        <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black bg-slate-950 px-1.5 py-0.5 rounded-full border border-slate-800 text-slate-300">
                           {repeatBuyersCount}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Sudah Pernah Beli</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Sudah Pernah Beli</p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTargetAudience('all')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         targetAudience === 'all'
-                          ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+                          ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                       }`}
                     >
-                      <div className="font-bold text-xs text-emerald-700 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5" />
+                      <div className="font-bold text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-emerald-400" />
                           <span>Semua Prospek</span>
                         </div>
-                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black bg-slate-950 px-1.5 py-0.5 rounded-full border border-slate-800 text-slate-300">
                           {allContactsCount}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Seluruh Database</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Seluruh Database</p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setTargetAudience('custom')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         targetAudience === 'custom'
-                          ? 'border-purple-500 bg-purple-50/50 shadow-xs'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100'
+                          ? 'border-emerald-500/60 bg-emerald-950/20 text-emerald-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                       }`}
                     >
-                      <div className="font-bold text-xs text-purple-700 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Tag className="w-3.5 h-3.5" />
+                      <div className="font-bold text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-purple-400" />
                           <span>Tag Iklan / Custom</span>
                         </div>
-                        <span className="text-[10px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black bg-slate-950 px-1.5 py-0.5 rounded-full border border-slate-800 text-slate-300">
                           {customTagCount}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Filter per UTM Tag</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Filter per UTM Tag</p>
                     </button>
                   </div>
                 </div>
 
                 {targetAudience === 'custom' && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">
+                    <label className="text-xs font-bold text-slate-300 block">
                       Pilih atau Cari Berdasarkan Tag Database / Iklan:
                     </label>
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -966,7 +966,7 @@ export default function WhatsAppBroadcastManager({
             </div>
 
             {/* Message Template Composer */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-emerald-600" />
@@ -1184,8 +1184,8 @@ export default function WhatsAppBroadcastManager({
 
           {/* Contact Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
+            <table className="w-full text-left text-sm text-slate-200 bg-slate-900/50">
+              <thead className="bg-slate-900/60 text-slate-400 uppercase text-xs font-medium tracking-wider border-y border-slate-800/60">
                 <tr>
                   <th className="px-4 py-3">Nama & WhatsApp</th>
                   <th className="px-4 py-3">Tag Campaign / Iklan</th>
@@ -1196,7 +1196,7 @@ export default function WhatsAppBroadcastManager({
                   <th className="px-4 py-3 text-center">Aksi Direct</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/60 font-sans">
                 {contacts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-16 text-center">
@@ -1204,7 +1204,7 @@ export default function WhatsAppBroadcastManager({
                         <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                           <Users className="w-6 h-6" />
                         </div>
-                        <h4 className="font-bold text-sm text-slate-900">Belum ada kontak terdaftar.</h4>
+                        <h4 className="font-bold text-sm text-white">Belum ada kontak terdaftar.</h4>
                         <p className="text-xs text-slate-500 leading-relaxed">
                           Belum ada data kontak atau prospek terdaftar untuk toko ini. Kontak akan otomatis tercatat saat ada interaksi chat, order kasir/online, atau penambahan data baru.
                         </p>
@@ -1237,9 +1237,9 @@ export default function WhatsAppBroadcastManager({
                   </tr>
                 ) : (
                   filteredDirectoryContacts.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                    <tr key={c.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-900">{c.name}</div>
+                        <div className="font-bold text-white">{c.name}</div>
                         <a
                           href={`https://wa.me/62${c.phone.replace(/^0/, '')}`}
                           target="_blank"
@@ -1316,7 +1316,7 @@ export default function WhatsAppBroadcastManager({
           TAB 3: RIWAYAT & LAPORAN BROADCAST
       ───────────────────────────────────────────────────────────── */}
       {activeSubTab === 'history' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-blue-600" />
@@ -1328,30 +1328,30 @@ export default function WhatsAppBroadcastManager({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
+            <table className="w-full text-left text-sm text-slate-200 bg-slate-900/50">
+              <thead className="bg-slate-900/60 text-slate-400 uppercase text-xs font-medium tracking-wider border-y border-slate-800/60">
                 <tr>
                   <th className="px-4 py-3">Nama Kampanye</th>
                   <th className="px-4 py-3">Target Audiens</th>
                   <th className="px-4 py-3">Terkirim / Total</th>
-                  <th className="px-4 py-3 text-emerald-700">Deliverability</th>
-                  <th className="px-4 py-3 text-indigo-700">Closing Order</th>
+                  <th className="px-4 py-3 text-emerald-400">Deliverability</th>
+                  <th className="px-4 py-3 text-indigo-400">Closing Order</th>
                   <th className="px-4 py-3">Omzet Closing</th>
                   <th className="px-4 py-3">Waktu Kirim</th>
                   <th className="px-4 py-3 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/60 font-sans">
                 {historyList.map((h) => (
-                  <tr key={h.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-4 py-3.5 font-bold text-slate-900">{h.campaignName}</td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-700">{h.targetSegment}</td>
-                    <td className="px-4 py-3.5 font-bold text-slate-900">
+                  <tr key={h.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
+                    <td className="px-4 py-3.5 font-bold text-white">{h.campaignName}</td>
+                    <td className="px-4 py-3.5 font-semibold text-slate-300">{h.targetSegment}</td>
+                    <td className="px-4 py-3.5 font-bold text-slate-200">
                       {h.sentCount} / {h.totalTarget}
                     </td>
                     <td className="px-4 py-3.5 font-black text-emerald-600">{h.deliveredRate}%</td>
                     <td className="px-4 py-3.5 font-black text-indigo-600">{h.closings} Order</td>
-                    <td className="px-4 py-3.5 font-black text-slate-900 whitespace-nowrap">
+                    <td className="px-4 py-3.5 font-black text-white whitespace-nowrap">
                       Rp {h.revenue.toLocaleString('id-ID')}
                     </td>
                     <td className="px-4 py-3.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
@@ -1426,7 +1426,7 @@ export default function WhatsAppBroadcastManager({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Form Konfigurasi Template & Parameter */}
             <div className="lg:col-span-7 space-y-5">
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
                 <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
                   <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                     <Send className="w-4 h-4 text-blue-600" />
@@ -1553,7 +1553,7 @@ export default function WhatsAppBroadcastManager({
               </div>
 
               {/* Dynamic Variable Parameter Mapping Card */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
                 <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
                   <div>
                     <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
@@ -1641,7 +1641,7 @@ export default function WhatsAppBroadcastManager({
             {/* Right Column: Live Payload Preview & Trigger */}
             <div className="lg:col-span-5 space-y-5">
               {/* Trigger Card */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
                 <div className="border-b border-slate-100 pb-3">
                   <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -1792,7 +1792,7 @@ export default function WhatsAppBroadcastManager({
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h4 className="font-bold text-sm text-slate-900">Tambah Kontak Prospek Baru</h4>
+              <h4 className="font-bold text-sm text-white">Tambah Kontak Prospek Baru</h4>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}

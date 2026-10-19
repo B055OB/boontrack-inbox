@@ -287,9 +287,9 @@ export default function AdminAffiliateManagersPage() {
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-slate-800/80">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm text-slate-200 border-collapse bg-slate-900/50">
               <thead>
-                <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                <tr className="bg-slate-900/60 text-slate-400 border-b border-slate-800/60 uppercase text-xs font-medium tracking-wider">
                   <th className="p-3.5 font-bold uppercase text-[10px]">Affiliate Manager (AM)</th>
                   <th className="p-3.5 font-bold uppercase text-[10px]">Kode Referral AM</th>
                   <th className="p-3.5 font-bold uppercase text-[10px]">Cakupan Regional</th>
@@ -305,7 +305,7 @@ export default function AdminAffiliateManagersPage() {
                     const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Halo ${am.name}! Salam dari Superadmin BoonTrack.`)}`;
 
                     return (
-                      <tr key={am.id} className="hover:bg-slate-800/40 transition">
+                      <tr key={am.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
                         {/* AM Profile */}
                         <td className="p-3.5">
                           <div className="flex items-center gap-2.5">
