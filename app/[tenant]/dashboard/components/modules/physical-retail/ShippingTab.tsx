@@ -200,16 +200,16 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-200">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0 border border-amber-100 dark:border-amber-900/40">
             <Truck className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm sm:text-base font-black text-slate-900">
+            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100">
               Logistik Ekspedisi &amp; Input Resi Pengiriman
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Kelola nomor resi paket fisik kurir reguler/kargo dan pantau pelacakan pesanan pembeli.
             </p>
           </div>
@@ -220,12 +220,12 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
             type="button"
             onClick={() => fetchShipments()}
             disabled={isLoading}
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer disabled:opacity-50"
+            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition cursor-pointer disabled:opacity-50"
             title="Segarkan data pengiriman"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-600' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-600 dark:text-amber-400' : ''}`} />
           </button>
-          <span className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+          <span className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1.5">
             <PackageCheck className="w-3.5 h-3.5" />
             <span>Multi-Kurir Terintegrasi</span>
           </span>
@@ -233,11 +233,11 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
       </div>
 
       {/* Form Input Resi Cepat */}
-      <form onSubmit={handleUpdateResi} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2">
+      <form onSubmit={handleUpdateResi} className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-2">
         <div className="flex items-center justify-between">
-          <h4 className="text-xs font-black text-slate-900">Input / Update Nomor Resi Cepat</h4>
+          <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">Input / Update Nomor Resi Cepat</h4>
           {feedback && (
-            <span className={`text-[11px] font-bold flex items-center gap-1 ${feedback.type === 'success' ? 'text-emerald-600' : 'text-rose-600'}`}>
+            <span className={`text-[11px] font-bold flex items-center gap-1 ${feedback.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {feedback.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
               <span>{feedback.text}</span>
             </span>
@@ -249,19 +249,19 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
             placeholder="No. Order / Invoice (e.g. ORD-...)"
             value={inputOrderId}
             onChange={(e) => setInputOrderId(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-amber-600"
+            className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 font-mono focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:border-amber-600 transition placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
           <input
             type="text"
             placeholder="Nomor Resi (Waybill)"
             value={inputResi}
             onChange={(e) => setInputResi(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-amber-600"
+            className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 font-mono focus:bg-white dark:focus:bg-slate-850 focus:outline-none focus:border-amber-600 transition placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
           <button
             type="submit"
             disabled={isSaving}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
           >
             <span>{isSaving ? 'Menyimpan...' : 'Simpan Resi'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -271,30 +271,30 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
 
       {/* LOADING STATE */}
       {isLoading ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs flex flex-col items-center justify-center space-y-3">
-          <RefreshCw className="w-6 h-6 animate-spin text-amber-600" />
-          <p className="text-xs font-semibold text-slate-500">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center shadow-xs flex flex-col items-center justify-center space-y-3">
+          <RefreshCw className="w-6 h-6 animate-spin text-amber-600 dark:text-amber-400" />
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
             Memuat riwayat pengiriman produk fisik...
           </p>
         </div>
       ) : shipments.length === 0 ? (
-        /* CLEAN EMPTY STATE (SESUAI ATURAN ZERO MOCKUP) */
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-14 text-center shadow-xs flex flex-col items-center justify-center max-w-xl mx-auto space-y-4 my-6">
-          <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shadow-2xs">
+        /* CLEAN EMPTY STATE */
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 sm:p-14 text-center shadow-xs flex flex-col items-center justify-center max-w-xl mx-auto space-y-4 my-6">
+          <div className="w-16 h-16 rounded-3xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/60 shadow-2xs">
             <Truck className="w-8 h-8" />
           </div>
           <div className="space-y-2 max-w-md">
-            <h3 className="text-base font-black text-slate-900">
+            <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
               Belum Ada Data Pengiriman
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
               Belum ada data pengiriman. Pesanan produk fisik yang masuk akan tampil di sini untuk pemantauan dan input nomor resi ekspedisi.
             </p>
           </div>
           <button
             type="button"
             onClick={() => fetchShipments()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Segarkan Data</span>
@@ -302,10 +302,10 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
         </div>
       ) : (
         /* SHIPMENT TABLE REAL DATA */
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="py-3 px-4">Order &amp; Penerima</th>
                   <th className="py-3 px-4">Tujuan Pengiriman</th>
@@ -314,38 +314,38 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
                   <th className="py-3 px-4 text-right">Lacak Resi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                 {shipments.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50/80 transition">
+                  <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{s.recipientName}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{s.orderId} • {s.phone}</div>
+                      <div className="font-bold text-slate-900 dark:text-slate-100">{s.recipientName}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{s.orderId} • {s.phone}</div>
                     </td>
-                    <td className="py-3.5 px-4 text-slate-700 font-medium">
+                    <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300 font-medium">
                       {s.destination}
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-800">{s.courier}</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">{s.courier}</div>
                       {s.waybill ? (
-                        <div className="font-mono text-amber-700 font-bold text-[11px]">{s.waybill}</div>
+                        <div className="font-mono text-amber-700 dark:text-amber-400 font-bold text-[11px]">{s.waybill}</div>
                       ) : (
-                        <div className="text-slate-400 text-[11px] italic">Belum ada resi</div>
+                        <div className="text-slate-400 dark:text-slate-500 text-[11px] italic">Belum ada resi</div>
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       {s.status === 'DELIVERED' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           TERKIRIM
                         </span>
                       ) : s.status === 'SHIPPED' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                          <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          <CheckCircle2 className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                           DALAM PENGIRIMAN
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
-                          <Clock className="w-3 h-3 text-amber-600" />
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                          <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           MENUNGGU RESI
                         </span>
                       )}
@@ -356,7 +356,7 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
                           href={`https://cekresi.com/?noresi=${encodeURIComponent(s.waybill)}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-blue-600 font-bold hover:underline"
+                          className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-bold hover:underline"
                         >
                           <span>Cek Posisi</span>
                           <ExternalLink className="w-3 h-3" />
@@ -367,7 +367,7 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
                           onClick={() => {
                             setInputOrderId(s.orderId);
                           }}
-                          className="text-amber-600 font-bold text-[11px] hover:underline cursor-pointer"
+                          className="text-amber-600 dark:text-amber-400 font-bold text-[11px] hover:underline cursor-pointer"
                         >
                           + Input Resi
                         </button>
