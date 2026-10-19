@@ -50,15 +50,44 @@ export default function Footer({ referralCode }: FooterProps) {
           {/* Model Bisnis Links */}
           <div className="space-y-2.5">
             <h4 className="font-bold text-white uppercase tracking-wider text-[11px] font-mono">
-              Model Bisnis Vertikal
+              Model Bisnis
             </h4>
             <ul className="space-y-2 text-slate-400 text-xs font-medium">
               <li><a href="#vertikal" className="hover:text-blue-400 transition">Produk Fisik &amp; Retail</a></li>
               <li><a href="#vertikal" className="hover:text-blue-400 transition">Produk Digital &amp; Lisensi</a></li>
               <li><a href="#vertikal" className="hover:text-blue-400 transition">F&amp;B, Resto &amp; Kuliner</a></li>
-              <li><a href="#vertikal" className="hover:text-blue-400 transition">Jasa Lapangan &amp; Teknisi</a></li>
+              <li><a href="#vertikal" className="hover:text-blue-400 transition">Jasa &amp; Teknisi Lapangan</a></li>
               <li><a href="#vertikal" className="hover:text-blue-400 transition">Profesi, Legal &amp; Agensi</a></li>
-              <li><a href="#vertikal" className="hover:text-blue-400 transition">Kreator &amp; Endorsement</a></li>
+            </ul>
+          </div>
+
+          {/* Dokumentasi & Developer */}
+          <div className="space-y-2.5">
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px] font-mono">
+              Dokumentasi &amp; API
+            </h4>
+            <ul className="space-y-2 text-slate-400 text-xs font-medium">
+              <li>
+                <Link href="/docs" className="hover:text-emerald-400 text-emerald-400/90 font-semibold transition">
+                  Dokumentasi API &amp; Integrasi
+                </Link>
+              </li>
+              <li>
+                <Link href="/docs/meta-waba" className="hover:text-blue-400 transition">
+                  Panduan Meta WABA &amp; CAPI
+                </Link>
+              </li>
+              <li>
+                <Link href="/status" className="hover:text-emerald-400 transition inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Status Layanan</span>
+                </Link>
+              </li>
+              <li>
+                <Link href="/login" className="hover:text-blue-400 transition">
+                  Masuk Portal Merchant
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -70,8 +99,8 @@ export default function Footer({ referralCode }: FooterProps) {
             <ul className="space-y-2 text-slate-400 text-xs font-medium">
               <li><Link href="/terms" className="hover:text-blue-400 transition">Ketentuan Layanan (Terms)</Link></li>
               <li><Link href="/privacy" className="hover:text-blue-400 transition">Kebijakan Privasi (UU PDP)</Link></li>
-              <li><Link href="/refund" className="hover:text-blue-400 transition">Kebijakan Pengembalian Dana</Link></li>
-              <li><Link href="/contact" className="hover:text-blue-400 transition">Hubungi Kami (Contact Us)</Link></li>
+              <li><Link href="/refund" className="hover:text-blue-400 transition">Kebijakan Refund</Link></li>
+              <li><Link href="/contact" className="hover:text-blue-400 transition">Hubungi Kami</Link></li>
             </ul>
           </div>
         </div>

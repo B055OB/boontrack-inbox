@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
+  BookOpen,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTierAccess } from '@/lib/subscription-tiers';
@@ -907,6 +908,22 @@ export default function DashboardSidebar({
               </div>
             </div>
 
+            {/* Pinned 3: Dokumentasi & Panduan */}
+            <div className="relative group">
+              <a
+                href="/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-xl bg-slate-900/60 hover:bg-slate-800/60 text-slate-400 hover:text-white border border-slate-800/80 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                aria-label="Dokumentasi & Panduan"
+              >
+                <BookOpen className="w-4 h-4" />
+              </a>
+              <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2.5 z-50 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-xl transition group-hover:opacity-100">
+                Dokumentasi &amp; Panduan ↗
+              </div>
+            </div>
+
             {/* Compact Brand Logo */}
             <div className="relative group pt-1">
               <div className="w-6 h-6 flex items-center justify-center cursor-default">
@@ -972,6 +989,27 @@ export default function DashboardSidebar({
                   ⚙️
                 </span>
               </button>
+
+              {/* Pinned 3: Dokumentasi & Panduan */}
+              <a
+                href="/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent hover:border-slate-800/80 transition-colors cursor-pointer group shadow-2xs text-left"
+                title="Dokumentasi &amp; Panduan Integrasi (Buka tab baru)"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-6 h-6 rounded-lg bg-slate-800 text-slate-400 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                    <BookOpen className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="truncate text-xs font-bold text-slate-400 group-hover:text-white transition-colors">
+                    Dokumentasi &amp; Panduan
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 group-hover:text-white font-black shrink-0 transition-colors">
+                  ↗
+                </span>
+              </a>
             </div>
 
             {/* Tombol Install App / PWA di Footer */}
