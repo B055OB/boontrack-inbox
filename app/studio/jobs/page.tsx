@@ -132,21 +132,12 @@ export default function StudioJobsPage() {
 
   // Direct MP4 Download Helper
   const handleDownloadMp4 = (job: StudioJob) => {
-    // Lacak status unduhan ke server (Auto-Purge Tracker)
-    fetch(`/api/studio/renders/${encodeURIComponent(job.id)}/track-download`, {
-      method: 'POST',
-    }).catch(err => console.warn('[Auto-Purge Tracker Error]', err));
-
     const filename = job.payload?.filename || `render_${job.id.slice(0, 8)}.mp4`;
     const videoUrl = job.output_url || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
     
-    const a = document.createElement('a');
-    a.href = videoUrl;
-    a.download = filename;
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Route via internal same-origin download proxy (forces browser native download dialog)
+    const proxyUrl = `/api/studio/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}&job_id=${encodeURIComponent(job.id)}`;
+    window.location.href = proxyUrl;
   };
 
   // Filter Jobs by Search Query

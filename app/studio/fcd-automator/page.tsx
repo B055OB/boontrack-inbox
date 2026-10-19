@@ -555,12 +555,7 @@ export default function FCDAutomatorPage() {
   };
 
   const handleDownloadFinalMp4 = (url?: string, filename?: string) => {
-    // 1. Lacak status unduhan ke server (Auto-Purge Tracker)
     const renderIdToTrack = activeBatchId || 'batch_render_latest';
-    fetch(`/api/studio/renders/${encodeURIComponent(renderIdToTrack)}/track-download`, {
-      method: 'POST',
-    }).catch(err => console.warn('[Auto-Purge Tracker] Warning tracking download:', err));
-
     const targetUrl =
       url ||
       renderedVideoUrl ||
@@ -568,14 +563,10 @@ export default function FCDAutomatorPage() {
     const productSlug =
       campaignTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video-iklan';
     const targetName = filename || `${productSlug}_FINAL_1080x1920.mp4`;
-    const link = document.createElement('a');
-    link.href = targetUrl;
-    link.download = targetName;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    // Route via internal same-origin download proxy (forces browser native download dialog)
+    const proxyUrl = `/api/studio/download?url=${encodeURIComponent(targetUrl)}&filename=${encodeURIComponent(targetName)}&job_id=${encodeURIComponent(renderIdToTrack)}`;
+    window.location.href = proxyUrl;
   };
 
   const handleDownloadBatchZip = () => {
