@@ -414,29 +414,29 @@ export default function DocumentationTab({
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full font-sans text-slate-200">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full font-sans text-slate-800 dark:text-slate-200">
       {/* ── HEADER KANVAS TAB ── */}
-      <div className="relative rounded-3xl bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-indigo-950/30 border border-slate-800/80 p-6 sm:p-8 shadow-xl overflow-hidden">
+      <div className="relative rounded-3xl bg-gradient-to-r from-indigo-50/80 via-slate-50 to-indigo-50/40 border border-slate-200/80 text-slate-800 dark:from-slate-800 dark:via-slate-900/80 dark:to-slate-900/60 dark:border-slate-700 dark:text-slate-100 p-6 sm:p-8 shadow-xs overflow-hidden">
         {/* Glow Ambient Decoration */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 opacity-60 dark:opacity-100" />
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none opacity-60 dark:opacity-100" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide uppercase bg-indigo-950/80 text-indigo-300 border border-indigo-800/80 shadow-xs font-mono">
-                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide uppercase bg-indigo-50 border border-indigo-200/80 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 dark:border-indigo-800/80 shadow-xs font-mono">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 Pusat Dokumentasi Merchant
               </span>
-              <span className="text-xs text-slate-400 font-mono hidden sm:inline">
-                Toko: <span className="text-white font-bold">{displayName || tenantSlug}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono hidden sm:inline">
+                Toko: <span className="text-slate-900 dark:text-white font-bold">{displayName || tenantSlug}</span>
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Dokumentasi &amp; Panduan Integrasi
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
               Panduan teknis lengkap setup toko online, aktivasi Meta Official WABA, pelacakan server-side Meta CAPI, multi-kurir Biteship, dan webhook integrasi REST API.
             </p>
           </div>
@@ -447,19 +447,19 @@ export default function DocumentationTab({
               href="/status"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white transition inline-flex items-center gap-2 shadow-2xs"
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 hover:text-slate-900 dark:bg-slate-900/80 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 dark:hover:text-white transition inline-flex items-center gap-2 shadow-2xs"
               title="Periksa Ketersediaan Server & Gateway"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Status Server</span>
-              <ExternalLink className="w-3 h-3 text-slate-500" />
+              <ExternalLink className="w-3 h-3 text-slate-400 dark:text-slate-500" />
             </Link>
 
             <Link
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-bold transition inline-flex items-center gap-2 shadow-sm"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold transition inline-flex items-center gap-2 shadow-sm"
               title="Buka Portal Dokumentasi di Tab Baru"
             >
               <span>Portal Docs Eksternal</span>
@@ -470,19 +470,19 @@ export default function DocumentationTab({
 
         {/* ── SEARCH BAR ── */}
         <div className="relative mt-6 max-w-2xl">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari topik panduan (contoh: WABA, CAPI, Ongkir, Webhook, QRIS)..."
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition shadow-inner"
+            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 dark:placeholder-slate-500 transition shadow-xs text-xs sm:text-sm"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 rounded-md px-1.5 py-0.5 cursor-pointer"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:hover:text-white dark:bg-slate-700 rounded-md px-1.5 py-0.5 cursor-pointer"
             >
               Reset
             </button>
@@ -502,15 +502,15 @@ export default function DocumentationTab({
               onClick={() => setActiveCategory(cat.id)}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer ${
                 isActive
-                  ? 'bg-indigo-600 text-white shadow-sm border border-indigo-500'
-                  : 'bg-slate-900/60 hover:bg-slate-800/80 text-slate-400 hover:text-white border border-slate-800/80'
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 shadow-xs border border-indigo-600'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-slate-700'
               }`}
             >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
               <span>{cat.label}</span>
               {cat.id !== 'all' && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  isActive ? 'bg-indigo-700/80 text-indigo-100' : 'bg-slate-800 text-slate-500'
+                  isActive ? 'bg-indigo-700/80 text-indigo-100' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
                 }`}>
                   {docItems.filter((item) => item.category === cat.id).length}
                 </span>
@@ -522,49 +522,49 @@ export default function DocumentationTab({
 
       {/* ── QUICK JUMP SHORTCUTS KE MENU DASBOR TERKAIT ── */}
       {onNavigateTab && (
-        <div className="rounded-2xl bg-slate-900/40 border border-slate-800/60 p-3.5 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-slate-400 font-semibold flex items-center gap-1.5 mr-1 text-[11px] uppercase tracking-wider font-mono">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 dark:bg-slate-900/40 dark:border-slate-800/60 p-3.5 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-1.5 mr-1 text-[11px] uppercase tracking-wider font-mono">
+            <Zap className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
             Navigasi Cepat:
           </span>
           <button
             type="button"
             onClick={() => onNavigateTab('whatsapp')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-medium cursor-pointer flex items-center gap-1.5 border border-slate-700/60"
+            className="px-2.5 py-1 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 text-indigo-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-slate-700/60 transition font-medium cursor-pointer flex items-center gap-1.5"
           >
-            <Radio className="w-3 h-3 text-indigo-400" />
+            <Radio className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
             <span>Koneksi WhatsApp</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigateTab('ads_tracking')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-medium cursor-pointer flex items-center gap-1.5 border border-slate-700/60"
+            className="px-2.5 py-1 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 text-indigo-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-slate-700/60 transition font-medium cursor-pointer flex items-center gap-1.5"
           >
-            <Target className="w-3 h-3 text-purple-400" />
+            <Target className="w-3 h-3 text-purple-600 dark:text-purple-400" />
             <span>Ads Tracking &amp; CAPI</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigateTab('shipping')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-medium cursor-pointer flex items-center gap-1.5 border border-slate-700/60"
+            className="px-2.5 py-1 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 text-indigo-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-slate-700/60 transition font-medium cursor-pointer flex items-center gap-1.5"
           >
-            <Truck className="w-3 h-3 text-amber-400" />
+            <Truck className="w-3 h-3 text-amber-600 dark:text-amber-400" />
             <span>Ekspedisi Biteship</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigateTab('inbox')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-medium cursor-pointer flex items-center gap-1.5 border border-slate-700/60"
+            className="px-2.5 py-1 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 text-indigo-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-slate-700/60 transition font-medium cursor-pointer flex items-center gap-1.5"
           >
-            <MessageSquare className="w-3 h-3 text-blue-400" />
+            <MessageSquare className="w-3 h-3 text-blue-600 dark:text-blue-400" />
             <span>Smart Chatbox</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigateTab('ai_knowledge')}
-            className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition font-medium cursor-pointer flex items-center gap-1.5 border border-slate-700/60"
+            className="px-2.5 py-1 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 text-indigo-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-slate-700/60 transition font-medium cursor-pointer flex items-center gap-1.5"
           >
-            <Bot className="w-3 h-3 text-emerald-400" />
+            <Bot className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             <span>AI Knowledge Setup</span>
           </button>
         </div>
@@ -573,10 +573,10 @@ export default function DocumentationTab({
       {/* ── GRID MODUL DOKUMENTASI INTERAKTIF (ACCORDION / DETAIL VIEW) ── */}
       <div className="space-y-4">
         {filteredDocs.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-12 text-center space-y-3">
-            <HelpCircle className="w-10 h-10 text-slate-500 mx-auto" />
-            <h3 className="text-base font-bold text-white">Tidak ada panduan yang cocok</h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 p-12 text-center space-y-3 shadow-xs">
+            <HelpCircle className="w-10 h-10 text-slate-400 dark:text-slate-500 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Tidak ada panduan yang cocok</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
               Coba gunakan kata kunci lain atau pilih filter kategori &quot;Semua Panduan&quot;.
             </p>
             <button
@@ -585,7 +585,7 @@ export default function DocumentationTab({
                 setSearchQuery('');
                 setActiveCategory('all');
               }}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
             >
               Reset Filter Pencarian
             </button>
@@ -598,32 +598,32 @@ export default function DocumentationTab({
             const badgeColor = (() => {
               switch (item.badgeVariant) {
                 case 'emerald':
-                  return 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80';
+                  return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-400 dark:border-emerald-800/80';
                 case 'purple':
-                  return 'bg-purple-950/80 text-purple-300 border-purple-800/80';
+                  return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/80 dark:text-purple-300 dark:border-purple-800/80';
                 case 'amber':
-                  return 'bg-amber-950/80 text-amber-400 border-amber-800/80';
+                  return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/80 dark:text-amber-400 dark:border-amber-800/80';
                 case 'blue':
-                  return 'bg-blue-950/80 text-blue-300 border-blue-800/80';
+                  return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800/80';
                 case 'indigo':
                 default:
-                  return 'bg-indigo-950/80 text-indigo-300 border-indigo-800/80';
+                  return 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/80 dark:text-indigo-300 dark:border-indigo-800/80';
               }
             })();
 
             return (
               <div
                 key={item.id}
-                className="rounded-2xl border border-slate-800/80 bg-slate-900/60 hover:border-slate-700/80 transition shadow-sm overflow-hidden"
+                className="rounded-2xl bg-white border border-slate-200 shadow-xs dark:bg-slate-800 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition overflow-hidden"
               >
                 {/* Accordion Header */}
                 <div
                   onClick={() => toggleExpand(item.id)}
-                  className="p-5 sm:p-6 flex items-start justify-between gap-4 cursor-pointer select-none group"
+                  className="p-5 sm:p-6 bg-slate-50/70 hover:bg-slate-100/80 text-slate-800 dark:bg-slate-900/50 dark:hover:bg-slate-900 dark:text-slate-100 flex items-start justify-between gap-4 cursor-pointer select-none group transition-colors"
                 >
                   <div className="flex items-start gap-4 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                      <Icon className="w-5 h-5 text-indigo-400" />
+                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-indigo-600 dark:bg-slate-800 dark:border-slate-700/60 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-2xs">
+                      <Icon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
 
                     <div className="space-y-1 min-w-0">
@@ -635,20 +635,20 @@ export default function DocumentationTab({
                           {item.categoryLabel}
                         </span>
                       </div>
-                      <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-indigo-300 transition leading-snug">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-300 transition leading-snug">
                         {item.title}
                       </h3>
-                      <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                         {item.subtitle}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0 pt-1">
-                    <span className="text-xs font-semibold text-slate-400 group-hover:text-white hidden sm:inline">
+                    <span className="text-xs font-semibold text-slate-500 group-hover:text-slate-900 dark:text-slate-400 dark:group-hover:text-white hidden sm:inline">
                       {isExpanded ? 'Tutup Detail' : 'Buka Panduan'}
                     </span>
-                    <div className="w-8 h-8 rounded-lg bg-slate-800/60 flex items-center justify-center text-slate-400 group-hover:text-white transition">
+                    <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-500 group-hover:text-slate-900 dark:bg-slate-800/60 dark:border-transparent dark:text-slate-400 dark:group-hover:text-white flex items-center justify-center transition shadow-2xs">
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4" />
                       ) : (
@@ -660,23 +660,23 @@ export default function DocumentationTab({
 
                 {/* Accordion Body Content */}
                 {isExpanded && (
-                  <div className="px-5 sm:px-6 pb-6 pt-2 border-t border-slate-800/80 space-y-5 animate-in fade-in duration-150">
+                  <div className="px-5 sm:px-6 pb-6 pt-4 border-t border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 space-y-5 animate-in fade-in duration-150">
                     {/* Ringkasan & Checklist Setup */}
                     <div className="space-y-3">
-                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                         {item.summary}
                       </p>
 
                       {item.checklist && item.checklist.length > 0 && (
-                        <div className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-4 space-y-2">
-                          <h4 className="text-xs font-black uppercase text-indigo-300 tracking-wider font-mono flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <div className="rounded-xl bg-slate-50 border border-slate-200 dark:bg-slate-950/60 dark:border-slate-800/80 p-4 space-y-2">
+                          <h4 className="text-xs font-black uppercase text-indigo-700 dark:text-indigo-300 tracking-wider font-mono flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             Langkah-Langkah Eksekusi:
                           </h4>
-                          <ul className="space-y-1.5 text-xs text-slate-300">
+                          <ul className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
                             {item.checklist.map((step, sIdx) => (
                               <li key={sIdx} className="flex items-start gap-2.5">
-                                <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
                                   {sIdx + 1}
                                 </span>
                                 <span className="leading-relaxed">{step}</span>
@@ -690,20 +690,20 @@ export default function DocumentationTab({
                     {/* Code Snippet Box (Jika ada) */}
                     {item.codeBlock && (
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-mono">
                           <span className="flex items-center gap-1.5">
-                            <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+                            <FileCode className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                             {item.codeBlock.filename || 'Example Code Snippet'}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopyCode(item.codeBlock!.code, item.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition font-mono text-[11px] cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-transparent transition font-mono text-[11px] cursor-pointer"
                           >
                             {copiedSnippetId === item.id ? (
                               <>
-                                <Check className="w-3 h-3 text-emerald-400" />
-                                <span className="text-emerald-400">Tersalin!</span>
+                                <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Tersalin!</span>
                               </>
                             ) : (
                               <>
@@ -721,10 +721,10 @@ export default function DocumentationTab({
 
                     {/* Poin Penjelasan Teknis Tambahan */}
                     {item.details && item.details.length > 0 && (
-                      <div className="space-y-1.5 text-xs text-slate-400">
+                      <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                         {item.details.map((point, pIdx) => (
                           <p key={pIdx} className="leading-relaxed flex items-start gap-2">
-                            <span className="text-indigo-400 font-bold">&bull;</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">&bull;</span>
                             <span>{point}</span>
                           </p>
                         ))}
@@ -732,13 +732,13 @@ export default function DocumentationTab({
                     )}
 
                     {/* Action Bar (Buka Tab Terkait atau Link Eksternal) */}
-                    <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/60">
+                    <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-700/60">
                       <div className="flex items-center gap-2">
                         {item.ctaTab && onNavigateTab && (
                           <button
                             type="button"
                             onClick={() => onNavigateTab(item.ctaTab!)}
-                            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                           >
                             <span>{item.ctaTabLabel || 'Buka Menu Terkait'}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
@@ -749,7 +749,7 @@ export default function DocumentationTab({
                             href={item.externalLink.href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white dark:border-transparent text-xs font-semibold transition flex items-center gap-1.5"
                           >
                             <span>{item.externalLink.label}</span>
                             <ExternalLink className="w-3 h-3" />
@@ -757,7 +757,7 @@ export default function DocumentationTab({
                         )}
                       </div>
 
-                      <span className="text-[11px] text-slate-500 font-mono">
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
                         ID: #{item.id}
                       </span>
                     </div>
@@ -770,14 +770,14 @@ export default function DocumentationTab({
       </div>
 
       {/* ── FOOTER CALLOUT BANTUAN TEKNIS ── */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600 dark:text-slate-400 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <p className="font-bold text-white text-sm">Butuh Bantuan Integrasi Khusus?</p>
-            <p className="text-slate-400 mt-0.5">
+            <p className="font-bold text-slate-900 dark:text-white text-sm">Butuh Bantuan Integrasi Khusus?</p>
+            <p className="text-slate-600 dark:text-slate-400 mt-0.5">
               Tim Technical Support BoonTrack siap membantu setup Meta WABA, migrasi database, dan integrasi webhook ERP.
             </p>
           </div>
@@ -787,9 +787,9 @@ export default function DocumentationTab({
           href="https://wa.me/6281977655099?text=Halo%20Tim%20BoonTrack,%20saya%20butuh%20bantuan%20teknis%20integrasi"
           target="_blank"
           rel="noopener noreferrer"
-          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold transition flex items-center gap-2 shrink-0 border border-slate-700/60"
+          className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 hover:text-slate-900 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:hover:text-white dark:border-slate-700/60 font-bold transition flex items-center gap-2 shrink-0 shadow-2xs"
         >
-          <MessageSquare className="w-4 h-4 text-emerald-400" />
+          <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           <span>Chat WhatsApp Tech Support</span>
         </a>
       </div>
