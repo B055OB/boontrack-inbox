@@ -167,8 +167,61 @@ export default function FnbCateringStorefrontView({
 
   // ── 4. MODALS (NAV MENUS) STATE ──
   const [activeModal, setActiveModal] = useState<
-    'member' | 'catering' | 'mitra' | 'ketentuan' | null
+    'member' | 'catering' | 'mitra' | 'partnership' | 'ketentuan' | null
   >(null);
+
+  // ── 5. PARTNERSHIP FORM STATE ──
+  const [partnerName, setPartnerName] = useState('');
+  const [partnerPhone, setPartnerPhone] = useState('');
+  const [partnerNotes, setPartnerNotes] = useState('');
+  const [isSubmittingPartner, setIsSubmittingPartner] = useState(false);
+  const [partnerSuccess, setPartnerSuccess] = useState(false);
+  const [partnerError, setPartnerError] = useState<string | null>(null);
+
+  const handleSubmitPartnership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partnerName.trim() || !partnerPhone.trim()) {
+      setPartnerError('Mohon isi nama PIC dan nomor WhatsApp Anda.');
+      return;
+    }
+
+    setIsSubmittingPartner(true);
+    setPartnerError(null);
+
+    const cleanWaAdmin = waNumber.replace(/\D/g, '');
+    const cleanWaTarget = cleanWaAdmin.startsWith('0') ? '62' + cleanWaAdmin.slice(1) : cleanWaAdmin;
+    const brandDisplayName = tenant?.name || effectiveName || 'Shabu Ajhi';
+
+    const waDraftText = `Halo ${brandDisplayName}, saya ingin mengajukan kemitraan / partnership:
+Nama: ${partnerName.trim()}
+WhatsApp: ${partnerPhone.trim()}
+Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
+
+    const waUrl = `https://wa.me/${cleanWaTarget}?text=${encodeURIComponent(waDraftText)}`;
+
+    try {
+      await fetch('/api/v1/crm/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: effectiveSlug,
+          tenant_id: tenant?.id,
+          name: partnerName.trim(),
+          phone: partnerPhone.trim(),
+          intent: 'Partnership Program',
+          notes: `[Pengajuan Partnership]: ${partnerNotes.trim() || 'Tanpa catatan tambahan'}`,
+        }),
+      });
+    } catch (err) {
+      console.warn('[Partnership] Gagal menyimpan kontak ke CRM lead:', err);
+    } finally {
+      setIsSubmittingPartner(false);
+      setPartnerSuccess(true);
+      if (typeof window !== 'undefined') {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
 
   // Logo URL with fallback
   const storeLogo =
@@ -579,11 +632,10 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             </button>
             <button
               type="button"
-              onClick={() => setActiveModal('mitra')}
+              onClick={() => setActiveModal('partnership')}
               className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white font-medium shrink-0 transition cursor-pointer flex items-center gap-1.5"
             >
-              <Building2 className="w-3 h-3 text-indigo-400" />
-              <span>Mitra Villa</span>
+              <span>🤝 Partnership</span>
             </button>
             <button
               type="button"
@@ -1221,50 +1273,122 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
         </div>
       )}
 
-      {/* 3. Modal Mitra Villa */}
-      {activeModal === 'mitra' && (
+      {/* 3. Modal Program Partnership */}
+      {(activeModal === 'partnership' || activeModal === 'mitra') && (
         <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-stone-900 max-w-md w-full rounded-3xl border border-stone-800 p-6 space-y-4 shadow-2xl relative">
             <button
-              onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800"
+              type="button"
+              onClick={() => {
+                setActiveModal(null);
+                setPartnerSuccess(false);
+                setPartnerError(null);
+              }}
+              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-2 text-indigo-400">
-              <Building2 className="w-5 h-5" />
-              <h3 className="text-base font-black text-white">Program Kemitraan Villa &amp; Glamping</h3>
+              <HeartHandshake className="w-5 h-5" />
+              <h3 className="text-base font-black text-white">Program Partnership</h3>
             </div>
 
             <p className="text-xs text-stone-300 leading-relaxed">
-              Khusus pemilik &amp; pengelola villa di Lembang, Ciwidey, Dago Pakar, dan Bandung. Fasilitasi tamu villa Anda dengan menu kuliner hangat tanpa repot.
+              Kolaborasi dan kemitraan resmi bersama {tenant?.name || effectiveName || 'Shabu Ajhi'}.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-stone-950 border border-stone-800 space-y-2 text-xs">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Komisi Referral Otomatis 10% per Pesanan</span>
+            {partnerSuccess ? (
+              <div className="p-5 rounded-2xl bg-emerald-950/50 border border-emerald-800/80 text-center space-y-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-900/60 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-700/60">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-emerald-200">Pengajuan Terkirim!</h4>
+                  <p className="text-xs text-emerald-300/80 leading-relaxed">
+                    Data Anda telah tersimpan dan jendela chat WhatsApp telah dibuka untuk terhubung langsung dengan Admin kami.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModal(null);
+                    setPartnerSuccess(false);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold transition cursor-pointer"
+                >
+                  Tutup
+                </button>
               </div>
-              <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Gratis Standee QR Menu di Ruang Tamu Villa</span>
-              </div>
-              <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Zero Effort: Driver Antar &amp; Jemput Kotor</span>
-              </div>
-            </div>
+            ) : (
+              <form onSubmit={handleSubmitPartnership} className="space-y-3.5">
+                {partnerError && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{partnerError}</span>
+                  </div>
+                )}
 
-            <a
-              href={`https://wa.me/${waNumber.replace(/\D/g, '')}?text=Halo%20Shabu%20Ajhi,%20saya%20pengelola%20villa%20mau%20gabung%20Program%20Mitra%20Villa`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 text-center"
-            >
-              <span>Daftar Kemitraan Villa via WhatsApp</span>
-              <ArrowRight className="w-4 h-4" />
-            </a>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
+                    Nama PIC / Kontak <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nama Anda"
+                    value={partnerName}
+                    onChange={(e) => setPartnerName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs focus:outline-none focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
+                    Nomor WhatsApp <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="0812xxxxxx"
+                    value={partnerPhone}
+                    onChange={(e) => setPartnerPhone(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs font-mono focus:outline-none focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
+                    Catatan / Rencana Kolaborasi
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Tuliskan rencana kerja sama atau kolaborasi Anda..."
+                    value={partnerNotes}
+                    onChange={(e) => setPartnerNotes(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs resize-none focus:outline-none focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingPartner}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-950/40"
+                >
+                  {isSubmittingPartner ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Mengirim Pengajuan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Kirim Pengajuan Partnership</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
