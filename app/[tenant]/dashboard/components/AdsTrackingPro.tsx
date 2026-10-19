@@ -825,12 +825,12 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 1. TAB GRAFIK ANALITIK INTERAKTIF REAL-TIME ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6 relative overflow-visible">
+      <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-6 relative overflow-visible">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-600" />
-              <h3 className="font-black text-base text-slate-900">
+              <h3 className="font-black text-base text-white">
                 Grafik Analitik Tren Konversi & ROAS Harian
               </h3>
             </div>
@@ -840,7 +840,7 @@ export default function AdsTrackingPro({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
-            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+            <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs font-bold text-slate-400">
               <button
                 type="button"
                 onClick={() => setActiveChartMetric('revenue')}
@@ -892,7 +892,7 @@ export default function AdsTrackingPro({
         </div>
 
         <div className="space-y-4">
-          <div className="w-full h-64 min-h-[260px] relative bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4 flex flex-col justify-between overflow-hidden">
+          <div className="w-full h-64 min-h-[260px] relative bg-slate-950/80 rounded-2xl border border-slate-800/80 p-4 flex flex-col justify-between overflow-hidden">
             {/* Y-Axis Horizontal Grid Lines & Formatted Values */}
             <div className="absolute inset-x-4 inset-y-5 flex flex-col justify-between pointer-events-none z-0">
               {[1, 0.66, 0.33, 0].map((step, idx) => {
@@ -1056,10 +1056,10 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 2. TABEL ATRIBUSI CAMPAIGN DINAMIS (UTM SOURCE & ADS) ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4 relative overflow-visible">
+      <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4 relative overflow-visible">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
           <div>
-            <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+            <h3 className="font-black text-base text-white flex items-center gap-2">
               <Target className="w-5 h-5 text-indigo-600" />
               <span>Tabel Atribusi Campaign Iklan Dinamis</span>
             </h3>
@@ -1075,7 +1075,7 @@ export default function AdsTrackingPro({
               type="button"
               onClick={() => fetchCampaigns()}
               disabled={loadingCampaigns}
-              className="w-full sm:w-auto p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-60 cursor-pointer"
+              className="w-full sm:w-auto p-2 bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-60 cursor-pointer"
               title="Segarkan Data Kampanye"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingCampaigns ? 'animate-spin text-blue-600' : ''}`} />
@@ -1085,7 +1085,7 @@ export default function AdsTrackingPro({
             <select
               value={selectedPlatform}
               onChange={(e) => setSelectedPlatform(e.target.value)}
-              className="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:bg-white focus:outline-none focus:border-blue-500"
+              className="w-full sm:w-auto bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:border-indigo-500"
             >
               <option value="all">Semua Platform</option>
               <option value="meta">Meta (Facebook & IG)</option>
@@ -1102,7 +1102,7 @@ export default function AdsTrackingPro({
                 placeholder="Cari UTM Campaign..."
                 value={searchCampaign}
                 onChange={(e) => setSearchCampaign(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
           </div>
@@ -1114,21 +1114,21 @@ export default function AdsTrackingPro({
             <p className="text-xs font-bold text-slate-600">Memuat data atribusi campaign iklan...</p>
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-slate-50/80 via-white to-slate-50/40 border-2 border-dashed border-slate-200 text-center flex flex-col items-center justify-center space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
+          <div className="bg-slate-900/60 border border-slate-800 text-slate-300 rounded-2xl p-8 text-center flex flex-col items-center justify-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-center text-emerald-400 shadow-xs">
               <Target className="w-8 h-8" />
             </div>
             <div className="max-w-xl space-y-2">
-              <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+              <h4 className="text-base sm:text-lg font-black text-white">
                 Belum Ada Data Konversi Iklan
               </h4>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-emerald-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800/80 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
               </p>
             </div>
             
             <div className="pt-2 w-full max-w-lg">
-              <div className="p-3 bg-slate-900/90 border border-slate-800 text-emerald-400 font-mono rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
+              <div className="p-3 bg-slate-950 border border-slate-800/80 text-emerald-400 font-mono rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
                 <div className="overflow-hidden">
                   <span className="text-[10px] uppercase font-black text-slate-400 block tracking-wider font-sans">Format URL UTM Otomatis</span>
                   <code className="text-xs font-mono text-emerald-400 truncate block">
@@ -1150,20 +1150,20 @@ export default function AdsTrackingPro({
           </div>
         ) : (
           <div className="overflow-x-auto w-full">
-            <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
+            <table className="w-full min-w-[640px] text-left text-sm text-slate-200 bg-slate-900/50">
+              <thead className="bg-slate-900/60 text-slate-400 uppercase text-xs font-medium tracking-wider border-y border-slate-800/60">
                 <tr>
                   <th className="px-4 py-3">Campaign Name</th>
                   <th className="px-4 py-3">Platform</th>
                   <th className="px-4 py-3">Clicks</th>
-                  <th className="px-4 py-3 text-emerald-700">Leads WA</th>
-                  <th className="px-4 py-3 text-indigo-700">Closings</th>
+                  <th className="px-4 py-3 text-emerald-400">Leads WA</th>
+                  <th className="px-4 py-3 text-indigo-400">Closings</th>
                   <th className="px-4 py-3">CR %</th>
                   <th className="px-4 py-3">Omset Closing IDR</th>
                   <th className="px-4 py-3 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/60 font-sans">
                 {filteredCampaigns.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
@@ -1175,20 +1175,20 @@ export default function AdsTrackingPro({
                     const crFormatted = c.cr !== undefined ? `${c.cr}%` : (c.clicks > 0 ? `${((c.closings / c.clicks) * 100).toFixed(1)}%` : '0%');
 
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                      <tr key={c.id} className="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60 text-slate-200 text-sm">
                         <td className="px-4 py-3.5">
-                          <div className="font-bold text-slate-900 font-mono">{c.campaignName}</div>
+                          <div className="font-bold text-white font-mono">{c.campaignName}</div>
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                             {c.platformLabel}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 font-bold text-slate-900">{c.clicks.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 font-bold text-slate-200">{c.clicks.toLocaleString('id-ID')}</td>
                         <td className="px-4 py-3.5 font-bold text-emerald-600">{c.leads.toLocaleString('id-ID')}</td>
                         <td className="px-4 py-3.5 font-bold text-indigo-600">{c.closings.toLocaleString('id-ID')}</td>
-                        <td className="px-4 py-3.5 font-bold text-slate-700">{crFormatted}</td>
-                        <td className="px-4 py-3.5 font-black text-slate-900 whitespace-nowrap">
+                        <td className="px-4 py-3.5 font-bold text-slate-300">{crFormatted}</td>
+                        <td className="px-4 py-3.5 font-black text-white whitespace-nowrap">
                           Rp {c.revenue.toLocaleString('id-ID')}
                         </td>
                         <td className="px-4 py-3.5 text-center">
@@ -1217,12 +1217,12 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 3. SISTEM LEAD SCORING OTOMATIS & RECENT INTENT BUYERS ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+      <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div>
             <div className="flex items-center gap-2">
               <Flame className="w-5 h-5 text-rose-600" />
-              <h3 className="font-black text-base text-slate-900">
+              <h3 className="font-black text-base text-white">
                 Sistem Lead Scoring Otomatis & Daftar Calon Pembeli Terkini
               </h3>
             </div>
@@ -1243,11 +1243,11 @@ export default function AdsTrackingPro({
           {recentLeads.map((lead) => (
             <div
               key={lead.id}
-              className="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition flex flex-col justify-between space-y-3"
+              className="p-4 rounded-2xl border border-slate-800/80 bg-slate-900/60 hover:bg-slate-800/40 transition flex flex-col justify-between space-y-3"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900">{lead.buyerName}</h4>
+                  <h4 className="font-bold text-sm text-white">{lead.buyerName}</h4>
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">{lead.phone}</p>
                 </div>
 
@@ -1409,7 +1409,7 @@ export default function AdsTrackingPro({
                     f
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-slate-900">Meta (Facebook & Instagram Ads)</h4>
+                    <h4 className="font-bold text-sm text-white">Meta (Facebook & Instagram Ads)</h4>
                     <p className="text-[11px] text-slate-500">Pixel Browser Dataset + Conversions API (CAPI) Server-Side</p>
                   </div>
                 </div>
@@ -1432,7 +1432,7 @@ export default function AdsTrackingPro({
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value)}
                     placeholder="Contoh: 128940182901924"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-500 transition"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-indigo-500 transition"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Ditemukan di Meta Events Manager &gt; Data Sources &gt; Dataset ID.</p>
                 </div>
@@ -1461,7 +1461,7 @@ export default function AdsTrackingPro({
                     className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono transition ${
                       isCheckoutLite
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500'
                     }`}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
@@ -1499,7 +1499,7 @@ export default function AdsTrackingPro({
                     className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono uppercase transition ${
                       isCheckoutLite
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500'
                     }`}
                   />
                 </div>
@@ -1528,7 +1528,7 @@ export default function AdsTrackingPro({
                     className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono transition ${
                       isCheckoutLite
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500'
                     }`}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
@@ -1548,7 +1548,7 @@ export default function AdsTrackingPro({
                     Tk
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-slate-900">TikTok Pixel &amp; Events API</h4>
+                    <h4 className="font-bold text-sm text-white">TikTok Pixel &amp; Events API</h4>
                     <p className="text-[11px] text-slate-500">TikTok Business Ads Manager Integration</p>
                   </div>
                 </div>
@@ -1571,7 +1571,7 @@ export default function AdsTrackingPro({
                     value={tiktokPixelId}
                     onChange={(e) => setTiktokPixelId(e.target.value)}
                     placeholder="Contoh: C982019ABCDE92"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-500 transition uppercase"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-indigo-500 transition uppercase"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Ditemukan di TikTok Ads Manager &gt; Assets &gt; Events.</p>
                 </div>
@@ -1600,14 +1600,14 @@ export default function AdsTrackingPro({
                     className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono transition ${
                       isCheckoutLite
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500'
                     }`}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Token Events API untuk pengiriman konversi server-side ke server TikTok.</p>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-300 space-y-1">
                 <div className="font-bold text-slate-800 flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-blue-600" />
                   <span>TikTok Standard Events Auto-Tracking:</span>
@@ -1631,7 +1631,7 @@ export default function AdsTrackingPro({
                     G
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-slate-900">Google Tag Manager (GTM)</h4>
+                    <h4 className="font-bold text-sm text-white">Google Tag Manager (GTM)</h4>
                     <p className="text-[11px] text-slate-500">Injeksi Kontainer Otomatis &amp; Sinkronisasi DataLayer</p>
                   </div>
                 </div>
@@ -1669,13 +1669,13 @@ export default function AdsTrackingPro({
                     className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono uppercase transition ${
                       isCheckoutLite
                         ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500'
                     }`}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Ditemukan di dashboard Google Tag Manager (format: GTM-XXXXXXX).</p>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5 flex flex-col justify-center">
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-300 space-y-1.5 flex flex-col justify-center">
                   <div className="font-bold text-slate-800 flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5 text-amber-600" />
                     <span>Sinkronisasi DataLayer Otomatis:</span>
@@ -1690,20 +1690,20 @@ export default function AdsTrackingPro({
         </div>
 
         {/* ADVANCED ATTRIBUTION & WHATSAPP SETTINGS */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <Smartphone className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-bold text-sm text-slate-900">
+              <h3 className="font-bold text-sm text-white">
                 Atribusi WhatsApp Inbound & Deduplikasi Server-Side
               </h3>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
+            <div className="p-4 rounded-2xl border border-slate-800/80 bg-slate-950 space-y-2 text-slate-300">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900">Smart WhatsApp Inbound Tagging</span>
+                <span className="font-bold text-xs text-slate-200">Smart WhatsApp Inbound Tagging</span>
                 <input
                   type="checkbox"
                   checked={enableWaUtm}
@@ -1716,9 +1716,9 @@ export default function AdsTrackingPro({
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
+            <div className="p-4 rounded-2xl border border-slate-800/80 bg-slate-950 space-y-2 text-slate-300">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900">Dual Deduplication Key (&quot;PURCHASE_ORDER_ID&quot;)</span>
+                <span className="font-bold text-xs text-slate-200">Dual Deduplication Key (&quot;PURCHASE_ORDER_ID&quot;)</span>
                 <input
                   type="checkbox"
                   checked={autoDeduplication}

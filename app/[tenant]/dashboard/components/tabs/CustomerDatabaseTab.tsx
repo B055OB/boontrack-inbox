@@ -693,7 +693,7 @@ export default function CustomerDatabaseTab({
       )}
 
       {/* Header Toolbar */}
-      <div className="px-5 pt-5 pb-3 border-b border-slate-200 bg-white shrink-0 shadow-2xs">
+      <div className="px-5 pt-5 pb-3 border-b border-slate-800/80 bg-slate-900/60 shrink-0 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-xs text-white">
@@ -701,7 +701,7 @@ export default function CustomerDatabaseTab({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-slate-900 leading-tight">
+                <h1 className="text-base font-black text-white leading-tight">
                   Database Pelanggan &amp; Pasien
                 </h1>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
@@ -893,9 +893,9 @@ export default function CustomerDatabaseTab({
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-800/60">
             {/* Table Header Row */}
-            <div className="hidden lg:grid grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-4 px-5 py-2.5 bg-slate-50/90 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
+            <div className="hidden lg:grid grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-4 px-5 py-3 bg-slate-900/60 border-b border-slate-800/60 text-xs font-medium text-slate-400 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
               <div className="w-9" />
               <div>Pasien / Pelanggan</div>
               <div>Follow-up Berikutnya</div>
@@ -913,7 +913,7 @@ export default function CustomerDatabaseTab({
                 <div
                   key={customer.id}
                   id={`customer-row-${customer.id}`}
-                  className="group grid grid-cols-1 lg:grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-3 lg:gap-4 items-center px-5 py-3.5 hover:bg-indigo-50/40 transition cursor-default bg-white"
+                  className="group grid grid-cols-1 lg:grid-cols-[auto_1.5fr_1.3fr_1.2fr_130px_160px] gap-3 lg:gap-4 items-center px-5 py-3.5 border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors cursor-default bg-slate-900/40"
                 >
                   {/* Avatar */}
                   <div className="hidden lg:flex">
@@ -934,7 +934,7 @@ export default function CustomerDatabaseTab({
                           {getInitials(customer.customerName)}
                         </div>
                       </div>
-                      <span className="text-xs font-black text-slate-900 truncate max-w-[200px]">
+                      <span className="text-xs font-black text-white truncate max-w-[200px]">
                         {customer.customerName}
                       </span>
                       <span

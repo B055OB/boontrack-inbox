@@ -1678,9 +1678,9 @@ function AffiliatePortalContent() {
 
                 {/* Sub-affiliate Table */}
                 <div className="overflow-x-auto rounded-2xl border border-slate-800/80">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm text-slate-200 border-collapse bg-slate-900/50">
                     <thead>
-                      <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                      <tr className="bg-slate-900/60 text-slate-400 border-b border-slate-800/60 uppercase text-xs font-medium tracking-wider">
                         <th className="p-3.5 font-bold uppercase text-[10px]">Nama Mitra</th>
                         <th className="p-3.5 font-bold uppercase text-[10px]">Email / WhatsApp</th>
                         <th className="p-3.5 font-bold uppercase text-[10px]">Kode Referral</th>
@@ -1698,7 +1698,7 @@ function AffiliatePortalContent() {
                           const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMsg)}`;
 
                           return (
-                            <tr key={sub.id} className="hover:bg-slate-800/40 transition">
+                            <tr key={sub.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
                               <td className="p-3.5">
                                 <div className="font-bold text-white flex items-center gap-2">
                                   <span>{sub.name}</span>
@@ -1836,9 +1836,9 @@ function AffiliatePortalContent() {
 
               {/* Lead Table Container */}
               <div className="overflow-x-auto rounded-2xl border border-slate-800/80">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-sm text-slate-200 border-collapse bg-slate-900/50">
                   <thead>
-                    <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                    <tr className="bg-slate-900/60 text-slate-400 border-b border-slate-800/60 uppercase text-xs font-medium tracking-wider">
                       <th className="p-3.5 font-bold uppercase text-[10px]">Tanggal</th>
                       <th className="p-3.5 font-bold uppercase text-[10px]">Nama Toko / Merchant</th>
                       {(data.is_am || data.affiliate.role === 'am') && (
@@ -1854,7 +1854,7 @@ function AffiliatePortalContent() {
                   <tbody className="divide-y divide-slate-800/60 font-sans">
                     {filteredLeads.length > 0 ? (
                       filteredLeads.map((lead) => (
-                        <tr key={lead.id} className="hover:bg-slate-800/40 transition">
+                        <tr key={lead.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
                           <td className="p-3.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
                             {new Date(lead.date).toLocaleDateString('id-ID', {
                               day: '2-digit',
@@ -2160,9 +2160,9 @@ function AffiliatePortalContent() {
                 </div>
 
                 <div className="overflow-x-auto rounded-2xl border border-slate-800/80">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm text-slate-200 border-collapse bg-slate-900/50">
                     <thead>
-                      <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                      <tr className="bg-slate-900/60 text-slate-400 border-b border-slate-800/60 uppercase text-xs font-medium tracking-wider">
                         <th className="p-3 font-bold uppercase text-[10px]">ID Pengajuan</th>
                         <th className="p-3 font-bold uppercase text-[10px]">Tanggal</th>
                         <th className="p-3 font-bold uppercase text-[10px]">Tujuan Transfer</th>
@@ -2173,7 +2173,7 @@ function AffiliatePortalContent() {
                     <tbody className="divide-y divide-slate-800/60 font-sans">
                       {data.payouts && data.payouts.length > 0 ? (
                         data.payouts.map((po) => (
-                          <tr key={po.id} className="hover:bg-slate-800/40 transition">
+                          <tr key={po.id} className="border-b border-slate-800/60 text-slate-200 text-sm hover:bg-slate-800/40 transition-colors">
                             <td className="p-3 font-mono text-[11px] text-slate-300">
                               {po.id}
                             </td>
