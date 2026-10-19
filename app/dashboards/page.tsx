@@ -219,22 +219,22 @@ function Sidebar({
         className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
           active
             ? isOrders
-              ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-              : 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+              ? 'bg-emerald-600/15 text-emerald-300 border border-emerald-500/30 font-medium'
+              : 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30 font-medium'
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 font-medium border border-transparent'
         }`}
       >
         {active && (
           <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 ${accentLine[tab]} rounded-r`} />
         )}
         <div className="flex items-center gap-2.5 truncate">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${iconBg} ${iconColor}`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${active ? 'bg-slate-700/60' : iconBg} ${active ? (isOrders ? 'text-emerald-400' : 'text-indigo-400') : iconColor}`}>
             <Icon className="w-4 h-4" />
           </div>
           <span className="truncate">{label}</span>
         </div>
         {badge && (
-          <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold shrink-0 ${badgeCls ?? 'bg-slate-100 text-slate-600'}`}>
+          <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold shrink-0 ${badgeCls ?? 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
             {badge}
           </span>
         )}
@@ -243,17 +243,17 @@ function Sidebar({
   }
 
   return (
-    <aside className={`w-64 xl:w-72 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col justify-between shrink-0 select-none z-40 ${className}`}>
+    <aside className={`w-64 xl:w-72 bg-slate-950 border-r border-slate-800/80 h-screen sticky top-0 flex flex-col justify-between shrink-0 select-none z-40 ${className}`}>
 
       {/* ── TOP: Store profile card ── */}
-      <div className="p-3 border-b border-slate-100 relative bg-white">
+      <div className="p-3 border-b border-slate-800/80 relative">
         <button
           type="button"
           onClick={() => setPopoverOpen(p => !p)}
           className={`w-full flex items-center justify-between p-2 rounded-2xl border transition cursor-pointer text-left ${
             popoverOpen
-              ? 'bg-slate-50 border-indigo-400 shadow-sm ring-2 ring-indigo-500/10'
-              : 'bg-white hover:bg-slate-50/90 border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+              ? 'bg-slate-800 border-indigo-500/50 shadow-sm ring-2 ring-indigo-500/20'
+              : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 shadow-[0_1px_2px_rgba(0,0,0,0.15)]'
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -262,7 +262,7 @@ function Sidebar({
               {STORE.initial}
             </div>
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-black text-slate-900 truncate block">{STORE.name}</span>
+              <span className="text-xs font-black text-slate-100 truncate block">{STORE.name}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 {/* Scale tier badge — green/blue solid, NO trial */}
                 <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-[1px] rounded-full border leading-tight bg-emerald-50 text-emerald-800 border-emerald-300">
@@ -272,28 +272,28 @@ function Sidebar({
               </div>
             </div>
           </div>
-          <ChevronsUpDown className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+          <ChevronsUpDown className="w-4 h-4 text-slate-500 shrink-0 ml-1" />
         </button>
 
         {/* Popover */}
         {popoverOpen && (
-          <div className="absolute top-full left-3 right-3 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
-            <div className="px-3 py-2 border-b border-slate-100">
-              <p className="text-xs font-black text-slate-900 truncate">{STORE.name}</p>
-              <p className="text-[10px] font-semibold text-slate-400 truncate">shop.boontrack.com/{STORE.slug}</p>
+          <div className="absolute top-full left-3 right-3 mt-1.5 bg-slate-900 rounded-2xl border border-slate-700/80 shadow-xl shadow-black/30 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
+            <div className="px-3 py-2 border-b border-slate-800">
+              <p className="text-xs font-black text-slate-100 truncate">{STORE.name}</p>
+              <p className="text-[10px] font-semibold text-slate-500 truncate">shop.boontrack.com/{STORE.slug}</p>
             </div>
             {[
-              { icon: User,  label: 'Akun & Profil Toko',   cls: 'text-slate-700 hover:bg-slate-50' },
-              { icon: Crown, label: 'Billing & Langganan',   cls: 'text-purple-700 hover:bg-purple-50' },
-              { icon: Globe, label: 'Pengaturan Domain',     cls: 'text-slate-700 hover:bg-slate-50' },
+              { icon: User,  label: 'Akun & Profil Toko',   cls: 'text-slate-300 hover:bg-slate-800' },
+              { icon: Crown, label: 'Billing & Langganan',   cls: 'text-purple-300 hover:bg-purple-900/40' },
+              { icon: Globe, label: 'Pengaturan Domain',     cls: 'text-slate-300 hover:bg-slate-800' },
             ].map(m => (
               <button key={m.label} type="button" onClick={() => setPopoverOpen(false)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition text-left cursor-pointer ${m.cls}`}>
                 <m.icon className="w-3.5 h-3.5" /><span>{m.label}</span>
               </button>
             ))}
-            <div className="h-px bg-slate-100 my-1" />
-            <button type="button" onClick={() => setPopoverOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition text-left cursor-pointer">
-              <LogOut className="w-3.5 h-3.5 text-rose-500" /><span>Keluar (Logout)</span>
+            <div className="h-px bg-slate-800 my-1" />
+            <button type="button" onClick={() => setPopoverOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-900/30 transition text-left cursor-pointer">
+              <LogOut className="w-3.5 h-3.5 text-rose-400" /><span>Keluar (Logout)</span>
             </button>
           </div>
         )}
@@ -302,23 +302,23 @@ function Sidebar({
         <div className="mt-2">
           <div
             onClick={() => handleTab('dashboard')}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-slate-200 text-[11px] font-bold transition group cursor-pointer"
           >
             <span className="flex items-center gap-2 truncate">
-              <Store className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+              <Store className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 shrink-0" />
               <span className="truncate">Lihat Tampilan Toko</span>
             </span>
-            <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+            <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-indigo-400 shrink-0" />
           </div>
         </div>
       </div>
 
       {/* ── MIDDLE: Navigation ── */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4" style={{ scrollbarWidth: 'none', scrollbarColor: '#334155 transparent' }}>
 
         {/* GROUP 1: STORE ENGINE */}
         <div>
-          <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-1 pb-2 block">
+          <span className="text-[10px] font-bold tracking-widest text-slate-600 uppercase px-3 pt-1 pb-2 block">
             STORE ENGINE
           </span>
           <div className="space-y-0.5">
@@ -332,42 +332,42 @@ function Sidebar({
 
         {/* GROUP 2: GROWTH & CONVERSIONS */}
         <div className="pt-2 border-t border-slate-100">
-          <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
+          <span className="text-[10px] font-bold tracking-widest text-slate-600 uppercase px-3 pt-2 pb-2 block">
             GROWTH & CONVERSIONS
           </span>
           <div className="space-y-0.5">
             <NavBtn tab="whatsapp"     label="WhatsApp & Broadcast" icon={Radio}       iconBg="bg-emerald-50" iconColor="text-emerald-600" badge="CONNECTED" badgeCls="bg-emerald-100 text-emerald-800 border border-emerald-200" />
             <NavBtn tab="inbox"        label="Smart Chatbox"        icon={MessageSquare} iconBg="bg-indigo-50" iconColor="text-indigo-600" badge="10 Baru"   badgeCls="bg-blue-100 text-blue-800 border border-blue-200" />
             <NavBtn tab="ads_tracking" label="Ads Tracking Pro"     icon={Target}      iconBg="bg-amber-50"   iconColor="text-amber-600"   badge="CAPI"     badgeCls="bg-blue-50 text-blue-700 border border-blue-200 uppercase" />
-            <NavBtn tab="finance"      label="Laporan Keuangan"     icon={CreditCard}  iconBg="bg-slate-100"  iconColor="text-slate-700" />
+            <NavBtn tab="finance"      label="Laporan Keuangan"     icon={CreditCard}  iconBg="bg-slate-800"  iconColor="text-slate-400" />
             <NavBtn tab="orders"       label="Pesanan & Order"      icon={ShoppingBag} iconBg="bg-emerald-50" iconColor="text-emerald-600" badge="2.940" badgeCls="bg-emerald-600 text-white" isOrders />
 
             {/* Install App (non-tab, display only) */}
-            <div className="relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer">
+            <div className="relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium bg-slate-900/60 hover:bg-slate-800 text-slate-300 border border-slate-800/80 transition cursor-pointer">
               <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-teal-50 text-teal-600">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-800 text-slate-400">
                   <Smartphone className="w-4 h-4" />
                 </div>
                 <span>Install App</span>
               </div>
-              <span className="rounded-full px-2 py-0.5 text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200 uppercase">APP</span>
+              <span className="rounded-full px-2 py-0.5 text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700 uppercase">APP</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── BOTTOM: BoonTrack Logo Footer ── */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
+      <div className="p-3 border-t border-slate-800/80 bg-slate-950 space-y-2">
         <div className="flex items-center gap-2.5 px-1.5 py-1">
-          <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] flex items-center justify-center">
-            <span className="text-xs font-black text-indigo-600">B</span>
+          <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-700 shrink-0 bg-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.3)] flex items-center justify-center">
+            <span className="text-xs font-black text-indigo-400">B</span>
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 leading-none">
-              <span className="text-xs font-black text-slate-900 tracking-tight">BoonTrack</span>
-              <span className="text-xs font-extrabold text-blue-600">Shop</span>
+              <span className="text-xs font-black text-slate-200 tracking-tight">BoonTrack</span>
+              <span className="text-xs font-extrabold text-blue-400">Shop</span>
             </div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mt-0.5">
+            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider truncate mt-0.5">
               STORE ENGINE
             </p>
           </div>
@@ -445,14 +445,14 @@ function UsageQuotaCard() {
     { title: 'Notifikasi WhatsApp', current: 2_940, sublabel: 'Unlimited', pct: 98 },
   ];
   return (
-    <div className="w-full max-w-full overflow-hidden rounded-2xl p-4 sm:p-5 border shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-slate-50 border-blue-200/80">
+    <div className="w-full max-w-full overflow-hidden rounded-2xl p-4 sm:p-5 border shadow-[0_1px_4px_rgba(0,0,0,0.08)] bg-gradient-to-r from-indigo-950/80 via-slate-900 to-slate-900 border-indigo-700/30">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+          <span className="text-xs font-black text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
             <span>📊</span>
             <span>Penggunaan Kuota Bulan Ini</span>
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-900/60 text-emerald-300 border border-emerald-600/50">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
             <span>{STORE.tierBadge}</span>
             <span>•</span>
@@ -460,21 +460,21 @@ function UsageQuotaCard() {
           </span>
         </div>
         <div className="shrink-0">
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-emerald-900/50 text-emerald-400 border border-emerald-700/50">
             ✓ Kuota Aman — Unlimited
           </span>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
         {bars.map((b) => (
-          <div key={b.title} className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-slate-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] space-y-1.5">
+          <div key={b.title} className="bg-slate-800/60 backdrop-blur-sm p-3 rounded-xl border border-slate-700/60 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-800">{b.title}</span>
+              <span className="font-bold text-slate-200">{b.title}</span>
               <span className="font-black font-mono text-[11px] text-indigo-600">
                 {b.current.toLocaleString('id-ID')} / ∞
               </span>
             </div>
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={b.current} aria-valuemin={0} aria-valuemax={10_000}>
+            <div className="h-2 w-full bg-slate-700/60 rounded-full overflow-hidden" role="progressbar" aria-valuenow={b.current} aria-valuemin={0} aria-valuemax={10_000}>
               <div className="h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${b.pct}%`, backgroundColor: '#3b82f6' }} />
             </div>
             <div className="flex items-center justify-between text-[10px] text-slate-400">
@@ -496,16 +496,16 @@ function StatCard({ label, value, sub, iconBg, iconColor, icon: Icon }: {
   iconBg: string; iconColor: string; icon: React.ElementType;
 }) {
   return (
-    <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] space-y-3 hover:shadow-md transition-shadow">
+    <div className="bg-slate-900/70 p-5 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-3 hover:border-slate-600/80 transition-all">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-500">{label}</span>
+        <span className="text-xs font-bold text-slate-400">{label}</span>
         <div className={`w-8 h-8 rounded-xl ${iconBg} ${iconColor} flex items-center justify-center`}>
           <Icon className="w-4 h-4" />
         </div>
       </div>
       <div>
-        <div className="text-2xl font-black text-slate-900 tracking-tight">{value}</div>
-        <div className="mt-1 text-[11px] font-bold text-emerald-600">{sub}</div>
+        <div className="text-2xl font-black text-slate-100 tracking-tight">{value}</div>
+        <div className="mt-1 text-[11px] font-bold text-emerald-400">{sub}</div>
       </div>
     </div>
   );
@@ -548,18 +548,18 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
       <section className="space-y-4 sm:space-y-5">
 
         {/* Greeting Card */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-slate-900/70 rounded-3xl p-5 sm:p-6 border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-100 tracking-tight">
                 Selamat {greeting}, {STORE.name} 👋
               </h1>
-              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-300">
+              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border bg-emerald-900/50 text-emerald-300 border-emerald-700/50">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                 {STORE.tierBadge}
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
+            <p className="text-xs text-slate-400 font-medium">
               Kelola etalase, pantau interaksi WhatsApp CAPI, dan periksa ringkasan performa penjualan dari satu pusat kendali.
             </p>
           </div>
@@ -567,7 +567,7 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
             <button
               type="button"
               onClick={() => { setHasCopied(true); setTimeout(() => setHasCopied(false), 2500); }}
-              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs rounded-xl border border-slate-200/80 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              className="px-3.5 py-2.5 bg-slate-900/50 border border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               {hasCopied
                 ? <><Check className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700">Tersalin!</span></>
@@ -586,27 +586,27 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
         <UsageQuotaCard />
 
         {/* CAPI Banner */}
-        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3">
+        <div className="flex items-center gap-3 bg-emerald-950/60 border border-emerald-700/40 rounded-2xl px-4 py-3">
           <Server size={15} className="text-emerald-600 shrink-0" />
-          <p className="text-emerald-800 text-sm font-bold flex-1">
+          <p className="text-emerald-300 text-sm font-bold flex-1">
             ● Meta Conversions API (CAPI) — WhatsApp Server Container:{' '}
-            <span className="text-emerald-700 font-black">ACTIVE / DEDUPLICATED</span>
+            <span className="text-emerald-400 font-black">ACTIVE / DEDUPLICATED</span>
           </p>
-          <div className="flex items-center gap-1.5 bg-emerald-100 border border-emerald-300 rounded-full px-2.5 py-1 shrink-0">
+          <div className="flex items-center gap-1.5 bg-emerald-900/60 border border-emerald-600/50 rounded-full px-2.5 py-1 shrink-0">
             <CheckCircle size={12} className="text-emerald-600" />
-            <span className="text-emerald-800 text-xs font-bold">EQ Score: 9.4/10 · Great</span>
+            <span className="text-emerald-300 text-xs font-bold">EQ Score: 9.4/10 · Great</span>
           </div>
         </div>
 
         {/* 3-Step activation — all done */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-7 shadow-[0_1px_4px_rgba(0,0,0,0.04)] space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="rounded-3xl border border-slate-700/60 bg-slate-900/70 p-6 sm:p-7 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-4">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 mb-1.5">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-950/70 text-emerald-400 border border-emerald-700/50 mb-1.5">
                 <Zap className="w-3 h-3 text-emerald-600" /><span>SOP AKTIVASI CTWA COMMERCE</span>
               </div>
-              <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">3 Infrastruktur Utama — Semua Aktif ✓</h3>
-              <p className="text-xs text-slate-500 mt-0.5">WhatsApp CAPI, QRIS Dinamis, dan katalog produk digital sepenuhnya aktif 24/7.</p>
+              <h3 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">3 Infrastruktur Utama — Semua Aktif ✓</h3>
+              <p className="text-xs text-slate-400 mt-0.5">WhatsApp CAPI, QRIS Dinamis, dan katalog produk digital sepenuhnya aktif 24/7.</p>
             </div>
             <span className="px-3 py-1 rounded-xl text-xs font-black border bg-emerald-500 text-white border-emerald-500 shadow-sm shrink-0">3/3 Langkah Selesai</span>
           </div>
@@ -639,13 +639,13 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
             ))}
           </div>
           {/* Testing note */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5 text-slate-700">
-              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+          <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-slate-300">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               <span><strong>Instruksi Uji Coba:</strong> Kirim chat WhatsApp <em>"Halo kak, mau pesan"</em> ke nomor toko untuk memverifikasi lead capture dan invoice QRIS otomatis.</span>
             </div>
             <div className="text-[11px] font-medium text-slate-500 shrink-0">
-              🤝 <strong>Handoff:</strong> Saat CS membalas manual, bot otomatis jeda (<code className="text-[10px] bg-slate-200 px-1 py-0.5 rounded font-mono">bot_paused=true</code>).
+              🤝 <strong>Handoff:</strong> Saat CS membalas manual, bot otomatis jeda (<code className="text-[10px] bg-slate-700 px-1 py-0.5 rounded font-mono text-slate-300">bot_paused=true</code>).
             </div>
           </div>
         </div>
@@ -678,42 +678,42 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
         </div>
 
         {/* Setup Checklist */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-7 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+        <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 p-6 sm:p-7 shadow-[0_1px_8px_rgba(0,0,0,0.15)]">
           <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start lg:items-center">
             {/* Circular progress */}
-            <div className="flex flex-row lg:flex-col items-center gap-4 shrink-0 p-4 bg-slate-50/80 rounded-2xl border border-slate-100 w-full lg:w-48 justify-center">
+            <div className="flex flex-row lg:flex-col items-center gap-4 shrink-0 p-4 bg-slate-800/60 rounded-2xl border border-slate-700/60 w-full lg:w-48 justify-center">
               <div className="relative w-20 h-20 flex items-center justify-center">
                 <svg className="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
                   <path className="text-slate-200" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                   <path className="text-purple-600 transition-all duration-700 ease-out" strokeDasharray={`${progress}, 100`} strokeLinecap="round" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-base font-black text-slate-900">{progress}%</span>
-                  <span className="text-[9px] font-bold text-slate-400">Siap Jual</span>
+                  <span className="text-base font-black text-slate-100">{progress}%</span>
+                  <span className="text-[9px] font-bold text-slate-500">Siap Jual</span>
                 </div>
               </div>
               <div className="text-left lg:text-center">
-                <span className="text-xs font-black text-slate-800 block">{completed} dari {checklist.length} Selesai</span>
-                <span className="text-[11px] text-slate-500 block">{completed === checklist.length ? 'Toko sudah prima 🎉' : 'Lengkapi langkah tersisa'}</span>
+                <span className="text-xs font-black text-slate-200 block">{completed} dari {checklist.length} Selesai</span>
+                <span className="text-[11px] text-slate-400 block">{completed === checklist.length ? 'Toko sudah prima 🎉' : 'Lengkapi langkah tersisa'}</span>
               </div>
             </div>
             {/* Checklist */}
             <div className="flex-1 w-full space-y-2.5">
               {checklist.map((item, idx) => (
-                <div key={item.id} className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${item.done ? 'bg-emerald-50/40 border-emerald-200/70' : 'bg-white border-slate-200/90 hover:border-purple-300 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'}`}>
+                <div key={item.id} className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${item.done ? 'bg-emerald-950/30 border-emerald-700/40' : 'bg-slate-800/50 border-slate-700/60 hover:border-purple-600/50'}`}>
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? 'bg-emerald-500 text-white' : 'bg-slate-100 border border-slate-300 text-slate-400'}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? 'bg-emerald-500 text-white' : 'bg-slate-700 border border-slate-600 text-slate-400'}`}>
                       {item.done ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <span className="text-[10px] font-black">{idx + 1}</span>}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-black ${item.done ? 'text-slate-900 line-through opacity-75' : 'text-slate-900'}`}>{item.title}</span>
-                      {item.done && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-[1px] rounded-full">Selesai</span>}
+                      <span className={`text-xs font-black ${item.done ? 'text-slate-400 line-through opacity-75' : 'text-slate-200'}`}>{item.title}</span>
+                      {item.done && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-900/50 px-2 py-[1px] rounded-full border border-emerald-700/40">Selesai</span>}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={item.id === 'share' ? () => { setHasCopied(true); setTimeout(() => setHasCopied(false), 2500); } : undefined}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer self-start sm:self-center active:scale-95 ${item.done ? 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs shadow-purple-600/20'}`}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer self-start sm:self-center active:scale-95 ${item.done ? 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-slate-200' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-xs shadow-purple-600/20'}`}
                   >
                     {item.action}
                   </button>
@@ -728,12 +728,12 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
       <section className="space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-black text-slate-100 tracking-tight flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" /><span>Ringkasan Performa (7 Hari Terakhir)</span>
             </h3>
-            <p className="text-xs text-slate-500">Pantau arus kunjungan etalase, pesan WhatsApp otomatis, dan sesi pembayaran pelanggan.</p>
+            <p className="text-xs text-slate-400">Pantau arus kunjungan etalase, pesan WhatsApp otomatis, dan sesi pembayaran pelanggan.</p>
           </div>
-          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-xl hidden sm:inline-block">Auto-Sync 24 Jam</span>
+          <span className="text-[11px] font-bold text-slate-500 bg-slate-800/60 border border-slate-700/60 px-3 py-1 rounded-xl hidden sm:inline-block">Auto-Sync 24 Jam</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Pengunjung Etalase"    value="15.963"         sub="Trafik kunjungan 7 hari terakhir"  iconBg="bg-blue-50"    iconColor="text-blue-600"    icon={Eye} />
@@ -747,15 +747,15 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <h3 className="text-base font-black text-slate-100 flex items-center gap-2">
               <Target className="w-5 h-5 text-blue-600" /><span>Performa Ads Meta (ROAS & CAPI)</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">KPI Meta Ads yang tersinkronisasi melalui WhatsApp Server Container CAPI.</p>
+            <p className="text-xs text-slate-400 mt-0.5">KPI Meta Ads yang tersinkronisasi melalui WhatsApp Server Container CAPI.</p>
           </div>
           {/* Date range tabs */}
-          <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1">
+          <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/60 rounded-xl p-1">
             {(['7', '30', 'all'] as DateRange[]).map(r => (
-              <button key={r} type="button" onClick={() => setRange(r)} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${range === r ? 'bg-white text-indigo-700 shadow border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>
+              <button key={r} type="button" onClick={() => setRange(r)} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${range === r ? 'bg-slate-700 text-indigo-300 shadow border border-slate-600' : 'text-slate-500 hover:text-slate-300'}`}>
                 {r === '7' ? '7 Hari' : r === '30' ? '30 Hari' : 'Semua'}
               </button>
             ))}
@@ -772,13 +772,13 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
             { label: 'CPA',            value: `Rp ${m.cpa.toLocaleString('id-ID')}`, sub: 'Cost per Purchase WA',            spark: [18,17,16.5,16.2,15.9,15.8,15.714,15.714,15.714,15.7,15.7,15.714,15.714].reverse(), iconBg: 'bg-pink-50', iconColor: 'text-pink-600', icon: Zap, sc: '#db2777' },
             { label: 'Conv. Rate',     value: `${m.cr}%`,                      sub: 'dari Lead WhatsApp',                     spark: [14,15,16,17,18,18.2,18.4,18.4,18.4,18.4,18.4,18.4,18.4],     iconBg: 'bg-cyan-50',    iconColor: 'text-cyan-600',   icon: Activity,   sc: '#0891b2' },
           ].map(card => (
-            <div key={card.label} className="relative bg-white border border-slate-200 rounded-2xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)] hover:shadow-md transition-shadow group overflow-hidden">
+            <div key={card.label} className="relative bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 shadow-[0_1px_8px_rgba(0,0,0,0.15)] hover:border-slate-600/80 transition-all group overflow-hidden">
               <div className={`w-8 h-8 rounded-lg ${card.iconBg} flex items-center justify-center ${card.iconColor} mb-3`}>
                 <card.icon className="w-4 h-4" />
               </div>
-              <p className="text-slate-500 text-xs font-medium mb-1">{card.label}</p>
-              <p className="text-slate-900 font-black text-base leading-tight">{card.value}</p>
-              <p className="text-slate-400 text-[11px] mt-0.5">{card.sub}</p>
+              <p className="text-slate-400 text-xs font-medium mb-1">{card.label}</p>
+              <p className="text-slate-100 font-black text-base leading-tight">{card.value}</p>
+              <p className="text-slate-500 text-[11px] mt-0.5">{card.sub}</p>
               <div className="absolute bottom-3 right-3 opacity-50 group-hover:opacity-100 transition-opacity">
                 <Sparkline data={card.spark} color={card.sc} />
               </div>
@@ -787,11 +787,11 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
         </div>
 
         {/* Revenue area chart */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+        <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 p-5 shadow-[0_1px_8px_rgba(0,0,0,0.15)]">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h4 className="text-sm font-black text-slate-900">Revenue Harian</h4>
-              <p className="text-slate-500 text-xs mt-0.5">{range === '7' ? '7 hari terakhir' : range === '30' ? '30 hari terakhir' : 'Semua data tersedia'}</p>
+              <h4 className="text-sm font-black text-slate-100">Revenue Harian</h4>
+              <p className="text-slate-400 text-xs mt-0.5">{range === '7' ? '7 hari terakhir' : range === '30' ? '30 hari terakhir' : 'Semua data tersedia'}</p>
             </div>
             <div className="flex items-center gap-1.5 text-indigo-600 text-xs bg-indigo-50 border border-indigo-200 rounded-full px-3 py-1">
               <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />Revenue (IDR)
@@ -829,18 +829,18 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] overflow-hidden">
           {/* Table controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-800/80">
             <div>
-              <h3 className="text-sm font-black text-slate-900">Pesanan Real-Time — Dini Hari 23 Sep</h3>
-              <p className="text-slate-500 text-xs mt-0.5">{filteredOrders.length} transaksi · Channel: WhatsApp CTWA (CAPI Server)</p>
+              <h3 className="text-sm font-black text-slate-100">Pesanan Real-Time — Dini Hari 23 Sep</h3>
+              <p className="text-slate-400 text-xs mt-0.5">{filteredOrders.length} transaksi · Channel: WhatsApp CTWA (CAPI Server)</p>
             </div>
             <div className="flex items-center gap-2">
               <Filter size={13} className="text-slate-400" />
-              <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-lg p-1">
+              <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/60 rounded-lg p-1">
                 {(['all', 'paid', 'pending'] as const).map(f => (
-                  <button key={f} type="button" onClick={() => setOrderFilter(f)} className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${orderFilter === f ? 'bg-white text-indigo-700 shadow border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>
+                  <button key={f} type="button" onClick={() => setOrderFilter(f)} className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${orderFilter === f ? 'bg-slate-700 text-indigo-300 shadow border border-slate-600' : 'text-slate-500 hover:text-slate-300'}`}>
                     {f === 'all' ? 'Semua' : f === 'paid' ? '✓ Lunas' : '⏳ Pending'}
                   </button>
                 ))}
@@ -852,7 +852,7 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-800/80 bg-slate-800/40">
                   <th className="text-left px-5 py-3 font-bold whitespace-nowrap">Waktu</th>
                   <th className="text-left px-3 py-3 font-bold whitespace-nowrap">ID Order</th>
                   <th className="text-left px-3 py-3 font-bold">Pembeli</th>
@@ -868,21 +868,21 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
                   <React.Fragment key={order.id}>
                     <tr
                       onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
-                      className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group"
+                      className="border-b border-slate-800/60 bg-slate-900/40 hover:bg-slate-800/50 transition-colors cursor-pointer group"
                     >
                       <td className="px-5 py-3.5">
-                        <span className="font-mono text-slate-700 text-xs font-bold">{order.ts}</span>
-                        <span className="block text-slate-400 text-[10px] mt-0.5">🌙 Dini hari</span>
+                        <span className="font-mono text-slate-300 text-xs font-bold">{order.ts}</span>
+                        <span className="block text-slate-500 text-[10px] mt-0.5">🌙 Dini hari</span>
                       </td>
                       <td className="px-3 py-3.5">
                         <span className="font-mono text-indigo-600 text-xs font-black">{order.id}</span>
                       </td>
-                      <td className="px-3 py-3.5 text-slate-900 font-bold text-xs whitespace-nowrap">{order.buyer}</td>
-                      <td className="px-3 py-3.5 hidden md:table-cell text-slate-600 text-xs">{order.product}</td>
+                      <td className="px-3 py-3.5 text-slate-200 font-bold text-xs whitespace-nowrap">{order.buyer}</td>
+                      <td className="px-3 py-3.5 hidden md:table-cell text-slate-400 text-xs">{order.product}</td>
                       <td className="px-3 py-3.5 text-right">
-                        <span className="text-slate-900 font-black text-xs whitespace-nowrap">Rp {order.amount.toLocaleString('id-ID')}</span>
+                        <span className="text-slate-100 font-black text-xs whitespace-nowrap">Rp {order.amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-3 py-3.5 hidden lg:table-cell text-slate-500 text-xs">{order.method}</td>
+                      <td className="px-3 py-3.5 hidden lg:table-cell text-slate-400 text-xs">{order.method}</td>
                       <td className="px-3 py-3.5 text-center">
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />{order.status}
@@ -893,7 +893,7 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
                       </td>
                     </tr>
                     {expandedOrder === order.id && (
-                      <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <tr className="bg-slate-800/60 border-b border-slate-700/60">
                         <td colSpan={8} className="px-5 py-4">
                           <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
                             {[
@@ -921,11 +921,11 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
           </div>
 
           {/* Pagination footer */}
-          <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="px-5 py-3 border-t border-slate-800/80 flex items-center justify-between">
             <p className="text-slate-400 text-xs">Menampilkan {filteredOrders.length} dari {ORDERS.length} transaksi · Dini hari 23 Sep</p>
             <div className="flex items-center gap-1.5">
               {['← Prev', '1', '2', 'Next →'].map(p => (
-                <button key={p} type="button" className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${p === '1' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'}`}>{p}</button>
+                <button key={p} type="button" className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${p === '1' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-slate-700'}`}>{p}</button>
               ))}
             </div>
           </div>
@@ -987,20 +987,20 @@ function InlineDateRangePicker({ value, onChange }: { value: DRState; onChange: 
   return (
     <div className="relative inline-block" ref={ref}>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer">
+        className="inline-flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/80 text-slate-300 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer">
         <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
         <span className="truncate max-w-[160px]">{value.label}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-[60] w-64 bg-white rounded-2xl border border-slate-200 shadow-2xl p-3 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider px-1 pb-1 border-b border-slate-100">Rentang Waktu</p>
+        <div className="absolute right-0 top-full mt-2 z-[60] w-64 bg-slate-900 rounded-2xl border border-slate-700/80 shadow-2xl shadow-black/30 p-3 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider px-1 pb-1 border-b border-slate-800">Rentang Waktu</p>
           {presets.map(p => (
             <button key={p.id} type="button" onClick={() => { onChange(makeDR(p.id)); setOpen(false); }}
               className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                 value.preset === p.id
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60'
+                  ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-600/50'
+                  : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
               }`}>
               <span>{p.label}</span>
               {value.preset === p.id && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
@@ -1057,25 +1057,25 @@ function OrdersTab() {
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+          <h2 className="text-lg font-black text-slate-100 flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-blue-600" />
             <span>Daftar Pesanan Toko ({filteredOrders.length})</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             Pantau seluruh transaksi checkout masuk, verifikasi konfirmasi pembayaran manual, dan pemenuhan pesanan instan.
           </p>
         </div>
-        <button type="button" className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer">
+        <button type="button" className="bg-slate-900/50 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer">
           <Download className="w-3.5 h-3.5" />
           <span>Export CSV</span>
         </button>
       </div>
 
       {/* Filter bar + table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
-        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
+      <div className="bg-slate-900/70 rounded-2xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)]">
+        <div className="p-3 sm:p-4 border-b border-slate-800/80 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
           {/* Search */}
           <div className="relative flex-1 max-w-sm">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1084,7 +1084,7 @@ function OrdersTab() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Cari invoice, nama, WhatsApp..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+              className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
             />
           </div>
           {/* Date range + status filter */}
@@ -1095,7 +1095,7 @@ function OrdersTab() {
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+                className="bg-slate-800/60 border border-slate-700/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 font-bold focus:outline-none cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="PAID">Lunas (Paid / Verified)</option>
@@ -1108,7 +1108,7 @@ function OrdersTab() {
         <div className="overflow-x-auto w-full rounded-b-2xl">
           <table className="w-full min-w-[700px] text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+              <tr className="bg-slate-800/40 text-slate-500 font-bold border-b border-slate-800/80 text-[11px] uppercase tracking-wider">
                 <th className="py-2.5 px-3">Invoice / Waktu</th>
                 <th className="py-2.5 px-3">Pelanggan</th>
                 <th className="py-2.5 px-3 hidden md:table-cell">Tipe / Produk</th>
@@ -1127,16 +1127,16 @@ function OrdersTab() {
                 </tr>
               ) : filteredOrders.map(ord => (
                 <React.Fragment key={ord.id}>
-                  <tr className="hover:bg-slate-50/80 transition">
+                  <tr className="bg-slate-900/40 border-b border-slate-800/60 hover:bg-slate-800/50 transition text-slate-200">
                     <td className="py-2.5 px-3">
                       <button type="button" onClick={() => setExpanded(expanded === ord.id ? null : ord.id)}
-                        className="font-mono font-bold text-slate-800 hover:text-blue-600 hover:underline cursor-pointer text-left">
+                        className="font-mono font-bold text-slate-300 hover:text-indigo-400 hover:underline cursor-pointer text-left">
                         {ord.id}
                       </button>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{ord.ts}</div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">{ord.ts}</div>
                     </td>
                     <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900">{ord.buyer}</div>
+                      <div className="font-semibold text-slate-200">{ord.buyer}</div>
                       <div className="text-[11px] text-slate-500 font-mono">{ord.phone}</div>
                     </td>
                     <td className="py-2.5 px-3 hidden md:table-cell">
@@ -1145,9 +1145,9 @@ function OrdersTab() {
                         <span className="truncate max-w-[140px]">{ord.product}</span>
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-black text-slate-900">{fmtRp(ord.amount)}</td>
+                    <td className="py-2.5 px-3 font-black text-slate-100">{fmtRp(ord.amount)}</td>
                     <td className="py-2.5 px-3 hidden lg:table-cell">
-                      <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">{ord.method}</span>
+                      <span className="text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-2 py-0.5 rounded font-mono">{ord.method}</span>
                     </td>
                     <td className="py-2.5 px-3">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -1156,13 +1156,13 @@ function OrdersTab() {
                     </td>
                     <td className="py-2.5 px-3 text-right">
                       <button type="button" onClick={() => setExpanded(expanded === ord.id ? null : ord.id)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer">
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-indigo-900/50 text-slate-400 hover:text-indigo-300 rounded-lg font-bold text-[11px] transition cursor-pointer border border-slate-700">
                         Invoice
                       </button>
                     </td>
                   </tr>
                   {expanded === ord.id && (
-                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                    <tr className="bg-slate-800/60 border-b border-slate-700/60">
                       <td colSpan={7} className="px-5 py-4">
                         <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
                           {[
@@ -1174,7 +1174,7 @@ function OrdersTab() {
                             ['Dedup Status', 'No Duplicate ✓'],
                             ['Container', 'WA Server Container v2 · Aktif'],
                           ].map(([k, v]) => (
-                            <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
+                            <div key={k}><p className="text-slate-500 font-medium mb-0.5">{k}</p><p className="text-slate-200 font-bold">{v}</p></div>
                           ))}
                         </div>
                       </td>
@@ -1186,9 +1186,9 @@ function OrdersTab() {
           </table>
         </div>
 
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+        <div className="px-4 py-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
           <span>Menampilkan {filteredOrders.length} dari {ALL_ORDERS.length} pesanan</span>
-          <span className="font-bold text-slate-700">{dateRange.label}</span>
+          <span className="font-bold text-slate-300">{dateRange.label}</span>
         </div>
       </div>
     </div>
@@ -1227,12 +1227,12 @@ function AdsTrackingTab() {
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-black text-slate-100 flex items-center gap-2">
             <Target className="w-5 h-5 text-blue-600" />Ads Tracking Pro
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">Meta Conversions API (CAPI) · WhatsApp Server Container · ROAS 6.89× · CPA Rp 15.714</p>
+          <p className="text-xs text-slate-400 mt-0.5">Meta Conversions API (CAPI) · WhatsApp Server Container · ROAS 6.89× · CPA Rp 15.714</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -1285,15 +1285,15 @@ function AdsTrackingTab() {
       </div>
 
       {/* Event table */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-black text-slate-900">Custom Events — Status CAPI</h3>
-          <p className="text-slate-500 text-xs mt-0.5">Klik baris untuk detail deduplication & match rate</p>
+      <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800/80">
+          <h3 className="text-sm font-black text-slate-100">Custom Events — Status CAPI</h3>
+          <p className="text-slate-400 text-xs mt-0.5">Klik baris untuk detail deduplication & match rate</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-800/80 bg-slate-800/40">
                 <th className="text-left px-5 py-3 font-bold">Event Name</th>
                 <th className="text-right px-3 py-3 font-bold">Count (30hr)</th>
                 <th className="text-center px-3 py-3 font-bold">Match Quality</th>
@@ -1305,14 +1305,14 @@ function AdsTrackingTab() {
             <tbody>
               {events.map(ev => (
                 <React.Fragment key={ev.name}>
-                  <tr onClick={() => setActiveEvent(activeEvent === ev.name ? null : ev.name)} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group">
+                  <tr onClick={() => setActiveEvent(activeEvent === ev.name ? null : ev.name)} className="border-b border-slate-800/60 bg-slate-900/40 hover:bg-slate-800/50 transition-colors cursor-pointer group">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full bg-${ev.color}-500 inline-block shrink-0`} />
-                        <span className="font-mono text-xs font-black text-slate-800">{ev.name}</span>
+                        <span className="font-mono text-xs font-black text-slate-200">{ev.name}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{ev.count.toLocaleString('id-ID')}</td>
+                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-100">{ev.count.toLocaleString('id-ID')}</td>
                     <td className="px-3 py-3.5 text-center">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${ ev.matchQuality >= 9 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-blue-50 text-blue-800 border border-blue-200' }`}>
                         {ev.matchQuality}/10
@@ -1329,7 +1329,7 @@ function AdsTrackingTab() {
                     </td>
                   </tr>
                   {activeEvent === ev.name && (
-                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                    <tr className="bg-slate-800/60 border-b border-slate-700/60">
                       <td colSpan={6} className="px-5 py-4">
                         <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
                           {[
@@ -1340,7 +1340,7 @@ function AdsTrackingTab() {
                             ['Last Received', '23 Sep, 05:14 WIB · Purchase'],
                             ['Test Event', 'TEST43922 · Passed ✓'],
                           ].map(([k, v]) => (
-                            <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
+                            <div key={k}><p className="text-slate-500 font-medium mb-0.5">{k}</p><p className="text-slate-200 font-bold">{v}</p></div>
                           ))}
                         </div>
                       </td>
@@ -1354,15 +1354,15 @@ function AdsTrackingTab() {
       </div>
 
       {/* Campaign performance table */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-black text-slate-900">Performa Campaign Meta Ads</h3>
-          <p className="text-slate-500 text-xs mt-0.5">Total Spend: {fmtRp(46_200_000)} · Total Results: 2.940 · Avg ROAS: 6.89×</p>
+      <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800/80">
+          <h3 className="text-sm font-black text-slate-100">Performa Campaign Meta Ads</h3>
+          <p className="text-slate-400 text-xs mt-0.5">Total Spend: {fmtRp(46_200_000)} · Total Results: 2.940 · Avg ROAS: 6.89×</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-800/80 bg-slate-800/40">
                 <th className="text-left px-5 py-3 font-bold">Campaign</th>
                 <th className="text-right px-3 py-3 font-bold">Spend</th>
                 <th className="text-right px-3 py-3 font-bold">Results</th>
@@ -1374,13 +1374,13 @@ function AdsTrackingTab() {
             </thead>
             <tbody>
               {campaigns.map(c => (
-                <tr key={c.name} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
+                <tr key={c.name} className="border-b border-slate-800/60 bg-slate-900/40 hover:bg-slate-800/50 transition-colors">
                   <td className="px-5 py-3.5">
-                    <span className="text-xs font-bold text-slate-800 line-clamp-1">{c.name}</span>
+                    <span className="text-xs font-bold text-slate-200 line-clamp-1">{c.name}</span>
                   </td>
-                  <td className="px-3 py-3.5 text-right font-bold text-xs text-slate-700">{fmtRp(c.spend)}</td>
-                  <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{c.results.toLocaleString('id-ID')}</td>
-                  <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-600">Rp {c.cpa.toLocaleString('id-ID')}</td>
+                  <td className="px-3 py-3.5 text-right font-bold text-xs text-slate-400">{fmtRp(c.spend)}</td>
+                  <td className="px-3 py-3.5 text-right font-black text-sm text-slate-100">{c.results.toLocaleString('id-ID')}</td>
+                  <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-400">Rp {c.cpa.toLocaleString('id-ID')}</td>
                   <td className="px-3 py-3.5 text-right">
                     <span className={`font-black text-sm ${c.roas >= 6 ? 'text-emerald-600' : 'text-amber-600'}`}>{c.roas.toFixed(2)}×</span>
                   </td>
@@ -1468,13 +1468,13 @@ function FinanceTab() {
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4 relative z-20 overflow-visible">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-4 relative z-20 overflow-visible">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+          <h2 className="text-lg font-black text-slate-100 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-emerald-600" />
             <span>Ringkasan Keuangan &amp; Laporan Penjualan</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             Pantau mutasi pembayaran QRIS otomatis, saldo siap cair, serta riwayat pencairan rekening.
           </p>
         </div>
@@ -1489,47 +1489,47 @@ function FinanceTab() {
 
       {/* 3 summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-slate-900/70 p-5 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Total Omzet Masuk {dateRange.preset !== 'all' ? `(${dateRange.label})` : ''}</span>
+            <span className="text-xs font-bold text-slate-500">Total Omzet Masuk {dateRange.preset !== 'all' ? `(${dateRange.label})` : ''}</span>
             <span className="p-2 bg-blue-50 text-blue-600 rounded-xl"><TrendingUp className="w-4 h-4" /></span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{fmtRp(filteredOmzet > 0 ? filteredOmzet : totalNet)}</div>
-          <p className="text-[11px] text-slate-400 font-medium">{dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi sukses'}</p>
+          <div className="text-2xl font-black text-slate-100">{fmtRp(filteredOmzet > 0 ? filteredOmzet : totalNet)}</div>
+          <p className="text-[11px] text-slate-500 font-medium">{dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi sukses'}</p>
         </div>
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-slate-900/70 p-5 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Saldo Siap Tarik</span>
+            <span className="text-xs font-bold text-slate-500">Saldo Siap Tarik</span>
             <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><Wallet className="w-4 h-4" /></span>
           </div>
           <div className="text-2xl font-black text-emerald-600">{fmtRp(READY_BALANCE)}</div>
           <p className="text-[11px] text-emerald-700 font-medium">Dana bersih realtime di rekening penampung</p>
         </div>
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-slate-900/70 p-5 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Rekening Tujuan</span>
+            <span className="text-xs font-bold text-slate-500">Rekening Tujuan</span>
             <span className="p-2 bg-slate-50 text-slate-600 rounded-xl"><CreditCard className="w-4 h-4" /></span>
           </div>
-          <div className="text-base font-black text-slate-900 font-mono">BCA</div>
-          <p className="text-[11px] text-slate-500 font-mono font-bold truncate">1234567890 • BUZZER UKM</p>
+          <div className="text-base font-black text-slate-100 font-mono">BCA</div>
+          <p className="text-[11px] text-slate-400 font-mono font-bold truncate">1234567890 • BUZZER UKM</p>
         </div>
       </div>
 
       {/* Transaction History Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+      <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] overflow-hidden">
+        <div className="p-5 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-800/30">
+          <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-600" />
             <span>Riwayat Transaksi &amp; Invoice Pembeli</span>
           </h3>
-          <button type="button" onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer">
+          <button type="button" onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')} className="px-3 py-1.5 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer">
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
           </button>
         </div>
         <div className="overflow-x-auto w-full">
           <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+            <thead className="bg-slate-800/40 border-b border-slate-800/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">Invoice / Waktu</th>
                 <th className="px-5 py-3.5">Pembeli</th>
@@ -1545,8 +1545,8 @@ function FinanceTab() {
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center mb-1"><FileText className="w-5 h-5 text-slate-400" /></div>
-                      <p className="text-xs font-bold text-slate-700">Belum ada transaksi masuk pada periode ini.</p>
+                      <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center mb-1"><FileText className="w-5 h-5 text-slate-500" /></div>
+                      <p className="text-xs font-bold text-slate-300">Belum ada transaksi masuk pada periode ini.</p>
                       <p className="text-[11px] text-slate-400">{dateRange.preset !== 'all' ? `Tidak ditemukan transaksi untuk periode: ${dateRange.label}` : 'Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.'}</p>
                     </div>
                   </td>
@@ -1556,23 +1556,23 @@ function FinanceTab() {
                 return (
                   <tr key={t.id} className="hover:bg-slate-50/80 transition">
                     <td className="px-5 py-4">
-                      <div className="font-bold text-slate-900 font-mono">{t.invoice_no}</div>
+                      <div className="font-bold text-slate-200 font-mono">{t.invoice_no}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
                         {new Date(t.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
                         {new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="font-bold text-slate-800">{t.customer_name}</div>
+                      <div className="font-bold text-slate-200">{t.customer_name}</div>
                       <div className="text-[11px] text-slate-400 font-mono">{t.customer_phone}</div>
                     </td>
                     <td className="px-5 py-4 max-w-[200px] hidden md:table-cell">
-                      <div className="truncate font-semibold text-slate-900" title={t.product_title}>{t.product_title}</div>
+                      <div className="truncate font-semibold text-slate-300" title={t.product_title}>{t.product_title}</div>
                     </td>
                     <td className="px-5 py-4 hidden sm:table-cell">
-                      <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">{t.payment_method}</span>
+                      <span className="text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-2 py-0.5 rounded font-mono">{t.payment_method}</span>
                     </td>
-                    <td className="px-5 py-4 text-right font-black text-slate-900 font-mono whitespace-nowrap">{fmtRp(t.gross_amount)}</td>
+                    <td className="px-5 py-4 text-right font-black text-slate-100 font-mono whitespace-nowrap">{fmtRp(t.gross_amount)}</td>
                     <td className="px-5 py-4 text-center">
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${isPaid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                         {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
@@ -1588,7 +1588,7 @@ function FinanceTab() {
                             window.open(invUrl, '_blank', 'noopener,noreferrer');
                           }
                         }}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-indigo-900/50 text-slate-400 hover:text-indigo-300 rounded-lg font-bold text-[11px] transition cursor-pointer border border-slate-700"
                         title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
                       >
                         Invoice
@@ -1603,15 +1603,15 @@ function FinanceTab() {
       </div>
 
       {/* Withdrawal History */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-black text-slate-900">Riwayat Pencairan Otomatis</h3>
-          <p className="text-slate-500 text-xs mt-0.5">Auto-transfer setiap hari jam 07.00 WIB · Langsung ke rekening terdaftar</p>
+      <div className="bg-slate-900/70 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800/80">
+          <h3 className="text-sm font-black text-slate-100">Riwayat Pencairan Otomatis</h3>
+          <p className="text-slate-400 text-xs mt-0.5">Auto-transfer setiap hari jam 07.00 WIB · Langsung ke rekening terdaftar</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-800/80 bg-slate-800/40">
                 <th className="text-left px-5 py-3 font-bold">Tanggal</th>
                 <th className="text-right px-3 py-3 font-bold">Nominal</th>
                 <th className="text-left px-3 py-3 font-bold hidden md:table-cell">Metode</th>
@@ -1623,13 +1623,13 @@ function FinanceTab() {
               {WITHDRAWALS.map(w => {
                 const isPending = w.status === 'Pending Settlement';
                 return (
-                  <tr key={w.ref} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
+                  <tr key={w.ref} className="border-b border-slate-800/60 bg-slate-900/40 hover:bg-slate-800/50 transition-colors">
                     <td className="px-5 py-3.5">
-                      <div className="font-bold text-xs text-slate-700">{w.date}</div>
+                      <div className="font-bold text-xs text-slate-300">{w.date}</div>
                       {isPending && <div className="text-[10px] text-amber-600 font-bold mt-0.5">{w.note}</div>}
                     </td>
-                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{fmtRp(w.amount)}</td>
-                    <td className="px-3 py-3.5 hidden md:table-cell text-slate-500 text-xs">{w.method}</td>
+                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-100">{fmtRp(w.amount)}</td>
+                    <td className="px-3 py-3.5 hidden md:table-cell text-slate-400 text-xs">{w.method}</td>
                     <td className="px-3 py-3.5 hidden lg:table-cell"><span className="font-mono text-[11px] text-indigo-600 font-bold">{w.ref}</span></td>
                     <td className="px-5 py-3.5 text-center">
                       {isPending ? (
@@ -1651,17 +1651,17 @@ function FinanceTab() {
       </div>
 
       {/* Bank account info */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
-        <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">Rekening Bank Terdaftar</h3>
+      <div className="bg-slate-900/70 p-6 rounded-3xl border border-slate-700/60 shadow-[0_1px_8px_rgba(0,0,0,0.15)] space-y-4">
+        <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider">Rekening Bank Terdaftar</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: 'Nama Bank', value: 'BCA' },
             { label: 'Nomor Rekening', value: '1234567890' },
             { label: 'Atas Nama', value: 'BUZZER UKM' },
           ].map(f => (
-            <div key={f.label} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">{f.label}</p>
-              <p className="font-black text-slate-800 font-mono text-sm">{f.value}</p>
+            <div key={f.label} className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">{f.label}</p>
+              <p className="font-black text-slate-200 font-mono text-sm">{f.value}</p>
             </div>
           ))}
         </div>
@@ -1677,10 +1677,10 @@ function PlaceholderTab({ title, desc, icon: Icon }: { title: string; desc: stri
   return (
     <div className="flex-1 flex items-center justify-center p-8 animate-in fade-in duration-200">
       <div className="text-center space-y-3 max-w-sm">
-        <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto"><Icon className="w-7 h-7 text-indigo-500" /></div>
-        <h3 className="text-base font-black text-slate-800">{title}</h3>
-        <p className="text-sm text-slate-500">{desc}</p>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/40 flex items-center justify-center mx-auto"><Icon className="w-7 h-7 text-indigo-400" /></div>
+        <h3 className="text-base font-black text-slate-200">{title}</h3>
+        <p className="text-sm text-slate-400">{desc}</p>
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-800/60 border border-slate-700/60 text-slate-400">
           📸 Demo Mockup — Showcase Only
         </span>
       </div>
@@ -1722,15 +1722,15 @@ export default function ShowcaseDashboard() {
   };
 
   return (
-    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container ${themeMode === 'dark' ? 'bg-[#0B0F19] text-slate-100' : 'bg-[#F8FAFC] text-slate-900'}`}>
+    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container bg-[#0B0F19] text-slate-100`}>
 
       {/* ── MOBILE DRAWER ── */}
       {mobileDrawer && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200" onClick={() => setMobileDrawer(false)} />
-          <div className="fixed inset-y-0 left-0 w-[290px] sm:w-[320px] max-w-[85vw] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-left duration-250">
+          <div className="fixed inset-y-0 left-0 w-[290px] sm:w-[320px] max-w-[85vw] bg-slate-950 shadow-2xl shadow-black/40 z-50 flex flex-col animate-in slide-in-from-left duration-250">
             <div className="absolute top-3 right-3 z-50">
-              <button type="button" onClick={() => setMobileDrawer(false)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer">
+              <button type="button" onClick={() => setMobileDrawer(false)} className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1746,7 +1746,7 @@ export default function ShowcaseDashboard() {
       <div className="flex-1 flex flex-col min-w-0 min-h-screen w-full">
 
         {/* Mobile top navbar */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+        <header className="lg:hidden sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setMobileDrawer(true)} className="p-2 -ml-1.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-100 active:scale-95 transition cursor-pointer">
               <Menu className="w-5 h-5" />
@@ -1756,16 +1756,16 @@ export default function ShowcaseDashboard() {
             <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-700 text-white font-black text-[10px] flex items-center justify-center shrink-0 uppercase">
               {STORE.initial}
             </div>
-            <span className="text-xs font-black text-slate-900 truncate">{STORE.name}</span>
+            <span className="text-xs font-black text-slate-100 truncate">{STORE.name}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={toggleTheme} className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 cursor-pointer transition active:scale-95 theme-toggle-btn">
+            <button type="button" onClick={toggleTheme} className="p-1.5 rounded-lg border border-slate-700/80 bg-slate-900/50 text-slate-300 cursor-pointer transition active:scale-95 theme-toggle-btn">
               {themeMode === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
             </button>
             <button type="button" onClick={() => setActiveTab('orders')} className={`p-1.5 rounded-lg border transition cursor-pointer ${activeTab === 'orders' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
               <ShoppingBag className="w-4 h-4" />
             </button>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-[10px]">
+            <span className="px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-700/50 font-bold flex items-center gap-1.5 text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="hidden sm:inline">Store Online</span>
               <span className="sm:hidden">Live</span>
@@ -1774,15 +1774,15 @@ export default function ShowcaseDashboard() {
         </header>
 
         {/* Desktop top bar */}
-        <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+        <header className="hidden lg:flex sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-[0_1px_6px_rgba(0,0,0,0.3)]">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
               className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition inline-flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                 activeTab === 'orders'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/30'
+                  : 'bg-slate-900/50 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/80'
               }`}
             >
               <ShoppingBag className="w-3.5 h-3.5" />
@@ -1796,13 +1796,13 @@ export default function ShowcaseDashboard() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 text-xs transition active:scale-95 cursor-pointer shadow-[0_1px_2px_rgba(0,0,0,0.04)] theme-toggle-btn"
+              className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-slate-900/50 text-slate-300 hover:text-white hover:bg-slate-800 font-bold flex items-center gap-2 text-xs transition active:scale-95 cursor-pointer theme-toggle-btn"
             >
               {themeMode === 'dark'
-                ? <><Sun className="w-3.5 h-3.5 text-amber-400" /><span className="text-[11px] font-semibold text-slate-200">Light Mode</span></>
-                : <><Moon className="w-3.5 h-3.5 text-slate-600" /><span className="text-[11px] font-semibold text-slate-700">Dark Mode</span></>}
+                ? <><Sun className="w-3.5 h-3.5 text-amber-400" /><span className="text-[11px] font-semibold text-slate-300">Light Mode</span></>
+                : <><Moon className="w-3.5 h-3.5 text-slate-400" /><span className="text-[11px] font-semibold text-slate-300">Dark Mode</span></>}
             </button>
-            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-xs">
+            <span className="px-2.5 py-1 rounded-xl bg-emerald-950/60 text-emerald-400 border border-emerald-700/50 font-bold flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>Storefront Online</span>
             </span>
