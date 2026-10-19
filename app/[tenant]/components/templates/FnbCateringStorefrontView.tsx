@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import {
   Calendar,
@@ -30,12 +30,23 @@ import {
   PhoneCall,
   Truck,
   HeartHandshake,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/types';
 import dynamic from 'next/dynamic';
 
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
+
+export interface BookingSlot {
+  id: string;
+  slot_name: string;
+  max_quota: number;
+  booked_count: number;
+  remaining_quota: number;
+  is_available: boolean;
+}
 
 export interface FnbCateringStorefrontViewProps {
   effectiveName: string;
@@ -78,11 +89,71 @@ export default function FnbCateringStorefrontView({
   }, []);
 
   const [deliveryDate, setDeliveryDate] = useState<string>(todayStr);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>(
-    fnbCatering?.booking_widget?.time_slots?.[2] || '16:00 - 18:00'
-  );
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
+  const [selectedSlotId, setSelectedSlotId] = useState<string>('');
+  const [slots, setSlots] = useState<BookingSlot[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(true);
   const [locationType, setLocationType] = useState<'Rumah Tinggal' | 'Villa / Glamping'>('Villa / Glamping');
   const [locationDetails, setLocationDetails] = useState<string>('');
+
+  // ── REAKTIF FETCHING BOOKING SLOTS BERDASARKAN TANGGAL & SLUG ──
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadSlots() {
+      if (!deliveryDate) return;
+      setIsLoadingSlots(true);
+
+      try {
+        const res = await fetch(`/api/v1/tenants/${effectiveSlug}/booking/slots?date=${deliveryDate}`);
+        const data = await res.json();
+
+        if (!isCancelled && data.success && Array.isArray(data.slots)) {
+          setSlots(data.slots);
+
+          // Pertahankan pilihan jika masih available, atau pilih slot pertama yang tersedia
+          setSelectedSlotId((prevId) => {
+            const currentValid = data.slots.find(
+              (s: BookingSlot) =>
+                (s.id === prevId || s.slot_name === selectedTimeSlot) &&
+                s.is_available &&
+                s.remaining_quota > 0
+            );
+
+            if (currentValid) {
+              setSelectedTimeSlot(currentValid.slot_name);
+              return currentValid.id;
+            }
+
+            const firstAvailable = data.slots.find(
+              (s: BookingSlot) => s.is_available && s.remaining_quota > 0
+            );
+
+            if (firstAvailable) {
+              setSelectedTimeSlot(firstAvailable.slot_name);
+              return firstAvailable.id;
+            }
+
+            // Jika semua slot penuh
+            setSelectedTimeSlot('');
+            return '';
+          });
+        }
+      } catch (err) {
+        console.error('[Booking Widget] Gagal memuat slot booking:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingSlots(false);
+        }
+      }
+    }
+
+    loadSlots();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [effectiveSlug, deliveryDate]);
 
   // ── 2. MENU TAB & SOUP SELECTION STATE ──
   const [activeTabKey, setActiveTabKey] = useState<string>('Paket Alat Hemat');
@@ -312,6 +383,11 @@ export default function FnbCateringStorefrontView({
       return;
     }
 
+    if (!selectedTimeSlot) {
+      alert('Silakan pilih slot jam pengantaran yang tersedia terlebih dahulu.');
+      return;
+    }
+
     const itemsSummary = Object.values(cart)
       .map((item, idx) => {
         const soupNote = item.soupVariant ? ` (Varian: ${item.soupVariant})` : '';
@@ -326,7 +402,7 @@ export default function FnbCateringStorefrontView({
     const message = `Halo ${effectiveName}, saya mau pesan Home Service Shabu & BBQ:
 
 📅 *Jadwal Pengantaran:*
-• Hari / Tanggal: ${formattedDeliveryDate}
+• Hari / Tanggal: ${formattedDeliveryDate} (${deliveryDate})
 • Slot Jam: ${selectedTimeSlot}
 • Tipe Lokasi: ${cleanLocation}
 
@@ -349,6 +425,12 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
   // Alternative: Instant QRIS Modal Trigger
   const handleDirectQrisCheckout = () => {
     if (totalItems === 0) return;
+
+    if (!selectedTimeSlot) {
+      alert('Silakan pilih slot jam pengantaran yang masih tersedia terlebih dahulu.');
+      return;
+    }
+
     const combinedTitles = Object.values(cart)
       .map((c) => `${c.name} (x${c.qty}${c.soupVariant ? ` - ${c.soupVariant}` : ''})`)
       .join(', ');
@@ -368,6 +450,22 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
         variant: c.soupVariant,
       })),
       notes: `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${locationDetails}`,
+      metadata: {
+        booking: {
+          event_date: deliveryDate,
+          delivery_date: deliveryDate,
+          slot_id: selectedSlotId,
+          slot_name: selectedTimeSlot,
+          time_slot: selectedTimeSlot,
+          location_type: locationType,
+          location_details: locationDetails,
+        },
+        delivery_slot: {
+          slot_id: selectedSlotId,
+          slot_name: selectedTimeSlot,
+          event_date: deliveryDate,
+        },
+      },
     });
     setIsCheckoutModalOpen(true);
   };
@@ -520,7 +618,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* 1. Pilihan Tanggal Acara */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
@@ -532,29 +630,11 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 value={deliveryDate}
                 min={todayStr}
                 onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-stone-950 border border-stone-800 text-xs sm:text-sm text-white focus:outline-hidden focus:border-rose-500 transition font-mono"
+                className="w-full px-3 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-xs sm:text-sm text-white focus:outline-hidden focus:border-rose-500 transition font-mono"
               />
             </div>
 
-            {/* 2. Pilihan Slot Jam Pengantaran */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Slot Jam Pengantaran:</span>
-              </label>
-              <select
-                value={selectedTimeSlot}
-                onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-stone-950 border border-stone-800 text-xs sm:text-sm text-white focus:outline-hidden focus:border-rose-500 transition font-mono cursor-pointer"
-              >
-                <option value="10:00 - 12:00">10:00 - 12:00 (Makan Siang Awal)</option>
-                <option value="12:00 - 14:00">12:00 - 14:00 (Makan Siang / Check-in)</option>
-                <option value="16:00 - 18:00">16:00 - 18:00 (Sore / Santai Senja)</option>
-                <option value="18:00 - 20:00">18:00 - 20:00 (Makan Malam / Dingin)</option>
-              </select>
-            </div>
-
-            {/* 3. Pilihan Tipe Lokasi */}
+            {/* 2. Pilihan Tipe Lokasi */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-emerald-400" />
@@ -590,7 +670,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
           </div>
 
           {/* Input Teks Nama Villa / Alamat */}
-          <div className="pt-1">
+          <div>
             <input
               type="text"
               value={locationDetails}
@@ -602,6 +682,107 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               }
               className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950/80 border border-stone-800 text-xs sm:text-sm text-white placeholder-stone-500 focus:outline-hidden focus:border-rose-500 transition"
             />
+          </div>
+
+          {/* 3. Slot Jam Pengantaran & Ketersediaan Trip Kurir */}
+          <div className="space-y-2 pt-2 border-t border-stone-800/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Slot Jam Pengantaran (Reaktif):</span>
+              </label>
+              <div className="flex items-center gap-2">
+                {isLoadingSlots ? (
+                  <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                    <span>Memeriksa kuota trip...</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-stone-400 font-mono">
+                    🟢 Kuota maks. 4 trip / slot jam
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Grid 4 Slot Jam */}
+            {isLoadingSlots ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="p-3 rounded-2xl bg-stone-950/60 border border-stone-800 animate-pulse space-y-2.5"
+                  >
+                    <div className="h-4 bg-stone-800/80 rounded w-4/5" />
+                    <div className="h-3 bg-stone-800/50 rounded w-3/5" />
+                    <div className="h-4 bg-stone-800/40 rounded-full w-2/3" />
+                  </div>
+                ))}
+              </div>
+            ) : slots.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-stone-950/60 border border-stone-800 text-xs text-stone-400 text-center flex items-center justify-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                <span>Tidak ada slot pengantaran aktif pada tanggal yang dipilih.</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {slots.map((slot) => {
+                  const isSelected = selectedSlotId === slot.id || selectedTimeSlot === slot.slot_name;
+                  const isFull = !slot.is_available || slot.remaining_quota <= 0;
+                  const timePart = slot.slot_name.split('(')[0]?.trim() || slot.slot_name;
+                  const labelPart = slot.slot_name.includes('(')
+                    ? slot.slot_name.split('(')[1]?.replace(')', '')?.trim()
+                    : '';
+
+                  return (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      disabled={isFull}
+                      onClick={() => {
+                        setSelectedSlotId(slot.id);
+                        setSelectedTimeSlot(slot.slot_name);
+                      }}
+                      className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                        isFull
+                          ? 'bg-stone-950/40 border-stone-800/40 opacity-40 cursor-not-allowed'
+                          : isSelected
+                          ? 'bg-gradient-to-br from-rose-950/80 to-stone-900 border-rose-500 shadow-lg shadow-rose-950/60 ring-2 ring-rose-500/50'
+                          : 'bg-stone-950/70 border-stone-800 hover:border-stone-700 hover:bg-stone-900/60'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs sm:text-sm font-black text-white font-mono">
+                            {timePart}
+                          </span>
+                          {isSelected && !isFull && (
+                            <Check className="w-3.5 h-3.5 text-rose-400" />
+                          )}
+                        </div>
+                        {labelPart && (
+                          <p className="text-[10px] text-stone-400 line-clamp-1">
+                            {labelPart}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="mt-2.5 pt-2 border-t border-stone-800/60 flex items-center justify-between">
+                        {isFull ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-900 font-mono">
+                            Penuh
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 font-mono">
+                            Sisa {slot.remaining_quota} trip
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -889,7 +1070,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     {totalItems} Menu Terpilih
                   </span>
                   <span className="text-[10px] text-emerald-400 font-mono">
-                    &bull; {selectedTimeSlot}
+                    &bull; {selectedTimeSlot ? selectedTimeSlot.split('(')[0].trim() : 'Pilih Slot Jam'}
                   </span>
                 </div>
                 <div className="text-sm sm:text-base font-black text-rose-500">
@@ -903,7 +1084,12 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               <button
                 type="button"
                 onClick={handleDirectQrisCheckout}
-                className="py-3 px-3.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white border border-stone-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0"
+                disabled={!selectedTimeSlot}
+                className={`py-3 px-3.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
+                  selectedTimeSlot
+                    ? 'bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white border-stone-800'
+                    : 'bg-stone-900/50 text-stone-500 border-stone-800/50 cursor-not-allowed'
+                }`}
                 title="Buka Faktur Pembayaran QRIS"
               >
                 <QrCode className="w-4 h-4 text-emerald-400" />
@@ -913,10 +1099,17 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               <button
                 type="button"
                 onClick={handleCheckoutViaWhatsApp}
-                className="flex-1 sm:flex-initial py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 active:scale-98 cursor-pointer"
+                disabled={!selectedTimeSlot}
+                className={`flex-1 sm:flex-initial py-3 px-6 rounded-2xl text-white text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 shadow-lg active:scale-98 cursor-pointer ${
+                  selectedTimeSlot
+                    ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/60'
+                    : 'bg-stone-800 text-stone-400 cursor-not-allowed'
+                }`}
               >
                 <MessageSquare className="w-4 h-4 fill-white" />
-                <span>Pesan via WhatsApp (Proses 10 Detik)</span>
+                <span>
+                  {selectedTimeSlot ? 'Pesan via WhatsApp (Proses 10 Detik)' : 'Pilih Slot Jam Dahulu'}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
