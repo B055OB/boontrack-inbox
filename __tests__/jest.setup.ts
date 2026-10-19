@@ -134,7 +134,58 @@ const globalMockTenants: Record<string, any> = {
       features: ['crm', 'broadcast', 'ai_pitch'],
     },
   },
+  'shabu-ajhi': {
+    id: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+    slug: 'shabu-ajhi',
+    name: 'Shabu Ajhi',
+    status: 'active',
+    tier: 'PRO_SCALE',
+    business_type: 'food',
+    metadata: {
+      logistics: {
+        primary: 'internal_fleet',
+        fallback_provider: 'biteship',
+        allowed_couriers: ['lalamove'],
+        max_internal_trip_per_slot: 4,
+      },
+    },
+  },
 };
+
+const globalMockBookingSlots = [
+  {
+    id: 'd5d8febe-c00d-4412-aa6d-c6906fad4e3b',
+    tenant_id: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+    slot_name: '10:00 - 12:00 (Makan Siang Awal)',
+    max_quota: 4,
+    is_active: true,
+    created_at: '2026-10-19T18:20:18.668Z',
+  },
+  {
+    id: 'bfa9d175-c472-418c-ac38-006e13cc0f5f',
+    tenant_id: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+    slot_name: '12:00 - 14:00 (Makan Siang)',
+    max_quota: 4,
+    is_active: true,
+    created_at: '2026-10-19T18:20:18.668Z',
+  },
+  {
+    id: 'fac70185-ed7c-439d-b660-7c4415594343',
+    tenant_id: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+    slot_name: '16:00 - 18:00 (Sore / Santai Santap)',
+    max_quota: 4,
+    is_active: true,
+    created_at: '2026-10-19T18:20:18.668Z',
+  },
+  {
+    id: '39fa6533-aee8-4ac0-9d58-607827accf49',
+    tenant_id: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+    slot_name: '18:00 - 20:00 (Makan Malam)',
+    max_quota: 4,
+    is_active: true,
+    created_at: '2026-10-19T18:20:18.668Z',
+  },
+];
 
 const globalMockContacts = [
   {
@@ -298,6 +349,8 @@ function createGlobalMockBuilder(tableName: string) {
           ...ct,
           tags: globalMockTags.find(t => t.id === ct.tag_id) || null,
         }));
+      } else if (tableName === 'tenant_booking_slots') {
+        rows = [...globalMockBookingSlots];
       }
 
       // Check if filtering for nonexistent tenant
