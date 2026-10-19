@@ -141,9 +141,15 @@ export default function WhatsAppTab({
         // 1. Check Meta WABA credentials in tenants table & tenant_whatsapp_channels & whatsapp_connections
         const { data: tenantData } = await supabase
           .from('tenants')
-          .select('id, metadata, waba_phone_number_id, plan_tier, subscription_plan')
+          .select('id, metadata, waba_phone_number_id, plan_tier, subscription_plan, tier')
           .eq('slug', tenantSlug)
           .maybeSingle();
+
+        const tierStr = String(tenantData?.tier || tenantData?.plan_tier || tenantData?.subscription_plan || '').toUpperCase();
+        const dbIsTeam = tierStr.includes('TEAM') || tierStr.includes('ENTERPRISE') || tierStr.includes('PRO') || tenantSlug === 'onlineboost';
+        if (dbIsTeam && isMounted) {
+          setIsDbTeamScale(true);
+        }
 
         const meta = tenantData?.metadata || {};
         const hasMetaCreds = Boolean(
@@ -217,10 +223,9 @@ export default function WhatsAppTab({
         if (isMounted) {
           setHasWabaCredentials(wabaActive);
           setIsInstanceDbActive(dbActive);
-          // If in meta mode without credentials, fallback to qr mode
-          if (waMode === 'meta' && !wabaActive) {
-            setWaMode('qr');
-          } else if (wabaActive && meta.whatsapp_gateway_type === 'waba' && waMode === 'qr') {
+          // Hanya auto-switch ke 'meta' jika WABA memang sudah aktif & gateway type di metadata adalah waba
+          // JANGAN PERNAH memaksa fallback kembali ke 'qr' jika user sedang membuka tab 'meta'
+          if (wabaActive && meta.whatsapp_gateway_type === 'waba' && waMode === 'qr') {
             setWaMode('meta');
           }
         }
@@ -233,7 +238,7 @@ export default function WhatsAppTab({
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug, waMode, setWaMode]);
+  }, [tenantSlug]);
 
   // FIX: Hanya tampilkan CONNECTED jika waStatus CONNECTED, terdaftar aktif di DB atau nomor terdeteksi, dan bukan nomor platform
   const isMerchantConnected =
@@ -288,42 +293,26 @@ export default function WhatsAppTab({
             </button>
             <button
               type="button"
-              disabled={!isTeamScale && !hasWabaCredentials}
-              onClick={() => {
-                if (isTeamScale || hasWabaCredentials) {
-                  setWaMode('meta');
-                }
-              }}
-              title={
-                !isTeamScale && !hasWabaCredentials
-                  ? 'Setup WABA Required: Kredensial Meta resmi (Phone Number ID & Access Token) belum terkonfigurasi pada tenant ini.'
-                  : undefined
-              }
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                !isTeamScale && !hasWabaCredentials
-                  ? 'opacity-50 cursor-not-allowed text-slate-400 bg-slate-100/60 border border-slate-200'
-                  : waMode === 'meta'
-                  ? 'bg-white text-emerald-600 shadow-xs cursor-pointer'
-                  : 'text-slate-600 hover:text-slate-900 cursor-pointer'
+              onClick={() => setWaMode('meta')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                waMode === 'meta'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              {!isTeamScale && !hasWabaCredentials ? (
-                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              ) : (
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              )}
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Meta Cloud API (WABA)</span>
               {hasWabaCredentials ? (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0">
                   ACTIVE
                 </span>
               ) : isTeamScale ? (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shrink-0">
                   TEAM SCALE
                 </span>
               ) : (
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-200 text-slate-600 shrink-0">
-                  SETUP REQUIRED
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 shrink-0">
+                  SIAP SETUP
                 </span>
               )}
             </button>
@@ -604,57 +593,24 @@ export default function WhatsAppTab({
         </div>
       )}
 
-      {/* PRO SCALE PANEL */}
+      {/* OFFICIAL META WABA PANEL */}
       {waMode === 'meta' && (
-        (!isTeamScale && !isProScale) ? (
-          <div className="py-2 flex flex-col items-center justify-center space-y-4">
-            <FeatureLockedTeaser
-              featureTitle="WhatsApp Business API (Official WABA)"
-              badgeTier="Team Scale"
-              headline="Broadcast Skala Besar & Automasi Resmi Meta Tanpa Risiko Terblokir"
-              comparison={{
-                problemTitle: 'Tantangan Saat Ini',
-                problem: 'Broadcast manual dari nomor pribadi rentan terblokir (banned) seketika oleh WhatsApp dan membatasi skala pertumbuhan bisnis.',
-                solutionTitle: 'Solusi BoonTrack',
-                solution: 'Jalur resmi Meta Cloud API dengan centang hijau, proteksi anti-banned mutlak, dan kecepatan kirim ribuan pesan per menit.',
-              }}
-              bullets={[
-                'Broadcast Massal Resmi: Kirim promosi serentak ke ribuan kontak pelanggan tanpa rasa was-was akun terblokir.',
-                'Centang Hijau Resmi (OBA): Bangun kredibilitas instan dengan verified business badge di profil WhatsApp.',
-                'Template Interaktif Meta: Kirim penawaran dengan tombol Quick Reply & CTA link langsung ke pembayaran.',
-              ]}
-              ctaText="Upgrade ke Team Scale (Official WABA)"
-              featureIcon={<Radio className="w-7 h-7 text-emerald-400" />}
-              tenantSlug={tenantSlug}
-              onUpgrade={() => onUpgradeTier?.('team_scale')}
-            />
-            <button
-              type="button"
-              onClick={() => setIsManualWabaModalOpen(true)}
-              className="px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
-            >
-              <Key className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Sudah Memiliki Akun Meta WABA? Hubungkan WhatsApp Resmi (1-Klik Pop-up / Manual)</span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <WhatsAppWabaConfig
-              tenantSlug={tenantSlug}
-              displayName={displayName}
-              onSuccess={(data) => {
-                setConnectedPhone(data.phone_number || 'Official WABA');
-                setWaStatus('CONNECTED');
-                setSaveFeedback(`✅ Akun WABA '${data.verified_name || displayName}' berhasil diaktifkan!`);
-                setTimeout(() => setSaveFeedback(null), 4000);
-              }}
-              onSaved={(msg) => {
-                setSaveFeedback(msg);
-                setTimeout(() => setSaveFeedback(null), 4000);
-              }}
-            />
-          </div>
-        )
+        <div className="space-y-4">
+          <WhatsAppWabaConfig
+            tenantSlug={tenantSlug}
+            displayName={displayName}
+            onSuccess={(data) => {
+              setConnectedPhone(data.phone_number || 'Official WABA');
+              setWaStatus('CONNECTED');
+              setSaveFeedback(`✅ Akun WABA '${data.verified_name || displayName}' berhasil diaktifkan!`);
+              setTimeout(() => setSaveFeedback(null), 4000);
+            }}
+            onSaved={(msg) => {
+              setSaveFeedback(msg);
+              setTimeout(() => setSaveFeedback(null), 4000);
+            }}
+          />
+        </div>
       )}
 
       {/* ── MODAL HUBUNGKAN WABA RESMI (MANUAL SETUP) ── */}

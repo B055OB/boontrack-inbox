@@ -1119,19 +1119,19 @@ export default function AdsTrackingPro({
               <Target className="w-8 h-8" />
             </div>
             <div className="max-w-xl space-y-2">
-              <h4 className="text-base sm:text-lg font-black text-slate-900">
+              <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                 Belum Ada Data Konversi Iklan
               </h4>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-emerald-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
               </p>
             </div>
             
             <div className="pt-2 w-full max-w-lg">
-              <div className="p-3 bg-white border border-slate-200 rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
+              <div className="p-3 bg-slate-900/90 border border-slate-800 text-emerald-400 font-mono rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
                 <div className="overflow-hidden">
-                  <span className="text-[10px] uppercase font-black text-slate-400 block tracking-wider">Format URL UTM Otomatis</span>
-                  <code className="text-xs font-mono text-slate-700 truncate block">
+                  <span className="text-[10px] uppercase font-black text-slate-400 block tracking-wider font-sans">Format URL UTM Otomatis</span>
+                  <code className="text-xs font-mono text-emerald-400 truncate block">
                     ?utm_source=meta&amp;utm_campaign=promo_gajian
                   </code>
                 </div>
@@ -1140,7 +1140,7 @@ export default function AdsTrackingPro({
                   onClick={() => {
                     navigator.clipboard.writeText('?utm_source=meta&utm_campaign=promo_gajian');
                   }}
-                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl border border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
+                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 hover:bg-slate-800/80 rounded-xl border border-slate-700/80 transition flex items-center gap-1.5 cursor-pointer font-sans"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Salin</span>
@@ -1776,7 +1776,7 @@ export default function AdsTrackingPro({
                 <span>{copiedScript ? 'Tersalin!' : 'Salin Tag'}</span>
               </button>
             </div>
-            <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 font-mono text-xs text-blue-300 overflow-x-auto select-all">
+            <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto select-all">
               {embedScriptCode}
             </div>
           </div>

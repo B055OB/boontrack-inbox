@@ -28,6 +28,8 @@ import { getSupabase } from '@/lib/supabaseClient';
 const META_APP_ID = '1398832609107871';
 const META_CONFIG_ID = '2169643500570820';
 const META_GRAPH_VERSION = 'v21.0';
+const META_EMBEDDED_SIGNUP_URL =
+  'https://business.facebook.com/messaging/whatsapp/onboard/?app_id=1398832609107871&config_id=2169643500570820&extras=%7B%22sessionInfoVersion%22%3A%223%22%2C%22version%22%3A%22v4%22%7D';
 
 export interface WhatsAppWabaConfigProps {
   tenantSlug: string;
@@ -80,6 +82,8 @@ export default function WhatsAppWabaConfig({
     message?: string;
   } | null>(null);
 
+  const exchangeAuthCodeRef = React.useRef<(code: string) => Promise<void>>(async () => {});
+
   // 1. Inisialisasi Asynchronous Facebook JS SDK v21.0 & Listener PostMessage
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -111,24 +115,37 @@ export default function WhatsAppWabaConfig({
     // Tangkap event postMessage dari pop-up Meta Onboarding
     const handleMessage = (event: MessageEvent) => {
       try {
-        if (!event.origin.includes('facebook.com')) return;
+        if (!event.origin.includes('facebook.com') && !event.origin.includes('meta.com')) return;
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (data?.type === 'WA_EMBEDDED_SIGNUP') {
           if (data.event === 'FINISH') {
             console.log('[Meta Embedded Signup] FINISH event received:', data.data);
-            if (data.data?.phone_number_id || data.data?.waba_id) {
+            const phoneId = data.data?.phone_number_id || data.data?.phoneNumberId;
+            const wabaIdVal = data.data?.waba_id || data.data?.wabaId;
+            const authCode = data.data?.code;
+
+            if (phoneId || wabaIdVal) {
               setSessionWabaData({
-                phone_number_id: data.data.phone_number_id,
-                waba_id: data.data.waba_id,
+                phone_number_id: phoneId,
+                waba_id: wabaIdVal,
               });
-              if (data.data.phone_number_id) setPhoneNumberId(data.data.phone_number_id);
-              if (data.data.waba_id) setWabaId(data.data.waba_id);
+              if (phoneId) setPhoneNumberId(phoneId);
+              if (wabaIdVal) setWabaId(wabaIdVal);
+            }
+
+            if (authCode) {
+              exchangeAuthCodeRef.current(authCode);
             }
           } else if (data.event === 'CANCEL') {
             console.log('[Meta Embedded Signup] Pendaftaran dibatalkan oleh user.');
+            setIsVerifying(false);
           } else if (data.event === 'ERROR') {
             console.error('[Meta Embedded Signup] Error event dari Meta:', data.data);
+            setIsVerifying(false);
+            setErrorMessage(data.data?.error_message || 'Terjadi kesalahan saat pendaftaran di jendela Meta.');
           }
+        } else if (data?.code) {
+          exchangeAuthCodeRef.current(data.code);
         }
       } catch {
         // Abaikan pesan non-JSON
@@ -251,46 +268,50 @@ export default function WhatsAppWabaConfig({
     loadExistingConfig();
   }, [tenantSlug, displayName]);
 
-  // 3. Trigger 1-Klik Pop-up Meta Embedded Signup
+  // 3. Trigger Pop-up Meta Embedded Signup Resmi
   const handleLaunchEmbeddedSignup = () => {
     setErrorMessage(null);
-
-    const win = typeof window !== 'undefined' ? (window as any) : null;
-    if (!win || !win.FB) {
-      setErrorMessage(
-        'Facebook SDK sedang dimuat. Harap tunggu beberapa detik atau pastikan pemblokir iklan (ad-blocker) tidak memblokir connect.facebook.net.'
-      );
-      return;
-    }
-
     setIsVerifying(true);
 
     try {
-      win.FB.login(
-        (response: any) => {
-          if (response.authResponse?.code) {
-            const authCode = response.authResponse.code;
-            exchangeAuthCode(authCode);
-          } else {
-            setIsVerifying(false);
-            if (response.status === 'unknown') {
-              console.log('[Meta Embedded Signup] Pop-up ditutup oleh pengguna.');
-            } else if (response.error) {
-              setErrorMessage(`Pendaftaran Meta dibatalkan atau error: ${response.error.message || 'Pop-up ditutup'}`);
-            }
-          }
-        },
-        {
-          config_id: META_CONFIG_ID,
-          response_type: 'code',
-          override_default_response_type: true,
-          extras: {
-            version: 'v4',
-            sessionInfoVersion: '3',
-            featureType: 'whatsapp_business_app_onboarding',
-          },
-        }
+      const popup = window.open(
+        META_EMBEDDED_SIGNUP_URL,
+        'MetaWhatsAppOnboard',
+        'width=600,height=720,scrollbars=yes'
       );
+
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        // Pop-up blocker fallback: coba FB.login jika SDK tersedia
+        const win = typeof window !== 'undefined' ? (window as any) : null;
+        if (win && win.FB) {
+          win.FB.login(
+            (response: any) => {
+              if (response.authResponse?.code) {
+                const authCode = response.authResponse.code;
+                exchangeAuthCode(authCode);
+              } else {
+                setIsVerifying(false);
+                if (response.error) {
+                  setErrorMessage(`Pendaftaran Meta dibatalkan atau error: ${response.error.message || 'Pop-up ditutup'}`);
+                }
+              }
+            },
+            {
+              config_id: META_CONFIG_ID,
+              response_type: 'code',
+              override_default_response_type: true,
+              extras: {
+                version: 'v4',
+                sessionInfoVersion: '3',
+                featureType: 'whatsapp_business_app_onboarding',
+              },
+            }
+          );
+        } else {
+          setIsVerifying(false);
+          setErrorMessage('Jendela pop-up terblokir oleh browser. Harap izinkan pop-up untuk situs ini lalu coba klik kembali.');
+        }
+      }
     } catch (err: unknown) {
       setIsVerifying(false);
       const msg = err instanceof Error ? err.message : 'Gagal membuka pop-up Meta Embedded Signup.';
@@ -368,6 +389,10 @@ export default function WhatsAppWabaConfig({
       setIsVerifying(false);
     }
   };
+
+  useEffect(() => {
+    exchangeAuthCodeRef.current = exchangeAuthCode;
+  });
 
   // 5. Handle Form Submission Manual (Fallback)
   const handleConnectAndVerifyManual = async (e: React.FormEvent) => {
@@ -651,7 +676,7 @@ export default function WhatsAppWabaConfig({
               ) : (
                 <>
                   <Zap className="w-5 h-5 fill-current text-amber-300" />
-                  <span>Hubungkan WhatsApp Resmi (1-Klik Pop-up)</span>
+                  <span>Hubungkan WhatsApp Resmi (WABA)</span>
                 </>
               )}
             </button>

@@ -70,31 +70,31 @@ function SectionToggleHeader({
     <div
       className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
         enabled
-          ? 'bg-blue-50/70 border-blue-200/90 text-blue-950'
-          : 'bg-slate-50 border-slate-200 text-slate-500'
+          ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-200'
+          : 'bg-slate-900/60 border-slate-800 text-slate-400'
       }`}
     >
       <div className="space-y-0.5 min-w-0">
         <div className="flex items-center gap-2">
           <span
             className={`inline-block w-2.5 h-2.5 rounded-full ${
-              enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+              enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'
             }`}
           />
-          <h4 className="text-xs font-black tracking-tight text-slate-900">
+          <h4 className="text-xs font-black tracking-tight text-white">
             Aktifkan Section Ini (Tampil di Halaman)
           </h4>
           <span
             className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
               enabled
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-200 text-slate-600'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800 text-slate-400 border border-slate-700'
             }`}
           >
             {enabled ? 'Aktif' : 'Nonaktif'}
           </span>
         </div>
-        <p className="text-[11px] text-slate-500 leading-tight">
+        <p className="text-[11px] text-slate-400 leading-tight">
           {description}
         </p>
       </div>
@@ -271,27 +271,27 @@ export default function SinglePageBuilderModal({
   if (!isOpen || !activeProduct) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-5xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[850px] my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-950 rounded-3xl max-w-5xl w-full border border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[850px] my-auto text-slate-100">
         {/* MODAL HEADER */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90 shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-xs">
               <Sparkles className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+              <h3 className="text-sm sm:text-base font-black text-white leading-tight">
                 🎨 Desain Halaman Produk (Landing Page)
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-800">{activeProduct?.name || 'Produk'}</strong>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-200">{activeProduct?.name || 'Produk'}</strong>
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
             aria-label="Tutup Modal"
           >
             <X className="w-5 h-5" />
@@ -301,15 +301,15 @@ export default function SinglePageBuilderModal({
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Error Banner */}
           {errorMessage && (
-            <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 text-xs text-rose-900 font-semibold flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
+            <div className="px-4 py-2.5 bg-rose-950/60 border-b border-rose-800/80 text-xs text-rose-200 font-semibold flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
               <div className="flex items-center gap-2">
-                <span className="text-rose-500 font-bold">⚠️</span>
+                <span className="text-rose-400 font-bold">⚠️</span>
                 <span>{errorMessage}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setErrorMessage(null)}
-                className="text-rose-400 hover:text-rose-600 cursor-pointer"
+                className="text-rose-400 hover:text-rose-200 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -317,9 +317,9 @@ export default function SinglePageBuilderModal({
           )}
 
           {/* SLUG & URL BAR */}
-          <div className="px-4 sm:px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
+          <div className="px-4 sm:px-5 py-2.5 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
             <div className="flex items-center gap-1.5 flex-1 min-w-[280px]">
-              <span className="font-bold text-slate-700 shrink-0">Tautan Halaman:</span>
+              <span className="font-bold text-slate-300 shrink-0">Tautan Halaman:</span>
               <span className="text-slate-400 font-mono text-[11px] shrink-0">/{tenantSlug}/p/</span>
               <input
                 type="text"
@@ -328,7 +328,7 @@ export default function SinglePageBuilderModal({
                 value={singlePageForm.slug || ''}
                 onChange={(e) => setSinglePageForm((p) => ({ ...p, slug: slugify(e.target.value) }))}
                 placeholder="nama-slug-produk"
-                className="flex-1 max-w-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold font-mono text-xs focus:outline-none focus:border-blue-600"
+                className="flex-1 max-w-xs px-2.5 py-1 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg font-bold font-mono text-xs focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="button"
@@ -338,23 +338,23 @@ export default function SinglePageBuilderModal({
                     : (typeof activeProduct?.name === 'string' ? activeProduct.name.trim() : 'produk');
                   setSinglePageForm((p) => ({ ...p, slug: slugify(targetTitle) }));
                 }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-1 rounded-lg transition cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 hover:bg-slate-800 px-2 py-1 rounded-lg transition cursor-pointer"
                 title="Sinkronkan slug dengan judul baru"
               >
                 <RefreshCw className="w-3 h-3" />
                 <span>Sinkronkan</span>
               </button>
             </div>
-            <div className="text-[11px] text-slate-500 font-medium hidden sm:block">
+            <div className="text-[11px] text-slate-400 font-medium hidden sm:block">
               <span>Status: </span>
-              <span className="text-emerald-700 font-bold">● Siap Publikasi</span>
+              <span className="text-emerald-400 font-bold">● Siap Publikasi</span>
             </div>
           </div>
 
           {/* TWO-COLUMN LAYOUT: MINI-SIDEBAR & CONTENT EDITOR */}
-          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden bg-slate-950">
             {/* MINI-SIDEBAR VERTIKAL KIRI */}
-            <div className="w-full md:w-64 lg:w-72 shrink-0 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/70 p-2.5 md:p-3 overflow-x-auto md:overflow-y-auto space-x-1.5 md:space-x-0 md:space-y-1.5 flex md:flex-col shrink-0 no-scrollbar">
+            <div className="w-full md:w-64 lg:w-72 shrink-0 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950 p-2.5 md:p-3 overflow-x-auto md:overflow-y-auto space-x-1.5 md:space-x-0 md:space-y-1.5 flex md:flex-col shrink-0 no-scrollbar">
               <span className="hidden md:block text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 pt-1 pb-1">
                 URUTAN SECTION (ATAS KE BAWAH)
               </span>
@@ -369,13 +369,13 @@ export default function SinglePageBuilderModal({
                     onClick={() => setActiveBuilderTab(tab.id as any)}
                     className={`flex items-center justify-between p-2 md:p-2 rounded-xl md:rounded-2xl border transition-all cursor-pointer shrink-0 md:shrink select-none ${
                       isActive
-                        ? 'bg-blue-50/90 border-blue-400 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
-                        : 'bg-white hover:bg-slate-100/90 border-slate-200/80 text-slate-700'
+                        ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 shadow-xs ring-1 ring-indigo-500/30'
+                        : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-200 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                       {/* Tombol Reorder Urutan Section [↑] [↓] */}
-                      <div className="flex items-center gap-0.5 shrink-0 bg-slate-100 rounded-lg p-0.5 border border-slate-200/60">
+                      <div className="flex items-center gap-0.5 shrink-0 bg-slate-800 rounded-lg p-0.5 border border-slate-700/60">
                         <button
                           type="button"
                           disabled={idx === 0}
@@ -383,7 +383,7 @@ export default function SinglePageBuilderModal({
                             e.stopPropagation();
                             handleMoveSection(idx, 'up');
                           }}
-                          className="p-1 rounded hover:bg-white text-slate-500 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
+                          className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
                           title="Pindahkan Section ke Atas"
                           aria-label="Pindahkan Section ke Atas"
                         >
@@ -396,7 +396,7 @@ export default function SinglePageBuilderModal({
                             e.stopPropagation();
                             handleMoveSection(idx, 'down');
                           }}
-                          className="p-1 rounded hover:bg-white text-slate-500 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
+                          className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-20 disabled:hover:text-slate-500 transition cursor-pointer disabled:cursor-not-allowed"
                           title="Pindahkan Section ke Bawah"
                           aria-label="Pindahkan Section ke Bawah"
                         >
@@ -406,8 +406,8 @@ export default function SinglePageBuilderModal({
 
                       <span className="text-[11px] shrink-0 font-mono font-bold text-slate-400">#{idx + 1}</span>
                       <span className="text-sm shrink-0">{tab.icon}</span>
-                      <span className={`truncate text-xs font-bold ${
-                        isActive ? 'text-blue-900 font-black' : 'text-slate-800'
+                      <span className={`truncate text-xs font-bold text-slate-200 hover:text-white ${
+                        isActive ? 'text-indigo-300 font-black' : ''
                       }`}>
                         {tab.label.replace(/^(#?\d+[\.\s]*)/, '')}
                       </span>
@@ -425,8 +425,8 @@ export default function SinglePageBuilderModal({
                       }}
                       className={`ml-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
                         isEnabled
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
-                          : 'bg-slate-200 text-slate-500 border-slate-300 hover:bg-slate-300'
+                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800 hover:bg-emerald-900/60'
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
                       }`}
                       title={`Klik untuk On/Off: ${isEnabled ? 'Aktif' : 'Nonaktif'}`}
                     >
@@ -438,7 +438,7 @@ export default function SinglePageBuilderModal({
             </div>
 
             {/* CONTENT EDITOR RIGHT PANE */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-white space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-950 text-slate-200 space-y-4 text-xs">
 
           {/* TAB 1: HOOK & HERO */}
           {activeBuilderTab === 'hook' && (
@@ -451,7 +451,7 @@ export default function SinglePageBuilderModal({
               />
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">
+                <label className="font-bold text-slate-300 block mb-1">
                   Headline Penawaran Utama *
                 </label>
                 <input
@@ -460,12 +460,12 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.headline}
                   onChange={(e) => setSinglePageForm((p) => ({ ...p, headline: e.target.value }))}
                   placeholder="Contoh: Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">
+                <label className="font-bold text-slate-300 block mb-1">
                   Subheadline Persuasif & Ringkasan Nilai
                 </label>
                 <textarea
@@ -473,13 +473,13 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.subheadline}
                   onChange={(e) => setSinglePageForm((p) => ({ ...p, subheadline: e.target.value }))}
                   placeholder="Contoh: Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">
+                  <label className="font-bold text-slate-300 block mb-1">
                     Badge Label Promosi
                   </label>
                   <input
@@ -487,12 +487,12 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.badge_text || ''}
                     onChange={(e) => setSinglePageForm((p) => ({ ...p, badge_text: e.target.value }))}
                     placeholder="Contoh: Direct Access Class / Flash Sale 80%"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">
+                  <label className="font-bold text-slate-300 block mb-1">
                     Label Tombol CTA Utama
                   </label>
                   <input
@@ -500,13 +500,13 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.cta_label || ''}
                     onChange={(e) => setSinglePageForm((p) => ({ ...p, cta_label: e.target.value }))}
                     placeholder="Contoh: Pesan Sekarang (QRIS) / Klaim Akses"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">
+                <label className="font-bold text-slate-300 block mb-1">
                   URL Media Banner Hero Utama
                 </label>
                 <input
@@ -514,7 +514,7 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.banner_url}
                   onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
                   placeholder="https://..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 font-mono rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -544,7 +544,7 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.video_url || ''}
                   onChange={(e) => setSinglePageForm((p) => ({ ...p, video_url: e.target.value }))}
                   placeholder="https://www.youtube.com/watch?v=... atau https://youtube.com/shorts/... atau link .mp4"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 font-mono rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <p className="text-[10px] text-slate-400">
                   Mendukung YouTube, YouTube Shorts, atau video MP4. Jika diisi, video akan disematkan di banner utama hero landing page.
@@ -678,7 +678,7 @@ export default function SinglePageBuilderModal({
                               setSinglePageForm((p) => ({ ...p, gallery_images: list }));
                             }}
                             placeholder="https://... (masukkan URL gambar langsung)"
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
+                            className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 font-mono rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                           />
                         </div>
 
@@ -694,7 +694,7 @@ export default function SinglePageBuilderModal({
                                 setSinglePageForm((p) => ({ ...p, gallery_images: list }));
                               }}
                               placeholder="Contoh: Tampak Atas / Varian Cokelat"
-                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                             />
                           </div>
 
@@ -709,7 +709,7 @@ export default function SinglePageBuilderModal({
                                 setSinglePageForm((p) => ({ ...p, gallery_images: list }));
                               }}
                               placeholder="Contoh: Varian / Detail / Menu"
-                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                             />
                           </div>
                         </div>
@@ -766,7 +766,7 @@ export default function SinglePageBuilderModal({
 
               <div className="space-y-3">
                 {(singlePageForm.client_logos || []).map((logo, idx) => (
-                  <div key={idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+                  <div key={idx} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-700 text-[11px]">Klien / Partner #{idx + 1}</span>
                       <button
@@ -793,7 +793,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, client_logos: logos }));
                           }}
                           placeholder="Contoh: Skincare Beauty, Kopi Kenangan, PT Maju"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"
                         />
                       </div>
 
@@ -808,7 +808,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, client_logos: logos }));
                           }}
                           placeholder="Contoh: Fashion, Clinic, F&B, Agency"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                     </div>
@@ -838,7 +838,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, client_logos: logos }));
                         }}
                         placeholder="https://..."
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 focus:outline-none focus:border-blue-600"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 font-mono rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                   </div>
@@ -897,7 +897,7 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.problem_title || ''}
                     onChange={(e) => setSinglePageForm(p => ({ ...p, problem_title: e.target.value }))}
                     placeholder="Contoh: Apakah Anda Sering Menghadapi Masalah Ini?"
-                    className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-rose-500 font-bold"
+                    className="w-full px-3 py-2 bg-slate-900 border border-rose-600/70 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-rose-500"
                   />
                 </div>
 
@@ -914,7 +914,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, pain_points: newPoints }));
                         }}
                         placeholder="Deskripsi masalah yang dihadapi target pembeli..."
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-rose-500"
+                        className="flex-1 px-3 py-1.5 bg-slate-900 border border-rose-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-rose-500"
                       />
                       <button
                         type="button"
@@ -965,7 +965,7 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.solution_title || ''}
                     onChange={(e) => setSinglePageForm(p => ({ ...p, solution_title: e.target.value }))}
                     placeholder="Contoh: Kini Hadir Solusi Teruji untuk Anda"
-                    className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-bold"
+                    className="w-full px-3 py-2 bg-slate-900 border border-emerald-600/70 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -982,7 +982,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, solution_points: newPoints }));
                         }}
                         placeholder="Poin solusi / manfaat yang langsung dirasakan pembeli..."
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                        className="flex-1 px-3 py-1.5 bg-slate-900 border border-emerald-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
                       />
                       <button
                         type="button"
@@ -1032,7 +1032,7 @@ export default function SinglePageBuilderModal({
               </div>
 
               {/* Kustomisasi Header & Judul Kolom */}
-              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+              <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl space-y-3">
                 <span className="font-bold text-slate-800 block text-xs">
                   Kustomisasi Header &amp; Judul Kolom
                 </span>
@@ -1050,7 +1050,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Kenapa Memilih Produk Kami Dibanding Merk Lain?' : 'Kenapa Memilih Solusi Kami Dibanding Cara Lain?'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -1066,7 +1066,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Perbandingan kualitas bahan & garansi:' : 'Perbedaan nyata efisiensi & hasil yang didapatkan:'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
@@ -1086,7 +1086,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Produk Pasaran / Lainnya' : 'Cara Lain / Lama'}
-                      className="w-full px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-rose-500"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-rose-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-rose-500"
                     />
                   </div>
                   <div>
@@ -1104,7 +1104,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Kelebihan Produk Ini' : 'Solusi Produk Ini'}
-                      className="w-full px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-emerald-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
@@ -1112,7 +1112,7 @@ export default function SinglePageBuilderModal({
 
               <div className="space-y-3">
                 {(singlePageForm.comparison_rows || []).map((row, idx) => (
-                  <div key={row.id || idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2">
+                  <div key={row.id || idx} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-700 text-[11px]">Kriteria #{idx + 1}</span>
                       <button
@@ -1137,7 +1137,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
                         }}
                         placeholder="Aspek / Kriteria (mis: Efisiensi Biaya / Kecepatan Hasil)"
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
 
@@ -1155,7 +1155,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
                           }}
                           placeholder="Kelemahan cara lain..."
-                          className="w-full px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-rose-500"
+                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-rose-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-rose-500"
                         />
                       </div>
 
@@ -1172,7 +1172,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
                           }}
                           placeholder="Kelebihan nyata produk Anda..."
-                          className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-emerald-600/70 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
                         />
                       </div>
                     </div>
@@ -1198,7 +1198,7 @@ export default function SinglePageBuilderModal({
               </div>
 
               {/* Kustomisasi Header & Label Ulasan */}
-              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+              <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl space-y-3">
                 <span className="font-bold text-slate-800 block text-xs">
                   Kustomisasi Header &amp; Badge Ulasan
                 </span>
@@ -1216,7 +1216,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Apa Kata Pembeli Kami?' : 'Bukti Nyata & Kepuasan Pengguna'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -1232,7 +1232,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Pengalaman langsung dari pembeli kami:' : 'Pengalaman dan hasil nyata dari mereka:'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -1248,7 +1248,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Ulasan Pembeli Terverifikasi' : 'Hasil Nyata Member'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -1264,7 +1264,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Pembeli Terverifikasi' : 'Verified User'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
@@ -1274,7 +1274,7 @@ export default function SinglePageBuilderModal({
                 {[0, 1, 2].map((idx) => {
                   const currentVal = (singlePageForm.testimonial_images || [])[idx] || '';
                   return (
-                    <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                    <div key={idx} className="bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
                       <ImageUpload
                         label={`Screenshot Testimoni #${idx + 1}`}
                         value={currentVal}
@@ -1361,7 +1361,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, bonus_items: items }));
                           }}
                           placeholder="Contoh: 50+ Template Ad Copywriting Siap Pakai"
-                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500"
                         />
                       </div>
 
@@ -1377,7 +1377,7 @@ export default function SinglePageBuilderModal({
                             setSinglePageForm(p => ({ ...p, bonus_items: items }));
                           }}
                           placeholder="199000"
-                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </div>
                     </div>
@@ -1392,7 +1392,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, bonus_items: items }));
                         }}
                         placeholder="Deskripsi singkat manfaat bonus ini..."
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-indigo-600"
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                   </div>
@@ -1440,7 +1440,7 @@ export default function SinglePageBuilderModal({
 
               <div className="space-y-3">
                 {(singlePageForm.faqs || []).map((faq, idx) => (
-                  <div key={idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2.5">
+                  <div key={idx} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-700 text-[11px] flex items-center gap-1.5">
                         <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] flex items-center justify-center font-bold">
@@ -1471,7 +1471,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, faqs }));
                         }}
                         placeholder="Contoh: Apakah materi ini cocok untuk pemula?"
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"
                       />
                     </div>
 
@@ -1486,7 +1486,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, faqs }));
                         }}
                         placeholder="Jelaskan jawaban secara ringkas, jelas, dan meyakinkan..."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-600"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                   </div>
@@ -1639,7 +1639,7 @@ export default function SinglePageBuilderModal({
 
                 {/* SINKRONISASI KONFIGURASI WHATSAPP & PRE-FILLED DRAFT */}
                 {(singlePageForm.checkout_action_mode === 'WHATSAPP' || singlePageForm.checkout_action_mode === 'HYBRID') && (
-                  <div className="p-3.5 bg-white border border-emerald-200 rounded-xl space-y-3 animate-fadeIn">
+                  <div className="p-3.5 bg-slate-900/60 border border-emerald-800/60 rounded-xl space-y-3 animate-fadeIn">
                     <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
                       <div className="flex items-center gap-1.5">
                         <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1660,7 +1660,7 @@ export default function SinglePageBuilderModal({
                           value={singlePageForm.whatsapp_number || ''}
                           onChange={(e) => setSinglePageForm(p => ({ ...p, whatsapp_number: e.target.value }))}
                           placeholder="Contoh: 081234567890 (Gunakan nomor toko jika kosong)"
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-medium focus:outline-none focus:border-emerald-500"
                         />
                         <span className="text-[10px] text-slate-400 mt-1 block">
                           Jika dikosongkan, sistem otomatis memakai nomor WhatsApp resmi toko.
@@ -1688,7 +1688,7 @@ export default function SinglePageBuilderModal({
                           value={singlePageForm.whatsapp_custom_message ?? ''}
                           onChange={(e) => setSinglePageForm(p => ({ ...p, whatsapp_custom_message: e.target.value }))}
                           placeholder="Halo Admin, saya tertarik dengan produk {nama_produk}..."
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-medium focus:outline-none focus:border-emerald-500"
                         />
                         <span className="text-[10px] text-slate-400 mt-1 block">
                           Gunakan variabel <code className="text-emerald-700 font-bold">{"{nama_produk}"}</code> untuk otomatis diisi nama produk saat buyer mengklik tombol.
@@ -1699,13 +1699,13 @@ export default function SinglePageBuilderModal({
                 )}
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <span className="font-bold text-slate-800 block text-xs">
                   Opsi Metode Pembayaran di Checkout
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer hover:border-emerald-500 transition">
                     <input
                       type="checkbox"
                       checked={singlePageForm.enable_qris}
@@ -1718,7 +1718,7 @@ export default function SinglePageBuilderModal({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer hover:border-indigo-500 transition">
                     <input
                       type="checkbox"
                       checked={singlePageForm.enable_manual_transfer}
@@ -1808,7 +1808,7 @@ export default function SinglePageBuilderModal({
                             }));
                           }}
                           placeholder="Contoh: HEMAT50, DISKON20K, FREESHIP"
-                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 font-mono font-bold uppercase rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                         />
                       </div>
 
@@ -1838,12 +1838,12 @@ export default function SinglePageBuilderModal({
                             }));
                           }}
                           placeholder="0 (Tanpa minimum)"
-                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </div>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-indigo-900/50 space-y-2.5">
                       <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -1926,7 +1926,7 @@ export default function SinglePageBuilderModal({
                                 }
                               }));
                             }}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                           <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
                             {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
@@ -1935,7 +1935,7 @@ export default function SinglePageBuilderModal({
                       </div>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-indigo-900/50 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
                         {activeProduct.category === 'fisik' && (
@@ -2005,7 +2005,7 @@ export default function SinglePageBuilderModal({
                                   }
                                 }));
                               }}
-                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
                           </div>
@@ -2017,7 +2017,7 @@ export default function SinglePageBuilderModal({
               </div>
 
               {/* Batasi Pembelian Maksimal 1 Item Toggle */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3">
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-black tracking-tight text-slate-900">
@@ -2050,7 +2050,7 @@ export default function SinglePageBuilderModal({
               </div>
 
               {/* C. Dynamic CTA Button Text Input */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-800 block text-xs">
                     Teks Tombol Aksi / CTA Label
@@ -2068,7 +2068,7 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.cta_label || ''}
                   onChange={(e) => setSinglePageForm(p => ({ ...p, cta_label: e.target.value }))}
                   placeholder={`Contoh: ${activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'} / Pesan Sekarang`}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-indigo-600"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500"
                 />
                 <p className="text-[10px] text-slate-400">
                   Label tombol aksi pembeli di landing page &amp; formulir checkout.
@@ -2076,7 +2076,7 @@ export default function SinglePageBuilderModal({
               </div>
 
               {/* D. Kustomisasi Label Finansial & Checkout Multi-Kategori */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
                 <div>
                   <span className="font-bold text-slate-800 block text-xs">
                     Kustomisasi Label Checkout &amp; Finansial Multi-Kategori
@@ -2097,7 +2097,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'TOTAL HARGA' : 'TOTAL INVESTASI'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -2113,7 +2113,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Formulir Pengiriman & Pembayaran' : 'Form Pemesanan & Pembayaran'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -2129,7 +2129,7 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder={activeProduct.category === 'fisik' ? 'Garansi 100% Produk Original' : 'Garansi Akses Resmi'}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -2145,13 +2145,13 @@ export default function SinglePageBuilderModal({
                         }));
                       }}
                       placeholder="+ Keranjang"
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-bold"
+                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 text-white placeholder:text-slate-400 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-xl space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                   <Store className="w-3.5 h-3.5 text-blue-600" />
                   <span>Model Penjualan Toko Langsung (Direct Store)</span>
@@ -2211,7 +2211,7 @@ export default function SinglePageBuilderModal({
                 }}
               />
 
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold leading-none flex items-center justify-center">
@@ -2254,14 +2254,14 @@ export default function SinglePageBuilderModal({
           </div>{/* Akhir Two-Column Layout */}
 
           {/* MODAL FOOTER ACTION BAR */}
-          <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between gap-3">
+          <div className="p-4 bg-slate-900 border-t border-slate-800 shrink-0 flex items-center justify-between gap-3">
             <a
               href={getProductPageUrl(tenantSlug, singlePageForm.slug || slugify(activeProduct?.name || 'produk'))}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-xl border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 transition flex items-center gap-1.5"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
               <span>Preview Halaman</span>
             </a>
 
@@ -2269,7 +2269,7 @@ export default function SinglePageBuilderModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 cursor-pointer"
               >
                 Batal
               </button>
