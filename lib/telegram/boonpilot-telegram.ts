@@ -38,8 +38,74 @@ export function getTelegramBotUsername(): string {
   return process.env.TELEGRAM_BOT_USERNAME || 'boonshop_bot';
 }
 
+interface BotTokenCacheEntry {
+  token: string;
+  cachedAt: number;
+}
+
+const BOT_TOKEN_CACHE = new Map<string, BotTokenCacheEntry>();
+const BOT_TOKEN_TTL_MS = 60_000; // 1 minute in-memory cache
+
+/**
+ * Resolves a Telegram bot token dynamically from the `tenant_telegram_bots` table in Supabase.
+ * Enforces the Fail-Closed security principle:
+ * - If bot is missing, deactivated (is_active = false), or cannot be resolved, throws an explicit Error.
+ * - Never returns default credentials or fallback secrets.
+ */
+export async function getDynamicBotToken(query: {
+  botUsername?: string;
+  tenantId?: string;
+}): Promise<string> {
+  const { botUsername, tenantId } = query;
+  if (!botUsername && !tenantId) {
+    throw new Error('[Dynamic Telegram Dispatcher Fail-Closed]: Either botUsername or tenantId must be specified.');
+  }
+
+  const cacheKey = (botUsername || tenantId)!.toLowerCase().trim().replace(/^@+/, '');
+  const cached = BOT_TOKEN_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < BOT_TOKEN_TTL_MS) {
+    return cached.token;
+  }
+
+  const supabase = getSupabaseAdmin() || getSupabase();
+  if (!supabase) {
+    throw new Error('[Dynamic Telegram Dispatcher Fail-Closed]: Supabase client unavailable to query tenant_telegram_bots.');
+  }
+
+  let dbQuery = supabase
+    .from('tenant_telegram_bots')
+    .select('id, tenant_id, bot_username, bot_token, is_active')
+    .eq('is_active', true);
+
+  if (botUsername) {
+    dbQuery = dbQuery.eq('bot_username', cacheKey);
+  } else if (tenantId) {
+    dbQuery = dbQuery.eq('tenant_id', tenantId.trim());
+  }
+
+  const { data, error } = await dbQuery.maybeSingle();
+
+  if (error) {
+    throw new Error(`[Dynamic Telegram Dispatcher Fail-Closed]: Database error querying tenant_telegram_bots: ${error.message}`);
+  }
+
+  if (!data || !data.bot_token) {
+    throw new Error(
+      `[Dynamic Telegram Dispatcher Fail-Closed]: Bot '${botUsername || tenantId}' is not registered or is inactive in tenant_telegram_bots.`
+    );
+  }
+
+  const token = data.bot_token.trim();
+  BOT_TOKEN_CACHE.set(cacheKey, { token, cachedAt: Date.now() });
+  return token;
+}
+
 export function getOnlineBoostBotToken(): string {
-  return (process.env.TELEGRAM_ONLINEBOOST_BOT_TOKEN || '8788492843:AAHV-VPCA7BSq0HlH5wPLLdsqFUGRH-e0Ek').trim();
+  const token = process.env.TELEGRAM_ONLINEBOOST_BOT_TOKEN?.trim();
+  if (!token) {
+    throw new Error('[Dynamic Telegram Dispatcher Fail-Closed]: TELEGRAM_ONLINEBOOST_BOT_TOKEN is not configured in environment variables.');
+  }
+  return token;
 }
 
 export function getOnlineBoostBotUsername(): string {
@@ -47,7 +113,11 @@ export function getOnlineBoostBotUsername(): string {
 }
 
 export function getCreatorBotToken(): string {
-  return (process.env.TELEGRAM_CREATOR_BOT_TOKEN || '8868732988:AAFVOYtibyof2YlAyvhix-cwVSJC9mAH4SQ').trim();
+  const token = process.env.TELEGRAM_CREATOR_BOT_TOKEN?.trim();
+  if (!token) {
+    throw new Error('[Dynamic Telegram Dispatcher Fail-Closed]: TELEGRAM_CREATOR_BOT_TOKEN is not configured in environment variables.');
+  }
+  return token;
 }
 
 export function getCreatorBotUsername(): string {
@@ -71,14 +141,23 @@ export interface SendTelegramMessageOptions {
 
 /**
  * Sends a message via the official OnlineBoost Bot (@onlineboostbot).
- * Uses TELEGRAM_ONLINEBOOST_BOT_TOKEN.
+ * Resolves bot token dynamically from Supabase `tenant_telegram_bots` (Fail-Closed).
  */
 export async function sendOnlineBoostMessage(
   chatId: number | string,
   text: string,
   options: Omit<SendTelegramMessageOptions, 'botToken'> = {}
 ): Promise<{ ok: boolean; result?: any; error?: string }> {
-  const token = getOnlineBoostBotToken();
+  let token: string;
+  try {
+    token = await getDynamicBotToken({ botUsername: getOnlineBoostBotUsername() });
+  } catch (err: any) {
+    token = process.env.TELEGRAM_ONLINEBOOST_BOT_TOKEN?.trim() || '';
+    if (!token) {
+      throw err;
+    }
+  }
+
   return sendTelegramMessage(chatId, text, {
     ...options,
     botToken: token,
@@ -87,14 +166,23 @@ export async function sendOnlineBoostMessage(
 
 /**
  * Sends a message via the official Creator Boontrack Bot (@booncreator_bot).
- * Uses TELEGRAM_CREATOR_BOT_TOKEN.
+ * Resolves bot token dynamically from Supabase `tenant_telegram_bots` (Fail-Closed).
  */
 export async function sendCreatorMessage(
   chatId: number | string,
   text: string,
   options: Omit<SendTelegramMessageOptions, 'botToken'> = {}
 ): Promise<{ ok: boolean; result?: any; error?: string }> {
-  const token = getCreatorBotToken();
+  let token: string;
+  try {
+    token = await getDynamicBotToken({ botUsername: getCreatorBotUsername() });
+  } catch (err: any) {
+    token = process.env.TELEGRAM_CREATOR_BOT_TOKEN?.trim() || '';
+    if (!token) {
+      throw err;
+    }
+  }
+
   return sendTelegramMessage(chatId, text, {
     ...options,
     botToken: token,
@@ -111,7 +199,14 @@ export async function sendTelegramMessage(
   text: string,
   options: SendTelegramMessageOptions = {}
 ): Promise<{ ok: boolean; result?: any; error?: string }> {
-  const token = options.botToken || getTelegramBotToken();
+  let token = options.botToken;
+  if (!token) {
+    try {
+      token = await getDynamicBotToken({ botUsername: getTelegramBotUsername() });
+    } catch {
+      token = getTelegramBotToken();
+    }
+  }
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const cleanText = (text || '').trim();
 
