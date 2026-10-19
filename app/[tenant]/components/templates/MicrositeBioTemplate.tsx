@@ -1234,7 +1234,20 @@ export default function MicrositeBioTemplate({
         )}
 
         {/* ── Footer ── */}
-        <div className="mt-10 pb-8 text-center">
+        <div className="mt-10 pb-8 text-center space-y-2">
+          <div className="flex items-center justify-center gap-3 text-[11px] opacity-70">
+            <Link href="/docs" target="_blank" rel="noopener noreferrer" className="hover:underline">
+              Dokumentasi
+            </Link>
+            <span>&bull;</span>
+            <Link href="/docs/meta-waba" target="_blank" rel="noopener noreferrer" className="hover:underline">
+              Meta WABA
+            </Link>
+            <span>&bull;</span>
+            <Link href="/status" target="_blank" rel="noopener noreferrer" className="hover:underline">
+              Status Layanan
+            </Link>
+          </div>
           <p className={`text-[11px] ${themeStyles.footerText}`}>
             &copy; {new Date().getFullYear()} {activeName} &bull; Powered by{' '}
             <span className="font-bold">BoonTrack Official Platform</span>

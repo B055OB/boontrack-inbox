@@ -9,7 +9,7 @@ export default function Footer() {
     <footer className="border-t border-slate-800/80 bg-slate-950 text-slate-400 text-xs py-14">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           {/* Brand Col */}
           <div className="space-y-3 md:col-span-2">
             <div className="flex items-center gap-2.5">
@@ -34,22 +34,39 @@ export default function Footer() {
           {/* Model Bisnis Links */}
           <div className="space-y-2.5">
             <h4 className="font-bold text-white uppercase tracking-wider text-[11px] font-mono">
-              Model Bisnis Vertikal
+              Model Bisnis
             </h4>
             <ul className="space-y-2 text-slate-400 text-xs">
-              <li><a href="#vertikal" className="hover:text-white transition">Produk Fisik & Retail</a></li>
-              <li><a href="#vertikal" className="hover:text-white transition">Produk Digital & Lisensi</a></li>
-              <li><a href="#vertikal" className="hover:text-white transition">F&B, Resto & Kuliner</a></li>
-              <li><a href="#vertikal" className="hover:text-white transition">Jasa Lapangan & Teknisi</a></li>
-              <li><a href="#vertikal" className="hover:text-white transition">Profesi, Legal & Agensi</a></li>
-              <li><a href="#vertikal" className="hover:text-white transition">Kreator & Endorsement</a></li>
+              <li><a href="#vertikal" className="hover:text-white transition">Produk Fisik &amp; Retail</a></li>
+              <li><a href="#vertikal" className="hover:text-white transition">Produk Digital &amp; Lisensi</a></li>
+              <li><a href="#vertikal" className="hover:text-white transition">F&amp;B, Resto &amp; Kuliner</a></li>
+              <li><a href="#vertikal" className="hover:text-white transition">Jasa Lapangan &amp; Teknisi</a></li>
+              <li><a href="#vertikal" className="hover:text-white transition">Profesi, Legal &amp; Agensi</a></li>
+            </ul>
+          </div>
+
+          {/* Dokumentasi & Integrasi */}
+          <div className="space-y-2.5">
+            <h4 className="font-bold text-white uppercase tracking-wider text-[11px] font-mono">
+              Dokumentasi &amp; API
+            </h4>
+            <ul className="space-y-2 text-slate-400 text-xs">
+              <li><Link href="/docs" className="text-indigo-400 hover:text-white font-medium transition">Dokumentasi API &amp; Integrasi</Link></li>
+              <li><Link href="/docs/meta-waba" className="hover:text-white transition">Panduan Meta WABA &amp; CAPI</Link></li>
+              <li>
+                <Link href="/status" className="hover:text-emerald-400 transition inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Status Layanan</span>
+                </Link>
+              </li>
+              <li><Link href="/login" className="hover:text-white transition">Portal Merchant</Link></li>
             </ul>
           </div>
 
           {/* Legal & Compliance */}
           <div className="space-y-2.5">
             <h4 className="font-bold text-white uppercase tracking-wider text-[11px] font-mono">
-              Kepatuhan & Regulasi
+              Kepatuhan &amp; Regulasi
             </h4>
             <ul className="space-y-2 text-slate-400 text-xs">
               <li><Link href="/terms" className="hover:text-white transition">Ketentuan Layanan (Terms)</Link></li>

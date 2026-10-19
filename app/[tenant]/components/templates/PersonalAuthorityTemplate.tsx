@@ -1605,7 +1605,7 @@ export default function PersonalAuthorityTemplate({
 
       {/* FOOTER */}
       <footer className="mt-auto bg-slate-900 text-slate-400 py-10 px-4 sm:px-6 border-t border-slate-800 text-xs">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl overflow-hidden bg-purple-600 shrink-0 flex items-center justify-center">
               {displayLogo && !logoError ? (
@@ -1623,7 +1623,23 @@ export default function PersonalAuthorityTemplate({
             </div>
             <span className="font-bold text-white text-sm">{activeName} Official</span>
           </div>
-          <p className="text-[11px] text-slate-500 text-center sm:text-right">
+
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-400">
+            <Link href="/docs" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">
+              Dokumentasi API &amp; Integrasi
+            </Link>
+            <span className="text-slate-600">&bull;</span>
+            <Link href="/docs/meta-waba" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">
+              Panduan Meta WABA &amp; CAPI
+            </Link>
+            <span className="text-slate-600">&bull;</span>
+            <Link href="/status" target="_blank" rel="noopener noreferrer" className="hover:text-white transition inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Status Layanan</span>
+            </Link>
+          </div>
+
+          <p className="text-[11px] text-slate-500 text-center md:text-right">
             &copy; {new Date().getFullYear()} {activeName} &bull; Powered by BoonTrack Commerce Engine
           </p>
         </div>

@@ -49,12 +49,28 @@ export default function Footer({ className = "" }: { className?: string }) {
               </li>
               <li>
                 <a href="#fitur" className="text-slate-300 hover:text-white transition">
-                  Fitur & Keunggulan
+                  Fitur &amp; Keunggulan
                 </a>
               </li>
               <li>
+                <Link href="/docs" className="text-emerald-400 hover:text-emerald-300 font-medium transition flex items-center gap-1.5">
+                  <span>Dokumentasi API &amp; Integrasi</span>
+                </Link>
+              </li>
+              <li>
+                <Link href="/docs/meta-waba" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
+                  <span>Panduan Meta WABA &amp; CAPI</span>
+                </Link>
+              </li>
+              <li>
+                <Link href="/status" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Status Layanan</span>
+                </Link>
+              </li>
+              <li>
                 <a href="#metode-bayar" className="text-slate-300 hover:text-white transition">
-                  Cara & Metode Bayar
+                  Cara &amp; Metode Bayar
                 </a>
               </li>
               <li>
@@ -160,7 +176,10 @@ export default function Footer({ className = "" }: { className?: string }) {
         {/* Baris Bawah: Copyright */}
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <p>© 2026 BoonTrack. Dioperasikan oleh PT Boontrack Inovasi Digital.</p>
-          <div className="flex items-center gap-4 text-slate-400">
+          <div className="flex flex-wrap items-center gap-4 text-slate-400">
+            <Link href="/docs" className="hover:text-white transition">Docs</Link>
+            <Link href="/docs/meta-waba" className="hover:text-white transition">Meta WABA</Link>
+            <Link href="/status" className="hover:text-white transition">Status</Link>
             <Link href="/terms" className="hover:text-white transition">Terms</Link>
             <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
             <Link href="/acceptable-use" className="hover:text-white transition">AUP</Link>
