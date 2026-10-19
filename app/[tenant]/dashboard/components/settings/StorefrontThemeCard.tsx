@@ -789,21 +789,21 @@ export default function StorefrontThemeCard({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6 shadow-xs relative">
+    <div className="bg-white dark:bg-slate-900/60 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-6 shadow-xs relative">
       {/* Header Info */}
-      <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
+      <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-800/60">
             <Palette className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-black text-slate-900">Pilihan Tema Visual Storefront</h3>
-              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">Pilihan Tema Visual Storefront</h3>
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                 6 Pilihan Tema
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Sesuaikan palet warna, gradien, dan gaya kartu etalase publik toko Anda.
             </p>
           </div>
@@ -864,16 +864,16 @@ export default function StorefrontThemeCard({
                   onClick={() => handleSelectTheme(theme)}
                   className={`relative rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between text-left border ${
                     isSelected
-                      ? 'bg-indigo-50/40 border-indigo-600 ring-2 ring-indigo-500/20 shadow-sm'
+                      ? 'bg-indigo-50/40 dark:bg-indigo-950/40 border-indigo-600 dark:border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
                       : locked
-                      ? 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
-                      : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 shadow-2xs'
+                      ? 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                      : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-slate-700 hover:bg-slate-50/40 dark:hover:bg-slate-800/50 shadow-2xs'
                   }`}
                 >
                   <div className="space-y-3">
                     {/* Top row: Swatches & Badges */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60">
+                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700">
                         <span
                           className="w-4 h-4 rounded-md border border-black/10 shadow-2xs"
                           style={{ backgroundColor: theme.swatches.bg }}
@@ -889,12 +889,12 @@ export default function StorefrontThemeCard({
                       </div>
 
                       {locked ? (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0">
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0">
                           <Lock className="w-3 h-3 text-slate-500" />
                           <span>Terkunci</span>
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
                           {theme.badge}
                         </span>
                       )}
@@ -902,23 +902,23 @@ export default function StorefrontThemeCard({
 
                     {/* Title & Description */}
                     <div>
-                      <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                         <span>{theme.title}</span>
                         {isSelected && (
-                          <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                          <span className="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400" />
                         )}
                       </h4>
-                      <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                         {theme.subtitle}
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                      <p className="text-[11px] text-slate-300 font-normal mt-2 leading-relaxed">
                         {theme.description}
                       </p>
                     </div>
                   </div>
 
                   {/* Radio Indicator at bottom */}
-                  <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-400">
                       {isSelected ? 'Sedang Digunakan' : locked ? 'Khusus Ads / Scale' : 'Klik untuk Pilih'}
                     </span>
@@ -927,8 +927,8 @@ export default function StorefrontThemeCard({
                         isSelected
                           ? 'border-indigo-600 bg-indigo-600'
                           : locked
-                          ? 'border-slate-300 bg-slate-100'
-                          : 'border-slate-300 bg-white'
+                          ? 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900'
                       }`}
                     >
                       {isSelected ? (
