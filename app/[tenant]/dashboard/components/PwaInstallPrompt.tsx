@@ -309,20 +309,20 @@ export default function PwaInstallPrompt({
         </div>
       )}
 
-      {/* ── VARIANT 2: MENU ITEM (Inside Burger Drawer / Profile Popover) ── */}
+      {/* ── VARIANT 2: MENU ITEM (Inside Burger Drawer / Profile Popover / Footer) ── */}
       {variant === 'menu-item' && (
         <button
           type="button"
           onClick={() => {
             handleInstallClick();
           }}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50/50 hover:bg-purple-100/70 border border-purple-200/60 transition text-left cursor-pointer shadow-2xs active:scale-95"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium bg-slate-900/60 hover:bg-slate-800 text-slate-300 border border-slate-800/80 transition-colors text-left cursor-pointer shadow-2xs active:scale-95"
         >
           <div className="flex items-center gap-2.5">
-            <Smartphone className="w-3.5 h-3.5 text-purple-600" />
+            <Smartphone className="w-3.5 h-3.5 text-slate-400" />
             <span>Install App</span>
           </div>
-          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
             APP
           </span>
         </button>

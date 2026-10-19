@@ -337,7 +337,7 @@ export default function OverviewTab({
 
         <div className="overflow-x-auto w-full">
           <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+            <thead className="bg-slate-950 border-b border-slate-800/80 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">Invoice / Waktu (WIB)</th>
                 <th className="px-5 py-3.5">Pembeli</th>
@@ -348,15 +348,15 @@ export default function OverviewTab({
                 <th className="px-5 py-3.5 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
+            <tbody className="divide-y divide-slate-800/80 font-medium">
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-800/60 border border-slate-700/80 flex items-center justify-center text-slate-400 mb-1">
                         <FileText className="w-5 h-5 text-slate-400" />
                       </div>
-                      <p className="text-xs font-bold text-slate-700">
+                      <p className="text-xs font-bold text-slate-300">
                         Belum ada transaksi pada kriteria filter ini.
                       </p>
                       <p className="text-[11px] text-slate-400">
@@ -381,38 +381,38 @@ export default function OverviewTab({
                   const paymentMethod = t.payment_method || t.paymentMethod || 'QRIS Dinamis';
 
                   return (
-                    <tr key={t.id || invoiceNo} className="hover:bg-slate-50/80 transition">
+                    <tr key={t.id || invoiceNo} className="bg-slate-900/40 border-b border-slate-800/80 text-slate-200 hover:bg-slate-800/50 transition">
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900 font-mono">{invoiceNo}</div>
+                        <div className="font-bold text-slate-400 font-mono">{invoiceNo}</div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3" /> {formatWIBDateTime(dateVal)}
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-800">{customerName}</div>
+                        <div className="font-bold text-slate-200">{customerName}</div>
                         <div className="text-[11px] text-slate-400 font-mono">
                           {customerPhone ? (String(customerPhone).startsWith('+') ? customerPhone : `+${customerPhone}`) : '-'}
                         </div>
                       </td>
                       <td className="px-5 py-4 max-w-[220px]">
-                        <div className="truncate font-semibold text-slate-900" title={productTitle}>{productTitle}</div>
+                        <div className="truncate font-semibold text-slate-200" title={productTitle}>{productTitle}</div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
+                        <span className="text-[11px] text-slate-300 bg-slate-800/80 border border-slate-700/80 px-2 py-0.5 rounded font-mono">
                           {paymentMethod}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono whitespace-nowrap">
+                      <td className="px-5 py-4 text-right font-black text-slate-200 font-mono whitespace-nowrap">
                         Rp {Math.round(grossAmount).toLocaleString('id-ID')}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span
                           className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
                             isPaid
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
                               : isPendingVerif
-                              ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                              ? 'bg-amber-950/60 text-amber-300 border-amber-800/60 font-extrabold animate-pulse'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
                           }`}
                         >
                           {isPaid
