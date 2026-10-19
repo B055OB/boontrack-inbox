@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Truck, PackageCheck, CheckCircle2, ArrowRight, ExternalLink, RefreshCw, Clock, AlertCircle } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import FnbInstantCourier from '../fnb-culinary/InstantCourier';
 
 export interface ShipmentItem {
   id: string;
@@ -20,6 +21,7 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
   const [shipments, setShipments] = useState<ShipmentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFnbCatering, setIsFnbCatering] = useState(false);
   const [inputOrderId, setInputOrderId] = useState('');
   const [inputResi, setInputResi] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -33,12 +35,18 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
         return;
       }
 
-      // 1. Ambil ID tenant
+      // 1. Ambil ID tenant & metadata
       const { data: tenantRow } = await supabase
         .from('tenants')
-        .select('id, slug')
+        .select('id, slug, metadata')
         .eq('slug', tenantSlug)
         .maybeSingle();
+
+      if (tenantRow?.metadata?.fnb_catering === true || tenantRow?.metadata?.vertical === 'fnb-culinary') {
+        setIsFnbCatering(true);
+        setIsLoading(false);
+        return;
+      }
 
       const tenantId = tenantRow?.id;
 
@@ -197,6 +205,10 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
       setTimeout(() => setFeedback(null), 4000);
     }
   };
+
+  if (isFnbCatering) {
+    return <FnbInstantCourier tenantSlug={tenantSlug} />;
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-200">

@@ -384,16 +384,16 @@ export default function TenantDashboardPage() {
   // Guard Unauthenticated State (Defense-in-depth: No Flash of Protected Data)
   if (isAuthenticated === false) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300 gap-4 p-6 font-sans">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center text-slate-700 dark:text-slate-300 gap-4 p-6 font-sans">
         <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
           <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
         <div className="text-center max-w-sm">
-          <h2 className="text-lg font-semibold text-white">Sesi Login Diperlukan</h2>
-          <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
-            Akses ke dashboard toko <strong className="text-slate-200">{tenantSlug}</strong> dilindungi. Mengalihkan ke halaman verifikasi...
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Sesi Login Diperlukan</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1.5 leading-relaxed">
+            Akses ke dashboard toko <strong className="text-slate-900 dark:text-slate-200">{tenantSlug}</strong> dilindungi. Mengalihkan ke halaman verifikasi...
           </p>
         </div>
       </div>
@@ -402,7 +402,7 @@ export default function TenantDashboardPage() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3 font-sans">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center text-slate-600 dark:text-slate-400 gap-3 font-sans">
         <div className="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
         <span className="text-xs font-medium tracking-wide">Memverifikasi sesi keamanan dashboard...</span>
       </div>
@@ -1251,15 +1251,20 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: PENGIRIMAN & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK / FNB) */}
-      {(activeTab === 'shipping' || activeTab === 'biteship') && (
-        resolveDomainVertical(storeCategory || businessType) === 'fnb-culinary' ? (
+      {(activeTab === 'shipping' || activeTab === 'biteship') && (() => {
+        const isFnbCatering =
+          resolveDomainVertical(storeCategory || businessType) === 'fnb-culinary' ||
+          tenantData?.metadata?.fnb_catering === true;
+
+        return isFnbCatering ? (
           <>
-            {/* FnB: Konfigurasi Pinpoint Dapur & Kurir Instan (GoSend/Grab) */}
+            {/* FnB: Konfigurasi Titik Dapur, Alur Logistik & Driver Toko */}
             <FnbInstantCourier tenantSlug={tenantSlug} />
-            {/* FnB: Multi-Kurir Matrix (Lincah Reguler/Kargo + Toggle Ekspedisi) */}
+            {/* FnB: Modul Ambil Sendiri di Toko / Self-Pickup */}
             <BiteshipCourierConfig
               tenantSlug={tenantSlug}
               displayName={displayName}
+              isFnbCatering={true}
               onSaved={(msg) => {
                 setSaveFeedback(msg);
                 setTimeout(() => setSaveFeedback(null), 3000);
@@ -1270,13 +1275,14 @@ export default function TenantDashboardPage() {
           <BiteshipCourierConfig
             tenantSlug={tenantSlug}
             displayName={displayName}
+            isFnbCatering={false}
             onSaved={(msg) => {
               setSaveFeedback(msg);
               setTimeout(() => setSaveFeedback(null), 3000);
             }}
           />
-        )
-      )}
+        );
+      })()}
 
       {/* TAB: BOOKING & JADWAL (FIELD SERVICE / JASA / PRO SERVICE) */}
       {activeTab === 'booking' && (
