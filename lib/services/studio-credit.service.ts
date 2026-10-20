@@ -47,7 +47,7 @@ export class StudioCreditService {
   /**
    * Helper: Resolve tenant record by ID or slug
    */
-  private static async resolveTenant(tenantIdOrSlug: string) {
+  public static async resolveTenant(tenantIdOrSlug: string) {
     const clean = (tenantIdOrSlug || '').trim();
     if (!clean) return null;
 
@@ -416,6 +416,9 @@ export class StudioCreditService {
     credits: number;
     amountPaid: number;
     transactionId: string;
+    invoiceId?: string;
+    packageId?: string;
+    idempotencyKey?: string;
     paymentStatus?: 'PAID' | 'SETTLED' | string;
     affiliateCode?: string | null;
     paymentChannel?: string;
@@ -427,11 +430,19 @@ export class StudioCreditService {
     isExisting?: boolean;
     message?: string;
   }> {
-    const txKey = params.transactionId ? `${params.tenantIdOrSlug || ''}:${params.transactionId}` : null;
-    if (txKey && this.inFlightTopups.has(txKey)) {
-      try {
-        await this.inFlightTopups.get(txKey);
-      } catch {}
+    const txKey = params.transactionId
+      ? `${params.tenantIdOrSlug || ''}:${params.transactionId}`
+      : (params.invoiceId ? `${params.tenantIdOrSlug || ''}:${params.invoiceId}` : null);
+
+    // ANTI-RACE CONDITION LOCK:
+    // Jika ada request concurrent dengan txKey yang sama, langsung kembalikan Promise in-flight
+    // tanpa mengeksekusi ulang fungsi _executeTopUpCredits!
+    if (txKey) {
+      const activePromise = this.inFlightTopups.get(txKey);
+      if (activePromise) {
+        console.log(`[StudioCreditService] Re-using in-flight top-up execution for key: ${txKey}`);
+        return await activePromise;
+      }
     }
 
     const execution = this._executeTopUpCredits(params);
@@ -453,6 +464,9 @@ export class StudioCreditService {
     credits: number;
     amountPaid: number;
     transactionId: string;
+    invoiceId?: string;
+    packageId?: string;
+    idempotencyKey?: string;
     paymentStatus?: 'PAID' | 'SETTLED' | string;
     affiliateCode?: string | null;
     paymentChannel?: string;
@@ -472,36 +486,81 @@ export class StudioCreditService {
 
     const entitlements = await this.getEntitlements(tenant.id);
 
-    // 0. Idempotency Guard: Check if transactionId has already been recorded in tenant_credit_ledger
-    if (params.transactionId) {
-      try {
-        const { data: existingLedger } = await supabase
+    // 0. MULTI-KEY IDEMPOTENCY GUARD (Anti-Double Credit)
+    // Memeriksa tenant_credit_ledger berdasarkan:
+    // a. Kolom idempotency_key resmi
+    // b. Kolom metadata (invoice_id, external_id, transaction_id)
+    // c. Substring deskripsi (backwards compatibility)
+    const primaryIdempotencyKey = params.idempotencyKey ||
+      (params.transactionId ? `TOPUP_${tenant.id}_${params.transactionId}` : null) ||
+      (params.invoiceId ? `TOPUP_${tenant.id}_${params.invoiceId}` : null);
+
+    const lookupKeys = [
+      primaryIdempotencyKey,
+      params.transactionId ? `TOPUP_${tenant.id}_${params.transactionId}` : null,
+      params.invoiceId ? `TOPUP_${tenant.id}_${params.invoiceId}` : null,
+      params.transactionId,
+      params.invoiceId,
+    ].filter((k): k is string => Boolean(k && k.trim()));
+
+    try {
+      // 1. Cek langsung via kolom idempotency_key
+      if (lookupKeys.length > 0) {
+        const { data: existingByKey } = await supabase
           .from('tenant_credit_ledger')
-          .select('id, amount, balance_after, description')
+          .select('id, amount, balance_after, description, metadata')
           .eq('tenant_id', tenant.id)
-          .ilike('description', `%${params.transactionId}%`)
+          .in('idempotency_key', lookupKeys)
           .limit(1)
           .maybeSingle();
 
-        if (existingLedger) {
-          console.log(`[StudioCreditService] Transaction ${params.transactionId} already processed (idempotent duplicate). Skipping credit increment.`);
+        if (existingByKey) {
+          console.log(`[StudioCreditService] Transaction ${params.transactionId || params.invoiceId} already processed (idempotency_key match). Skipping credit increment.`);
           return {
             success: true,
-            newBalance: existingLedger.balance_after ?? (entitlements?.credits_remaining ?? 0),
+            newBalance: existingByKey.balance_after ?? (entitlements?.credits_remaining ?? 0),
             commissionRecorded: false,
             isExisting: true,
-            message: `Transaction ${params.transactionId} already processed previously (idempotent).`,
+            message: `Transaction ${params.transactionId || params.invoiceId} already processed previously (idempotent duplicate).`,
           };
         }
-      } catch (checkErr) {
-        console.warn('[StudioCreditService] Idempotency check warning:', checkErr);
       }
+
+      // 2. Fallback cek substring description & metadata jika data lama belum memiliki idempotency_key
+      if (params.transactionId || params.invoiceId) {
+        let descQuery = supabase
+          .from('tenant_credit_ledger')
+          .select('id, amount, balance_after, description')
+          .eq('tenant_id', tenant.id);
+
+        if (params.transactionId && params.invoiceId) {
+          descQuery = descQuery.or(`description.ilike.%${params.transactionId}%,description.ilike.%${params.invoiceId}%`);
+        } else if (params.transactionId) {
+          descQuery = descQuery.ilike('description', `%${params.transactionId}%`);
+        } else if (params.invoiceId) {
+          descQuery = descQuery.ilike('description', `%${params.invoiceId}%`);
+        }
+
+        const { data: existingDesc } = await descQuery.limit(1).maybeSingle();
+        if (existingDesc) {
+          console.log(`[StudioCreditService] Transaction ${params.transactionId || params.invoiceId} already processed (description substring match). Skipping credit increment.`);
+          return {
+            success: true,
+            newBalance: existingDesc.balance_after ?? (entitlements?.credits_remaining ?? 0),
+            commissionRecorded: false,
+            isExisting: true,
+            message: `Transaction ${params.transactionId || params.invoiceId} already processed previously (idempotent duplicate).`,
+          };
+        }
+      }
+    } catch (checkErr) {
+      console.warn('[StudioCreditService] Idempotency check warning:', checkErr);
     }
 
     const currentBalance = entitlements?.credits_remaining ?? 0;
     const newBalance = currentBalance + params.credits;
 
-    // 1. Update entitlements
+    // 1. Update entitlements secara atomik
     await supabase
       .from('tenant_entitlements')
       .upsert({
@@ -512,21 +571,40 @@ export class StudioCreditService {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'tenant_id' });
 
-    // 2. Insert into tenant_credit_ledger
-    const desc = `Top-up +${params.credits} Render Credits (Rp ${params.amountPaid.toLocaleString('id-ID')}) - Ref: ${params.transactionId}`;
+    // 2. Insert into tenant_credit_ledger dengan audit trail lengkap & idempotency_key terindeks
+    const refKey = params.transactionId || params.invoiceId || 'N/A';
+    const desc = `Top-up +${params.credits} Render Credits (Rp ${params.amountPaid.toLocaleString('id-ID')}) - Ref: ${refKey}`;
+    const resolvedIdempotencyKey = primaryIdempotencyKey || `TOPUP_${tenant.id}_${Date.now()}`;
+
     try {
       await supabase.from('tenant_credit_ledger').insert({
         tenant_id: tenant.id,
         amount: params.credits,
         balance_after: entitlements?.is_unlimited ? 999999 : newBalance,
         action: 'TOPUP',
+        event: 'STUDIO_TOKEN_PURCHASE',
+        type: 'CREDIT_IN',
         description: desc,
+        actor_id: 'XENDIT_WEBHOOK',
+        actor_role: 'SYSTEM',
+        reason: `Top-up Studio Credits via ${params.paymentChannel || 'XENDIT'}`,
+        idempotency_key: resolvedIdempotencyKey,
+        metadata: {
+          transaction_id: params.transactionId,
+          invoice_id: params.invoiceId || params.transactionId,
+          package_id: params.packageId || null,
+          credits: params.credits,
+          amount_paid: params.amountPaid,
+          channel: params.paymentChannel || 'XENDIT',
+          affiliate_code: params.affiliateCode || null,
+        },
       });
     } catch (err) {
       console.warn('[StudioCreditService] Ledger error:', err);
     }
 
     // 3. Process Affiliate Commission if status is PAID or SETTLED (Downstream Isolated)
+    // ANTI-DOUBLE COMMISSION: Hanya dipanggil jika transaksi BARU (bukan retry / bukan existing)
     let commissionRecorded = false;
     let commissionAmount = 0;
     const rawStatus = (params.paymentStatus || 'PAID').toUpperCase();
@@ -534,8 +612,9 @@ export class StudioCreditService {
     if ((rawStatus === 'PAID' || rawStatus === 'SETTLED') && params.amountPaid > 0) {
       try {
         const { recordStudioTokenCommission } = await import('@/lib/affiliate-notification-service');
+        const commOrderId = params.transactionId || params.invoiceId || refKey;
         const commResult = await recordStudioTokenCommission({
-          orderId: params.transactionId,
+          orderId: commOrderId,
           tenantId: tenant.id,
           tenantSlug: tenant.slug,
           grossAmount: params.amountPaid,

@@ -196,6 +196,30 @@ export async function POST(req: NextRequest) {
     const invoiceData = await xenditRes.json();
     const invoiceUrl = invoiceData.invoice_url || invoiceData.web_pay_url;
 
+    // Catat invoice pending ke credit_transactions untuk penelusuran audit & rekonsiliasi
+    try {
+      const { recordCreditTransaction } = await import('@/lib/creditLedger');
+      await recordCreditTransaction({
+        tenantSlug: tenant.slug,
+        type: 'TOPUP_CREDIT',
+        amountIdr: pkg.price,
+        invoiceId: invoiceData.id,
+        referenceNo: externalId,
+        paymentChannel: 'XENDIT',
+        status: 'PENDING',
+        notes: `Invoice diterbitkan untuk +${pkg.credits} Token Render Studio (${pkg.name})`,
+        metadata: {
+          package_id: pkg.id,
+          credits: pkg.credits,
+          external_id: externalId,
+          invoice_url: invoiceUrl,
+          affiliate_code: affiliateCode,
+        },
+      });
+    } catch (auditErr) {
+      console.warn('[Studio Billing] Non-fatal pending credit transaction record error:', auditErr);
+    }
+
     return NextResponse.json({
       success: true,
       invoice_id: invoiceData.id,

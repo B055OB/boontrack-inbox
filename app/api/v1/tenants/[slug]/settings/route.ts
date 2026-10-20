@@ -82,8 +82,10 @@ export async function GET(
       // Lanjut ke Supabase database murni
     }
 
-    // 2. Query murni ke Supabase Database (Flexible UUID or slug lookup)
-    const supabase = getSupabase();
+    // 2. Query murni ke Supabase Database menggunakan Admin Client (Bypass RLS)
+    let supabase = getSupabaseAdmin();
+    if (!supabase) supabase = getSupabase();
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     let tenantRow: any = null;
     let dbError: any = null;
@@ -143,6 +145,69 @@ export async function GET(
     // 3. Resolusi murni dari kolom DB & metadata JSONB
     const metadata = tenantRow.metadata || {};
     const planTier: TierEnum = resolvePlanTier(tenantRow.tier || metadata.plan_tier);
+
+    // Ambil juga tracking & waba dari tenant_settings dan whatsapp_connections jika ada
+    let adsTrackingConfig = metadata.ads_tracking_config || metadata.tracking || null;
+    let wabaConfig = metadata.waba_config || null;
+
+    try {
+      const { data: tsRow } = await supabase
+        .from('tenant_settings')
+        .select('ads_tracking_config, meta_pixel_id, meta_capi_token, tiktok_pixel_id, tiktok_access_token, google_tag_id')
+        .eq('tenant_slug', slug)
+        .maybeSingle();
+
+      if (tsRow?.ads_tracking_config) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), ...tsRow.ads_tracking_config };
+      }
+      if (tsRow?.meta_pixel_id && !adsTrackingConfig?.meta_pixel_id) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), meta_pixel_id: tsRow.meta_pixel_id };
+      }
+      if (tsRow?.meta_capi_token && !adsTrackingConfig?.meta_capi_token) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), meta_capi_token: tsRow.meta_capi_token };
+      }
+      if (tsRow?.tiktok_pixel_id && !adsTrackingConfig?.tiktok_pixel_id) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), tiktok_pixel_id: tsRow.tiktok_pixel_id };
+      }
+      if (tsRow?.tiktok_access_token && !adsTrackingConfig?.tiktok_access_token) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), tiktok_access_token: tsRow.tiktok_access_token };
+      }
+      if (tsRow?.google_tag_id && !adsTrackingConfig?.gtm_id) {
+        adsTrackingConfig = { ...(adsTrackingConfig || {}), gtm_id: tsRow.google_tag_id };
+      }
+    } catch (tsErr) {
+      console.warn('[Settings Route] Read tenant_settings note:', tsErr);
+    }
+
+    try {
+      const orWaba = [`tenant_slug.eq.${tenantRow.slug}`, `tenant_id.eq.${tenantRow.slug}`];
+      if (tenantRow.id) orWaba.push(`tenant_id.eq.${tenantRow.id}`);
+      const { data: wabaConn } = await supabase
+        .from('whatsapp_connections')
+        .select('*')
+        .or(orWaba.join(','))
+        .eq('provider', 'meta')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (wabaConn) {
+        wabaConfig = {
+          phone_number_id: wabaConn.phone_number_id || wabaConfig?.phone_number_id,
+          waba_id: wabaConn.waba_id || wabaConfig?.waba_id,
+          access_token: wabaConn.api_key || wabaConfig?.access_token || wabaConfig?.permanent_access_token,
+          permanent_access_token: wabaConn.api_key || wabaConfig?.permanent_access_token,
+          display_phone_number: wabaConn.phone_number || wabaConfig?.display_phone_number,
+          status: (wabaConn.is_connected || wabaConn.status === 'active') ? 'CONNECTED' : (wabaConn.status?.toUpperCase() || wabaConfig?.status || 'CONNECTED'),
+          verified_name: wabaConn.metadata?.verified_name || wabaConfig?.verified_name,
+          quality_rating: wabaConn.metadata?.quality_rating || wabaConfig?.quality_rating || 'GREEN',
+          updated_at: wabaConn.updated_at,
+          ...(wabaConfig || {}),
+        };
+      }
+    } catch (wabaErr) {
+      console.warn('[Settings Route] Read whatsapp_connections note:', wabaErr);
+    }
 
     // Feature flag murni dari kolom database metadata.features
     const rawFeatures = metadata.features || {};
@@ -227,7 +292,20 @@ export async function GET(
           : (Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : []),
         greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
         custom_greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
-        metadata: metadata,
+        metadata: {
+          ...metadata,
+          tracking: adsTrackingConfig || metadata.tracking,
+          ads_tracking_config: adsTrackingConfig || metadata.ads_tracking_config,
+          waba_config: wabaConfig || metadata.waba_config,
+          pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
+          capi_token: metadata.capi_token || adsTrackingConfig?.meta_capi_token || null,
+        },
+        ads_tracking_config: adsTrackingConfig,
+        tracking: adsTrackingConfig,
+        pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
+        capi_token: metadata.capi_token || adsTrackingConfig?.meta_capi_token || null,
+        waba_config: wabaConfig,
+        waba_phone_number_id: tenantRow.waba_phone_number_id || metadata.waba_phone_number_id || wabaConfig?.phone_number_id || null,
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
         rotator: metadata.rotator || null,
@@ -304,6 +382,16 @@ export async function PUT(
       telegram_group_config,
       followup_rules,
       follow_up_rules,
+      ads_tracking_config,
+      tracking,
+      pixel_id,
+      capi_token,
+      meta_pixel_id,
+      meta_capi_token,
+      waba_config,
+      waba_phone_number_id,
+      waba_account_id,
+      waba_access_token,
     } = body;
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -315,6 +403,66 @@ export async function PUT(
 
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    // ── ADS TRACKING & CAPI MERGE (Server-Side SSOT) ──
+    const incomingTracking = ads_tracking_config || tracking || body.metadata?.tracking || body.metadata?.ads_tracking_config;
+    const resolvedPixelId =
+      pixel_id ||
+      meta_pixel_id ||
+      incomingTracking?.meta_pixel_id ||
+      incomingTracking?.facebook_pixel_id ||
+      incomingTracking?.pixel_id ||
+      body.metadata?.pixel_id ||
+      undefined;
+
+    const resolvedCapiToken =
+      capi_token ||
+      meta_capi_token ||
+      incomingTracking?.meta_capi_token ||
+      incomingTracking?.capi_token ||
+      body.metadata?.capi_token ||
+      undefined;
+
+    let mergedTracking: Record<string, any> | undefined = undefined;
+    if (incomingTracking !== undefined || resolvedPixelId !== undefined || resolvedCapiToken !== undefined) {
+      mergedTracking = {
+        ...(existing.metadata?.tracking || {}),
+        ...(existing.metadata?.ads_tracking_config || {}),
+        ...(incomingTracking || {}),
+        ...(resolvedPixelId ? { meta_pixel_id: resolvedPixelId, facebook_pixel_id: resolvedPixelId, pixel_id: resolvedPixelId } : {}),
+        ...(resolvedCapiToken ? { meta_capi_token: resolvedCapiToken, capi_token: resolvedCapiToken } : {}),
+      };
+    }
+
+    // ── WABA CONFIG MERGE (Server-Side SSOT) ──
+    const incomingWaba = waba_config || body.metadata?.waba_config;
+    const resolvedWabaPhoneId =
+      waba_phone_number_id ||
+      incomingWaba?.phone_number_id ||
+      body.metadata?.waba_phone_number_id ||
+      undefined;
+    const resolvedWabaAccountId =
+      waba_account_id ||
+      incomingWaba?.waba_id ||
+      body.metadata?.waba_account_id ||
+      undefined;
+    const resolvedWabaToken =
+      waba_access_token ||
+      incomingWaba?.permanent_access_token ||
+      incomingWaba?.access_token ||
+      body.metadata?.waba_access_token ||
+      undefined;
+
+    let mergedWaba: Record<string, any> | undefined = undefined;
+    if (incomingWaba !== undefined || resolvedWabaPhoneId !== undefined || resolvedWabaAccountId !== undefined || resolvedWabaToken !== undefined) {
+      mergedWaba = {
+        ...(existing.metadata?.waba_config || {}),
+        ...(incomingWaba || {}),
+        ...(resolvedWabaPhoneId ? { phone_number_id: resolvedWabaPhoneId } : {}),
+        ...(resolvedWabaAccountId ? { waba_id: resolvedWabaAccountId } : {}),
+        ...(resolvedWabaToken ? { permanent_access_token: resolvedWabaToken, access_token: resolvedWabaToken } : {}),
+      };
     }
 
     const rawIncomingPhone =
@@ -459,6 +607,23 @@ export async function PUT(
       ...(followup_rules !== undefined || follow_up_rules !== undefined
         ? { followup_rules: followup_rules !== undefined ? followup_rules : follow_up_rules }
         : {}),
+      // Sinkronkan metadata tracking & WABA ke SSOT tenants
+      ...(mergedTracking ? {
+        tracking: mergedTracking,
+        ads_tracking_config: mergedTracking,
+        pixel_id: resolvedPixelId || existing.metadata?.pixel_id || null,
+        capi_token: resolvedCapiToken || existing.metadata?.capi_token || null,
+      } : {}),
+      ...(mergedWaba ? {
+        waba_config: mergedWaba,
+        waba_configured: true,
+        waba_active: true,
+        waba_phone_number_id: resolvedWabaPhoneId || existing.metadata?.waba_phone_number_id || null,
+        whatsapp_phone_number_id: resolvedWabaPhoneId || existing.metadata?.whatsapp_phone_number_id || null,
+        waba_account_id: resolvedWabaAccountId || existing.metadata?.waba_account_id || null,
+        waba_access_token: resolvedWabaToken || existing.metadata?.waba_access_token || null,
+        whatsapp_gateway_type: 'waba',
+      } : {}),
     };
 
     const updateFields: Record<string, any> = {
@@ -474,10 +639,82 @@ export async function PUT(
       updateFields.phone = sanitizedPhone || null;
       updateFields.whatsapp_number = sanitizedPhone || null;
     }
+    if (resolvedWabaPhoneId !== undefined) {
+      updateFields.waba_phone_number_id = resolvedWabaPhoneId;
+    }
     if (telegram_chat_id !== undefined) {
       updateFields.telegram_chat_id = telegram_chat_id || null;
     }
 
+    // ── UPSERT TENANT_SETTINGS DENGAN ADMIN CLIENT (BYPASS RLS) ──
+    if (mergedTracking) {
+      try {
+        await supabaseAdmin
+          .from('tenant_settings')
+          .upsert(
+            {
+              tenant_slug: slug,
+              ads_tracking_config: mergedTracking,
+              meta_pixel_id: mergedTracking.meta_pixel_id || resolvedPixelId || null,
+              meta_capi_token: mergedTracking.meta_capi_token || resolvedCapiToken || null,
+              tiktok_pixel_id: mergedTracking.tiktok_pixel_id || null,
+              tiktok_access_token: mergedTracking.tiktok_access_token || null,
+              google_tag_id: mergedTracking.gtm_id || null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'tenant_slug' }
+          );
+      } catch (tsErr) {
+        console.warn('[Settings Route] Upsert tenant_settings.ads_tracking_config warning:', tsErr);
+      }
+    }
+
+    // ── PERSIST WHATSAPP_CONNECTIONS DENGAN ADMIN CLIENT (BYPASS RLS) ──
+    if (resolvedWabaPhoneId) {
+      try {
+        const { data: existingWabaConn } = await supabaseAdmin
+          .from('whatsapp_connections')
+          .select('id')
+          .or(`tenant_slug.eq.${slug},tenant_id.eq.${existing.id}`)
+          .eq('provider', 'meta')
+          .maybeSingle();
+
+        const wabaPayload = {
+          tenant_id: existing.id,
+          tenant_slug: slug,
+          phone_number_id: resolvedWabaPhoneId,
+          phone_number: mergedWaba?.display_phone_number || resolvedWabaPhoneId,
+          api_key: resolvedWabaToken || existing.metadata?.waba_access_token || '',
+          status: 'active',
+          is_connected: true,
+          provider: 'meta',
+          channel_type: 'waba',
+          waba_id: resolvedWabaAccountId || mergedWaba?.waba_id || '',
+          ownership_domain: 'TENANT',
+          purpose: 'COMMERCE',
+          metadata: {
+            ...(mergedWaba || {}),
+            updated_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        };
+
+        if (existingWabaConn?.id) {
+          await supabaseAdmin
+            .from('whatsapp_connections')
+            .update(wabaPayload)
+            .eq('id', existingWabaConn.id);
+        } else {
+          await supabaseAdmin
+            .from('whatsapp_connections')
+            .insert(wabaPayload);
+        }
+      } catch (wConnErr) {
+        console.warn('[Settings Route] Upsert whatsapp_connections warning:', wConnErr);
+      }
+    }
+
+    // ── UPDATE TABEL TENANTS (DENGAN VERIFIKASI COUNT ROW TERPENGARUH) ──
     const { data: updatedTenants, error: updateError } = await supabaseAdmin
       .from('tenants')
       .update(updateFields)
@@ -487,8 +724,12 @@ export async function PUT(
     if (updateError || !updatedTenants || updatedTenants.length === 0) {
       console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);
       return NextResponse.json(
-        { success: false, error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED', message: updateError?.message || 'Gagal memperbarui pengaturan toko.' },
-        { status: 400 }
+        {
+          success: false,
+          error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED',
+          message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase (0 rows affected).',
+        },
+        { status: 500 }
       );
     }
 

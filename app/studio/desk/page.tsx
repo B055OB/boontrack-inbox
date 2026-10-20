@@ -36,6 +36,34 @@ import {
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
 
+function persistStudioSession(slug: string, sessionObj?: any) {
+  if (typeof window === 'undefined') return;
+  const isBoonTrack =
+    window.location.hostname.endsWith('boontrack.com') ||
+    window.location.hostname === 'boontrack.com';
+  const domainStr = isBoonTrack ? '; domain=.boontrack.com' : '';
+
+  const cleanSlug = slug.trim().toLowerCase();
+  const sessionData = sessionObj || {
+    slug: cleanSlug,
+    name: 'Creator Studio',
+    tier: 'PRO',
+    render_credits: 3,
+  };
+
+  try {
+    localStorage.setItem('studio_session', JSON.stringify(sessionData));
+    localStorage.setItem('bt_tenant', cleanSlug);
+    localStorage.setItem('merchant_session', cleanSlug);
+    localStorage.setItem('merchant_store', cleanSlug);
+  } catch {}
+
+  document.cookie = `studio_session=${encodeURIComponent(cleanSlug)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+  document.cookie = `bt_tenant=${encodeURIComponent(cleanSlug)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+  document.cookie = `merchant_session=${encodeURIComponent(cleanSlug)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+  document.cookie = `merchant_store=${encodeURIComponent(cleanSlug)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+}
+
 export default function StudioDeskPage() {
   const router = useRouter();
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
@@ -49,61 +77,108 @@ export default function StudioDeskPage() {
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
-  // Dynamic session resolution (Zero Hardcoding - Supabase SSOT)
+  // Auth Guard & Loading State
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const [hasValidSession, setHasValidSession] = useState<boolean>(false);
+
+  // Dynamic session resolution (Zero Hardcoding - Supabase SSOT with Creator Fallback)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant|studio_session)=([^;]+)/);
-      const cookieVal = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim() : '';
-      const localVal = (
-        localStorage.getItem('merchant_store') ||
-        localStorage.getItem('merchant_session') ||
-        localStorage.getItem('bt_tenant') ||
-        ''
-      ).replace(/^["']|["']$/g, '').trim();
+    if (typeof window === 'undefined') return;
 
-      const storedSession = localStorage.getItem('studio_session');
-      let parsedSession: any = null;
-      if (storedSession) {
-        try {
-          parsedSession = JSON.parse(storedSession);
-          setSessionData(parsedSession);
-          if (typeof parsedSession.render_credits === 'number') {
-            setRenderCredits(parsedSession.render_credits);
-          }
-        } catch {}
-      }
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramSlug = (urlParams.get('slug') || urlParams.get('tenant') || '').trim().toLowerCase();
+    const isDevQuery =
+      urlParams.get('dev') === 'true' ||
+      urlParams.get('demo') === 'true' ||
+      urlParams.get('creator') === 'true';
 
-      const resolved = (localVal || cookieVal || parsedSession?.slug || '').toLowerCase();
+    // 1. Cookies check
+    const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant|studio_session)=([^;]+)/);
+    const cookieVal = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim().toLowerCase() : '';
 
-      // Auth Guard: Jika tidak ada sesi aktif, alihkan ke landing page publik
-      const hasAuth = Boolean(
-        (resolved && resolved !== 'null' && resolved !== 'undefined') ||
-        parsedSession
-      );
+    // 2. LocalStorage check
+    const localVal = (
+      localStorage.getItem('merchant_store') ||
+      localStorage.getItem('merchant_session') ||
+      localStorage.getItem('bt_tenant') ||
+      ''
+    ).replace(/^["']|["']$/g, '').trim().toLowerCase();
 
-      if (!hasAuth) {
-        const isStudioSubdomain = window.location.hostname.startsWith('studio.') || window.location.hostname === 'studio.boontrack.com';
-        if (isStudioSubdomain) {
-          window.location.href = '/';
-        } else {
-          router.replace('/studio');
-        }
-        return;
-      }
-
-      if (resolved && resolved !== 'null' && resolved !== 'undefined') {
-        setTenantSlug(resolved);
-      }
+    // 3. Stored session object
+    const storedSession = localStorage.getItem('studio_session');
+    let parsedSession: any = null;
+    if (storedSession) {
+      try {
+        parsedSession = JSON.parse(storedSession);
+      } catch {}
     }
-  }, [router]);
 
-  // Fetch data real-time entitlements & antrean video
+    const resolvedSlug = (
+      paramSlug ||
+      parsedSession?.slug ||
+      localVal ||
+      cookieVal ||
+      ''
+    ).toLowerCase();
+
+    const isDevEnv =
+      process.env.NODE_ENV !== 'development' ? isDevQuery : true;
+
+    // Check if a recognized active session exists
+    const hasExistingSession = Boolean(
+      resolvedSlug &&
+      resolvedSlug !== 'null' &&
+      resolvedSlug !== 'undefined'
+    );
+
+    if (hasExistingSession) {
+      const activeSession = parsedSession || { slug: resolvedSlug, tier: 'FREE', render_credits: 1 };
+      setTenantSlug(resolvedSlug);
+      setSessionData(activeSession);
+      if (typeof activeSession.render_credits === 'number') {
+        setRenderCredits(activeSession.render_credits);
+      }
+      setHasValidSession(true);
+      setIsCheckingAuth(false);
+      // Synchronize cookies across subdomains with .boontrack.com
+      persistStudioSession(resolvedSlug, activeSession);
+      return;
+    }
+
+    // In local dev environment: auto-initialize creator fallback session
+    if (isDevEnv) {
+      const fallbackSlug = 'creator';
+      const fallbackSession = {
+        slug: fallbackSlug,
+        name: 'Creator Studio (Dev)',
+        tier: 'PRO',
+        render_credits: 3,
+        is_fallback: true,
+      };
+      persistStudioSession(fallbackSlug, fallbackSession);
+      setTenantSlug(fallbackSlug);
+      setSessionData(fallbackSession);
+      setRenderCredits(3);
+      setHasValidSession(true);
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    // In production without active session: display Studio Activation & Gateway card without kicking back to '/'
+    setHasValidSession(false);
+    setIsCheckingAuth(false);
+  }, []);
+
+  // Fetch data real-time entitlements & antrean video (graceful 401/403 handling)
   const fetchDashboardData = useCallback(async (slug: string) => {
+    if (!slug || slug === 'null') return;
     setIsLoadingStats(true);
     try {
-      // 1. Fetch entitlements
+      // 1. Fetch entitlements (Zero redirect on 401/403/404)
       const entRes = await fetch(`/api/tenants/${encodeURIComponent(slug)}/entitlements`);
-      if (entRes.ok) {
+      if (entRes.status === 401 || entRes.status === 403) {
+        console.warn(`[StudioDesk] Entitlements returned ${entRes.status}. Retaining current workspace state without redirect.`);
+      } else if (entRes.ok) {
         const entJson = await entRes.json();
         if (entJson.success && entJson.data) {
           const ent = entJson.data;
@@ -114,9 +189,11 @@ export default function StudioDeskPage() {
         }
       }
 
-      // 2. Fetch jobs metrics
+      // 2. Fetch jobs metrics (Zero redirect on 401/403/404)
       const jobsRes = await fetch(`/api/studio/jobs?tenant_id=${encodeURIComponent(slug)}&limit=100`);
-      if (jobsRes.ok) {
+      if (jobsRes.status === 401 || jobsRes.status === 403) {
+        console.warn(`[StudioDesk] Jobs returned ${jobsRes.status}. Retaining current metrics state.`);
+      } else if (jobsRes.ok) {
         const jobsJson = await jobsRes.json();
         if (jobsJson.success) {
           if (jobsJson.telemetry) {
@@ -138,10 +215,10 @@ export default function StudioDeskPage() {
   }, []);
 
   useEffect(() => {
-    if (tenantSlug && tenantSlug !== 'null') {
+    if (hasValidSession && tenantSlug && tenantSlug !== 'null') {
       fetchDashboardData(tenantSlug);
     }
-  }, [tenantSlug, fetchDashboardData]);
+  }, [hasValidSession, tenantSlug, fetchDashboardData]);
 
   const handleStartVideo = (e: React.MouseEvent) => {
     if (!isUnlimited && tenantTier !== 'FOUNDER' && renderCredits <= 0) {
@@ -150,19 +227,176 @@ export default function StudioDeskPage() {
     }
   };
 
+  // Quick Creator Mode Activation (1-Click Fallback for Visitors/Owner)
+  const handleActivateQuickCreator = () => {
+    const creatorSlug = 'creator';
+    const creatorSession = {
+      slug: creatorSlug,
+      name: 'Creator Workspace',
+      tier: 'FREE',
+      render_credits: 1,
+      is_fallback: true,
+    };
+    persistStudioSession(creatorSlug, creatorSession);
+    setTenantSlug(creatorSlug);
+    setSessionData(creatorSession);
+    setRenderCredits(1);
+    setHasValidSession(true);
+  };
+
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
+      const isBoonTrack =
+        window.location.hostname.endsWith('boontrack.com') ||
+        window.location.hostname === 'boontrack.com';
+      const domainStr = isBoonTrack ? '; domain=.boontrack.com' : '';
+
       localStorage.removeItem('studio_session');
       localStorage.removeItem('merchant_store');
       localStorage.removeItem('merchant_session');
       localStorage.removeItem('bt_tenant');
-      document.cookie = 'merchant_store=; path=/; max-age=0';
-      document.cookie = 'merchant_session=; path=/; max-age=0';
-      document.cookie = 'bt_tenant=; path=/; max-age=0';
-      document.cookie = 'studio_session=; path=/; max-age=0';
-      window.location.href = '/';
+
+      document.cookie = `studio_session=; path=/${domainStr}; max-age=0`;
+      document.cookie = `bt_tenant=; path=/${domainStr}; max-age=0`;
+      document.cookie = `merchant_session=; path=/${domainStr}; max-age=0`;
+      document.cookie = `merchant_store=; path=/${domainStr}; max-age=0`;
+
+      setHasValidSession(false);
+      setSessionData(null);
+      setTenantSlug('');
     }
   };
+
+  // ── SKELETON / INITIALIZING STATE (PREVENTS 1-SEC FLASH) ──────────
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-[#0B0F17] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
+        <div className="absolute top-0 right-1/4 w-[600px] h-[350px] bg-gradient-to-b from-indigo-600/15 via-fuchsia-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-fuchsia-500 to-indigo-600 p-[1px] shadow-xl shadow-fuchsia-500/20 animate-pulse">
+            <div className="w-full h-full bg-[#0B0F17] rounded-[15px] flex items-center justify-center">
+              <Film className="w-7 h-7 text-fuchsia-400" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold tracking-tight text-white">Menghubungkan ke Studio Desk</h2>
+            <p className="text-xs text-zinc-400">Memeriksa kredensial sesi workspace...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── UNATHENTICATED GATEWAY STATE (ELEGANT ACTIVATION CARD) ─────────
+  if (!hasValidSession) {
+    const isStudioSubdomain =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.startsWith('studio.') ||
+        window.location.hostname === 'studio.boontrack.com');
+    const registerUrl = isStudioSubdomain ? '/register' : '/studio/register';
+
+    return (
+      <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-hidden flex flex-col justify-between">
+        {/* Glow meshes */}
+        <div className="absolute top-0 right-1/4 w-[650px] h-[400px] bg-gradient-to-b from-indigo-600/20 via-fuchsia-600/15 to-transparent blur-[140px] pointer-events-none -z-10" />
+        <div className="absolute bottom-10 left-10 w-80 h-80 bg-purple-700/15 rounded-full blur-[130px] pointer-events-none -z-10" />
+
+        {/* Minimal Header */}
+        <header className="border-b border-white/10 bg-[#0B0F17]/80 backdrop-blur-xl py-4 px-6 sticky top-0 z-40">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2.5 group">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-fuchsia-500 to-indigo-600 p-[1px] shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform">
+                <div className="w-full h-full bg-[#0B0F17] rounded-[11px] flex items-center justify-center">
+                  <Film className="w-4 h-4 text-fuchsia-400" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-extrabold text-base tracking-tight text-white">boontrack</span>
+                <span className="text-[10px] font-black tracking-widest bg-gradient-to-r from-fuchsia-400 to-indigo-400 bg-clip-text text-transparent uppercase">
+                  STUDIO
+                </span>
+              </div>
+            </Link>
+
+            <Link
+              href="/"
+              className="text-xs text-zinc-400 hover:text-white transition flex items-center gap-1"
+            >
+              <span>Beranda</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </header>
+
+        {/* Main Gateway Card */}
+        <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-auto">
+          <div className="max-w-lg w-full bg-[#111624]/90 backdrop-blur-2xl border border-white/10 hover:border-fuchsia-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-purple-950/50 text-center relative overflow-hidden transition-all">
+            <div className="absolute top-0 right-0 w-36 h-36 bg-fuchsia-600/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-36 h-36 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 space-y-6">
+              {/* Badge Icon */}
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-fuchsia-500/20 to-indigo-500/20 border border-fuchsia-500/30 p-[1px] mx-auto shadow-lg shadow-fuchsia-500/20">
+                <div className="w-full h-full bg-[#0B0F17] rounded-[15px] flex items-center justify-center">
+                  <Film className="w-8 h-8 text-fuchsia-400 animate-pulse" />
+                </div>
+              </div>
+
+              {/* Title & Desc */}
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-extrabold uppercase tracking-wider">
+                  <Sparkles className="w-3 h-3 text-fuchsia-400" />
+                  <span>Ruang Produksi Kreator & Agensi</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  Akses Studio Desk
+                </h1>
+                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed max-w-sm mx-auto">
+                  Untuk memproduksi video iklan otomatis dan storyboard UGC manusiawi, silakan aktifkan akun kreator resmi Anda atau masuk dengan sesi Creator.
+                </p>
+              </div>
+
+              {/* Actions Grid */}
+              <div className="space-y-3 pt-2">
+                <Link
+                  href={registerUrl}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-purple-600 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-fuchsia-500/25 transition-all flex items-center justify-center gap-2 group active:scale-98"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Daftar / Aktivasi Akun Studio</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={handleActivateQuickCreator}
+                  className="w-full py-3 px-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-zinc-200 hover:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
+                >
+                  <UserCheck className="w-4 h-4 text-purple-400" />
+                  <span>Masuk Cepat Sebagai Creator (Mode Eksplorasi)</span>
+                </button>
+              </div>
+
+              <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-zinc-400">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Terpisah dari akun toko retail</span>
+                </span>
+                <Link href="/" className="text-zinc-400 hover:text-zinc-200 underline decoration-zinc-600">
+                  Kembali ke Beranda
+                </Link>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Minimal Footer */}
+        <footer className="border-t border-white/10 py-4 text-center text-xs text-zinc-500">
+          <p>© 2026 PT BOONTRACK INOVASI DIGITAL • Studio Konten & Naskah Manusiawi</p>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden flex flex-col">

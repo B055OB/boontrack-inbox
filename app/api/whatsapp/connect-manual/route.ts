@@ -59,7 +59,11 @@ export async function POST(req: NextRequest) {
     // ── 1. Coba Panggil Core Backend Endpoint Terlebih Dahulu ──
     let coreRes: Response | null = null;
     let coreData: any = null;
-    let coreHandled = false;
+    let verifiedMetaInfo: {
+      verified_name?: string;
+      display_phone_number?: string;
+      quality_rating?: string;
+    } | null = null;
 
     try {
       const coreEndpoint = `${CORE_API_URL.replace(/\/$/, "")}/api/v1/whatsapp/connect-manual`;
@@ -78,40 +82,39 @@ export async function POST(req: NextRequest) {
 
         // Jika core merespons selain 404 (baik 200 sukses maupun 400/422 validation/Meta error)
         if (coreRes.status !== 404) {
-          coreHandled = true;
-
           if (coreRes.ok && coreData) {
-            return NextResponse.json({
-              success: true,
-              ...coreData,
-            });
+            verifiedMetaInfo = {
+              verified_name: coreData.verified_name || coreData.name || "",
+              display_phone_number: coreData.display_phone_number || coreData.phone_number || "",
+              quality_rating: coreData.quality_rating || "GREEN",
+            };
+          } else {
+            // Format error message yang ramah pengguna dari core backend
+            const detailMsg =
+              coreData?.detail?.message ||
+              (typeof coreData?.detail === "string" ? coreData.detail : null) ||
+              coreData?.message ||
+              coreData?.error ||
+              "Verifikasi Meta Graph API gagal. Pastikan Phone Number ID dan Access Token valid.";
+
+            return NextResponse.json(
+              {
+                success: false,
+                error: detailMsg,
+                detail: coreData?.detail || coreData,
+              },
+              { status: coreRes.status || 400 }
+            );
           }
-
-          // Format error message yang ramah pengguna dari core backend
-          const detailMsg =
-            coreData?.detail?.message ||
-            (typeof coreData?.detail === "string" ? coreData.detail : null) ||
-            coreData?.message ||
-            coreData?.error ||
-            "Verifikasi Meta Graph API gagal. Pastikan Phone Number ID dan Access Token valid.";
-
-          return NextResponse.json(
-            {
-              success: false,
-              error: detailMsg,
-              detail: coreData?.detail || coreData,
-            },
-            { status: coreRes.status || 400 }
-          );
         }
       }
     } catch (coreErr) {
       console.warn("[WABA Connect-Manual Proxy] Core endpoint call note:", coreErr);
     }
 
-    // ── 2. Fallback Gateway: Handshake Langsung ke Meta Graph API & Persist Supabase ──
+    // ── 2. Fallback Gateway: Handshake Langsung ke Meta Graph API ──
     // Dijalankan jika core endpoint mengembalikan 404 (belum ter-deploy) atau network unreachable
-    if (!coreHandled) {
+    if (!verifiedMetaInfo) {
       console.log(`[WABA Connect-Manual Proxy] Performing direct Meta handshake for tenant '${tenantSlug}'...`);
 
       // Verifikasi Phone Number ID dan token via Meta Graph API
@@ -161,123 +164,150 @@ export async function POST(req: NextRequest) {
         console.warn("[WABA Connect-Manual Proxy] Subscribed apps note:", subErr);
       }
 
-      // Upsert ke Supabase `whatsapp_connections` dan `tenant_settings`
-      const nowIso = new Date().toISOString();
-      const verifiedName = metaData.verified_name || "";
-      const displayPhone = metaData.display_phone_number || "";
-      const qualityRating = metaData.quality_rating || "GREEN";
+      verifiedMetaInfo = {
+        verified_name: metaData.verified_name || "",
+        display_phone_number: metaData.display_phone_number || "",
+        quality_rating: metaData.quality_rating || "GREEN",
+      };
+    }
 
-      const supabase = getSupabaseAdmin();
-      if (supabase) {
-        // 1. Upsert whatsapp_connections
-        await supabase.from("whatsapp_connections").upsert(
-          {
-            tenant_id: tenantSlug,
-            tenant_slug: tenantSlug,
-            phone_number_id: phoneNumberId,
-            phone_number: displayPhone,
-            api_key: accessToken,
-            status: "active",
-            is_connected: true,
-            provider: "meta",
-            channel_type: "waba",
-            waba_id: wabaId,
-            ownership_domain: "TENANT",
-            purpose: "COMMERCE",
-            metadata: {
-              waba_id: wabaId,
-              verified_name: verifiedName,
-              quality_rating: qualityRating,
-              token: accessToken,
-              connected_via: "self_service_manual",
-              connected_at: nowIso,
-            },
-            updated_at: nowIso,
-          },
-          { onConflict: "phone_number_id" }
-        );
+    // ── 3. Persistensi Mutlak ke Supabase dengan Admin Client (Bypass RLS) ──
+    const nowIso = new Date().toISOString();
+    const verifiedName = verifiedMetaInfo.verified_name || "";
+    const displayPhone = verifiedMetaInfo.display_phone_number || "";
+    const qualityRating = verifiedMetaInfo.quality_rating || "GREEN";
 
-        // 2. Upsert tenant_settings
-        await supabase.from("tenant_settings").upsert(
-          {
-            tenant_slug: tenantSlug,
-            waba_config: {
-              waba_id: wabaId,
-              phone_number_id: phoneNumberId,
-              permanent_access_token: accessToken,
-              status: "CONNECTED",
-              verified_name: verifiedName,
-              display_phone_number: displayPhone,
-              quality_rating: qualityRating,
-              updated_at: nowIso,
-            },
-            updated_at: nowIso,
-          },
-          { onConflict: "tenant_slug" }
-        );
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      console.error("[WABA Connect-Manual Proxy] Fatal: Supabase Admin Client tidak tersedia.");
+      return NextResponse.json(
+        { success: false, error: "Database admin client tidak tersedia di server." },
+        { status: 500 }
+      );
+    }
 
-        // 3. Update tenants table metadata & direct columns for multi-tenant consistency
-        const { data: tenantRow } = await supabase
-          .from("tenants")
-          .select("id, metadata")
-          .eq("slug", tenantSlug)
-          .maybeSingle();
+    // Cari tenant berdasarkan slug atau UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantSlug);
+    let tenantRow: any = null;
+    if (isUuid) {
+      const { data } = await supabase.from("tenants").select("id, slug, metadata").eq("id", tenantSlug).maybeSingle();
+      tenantRow = data;
+    }
+    if (!tenantRow) {
+      const { data } = await supabase.from("tenants").select("id, slug, metadata").eq("slug", tenantSlug).maybeSingle();
+      tenantRow = data;
+    }
 
-        if (tenantRow) {
-          const currentMeta = tenantRow.metadata || {};
-          const nextMeta = {
-            ...currentMeta,
-            waba_phone_number_id: phoneNumberId,
-            whatsapp_phone_number_id: phoneNumberId,
-            waba_account_id: wabaId,
-            waba_access_token: accessToken,
-            waba_configured: true,
-            waba_active: true,
-            whatsapp_gateway_type: "waba",
-            waba_config: {
-              phone_number_id: phoneNumberId,
-              waba_id: wabaId,
-              access_token: accessToken,
-              permanent_access_token: accessToken,
-              status: "CONNECTED",
-              verified_name: verifiedName,
-              display_phone_number: displayPhone,
-              quality_rating: qualityRating,
-              updated_at: nowIso,
-            },
-          };
+    if (!tenantRow) {
+      return NextResponse.json(
+        { success: false, error: `Tenant '${tenantSlug}' tidak ditemukan di database.` },
+        { status: 404 }
+      );
+    }
 
-          await supabase
-            .from("tenants")
-            .update({
-              waba_phone_number_id: phoneNumberId,
-              metadata: nextMeta,
-              updated_at: nowIso,
-            })
-            .eq("id", tenantRow.id);
-        }
-      }
+    // 1. Persist whatsapp_connections
+    const { data: existingWabaConn } = await supabase
+      .from("whatsapp_connections")
+      .select("id")
+      .or(`tenant_slug.eq.${tenantRow.slug},tenant_id.eq.${tenantRow.id}`)
+      .eq("provider", "meta")
+      .maybeSingle();
 
-      return NextResponse.json({
-        success: true,
-        status: "connected",
-        message: `WABA berhasil terhubung dan terverifikasi untuk tenant '${tenantSlug}'.`,
-        tenant_id: tenantSlug,
-        tenant_slug: tenantSlug,
+    const wabaPayload = {
+      tenant_id: tenantRow.id,
+      tenant_slug: tenantRow.slug,
+      phone_number_id: phoneNumberId,
+      phone_number: displayPhone || phoneNumberId,
+      api_key: accessToken,
+      status: "active",
+      is_connected: true,
+      provider: "meta",
+      channel_type: "waba",
+      waba_id: wabaId,
+      ownership_domain: "TENANT",
+      purpose: "COMMERCE",
+      metadata: {
+        waba_id: wabaId,
+        verified_name: verifiedName,
+        quality_rating: qualityRating,
+        token: accessToken,
+        connected_via: "self_service_manual",
+        connected_at: nowIso,
+      },
+      updated_at: nowIso,
+    };
+
+    if (existingWabaConn?.id) {
+      await supabase
+        .from("whatsapp_connections")
+        .update(wabaPayload)
+        .eq("id", existingWabaConn.id);
+    } else {
+      await supabase
+        .from("whatsapp_connections")
+        .insert(wabaPayload);
+    }
+
+    // 2. Update tenants table metadata & direct columns dengan verifikasi 0 rows affected
+    const currentMeta = tenantRow.metadata || {};
+    const nextMeta = {
+      ...currentMeta,
+      waba_phone_number_id: phoneNumberId,
+      whatsapp_phone_number_id: phoneNumberId,
+      waba_account_id: wabaId,
+      waba_access_token: accessToken,
+      waba_configured: true,
+      waba_active: true,
+      whatsapp_gateway_type: "waba",
+      waba_config: {
         phone_number_id: phoneNumberId,
         waba_id: wabaId,
+        access_token: accessToken,
+        permanent_access_token: accessToken,
+        status: "CONNECTED",
         verified_name: verifiedName,
         display_phone_number: displayPhone,
         quality_rating: qualityRating,
-      });
+        updated_at: nowIso,
+      },
+    };
+
+    const { data: updatedTenants, error: tenantUpdateErr } = await supabase
+      .from("tenants")
+      .update({
+        waba_phone_number_id: phoneNumberId,
+        metadata: nextMeta,
+        updated_at: nowIso,
+      })
+      .eq("id", tenantRow.id)
+      .select("id, slug");
+
+    if (tenantUpdateErr || !updatedTenants || updatedTenants.length === 0) {
+      console.error("[WABA Connect-Manual Proxy] Update tenants failed or 0 rows affected:", tenantUpdateErr);
+      return NextResponse.json(
+        {
+          success: false,
+          error: tenantUpdateErr?.message || "Gagal memperbarui konfigurasi WABA di database tenants (0 rows affected).",
+        },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(
-      { success: false, error: "Terjadi kesalahan internal saat memproses WABA." },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: true,
+      status: "connected",
+      message: `WABA berhasil terhubung dan tersimpan permanen untuk tenant '${tenantRow.slug}'.`,
+      tenant_id: tenantRow.id,
+      tenant_slug: tenantRow.slug,
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
+      verified_name: verifiedName,
+      display_phone_number: displayPhone,
+      quality_rating: qualityRating,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal Server Error";
+    console.error("[WABA Connect-Manual Exception]", err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
