@@ -1,16 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Sparkles,
   ArrowRight,
   CheckCircle2,
-  Lock,
-  Mail,
-  User,
   Phone,
+  Key,
   QrCode,
   RefreshCw,
   ExternalLink,
@@ -18,135 +16,68 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Film
+  Film,
+  MessageCircle,
+  ArrowLeft
 } from 'lucide-react';
 
-export default function StudioRegisterPage() {
+function StudioRegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Registration Form State (State 1)
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  // Primary Bot Activation Form State
   const [whatsapp, setWhatsapp] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Verification State (State 2)
-  const [isVerifying, setIsVerifying] = useState(false);
   const [token, setToken] = useState('');
-  const [waLink, setWaLink] = useState('');
-  const [expiresAt, setExpiresAt] = useState<number | null>(null);
-  const [remainingSeconds, setRemainingSeconds] = useState(900); // 15 mins
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [simulating, setSimulating] = useState(false);
-  const [manualChecking, setManualChecking] = useState(false);
-
-  // Success State (State 3)
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [successSlug, setSuccessSlug] = useState('');
   const [referralCode, setReferralCode] = useState('');
+
+  // Flow State
+  const [loading, setLoading] = useState(false);
+  const [requestingToken, setRequestingToken] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Bot WA Link State
+  const [waLink, setWaLink] = useState('');
+  const [waMessage, setWaMessage] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isWaitingBot, setIsWaitingBot] = useState(false);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Resume token & detect cross-domain referral cookie (.boontrack.com)
+  // Read URL query params on mount (token, phone, ref)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const tokenParam = urlParams.get('token');
-      if (tokenParam) {
-        const cleanT = tokenParam.toUpperCase().trim();
+      const urlToken = searchParams.get('token') || searchParams.get('t');
+      const urlPhone = searchParams.get('phone') || searchParams.get('wa');
+      const urlRef = searchParams.get('ref') || searchParams.get('r');
+
+      if (urlToken) {
+        const cleanT = urlToken.toUpperCase().trim();
         setToken(cleanT);
         setWaLink(`https://wa.me/6285181830080?text=AKTIFKAN%20STUDIO%20${encodeURIComponent(cleanT)}`);
-        setIsVerifying(true);
+        setWaMessage(`AKTIFKAN STUDIO ${cleanT}`);
+        setIsWaitingBot(true);
       }
 
-      // Referral resolution from URL query, wildcard cookie, or localStorage
-      const refParam = (urlParams.get('ref') || urlParams.get('r') || '').trim().toLowerCase();
-      const cookieMatch = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+      if (urlPhone) {
+        setWhatsapp(urlPhone.replace(/[^0-9]/g, ''));
+      }
+
+      // Referral resolution
+      const cookieMatch = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code)=([^;]+)/);
       const cookieRef = cookieMatch ? decodeURIComponent(cookieMatch[1]).trim().toLowerCase() : '';
       const localRef = (localStorage.getItem('boontrack_referral_code') || '').trim().toLowerCase();
+      const resolvedRef = (urlRef || cookieRef || localRef).trim().toLowerCase();
 
-      const resolvedRef = refParam || cookieRef || localRef;
       if (resolvedRef && resolvedRef !== '1' && resolvedRef !== 'null') {
         setReferralCode(resolvedRef);
-        try {
-          localStorage.setItem('boontrack_referral_code', resolvedRef);
-          const isBoonTrack = window.location.hostname.endsWith('boontrack.com') || window.location.hostname === 'boontrack.com';
-          const domainStr = isBoonTrack ? '; domain=.boontrack.com' : '';
-          document.cookie = `boontrack_referral_code=${encodeURIComponent(resolvedRef)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-          document.cookie = `ref=${encodeURIComponent(resolvedRef)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-        } catch (_) {}
       }
     }
-  }, []);
+  }, [searchParams]);
 
-  // Normalizing WA live preview
-  const formattedWaPreview = whatsapp
-    ? whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62').replace(/^8/, '628')
-    : '';
-
-  // Countdown timer for 15 minutes TTL
+  // Live polling when token is active (auto-redirect when bot receives WhatsApp message)
   useEffect(() => {
-    if (!isVerifying || !expiresAt || isSuccess) return;
-
-    const timer = setInterval(() => {
-      const now = Date.now();
-      const diff = Math.max(0, Math.floor((expiresAt - now) / 1000));
-      setRemainingSeconds(diff);
-      if (diff <= 0) {
-        clearInterval(timer);
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isVerifying, expiresAt, isSuccess]);
-
-  // Handle manual check trigger
-  const handleManualCheck = async () => {
-    if (!token) return;
-    setManualChecking(true);
-    setErrorMsg('');
-    try {
-      const res = await fetch(`/api/studio/auth/registration-status?token=${encodeURIComponent(token)}`);
-      const data = await res.json();
-      if (data.status === 'SUCCESS' && data.session) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setIsSuccess(true);
-        const tenantSlug = data.session.slug || 'studio';
-        setSuccessSlug(tenantSlug);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('merchant_store', tenantSlug);
-          localStorage.setItem('merchant_session', tenantSlug);
-          localStorage.setItem('bt_tenant', tenantSlug);
-          localStorage.setItem('studio_session', JSON.stringify(data.session));
-          document.cookie = `merchant_store=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
-          document.cookie = `merchant_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
-          document.cookie = `bt_tenant=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
-        }
-        setTimeout(() => {
-          const isProd = window.location.hostname.endsWith('boontrack.com');
-          if (isProd) {
-            window.location.href = 'https://studio.boontrack.com/desk';
-          } else {
-            router.push('/desk');
-          }
-        }, 1200);
-      } else if (data.status === 'PENDING') {
-        setErrorMsg('Pesan konfirmasi belum terdeteksi. Pastikan Anda sudah mengirim pesan AKTIFKAN STUDIO ' + token + ' ke WhatsApp 085181830080.');
-      } else {
-        setErrorMsg(data.message || 'Token kedaluwarsa. Silakan lakukan registrasi ulang.');
-      }
-    } catch (err: any) {
-      setErrorMsg('Gagal mengecek status: ' + err.message);
-    } finally {
-      setManualChecking(false);
-    }
-  };
-
-  // Polling registration status every 2.5 seconds
-  useEffect(() => {
-    if (!isVerifying || !token || isSuccess) return;
+    if (!token || !isWaitingBot) return;
 
     const pollStatus = async () => {
       try {
@@ -155,11 +86,9 @@ export default function StudioRegisterPage() {
 
         if (data.status === 'SUCCESS' && data.session) {
           if (pollingRef.current) clearInterval(pollingRef.current);
-          setIsSuccess(true);
+          setSuccessMsg('🎉 Pesan verifikasi bot terdeteksi! Workspace Studio Anda telah aktif.');
           const tenantSlug = data.session.slug || 'studio';
-          setSuccessSlug(tenantSlug);
 
-          // Save session locally
           if (typeof window !== 'undefined') {
             localStorage.setItem('merchant_store', tenantSlug);
             localStorage.setItem('merchant_session', tenantSlug);
@@ -168,23 +97,18 @@ export default function StudioRegisterPage() {
             document.cookie = `merchant_store=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
             document.cookie = `merchant_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
             document.cookie = `bt_tenant=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+            document.cookie = `studio_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
           }
 
-          // Instant redirect to studio.boontrack.com/desk
           setTimeout(() => {
-            const isProd = window.location.hostname.endsWith('boontrack.com');
-            if (isProd) {
-              window.location.href = 'https://studio.boontrack.com/desk';
-            } else {
-              router.push('/desk');
-            }
-          }, 1500);
-        } else if (data.status === 'EXPIRED') {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          setErrorMsg(data.message || 'Token kedaluwarsa. Silakan lakukan registrasi ulang.');
+            router.push('/desk');
+            setTimeout(() => {
+              window.location.href = '/desk';
+            }, 300);
+          }, 1200);
         }
-      } catch (err) {
-        console.warn('[Studio Polling] Network error:', err);
+      } catch (pollErr) {
+        console.warn('[Studio Register Polling] Note:', pollErr);
       }
     };
 
@@ -193,46 +117,27 @@ export default function StudioRegisterPage() {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [isVerifying, token, isSuccess, router]);
+  }, [token, isWaitingBot, router]);
 
-  // Handle Form Submission (State 1 -> State 2)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Request new token via WhatsApp bot helper
+  const handleRequestToken = async () => {
     setErrorMsg('');
-
-    if (name.trim().length < 2) {
-      setErrorMsg('Nama lengkap minimal 2 karakter.');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setErrorMsg('Format email tidak valid.');
-      return;
-    }
+    setSuccessMsg('');
 
     const cleanPhone = whatsapp.replace(/[^0-9]/g, '');
-    if (cleanPhone.length < 8) {
-      setErrorMsg('Nomor WhatsApp minimal 8 digit.');
+    if (!cleanPhone || cleanPhone.length < 8) {
+      setErrorMsg('Masukkan nomor WhatsApp aktif Anda terlebih dahulu untuk meminta kode aktivasi.');
       return;
     }
 
-    if (password.length < 8) {
-      setErrorMsg('Kata sandi minimal 8 karakter.');
-      return;
-    }
-
-    setLoading(true);
+    setRequestingToken(true);
 
     try {
       const res = await fetch('/api/studio/auth/register-initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
           whatsapp: cleanPhone,
-          password,
           referral_code: referralCode || undefined,
         }),
       });
@@ -240,378 +145,334 @@ export default function StudioRegisterPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Gagal memulai registrasi.');
+        throw new Error(data.message || 'Gagal membuat kode aktivasi.');
+      }
+
+      if (data.already_active) {
+        setSuccessMsg('Nomor WhatsApp Anda sudah memiliki workspace Studio aktif! Mengalihkan ke workspace...');
+        setTimeout(() => {
+          router.push('/desk');
+        }, 1200);
+        return;
       }
 
       setToken(data.token);
       setWaLink(data.wa_link);
-      const expTime = new Date(data.expires_at).getTime();
-      setExpiresAt(expTime);
-      setRemainingSeconds(Math.max(0, Math.floor((expTime - Date.now()) / 1000)));
-      setIsVerifying(true);
+      setWaMessage(data.wa_message);
+      setIsWaitingBot(true);
+
+      // Open WhatsApp automatically in new tab
+      if (data.wa_link && typeof window !== 'undefined') {
+        window.open(data.wa_link, '_blank');
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Terjadi kesalahan sistem.');
+      setErrorMsg(err.message || 'Terjadi gangguan saat memproses kode.');
     } finally {
+      setRequestingToken(false);
+    }
+  };
+
+  // Submit WhatsApp + Token for direct verification & activation
+  const handleActivateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const cleanPhone = whatsapp.replace(/[^0-9]/g, '');
+    const cleanToken = token.trim().toUpperCase();
+
+    if (!cleanPhone || cleanPhone.length < 8) {
+      setErrorMsg('Mohon isi nomor WhatsApp aktif Anda.');
+      return;
+    }
+
+    if (!cleanToken) {
+      setErrorMsg('Mohon isi Kode / Token Aktivasi Bot (contoh: ACTXKPH).');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/studio/auth/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          whatsapp: cleanPhone,
+          token: cleanToken,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Kode aktivasi tidak valid.');
+      }
+
+      setSuccessMsg(data.message || 'Workspace berhasil diaktifkan!');
+      const tenantSlug = data.slug || 'studio';
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('merchant_store', tenantSlug);
+        localStorage.setItem('merchant_session', tenantSlug);
+        localStorage.setItem('bt_tenant', tenantSlug);
+        if (data.session) {
+          localStorage.setItem('studio_session', JSON.stringify(data.session));
+        }
+        document.cookie = `merchant_store=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+        document.cookie = `merchant_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+        document.cookie = `bt_tenant=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+        document.cookie = `studio_session=${encodeURIComponent(tenantSlug)}; path=/; max-age=2592000`;
+      }
+
+      setTimeout(() => {
+        router.push('/desk');
+        setTimeout(() => {
+          window.location.href = '/desk';
+        }, 300);
+      }, 1000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal memverifikasi kode aktivasi.');
       setLoading(false);
     }
   };
 
-  // Simulate verification for testing without WhatsApp SIM
-  const handleSimulateVerify = async () => {
-    if (!token) return;
-    setSimulating(true);
-    try {
-      const res = await fetch('/api/studio/auth/registration-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert(data.message || 'Gagal simulasi verifikasi.');
-      }
-    } catch (err: any) {
-      alert('Gagal simulasi: ' + err.message);
-    } finally {
-      setSimulating(false);
-    }
-  };
-
-  const copyWaText = () => {
-    navigator.clipboard.writeText(`AKTIFKAN STUDIO ${token}`);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const formatClock = (sec: number) => {
-    const m = Math.floor(sec / 60).toString().padStart(2, '0');
-    const s = (sec % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
   return (
     <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-x-hidden flex flex-col justify-between">
-      {/* Background Studio Glow Mesh */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-fuchsia-600/15 via-purple-600/10 to-transparent blur-[140px] pointer-events-none -z-10" />
+      {/* Background Studio Glow Meshes */}
+      <div className="absolute top-0 right-1/4 w-[750px] h-[450px] bg-gradient-to-b from-indigo-600/20 via-fuchsia-600/15 to-transparent blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute top-1/2 left-0 w-96 h-96 bg-purple-700/10 rounded-full blur-[130px] pointer-events-none -z-10" />
 
-      {/* ── TOP HEADER ────────────────────────────────────────── */}
-      <header className="p-4 sm:p-6 flex items-center justify-between max-w-7xl mx-auto w-full">
-        <Link href="/studio" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-0.5 shadow-md shadow-fuchsia-500/20">
-            <div className="w-full h-full bg-[#0B0F17] rounded-[10px] flex items-center justify-center">
-              <Film className="w-4 h-4 text-fuchsia-400" />
+      {/* Header Minimal */}
+      <header className="border-b border-white/10 bg-[#0B0F17]/85 backdrop-blur-xl sticky top-0 z-40 py-4 px-4 sm:px-8">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden p-[1px] bg-gradient-to-tr from-fuchsia-500 to-indigo-600 shadow-lg shadow-fuchsia-500/20 group-hover:scale-105 transition-transform">
+              <div className="w-full h-full bg-[#0B0F17] rounded-[11px] flex items-center justify-center">
+                <Film className="w-4 h-4 text-fuchsia-400" />
+              </div>
             </div>
-          </div>
-          <div>
-            <span className="font-extrabold text-base tracking-tight text-white">boontrack</span>
-            <span className="ml-1 text-xs font-black tracking-widest bg-gradient-to-r from-fuchsia-400 via-pink-400 to-purple-400 bg-clip-text text-transparent uppercase">
-              STUDIO
-            </span>
-          </div>
-        </Link>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-extrabold text-base tracking-tight text-white">boontrack</span>
+              <span className="text-[10px] font-black tracking-widest bg-gradient-to-r from-fuchsia-400 to-indigo-400 bg-clip-text text-transparent uppercase">
+                STUDIO
+              </span>
+            </div>
+          </Link>
 
-        <div className="flex items-center gap-2">
           <Link
-            href="/studio"
-            className="text-xs font-medium text-slate-400 hover:text-white transition px-3 py-1.5 rounded-lg hover:bg-white/5"
+            href="/desk"
+            className="text-xs text-zinc-400 hover:text-white transition flex items-center gap-1.5"
           >
-            Beranda Studio
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Kembali ke Studio Desk</span>
           </Link>
         </div>
       </header>
 
-      {/* ── MAIN CONTENT ──────────────────────────────────────── */}
-      <main className="max-w-md mx-auto w-full px-4 py-8 flex-1 flex flex-col justify-center">
-        {/* ======================================================== */}
-        {/* STATE 3: REDIRECT SUKSES                                 */}
-        {/* ======================================================== */}
-        {isSuccess ? (
-          <div className="p-8 rounded-3xl bg-slate-900/90 border border-emerald-500/30 backdrop-blur-xl text-center shadow-2xl shadow-emerald-500/10 space-y-5 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-lg shadow-emerald-500/30 animate-bounce">
-              <CheckCircle2 className="w-8 h-8" />
+      {/* Main Activation Card */}
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-auto">
+        <div className="max-w-lg w-full bg-[#111624]/90 backdrop-blur-2xl border border-white/10 hover:border-fuchsia-500/30 rounded-3xl p-6 sm:p-9 shadow-2xl shadow-purple-950/50 space-y-7 relative overflow-hidden transition-all">
+          <div className="absolute top-0 right-0 w-36 h-36 bg-fuchsia-600/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-36 h-36 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+
+          {/* Heading */}
+          <div className="text-center space-y-2 relative z-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-extrabold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span>Aktivasi Bot WhatsApp Otomatis</span>
             </div>
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-extrabold text-white">Workspace Studio Aktif!</h2>
-              <p className="text-xs text-slate-400">
-                Nomor WhatsApp Anda telah terverifikasi secara resmi. Menyiapkan ruang kerja Studio Desk Anda...
-              </p>
-            </div>
-            <div className="p-3 rounded-2xl bg-black/40 border border-white/5 text-xs font-mono text-emerald-400 flex items-center justify-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span>Redirecting to studio.boontrack.com/desk</span>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Aktivasi Akun Studio
+            </h1>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">
+              Sama seperti BoonTrack Shop, akun Anda diaktifkan langsung melalui nomor WhatsApp resmi bot tanpa perlu registrasi email konvensional.
+            </p>
           </div>
-        ) : isVerifying ? (
-          /* ======================================================== */
-          /* STATE 2: LAYAR TUNGGU VERIFIKASI (INBOUND WHATSAPP)      */
-          /* ======================================================== */
-          <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/80 border border-white/10 backdrop-blur-xl shadow-2xl space-y-6">
-            <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400 text-[10px] font-bold uppercase tracking-wider">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Zero-Cost Inbound Verification</span>
+
+          {/* Alerts */}
+          {errorMsg && (
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-start gap-2.5 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-start gap-2.5 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* Primary Form: Only WhatsApp and Activation Code */}
+          <form onSubmit={handleActivateSubmit} className="space-y-4 relative z-10">
+            {/* 1. Input Nomor WhatsApp */}
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                <span>Nomor WhatsApp Aktif</span>
+                <span className="text-[10px] text-zinc-500 font-normal">Contoh: 081234567890</span>
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="tel"
+                  required
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  placeholder="081234567890"
+                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs sm:text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/30 focus:border-fuchsia-500 transition"
+                />
               </div>
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Verifikasi Nomor WhatsApp Anda
-              </h1>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
-                Kirim pesan konfirmasi satu ketuk ke WhatsApp resmi BoonTrack untuk mengaktifkan workspace Studio Anda tanpa biaya pulsa/SMS.
-              </p>
             </div>
 
-            {/* Countdown Clock & Status Box */}
-            <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-                <span className="text-slate-300 font-medium">Menunggu pesan konfirmasi...</span>
-              </div>
-              <div className="font-mono font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-lg">
-                {formatClock(remainingSeconds)}
+            {/* 2. Input Kode/Token Aktivasi */}
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
+                <span>Kode / Token Aktivasi Bot</span>
+                <span className="text-[10px] text-fuchsia-400 font-mono font-semibold">Format: ACTXXXX</span>
+              </label>
+              <div className="relative">
+                <Key className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  required
+                  value={token}
+                  onChange={(e) => setToken(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                  placeholder="Contoh: ACTXKPH"
+                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs sm:text-sm font-mono font-bold tracking-wider text-white uppercase focus:outline-none focus:ring-2 focus:ring-fuchsia-500/30 focus:border-fuchsia-500 transition"
+                />
               </div>
             </div>
 
-            {/* Token Highlight Box */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-fuchsia-950/40 via-purple-950/40 to-slate-950 border border-fuchsia-500/30 text-center space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-400">
-                Kode Token Aktivasi Anda
-              </span>
-              <div className="flex items-center justify-center gap-2 font-mono text-2xl font-black tracking-widest text-white">
-                <span>{token}</span>
-                <button
-                  type="button"
-                  onClick={copyWaText}
-                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 transition cursor-pointer"
-                  title="Salin Pesan"
-                >
-                  {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading || requestingToken}
+              className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-purple-600 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-fuchsia-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60 cursor-pointer"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Memverifikasi Token Studio...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-yellow-300" />
+                  <span>Verifikasi & Aktifkan Studio Workspace</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Bot Token Generator Helper Card */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3 text-left relative z-10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Belum Punya Kode Aktivasi?</h4>
+                  <p className="text-[11px] text-zinc-400 leading-tight">
+                    Minta kode aktivasi resmi instan via WhatsApp Bot (085181830080).
+                  </p>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-400">
-                Pesan: <strong className="text-slate-200">AKTIFKAN STUDIO {token}</strong>
-              </p>
-            </div>
 
-            {/* Dual-Mode Responsive Action */}
-            <div className="space-y-4">
-              {/* Mobile CTA Button */}
-              <a
-                href={waLink}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer"
-              >
-                <span>Buka WhatsApp & Kirim Pesan Konfirmasi</span>
-                <ArrowRight className="w-4 h-4" />
-              </a>
-
-              {/* Manual Trigger Fallback Button */}
               <button
                 type="button"
-                onClick={handleManualCheck}
-                disabled={manualChecking}
-                className="w-full py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer disabled:opacity-50"
+                onClick={handleRequestToken}
+                disabled={requestingToken || loading}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
               >
-                {manualChecking ? (
+                {requestingToken ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-400" />
-                    <span>Mengecek status verifikasi ke server...</span>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Membuat...</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Sudah kirim pesan? Cek Status Ulang</span>
+                    <span>Dapatkan Kode</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </>
                 )}
               </button>
-
-              {/* Desktop Dynamic QR Code Section */}
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/5 text-center space-y-3">
-                <span className="text-[11px] font-bold text-slate-400 block">
-                  Atau Scan QR Code Langsung dari HP Anda:
-                </span>
-                <div className="w-48 h-48 mx-auto p-2.5 bg-white rounded-2xl shadow-xl flex items-center justify-center">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(waLink)}`}
-                    alt="WhatsApp QR Code"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-500">
-                  Arahkan kamera ponsel Anda ke QR Code di atas untuk membuka aplikasi WhatsApp secara instan.
-                </p>
-              </div>
             </div>
 
-            {/* Polling Spinner & Helper Info */}
-            <div className="pt-1 flex flex-col items-center gap-2 text-center">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-400" />
-                <span>Mendeteksi pesan masuk dari {formattedWaPreview || 'WhatsApp Anda'}...</span>
-              </div>
+            {/* WA Deep Link Action if Token Generated */}
+            {waLink && (
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-zinc-300">
+                  <span>Pesan Bot: <strong className="text-emerald-400 font-mono">{waMessage}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(waMessage);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="text-[10px] text-zinc-400 hover:text-white flex items-center gap-1"
+                  >
+                    {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedLink ? 'Tersalin' : 'Salin Pesan'}</span>
+                  </button>
+                </div>
 
-              {/* Dev Simulation Option */}
-              <div className="pt-2 border-t border-white/5 w-full flex items-center justify-between text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setIsVerifying(false)}
-                  className="text-slate-500 hover:text-slate-300 font-medium transition cursor-pointer"
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  ← Ubah Data Pendaftaran
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSimulateVerify}
-                  disabled={simulating}
-                  className="text-fuchsia-400/80 hover:text-fuchsia-300 font-mono text-[10px] underline cursor-pointer"
-                >
-                  {simulating ? 'Mengaktifkan...' : '[Dev Mode: Simulasi Aktifkan]'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* ======================================================== */
-          /* STATE 1: FORM PENDAFTARAN                                */
-          /* ======================================================== */
-          <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/80 border border-white/10 backdrop-blur-xl shadow-2xl space-y-6">
-            <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400 text-[10px] font-bold uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Pendaftaran Mandiri BoonTrack Studio</span>
-              </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">
-                Mulai Studio Workspace
-              </h1>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Kelola script UGC, antrean render video otomatis, dan aset kreatif brand Anda dalam satu kontrol ruang terpadu.
-              </p>
-            </div>
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Kirim Pesan ke Bot WhatsApp Resmi</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
 
-            {errorMsg && (
-              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4 text-left">
-              {/* Nama Lengkap */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Nama Lengkap
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Contoh: Alldy Pratama"
-                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Alamat Email
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@perusahaan.com"
-                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* WhatsApp */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-                  <span>Nomor WhatsApp Aktif</span>
-                  <span className="text-[10px] text-fuchsia-400 font-mono">Format 62</span>
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="tel"
-                    required
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    placeholder="Contoh: 08123456789 atau 628123456789"
-                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
-                  />
-                </div>
-                {formattedWaPreview && (
-                  <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                    Nomor dinormalisasi: +{formattedWaPreview}
+                {isWaitingBot && (
+                  <p className="text-[10px] text-zinc-400 flex items-center justify-center gap-1.5 pt-1">
+                    <RefreshCw className="w-3 h-3 animate-spin text-fuchsia-400" />
+                    <span>Menunggu verifikasi pesan bot... Layar ini akan otomatis beralih ke Workspace.</span>
                   </p>
                 )}
               </div>
-
-              {/* Password */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Kata Sandi (Minimal 8 Karakter)
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Submit CTA */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-4 py-3 px-4 rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-purple-600 hover:from-fuchsia-600 hover:via-pink-600 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-fuchsia-500/25 flex items-center justify-center gap-2 transition disabled:opacity-50 cursor-pointer active:scale-98"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Menyiapkan Token Aktivasi...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Lanjut ke Verifikasi WhatsApp</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="pt-2 text-center text-xs text-slate-500">
-              <span>Sudah memiliki akun Studio? </span>
-              <Link href="/studio" className="text-fuchsia-400 font-bold hover:underline">
-                Masuk ke Workspace
-              </Link>
-            </div>
+            )}
           </div>
-        )}
+
+          {/* Footer Guarantee */}
+          <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-500">
+            <span className="flex items-center gap-1.5 text-zinc-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>1 Free Trial Render Credit otomatis dialokasikan</span>
+            </span>
+            <Link href="/desk" className="hover:text-zinc-300 transition">
+              Buka Desk
+            </Link>
+          </div>
+        </div>
       </main>
 
-      {/* ── FOOTER ────────────────────────────────────────────── */}
-      <footer className="py-6 text-center text-xs text-slate-500 border-t border-white/5">
-        <div className="flex items-center justify-center gap-2">
-          <span>BoonTrack Studio Control Room</span>
-          <span>•</span>
-          <span className="text-slate-400">Zero-Cost WABA Activation</span>
-        </div>
+      {/* Footer Minimal */}
+      <footer className="border-t border-white/10 py-4 text-center text-xs text-zinc-500">
+        <p>© 2026 PT BOONTRACK INOVASI DIGITAL • Studio Konten & Naskah Manusiawi</p>
       </footer>
     </div>
+  );
+}
+
+export default function StudioRegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0B0F17] text-white flex items-center justify-center">
+        <div className="flex items-center gap-2 text-zinc-400 text-xs font-semibold">
+          <RefreshCw className="w-4 h-4 animate-spin text-fuchsia-400" />
+          <span>Memuat halaman aktivasi Studio...</span>
+        </div>
+      </div>
+    }>
+      <StudioRegisterContent />
+    </Suspense>
   );
 }

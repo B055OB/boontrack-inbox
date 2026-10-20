@@ -435,7 +435,10 @@ export async function processNormalizedMetaEvent(
   if (Array.isArray(messages) && messages.length > 0) {
     for (const msg of messages) {
       const text = (msg.text || '').trim();
-      const studioMatch = text.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+      const studioMatch =
+        text.match(/(?:AKTIFKAN|AKTIVASI)\s+(?:STUDIO\s+)?(ACT[A-Za-z0-9]{4,10})/i) ||
+        text.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+
       if (studioMatch) {
         const studioToken = studioMatch[1].toUpperCase().trim();
         const { activateStudioRegistrationByToken } = await import('@/lib/studio/auth');
