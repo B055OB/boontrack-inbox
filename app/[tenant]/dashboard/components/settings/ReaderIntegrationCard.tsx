@@ -532,12 +532,12 @@ export default function ReaderIntegrationCard({
                 type="button"
                 onClick={handleRevokeDevice}
                 disabled={isRevoking}
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 rounded-xl text-xs font-bold transition active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 {isRevoking ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                 )}
                 <span>Putuskan Hubungan / Revoke</span>
               </button>
@@ -548,31 +548,31 @@ export default function ReaderIntegrationCard({
 
       {/* ── FITUR & BENEFIT HIGHLIGHT ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-start gap-2.5">
+        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
           <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-slate-900">Verifikasi 1–3 Detik</p>
-            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+            <p className="font-bold text-zinc-900 dark:text-zinc-100">Verifikasi 1–3 Detik</p>
+            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
               Order lunas otomatis seketika saat SMS / push notifikasi bank terdeteksi di HP toko.
             </p>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-start gap-2.5">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-slate-900">Dukung Semua QRIS Populer</p>
-            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+            <p className="font-bold text-zinc-900 dark:text-zinc-100">Dukung Semua QRIS Populer</p>
+            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
               Kompatibel dengan DANA Bisnis, BCA Mobile/myBCA, GoPay Usaha, Livin Mandiri &amp; BRImo.
             </p>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-start gap-2.5">
-          <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-slate-900">Anti Bukti Transfer Palsu</p>
-            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+            <p className="font-bold text-zinc-900 dark:text-zinc-100">Anti Bukti Transfer Palsu</p>
+            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
               Sistem mencocokkan nominal pasti + kode unik langsung dari mutasi riil, bukan screenshot struk.
             </p>
           </div>

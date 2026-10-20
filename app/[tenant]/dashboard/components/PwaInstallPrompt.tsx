@@ -330,16 +330,16 @@ export default function PwaInstallPrompt({
 
       {/* ── VARIANT 3: DEFAULT BUTTON (Desktop / Mobile Navbar) ── */}
       {variant === 'button' && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {showNotificationButton && notificationPermission !== 'granted' && (
             <button
               type="button"
               onClick={handleRequestNotification}
               disabled={isRequestingNotification}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-border bg-card text-foreground hover:bg-muted/80 cursor-pointer shadow-2xs"
               title="Aktifkan Notifikasi Web Push untuk Pesanan & Kabar Platform"
             >
-              <BellRing className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+              <BellRing className="w-4 h-4 text-foreground animate-pulse" />
               <span className="hidden md:inline">Izinkan Notifikasi Order</span>
             </button>
           )}
@@ -347,10 +347,10 @@ export default function PwaInstallPrompt({
           <button
             type="button"
             onClick={handleInstallClick}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+            className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-border bg-card text-foreground hover:bg-muted/80 cursor-pointer shadow-2xs active:scale-95"
             title="Install Dashboard BoonTrack ke Layar Utama HP / Laptop"
           >
-            <Smartphone className="w-3.5 h-3.5 text-purple-600" />
+            <Smartphone className="w-4 h-4 text-foreground" />
             <span className="hidden sm:inline">Install App</span>
           </button>
         </div>

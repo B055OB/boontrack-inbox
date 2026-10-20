@@ -586,7 +586,7 @@ export default function WhatsAppTab({
                   setWaStatus('DISCONNECTED');
                   setQrCodeUrl(null);
                 }}
-                className="px-4 py-2.5 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-xs"
+                className="px-4 py-2.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-xs"
               >
                 Putuskan Sesi
               </button>

@@ -65,19 +65,19 @@ export default function AdsTrackingTab({
 
     return (
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-        <div className="max-w-xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+        <div className="max-w-xl w-full bg-card border border-border rounded-3xl p-8 sm:p-10 shadow-xl text-center space-y-6">
+          <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
             <Lock className="w-8 h-8" />
           </div>
           <div>
-            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 inline-block mb-2">
+            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 inline-block mb-2">
               Tersedia mulai Checkout Lite (Rp 59k)
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-              Ads Tracking & Basic Pixel
+            <h2 className="text-xl sm:text-2xl font-black text-foreground mb-2">
+              Ads Tracking &amp; Basic Pixel
             </h2>
-            <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
-              Aktifkan pelacakan <strong>Meta Pixel</strong> & <strong>TikTok Pixel</strong> browser-side untuk toko Anda.
+            <p className="text-muted-foreground text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
+              Aktifkan pelacakan <strong>Meta Pixel</strong> &amp; <strong>TikTok Pixel</strong> browser-side untuk toko Anda.
               Server-Side CAPI, GTM Container, dan Advanced ROAS tersedia eksklusif di paket Ads Performance (Rp 299k).
             </p>
           </div>

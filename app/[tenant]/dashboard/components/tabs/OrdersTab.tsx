@@ -519,13 +519,13 @@ export default function OrdersTab({
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
       {/* Header Tab Pesanan Toko */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+          <h2 className="text-lg font-black text-foreground flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-blue-600" />
             <span>Daftar Pesanan Toko ({filteredOrders.length})</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Pantau seluruh transaksi checkout masuk, verifikasi konfirmasi pembayaran manual, dan pemenuhan pesanan instan.
           </p>
         </div>
@@ -536,10 +536,10 @@ export default function OrdersTab({
             href="/api/orders/bulk-import/template?format=xlsx"
             download="template-import-pesanan-boontrack.xlsx"
             id="orders-download-template-btn"
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+            className="bg-card hover:bg-muted text-foreground border border-border font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
             title="Download format standar kolom pesanan (.xlsx)"
           >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <Download className="w-3.5 h-3.5 text-muted-foreground" />
             <span>⬇️ Unduh Template Excel</span>
           </a>
 
@@ -571,7 +571,7 @@ export default function OrdersTab({
               )
             }
             disabled={filteredOrders.length === 0}
-            className="bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="bg-card hover:bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             title="Export pesanan fisik ke format CSV Lincah.id (Mass Upload)"
           >
             <Download className="w-3.5 h-3.5" />
@@ -583,7 +583,7 @@ export default function OrdersTab({
             id="orders-refresh-btn"
             onClick={fetchOrders}
             disabled={loading}
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="bg-card hover:bg-muted text-foreground border border-border font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Segarkan Data</span>
@@ -592,30 +592,30 @@ export default function OrdersTab({
       </div>
 
       {/* Filter Bar & Tabel Pesanan */}
-      <div className="bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-xs overflow-hidden">
-        <div className="p-3 sm:p-4 border-b border-slate-800/80 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
+      <div className="bg-card rounded-2xl border border-border shadow-xs overflow-hidden">
+        <div className="p-3 sm:p-4 border-b border-border flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
           <div className="relative flex-1 max-w-sm">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari invoice, nama, WhatsApp..."
-              className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
+              className="w-full bg-background border border-border rounded-xl pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 font-medium"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
             {/* Opsi Tampilan Soft-Archive (SPRINT 3) */}
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-1 bg-muted p-1 rounded-xl text-xs font-bold border border-border">
               <button
                 type="button"
                 id="orders-filter-active-btn"
                 onClick={() => setArchiveFilter('ACTIVE')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
                   archiveFilter === 'ACTIVE'
-                    ? 'bg-white dark:bg-indigo-600/20 text-blue-700 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-card text-blue-600 dark:text-blue-400 border border-border shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Tampilkan hanya pesanan aktif (default)"
               >
@@ -627,8 +627,8 @@ export default function OrdersTab({
                 onClick={() => setArchiveFilter('ARCHIVED')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] flex items-center gap-1 ${
                   archiveFilter === 'ARCHIVED'
-                    ? 'bg-white dark:bg-indigo-600/20 text-purple-700 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-card text-purple-600 dark:text-purple-400 border border-border shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Tampilkan pesanan yang disembunyikan/diarsipkan"
               >
@@ -641,8 +641,8 @@ export default function OrdersTab({
                 onClick={() => setArchiveFilter('ALL')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
                   archiveFilter === 'ALL'
-                    ? 'bg-white dark:bg-indigo-600/20 text-slate-800 dark:text-indigo-300 dark:border dark:border-indigo-500/30 shadow-xs'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-card text-foreground border border-border shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 title="Tampilkan semua pesanan tanpa terkecuali"
               >
@@ -653,11 +653,11 @@ export default function OrdersTab({
             <DateRangePicker value={dateRange} onChange={setDateRange} />
 
             <div className="flex items-center gap-2">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 font-bold focus:outline-none cursor-pointer"
+                className="bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground font-bold focus:outline-none cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
@@ -669,9 +669,9 @@ export default function OrdersTab({
         </div>
 
         <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[640px] text-left border-collapse text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900/50">
+          <table className="w-full min-w-[640px] text-left border-collapse text-sm text-foreground bg-card">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-xs border-b border-slate-200 dark:border-slate-800/60 tracking-wider">
+              <tr className="bg-muted/50 text-zinc-700 dark:text-zinc-300 font-semibold text-xs tracking-wider uppercase border-b border-border">
                 <th className="py-3 px-3">Invoice</th>
                 <th className="py-3 px-3">Pelanggan</th>
                 <th className="py-3 px-3">Tipe / Pemenuhan</th>
@@ -681,19 +681,19 @@ export default function OrdersTab({
                 <th className="py-3 px-3 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-sans">
+            <tbody className="divide-y divide-border font-sans">
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-slate-400 text-xs">
+                  <td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">
                     <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
                       <span>Memuat transaksi pesanan...</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-slate-400 text-xs">
+                  <td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">
                     Belum ada data pesanan yang cocok.
                   </td>
                 </tr>
@@ -707,8 +707,8 @@ export default function OrdersTab({
                   const needsManualConfirm = isManualPendingPayment(ord);
 
                   return (
-                    <tr key={ord.id} className="border-b border-slate-100 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 text-sm hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
+                    <tr key={ord.id} className="border-b border-border text-foreground text-sm hover:bg-muted/40 transition-colors">
+                      <td className="py-2.5 px-3">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -716,19 +716,19 @@ export default function OrdersTab({
                             e.stopPropagation();
                             setSelectedOrder(ord);
                           }}
-                          className="hover:text-indigo-400 hover:underline cursor-pointer text-left"
+                          className="font-mono text-zinc-900 dark:text-zinc-100 font-medium hover:text-blue-500 dark:hover:text-blue-400 hover:underline cursor-pointer text-left"
                         >
                           {ord.invoice_no}
                         </button>
                       </td>
                       <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-900 dark:text-slate-200">{ord.customer_name || 'Pelanggan Toko'}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{ord.customer_phone || '-'}</div>
+                        <div className="text-zinc-900 dark:text-zinc-100 font-medium">{ord.customer_name || 'Pelanggan Toko'}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{ord.customer_phone || '-'}</div>
                         {ord.items_summary && (
-                          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
+                          <div className="text-[10px] text-muted-foreground font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
                             <span className="truncate">{ord.items_summary}</span>
                             {ord.quantity && ord.quantity > 1 ? (
-                              <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold px-1 rounded text-[9px] border border-slate-200 dark:border-slate-700">
+                              <span className="bg-muted text-foreground font-bold px-1 rounded text-[9px] border border-border">
                                 x{ord.quantity}
                               </span>
                             ) : null}
@@ -741,10 +741,10 @@ export default function OrdersTab({
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-950/40 hover:bg-indigo-900/60 px-2 py-0.5 rounded border border-indigo-800/50 transition cursor-pointer"
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30 transition cursor-pointer"
                               title="Buka Dokumen Briefing Klien"
                             >
-                              <FileText className="w-2.5 h-2.5 text-indigo-400" />
+                              <FileText className="w-2.5 h-2.5 text-indigo-500" />
                               <span>Briefing Klien ↗</span>
                             </a>
                           </div>
@@ -752,43 +752,43 @@ export default function OrdersTab({
                       </td>
                       <td className="py-2.5 px-3">
                         {reqs.requiresShipping ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/50 px-2 py-0.5 rounded-md border border-amber-800/60">
-                            <Truck className="w-3 h-3 text-amber-400" />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
+                            <Truck className="w-3 h-3 text-amber-500" />
                             <span>{ord.shipping_courier || 'Ekspedisi'}</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-300 bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-800/60">
-                            <Sparkles className="w-3 h-3 text-indigo-400" />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/30">
+                            <Sparkles className="w-3 h-3 text-indigo-500" />
                             <span>Digital / Direct</span>
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 font-black text-slate-200 font-mono whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-zinc-900 dark:text-zinc-50 font-bold font-mono whitespace-nowrap">
                         Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
                       </td>
-                      <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-slate-400">
+                      <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-muted-foreground">
                         {ord.payment_method || 'QRIS / TRANSFER'}
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="flex flex-col gap-1 items-start">
                           <span
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                               isPaid
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : isPendingVerificationStatus(ord.payment_status || ord.status)
-                                ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
                             }`}
                           >
                             {isPaid
-                              ? 'LUNAS (PAID)'
+                              ? 'PAID'
+                              : (ord.payment_status === 'UNPAID' || ord.status === 'UNPAID')
+                              ? 'UNPAID'
                               : isPendingVerificationStatus(ord.payment_status || ord.status)
                               ? 'MENUNGGU VERIFIKASI'
                               : 'PENDING'}
                           </span>
                           {ord.is_archived && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                              <Archive className="w-2.5 h-2.5 text-slate-500" />
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-muted text-muted-foreground border border-border">
+                              <Archive className="w-2.5 h-2.5 text-muted-foreground" />
                               Diarsipkan
                             </span>
                           )}
@@ -820,7 +820,7 @@ export default function OrdersTab({
                               e.stopPropagation();
                               setSelectedOrder(ord);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400 hover:bg-muted rounded-lg transition cursor-pointer"
                             title="Lihat Rincian Pesanan"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -836,7 +836,7 @@ export default function OrdersTab({
                                 window.open(invUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-muted rounded-lg transition cursor-pointer"
                             title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -854,8 +854,8 @@ export default function OrdersTab({
                             }}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] border transition cursor-pointer disabled:opacity-50 ${
                               isPaid
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/60 dark:hover:text-rose-300'
+                                : 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300'
                             }`}
                           >
                             {togglingId === ord.id ? (
@@ -873,13 +873,13 @@ export default function OrdersTab({
                               type="button"
                               disabled={archivingId === ord.id}
                               onClick={(e) => handleToggleArchive(ord, false, e)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer disabled:opacity-50"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-muted hover:bg-muted/80 text-foreground border border-border transition cursor-pointer disabled:opacity-50"
                               title="Pulihkan / Batalkan Arsip Pesanan"
                             >
                               {archivingId === ord.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               ) : (
-                                <ArchiveRestore className="w-3.5 h-3.5 text-slate-600" />
+                                <ArchiveRestore className="w-3.5 h-3.5 text-muted-foreground" />
                               )}
                               <span>Pulihkan</span>
                             </button>
@@ -888,13 +888,13 @@ export default function OrdersTab({
                               type="button"
                               disabled={archivingId === ord.id}
                               onClick={(e) => handleToggleArchive(ord, true, e)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-rose-50/60 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 transition cursor-pointer disabled:opacity-50"
                               title="Arsipkan Pesanan (Sembunyikan Unpaid/Pending/Dobel)"
                             >
                               {archivingId === ord.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-rose-600" />
+                                <EyeOff className="w-3.5 h-3.5 text-rose-500" />
                               )}
                               <span>Arsipkan</span>
                             </button>
@@ -919,7 +919,7 @@ export default function OrdersTab({
                                   city: storeCity,
                                 });
                               }}
-                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                              className="p-1.5 text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 hover:bg-muted rounded-lg transition cursor-pointer"
                               title="Cetak Label Resi Thermal 10x15cm"
                             >
                               <Printer className="w-3.5 h-3.5" />
@@ -939,10 +939,10 @@ export default function OrdersTab({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-muted rounded-lg transition cursor-pointer"
                                 title="Kirim Ulang Akses / Lisensi via WhatsApp"
                               >
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                               </a>
                             ) : null;
                           })()}
@@ -984,19 +984,19 @@ export default function OrdersTab({
             }}
           >
             <div
-              className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-card rounded-3xl max-w-lg w-full border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-foreground"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="p-4 border-b border-border flex items-center justify-between bg-muted/40">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-slate-900">
+                    <h3 className="text-sm font-black text-foreground">
                       Rincian Pesanan: {selectedOrder.invoice_no}
                     </h3>
-                    <p className="text-[11px] text-slate-500 font-mono">ID: {selectedOrder.id}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">ID: {selectedOrder.id}</p>
                   </div>
                 </div>
                 <button
@@ -1006,7 +1006,7 @@ export default function OrdersTab({
                     e.stopPropagation();
                     setSelectedOrder(null);
                   }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 transition cursor-pointer"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1014,39 +1014,45 @@ export default function OrdersTab({
 
               <div className="p-5 overflow-y-auto space-y-4 text-xs">
                 {/* 1. Status & Finansial */}
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                <div className="p-3.5 bg-muted/30 rounded-2xl border border-border space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Status Pembayaran:</span>
+                    <span className="text-muted-foreground font-medium">Status Pembayaran:</span>
                     <span
-                      className={`px-2.5 py-0.5 rounded-md text-[10px] font-black border ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                         isOrderPaid
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
                       }`}
                     >
-                      {isOrderPaid ? 'LUNAS (PAID)' : 'BELUM LUNAS (PENDING)'}
+                      {isOrderPaid
+                        ? 'PAID'
+                        : (selectedOrder.payment_status === 'UNPAID' || selectedOrder.status === 'UNPAID')
+                        ? 'UNPAID'
+                        : isPendingVerificationStatus(selectedOrder.payment_status || selectedOrder.status)
+                        ? 'MENUNGGU VERIFIKASI'
+                        : 'PENDING'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Metode Pembayaran:</span>
-                    <span className="font-bold text-slate-800 uppercase font-mono">
+                    <span className="text-muted-foreground font-medium">Metode Pembayaran:</span>
+                    <span className="font-bold text-foreground uppercase font-mono">
                       {selectedOrder.payment_method || 'QRIS / TRANSFER'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Produk:</span>
-                    <span className="font-bold text-slate-800 flex items-center gap-1.5 text-right">
+                    <span className="text-muted-foreground font-medium">Produk:</span>
+                    <span className="font-bold text-foreground flex items-center gap-1.5 text-right">
                       <span>{selectedOrder.items_summary}</span>
                       {selectedOrder.quantity && selectedOrder.quantity > 1 ? (
-                        <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-1.5 py-0.5 rounded">
+                        <span className="bg-muted text-foreground text-[10px] font-black px-1.5 py-0.5 rounded border border-border">
                           x{selectedOrder.quantity}
                         </span>
                       ) : null}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between border-t border-slate-200/60 pt-1.5">
-                    <span className="font-bold text-slate-700">Total Nominal:</span>
-                    <span className="text-sm font-black text-emerald-600 font-mono">
+                  <div className="flex items-center justify-between border-t border-border pt-1.5">
+                    <span className="font-bold text-foreground">Total Nominal:</span>
+                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
                       Rp {selectedOrder.total_amount?.toLocaleString('id-ID')}
                     </span>
                   </div>
@@ -1054,22 +1060,22 @@ export default function OrdersTab({
 
                 {/* 2. Informasi Pelanggan */}
                 <div className="space-y-1.5">
-                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    <Package className="w-3.5 h-3.5 text-blue-600" />
+                  <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>Data Pelanggan</span>
                   </h4>
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-1.5 text-[11px]">
+                  <div className="bg-card border border-border rounded-xl p-3 space-y-1.5 text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Nama:</span>
-                      <span className="font-bold text-slate-800">{selectedOrder.customer_name || 'Pelanggan Toko'}</span>
+                      <span className="text-muted-foreground">Nama:</span>
+                      <span className="font-bold text-foreground">{selectedOrder.customer_name || 'Pelanggan Toko'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">WhatsApp:</span>
+                      <span className="text-muted-foreground">WhatsApp:</span>
                       <a
                         href={`https://wa.me/${(selectedOrder.customer_phone || '').replace(/\D/g, '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-mono font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                        className="font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
                       >
                         <span>{selectedOrder.customer_phone || '-'}</span>
                         <ExternalLink className="w-3 h-3" />
@@ -1077,27 +1083,27 @@ export default function OrdersTab({
                     </div>
                     {selectedOrder.customer_email && (
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Email:</span>
-                        <span className="font-mono text-slate-700">{selectedOrder.customer_email}</span>
+                        <span className="text-muted-foreground">Email:</span>
+                        <span className="font-mono text-foreground">{selectedOrder.customer_email}</span>
                       </div>
                     )}
 
                     {/* Dokumen Briefing Klien */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-slate-500 font-medium">Dokumen Briefing:</span>
+                    <div className="pt-2 border-t border-border flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-muted-foreground font-medium">Dokumen Briefing:</span>
                       {selectedOrder.briefing_url ? (
                         <a
                           href={normalizeBriefingUrl(selectedOrder.briefing_url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 border border-purple-500/30 transition shadow-xs cursor-pointer"
                         >
-                          <FileText className="w-3.5 h-3.5 text-purple-600" />
+                          <FileText className="w-3.5 h-3.5 text-purple-500" />
                           <span>Buka Briefing Klien (External Link ↗)</span>
                           <ExternalLink className="w-3 h-3 text-purple-500" />
                         </a>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">
+                        <span className="text-xs text-muted-foreground italic">
                           Tidak menyertakan dokumen briefing
                         </span>
                       )}
@@ -1107,54 +1113,54 @@ export default function OrdersTab({
 
                 {/* 3. Fulfillment Strategy Boundary Section (Deterministik: Fisik vs Non-Fisik) */}
                 <div className="space-y-1.5">
-                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                  <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
                     {orderReqs.requiresShipping ? (
                       <>
-                        <Truck className="w-3.5 h-3.5 text-amber-600" />
+                        <Truck className="w-3.5 h-3.5 text-amber-500" />
                         <span>Logistik &amp; Ekspedisi Pengiriman Fisik</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                        <Sparkles className="w-3.5 h-3.5 text-blue-500" />
                         <span>Pengiriman Non-Fisik &amp; Akses Langsung</span>
                       </>
                     )}
                   </h4>
 
                   {orderReqs.requiresShipping ? (
-                    <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-3.5 space-y-2">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-600 font-medium">Layanan Ekspedisi:</span>
-                        <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded text-[11px]">
+                        <span className="text-muted-foreground font-medium">Layanan Ekspedisi:</span>
+                        <span className="font-bold text-amber-800 dark:text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded text-[11px]">
                           {selectedOrder.shipping_courier || 'Ekspedisi Reguler'}
                         </span>
                       </div>
-                      <div className="flex flex-col gap-0.5 pt-1 border-t border-amber-200/60">
-                        <span className="text-slate-500 text-[10px] font-semibold">Alamat Tujuan:</span>
-                        <p className="text-slate-800 leading-snug font-medium">
+                      <div className="flex flex-col gap-0.5 pt-1 border-t border-amber-500/20">
+                        <span className="text-muted-foreground text-[10px] font-semibold">Alamat Tujuan:</span>
+                        <p className="text-foreground leading-snug font-medium">
                           {selectedOrder.shipping_address || 'Belum mencantumkan alamat lengkap'}
                         </p>
                       </div>
-                      <div className="flex justify-between items-center pt-1 border-t border-amber-200/60">
-                        <span className="text-slate-600 font-medium">Nomor Resi:</span>
-                        <span className="font-mono font-bold text-slate-900">
+                      <div className="flex justify-between items-center pt-1 border-t border-amber-500/20">
+                        <span className="text-muted-foreground font-medium">Nomor Resi:</span>
+                        <span className="font-mono font-bold text-foreground">
                           {selectedOrder.tracking_number || selectedOrder.waybill || 'Menunggu Resi'}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-3.5 space-y-2.5">
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-3.5 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-600 font-medium">Strategi Fulfillment:</span>
-                        <span className="font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
+                        <span className="text-muted-foreground font-medium">Strategi Fulfillment:</span>
+                        <span className="font-bold text-blue-700 dark:text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded text-[10px]">
                           Bebas Pengiriman Fisik &amp; Tanpa Resi Kurir
                         </span>
                       </div>
 
-                      <div className="bg-white border border-blue-100 rounded-xl p-3 space-y-2">
+                      <div className="bg-card border border-border rounded-xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-500">Tipe Akses:</span>
-                          <span className="font-bold text-slate-800">
+                          <span className="text-muted-foreground">Tipe Akses:</span>
+                          <span className="font-bold text-foreground">
                             {meta?.delivery_type === 'DOWNLOAD_LINK'
                               ? 'Link Unduh Materi'
                               : meta?.delivery_type === 'LICENSE_KEY'
@@ -1164,16 +1170,16 @@ export default function OrdersTab({
                         </div>
 
                         {meta?.license_key && (
-                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                            <span className="text-[10px] font-bold text-slate-400 block">Kunci Lisensi Pembeli:</span>
-                            <div className="font-mono font-bold text-blue-700 select-all">{meta.license_key}</div>
+                          <div className="p-2 bg-muted rounded-lg border border-border space-y-0.5">
+                            <span className="text-[10px] font-bold text-muted-foreground block">Kunci Lisensi Pembeli:</span>
+                            <div className="font-mono font-bold text-blue-600 dark:text-blue-400 select-all">{meta.license_key}</div>
                           </div>
                         )}
 
                         {meta?.instructions && (
-                          <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                            <span className="text-[10px] font-bold text-slate-400 block">Petunjuk:</span>
-                            <p className="text-[11px] text-slate-600 whitespace-pre-line">{meta.instructions}</p>
+                          <div className="p-2 bg-muted rounded-lg border border-border space-y-0.5">
+                            <span className="text-[10px] font-bold text-muted-foreground block">Petunjuk:</span>
+                            <p className="text-[11px] text-foreground whitespace-pre-line">{meta.instructions}</p>
                           </div>
                         )}
 
@@ -1182,7 +1188,7 @@ export default function OrdersTab({
                             href={meta.access_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline pt-1"
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline pt-1"
                           >
                             <span>Buka URL Akses Materi</span>
                             <ExternalLink className="w-3 h-3" />
@@ -1190,8 +1196,8 @@ export default function OrdersTab({
                         )}
 
                         {selectedOrder.customer_phone && (
-                          <div className="pt-2 border-t border-blue-100 flex items-center justify-between">
-                            <span className="text-[11px] text-slate-500 font-medium">Kirim Informasi ke Pembeli:</span>
+                          <div className="pt-2 border-t border-border flex items-center justify-between">
+                            <span className="text-[11px] text-muted-foreground font-medium">Kirim Informasi ke Pembeli:</span>
                             <a
                               href={getDigitalWhatsAppResendUrl(selectedOrder, storeDisplayName || tenantSlug) || '#'}
                               target="_blank"
@@ -1209,7 +1215,7 @@ export default function OrdersTab({
                 </div>
               </div>
 
-              <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2 flex-wrap">
+              <div className="p-4 border-t border-border bg-muted/40 flex items-center justify-between gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1217,7 +1223,7 @@ export default function OrdersTab({
                     e.stopPropagation();
                     setSelectedOrder(null);
                   }}
-                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  className="px-4 py-2 bg-card border border-border rounded-xl text-xs font-bold text-foreground hover:bg-muted transition cursor-pointer"
                 >
                   Tutup
                 </button>
@@ -1249,8 +1255,8 @@ export default function OrdersTab({
                     }}
                     className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs border transition cursor-pointer disabled:opacity-50 ${
                       isOrderPaid
-                        ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                        : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                        ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80 hover:bg-rose-100'
+                        : 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700'
                     }`}
                   >
                     {togglingId === selectedOrder.id ? (
@@ -1280,7 +1286,7 @@ export default function OrdersTab({
                           city: storeCity,
                         });
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Label Resi</span>
@@ -1299,11 +1305,11 @@ export default function OrdersTab({
                         window.open(invUrl, '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-card hover:bg-muted text-foreground border border-border transition cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>Lihat &amp; Cetak Invoice</span>
-                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                    <ExternalLink className="w-3 h-3 text-muted-foreground" />
                   </button>
 
                   {/* Soft-Archive / Pulihkan Pesanan di Modal */}
@@ -1312,13 +1318,13 @@ export default function OrdersTab({
                       type="button"
                       disabled={archivingId === selectedOrder.id}
                       onClick={(e) => handleToggleArchive(selectedOrder, false, e)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-muted hover:bg-muted/80 text-foreground border border-border transition cursor-pointer disabled:opacity-50"
                       title="Pulihkan Pesanan dari Arsip"
                     >
                       {archivingId === selectedOrder.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <ArchiveRestore className="w-3.5 h-3.5 text-slate-600" />
+                        <ArchiveRestore className="w-3.5 h-3.5 text-muted-foreground" />
                       )}
                       <span>Pulihkan Pesanan</span>
                     </button>
@@ -1327,13 +1333,13 @@ export default function OrdersTab({
                       type="button"
                       disabled={archivingId === selectedOrder.id}
                       onClick={(e) => handleToggleArchive(selectedOrder, true, e)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition cursor-pointer disabled:opacity-50"
                       title="Sembunyikan / Arsipkan Pesanan Ini"
                     >
                       {archivingId === selectedOrder.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <EyeOff className="w-3.5 h-3.5 text-rose-600" />
+                        <EyeOff className="w-3.5 h-3.5 text-rose-500" />
                       )}
                       <span>Arsipkan Pesanan</span>
                     </button>
@@ -1369,17 +1375,17 @@ export default function OrdersTab({
           }}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-slate-900"
+            className="bg-card rounded-3xl max-w-md w-full border border-border shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-foreground"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">Konfirmasi Pembayaran Manual</h3>
-                  <p className="text-[11px] text-slate-500">Verifikasi penerimaan dana masuk</p>
+                  <h3 className="text-sm font-black text-foreground">Konfirmasi Pembayaran Manual</h3>
+                  <p className="text-[11px] text-muted-foreground">Verifikasi penerimaan dana masuk</p>
                 </div>
               </div>
               <button
@@ -1390,47 +1396,47 @@ export default function OrdersTab({
                   e.stopPropagation();
                   setOrderToConfirm(null);
                 }}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-2">
+              <div className="p-3.5 bg-muted/40 rounded-2xl border border-border space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Invoice:</span>
-                  <span className="font-mono font-bold text-slate-800">{orderToConfirm.invoice_no}</span>
+                  <span className="text-muted-foreground">Invoice:</span>
+                  <span className="font-mono font-bold text-foreground">{orderToConfirm.invoice_no}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Pelanggan:</span>
-                  <span className="font-bold text-slate-800">{orderToConfirm.customer_name || 'Pelanggan Toko'}</span>
+                  <span className="text-muted-foreground">Pelanggan:</span>
+                  <span className="font-bold text-foreground">{orderToConfirm.customer_name || 'Pelanggan Toko'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">WhatsApp:</span>
-                  <span className="font-mono text-slate-700">{orderToConfirm.customer_phone || '-'}</span>
+                  <span className="text-muted-foreground">WhatsApp:</span>
+                  <span className="font-mono text-foreground">{orderToConfirm.customer_phone || '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Metode Bayar:</span>
-                  <span className="font-semibold text-slate-800 uppercase">{orderToConfirm.payment_method || 'Transfer Rekening / QRIS Manual'}</span>
+                  <span className="text-muted-foreground">Metode Bayar:</span>
+                  <span className="font-semibold text-foreground uppercase">{orderToConfirm.payment_method || 'Transfer Rekening / QRIS Manual'}</span>
                 </div>
-                <div className="flex justify-between items-center border-t border-slate-200 pt-2">
-                  <span className="font-bold text-slate-700">Total Tagihan:</span>
-                  <span className="text-base font-black text-emerald-600 font-mono">
+                <div className="flex justify-between items-center border-t border-border pt-2">
+                  <span className="font-bold text-foreground">Total Tagihan:</span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
                     Rp {orderToConfirm.total_amount?.toLocaleString('id-ID')}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <span>
                   Pastikan mutasi dana telah <strong>masuk ke rekening bank atau QRIS</strong> Anda. Menandai lunas akan memicu pembukaan akses materi/fulfillment dan notifikasi WhatsApp resmi kepada pembeli.
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
               <button
                 type="button"
                 disabled={isConfirmingPayment}
@@ -1439,7 +1445,7 @@ export default function OrdersTab({
                   e.stopPropagation();
                   setOrderToConfirm(null);
                 }}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted transition cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
