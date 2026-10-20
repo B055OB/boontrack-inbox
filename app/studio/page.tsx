@@ -232,7 +232,7 @@ export default function StudioLandingPage() {
           <div className="flex items-center gap-3">
             {/* Tombol Masuk / Login */}
             <Link
-              href="/login?redirectTo=/desk"
+              href="/desk"
               className="px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center gap-1.5"
             >
               <LogIn className="w-3.5 h-3.5 text-zinc-400" />
@@ -241,7 +241,7 @@ export default function StudioLandingPage() {
 
             {/* Primary CTA */}
             <Link
-              href="/studio/register"
+              href="/desk"
               className="px-4 py-2 rounded-xl text-xs font-black tracking-wide bg-gradient-to-r from-fuchsia-600 via-pink-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white shadow-lg shadow-fuchsia-600/30 transition-all flex items-center gap-1.5 active:scale-95 hover:shadow-fuchsia-500/50"
             >
               <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
@@ -274,7 +274,7 @@ export default function StudioLandingPage() {
         {/* 4. Tombol CTA */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 max-w-md mx-auto pt-2">
           <Link
-            href="/studio/register"
+            href="/desk"
             className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm shadow-xl shadow-fuchsia-600/40 hover:shadow-fuchsia-600/60 transition-all flex items-center justify-center gap-2 active:scale-95"
           >
             <span>Coba Gratis 1 Video →</span>
@@ -1014,7 +1014,7 @@ export default function StudioLandingPage() {
 
           <div className="pt-2 relative z-10">
             <Link
-              href="/studio/register"
+              href="/desk"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-sm shadow-xl shadow-fuchsia-600/40 transition active:scale-95"
             >
               <span>Coba Gratis 1 Video Sekarang →</span>

@@ -133,16 +133,16 @@ export default function CreatorAdminPage() {
   const [telegramChatId, setTelegramChatId] = useState<string | null>(null);
 
   // Form State
-  const [displayName, setDisplayName] = useState('Suzie Ray');
-  const [handle, setHandle] = useState('suzieray_');
-  const [bio, setBio] = useState('Mam Ray | Spill Barang Unik & Murah ✨ Fashion & Home Living 🏡 Endorse by @bintangagency');
-  const [avatarUrl, setAvatarUrl] = useState('/images/creator/suzieray.jpg');
+  const [displayName, setDisplayName] = useState('');
+  const [handle, setHandle] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   // Social Links
   const [socials, setSocials] = useState({
-    instagram: 'suzieray_',
-    tiktok: 'suzieray_',
-    youtube: 'suzierayofficial',
+    instagram: '',
+    tiktok: '',
+    youtube: '',
     twitter: '',
   });
 
@@ -150,8 +150,8 @@ export default function CreatorAdminPage() {
   const [qrisConfig, setQrisConfig] = useState({
     enabled: true,
     qr_image_url: '',
-    button_label: 'Traktir Kopi / Dukung Suzie Ray ☕',
-    nmid: 'ID102003920199',
+    button_label: 'Traktir Kopi / Dukung Karya ☕',
+    nmid: '',
   });
   const [qrisUploading, setQrisUploading] = useState(false);
   const [qrisUploadError, setQrisUploadError] = useState<string | null>(null);
@@ -171,35 +171,7 @@ export default function CreatorAdminPage() {
   const [updatingTipId, setUpdatingTipId] = useState<string | null>(null);
 
   // Bio Links
-  const [links, setLinks] = useState<BioLinkItem[]>([
-    {
-      id: '1',
-      title: 'Spill Alat Rumah & Barang Unik Viral',
-      subtitle: 'Buka Langsung di Shopee App (Bebas WebView)',
-      url: 'https://shope.ee/direct-spill-suzie',
-      category: 'shopee_direct',
-      badge: 'Shopee Direct',
-      is_active: true,
-    },
-    {
-      id: '2',
-      title: 'Rekomendasi Hijab & Outfit Daily Suzie',
-      subtitle: 'Koleksi Pilihan & Diskon Spesial',
-      url: 'https://shope.ee/outfit-suzieray',
-      category: 'shopee_direct',
-      badge: 'Shopee Video',
-      is_active: true,
-    },
-    {
-      id: '3',
-      title: 'Tanya Rate Card & Jadwal Endorse',
-      subtitle: 'Hubungi Manajemen via WhatsApp',
-      url: 'https://wa.me/6281234567890?text=Halo%20Admin%20Suzie%20Ray',
-      category: 'wa_endorse',
-      badge: 'Fast Response',
-      is_active: true,
-    },
-  ]);
+  const [links, setLinks] = useState<BioLinkItem[]>([]);
 
   // Load tenant context & creator profile on mount
   useEffect(() => {
@@ -214,21 +186,24 @@ export default function CreatorAdminPage() {
         setTenantDisplay(cleanTenant);
       }
 
-      // Check query param or localStorage for custom handle from registration
+      // Check query param, localStorage, or cookies for dynamic creator handle
       const urlParams = new URLSearchParams(window.location.search);
-      const urlHandle = urlParams.get('handle') || localStorage.getItem('creator_handle');
-      if (urlHandle) {
-        setHandle(urlHandle.replace(/^@+/, '').trim().toLowerCase());
+      const cookieMatch = document.cookie.match(/(?:creator_handle|creator_session|merchant_store|merchant_session|bt_tenant)=([^;]+)/);
+      const cookieHandle = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim().toLowerCase() : '';
+      const resolvedHandle = (urlParams.get('handle') || localStorage.getItem('creator_handle') || cookieHandle || '').replace(/^@+/, '').trim().toLowerCase();
+
+      if (resolvedHandle) {
+        setHandle(resolvedHandle);
       }
       const urlName = localStorage.getItem('creator_display_name');
       if (urlName) {
         setDisplayName(urlName);
       }
 
-      // Fetch existing profile from backend API
-      const fetchProfile = async () => {
+      // Fetch existing profile from backend API dynamically (Fail-Closed: Zero hardcoded fallback)
+      const fetchProfile = async (targetHandle: string) => {
+        if (!targetHandle) return;
         try {
-          const targetHandle = urlHandle || 'suzieray_';
           const res = await fetch(`/api/creator/profile?handle=${encodeURIComponent(targetHandle)}`);
           if (res.ok) {
             const result = await res.json();
@@ -259,9 +234,11 @@ export default function CreatorAdminPage() {
         }
       };
 
-      fetchProfile();
-      fetchResellerApplications(urlHandle || 'suzieray_');
-      fetchCreatorTips(urlHandle || 'suzieray_');
+      if (resolvedHandle) {
+        fetchProfile(resolvedHandle);
+        fetchResellerApplications(resolvedHandle);
+        fetchCreatorTips(resolvedHandle);
+      }
     } catch {
       // Fallback
     }
@@ -746,7 +723,7 @@ export default function CreatorAdminPage() {
                         type="text"
                         value={handle}
                         onChange={(e) => setHandle(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
-                        placeholder="suzieray_"
+                        placeholder="nama_kamu"
                         className="w-full bg-transparent text-slate-900 font-bold focus:outline-none ml-1 text-xs font-sans"
                       />
                     </div>
@@ -760,12 +737,12 @@ export default function CreatorAdminPage() {
                       type="text"
                       value={avatarUrl}
                       onChange={(e) => setAvatarUrl(e.target.value)}
-                      placeholder="/images/creator/suzieray.jpg atau URL gambar HTTPS"
+                      placeholder="https://... atau URL gambar avatar"
                       className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
                     />
                     <button
                       type="button"
-                      onClick={() => setAvatarUrl('/images/creator/suzieray.jpg')}
+                      onClick={() => setAvatarUrl('')}
                       className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl whitespace-nowrap cursor-pointer"
                     >
                       Reset Default
@@ -873,7 +850,7 @@ export default function CreatorAdminPage() {
                         type="text"
                         value={socials.instagram}
                         onChange={(e) => setSocials({ ...socials, instagram: e.target.value })}
-                        placeholder="e.g., suzieray_"
+                        placeholder="e.g., username_ig"
                         className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
                       />
                     </div>
@@ -889,7 +866,7 @@ export default function CreatorAdminPage() {
                         type="text"
                         value={socials.tiktok}
                         onChange={(e) => setSocials({ ...socials, tiktok: e.target.value })}
-                        placeholder="e.g., suzieray_"
+                        placeholder="e.g., username_tiktok"
                         className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
                       />
                     </div>
@@ -905,7 +882,7 @@ export default function CreatorAdminPage() {
                         type="text"
                         value={socials.youtube}
                         onChange={(e) => setSocials({ ...socials, youtube: e.target.value })}
-                        placeholder="e.g., suzierayofficial"
+                        placeholder="e.g., channel_youtube"
                         className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
                       />
                     </div>
@@ -921,7 +898,7 @@ export default function CreatorAdminPage() {
                         type="text"
                         value={socials.twitter}
                         onChange={(e) => setSocials({ ...socials, twitter: e.target.value })}
-                        placeholder="e.g., suzieray_"
+                        placeholder="e.g., username_x"
                         className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white transition"
                       />
                     </div>
@@ -1836,11 +1813,11 @@ export default function CreatorAdminPage() {
                   <div className="relative w-18 h-18 mx-auto rounded-full ring-2 ring-orange-400/60 p-0.5 shadow-md bg-gradient-to-tr from-orange-500 via-rose-500 to-pink-500">
                     <div className="w-full h-full rounded-full overflow-hidden bg-rose-100 border-2 border-white flex items-center justify-center">
                       <img
-                        src={avatarUrl || '/images/creator/suzieray.jpg'}
-                        alt={displayName}
+                        src={avatarUrl || '/branding/creator/icon.png'}
+                        alt={displayName || 'Creator'}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/images/creator/suzieray.jpg';
+                          (e.target as HTMLImageElement).src = '/branding/creator/icon.png';
                         }}
                       />
                     </div>
