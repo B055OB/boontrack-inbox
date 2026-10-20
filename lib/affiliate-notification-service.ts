@@ -1219,6 +1219,32 @@ export async function recordStudioTokenCommission(params: {
     return { success: false, commissionAmount: 0, dispatchedTo: [] };
   }
 
+  // IDEMPOTENCY CHECK (Anti-Double Commission):
+  // Pastikan komisi untuk orderId dan product_type 'STUDIO' hanya dicatat TEPAT SATU KALI.
+  try {
+    const supabase = getSupabaseAdmin() || getSupabase();
+    if (supabase) {
+      const { data: existingComm } = await supabase
+        .from('affiliate_commissions')
+        .select('id, amount, status')
+        .eq('order_id', String(orderId))
+        .eq('product_type', 'STUDIO')
+        .limit(1)
+        .maybeSingle();
+
+      if (existingComm) {
+        console.log(`[StudioTokenCommission] Commission for order ${orderId} already recorded (idempotent duplicate). Skipping duplicate commission dispatch.`);
+        return {
+          success: true,
+          commissionAmount: Number(existingComm.amount) || 0,
+          dispatchedTo: [],
+        };
+      }
+    }
+  } catch (checkErr) {
+    console.warn('[StudioTokenCommission] Commission idempotency check warning:', checkErr);
+  }
+
   const title =
     productTitle ||
     (tokenCount ? `Pembelian ${tokenCount} Token Render Video Studio` : 'Pembelian Token Render Video Studio');

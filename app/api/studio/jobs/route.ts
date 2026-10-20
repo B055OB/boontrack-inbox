@@ -58,6 +58,20 @@ export async function GET(req: Request) {
     let tenantId: string | null = null;
     if (tenantParam) {
       tenantId = await resolveTenantId(supabase, tenantParam);
+      if (!tenantId) {
+        return NextResponse.json({
+          success: true,
+          jobs: [],
+          telemetry: {
+            total: 0,
+            completed: 0,
+            processing: 0,
+            queued: 0,
+            failed: 0,
+            worker_status: 'STANDBY',
+          },
+        });
+      }
     }
 
     let query = supabase

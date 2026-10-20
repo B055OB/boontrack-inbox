@@ -43,6 +43,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const appSecret = process.env.META_APP_SECRET || "";
+    let accessToken = String(body.access_token || "").trim();
+    let resolvedPhoneId = String(body.phone_number_id || "").trim();
+    let resolvedWabaId = String(body.waba_id || "").trim();
+    let resolvedVerifiedName = "";
+    let resolvedDisplayPhone = "";
+    let resolvedQualityRating = "GREEN";
+
     // ── 1. Coba delegasikan ke Core Backend terlebih dahulu ──
     try {
       const coreEndpoint = `${CORE_API_URL.replace(/\/$/, "")}/api/v1/whatsapp/embedded-signup-callback`;
@@ -63,13 +71,14 @@ export async function POST(req: NextRequest) {
       if (coreRes && coreRes.status !== 404) {
         const coreData = await coreRes.json().catch(() => null);
         if (coreRes.ok && coreData) {
-          return NextResponse.json({
-            success: true,
-            ...coreData,
-          });
-        }
-
-        if (coreData?.error || coreData?.message) {
+          // Tangkap kredensial dari core backend agar diteruskan ke persistensi Supabase
+          if (coreData.access_token) accessToken = coreData.access_token;
+          if (coreData.phone_number_id) resolvedPhoneId = coreData.phone_number_id;
+          if (coreData.waba_id) resolvedWabaId = coreData.waba_id;
+          if (coreData.display_phone_number) resolvedDisplayPhone = coreData.display_phone_number;
+          if (coreData.verified_name) resolvedVerifiedName = coreData.verified_name;
+          if (coreData.quality_rating) resolvedQualityRating = coreData.quality_rating;
+        } else if (coreData?.error || coreData?.message) {
           return NextResponse.json(
             {
               success: false,
@@ -84,13 +93,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. Direct Meta Graph API Token Exchange ──
-    const appSecret = process.env.META_APP_SECRET || "";
-    let accessToken = String(body.access_token || "").trim();
-    let resolvedPhoneId = String(body.phone_number_id || "").trim();
-    let resolvedWabaId = String(body.waba_id || "").trim();
-    let resolvedVerifiedName = "";
-    let resolvedDisplayPhone = "";
-    let resolvedQualityRating = "GREEN";
 
     if (!accessToken && appSecret) {
       const tokenExchangeUrl = `${META_GRAPH_BASE}/oauth/access_token?client_id=${META_APP_ID}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`;
@@ -163,55 +165,50 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      // 1. Upsert ke whatsapp_connections
-      await supabase.from("whatsapp_connections").upsert(
-        {
-          tenant_id: tenantSlug,
-          tenant_slug: tenantSlug,
-          phone_number_id: finalPhoneId,
-          phone_number: finalPhone,
-          api_key: accessToken || `token_${Date.now()}`,
-          status: "active",
-          is_connected: true,
-          provider: "meta",
-          channel_type: "waba",
+      // 1. Persist ke whatsapp_connections
+      const { data: existingWabaConn } = await supabase
+        .from("whatsapp_connections")
+        .select("id")
+        .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
+        .eq("provider", "meta")
+        .maybeSingle();
+
+      const wabaPayload = {
+        tenant_id: tenantSlug,
+        tenant_slug: tenantSlug,
+        phone_number_id: finalPhoneId,
+        phone_number: finalPhone,
+        api_key: accessToken || `token_${Date.now()}`,
+        status: "active",
+        is_connected: true,
+        provider: "meta",
+        channel_type: "waba",
+        waba_id: finalWabaId,
+        ownership_domain: "TENANT",
+        purpose: "COMMERCE",
+        metadata: {
           waba_id: finalWabaId,
-          ownership_domain: "TENANT",
-          purpose: "COMMERCE",
-          metadata: {
-            waba_id: finalWabaId,
-            verified_name: finalVerifiedName,
-            quality_rating: resolvedQualityRating,
-            connected_via: "meta_embedded_signup_popup",
-            connected_at: nowIso,
-            embedded_signup: true,
-          },
-          updated_at: nowIso,
+          verified_name: finalVerifiedName,
+          quality_rating: resolvedQualityRating,
+          connected_via: "meta_embedded_signup_popup",
+          connected_at: nowIso,
+          embedded_signup: true,
         },
-        { onConflict: "phone_number_id" }
-      );
+        updated_at: nowIso,
+      };
 
-      // 2. Upsert ke tenant_settings
-      await supabase.from("tenant_settings").upsert(
-        {
-          tenant_slug: tenantSlug,
-          waba_config: {
-            waba_id: finalWabaId,
-            phone_number_id: finalPhoneId,
-            permanent_access_token: accessToken || "",
-            status: "CONNECTED",
-            verified_name: finalVerifiedName,
-            display_phone_number: finalPhone,
-            quality_rating: resolvedQualityRating,
-            connected_via: "meta_embedded_signup_popup",
-            updated_at: nowIso,
-          },
-          updated_at: nowIso,
-        },
-        { onConflict: "tenant_slug" }
-      );
+      if (existingWabaConn?.id) {
+        await supabase
+          .from("whatsapp_connections")
+          .update(wabaPayload)
+          .eq("id", existingWabaConn.id);
+      } else {
+        await supabase
+          .from("whatsapp_connections")
+          .insert(wabaPayload);
+      }
 
-      // 3. Update tenants metadata
+      // 2. Update tenants metadata & direct columns dengan verifikasi 0 rows affected
       const { data: tenantRow } = await supabase
         .from("tenants")
         .select("id, metadata")
@@ -243,14 +240,26 @@ export async function POST(req: NextRequest) {
           },
         };
 
-        await supabase
+        const { data: updatedTenants, error: tenantUpdateErr } = await supabase
           .from("tenants")
           .update({
             waba_phone_number_id: finalPhoneId,
             metadata: nextMeta,
             updated_at: nowIso,
           })
-          .eq("id", tenantRow.id);
+          .eq("id", tenantRow.id)
+          .select("id, slug");
+
+        if (tenantUpdateErr || !updatedTenants || updatedTenants.length === 0) {
+          console.error("[Meta Embedded Signup] Update tenants failed or 0 rows affected:", tenantUpdateErr);
+          return NextResponse.json(
+            {
+              success: false,
+              error: tenantUpdateErr?.message || "Gagal memperbarui konfigurasi WABA di database tenants (0 rows affected).",
+            },
+            { status: 500 }
+          );
+        }
       }
     }
 

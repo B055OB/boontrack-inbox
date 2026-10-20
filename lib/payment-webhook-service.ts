@@ -604,28 +604,208 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   if (isStudioTokenOrder && isDirectPaid) {
     console.log(`[Webhook Reader ${logId}] Studio token payment detected for order #${potentialTokenOrderId}. Processing credit top-up...`);
 
-    const tokenTxId = String(
-      rawBody.external_id ||
-      rawBody.invoice_id ||
-      rawBody.id ||
-      potentialTokenOrderId
-    );
+    const rawInvoiceId = String(rawBody.id || rawBody.invoice_id || '').trim();
+    const rawExternalId = String(rawBody.external_id || potentialTokenOrderId || '').trim();
+    const tokenTxId = rawExternalId || rawInvoiceId || potentialTokenOrderId;
 
     const tokenAmountPaid = explicitAmount > 0
       ? explicitAmount
       : (parsedAmount || Number(rawBody.amount || rawBody.gross_amount || rawBody.paid_amount || rawBody.total || 0));
 
-    // Resolve tenant slug & credits count
+    // Resolve tenant slug & parse candidate metadata
     let studioTenantSlug = tenantSlug || rawBody.tenant_slug || rawBody.tenantSlug || rawBody.metadata?.tenant_slug || null;
-    let studioCredits = Number(rawBody.credits || rawBody.metadata?.credits || rawBody.token_count || 0);
+    let parsedCreditsCandidate: number | null = null;
+    let parsedPackageCandidate: string | null = null;
 
-    if (!studioTenantSlug || !studioCredits) {
-      // Regex parsing: TOPUP-STUDIO-{tenantSlug}-{credits}-{timestamp}
-      const match = potentialTokenOrderId.match(/^TOPUP[-_]STUDIO[-_](.+)[-_](\d+)[-_](\d+)$/i);
-      if (match) {
-        if (!studioTenantSlug) studioTenantSlug = match[1];
-        if (!studioCredits) studioCredits = Number(match[2]);
+    // Regex parsing dari external_id:
+    // Format standar: TOPUP-STUDIO-{tenantSlug}-{credits}-{timestamp}
+    // Format alternatif: TOPUP-STUDIO-{tenantSlug}-{packageId}-{credits}-{timestamp}
+    const matchWithPkg = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](ketengan|starter|creator|pro_monthly)[-_](d+)[-_](d+)$/i);
+    const matchSimple = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](d+)[-_](d+)$/i);
+
+    if (matchWithPkg) {
+      if (!studioTenantSlug) studioTenantSlug = matchWithPkg[1];
+      parsedPackageCandidate = matchWithPkg[2].toLowerCase();
+      parsedCreditsCandidate = Number(matchWithPkg[3]);
+    } else if (matchSimple) {
+      if (!studioTenantSlug) studioTenantSlug = matchSimple[1];
+      parsedCreditsCandidate = Number(matchSimple[2]);
+    }
+
+    const { StudioCreditService } = await import('@/lib/services/studio-credit.service');
+    const { getStudioTokenPackage, isTenantShopMember } = await import('@/lib/config/studio-pricing');
+
+    // Resolve tenant SSOT dari database
+    const resolvedTenant = await StudioCreditService.resolveTenant(studioTenantSlug || 'studio');
+    const effectiveTenantId = resolvedTenant ? resolvedTenant.id : null;
+    const effectiveTenantSlug = resolvedTenant ? resolvedTenant.slug : (studioTenantSlug || 'studio');
+
+    // ── 1. PRE-FLIGHT IDEMPOTENCY CHECK (Anti-Double Credit) ──
+    // Sebelum melakukan mutasi apa pun, periksa apakah invoice_id / external_id ini sudah pernah diproses.
+    // Pengecekan multi-layer ke tenant_credit_ledger dan orders:
+    const idempotencyLookupKeys = [
+      effectiveTenantId && rawExternalId ? `TOPUP_${effectiveTenantId}_${rawExternalId}` : null,
+      effectiveTenantId && rawInvoiceId ? `TOPUP_${effectiveTenantId}_${rawInvoiceId}` : null,
+      rawExternalId ? `TOPUP_${rawExternalId}` : null,
+      rawInvoiceId ? `TOPUP_${rawInvoiceId}` : null,
+      rawExternalId,
+      rawInvoiceId,
+      tokenTxId,
+    ].filter((k): k is string => Boolean(k && k.trim()));
+
+    try {
+      let isAlreadyProcessed = false;
+      let existingBalanceAfter = 0;
+
+      // A. Cek tenant_credit_ledger via idempotency_key
+      if (effectiveTenantId && idempotencyLookupKeys.length > 0) {
+        const { data: ledgerMatch } = await supabase
+          .from('tenant_credit_ledger')
+          .select('id, amount, balance_after, description')
+          .eq('tenant_id', effectiveTenantId)
+          .in('idempotency_key', idempotencyLookupKeys)
+          .limit(1)
+          .maybeSingle();
+
+        if (ledgerMatch) {
+          isAlreadyProcessed = true;
+          existingBalanceAfter = ledgerMatch.balance_after;
+        }
       }
+
+      // B. Fallback cek tenant_credit_ledger via substring description & metadata
+      if (!isAlreadyProcessed && effectiveTenantId && (rawExternalId || rawInvoiceId)) {
+        let descQuery = supabase
+          .from('tenant_credit_ledger')
+          .select('id, amount, balance_after, description')
+          .eq('tenant_id', effectiveTenantId);
+
+        if (rawExternalId && rawInvoiceId) {
+          descQuery = descQuery.or(`description.ilike.%${rawExternalId}%,description.ilike.%${rawInvoiceId}%`);
+        } else if (rawExternalId) {
+          descQuery = descQuery.ilike('description', `%${rawExternalId}%`);
+        } else if (rawInvoiceId) {
+          descQuery = descQuery.ilike('description', `%${rawInvoiceId}%`);
+        }
+
+        const { data: descMatch } = await descQuery.limit(1).maybeSingle();
+        if (descMatch) {
+          isAlreadyProcessed = true;
+          existingBalanceAfter = descMatch.balance_after;
+        }
+      }
+
+      // C. Cek tabel orders jika ada order terkait
+      if (!isAlreadyProcessed && (rawExternalId || rawInvoiceId || tokenTxId)) {
+        const orderFilters: string[] = [];
+        if (tokenTxId) orderFilters.push(`id.eq.${tokenTxId}`);
+        if (rawExternalId) orderFilters.push(`external_id.eq.${rawExternalId}`);
+        if (rawInvoiceId) orderFilters.push(`payment_id.eq.${rawInvoiceId}`);
+
+        if (orderFilters.length > 0) {
+          const { data: matchedOrderRow } = await supabase
+            .from('orders')
+            .select('id, status, payment_status')
+            .or(orderFilters.join(','))
+            .limit(1)
+            .maybeSingle();
+
+          if (matchedOrderRow && (matchedOrderRow.status === 'PAID' || matchedOrderRow.payment_status === 'PAID')) {
+            isAlreadyProcessed = true;
+          }
+        }
+      }
+
+      // Jika SUDAH pernah diproses, kembalikan HTTP 200 OK Safe-Acknowledgment tanpa menambah kredit lagi
+      if (isAlreadyProcessed) {
+        const ent = effectiveTenantId ? await StudioCreditService.getEntitlements(effectiveTenantId) : null;
+        const currentBal = ent?.credits_remaining ?? existingBalanceAfter;
+        console.log(`[Webhook Reader ${logId}] Studio token order #${tokenTxId} already processed previously (idempotent pre-check). Safe HTTP 200 acknowledged.`);
+
+        const idempotentAckResponse = {
+          success: true,
+          message: `Studio token order #${tokenTxId} was already processed previously (idempotent duplicate).`,
+          order_id: tokenTxId,
+          tenant_slug: effectiveTenantSlug,
+          credits_added: 0,
+          new_balance: currentBal,
+          already_processed: true,
+          commission_recorded: false,
+          log_id: logId,
+        };
+
+        addWebhookLog({
+          id: logId,
+          timestamp: new Date().toISOString(),
+          endpoint: endpointSource,
+          method: 'POST',
+          headers: headersObj,
+          rawBody,
+          parsedAmount: tokenAmountPaid,
+          detectedApp,
+          tenantSlug: effectiveTenantSlug,
+          matchedOrderId: tokenTxId,
+          matchStrategy: 'studio_token_topup_idempotent_precheck',
+          resultStatus: 200,
+          resultBody: idempotentAckResponse,
+        });
+
+        return NextResponse.json(idempotentAckResponse, { status: 200 });
+      }
+    } catch (preCheckErr) {
+      console.warn(`[Webhook Reader ${logId}] Studio token precheck exception (non-fatal, proceeding to service guard):`, preCheckErr);
+    }
+
+    // ── 2. VALIDASI NOMINAL & PAKET SERVER-SIDE (SSOT studio-pricing.ts) ──
+    // ANTI-TAMPERING: Jangan membaca angka mentah rawBody.credits tanpa validasi ke SSOT server!
+    const isShopMember = isTenantShopMember(resolvedTenant);
+
+    // Resolusi package_id candidate dari:
+    // a. metadata.package_id / package_id
+    // b. parsedPackageCandidate dari regex external_id
+    // c. parsedCreditsCandidate -> 5 = ketengan, 25 = starter, 50 = creator
+    // d. nominal tokenAmountPaid matching official prices
+    let resolvedPackageKey = String(
+      rawBody.metadata?.package_id ||
+      rawBody.package_id ||
+      rawBody.packageId ||
+      parsedPackageCandidate ||
+      ''
+    ).trim().toLowerCase();
+
+    if (!resolvedPackageKey && parsedCreditsCandidate) {
+      if (parsedCreditsCandidate === 5) resolvedPackageKey = 'ketengan';
+      else if (parsedCreditsCandidate === 25) resolvedPackageKey = 'starter';
+      else if (parsedCreditsCandidate === 50) resolvedPackageKey = 'creator';
+    }
+
+    if (!resolvedPackageKey && tokenAmountPaid > 0) {
+      if (tokenAmountPaid === 15000 || tokenAmountPaid === 20000) resolvedPackageKey = 'ketengan';
+      else if (tokenAmountPaid === 49000 || tokenAmountPaid === 75000) resolvedPackageKey = 'starter';
+      else if (tokenAmountPaid === 89000 || tokenAmountPaid === 135000) resolvedPackageKey = 'creator';
+    }
+
+    // Ambil paket resmi dari SSOT studio-pricing.ts
+    const validatedPkg = getStudioTokenPackage(resolvedPackageKey, isShopMember);
+
+    if (!validatedPkg || !validatedPkg.isActive) {
+      console.error(`[Webhook Reader ${logId}] Studio token validation failed: Paket '${resolvedPackageKey}' tidak valid atau tidak aktif menurut SSOT studio-pricing.ts.`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Paket token Studio '${resolvedPackageKey}' tidak valid menurut SSOT server studio-pricing.ts. Pilihan resmi: ketengan, starter, creator.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // KUNCI KRUSIAL: Jumlah kredit yang ditambahkan WAJIB bersumber dari validatedPkg.credits server SSOT!
+    const officialCredits = validatedPkg.credits;
+    const officialPrice = validatedPkg.price;
+
+    // Verifikasi batas minimal nominal pembayaran (mencegah underpayment tampering)
+    if (tokenAmountPaid > 0 && tokenAmountPaid < officialPrice) {
+      console.warn(`[Webhook Reader ${logId}] Underpayment Warning: Nominal dibayar Rp ${tokenAmountPaid} kurang dari harga resmi paket ${validatedPkg.id} (Rp ${officialPrice})`);
     }
 
     const studioAffiliateCode =
@@ -635,28 +815,58 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       rawBody.metadata?.ref ||
       null;
 
-    const { StudioCreditService } = await import('@/lib/services/studio-credit.service');
+    // ── 3. EKSEKUSI MUTASI KREDIT VIA STUDIO CREDIT SERVICE ──
     const topupResult = await StudioCreditService.topUpCredits({
-      tenantIdOrSlug: studioTenantSlug || 'studio',
-      credits: studioCredits || 50,
-      amountPaid: tokenAmountPaid,
-      transactionId: tokenTxId,
+      tenantIdOrSlug: effectiveTenantId || studioTenantSlug || 'studio',
+      credits: officialCredits,
+      amountPaid: tokenAmountPaid > 0 ? tokenAmountPaid : officialPrice,
+      transactionId: rawExternalId || tokenTxId,
+      invoiceId: rawInvoiceId || undefined,
+      packageId: validatedPkg.id,
       paymentStatus: 'PAID',
       affiliateCode: studioAffiliateCode,
       paymentChannel: detectedApp || rawBody.payment_channel || rawBody.payment_method || 'XENDIT',
     });
 
     const isIdempotentDuplicate = Boolean(topupResult.isExisting);
+
+    // ── 4. SINKRONISASI AUDIT REVENUE KE credit_transactions ──
+    if (!isIdempotentDuplicate && topupResult.success) {
+      try {
+        const { recordCreditTransaction } = await import('@/lib/creditLedger');
+        await recordCreditTransaction({
+          tenantSlug: effectiveTenantSlug,
+          type: 'TOPUP_CREDIT',
+          amountIdr: tokenAmountPaid > 0 ? tokenAmountPaid : officialPrice,
+          invoiceId: rawInvoiceId || tokenTxId,
+          referenceNo: rawExternalId || tokenTxId,
+          paymentChannel: detectedApp || rawBody.payment_channel || rawBody.payment_method || 'XENDIT',
+          status: 'COMPLETED',
+          notes: `Top-Up +${officialCredits} Token Render Studio - ${validatedPkg.name} (SSOT Validated)`,
+          metadata: {
+            package_id: validatedPkg.id,
+            credits: officialCredits,
+            external_id: rawExternalId,
+            invoice_id: rawInvoiceId,
+            order_id: tokenTxId,
+          },
+        });
+      } catch (revErr) {
+        console.warn(`[Webhook Reader ${logId}] Non-fatal: credit_transactions record error:`, revErr);
+      }
+    }
+
     const tokenResponse = {
       success: topupResult.success,
       message: topupResult.success
         ? (isIdempotentDuplicate
-            ? `Studio token order #${potentialTokenOrderId} was already processed previously (idempotent duplicate).`
-            : `Studio token top-up for order #${potentialTokenOrderId} successfully processed (+${studioCredits} credits).`)
+            ? `Studio token order #${tokenTxId} was already processed previously (idempotent duplicate).`
+            : `Studio token top-up for order #${tokenTxId} successfully processed (+${officialCredits} credits).`)
         : `Studio token top-up error: ${topupResult.message}`,
-      order_id: potentialTokenOrderId,
-      tenant_slug: studioTenantSlug,
-      credits_added: isIdempotentDuplicate ? 0 : studioCredits,
+      order_id: tokenTxId,
+      tenant_slug: effectiveTenantSlug,
+      package_id: validatedPkg.id,
+      credits_added: isIdempotentDuplicate ? 0 : officialCredits,
       new_balance: topupResult.newBalance,
       already_processed: isIdempotentDuplicate,
       commission_recorded: topupResult.commissionRecorded,
@@ -671,10 +881,10 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       method: 'POST',
       headers: headersObj,
       rawBody,
-      parsedAmount: tokenAmountPaid,
+      parsedAmount: tokenAmountPaid > 0 ? tokenAmountPaid : officialPrice,
       detectedApp,
-      tenantSlug: studioTenantSlug,
-      matchedOrderId: potentialTokenOrderId,
+      tenantSlug: effectiveTenantSlug,
+      matchedOrderId: tokenTxId,
       matchStrategy: isIdempotentDuplicate ? 'studio_token_topup_idempotent' : 'studio_token_topup',
       resultStatus: topupResult.success ? 200 : 400,
       resultBody: tokenResponse,

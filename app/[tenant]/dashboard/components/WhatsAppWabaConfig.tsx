@@ -158,69 +158,63 @@ export default function WhatsAppWabaConfig({
     };
   }, []);
 
-  // 2. Load existing credentials from Supabase on mount
+  // 2. Load existing credentials on mount (Server Settings API + Supabase Fallback)
   useEffect(() => {
     async function loadExistingConfig() {
       if (!tenantSlug) return;
       try {
+        let loaded = false;
+
+        // 1. Prioritaskan Server Endpoint /settings (Bypass RLS dengan Service Role Key)
+        try {
+          const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            const settings = apiJson?.settings;
+            const wabaCfg = settings?.waba_config || settings?.metadata?.waba_config;
+            const meta = settings?.metadata || {};
+            const phoneId =
+              wabaCfg?.phone_number_id ||
+              settings?.waba_phone_number_id ||
+              meta.waba_phone_number_id ||
+              meta.whatsapp_phone_number_id;
+            const accId = wabaCfg?.waba_id || meta.waba_account_id;
+            const token =
+              wabaCfg?.permanent_access_token ||
+              wabaCfg?.access_token ||
+              meta.waba_access_token;
+
+            if (phoneId) setPhoneNumberId(phoneId);
+            if (accId) setWabaId(accId);
+            if (token) setAccessToken(token);
+
+            if (
+              wabaCfg?.status === 'CONNECTED' ||
+              meta.waba_configured === true ||
+              meta.waba_active === true ||
+              Boolean(phoneId)
+            ) {
+              setSuccessData({
+                verifiedName: wabaCfg?.verified_name || meta.waba_config?.verified_name || String(displayName || '').toUpperCase(),
+                displayPhone: wabaCfg?.display_phone_number || (phoneId ? `ID: ${phoneId}` : undefined),
+                qualityRating: wabaCfg?.quality_rating || 'GREEN (HIGH QUALITY)',
+                message: 'Akun Meta WABA sudah terverifikasi dan aktif.',
+                status: wabaCfg?.status || 'CONNECTED',
+                webhookStatus: 'Subscribed & Safe ACK',
+              });
+              loaded = true;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('[WhatsAppWabaConfig] API settings fetch note:', apiErr);
+        }
+
+        if (loaded) return;
+
+        // 2. Fallback query langsung Supabase client jika API gagal
         const supabase = getSupabase();
         if (!supabase) return;
 
-        // 1. Prioritaskan pembacaan dari whatsapp_connections
-        const { data: conn } = await supabase
-          .from('whatsapp_connections')
-          .select('*')
-          .or(`tenant_id.eq.${tenantSlug},tenant_slug.eq.${tenantSlug}`)
-          .eq('provider', 'meta')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (conn) {
-          if (conn.phone_number_id) setPhoneNumberId(conn.phone_number_id);
-          if (conn.waba_id) setWabaId(conn.waba_id);
-          if (conn.api_key) setAccessToken(conn.api_key);
-
-          if (conn.is_connected || conn.status === 'active' || conn.status === 'open') {
-            setSuccessData({
-              verifiedName: conn.metadata?.verified_name || String(displayName || '').toUpperCase(),
-              displayPhone: conn.phone_number || (conn.phone_number_id ? `ID: ${conn.phone_number_id}` : undefined),
-              qualityRating: conn.metadata?.quality_rating || 'GREEN (HIGH QUALITY)',
-              message: 'Akun Meta WABA sudah terverifikasi dan aktif.',
-              status: conn.status?.toUpperCase() || 'CONNECTED',
-              webhookStatus: 'Subscribed & Safe ACK',
-            });
-          }
-          return;
-        }
-
-        // 2. Fallback cek tenant_settings
-        const { data: settings } = await supabase
-          .from('tenant_settings')
-          .select('waba_config')
-          .eq('tenant_slug', tenantSlug)
-          .maybeSingle();
-
-        if (settings?.waba_config) {
-          const cfg = settings.waba_config;
-          if (cfg.phone_number_id) setPhoneNumberId(cfg.phone_number_id);
-          if (cfg.waba_id) setWabaId(cfg.waba_id);
-          if (cfg.permanent_access_token) setAccessToken(cfg.permanent_access_token);
-
-          if (cfg.status === 'CONNECTED') {
-            setSuccessData({
-              verifiedName: cfg.verified_name || String(displayName || '').toUpperCase(),
-              displayPhone: cfg.display_phone_number || cfg.phone_number_id,
-              qualityRating: cfg.quality_rating || 'GREEN (HIGH QUALITY)',
-              message: 'Akun Meta WABA sudah terhubung.',
-              status: 'CONNECTED',
-              webhookStatus: 'Subscribed & Safe ACK',
-            });
-            return;
-          }
-        }
-
-        // 3. Fallback baca langsung dari tenants table
         const { data: tenantRow } = await supabase
           .from('tenants')
           .select('id, metadata, waba_phone_number_id')

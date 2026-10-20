@@ -192,8 +192,41 @@ export default function AdsTrackingPro({
   useEffect(() => {
     async function loadConfig() {
       try {
+        let loaded = false;
+
+        // 1. Coba ambil dari Server Endpoint /settings (Bypass RLS & terjamin akurat)
+        try {
+          const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            const cfg =
+              apiJson?.settings?.ads_tracking_config ||
+              apiJson?.settings?.tracking ||
+              apiJson?.settings?.metadata?.tracking ||
+              apiJson?.settings?.metadata?.ads_tracking_config;
+
+            if (cfg) {
+              setIsEnabled(cfg.is_enabled ?? true);
+              setMetaPixelId(cfg.meta_pixel_id || cfg.facebook_pixel_id || apiJson.settings.metadata?.pixel_id || '');
+              setMetaCapiToken(cfg.meta_capi_token || cfg.capi_token || apiJson.settings.metadata?.capi_token || '');
+              setMetaTestCode(cfg.meta_test_code || '');
+              setMetaAdAccountId(cfg.meta_ad_account_id || cfg.metaAdAccountId || '');
+              setTiktokPixelId(cfg.tiktok_pixel_id || '');
+              setTiktokAccessToken(cfg.tiktok_access_token || '');
+              setGtmId(cfg.gtm_id || cfg.gtmId || '');
+              setEnableWaUtm(cfg.enable_wa_utm ?? true);
+              setAutoDeduplication(cfg.auto_deduplication ?? true);
+              loaded = true;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[Ads Tracking Pro] API fetch note:', fetchErr);
+        }
+
         const supabase = getSupabase();
-        if (supabase) {
+
+        // 2. Fallback query langsung Supabase client jika API gagal
+        if (!loaded && supabase) {
           const [settingsRes, tenantRes] = await Promise.all([
             supabase
               .from('tenant_settings')
@@ -220,8 +253,10 @@ export default function AdsTrackingPro({
             setEnableWaUtm(cfg.enable_wa_utm ?? true);
             setAutoDeduplication(cfg.auto_deduplication ?? true);
           }
+        }
 
-          // Fetch real recent orders/leads for lead scoring display
+        // Fetch real recent orders/leads for lead scoring display
+        if (supabase) {
           try {
             let leadQuery = supabase
               .from('orders')
@@ -268,7 +303,7 @@ export default function AdsTrackingPro({
       }
     }
     loadConfig();
-  }, [tenantSlug]);
+  }, [tenantSlug, dateRange.startDate, dateRange.endDate]);
 
   const filteredCampaigns = useMemo(() => {
     if (!Array.isArray(campaigns)) return [];
@@ -378,95 +413,26 @@ export default function AdsTrackingPro({
         };
 
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        // 1. Simpan ke tenant_settings.ads_tracking_config
-        //    Untuk Basic Pixel tier: merge dengan config existing agar field CAPI tidak tertimpa
-        if (isBasicPixelOnlyTier) {
-          const { data: existingSettings } = await supabase
-            .from('tenant_settings')
-            .select('ads_tracking_config')
-            .eq('tenant_slug', tenantSlug)
-            .maybeSingle();
+      // 1. Simpan via API Server-Side yang menggunakan SUPABASE_SERVICE_ROLE_KEY (Bypass RLS)
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          ads_tracking_config: configPayload,
+          tracking: configPayload,
+          pixel_id: metaPixelId,
+          capi_token: isBasicPixelOnlyTier ? undefined : metaCapiToken,
+        }),
+      });
 
-          const mergedConfig = {
-            ...(existingSettings?.ads_tracking_config || {}),
-            ...configPayload,
-          };
+      const data = await res.json().catch(() => ({}));
 
-          await supabase
-            .from('tenant_settings')
-            .upsert(
-              {
-                tenant_slug: tenantSlug,
-                ads_tracking_config: mergedConfig,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'tenant_slug' }
-            );
-        } else {
-          await supabase
-            .from('tenant_settings')
-            .upsert(
-              {
-                tenant_slug: tenantSlug,
-                ads_tracking_config: configPayload,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'tenant_slug' }
-            );
-        }
-
-        // 2. Sinkronkan ke tenants.metadata (Single Source of Truth)
-        try {
-          const { data: tenantData } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          const currentMeta = (tenantData?.metadata as Record<string, any>) || {};
-
-          // Merge tracking: untuk Basic Pixel tier, hanya perbarui field Pixel ID
-          const existingTracking = currentMeta.tracking || {};
-          const updatedTracking = isBasicPixelOnlyTier
-            ? {
-                ...existingTracking,
-                facebook_pixel_id: metaPixelId,
-                meta_pixel_id: metaPixelId,
-                tiktok_pixel_id: tiktokPixelId,
-                is_enabled: isEnabled,
-                enable_wa_utm: enableWaUtm,
-              }
-            : {
-                ...existingTracking,
-                facebook_pixel_id: metaPixelId,
-                meta_pixel_id: metaPixelId,
-                meta_capi_token: metaCapiToken,
-                meta_test_code: metaTestCode,
-                meta_ad_account_id: metaAdAccountId.trim(),
-                tiktok_pixel_id: tiktokPixelId,
-                tiktok_access_token: tiktokAccessToken,
-                gtm_id: gtmId,
-                enable_wa_utm: enableWaUtm,
-                auto_deduplication: autoDeduplication,
-                is_enabled: isEnabled,
-              };
-
-          await supabase
-            .from('tenants')
-            .update({
-              metadata: {
-                ...currentMeta,
-                // Field top-level untuk kompatibilitas backward (ARCHITECTURE §5.1)
-                pixel_id: metaPixelId || currentMeta.pixel_id || null,
-                tracking: updatedTracking,
-              },
-            })
-            .eq('slug', tenantSlug);
-        } catch (syncErr) {
-          console.warn('[AdsTrackingPro] Sync to tenants.metadata note:', syncErr);
-        }
+      if (!res.ok || !data.success) {
+        const errorMsg = data.message || data.error || `Server error (HTTP ${res.status}): Gagal menyimpan pengaturan Ads Tracking.`;
+        throw new Error(errorMsg);
       }
 
       const successMsg = isBasicPixelOnlyTier
@@ -475,9 +441,10 @@ export default function AdsTrackingPro({
       setFeedback(successMsg);
       if (onSaved) onSaved(successMsg);
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err) {
-      setFeedback('✅ Pengaturan berhasil diperbarui di memori lokal.');
-      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kendala saat menyimpan ke database.';
+      console.error('[AdsTrackingPro] Save error:', err);
+      setFeedback(`❌ ${msg}`);
     } finally {
       setSaving(false);
     }
