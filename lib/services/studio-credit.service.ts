@@ -26,6 +26,7 @@ export interface TenantEntitlement {
 
 export interface CreditReserveResult {
   success: boolean;
+  statusCode?: number;
   message?: string;
   credits_remaining?: number;
   is_unlimited?: boolean;
@@ -140,38 +141,56 @@ export class StudioCreditService {
 
   /**
    * Atomically reserve / deduct credits before queueing a studio render job.
+   * Two-phase commit Phase 1: Deduct credits (event: 'STUDIO_RENDER_JOB', type: 'CREDIT_OUT').
+   * If insufficient, returns statusCode: 402.
    */
   static async reserveCredits(
     tenantIdOrSlug: string,
     amount: number = 1,
-    description: string = 'Studio render job'
+    description: string = 'Studio render job',
+    jobId?: string
   ): Promise<CreditReserveResult> {
     const tenant = await this.resolveTenant(tenantIdOrSlug);
     if (!tenant) {
-      return { success: false, message: 'Tenant tidak ditemukan.' };
+      return { success: false, statusCode: 404, message: 'Tenant tidak ditemukan.' };
     }
 
     const supabase = getSupabaseAdmin();
     if (!supabase) {
-      return { success: false, message: 'Database client admin tidak tersedia.' };
+      return { success: false, statusCode: 500, message: 'Database client admin tidak tersedia.' };
     }
+
+    const resolvedJobId = jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const idempotencyKey = `RESERVE_${tenant.id}_${resolvedJobId}`;
 
     // 1. Check if Founder or Unlimited
     const entitlements = await this.getEntitlements(tenant.id);
     if (entitlements && entitlements.is_unlimited) {
-      // Record Founder audit in ledger without deducting credits
       try {
         await supabase.from('tenant_credit_ledger').insert({
           tenant_id: tenant.id,
+          job_id: resolvedJobId,
+          idempotency_key: idempotencyKey,
           amount: 0,
           balance_after: entitlements.credits_remaining,
-          action: 'FOUNDER_BYPASS',
+          action: 'STUDIO_RENDER_JOB',
+          type: 'RESERVE',
+          reason: 'STUDIO_RENDER_JOB',
+          actor_id: 'STUDIO_RENDER',
+          actor_role: 'CREATOR',
           description: `[Founder Unlimited] ${description} (${amount} requested)`,
+          metadata: {
+            event: 'STUDIO_RENDER_JOB',
+            type: 'CREDIT_OUT',
+            job_id: resolvedJobId,
+            is_unlimited: true,
+          },
         });
       } catch {}
 
       return {
         success: true,
+        statusCode: 200,
         credits_remaining: entitlements.credits_remaining,
         is_unlimited: true,
       };
@@ -181,46 +200,71 @@ export class StudioCreditService {
     try {
       const { data: rpcData, error: rpcError } = await supabase.rpc('fn_reserve_studio_credits', {
         p_tenant_id: tenant.id,
-        p_amount: amount,
-        p_description: description,
+        p_cost: amount,
+        p_job_id: resolvedJobId,
+        p_idempotency_key: idempotencyKey,
+        p_actor_id: 'STUDIO_RENDER',
+        p_actor_role: 'CREATOR',
       });
 
       if (!rpcError && rpcData) {
-        if (typeof rpcData === 'object' && rpcData.success === false) {
+        const resultItem = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        if (resultItem && resultItem.success === false) {
+          const isInsufficient = resultItem.status_code === 'INSUFFICIENT_CREDITS';
           return {
             success: false,
-            message: rpcData.message || 'Kredit render tidak mencukupi.',
-            credits_remaining: rpcData.credits_remaining ?? 0,
+            statusCode: isInsufficient ? 402 : 400,
+            message: resultItem.message || `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits). Silakan lakukan top-up kredit.`,
+            credits_remaining: resultItem.remaining_credits ?? 0,
           };
         }
 
-        const remaining = typeof rpcData === 'number'
-          ? rpcData
-          : (rpcData.credits_remaining ?? rpcData.new_balance ?? 0);
+        const remaining = typeof resultItem === 'number'
+          ? resultItem
+          : (resultItem.remaining_credits ?? resultItem.new_balance ?? 0);
+
+        // Enrich newly inserted ledger row with action and metadata
+        try {
+          await supabase
+            .from('tenant_credit_ledger')
+            .update({
+              action: 'STUDIO_RENDER_JOB',
+              description,
+              balance_after: remaining,
+              metadata: {
+                event: 'STUDIO_RENDER_JOB',
+                type: 'CREDIT_OUT',
+                job_id: resolvedJobId,
+              },
+            })
+            .eq('job_id', resolvedJobId)
+            .eq('type', 'RESERVE');
+        } catch {}
 
         return {
           success: true,
+          statusCode: 200,
           credits_remaining: remaining,
           is_unlimited: false,
         };
       }
     } catch {
-      // RPC may not exist in some environments, proceed to direct atomic fallback
+      // Fall through to atomic fallback
     }
 
-    // 3. Direct Fallback via tenant_entitlements & tenant_credit_ledger
+    // 3. Direct Atomic Fallback via tenant_entitlements & tenant_credit_ledger
     const currentBalance = entitlements?.credits_remaining ?? 0;
     if (currentBalance < amount) {
       return {
         success: false,
-        message: `Kredit render tidak mencukupi (Butuh ${amount} Credits, Tersedia: ${currentBalance}). Silakan lakukan top-up.`,
+        statusCode: 402,
+        message: `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits, Tersedia: ${currentBalance}). Silakan lakukan top-up kredit.`,
         credits_remaining: currentBalance,
       };
     }
 
     const newBalance = currentBalance - amount;
 
-    // Update entitlements
     const { error: updateErr } = await supabase
       .from('tenant_entitlements')
       .update({
@@ -232,6 +276,7 @@ export class StudioCreditService {
     if (updateErr) {
       return {
         success: false,
+        statusCode: 500,
         message: 'Gagal memperbarui saldo kredit render.',
       };
     }
@@ -240,10 +285,21 @@ export class StudioCreditService {
     try {
       await supabase.from('tenant_credit_ledger').insert({
         tenant_id: tenant.id,
+        job_id: resolvedJobId,
+        idempotency_key: idempotencyKey,
         amount: -amount,
         balance_after: newBalance,
-        action: 'RESERVE',
+        action: 'STUDIO_RENDER_JOB',
+        type: 'RESERVE',
+        actor_id: 'STUDIO_RENDER',
+        actor_role: 'CREATOR',
+        reason: 'STUDIO_RENDER_JOB',
         description,
+        metadata: {
+          event: 'STUDIO_RENDER_JOB',
+          type: 'CREDIT_OUT',
+          job_id: resolvedJobId,
+        },
       });
     } catch (ledgerErr) {
       console.warn('[StudioCreditService] Warning inserting into tenant_credit_ledger:', ledgerErr);
@@ -251,46 +307,115 @@ export class StudioCreditService {
 
     return {
       success: true,
+      statusCode: 200,
       credits_remaining: newBalance,
       is_unlimited: false,
     };
   }
 
   /**
-   * Release / refund reserved credits if a render job fails before processing.
+   * Auto-refund credits when a render job ends in FAILED or TIMEOUT.
+   * Two-phase commit Phase 2: Auto-refund (type: 'CREDIT_REFUND', metadata: { job_id }).
    */
-  static async releaseCredits(
-    tenantIdOrSlug: string,
-    amount: number = 1,
-    description: string = 'Studio render job failed - refund'
-  ): Promise<CreditReserveResult> {
-    const tenant = await this.resolveTenant(tenantIdOrSlug);
-    if (!tenant) return { success: false, message: 'Tenant tidak ditemukan.' };
+  static async refundJobCredits(params: {
+    tenantIdOrSlug?: string;
+    jobId: string;
+    amount?: number;
+    reason?: string;
+  }): Promise<CreditReserveResult> {
+    const { tenantIdOrSlug, jobId, amount, reason = 'RENDER_FAILED_OR_TIMEOUT' } = params;
+    if (!jobId) {
+      return { success: false, message: 'jobId wajib disertakan untuk refund.' };
+    }
 
     const supabase = getSupabaseAdmin();
     if (!supabase) return { success: false, message: 'Database client tidak tersedia.' };
 
+    // Idempotency check: if already refunded, do not double refund
+    const { data: existingRefund } = await supabase
+      .from('tenant_credit_ledger')
+      .select('id, amount')
+      .eq('job_id', jobId)
+      .eq('type', 'REFUND')
+      .maybeSingle();
+
+    if (existingRefund) {
+      return {
+        success: true,
+        message: 'Kredit untuk job ini sudah pernah dikembalikan (idempotent).',
+      };
+    }
+
     // 1. Try RPC fn_release_studio_credits
     try {
       const { data: rpcData, error: rpcError } = await supabase.rpc('fn_release_studio_credits', {
-        p_tenant_id: tenant.id,
-        p_amount: amount,
-        p_description: description,
+        p_job_id: jobId,
+        p_actor_id: 'SYSTEM',
+        p_reason: reason,
       });
 
       if (!rpcError && rpcData) {
-        const remaining = typeof rpcData === 'number'
-          ? rpcData
-          : (rpcData.credits_remaining ?? rpcData.new_balance ?? 0);
+        const resItem = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        if (resItem && resItem.success) {
+          // Enrich refund ledger row with action and metadata
+          try {
+            await supabase
+              .from('tenant_credit_ledger')
+              .update({
+                action: 'STUDIO_RENDER_JOB',
+                description: `Auto-refund render job: ${jobId} (${reason})`,
+                metadata: {
+                  event: 'STUDIO_RENDER_JOB',
+                  type: 'CREDIT_REFUND',
+                  job_id: jobId,
+                  reason,
+                },
+              })
+              .eq('job_id', jobId)
+              .eq('type', 'REFUND');
+          } catch {}
 
-        return { success: true, credits_remaining: remaining };
+          return {
+            success: true,
+            credits_remaining: resItem.new_balance,
+            message: `Kredit sebesar ${resItem.credits_refunded} berhasil dikembalikan ke saldo kreator.`,
+          };
+        }
       }
-    } catch {}
+    } catch {
+      // Fall through to direct atomic fallback
+    }
 
-    // 2. Direct Fallback
+    // 2. Direct Fallback: Find initial reservation
+    let tenantId = tenantIdOrSlug;
+    let refundAmount = amount;
+
+    const { data: reserveRow } = await supabase
+      .from('tenant_credit_ledger')
+      .select('tenant_id, amount')
+      .eq('job_id', jobId)
+      .eq('type', 'RESERVE')
+      .order('created_at', { ascending: false })
+      .maybeSingle();
+
+    if (reserveRow) {
+      tenantId = tenantId || reserveRow.tenant_id;
+      if (!refundAmount && typeof reserveRow.amount === 'number') {
+        refundAmount = Math.abs(reserveRow.amount);
+      }
+    }
+
+    if (!tenantId) {
+      return { success: false, message: 'Tidak dapat mengidentifikasi tenant untuk refund.' };
+    }
+
+    const finalAmount = refundAmount || 3;
+    const tenant = await this.resolveTenant(tenantId);
+    if (!tenant) return { success: false, message: 'Tenant tidak ditemukan.' };
+
     const entitlements = await this.getEntitlements(tenant.id);
     const currentBalance = entitlements?.credits_remaining ?? 0;
-    const newBalance = currentBalance + amount;
+    const newBalance = currentBalance + finalAmount;
 
     await supabase
       .from('tenant_entitlements')
@@ -303,14 +428,46 @@ export class StudioCreditService {
     try {
       await supabase.from('tenant_credit_ledger').insert({
         tenant_id: tenant.id,
-        amount: amount,
+        job_id: jobId,
+        amount: finalAmount,
         balance_after: newBalance,
-        action: 'RELEASE',
-        description,
+        action: 'STUDIO_RENDER_JOB',
+        type: 'REFUND',
+        actor_id: 'SYSTEM',
+        actor_role: 'SYSTEM',
+        reason,
+        description: `Auto-refund render job: ${jobId} (${reason})`,
+        metadata: {
+          event: 'STUDIO_RENDER_JOB',
+          type: 'CREDIT_REFUND',
+          job_id: jobId,
+          reason,
+        },
       });
     } catch {}
 
-    return { success: true, credits_remaining: newBalance };
+    return {
+      success: true,
+      credits_remaining: newBalance,
+      message: `Kredit sebesar ${finalAmount} berhasil dikembalikan ke saldo kreator.`,
+    };
+  }
+
+  /**
+   * Release / refund reserved credits (delegates to refundJobCredits for consistency).
+   */
+  static async releaseCredits(
+    tenantIdOrSlug: string,
+    amount: number = 1,
+    description: string = 'Studio render job failed - refund',
+    jobId?: string
+  ): Promise<CreditReserveResult> {
+    return this.refundJobCredits({
+      tenantIdOrSlug,
+      jobId: jobId || `job_${Date.now()}`,
+      amount,
+      reason: description,
+    });
   }
 
   /**

@@ -281,7 +281,7 @@ export default function UGCStudioPage() {
     setJobProgress(15);
 
     try {
-      const res = await fetch('/api/studio/render/dispatch', {
+      const res = await fetch('/api/studio/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -292,32 +292,56 @@ export default function UGCStudioPage() {
       });
 
       const data = await res.json();
+      if (res.status === 402) {
+        setIsPaywallOpen(true);
+        throw new Error(data.message || 'Render Credits Anda tidak mencukupi (HTTP 402). Silakan lakukan top-up kredit.');
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Gagal mengirim job render.');
       }
 
       setActiveJobId(data.job_id);
-      const outputVideo = data.output_url || data.video_url || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
-      setCompletedVideoUrl(outputVideo);
+      setCompletedVideoUrl(data.output_url || null);
       if (data.remaining_credits !== undefined) {
         setRenderCredits(data.remaining_credits);
       }
 
-      // Simulated real-time rendering progression
-      setTimeout(() => {
-        setJobStatus('PROCESSING');
-        setJobProgress(55);
-      }, 1500);
+      // Connect to real database job queue polling (Zero fake setTimeout)
+      const pollJobId = data.job_id;
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/studio/render?job_id=${encodeURIComponent(pollJobId)}`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.success) {
+              setJobStatus(pollData.status);
+              setJobProgress(pollData.progress || (pollData.status === 'COMPLETED' ? 100 : pollData.status === 'PROCESSING' ? 60 : 15));
 
-      setTimeout(() => {
-        setJobProgress(85);
-      }, 3000);
-
-      setTimeout(() => {
-        setJobStatus('COMPLETED');
-        setJobProgress(100);
-        setDispatching(false);
-      }, 4500);
+              if (pollData.status === 'COMPLETED') {
+                clearInterval(pollInterval);
+                setCompletedVideoUrl(pollData.output_url || null);
+                setDispatching(false);
+              } else if (pollData.status === 'FAILED' || pollData.status === 'TIMEOUT') {
+                clearInterval(pollInterval);
+                setDispatching(false);
+                alert(`Render gagal: ${pollData.error_message || 'Terjadi kesalahan pemrosesan'}. Saldo kredit telah otomatis dikembalikan (Auto-Refund).`);
+                // Refresh live balance
+                if (tenantSlug) {
+                  fetch(`/api/tenants/${encodeURIComponent(tenantSlug)}/entitlements`)
+                    .then(r => r.json())
+                    .then(ent => {
+                      if (ent?.data?.credits_remaining !== undefined) setRenderCredits(ent.data.credits_remaining);
+                    })
+                    .catch(() => {});
+                }
+              }
+            }
+          }
+        } catch (pollErr) {
+          console.warn('[UGC Studio] Polling error:', pollErr);
+        }
+      }, 2500);
     } catch (err: any) {
       alert(err.message || 'Gagal mengirim job render.');
       setJobStatus('IDLE');
@@ -758,8 +782,8 @@ export default function UGCStudioPage() {
                         <span>🎉 Video 9:16 Siap Unduh! Tersimpan di Cloud Storage.</span>
                       </div>
                       <a
-                        href={`/api/studio/download?url=${encodeURIComponent(completedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4')}&filename=${encodeURIComponent((productName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'video_studio') + '_9x16.mp4')}&job_id=${encodeURIComponent(activeJobId || '')}`}
-                        className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition active:scale-95 shrink-0"
+                        href={completedVideoUrl ? `/api/studio/download?url=${encodeURIComponent(completedVideoUrl)}&filename=${encodeURIComponent((productName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'video_studio') + '_9x16.mp4')}&job_id=${encodeURIComponent(activeJobId || '')}` : '#'}
+                        className={`py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition active:scale-95 shrink-0 ${!completedVideoUrl ? 'opacity-50 pointer-events-none' : ''}`}
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Unduh File MP4</span>

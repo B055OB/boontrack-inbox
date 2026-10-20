@@ -507,15 +507,17 @@ export default function FCDAutomatorPage() {
       });
 
       const data = await res.json();
+      if (res.status === 402) {
+        setIsPaywallOpen(true);
+        throw new Error(data.message || 'Render Credits Anda tidak mencukupi (HTTP 402). Silakan lakukan top-up kredit.');
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Gagal mengirim antrean render.');
       }
 
       setActiveBatchId(data.batch_id);
-      const finalUrl =
-        data.output_url ||
-        (data.files && data.files[0]?.output_url) ||
-        'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+      const finalUrl = data.output_url || (data.files && data.files[0]?.output_url) || '';
       setRenderedVideoUrl(finalUrl);
       if (Array.isArray(data.files)) {
         setRenderedFiles(data.files);
@@ -534,19 +536,39 @@ export default function FCDAutomatorPage() {
       }
       refreshEntitlements(tenantSlug);
 
-      setBatchJobStatus('PROCESSING');
-      setBatchProgress(40);
+      setBatchJobStatus('QUEUED');
+      setBatchProgress(15);
 
-      setTimeout(() => {
-        setBatchProgress(75);
-      }, 1500);
+      // Connect to real database batch queue polling (Zero fake timers)
+      const pollBatchId = data.batch_id;
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/studio/render?job_id=${encodeURIComponent(pollBatchId)}`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.success) {
+              setBatchJobStatus(pollData.status);
+              setBatchProgress(pollData.progress || (pollData.status === 'COMPLETED' ? 100 : pollData.status === 'PROCESSING' ? 60 : 15));
 
-      setTimeout(() => {
-        setBatchJobStatus('COMPLETED');
-        setBatchProgress(100);
-        setIsDispatching(false);
-        setActiveStep(3); // Langsung arahkan ke Langkah 3 (Layar Hasil Jadi)
-      }, 3000);
+              if (pollData.status === 'COMPLETED') {
+                clearInterval(pollInterval);
+                if (pollData.output_url) {
+                  setRenderedVideoUrl(pollData.output_url);
+                }
+                setIsDispatching(false);
+                setActiveStep(3); // Langsung arahkan ke Layar Hasil Jadi saat DB selesai
+              } else if (pollData.status === 'FAILED' || pollData.status === 'TIMEOUT') {
+                clearInterval(pollInterval);
+                setIsDispatching(false);
+                alert(`Batch render gagal: ${pollData.error_message || 'Terjadi kesalahan sistem'}. Kredit otomatis dikembalikan ke saldo kreator (Auto-Refund).`);
+                refreshEntitlements(tenantSlug);
+              }
+            }
+          }
+        } catch (pollErr) {
+          console.warn('[FCD Automator] Polling error:', pollErr);
+        }
+      }, 2500);
     } catch (err: any) {
       alert(err.message || 'Terjadi kesalahan saat memproses antrean video.');
       setBatchJobStatus('IDLE');
@@ -556,10 +578,13 @@ export default function FCDAutomatorPage() {
 
   const handleDownloadFinalMp4 = (url?: string, filename?: string) => {
     const renderIdToTrack = activeBatchId || 'batch_render_latest';
-    const targetUrl =
-      url ||
-      renderedVideoUrl ||
-      'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
+    const targetUrl = url || renderedVideoUrl;
+
+    if (!targetUrl) {
+      alert('File video belum selesai dirender atau sedang dalam antrean. Silakan tunggu hingga status COMPLETED.');
+      return;
+    }
+
     const productSlug =
       campaignTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video-iklan';
     const targetName = filename || `${productSlug}_FINAL_1080x1920.mp4`;
@@ -1527,13 +1552,21 @@ export default function FCDAutomatorPage() {
               <div className="lg:col-span-5 flex flex-col items-center">
                 <div className="relative w-full max-w-[280px] aspect-[9/16] rounded-3xl overflow-hidden bg-black border-2 border-white/20 shadow-2xl group">
                   {/* Video Player */}
-                  <video
-                    src={renderedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4'}
-                    className="w-full h-full object-cover"
-                    controls
-                    playsInline
-                    preload="metadata"
-                  />
+                  {renderedVideoUrl ? (
+                    <video
+                      src={renderedVideoUrl}
+                      className="w-full h-full object-cover"
+                      controls
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-zinc-950/80">
+                      <Film className="w-8 h-8 text-fuchsia-400/50 mb-2 animate-pulse" />
+                      <p className="text-xs font-semibold text-zinc-300">Video Sedang Diproses</p>
+                      <p className="text-[10px] text-zinc-500 mt-1">Hasil render riil akan tampil di sini setelah selesai.</p>
+                    </div>
+                  )}
 
                   {/* Safe-Zone Bounds Overlay */}
                   {showSafeZone && (
@@ -2007,13 +2040,20 @@ export default function FCDAutomatorPage() {
             </div>
 
             <div className="relative aspect-[9/16] max-h-[60vh] mx-auto rounded-2xl overflow-hidden bg-black border border-white/10 shadow-inner">
-              <video
-                src={renderedVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4'}
-                className="w-full h-full object-contain"
-                controls
-                autoPlay
-                playsInline
-              />
+              {renderedVideoUrl ? (
+                <video
+                  src={renderedVideoUrl}
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center p-4 text-center">
+                  <Film className="w-8 h-8 text-fuchsia-400/50 mb-2 animate-pulse" />
+                  <p className="text-xs text-zinc-400">Video belum tersedia untuk dipratinjau.</p>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between pt-1">
