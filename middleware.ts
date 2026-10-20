@@ -888,26 +888,22 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return res;
   }
 
-  // ── REDIRECT DASHBOARD ACCESS ON STOREFRONT DOMAIN (shop.boontrack.com) TO DASHBOARD DOMAIN (ARCHITECTURE.md §21 & §25) ──
+  // ===========================================================================
+  // SUBDOMAIN: shop.boontrack.com (CORE STOREFRONT & MERCHANDISE ENGINE)
+  // ARCHITECTURE.md § 63: shop.boontrack.com adalah rumah kanonikal storefront pembeli.
+  // Terisolasi penuh: JANGAN PERNAH dialihkan ke root boontrack.com atau custom domain lookup.
+  // ===========================================================================
   const isShopHost =
     hostClean === 'shop.boontrack.com' ||
     hostClean.startsWith('shop.') ||
     subdomain === 'shop';
 
   if (isShopHost) {
-    // ── ROOT REDIRECT: shop.boontrack.com/ -> https://boontrack.com (Redirect 307) ──
-    if (pathname === '/' || pathname === '') {
-      const redirectUrl = new URL('https://boontrack.com');
-      req.nextUrl.searchParams.forEach((val, key) => {
-        redirectUrl.searchParams.set(key, val);
-      });
-      return NextResponse.redirect(redirectUrl, 307);
-    }
-
     const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
     const shopDeskMatch = pathname.match(/^\/([^/]+)\/desk(?:\/(.*))?$/);
     const isShopGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 
+    // 1. Redirect operator desk ke dashboard domain
     if (shopDeskMatch) {
       const targetSlug = shopDeskMatch[1];
       const subPath = shopDeskMatch[2] ? `/${shopDeskMatch[2]}` : '';
@@ -923,6 +919,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(targetUrl, 302);
     }
 
+    // 2. Redirect dashboard merchant ke dashboard domain (ADR § 63)
     if (shopDashboardMatch) {
       const targetSlug = shopDashboardMatch[1];
       const subPath = shopDashboardMatch[2] ? `/${shopDashboardMatch[2]}` : '';
@@ -938,6 +935,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(targetUrl, 302);
     }
 
+    // 3. Redirect generic /dashboard ke /login pada dashboard domain
     if (isShopGenericDashboard) {
       const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
       const dashboardBase = isProd
@@ -950,6 +948,70 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       });
       return NextResponse.redirect(targetUrl, 302);
     }
+
+    // 4. Extract query referral (ref / r / aff)
+    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r') || req.nextUrl.searchParams.get('aff');
+
+    // 5. Root storefront & SaaS lander (/) -> Pass-through alami ke app/page.tsx dengan referral cookies
+    if (pathname === '/' || pathname === '') {
+      const res = NextResponse.next();
+      if (refParam) {
+        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      }
+      return res;
+    }
+
+    // 6. Universal pass-through routes pada domain shop (auth, checkout, register, affiliate, legal, dll.)
+    const SHOP_SYSTEM_ROUTES = new Set([
+      'app', 'register', 'affiliate', 'manager', 'pricing', 'checkout',
+      'login', 'auth', 'daftar', 'onboarding', 'pilot-onboarding', 'enterprise',
+      'terms', 'privacy', 'privacy-policy', 'data-deletion', 'acceptable-use',
+      'refund', 'store-original'
+    ]);
+
+    const segments = pathname.split('/').filter(Boolean);
+    const firstSegment = segments[0]?.toLowerCase().trim();
+
+    if (firstSegment && SHOP_SYSTEM_ROUTES.has(firstSegment)) {
+      const res = NextResponse.next();
+      if (refParam) {
+        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      }
+      const isSensitive =
+        pathname.startsWith('/checkout') ||
+        pathname.startsWith('/login') ||
+        pathname.startsWith('/auth') ||
+        pathname.startsWith('/register') ||
+        pathname.startsWith('/daftar');
+      if (isSensitive) {
+        applySensitiveCacheHeaders(res);
+      }
+      return res;
+    }
+
+    // 7. Tenant Storefront Routes (/[tenantSlug], /[tenantSlug]/p/..., /[tenantSlug]/pay/..., dll.)
+    const tenantSlug = firstSegment;
+    const requestHeaders = new Headers(req.headers);
+    let resolvedId: string | null = null;
+    if (tenantSlug) {
+      resolvedId = await resolveTenantIdForSlug(tenantSlug);
+      requestHeaders.set('x-tenant-slug', tenantSlug);
+      requestHeaders.set('x-tenant-id', resolvedId || tenantSlug);
+    }
+
+    const res = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+
+    if (tenantSlug) {
+      applyStorefrontCacheHeaders(res, tenantSlug, resolvedId);
+    }
+    if (refParam) {
+      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    }
+    return res;
   }
 
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
@@ -1129,40 +1191,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
 
 
-  // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
-  if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {
-    // Root subdomain tanpa slug -> Redirect 307 ke web utama boontrack.com
-    if (pathname === '/' || pathname === '') {
-      const redirectUrl = new URL('https://boontrack.com');
-      req.nextUrl.searchParams.forEach((val, key) => {
-        redirectUrl.searchParams.set(key, val);
-      });
-      return NextResponse.redirect(redirectUrl, 307);
-    }
 
-    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
-    const segments = pathname.split('/').filter(Boolean);
-    const tenantSlug = segments[0]?.toLowerCase().trim();
-    const requestHeaders = new Headers(req.headers);
-    let resolvedId: string | null = null;
-    if (tenantSlug) {
-      resolvedId = await resolveTenantIdForSlug(tenantSlug);
-      requestHeaders.set('x-tenant-slug', tenantSlug);
-      requestHeaders.set('x-tenant-id', resolvedId || tenantSlug);
-    }
-    const res = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
-    if (tenantSlug) {
-      applyStorefrontCacheHeaders(res, tenantSlug, resolvedId);
-    }
-    if (refParam) {
-      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
-    }
-    return res;
-  }
 
   // ── 6. Root domain boontrack.com & www.boontrack.com pass-through ──
   if (
