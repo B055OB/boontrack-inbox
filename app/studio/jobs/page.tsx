@@ -169,7 +169,7 @@ export default function StudioJobsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Link
-              href="/studio/desk"
+              href="/desk"
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition flex items-center justify-center cursor-pointer"
               title="Kembali ke Studio Desk"
             >
@@ -195,7 +195,7 @@ export default function StudioJobsPage() {
           <div className="flex items-center gap-3 flex-wrap">
             {/* Quick Link to Studio Video Otomatis */}
             <Link
-              href="/studio/fcd-automator"
+              href="/desk/fcd-automator"
               className="py-1.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />
@@ -337,7 +337,7 @@ export default function StudioJobsPage() {
 
             <div>
               <Link
-                href="/studio/fcd-automator"
+                href="/desk/fcd-automator"
                 className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer"
               >
                 <Sliders className="w-4 h-4" />

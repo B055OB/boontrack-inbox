@@ -137,8 +137,8 @@ export async function POST(req: NextRequest) {
       description: invoiceDescription,
       invoice_duration: 86400, // 24 jam
       currency: 'IDR',
-      success_redirect_url: `${appDomain}/studio/desk?topup=success&package=${pkg.id}`,
-      failure_redirect_url: `${appDomain}/studio/desk?topup=cancelled`,
+      success_redirect_url: `${appDomain}/desk?topup=success&package=${pkg.id}`,
+      failure_redirect_url: `${appDomain}/desk?topup=cancelled`,
       items: [
         {
           name: pkg.name,
