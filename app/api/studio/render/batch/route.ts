@@ -86,36 +86,50 @@ export async function POST(req: Request) {
       };
     });
 
-    if (tenant) {
-      const creditRes = await StudioCreditService.reserveCredits(
-        tenant.id,
-        requiredCredits,
-        `Batch render video MP4 otomatis (${variations.length} video x ${STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4} kredit): ${product_name || 'Campaign'}`
+    if (!tenant) {
+      return NextResponse.json(
+        { success: false, message: 'Tenant workspace tidak ditemukan.' },
+        { status: 404 }
       );
+    }
 
-      if (!creditRes.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: creditRes.message || `Kredit render tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
-            required_credits: requiredCredits,
-            available_credits: creditRes.credits_remaining,
-          },
-          { status: 403 }
-        );
-      }
+    const batchId = crypto.randomUUID();
 
-      remainingCredits = creditRes.credits_remaining ?? 0;
+    const creditRes = await StudioCreditService.reserveCredits(
+      tenant.id,
+      requiredCredits,
+      `Batch render video MP4 otomatis (${variations.length} video x ${STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4} kredit): ${product_name || 'Campaign'}`,
+      batchId
+    );
 
-      // Insert each variation into studio_jobs with standardized filename
-      const defaultVideoCdn = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
+    if (!creditRes.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'INSUFFICIENT_CREDITS',
+          message:
+            creditRes.message ||
+            `Kredit render tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
+          required_credits: requiredCredits,
+          available_credits: creditRes.credits_remaining,
+        },
+        { status: 402 } // HTTP 402 Payment Required
+      );
+    }
+
+    remainingCredits = creditRes.credits_remaining ?? 0;
+
+    // Insert each variation into studio_jobs with status QUEUED (true database queue)
+    if (supabase) {
       const jobInserts = formattedVariations.map(v => ({
+        id: crypto.randomUUID(),
         tenant_id: tenant.id,
         user_id: tenant.id,
-        status: 'COMPLETED',
+        status: 'QUEUED',
         job_type: 'FFMPEG_FCD_BATCH',
-        output_url: defaultVideoCdn,
+        output_url: null,
         payload: {
+          batch_id: batchId,
           product_name: product_name || 'FCD Campaign',
           product_slug: productSlug,
           model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
@@ -131,17 +145,29 @@ export async function POST(req: Request) {
           aspect_ratio: '9:16',
           resolution: '1080x1920',
           fps: 30,
-          output_url: defaultVideoCdn,
+          output_url: null,
           dispatched_at: new Date().toISOString(),
         },
       }));
 
-      await supabase.from('studio_jobs').insert(jobInserts);
+      const { error: batchInsertErr } = await supabase.from('studio_jobs').insert(jobInserts);
+      if (batchInsertErr) {
+        console.error('[Studio FCD Batch API] DB Insert Error, auto-refunding:', batchInsertErr);
+        await StudioCreditService.refundJobCredits({
+          tenantIdOrSlug: tenant.id,
+          jobId: batchId,
+          amount: requiredCredits,
+          reason: `BATCH_INSERT_FAILED: ${batchInsertErr.message}`,
+        });
+
+        return NextResponse.json(
+          { success: false, message: 'Gagal memasukkan variasi ke antrean render database. Kredit otomatis dikembalikan.' },
+          { status: 500 }
+        );
+      }
     }
 
-    const batchId = `fcd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const zipArchiveName = `${productSlug}_FCD_BATCH_${Date.now()}.zip`;
-    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
 
     return NextResponse.json({
       success: true,
@@ -150,19 +176,19 @@ export async function POST(req: Request) {
       status: 'QUEUED',
       product_slug: productSlug,
       zip_archive_name: zipArchiveName,
-      output_url: defaultOutputUrl,
+      output_url: null,
       files: formattedVariations.map(v => ({
         index: v.index,
         filename: v.filename,
         title: v.title || `Variasi #${v.index}`,
         hook_angle: v.hook_angle,
         cta_angle: v.cta_angle,
-        output_url: defaultOutputUrl,
+        output_url: null,
       })),
       jobs_count: requiredCredits,
       consumed_credits: requiredCredits,
       remaining_credits: remainingCredits,
-      message: `Batch ${requiredCredits} variasi berhasil dikirim ke antrean render FFmpeg.`,
+      message: `Batch ${formattedVariations.length} variasi berhasil dikirim ke antrean render database riil (QUEUED).`,
     });
   } catch (err: any) {
     console.error('[Studio FCD Batch API] Error:', err);

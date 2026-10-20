@@ -45,35 +45,44 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin();
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
+    if (!tenant) {
+      return NextResponse.json(
+        { success: false, message: 'Tenant workspace tidak ditemukan.' },
+        { status: 404 }
+      );
+    }
 
     // Credit deduction safeguard via StudioCreditService (3 Kredit per video otomatis)
     const requiredCredits = STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4;
-    let remainingCredits = 1;
-    let isUnlimited = false;
+    const resolvedTitle = product_name || 'UGC Video';
+    const jobId = crypto.randomUUID();
 
-    if (tenant) {
-      const creditRes = await StudioCreditService.reserveCredits(
-        tenant.id,
-        requiredCredits,
-        `Render video MP4 otomatis: ${product_name || 'UGC Video'}`
+    const creditRes = await StudioCreditService.reserveCredits(
+      tenant.id,
+      requiredCredits,
+      `Render video MP4 otomatis: ${resolvedTitle}`,
+      jobId
+    );
+
+    if (!creditRes.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'INSUFFICIENT_CREDITS',
+          message:
+            creditRes.message ||
+            `Render Credits Anda tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
+          required_credits: requiredCredits,
+          credits_remaining: creditRes.credits_remaining ?? 0,
+        },
+        { status: 402 } // HTTP 402 Payment Required
       );
-
-      if (!creditRes.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: creditRes.message || `Render Credits Anda tidak mencukupi (Butuh ${requiredCredits} Credits). Silakan lakukan top-up kredit.`,
-          },
-          { status: 403 }
-        );
-      }
-
-      remainingCredits = creditRes.credits_remaining ?? 0;
-      isUnlimited = Boolean(creditRes.is_unlimited);
     }
 
+    const remainingCredits = creditRes.credits_remaining ?? 0;
+
     const renderPayload = {
-      product_name: product_name || 'UGC Video',
+      product_name: resolvedTitle,
       scenes,
       assets: assets || {},
       is_aigc: 1, // White-Hat AIGC tag
@@ -86,37 +95,44 @@ export async function POST(req: Request) {
       dispatched_at: new Date().toISOString(),
     };
 
-    let jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-    if (tenant && supabase) {
-      const { data: jobRow, error: jobErr } = await supabase
+    if (supabase) {
+      const { error: jobErr } = await supabase
         .from('studio_jobs')
         .insert({
+          id: jobId,
           tenant_id: tenant.id,
           user_id: tenant.id,
           status: 'QUEUED',
           job_type: 'FFMPEG_LEVEL_1',
           payload: renderPayload,
-        })
-        .select('id, status')
-        .single();
+          output_url: null, // True database queue, no mock URLs on queue
+        });
 
-      if (!jobErr && jobRow) {
-        jobId = jobRow.id;
+      if (jobErr) {
+        console.error('[Studio Render Dispatch API] DB Insert Error, auto-refunding:', jobErr);
+        await StudioCreditService.refundJobCredits({
+          tenantIdOrSlug: tenant.id,
+          jobId,
+          amount: requiredCredits,
+          reason: `QUEUE_INSERT_FAILED: ${jobErr.message}`,
+        });
+
+        return NextResponse.json(
+          { success: false, message: 'Gagal memasukkan job ke antrean render database. Kredit otomatis dikembalikan.' },
+          { status: 500 }
+        );
       }
     }
-
-    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
 
     return NextResponse.json({
       success: true,
       job_id: jobId,
-      output_url: defaultOutputUrl,
+      output_url: null,
       status: 'QUEUED',
       remaining_credits: remainingCredits,
       consumed_credits: requiredCredits,
       estimated_duration_sec: 30,
-      message: 'Job render berhasil masuk ke antrean FFmpeg Level 1.',
+      message: 'Job render berhasil masuk ke antrean database riil (QUEUED).',
     });
   } catch (err: any) {
     console.error('[Studio Render Dispatch API] Error:', err);
@@ -129,7 +145,8 @@ export async function POST(req: Request) {
 
 /**
  * GET /api/studio/render/dispatch?job_id=...
- * Checks render job progression
+ * Checks real render job progression in database.
+ * If status is FAILED or TIMEOUT, guarantees auto-refund execution.
  */
 export async function GET(req: Request) {
   try {
@@ -141,28 +158,48 @@ export async function GET(req: Request) {
     }
 
     const supabase = getSupabaseAdmin();
-    let dbStatus = 'PROCESSING';
+    if (!supabase) {
+      return NextResponse.json({ success: false, message: 'Database client tidak tersedia.' }, { status: 500 });
+    }
 
-    if (supabase && IS_UUID_REGEX.test(jobId)) {
-      const { data } = await supabase
+    let dbStatus = 'QUEUED';
+    let outputUrl: string | null = null;
+    let errorMessage: string | null = null;
+
+    if (IS_UUID_REGEX.test(jobId)) {
+      const { data: job } = await supabase
         .from('studio_jobs')
-        .select('id, status, payload, output_url')
+        .select('id, tenant_id, status, payload, output_url, error_message')
         .eq('id', jobId)
         .maybeSingle();
 
-      if (data) {
-        dbStatus = data.status || 'PROCESSING';
+      if (job) {
+        dbStatus = job.status || 'QUEUED';
+        outputUrl = job.output_url || null;
+        errorMessage = job.error_message || null;
+
+        if (dbStatus === 'FAILED' || dbStatus === 'TIMEOUT') {
+          await StudioCreditService.refundJobCredits({
+            tenantIdOrSlug: job.tenant_id,
+            jobId: job.id,
+            reason: errorMessage || 'RENDER_FAILED_OR_TIMEOUT',
+          });
+        }
       }
     }
 
-    const defaultOutputUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/studio-renders/samples/default_preview.mp4';
+    let progress = 15;
+    if (dbStatus === 'PROCESSING') progress = 60;
+    else if (dbStatus === 'COMPLETED') progress = 100;
+    else if (dbStatus === 'FAILED' || dbStatus === 'TIMEOUT') progress = 0;
 
     return NextResponse.json({
       success: true,
       job_id: jobId,
       status: dbStatus,
-      output_url: defaultOutputUrl,
-      progress: dbStatus === 'COMPLETED' ? 100 : dbStatus === 'PROCESSING' ? 65 : 20,
+      output_url: outputUrl,
+      error_message: errorMessage,
+      progress,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { StudioCreditService } from '@/lib/services/studio-credit.service';
 
 export const runtime = 'nodejs';
 
@@ -29,7 +30,8 @@ async function resolveTenantId(supabase: any, tenantIdentifier?: string | null):
 
 /**
  * GET /api/studio/jobs
- * Query render job history with status and telemetry metrics
+ * Query render job history with status and telemetry metrics.
+ * Auto-refunds any jobs in FAILED or TIMEOUT status.
  */
 export async function GET(req: Request) {
   try {
@@ -109,12 +111,27 @@ export async function GET(req: Request) {
 
     const jobList = Array.isArray(jobs) ? jobs : [];
 
+    // Auto-Refund Safeguard: verify all FAILED or TIMEOUT jobs have been refunded
+    for (const j of jobList) {
+      if (j.status === 'FAILED' || j.status === 'TIMEOUT') {
+        try {
+          await StudioCreditService.refundJobCredits({
+            tenantIdOrSlug: j.tenant_id,
+            jobId: j.id,
+            reason: j.error_message || `Job ended in status ${j.status}`,
+          });
+        } catch (rfErr) {
+          console.warn('[Studio Jobs API] Warning running auto-refund for job:', j.id, rfErr);
+        }
+      }
+    }
+
     // Calculate live telemetry counts
     const total = jobList.length;
     const completed = jobList.filter(j => j.status === 'COMPLETED').length;
     const processing = jobList.filter(j => j.status === 'PROCESSING').length;
     const queued = jobList.filter(j => j.status === 'QUEUED').length;
-    const failed = jobList.filter(j => j.status === 'FAILED').length;
+    const failed = jobList.filter(j => j.status === 'FAILED' || j.status === 'TIMEOUT').length;
 
     return NextResponse.json({
       success: true,
@@ -135,5 +152,86 @@ export async function GET(req: Request) {
       { success: false, message: err.message || 'Gagal memuat riwayat render jobs.' },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * PATCH /api/studio/jobs
+ * Worker status update handler: QUEUED -> PROCESSING -> COMPLETED / FAILED.
+ * Auto-refunds credits if status is changed to FAILED or TIMEOUT.
+ */
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { job_id, status, output_url, error_message } = body;
+
+    if (!job_id || !status) {
+      return NextResponse.json(
+        { success: false, message: 'job_id dan status wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedStatus = status.toUpperCase();
+    const validStatuses = ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'TIMEOUT'];
+    if (!validStatuses.includes(normalizedStatus)) {
+      return NextResponse.json(
+        { success: false, message: `Status tidak valid. Pilihan: ${validStatuses.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json({ success: false, message: 'Database client tidak tersedia.' }, { status: 500 });
+    }
+
+    const { data: job, error: jobErr } = await supabase
+      .from('studio_jobs')
+      .select('id, tenant_id, status')
+      .eq('id', job_id)
+      .maybeSingle();
+
+    if (jobErr || !job) {
+      return NextResponse.json({ success: false, message: 'Job tidak ditemukan.' }, { status: 404 });
+    }
+
+    const updatePayload: any = {
+      status: normalizedStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (output_url !== undefined) updatePayload.output_url = output_url;
+    if (error_message !== undefined) updatePayload.error_message = error_message;
+
+    const { error: updateErr } = await supabase
+      .from('studio_jobs')
+      .update(updatePayload)
+      .eq('id', job_id);
+
+    if (updateErr) {
+      return NextResponse.json({ success: false, message: updateErr.message }, { status: 500 });
+    }
+
+    // Auto-refund trigger on FAILED or TIMEOUT
+    let refundResult = null;
+    if (normalizedStatus === 'FAILED' || normalizedStatus === 'TIMEOUT') {
+      refundResult = await StudioCreditService.refundJobCredits({
+        tenantIdOrSlug: job.tenant_id,
+        jobId: job.id,
+        reason: error_message || `Job status transitioned to ${normalizedStatus}`,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      job_id,
+      status: normalizedStatus,
+      output_url: output_url || null,
+      refunded: Boolean(refundResult?.success),
+      refund_details: refundResult,
+      message: `Status job berhasil diubah ke ${normalizedStatus}.`,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

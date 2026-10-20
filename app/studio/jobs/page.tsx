@@ -132,11 +132,14 @@ export default function StudioJobsPage() {
 
   // Direct MP4 Download Helper
   const handleDownloadMp4 = (job: StudioJob) => {
+    if (!job.output_url) {
+      alert('File video belum selesai dirender atau sedang dalam antrean.');
+      return;
+    }
     const filename = job.payload?.filename || `render_${job.id.slice(0, 8)}.mp4`;
-    const videoUrl = job.output_url || 'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4';
     
     // Route via internal same-origin download proxy (forces browser native download dialog)
-    const proxyUrl = `/api/studio/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}&job_id=${encodeURIComponent(job.id)}`;
+    const proxyUrl = `/api/studio/download?url=${encodeURIComponent(job.output_url)}&filename=${encodeURIComponent(filename)}&job_id=${encodeURIComponent(job.id)}`;
     window.location.href = proxyUrl;
   };
 
@@ -520,17 +523,22 @@ export default function StudioJobsPage() {
 
             {/* Video Player 9:16 Aspect Ratio */}
             <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black border border-white/10 shadow-inner flex items-center justify-center">
-              <video
-                src={
-                  previewJob.output_url ||
-                  'https://assets.mixkit.co/videos/preview/mixkit-vertical-portrait-of-a-woman-smiling-at-sunset-40502-large.mp4'
-                }
-                controls
-                autoPlay
-                loop
-                playsInline
-                className="w-full h-full object-cover"
-              />
+              {previewJob.output_url ? (
+                <video
+                  src={previewJob.output_url}
+                  controls
+                  autoPlay
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-6 text-center">
+                  <Film className="w-10 h-10 text-slate-500/50 mb-3 animate-pulse" />
+                  <p className="text-sm font-semibold text-slate-300">Video Belum Tersedia</p>
+                  <p className="text-xs text-slate-500 mt-1">Status saat ini: {previewJob.status}</p>
+                </div>
+              )}
             </div>
 
             {/* Video Metadata & Download CTA */}
