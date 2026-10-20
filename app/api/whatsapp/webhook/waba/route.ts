@@ -74,11 +74,14 @@ export async function POST(req: Request) {
     // 4. Inbound Event Normalizer
     const normalizedEvent = parseMetaWebhookPayload(body);
 
-    // 4b. Intercept Studio Inbound Activation ("AKTIFKAN STUDIO {TOKEN}")
+    // 4b. Intercept Studio Inbound Activation ("AKTIFKAN STUDIO {TOKEN}" / "AKTIVASI {TOKEN}")
     if (Array.isArray(normalizedEvent.messages)) {
       for (const msg of normalizedEvent.messages) {
         const text = (msg.text || '').trim();
-        const studioMatch = text.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+        const studioMatch =
+          text.match(/(?:AKTIFKAN|AKTIVASI)\s+(?:STUDIO\s+)?(ACT[A-Za-z0-9]{4,10})/i) ||
+          text.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+
         if (studioMatch) {
           const studioToken = studioMatch[1].toUpperCase().trim();
           const { activateStudioRegistrationByToken } = await import('@/lib/studio/auth');

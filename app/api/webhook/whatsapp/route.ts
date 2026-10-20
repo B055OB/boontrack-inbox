@@ -98,8 +98,11 @@ export async function POST(req: NextRequest) {
 
           console.log(`[WhatsApp Inbound] From: ${senderPhone} | Text: "${textBody}"`);
 
-          // ── A. STUDIO INBOUND ACTIVATION MATCHER: "AKTIFKAN STUDIO {TOKEN}" ──
-          const studioActivationMatch = textBody.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+          // ── A. STUDIO INBOUND ACTIVATION MATCHER: "AKTIFKAN STUDIO {TOKEN}" / "AKTIVASI {TOKEN}" ──
+          const studioActivationMatch =
+            textBody.match(/(?:AKTIFKAN|AKTIVASI)\s+(?:STUDIO\s+)?(ACT[A-Za-z0-9]{4,10})/i) ||
+            textBody.match(/AKTIFKAN\s+STUDIO\s+([A-Za-z0-9]{4,12})/i);
+
           if (studioActivationMatch) {
             const studioToken = studioActivationMatch[1].toUpperCase().trim();
             console.log(`[WhatsApp Inbound Studio] Extracted token: "${studioToken}" from ${senderPhone}`);
@@ -123,6 +126,21 @@ export async function POST(req: NextRequest) {
               );
               continue;
             }
+          }
+
+          // ── A2. DAFTAR STUDIO REQUEST VIA BOT ──
+          const daftarStudioMatch = textBody.match(/^(?:DAFTAR|REGISTRASI)\s+STUDIO/i);
+          if (daftarStudioMatch) {
+            const { initiateStudioRegistration } = await import('@/lib/studio/auth');
+            const initRes = await initiateStudioRegistration({ whatsapp: senderPhone });
+            await sendWhatsAppSessionMessage(
+              senderPhone,
+              `✨ *Aktivasi BoonTrack Studio* ✨\n\n` +
+              `Halo! Kode Aktivasi Studio Anda:\n` +
+              `🔑 *${initRes.token}*\n\n` +
+              `Silakan balas pesan ini dengan *AKTIFKAN STUDIO ${initRes.token}* atau masukkan kode ini di https://studio.boontrack.com/register untuk mengaktifkan 1 Free Trial Video Render Credit Anda! 🎬`
+            );
+            return NextResponse.json({ success: true, message: 'Studio activation code dispatched' });
           }
 
           // Deteksi pola aktivasi toko "AKTIVASI BT-XXXX" atau kode "BT-XXXX" (case-insensitive, whitespace-trimmed)

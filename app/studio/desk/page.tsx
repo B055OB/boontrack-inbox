@@ -31,7 +31,8 @@ import {
   Wrench,
   Copy,
   Send,
-  Compass
+  Compass,
+  RefreshCw
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
@@ -80,6 +81,44 @@ export default function StudioDeskPage() {
   // Auth Guard & Loading State
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [hasValidSession, setHasValidSession] = useState<boolean>(false);
+
+  // Quick Activation Token State
+  const [quickToken, setQuickToken] = useState('');
+  const [quickTokenLoading, setQuickTokenLoading] = useState(false);
+  const [quickTokenError, setQuickTokenError] = useState<string | null>(null);
+
+  const handleQuickActivate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setQuickTokenError(null);
+    const cleanT = quickToken.trim().toUpperCase();
+    if (!cleanT) {
+      setQuickTokenError('Masukkan kode aktivasi (contoh: ACTXKPH).');
+      return;
+    }
+    setQuickTokenLoading(true);
+    try {
+      const res = await fetch('/api/studio/auth/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: cleanT }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Kode aktivasi tidak valid.');
+      }
+      const activeSlug = data.slug || 'studio';
+      const activeSession = data.session || { slug: activeSlug, render_credits: 1 };
+      persistStudioSession(activeSlug, activeSession);
+      setTenantSlug(activeSlug);
+      setSessionData(activeSession);
+      setRenderCredits(activeSession.render_credits || 1);
+      setHasValidSession(true);
+    } catch (err: any) {
+      setQuickTokenError(err.message || 'Gagal memverifikasi token.');
+    } finally {
+      setQuickTokenLoading(false);
+    }
+  };
 
   // Dynamic session resolution (Zero Hardcoding - Supabase SSOT with Creator Fallback)
   useEffect(() => {
@@ -358,12 +397,39 @@ export default function StudioDeskPage() {
 
               {/* Actions Grid */}
               <div className="space-y-3 pt-2">
+                {/* Inline Quick Token Activation */}
+                <form onSubmit={handleQuickActivate} className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={quickToken}
+                      onChange={(e) => setQuickToken(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      placeholder="Punya Kode Bot? Misal ACTXKPH"
+                      className="flex-1 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-mono font-bold uppercase text-white placeholder-zinc-500 focus:outline-none focus:border-fuchsia-500 transition"
+                    />
+                    <button
+                      type="submit"
+                      disabled={quickTokenLoading || !quickToken.trim()}
+                      className="px-4 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-xs rounded-xl disabled:opacity-50 transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      {quickTokenLoading ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <span>Aktifkan</span>
+                      )}
+                    </button>
+                  </div>
+                  {quickTokenError && (
+                    <p className="text-[11px] text-rose-400 text-left">{quickTokenError}</p>
+                  )}
+                </form>
+
                 <Link
                   href={registerUrl}
                   className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-purple-600 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-fuchsia-500/25 transition-all flex items-center justify-center gap-2 group active:scale-98"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Daftar / Aktivasi Akun Studio</span>
+                  <span>Daftar / Minta Kode via Bot WhatsApp</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
 
