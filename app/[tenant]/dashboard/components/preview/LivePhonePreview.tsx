@@ -331,21 +331,21 @@ export default function LivePhonePreview({
     <div className="w-full max-w-[340px] xl:max-w-[360px] mx-auto space-y-3 select-none">
       {/* Phone Header Indicator */}
       <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-          <Smartphone className="w-4 h-4 text-slate-500" />
-          <span>Live Phone Preview</span>
+        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+          <Smartphone className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+          <span>LIVE PHONE PREVIEW</span>
         </span>
-        <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80 flex items-center gap-1">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <span>Real-Time WYSIWYG</span>
         </span>
       </div>
 
       {/* Smartphone Hardware Frame */}
-      <div className="bg-slate-950 p-2.5 rounded-[44px] shadow-2xl border-4 border-slate-800 transition-all duration-300">
+      <div className="rounded-[42px] border-[6px] border-zinc-800 dark:border-zinc-700 shadow-2xl overflow-hidden bg-background transition-all duration-300 p-2.5">
         {/* Phone Glass Screen */}
         <div
-          className={`w-full rounded-[36px] overflow-hidden min-h-[550px] max-h-[640px] flex flex-col items-center p-4 transition-colors duration-300 relative overflow-y-auto no-scrollbar ${themeStyles.screenBg}`}
+          className={`w-full rounded-[34px] overflow-hidden min-h-[550px] max-h-[640px] flex flex-col items-center p-4 transition-colors duration-300 relative overflow-y-auto no-scrollbar ${themeStyles.screenBg}`}
         >
           {/* Radial depth overlay for Aurora Gradient */}
           {themeStyles.radialOverlay && (

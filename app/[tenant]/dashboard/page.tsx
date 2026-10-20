@@ -27,6 +27,7 @@ import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTierAccess } from '@/lib/subscription-tiers';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 import DashboardSidebar from './components/sidebar/DashboardSidebar';
 import LivePhonePreview from './components/preview/LivePhonePreview';
@@ -61,6 +62,7 @@ import OrdersTab from './components/tabs/OrdersTab';
 import CustomerDatabaseTab from './components/tabs/CustomerDatabaseTab';
 import ResellerTab from './components/tabs/ResellerTab';
 import DocumentationTab from './components/tabs/DocumentationTab';
+import ThemeTab from './components/tabs/ThemeTab';
 import {
   ModularVerticalTabDispatcher,
   FnbInstantCourier,
@@ -376,8 +378,6 @@ export default function TenantDashboardPage() {
   }, []);
 
   const isPreviewEnabledTab =
-    activeTab === 'themes' ||
-    activeTab === 'storefront' ||
     activeTab === 'microsite' ||
     activeTab === 'links';
 
@@ -410,11 +410,11 @@ export default function TenantDashboardPage() {
   }
 
   return (
-    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container ${
+    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container bg-background text-foreground ${
       themeMode === 'dark'
-        ? 'bg-slate-950 text-slate-100 selection:bg-blue-900/50 selection:text-blue-200'
-        : 'bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900'
-    } bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100`}>
+        ? 'selection:bg-blue-900/50 selection:text-blue-200'
+        : 'selection:bg-blue-100 selection:text-blue-900'
+    }`}>
       {/* MOBILE SLIDE-OVER DRAWER / SHEET (< lg) */}
       {isMobileDrawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
@@ -564,14 +564,14 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-emerald-400 hover:text-emerald-600 transition active:scale-95 cursor-pointer theme-toggle-btn"
+              className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-muted/80 transition active:scale-95 cursor-pointer theme-toggle-btn"
               title={themeMode === 'dark' ? 'Ganti ke Mode Terang (Light Mode)' : 'Ganti ke Mode Gelap (Dark Mode)'}
               aria-label="Toggle Theme"
             >
               {themeMode === 'dark' ? (
                 <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
               ) : (
-                <Moon className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <Moon className="w-4 h-4 text-foreground" />
               )}
             </button>
 
@@ -581,20 +581,26 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+              className={`h-9 w-9 inline-flex items-center justify-center rounded-lg border transition cursor-pointer ${
                 activeTab === 'orders'
                   ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
               }`}
               title="Daftar Pesanan Toko"
             >
               <ShoppingBag className="w-4 h-4" />
             </button>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold flex items-center gap-1.5 text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <Link
+              href={getStorefrontUrl(tenantSlug, customDomain)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-9 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-semibold transition-colors border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+              title="Buka Storefront Toko"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span className="hidden sm:inline">Store Online</span>
               <span className="sm:hidden">Live</span>
-            </span>
+            </Link>
           </div>
         </header>
 
@@ -602,24 +608,24 @@ export default function TenantDashboardPage() {
         <PwaInstallPrompt tenantSlug={tenantSlug} variant="banner" />
 
         {/* TOP BAR RINGKAS DESKTOP (Header Canvas - hidden on mobile, flex on desktop) */}
-        <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
-          <div className="flex items-center gap-3 min-w-0">
+        <header className="hidden lg:flex sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-2.5 min-w-0">
             {/* Shortcut Pesanan */}
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition inline-flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+              className={`h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border cursor-pointer active:scale-95 ${
                 activeTab === 'orders'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
               }`}
               title="Daftar Pesanan Toko"
             >
-              <ShoppingBag className="w-3.5 h-3.5" />
+              <ShoppingBag className="w-4 h-4" />
               <span>Daftar Pesanan Toko</span>
               {transactions?.length > 0 && (
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'orders' ? 'bg-white text-emerald-800' : 'bg-emerald-600 text-white'
                   }`}
                 >
@@ -643,26 +649,33 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 text-xs transition active:scale-95 cursor-pointer shadow-2xs theme-toggle-btn"
+              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-border bg-card text-foreground hover:bg-muted/80 active:scale-95 cursor-pointer shadow-2xs theme-toggle-btn"
               title={themeMode === 'dark' ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
             >
               {themeMode === 'dark' ? (
                 <>
-                  <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-[11px] font-semibold text-slate-200">Light Mode</span>
+                  <Sun className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-semibold">Light Mode</span>
                 </>
               ) : (
                 <>
-                  <Moon className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Dark Mode</span>
+                  <Moon className="w-4 h-4 text-foreground" />
+                  <span className="text-xs font-semibold">Dark Mode</span>
                 </>
               )}
             </button>
 
-            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-bold flex items-center gap-1.5 text-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <Link
+              href={getStorefrontUrl(tenantSlug, customDomain)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
+              title="Buka Halaman Storefront Toko"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span>Storefront Online</span>
-            </span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </Link>
           </div>
         </header>
 
@@ -909,28 +922,29 @@ export default function TenantDashboardPage() {
 
       {/* TAB: TAMPILAN (DESIGN & THEMES) */}
       {(activeTab === 'themes' || activeTab === 'storefront') && (
-        <div className="max-w-4xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
-          <StorefrontThemeCard
-            tenantSlug={tenantSlug}
-            isTeamScale={isTeamScale}
-            isAdsPerformance={isAdsPerformance}
-            isSubscriptionExpired={isSubscriptionExpired}
-            onUpgrade={() => handleUpgradeTier('ads_performance')}
-            currentVisualTheme={activeVisualTheme}
-            products={products}
-            initialButtons={livePreviewButtons}
-            storeWhatsapp={storeWhatsapp}
-            onThemeChange={handleThemeChange}
-            onButtonsChange={(btns) => setLivePreviewButtons(btns)}
-            onFeaturedProductsChange={(ids) => setLivePreviewFeaturedProductIds(ids)}
-            onSaved={(msg) => {
-              setSaveFeedback(msg);
-              setTimeout(() => setSaveFeedback(null), 3500);
-            }}
-          />
-
-          <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
-        </div>
+        <ThemeTab
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          storeDisplayName={storeDisplayName}
+          storeBio={storeBio}
+          storeLogoUrl={storeLogoUrl}
+          storeWhatsapp={storeWhatsapp}
+          products={products}
+          isTeamScale={isTeamScale}
+          isAdsPerformance={isAdsPerformance}
+          isSubscriptionExpired={isSubscriptionExpired}
+          onUpgrade={() => handleUpgradeTier('ads_performance')}
+          currentVisualTheme={activeVisualTheme}
+          initialButtons={livePreviewButtons}
+          featuredProductIds={livePreviewFeaturedProductIds}
+          onThemeChange={handleThemeChange}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 3500);
+          }}
+          customDomain={customDomain}
+          isCheckoutLite={isCheckoutLite}
+        />
       )}
 
       {/* TAB 3: AI Knowledge */}

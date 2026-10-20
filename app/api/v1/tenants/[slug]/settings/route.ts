@@ -208,7 +208,8 @@ export async function GET(
         store_logo_url: metadata.store_logo_url || metadata.logo_url || metadata.avatar_url || null,
         avatar_url: metadata.avatar_url || metadata.logo_url || null,
         bio: metadata.bio || null,
-        whatsapp_number: metadata.whatsapp_number || metadata.whatsapp || null,
+        phone: tenantRow.phone || tenantRow.whatsapp_number || metadata.phone || metadata.whatsapp_number || metadata.whatsapp || null,
+        whatsapp_number: tenantRow.whatsapp_number || tenantRow.phone || metadata.whatsapp_number || metadata.whatsapp || metadata.whatsapp_cs || null,
         faqs: Array.isArray(metadata.faqs)
           ? metadata.faqs
           : (Array.isArray(metadata.boonpilot_proposal?.knowledge)
@@ -320,8 +321,10 @@ export async function PUT(
       body.whatsapp_number ??
       body.whatsapp ??
       body.phone ??
+      body.whatsapp_cs ??
       body.metadata?.whatsapp_number ??
       body.metadata?.phone ??
+      body.metadata?.whatsapp_cs ??
       body.cs_phone ??
       undefined;
 
@@ -467,6 +470,10 @@ export async function PUT(
       metadata: updatedMetadata,
       updated_at: new Date().toISOString(),
     };
+    if (sanitizedPhone !== undefined) {
+      updateFields.phone = sanitizedPhone || null;
+      updateFields.whatsapp_number = sanitizedPhone || null;
+    }
     if (telegram_chat_id !== undefined) {
       updateFields.telegram_chat_id = telegram_chat_id || null;
     }
@@ -475,7 +482,7 @@ export async function PUT(
       .from('tenants')
       .update(updateFields)
       .eq('id', existing.id)
-      .select('id, slug, name, metadata');
+      .select('id, slug, name, metadata, phone, whatsapp_number');
 
     if (updateError || !updatedTenants || updatedTenants.length === 0) {
       console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);

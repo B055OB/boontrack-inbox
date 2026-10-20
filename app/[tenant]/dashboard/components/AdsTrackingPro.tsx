@@ -825,29 +825,29 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 1. TAB GRAFIK ANALITIK INTERAKTIF REAL-TIME ── */}
-      <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-6 relative overflow-visible">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
+      <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-6 relative overflow-visible">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4 relative z-20 overflow-visible">
           <div>
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
-              <h3 className="font-black text-base text-white">
-                Grafik Analitik Tren Konversi & ROAS Harian
+              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h3 className="font-black text-base text-zinc-900 dark:text-zinc-100">
+                Grafik Analitik Tren Konversi &amp; ROAS Harian
               </h3>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
               Monitoring performa klik traffic, lead WhatsApp, omzet penjualan, dan efisiensi ROAS.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
-            <div className="flex bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400">
+            <div className="flex bg-muted border border-border p-1 rounded-xl text-xs font-bold text-muted-foreground">
               <button
                 type="button"
                 onClick={() => setActiveChartMetric('revenue')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeChartMetric === 'revenue'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'hover:text-slate-900'
+                    ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'hover:text-foreground'
                 }`}
               >
                 Omzet (Rp)
@@ -857,8 +857,8 @@ export default function AdsTrackingPro({
                 onClick={() => setActiveChartMetric('leads')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeChartMetric === 'leads'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'hover:text-slate-900'
+                    ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'hover:text-foreground'
                 }`}
               >
                 Lead WA
@@ -868,8 +868,8 @@ export default function AdsTrackingPro({
                 onClick={() => setActiveChartMetric('orders')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeChartMetric === 'orders'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'hover:text-slate-900'
+                    ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'hover:text-foreground'
                 }`}
               >
                 Closing QRIS
@@ -879,8 +879,8 @@ export default function AdsTrackingPro({
                 onClick={() => setActiveChartMetric('roas')}
                 className={`px-3 py-1.5 rounded-lg transition ${
                   activeChartMetric === 'roas'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'hover:text-slate-900'
+                    ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'hover:text-foreground'
                 }`}
               >
                 ROAS (x)
@@ -892,7 +892,7 @@ export default function AdsTrackingPro({
         </div>
 
         <div className="space-y-4">
-          <div className="w-full h-64 min-h-[260px] relative bg-slate-50/50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-slate-800/80 p-4 flex flex-col justify-between overflow-hidden">
+          <div className="w-full h-64 min-h-[260px] relative bg-muted/30 dark:bg-zinc-950/80 rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 flex flex-col justify-between overflow-hidden">
             {/* Y-Axis Horizontal Grid Lines & Formatted Values */}
             <div className="absolute inset-x-4 inset-y-5 flex flex-col justify-between pointer-events-none z-0">
               {[1, 0.66, 0.33, 0].map((step, idx) => {
@@ -909,7 +909,7 @@ export default function AdsTrackingPro({
                     : `${Math.round(labelVal)}`;
 
                 return (
-                  <div key={idx} className="w-full flex items-center justify-between gap-2 border-b border-dashed border-slate-200/90 text-[10px] text-slate-400 font-mono select-none">
+                  <div key={idx} className="w-full flex items-center justify-between gap-2 border-b border-dashed border-slate-200/90 dark:border-zinc-700/80 text-[10px] text-zinc-500 dark:text-zinc-400 font-mono select-none">
                     <span>{formattedLabel}</span>
                   </div>
                 );
@@ -1023,12 +1023,12 @@ export default function AdsTrackingPro({
             </div>
 
             {/* X-Axis Day Labels */}
-            <div className="w-full flex justify-between px-2 pt-2 border-t border-slate-200/90 text-xs font-bold text-slate-500 z-10">
+            <div className="w-full flex justify-between px-2 pt-2 border-t border-slate-200/90 dark:border-zinc-700/80 text-xs font-bold text-zinc-600 dark:text-zinc-400 z-10">
               {trendData.map((d, i) => (
                 <span
                   key={i}
                   className={`transition-colors text-center flex-1 ${
-                    hoveredIndex === i ? 'text-blue-600 font-black' : 'text-slate-600'
+                    hoveredIndex === i ? 'text-blue-600 dark:text-blue-400 font-black' : 'text-zinc-600 dark:text-zinc-400'
                   }`}
                 >
                   {d.day}
@@ -1037,7 +1037,7 @@ export default function AdsTrackingPro({
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-500 px-1 pt-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground px-1 pt-1">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
@@ -1048,22 +1048,22 @@ export default function AdsTrackingPro({
                 <span>Inbound WA Lead Capture</span>
               </span>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">
-              Auto-sync real-time dari Meta CAPI & Webhook QRIS
+            <span className="text-[11px] font-medium text-muted-foreground">
+              Auto-sync real-time dari Meta CAPI &amp; Webhook QRIS
             </span>
           </div>
         </div>
       </div>
 
       {/* ── 2. TABEL ATRIBUSI CAMPAIGN DINAMIS (UTM SOURCE & ADS) ── */}
-      <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-4 relative overflow-visible">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
+      <div className="bg-card border border-border rounded-3xl p-6 shadow-xs space-y-4 relative overflow-visible">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4 relative z-20 overflow-visible">
           <div>
-            <h3 className="font-black text-base text-white flex items-center gap-2">
-              <Target className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-black text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <Target className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <span>Tabel Atribusi Campaign Iklan Dinamis</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
               Rincian performa per-iklan (UTM campaign) dari klik awal, lead chat WA, hingga transaksi closing.
             </p>
           </div>
@@ -1075,7 +1075,7 @@ export default function AdsTrackingPro({
               type="button"
               onClick={() => fetchCampaigns()}
               disabled={loadingCampaigns}
-              className="w-full sm:w-auto p-2 bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-60 cursor-pointer"
+              className="w-full sm:w-auto p-2 bg-card hover:bg-muted text-foreground border border-border rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-60 cursor-pointer"
               title="Segarkan Data Kampanye"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingCampaigns ? 'animate-spin text-blue-600' : ''}`} />
@@ -1085,10 +1085,10 @@ export default function AdsTrackingPro({
             <select
               value={selectedPlatform}
               onChange={(e) => setSelectedPlatform(e.target.value)}
-              className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full sm:w-auto bg-card border border-border rounded-xl px-3 py-2 text-xs font-bold text-foreground focus:outline-none focus:border-indigo-500"
             >
               <option value="all">Semua Platform</option>
-              <option value="meta">Meta (Facebook & IG)</option>
+              <option value="meta">Meta (Facebook &amp; IG)</option>
               <option value="tiktok">TikTok Ads</option>
               <option value="google">Google Ads</option>
               <option value="whatsapp">WhatsApp Broadcast</option>
@@ -1096,42 +1096,42 @@ export default function AdsTrackingPro({
             </select>
 
             <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Cari UTM Campaign..."
                 value={searchCampaign}
                 onChange={(e) => setSearchCampaign(e.target.value)}
-                className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-card border border-border rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500"
               />
             </div>
           </div>
         </div>
 
         {loadingCampaigns ? (
-          <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
+          <div className="py-16 flex flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            <p className="text-xs font-bold text-slate-600">Memuat data atribusi campaign iklan...</p>
+            <p className="text-xs font-bold text-foreground">Memuat data atribusi campaign iklan...</p>
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl p-8 text-center flex flex-col items-center justify-center space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
+          <div className="bg-card border border-border text-foreground rounded-2xl p-8 text-center flex flex-col items-center justify-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs">
               <Target className="w-8 h-8" />
             </div>
             <div className="max-w-xl space-y-2">
-              <h4 className="text-base sm:text-lg font-black text-white">
+              <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-zinc-100">
                 Belum Ada Data Konversi Iklan
               </h4>
-              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-emerald-600 dark:text-emerald-400 bg-slate-100 dark:bg-slate-950 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800/80 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-emerald-600 dark:text-emerald-400 bg-muted px-1.5 py-0.5 rounded border border-border font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
               </p>
             </div>
             
             <div className="pt-2 w-full max-w-lg">
-              <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 text-emerald-600 dark:text-emerald-400 font-mono rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
+              <div className="p-3 bg-muted border border-border text-emerald-600 dark:text-emerald-400 font-mono rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
                 <div className="overflow-hidden">
-                  <span className="text-[10px] uppercase font-black text-slate-400 block tracking-wider font-sans">Format URL UTM Otomatis</span>
-                  <code className="text-xs font-mono text-emerald-400 truncate block">
+                  <span className="text-[10px] uppercase font-black text-zinc-500 dark:text-zinc-400 block tracking-wider font-sans">Format URL UTM Otomatis</span>
+                  <code className="text-xs font-mono text-emerald-600 dark:text-emerald-400 truncate block">
                     ?utm_source=meta&amp;utm_campaign=promo_gajian
                   </code>
                 </div>
@@ -1140,7 +1140,7 @@ export default function AdsTrackingPro({
                   onClick={() => {
                     navigator.clipboard.writeText('?utm_source=meta&utm_campaign=promo_gajian');
                   }}
-                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-white hover:bg-slate-100 dark:bg-transparent dark:hover:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80 transition flex items-center gap-1.5 cursor-pointer font-sans"
+                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 bg-card hover:bg-muted rounded-xl border border-border transition flex items-center gap-1.5 cursor-pointer font-sans"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Salin</span>

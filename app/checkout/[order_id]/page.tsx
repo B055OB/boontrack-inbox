@@ -32,7 +32,6 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
-import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
@@ -69,6 +68,7 @@ export default function CheckoutPage({ params }: Props) {
   const [loading, setLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [tenant, setTenant] = useState<any>(null);
+  const [isTenantLoading, setIsTenantLoading] = useState(true);
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [countdown, setCountdown] = useState(3);
   const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
@@ -124,6 +124,7 @@ export default function CheckoutPage({ params }: Props) {
   useEffect(() => {
     async function loadOrder() {
       setLoading(true);
+      setIsTenantLoading(true);
       // Reset state saat mount atau berpindah order/tenant untuk mencegah kebocoran data
       setOrder(null);
       setTenant(null);
@@ -155,6 +156,7 @@ export default function CheckoutPage({ params }: Props) {
               if (tRow) {
                 tenantData = tRow;
                 setTenant(tRow);
+                setIsTenantLoading(false);
                 setBankAccounts(extractTenantBankAccounts(tRow));
               }
             }
@@ -415,6 +417,7 @@ export default function CheckoutPage({ params }: Props) {
     const tSlug = (order.tenant_slug || order.tenant_id || '').toLowerCase();
 
     async function fetchTenantInfo() {
+      setIsTenantLoading(true);
       try {
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
         const supabase = getSupabase();
@@ -429,6 +432,7 @@ export default function CheckoutPage({ params }: Props) {
 
           if (data) {
             setTenant(data);
+            setIsTenantLoading(false);
             const accounts = extractTenantBankAccounts(data);
             setBankAccounts(accounts);
 
@@ -482,6 +486,8 @@ export default function CheckoutPage({ params }: Props) {
       } catch (err) {
         console.warn('[Checkout Page] Failed to fetch tenant details:', err);
         setBankAccounts(extractTenantBankAccounts(order));
+      } finally {
+        setIsTenantLoading(false);
       }
     }
 
@@ -867,13 +873,32 @@ export default function CheckoutPage({ params }: Props) {
   } else if (orderQr && orderQr.startsWith('000201')) {
     rawQrisValue = orderQr;
   }
-  const targetWaNumber =
-    tenant?.metadata?.whatsapp_number ||
-    tenant?.metadata?.whatsapp ||
+  // Resolve target nomor WhatsApp toko resmi (Strict Isolation, ZERO Fallback ke WABA Holding)
+  const rawTargetWa =
     tenant?.whatsapp_number ||
     tenant?.phone ||
-    getTenantWhatsApp(tenantSlug) ||
-    getPlatformWhatsApp();
+    tenant?.metadata?.whatsapp_number ||
+    tenant?.metadata?.whatsapp ||
+    tenant?.metadata?.wa_number ||
+    (tenant?.metadata as any)?.store_profile?.whatsapp ||
+    (tenant?.metadata as any)?.store_profile?.phone ||
+    (tenant?.metadata as any)?.contact_whatsapp ||
+    (tenant?.metadata as any)?.contact_phone ||
+    order?.metadata?.store_whatsapp ||
+    order?.metadata?.whatsapp_number ||
+    '';
+
+  const cleanTargetWa = String(rawTargetWa || '').replace(/\D/g, '');
+  // Guardrail Anti-Bocor: Cegah mengarah ke nomor holding Meta Bot / Billing Platform / Holding Admin
+  const isHoldingNumber =
+    cleanTargetWa === '6285181830080' ||
+    cleanTargetWa === '6281977655099' ||
+    cleanTargetWa === '6285117178626' ||
+    cleanTargetWa === '085181830080' ||
+    cleanTargetWa === '081977655099' ||
+    cleanTargetWa === '085117178626';
+  const targetWaNumber = isHoldingNumber ? '' : cleanTargetWa;
+  const isTenantStillLoading = isTenantLoading && !tenant;
 
   const storeDisplayName =
     tenant?.name ||
@@ -961,9 +986,11 @@ export default function CheckoutPage({ params }: Props) {
     return () => clearInterval(redirectTimer);
   }, [isPaidOrder, accessUrlCandidate, hasAutoRedirected]);
 
-  const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
-    `Halo ${storeDisplayName}, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`
-  )}`;
+  const waConfirmUrl = targetWaNumber
+    ? `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
+        `Halo ${storeDisplayName}, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`
+      )}`
+    : '';
 
   return (
     <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex items-center justify-center p-4">
@@ -1335,15 +1362,31 @@ export default function CheckoutPage({ params }: Props) {
                       </p>
                     </div>
                     <div className="pt-1 flex flex-col gap-2">
-                      <a
-                        href={waConfirmUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md shadow-emerald-600/20"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                        <span>Konfirmasi Pembayaran via WhatsApp Toko</span>
-                      </a>
+                      {isTenantStillLoading ? (
+                        <div className="w-full py-2.5 bg-slate-800 text-slate-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 animate-pulse">
+                          <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                          <span>Menghubungkan ke WhatsApp Toko...</span>
+                        </div>
+                      ) : waConfirmUrl ? (
+                        <a
+                          href={waConfirmUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md shadow-emerald-600/20"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          <span>Konfirmasi Pembayaran via WhatsApp Toko</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full py-2.5 bg-slate-800 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-not-allowed opacity-70"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          <span>Kontak WhatsApp Toko Belum Dikonfigurasi</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -1665,15 +1708,31 @@ export default function CheckoutPage({ params }: Props) {
               )}
 
               {/* Tombol Sekunder Fallback WhatsApp */}
-              <a
-                href={waConfirmUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-600/50 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4 text-emerald-400" />
-                <span>Kirim Bukti via WhatsApp (Alternatif Chat)</span>
-              </a>
+              {isTenantStillLoading ? (
+                <div className="w-full py-2.5 px-3 bg-slate-900 border border-slate-800 text-slate-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                  <span>Memuat Kontak WhatsApp CS...</span>
+                </div>
+              ) : waConfirmUrl ? (
+                <a
+                  href={waConfirmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-600/50 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4 text-emerald-400" />
+                  <span>Kirim Bukti via WhatsApp (Alternatif Chat)</span>
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-2.5 px-3 bg-slate-900/50 border border-slate-800 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-not-allowed opacity-60"
+                >
+                  <MessageSquare className="w-4 h-4 text-slate-500" />
+                  <span>Kontak WhatsApp CS Toko Tidak Tersedia</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1828,19 +1887,39 @@ export default function CheckoutPage({ params }: Props) {
             </span>
           </div>
 
-          <a
-            href={waConfirmUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-400" />
-            <span>
-              {isPaidOrder
-                ? 'Chat Admin CS via WhatsApp (Bantuan / Pertanyaan)'
-                : 'Konfirmasi Pembayaran ke WhatsApp Resmi CS'}
-            </span>
-          </a>
+          {isTenantStillLoading ? (
+            <div className="w-full py-3 bg-slate-800 border border-slate-700 text-slate-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <span>Menyiapkan Kontak WhatsApp CS Toko...</span>
+            </div>
+          ) : waConfirmUrl ? (
+            <a
+              href={waConfirmUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <span>
+                {isPaidOrder
+                  ? 'Chat Admin CS via WhatsApp (Bantuan / Pertanyaan)'
+                  : 'Konfirmasi Pembayaran ke WhatsApp Resmi CS'}
+              </span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="w-full py-3 bg-slate-900 border border-slate-800 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-not-allowed opacity-60"
+            >
+              <MessageSquare className="w-4 h-4 text-slate-500" />
+              <span>
+                {isPaidOrder
+                  ? 'Kontak CS WhatsApp Toko Belum Diatur'
+                  : 'Konfirmasi Pembayaran (Nomor CS Belum Diatur)'}
+              </span>
+            </button>
+          )}
 
           <a
             href={getStorefrontInvoiceUrl(tenantSlug || 'shop', orderId)}

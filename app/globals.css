@@ -1,86 +1,101 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #F1F5F9;
+  --accent-foreground: #0F172A;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #3B82F6;
 }
 
+.dark,
 html.dark {
   --background: #0B0F19;
   --foreground: #F8FAFC;
+  --card: #111827;
+  --card-foreground: #F8FAFC;
+  --popover: #111827;
+  --popover-foreground: #F8FAFC;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1F2937;
+  --secondary-foreground: #F8FAFC;
+  --muted: #1F2937;
+  --muted-foreground: #94A3B8;
+  --accent: #1F2937;
+  --accent-foreground: #F8FAFC;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #1F2937;
+  --input: #1F2937;
+  --ring: #38BDF8;
   color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* BoonTrack Tenant Dashboard Dark Theme Rules */
+/* BoonTrack Tenant Dashboard Harmonized Theme Rules */
+.dashboard-theme-container {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
 html.dark .dashboard-theme-container {
-  background-color: #0B0F19 !important;
-  color: #F8FAFC !important;
+  background-color: #0B0F19;
+  color: #F8FAFC;
 }
 
 html.dark .dashboard-theme-container header {
-  background-color: rgba(17, 24, 39, 0.95) !important;
-  border-color: #374151 !important;
-  color: #F8FAFC !important;
+  background-color: rgba(17, 24, 39, 0.95);
+  border-color: #1F2937;
+  color: #F8FAFC;
 }
 
 html.dark .dashboard-theme-container aside {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-}
-
-html.dark .dashboard-theme-container .bg-white {
-  background-color: #1F2937 !important;
-  color: #F8FAFC !important;
-  border-color: #374151 !important;
-}
-
-html.dark .dashboard-theme-container .bg-slate-50,
-html.dark .dashboard-theme-container .bg-slate-100 {
-  background-color: #111827 !important;
-  color: #E2E8F0 !important;
-  border-color: #374151 !important;
-}
-
-html.dark .dashboard-theme-container .text-slate-900 {
-  color: #F8FAFC !important;
-}
-
-html.dark .dashboard-theme-container .text-slate-800,
-html.dark .dashboard-theme-container .text-slate-700 {
-  color: #E2E8F0 !important;
-}
-
-html.dark .dashboard-theme-container .text-slate-600,
-html.dark .dashboard-theme-container .text-slate-500 {
-  color: #94A3B8 !important;
-}
-
-html.dark .dashboard-theme-container .border-slate-100,
-html.dark .dashboard-theme-container .border-slate-200,
-html.dark .dashboard-theme-container .border-slate-200\/80,
-html.dark .dashboard-theme-container .border-slate-200\/90 {
-  border-color: #374151 !important;
-}
-
-html.dark .dashboard-theme-container input,
-html.dark .dashboard-theme-container select,
-html.dark .dashboard-theme-container textarea {
-  background-color: #111827 !important;
-  color: #F8FAFC !important;
-  border-color: #374151 !important;
+  background-color: #111827;
+  border-color: #1F2937;
 }
 
 html.dark .dashboard-theme-container .theme-toggle-btn {
-  background-color: #1F2937 !important;
-  border-color: #10B981 !important;
-  color: #34D399 !important;
+  background-color: #1F2937;
+  border-color: #10B981;
+  color: #34D399;
 }
 
 html {

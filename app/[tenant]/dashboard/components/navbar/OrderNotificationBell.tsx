@@ -132,13 +132,13 @@ export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderN
     <button
       type="button"
       onClick={handleClear}
-      className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+      className="relative h-9 px-2.5 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-colors border border-border bg-card text-foreground hover:bg-muted/80 cursor-pointer"
       title={unseenCount > 0 ? `${unseenCount} Pesanan Baru Masuk!` : 'Notifikasi Pesanan'}
     >
-      <Bell className={`w-4 h-4 ${isRinging ? 'animate-bounce text-emerald-600' : ''}`} />
+      <Bell className={`w-4 h-4 ${isRinging ? 'animate-bounce text-emerald-600' : 'text-foreground'}`} />
 
       {unseenCount > 0 && (
-        <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded-full animate-pulse shadow-xs">
+        <span className="absolute -top-1 -right-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-rose-600 text-white animate-pulse shadow-xs">
           {unseenCount > 99 ? '99+' : unseenCount}
         </span>
       )}
