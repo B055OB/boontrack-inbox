@@ -895,6 +895,15 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     subdomain === 'shop';
 
   if (isShopHost) {
+    // ── ROOT REDIRECT: shop.boontrack.com/ -> https://boontrack.com (Redirect 307) ──
+    if (pathname === '/' || pathname === '') {
+      const redirectUrl = new URL('https://boontrack.com');
+      req.nextUrl.searchParams.forEach((val, key) => {
+        redirectUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(redirectUrl, 307);
+    }
+
     const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
     const shopDeskMatch = pathname.match(/^\/([^/]+)\/desk(?:\/(.*))?$/);
     const isShopGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
@@ -1122,6 +1131,15 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
   // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
   if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {
+    // Root subdomain tanpa slug -> Redirect 307 ke web utama boontrack.com
+    if (pathname === '/' || pathname === '') {
+      const redirectUrl = new URL('https://boontrack.com');
+      req.nextUrl.searchParams.forEach((val, key) => {
+        redirectUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(redirectUrl, 307);
+    }
+
     const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
     const segments = pathname.split('/').filter(Boolean);
     const tenantSlug = segments[0]?.toLowerCase().trim();

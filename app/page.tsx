@@ -30,6 +30,16 @@ function NewLanderCleanUxContent() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
 
   useEffect(() => {
+    // Defense-in-depth: Redirect shop.boontrack.com root to main domain
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname.toLowerCase();
+      const pathname = window.location.pathname;
+      if ((hostname === 'shop.boontrack.com' || hostname.startsWith('shop.')) && (pathname === '/' || pathname === '')) {
+        window.location.replace(`https://boontrack.com${window.location.search}`);
+        return;
+      }
+    }
+
     let resolved = (
       searchParams.get('ref') ||
       searchParams.get('r') ||
