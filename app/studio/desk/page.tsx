@@ -120,6 +120,16 @@ export default function StudioDeskPage() {
     }
   };
 
+  // Auto Normalizer: Bersihkan /studio/desk menjadi /desk secara instan di address bar
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/studio/desk')) {
+      const cleanPath = window.location.pathname.replace(/^\/studio\/desk/, '/desk');
+      const search = window.location.search || '';
+      const hash = window.location.hash || '';
+      window.history.replaceState(null, '', `${cleanPath}${search}${hash}`);
+    }
+  }, []);
+
   // Dynamic session resolution (Zero Hardcoding - Supabase SSOT with Creator Fallback)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -328,11 +338,7 @@ export default function StudioDeskPage() {
 
   // ── UNATHENTICATED GATEWAY STATE (ELEGANT ACTIVATION CARD) ─────────
   if (!hasValidSession) {
-    const isStudioSubdomain =
-      typeof window !== 'undefined' &&
-      (window.location.hostname.startsWith('studio.') ||
-        window.location.hostname === 'studio.boontrack.com');
-    const registerUrl = isStudioSubdomain ? '/register' : '/studio/register';
+    const registerUrl = '/register';
 
     return (
       <div className="min-h-screen bg-[#0B0F17] text-white selection:bg-fuchsia-500 selection:text-white font-sans relative overflow-hidden flex flex-col justify-between">
@@ -528,7 +534,7 @@ export default function StudioDeskPage() {
             )}
 
             <Link
-              href="/studio/fcd-automator"
+              href="/desk/fcd-automator"
               onClick={handleStartVideo}
               className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 text-white font-extrabold text-xs shadow-lg shadow-fuchsia-500/20 flex items-center gap-1.5 transition active:scale-95"
             >
@@ -568,7 +574,7 @@ export default function StudioDeskPage() {
 
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
             <Link
-              href="/studio/fcd-automator"
+              href="/desk/fcd-automator"
               onClick={handleStartVideo}
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition flex items-center gap-2 active:scale-95"
             >
@@ -577,7 +583,7 @@ export default function StudioDeskPage() {
             </Link>
 
             <Link
-              href="/studio/ugc-studio"
+              href="/desk/ugc-studio"
               className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 transition flex items-center gap-2"
             >
               <UserCheck className="w-4 h-4 text-purple-300" />
@@ -728,7 +734,7 @@ export default function StudioDeskPage() {
 
             {/* Metric 4: Panduan Naskah Asli */}
             <Link
-              href="/studio/ugc-studio"
+              href="/desk/ugc-studio"
               className="p-5 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-fuchsia-500/40 transition-all flex flex-col justify-between shadow-lg relative overflow-hidden group cursor-pointer"
             >
               <div className="absolute top-0 right-0 w-28 h-28 bg-fuchsia-600/10 rounded-full blur-2xl pointer-events-none" />
@@ -824,7 +830,7 @@ export default function StudioDeskPage() {
             {/* Action Buttons */}
             <div className="shrink-0 flex flex-col items-start lg:items-end gap-3">
               <Link
-                href="/studio/fcd-automator"
+                href="/desk/fcd-automator"
                 onClick={handleStartVideo}
                 className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-black text-sm tracking-wide shadow-xl shadow-indigo-600/35 hover:shadow-indigo-600/50 transition-all flex items-center justify-center gap-3 active:scale-98 group/cta cursor-pointer"
               >
@@ -852,7 +858,7 @@ export default function StudioDeskPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Mode 1: Video Otomatis */}
             <Link
-              href="/studio/fcd-automator"
+              href="/desk/fcd-automator"
               onClick={handleStartVideo}
               className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-indigo-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
             >
@@ -884,7 +890,7 @@ export default function StudioDeskPage() {
 
             {/* Mode 2: Panduan Naskah Asli */}
             <Link
-              href="/studio/ugc-studio"
+              href="/desk/ugc-studio"
               className="p-6 rounded-3xl bg-[#111624]/80 border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/[0.03] transition-all flex flex-col justify-between shadow-lg group cursor-pointer"
             >
               <div className="space-y-4">
@@ -962,9 +968,9 @@ export default function StudioDeskPage() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© 2026 PT BOONTRACK INOVASI DIGITAL • Studio Konten & Naskah Manusiawi</p>
           <div className="flex items-center gap-4 text-zinc-400">
-            <Link href="/studio/fcd-automator" className="hover:text-white transition-colors">Video Otomatis</Link>
+            <Link href="/desk/fcd-automator" className="hover:text-white transition-colors">Video Otomatis</Link>
             <span>•</span>
-            <Link href="/studio/ugc-studio" className="hover:text-white transition-colors">Panduan Naskah Asli</Link>
+            <Link href="/desk/ugc-studio" className="hover:text-white transition-colors">Panduan Naskah Asli</Link>
             <span>•</span>
             <Link href="/studio/jobs" className="hover:text-white transition-colors">Unduhan MP4</Link>
           </div>
