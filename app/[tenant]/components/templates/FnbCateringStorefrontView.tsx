@@ -524,20 +524,20 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 font-sans selection:bg-rose-600 selection:text-white pb-32">
+    <div className="min-h-screen bg-[#FFFDF7] text-slate-800 font-sans selection:bg-rose-600 selection:text-white pb-32">
       {/* ── TOP ANNOUNCEMENT BAR ── */}
-      <div className="bg-gradient-to-r from-rose-900 via-rose-800 to-amber-900 text-amber-100 text-[11px] font-bold py-2 px-4 text-center tracking-wide flex items-center justify-center gap-2 border-b border-rose-700/50">
-        <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+      <div className="bg-rose-700 text-white text-[11px] font-medium py-2 px-4 text-center tracking-wide flex items-center justify-center gap-2 border-b border-rose-800 shadow-xs">
+        <Sparkles className="w-3.5 h-3.5 text-amber-200 animate-pulse" />
         <span>Spesialis Shabu &amp; BBQ Villa Bandung: Pinjam Alat Kompor + Grill/Panci, Selesai Makan Diambil Kotor Bebas Cuci!</span>
       </div>
 
       {/* ── 1. HEADER & IDENTITAS F&B ── */}
-      <header className="sticky top-0 z-40 bg-stone-950/95 backdrop-blur-md border-b border-stone-800/80 shadow-md">
+      <header className="sticky top-0 z-40 bg-[#FFFDF7]/95 backdrop-blur-md border-b border-amber-200/70 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-4">
             {/* Logo Resmi & Identitas */}
             <div className="flex items-center gap-3 min-w-0">
-              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-stone-900 border-2 border-rose-600/60 shadow-lg shrink-0">
+              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-white border-2 border-amber-200/80 shadow-md shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={storeLogo}
@@ -552,14 +552,14 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-xl font-black text-white tracking-tight truncate">
+                  <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight truncate">
                     {effectiveName}
                   </h1>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-400 border border-rose-800/80 font-mono shrink-0">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100/90 text-amber-900 border border-amber-200 font-mono shrink-0">
                     HALAL MUI
                   </span>
                 </div>
-                <p className="text-xs text-stone-400 truncate">
+                <p className="text-xs text-slate-500 truncate">
                   Japanese Home Service &amp; Villa Catering Shabu BBQ
                 </p>
               </div>
@@ -571,9 +571,9 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 href={`https://wa.me/${waNumber.replace(/\D/g, '')}?text=Halo%20Shabu%20Ajhi,%20saya%20mau%20tanya%20info%20paket%20catering%20shabu`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-300 text-xs font-bold transition"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold transition shadow-xs"
               >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                 <span>CS WhatsApp</span>
               </a>
 
@@ -581,7 +581,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 <button
                   type="button"
                   onClick={handleCheckoutViaWhatsApp}
-                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                 >
                   <ShoppingBag className="w-3.5 h-3.5" />
                   <span>{totalItems} Paket</span>
@@ -591,17 +591,17 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
           </div>
 
           {/* Trust Badges */}
-          <div className="mt-3 pt-3 border-t border-stone-800/60 flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-stone-300">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-emerald-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="mt-3 pt-3 border-t border-amber-200/60 flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-700">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-slate-700 font-medium shadow-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               100% Pinjam Alat Bebas Cuci (Diambil Kotor)
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-emerald-400 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-slate-700 font-medium shadow-xs">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               Sertifikasi Halal MUI Resmi
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-amber-300 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-rose-500" />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100/80 text-amber-900 border border-amber-200 font-medium shadow-xs">
+              <MapPin className="w-3.5 h-3.5 text-rose-600" />
               Spesialis Villa: Lembang, Ciwidey, Dago &amp; Bandung Kota
             </span>
           </div>
@@ -610,39 +610,39 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
           <nav className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
             <a
               href="#menu"
-              className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold shrink-0 transition"
+              className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-semibold shadow-sm shrink-0 transition"
             >
               Menu Shabu &amp; BBQ
             </a>
             <button
               type="button"
               onClick={() => setActiveModal('member')}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white font-medium shrink-0 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50/80 border border-amber-200/80 text-slate-700 hover:text-slate-900 font-medium shadow-xs shrink-0 transition cursor-pointer flex items-center gap-1.5"
             >
-              <Gift className="w-3 h-3 text-amber-400" />
+              <Gift className="w-3 h-3 text-amber-600" />
               <span>Member E-Card</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveModal('catering')}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white font-medium shrink-0 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50/80 border border-amber-200/80 text-slate-700 hover:text-slate-900 font-medium shadow-xs shrink-0 transition cursor-pointer flex items-center gap-1.5"
             >
-              <UtensilsCrossed className="w-3 h-3 text-rose-400" />
+              <UtensilsCrossed className="w-3 h-3 text-rose-600" />
               <span>Catering &amp; Event</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveModal('partnership')}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white font-medium shrink-0 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50/80 border border-amber-200/80 text-slate-700 hover:text-slate-900 font-medium shadow-xs shrink-0 transition cursor-pointer flex items-center gap-1.5"
             >
               <span>🤝 Partnership</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveModal('ketentuan')}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white font-medium shrink-0 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50/80 border border-amber-200/80 text-slate-700 hover:text-slate-900 font-medium shadow-xs shrink-0 transition cursor-pointer flex items-center gap-1.5"
             >
-              <Info className="w-3 h-3 text-emerald-400" />
+              <Info className="w-3 h-3 text-emerald-600" />
               <span>Ketentuan Sewa</span>
             </button>
           </nav>
@@ -651,21 +651,21 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* ── 2. WIDGET BOOKING JADWAL & LOKASI KIRIM (ABOVE THE FOLD) ── */}
       <section className="max-w-5xl mx-auto px-4 pt-6">
-        <div className="relative rounded-3xl bg-gradient-to-br from-stone-900/90 via-stone-900/80 to-rose-950/40 border border-stone-800/90 p-5 sm:p-6 shadow-xl space-y-4 overflow-hidden">
+        <div className="relative rounded-2xl bg-white border border-amber-200/70 p-5 sm:p-6 shadow-sm space-y-4 overflow-hidden">
           {/* Subtle Ambient Red Glow */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-rose-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-800/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-100">
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 font-mono">
+              <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
                 Langkah 1 &bull; Atur Jadwal &amp; Lokasi Pengantaran
               </span>
-              <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2 mt-0.5">
-                <Truck className="w-5 h-5 text-rose-500" />
+              <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2 mt-0.5">
+                <Truck className="w-5 h-5 text-rose-600" />
                 <span>Kapan &amp; Ke Mana Alat Diantar?</span>
               </h2>
             </div>
-            <span className="text-[11px] text-stone-400 font-mono">
+            <span className="text-[11px] text-slate-500 font-mono">
               Driver Standby Bandung Raya
             </span>
           </div>
@@ -673,8 +673,8 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* 1. Pilihan Tanggal Acara */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-rose-400" />
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-rose-600" />
                 <span>Tanggal Acara:</span>
               </label>
               <input
@@ -682,14 +682,14 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 value={deliveryDate}
                 min={todayStr}
                 onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-xs sm:text-sm text-white focus:outline-hidden focus:border-rose-500 transition font-mono"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-hidden focus:border-rose-500 transition font-mono"
               />
             </div>
 
             {/* 2. Pilihan Tipe Lokasi */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-rose-600" />
                 <span>Tipe Lokasi Kirim:</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -698,8 +698,8 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                   onClick={() => setLocationType('Rumah Tinggal')}
                   className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     locationType === 'Rumah Tinggal'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-stone-950 border border-stone-800 text-stone-400 hover:text-white'
+                      ? 'bg-rose-600 text-white font-semibold shadow-sm'
+                      : 'bg-slate-50 border border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   <Home className="w-3.5 h-3.5" />
@@ -710,8 +710,8 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                   onClick={() => setLocationType('Villa / Glamping')}
                   className={`py-2 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     locationType === 'Villa / Glamping'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-stone-950 border border-stone-800 text-stone-400 hover:text-white'
+                      ? 'bg-rose-600 text-white font-semibold shadow-sm'
+                      : 'bg-slate-50 border border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   <Building2 className="w-3.5 h-3.5" />
@@ -732,25 +732,25 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                   ? 'Ketik Nama Villa / Blok Glamping (Contoh: Villa Istana Bunga Blok V1-No 8, Parongpong Lembang)...'
                   : 'Ketik Alamat Lengkap / Patokan Rumah (Contoh: Jl. Dago Asri No. 12, Coblong Bandung)...'
               }
-              className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950/80 border border-stone-800 text-xs sm:text-sm text-white placeholder-stone-500 focus:outline-hidden focus:border-rose-500 transition"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition"
             />
           </div>
 
           {/* 3. Slot Jam Pengantaran & Ketersediaan Trip Kurir */}
-          <div className="space-y-2 pt-2 border-t border-stone-800/80">
+          <div className="space-y-2 pt-2 border-t border-amber-100">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-              <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
                 <span>Slot Jam Pengantaran (Reaktif):</span>
               </label>
               <div className="flex items-center gap-2">
                 {isLoadingSlots ? (
-                  <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                  <span className="text-[11px] text-amber-700 font-mono flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
                     <span>Memeriksa kuota trip...</span>
                   </span>
                 ) : (
-                  <span className="text-[10px] text-stone-400 font-mono">
+                  <span className="text-[10px] text-slate-500 font-mono">
                     🟢 Kuota maks. 4 trip / slot jam
                   </span>
                 )}
@@ -763,17 +763,17 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="p-3 rounded-2xl bg-stone-950/60 border border-stone-800 animate-pulse space-y-2.5"
+                    className="p-3 rounded-2xl bg-amber-50/50 border border-amber-200/60 animate-pulse space-y-2.5"
                   >
-                    <div className="h-4 bg-stone-800/80 rounded w-4/5" />
-                    <div className="h-3 bg-stone-800/50 rounded w-3/5" />
-                    <div className="h-4 bg-stone-800/40 rounded-full w-2/3" />
+                    <div className="h-4 bg-amber-200/60 rounded w-4/5" />
+                    <div className="h-3 bg-amber-200/40 rounded w-3/5" />
+                    <div className="h-4 bg-amber-200/30 rounded-full w-2/3" />
                   </div>
                 ))}
               </div>
             ) : slots.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-stone-950/60 border border-stone-800 text-xs text-stone-400 text-center flex items-center justify-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-400" />
+              <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/70 text-xs text-slate-600 text-center flex items-center justify-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
                 <span>Tidak ada slot pengantaran aktif pada tanggal yang dipilih.</span>
               </div>
             ) : (
@@ -797,35 +797,35 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                       }}
                       className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
                         isFull
-                          ? 'bg-stone-950/40 border-stone-800/40 opacity-40 cursor-not-allowed'
+                          ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed text-slate-400'
                           : isSelected
-                          ? 'bg-gradient-to-br from-rose-950/80 to-stone-900 border-rose-500 shadow-lg shadow-rose-950/60 ring-2 ring-rose-500/50'
-                          : 'bg-stone-950/70 border-stone-800 hover:border-stone-700 hover:bg-stone-900/60'
+                          ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                          : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-800'
                       }`}
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs sm:text-sm font-black text-white font-mono">
+                          <span className={`text-xs sm:text-sm font-black font-mono ${isSelected ? 'text-rose-950' : 'text-slate-900'}`}>
                             {timePart}
                           </span>
                           {isSelected && !isFull && (
-                            <Check className="w-3.5 h-3.5 text-rose-400" />
+                            <Check className="w-3.5 h-3.5 text-rose-600" />
                           )}
                         </div>
                         {labelPart && (
-                          <p className="text-[10px] text-stone-400 line-clamp-1">
+                          <p className="text-[10px] text-slate-500 line-clamp-1">
                             {labelPart}
                           </p>
                         )}
                       </div>
 
-                      <div className="mt-2.5 pt-2 border-t border-stone-800/60 flex items-center justify-between">
+                      <div className="mt-2.5 pt-2 border-t border-amber-100 flex items-center justify-between">
                         {isFull ? (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-900 font-mono">
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 font-mono">
                             Penuh
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 font-mono">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
                             Sisa {slot.remaining_quota} trip
                           </span>
                         )}
@@ -843,26 +843,26 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
       <section id="menu" className="max-w-5xl mx-auto px-4 pt-10">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 font-mono">
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
               Langkah 2 &bull; Pilih Paket Shabu &amp; Grill
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
               Daftar Paket Lengkap + Pinjam Alat
             </h2>
-            <p className="text-xs text-stone-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               Sudah termasuk kompor portable, gas kaleng, alat masak, centong, dan set alat makan lengkap.
             </p>
           </div>
 
           {/* Tab Selector Button Toggle */}
-          <div className="inline-flex p-1 bg-stone-900 rounded-2xl border border-stone-800 shrink-0">
+          <div className="inline-flex p-1 bg-amber-100/70 rounded-2xl border border-amber-200 shrink-0">
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Hemat')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                 activeTabKey === 'Paket Alat Hemat'
                   ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-stone-400 hover:text-white'
+                  : 'text-slate-700 hover:text-slate-900'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -871,10 +871,10 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Premium')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                 activeTabKey === 'Paket Alat Premium'
                   ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-stone-400 hover:text-white'
+                  : 'text-slate-700 hover:text-slate-900'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -903,51 +903,51 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             return (
               <div
                 key={pId}
-                className="rounded-3xl bg-stone-900/90 border border-stone-800 hover:border-rose-600/50 transition-all p-4 flex flex-col justify-between shadow-lg group relative overflow-hidden"
+                className="rounded-3xl bg-white border border-amber-200/70 hover:border-rose-500/60 transition-all p-4 flex flex-col justify-between shadow-sm hover:shadow-md group relative overflow-hidden"
               >
                 <div>
                   {/* Gambar Paket */}
-                  <div className="relative rounded-2xl overflow-hidden aspect-[4/3] bg-stone-950 mb-3 border border-stone-800">
+                  <div className="relative rounded-2xl overflow-hidden aspect-[4/3] bg-amber-50/50 mb-3 border border-amber-100">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.image_url || item.image || '/placeholder-product.png'}
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                     />
-                    <span className="absolute top-2.5 left-2.5 bg-stone-950/90 text-rose-400 border border-rose-900/80 text-[10px] font-black px-2.5 py-0.5 rounded-full font-mono">
+                    <span className="absolute top-2.5 left-2.5 bg-white/95 text-rose-700 border border-amber-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono shadow-xs">
                       {item.category}
                     </span>
                   </div>
 
                   {/* Judul & Harga */}
                   <div className="space-y-1">
-                    <h3 className="text-base font-black text-white group-hover:text-rose-400 transition leading-snug">
+                    <h3 className="text-base font-black text-slate-900 group-hover:text-rose-600 transition leading-snug">
                       {item.name}
                     </h3>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-lg font-black text-rose-500">
+                      <span className="text-lg font-black text-rose-600">
                         Rp {Number(item.price || 0).toLocaleString('id-ID')}
                       </span>
-                      <span className="text-[11px] text-stone-400 font-mono">/ paket</span>
+                      <span className="text-[11px] text-slate-500 font-mono">/ paket</span>
                     </div>
                   </div>
 
                   {/* Deskripsi Paket */}
                   {item.description && (
-                    <p className="text-xs text-stone-400 mt-2.5 leading-relaxed line-clamp-4 whitespace-pre-line">
+                    <p className="text-xs text-slate-600 mt-2.5 leading-relaxed line-clamp-4 whitespace-pre-line">
                       {item.description}
                     </p>
                   )}
 
                   {/* ── Pemilih Varian Kuah Instan (Khusus Menu ada Shabu) ── */}
                   {isShabuRelated && (
-                    <div className="mt-4 p-2.5 rounded-xl bg-stone-950 border border-stone-800/80 space-y-1.5">
+                    <div className="mt-4 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1.5">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-stone-300 flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-amber-400" />
+                        <span className="font-bold text-slate-700 flex items-center gap-1">
+                          <Flame className="w-3 h-3 text-amber-600" />
                           <span>Pilihan Kuah:</span>
                         </span>
-                        <span className="text-amber-400 font-mono text-[10px]">
+                        <span className="text-amber-800 font-mono text-[10px] font-bold">
                           {chosenSoup}
                         </span>
                       </div>
@@ -959,8 +959,8 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                             onClick={() => handleSelectSoup(pId, soup)}
                             className={`py-1 px-2 rounded-lg text-[10px] font-bold transition cursor-pointer text-center truncate ${
                               chosenSoup === soup
-                                ? 'bg-amber-500 text-stone-950 font-black shadow-xs'
-                                : 'bg-stone-900 text-stone-400 hover:text-white border border-stone-800'
+                                ? 'bg-amber-400 text-amber-950 font-black shadow-xs'
+                                : 'bg-white text-slate-700 hover:text-slate-900 border border-amber-200 hover:bg-amber-50'
                             }`}
                           >
                             {soup}
@@ -972,10 +972,10 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 </div>
 
                 {/* Tombol Aksi Tambah / Qty */}
-                <div className="mt-5 pt-3 border-t border-stone-800 flex items-center justify-between gap-3">
-                  <div className="text-[11px] text-stone-400 font-mono">
+                <div className="mt-5 pt-3 border-t border-amber-100 flex items-center justify-between gap-3">
+                  <div className="text-[11px] text-slate-500 font-mono">
                     {currentQty > 0 ? (
-                      <span className="text-emerald-400 font-bold">
+                      <span className="text-emerald-700 font-bold">
                         {currentQty}x di pesanan
                       </span>
                     ) : (
@@ -987,7 +987,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     <button
                       type="button"
                       onClick={() => handleAddProduct(item)}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-900/30 active:scale-95 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Pilih Paket</span>
@@ -997,17 +997,17 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                       <button
                         type="button"
                         onClick={() => handleDecreaseProduct(pId)}
-                        className="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center transition cursor-pointer"
+                        className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="font-mono font-bold text-sm text-white w-5 text-center">
+                      <span className="font-mono font-bold text-sm text-slate-900 w-5 text-center">
                         {currentQty}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleAddProduct(item)}
-                        className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+                        className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1024,15 +1024,15 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
       <section className="max-w-5xl mx-auto px-4 pt-12">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 font-mono">
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
               Langkah 3 &bull; Menu Tambahan
             </span>
-            <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2 mt-0.5">
-              <Plus className="w-4 h-4 text-rose-500" />
+            <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2 mt-0.5">
+              <Plus className="w-4 h-4 text-rose-600" />
               <span>Add-ons Pelengkap &amp; Ekstra Porsi</span>
             </h2>
           </div>
-          <span className="text-xs text-stone-400 hidden sm:inline font-mono">
+          <span className="text-xs text-slate-500 hidden sm:inline font-mono">
             Geser ke kanan untuk opsi lainnya &rarr;
           </span>
         </div>
@@ -1046,10 +1046,10 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             return (
               <div
                 key={aId}
-                className="w-56 sm:w-64 rounded-2xl bg-stone-900 border border-stone-800 p-3.5 shrink-0 flex flex-col justify-between shadow-md hover:border-stone-700 transition"
+                className="w-56 sm:w-64 rounded-2xl bg-white border border-amber-200/70 p-3.5 shrink-0 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-amber-300 transition"
               >
                 <div>
-                  <div className="relative rounded-xl overflow-hidden aspect-video bg-stone-950 mb-2.5 border border-stone-800">
+                  <div className="relative rounded-xl overflow-hidden aspect-video bg-amber-50/50 mb-2.5 border border-amber-100">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={addon.image}
@@ -1057,16 +1057,16 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <h4 className="text-xs font-bold text-white leading-snug line-clamp-1">
+                  <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
                     {addon.name}
                   </h4>
-                  <p className="text-[11px] text-stone-400 line-clamp-1 mt-0.5">
+                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
                     {addon.unit}
                   </p>
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-stone-800/80 flex items-center justify-between gap-2">
-                  <span className="text-xs font-black text-rose-400">
+                <div className="mt-3 pt-2.5 border-t border-amber-100 flex items-center justify-between gap-2">
+                  <span className="text-xs font-black text-rose-600">
                     Rp {Number(addon.price).toLocaleString('id-ID')}
                   </span>
 
@@ -1074,7 +1074,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     <button
                       type="button"
                       onClick={() => handleAddAddon(addon)}
-                      className="py-1 px-2.5 rounded-lg bg-stone-800 hover:bg-rose-600 text-stone-200 hover:text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                      className="py-1 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Tambah</span>
@@ -1084,11 +1084,11 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                       <button
                         type="button"
                         onClick={() => handleDecreaseProduct(aId)}
-                        className="w-6 h-6 rounded-md bg-stone-800 text-stone-300 flex items-center justify-center cursor-pointer"
+                        className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center cursor-pointer"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="font-mono text-xs font-bold text-white">
+                      <span className="font-mono text-xs font-bold text-slate-900">
                         {currentQty}
                       </span>
                       <button
@@ -1109,23 +1109,23 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* ── 5. STICKY BOTTOM CHECKOUT BAR (WHATSAPP CONVERSATIONAL FLOW) ── */}
       {totalItems > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-3 sm:p-4 bg-stone-950/95 backdrop-blur-md border-t border-rose-900/40 shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-amber-200/80 shadow-2xl animate-in slide-in-from-bottom duration-200">
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             {/* Ringkasan Pesanan */}
             <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-              <div className="w-10 h-10 rounded-xl bg-rose-600/20 border border-rose-600/40 text-rose-400 flex items-center justify-center shrink-0">
-                <UtensilsCrossed className="w-5 h-5 text-rose-500" />
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <UtensilsCrossed className="w-5 h-5 text-rose-600" />
               </div>
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-white">
+                  <span className="text-xs font-black text-slate-900">
                     {totalItems} Menu Terpilih
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-mono">
+                  <span className="text-[10px] text-emerald-700 font-mono font-medium">
                     &bull; {selectedTimeSlot ? selectedTimeSlot.split('(')[0].trim() : 'Pilih Slot Jam'}
                   </span>
                 </div>
-                <div className="text-sm sm:text-base font-black text-rose-500">
+                <div className="text-sm sm:text-base font-black text-rose-600">
                   Total: Rp {totalPrice.toLocaleString('id-ID')}
                 </div>
               </div>
@@ -1139,12 +1139,12 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 disabled={!selectedTimeSlot}
                 className={`py-3 px-3.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
                   selectedTimeSlot
-                    ? 'bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white border-stone-800'
-                    : 'bg-stone-900/50 text-stone-500 border-stone-800/50 cursor-not-allowed'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                    : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
                 }`}
                 title="Buka Faktur Pembayaran QRIS"
               >
-                <QrCode className="w-4 h-4 text-emerald-400" />
+                <QrCode className="w-4 h-4 text-emerald-600" />
                 <span className="hidden md:inline">Faktur QRIS</span>
               </button>
 
@@ -1152,10 +1152,10 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 type="button"
                 onClick={handleCheckoutViaWhatsApp}
                 disabled={!selectedTimeSlot}
-                className={`flex-1 sm:flex-initial py-3 px-6 rounded-2xl text-white text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 shadow-lg active:scale-98 cursor-pointer ${
+                className={`flex-1 sm:flex-initial py-3 px-6 rounded-2xl text-white text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
                   selectedTimeSlot
-                    ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/60'
-                    : 'bg-stone-800 text-stone-400 cursor-not-allowed'
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
               >
                 <MessageSquare className="w-4 h-4 fill-white" />
@@ -1173,25 +1173,25 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* 1. Modal Member E-Card */}
       {activeModal === 'member' && (
-        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-stone-900 max-w-md w-full rounded-3xl border border-stone-800 p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FFFDF7] max-w-md w-full rounded-3xl border border-amber-200 p-6 space-y-4 shadow-2xl relative text-slate-800">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-amber-100 transition"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-amber-400">
+            <div className="flex items-center gap-2 text-amber-600">
               <Gift className="w-5 h-5" />
-              <h3 className="text-base font-black text-white">Shabu Ajhi VIP Member E-Card</h3>
+              <h3 className="text-base font-black text-slate-900">Shabu Ajhi VIP Member E-Card</h3>
             </div>
 
             {/* Preview E-Card */}
-            <div className="rounded-2xl p-5 bg-gradient-to-br from-amber-600 via-rose-700 to-stone-900 text-white shadow-xl space-y-4 border border-amber-400/30">
+            <div className="rounded-2xl p-5 bg-gradient-to-br from-amber-600 via-rose-700 to-amber-900 text-white shadow-xl space-y-4 border border-amber-400/40">
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-[10px] font-mono tracking-widest uppercase opacity-80">
+                  <span className="text-[10px] font-mono tracking-widest uppercase opacity-85">
                     VIP CATERING PASS
                   </span>
                   <h4 className="font-black text-lg">SHABU AJHI CLUB</h4>
@@ -1200,16 +1200,16 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               </div>
               <div className="pt-4 flex justify-between items-end text-xs font-mono">
                 <div>
-                  <span className="text-[9px] opacity-70 block">MEMBER PRIVILEGE</span>
+                  <span className="text-[9px] opacity-80 block">MEMBER PRIVILEGE</span>
                   <span>DISKON 10% + FREE EXTRA KUAH</span>
                 </div>
                 <span className="text-[10px] bg-black/40 px-2 py-0.5 rounded">NO EXPIRY</span>
               </div>
             </div>
 
-            <div className="text-xs text-stone-300 space-y-2">
-              <p className="font-bold text-white">Keuntungan Member Resmi:</p>
-              <ul className="space-y-1 list-disc list-inside text-stone-400">
+            <div className="text-xs text-slate-700 space-y-2">
+              <p className="font-bold text-slate-900">Keuntungan Member Resmi:</p>
+              <ul className="space-y-1 list-disc list-inside text-slate-600">
                 <li>Prioritas pengantaran ke villa saat musim liburan (peak season).</li>
                 <li>Gratis ekstra kuah 1 Liter setiap pemesanan di atas Rp 300.000.</li>
                 <li>Cashback &amp; voucher loyalitas dikirim via WhatsApp.</li>
@@ -1220,7 +1220,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               href={`https://wa.me/${waNumber.replace(/\D/g, '')}?text=Halo%20Shabu%20Ajhi,%20saya%20mau%20aktivasi%20Member%20E-Card%20VIP`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition flex items-center justify-center gap-2 text-center"
+              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition flex items-center justify-center gap-2 text-center shadow-sm"
             >
               <span>Klaim Kartu Member via WhatsApp</span>
               <ArrowRight className="w-4 h-4" />
@@ -1231,32 +1231,32 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* 2. Modal Catering & Event */}
       {activeModal === 'catering' && (
-        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-stone-900 max-w-lg w-full rounded-3xl border border-stone-800 p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FFFDF7] max-w-lg w-full rounded-3xl border border-amber-200 p-6 space-y-4 shadow-2xl relative text-slate-800">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-amber-100 transition"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-rose-400">
+            <div className="flex items-center gap-2 text-rose-600">
               <UtensilsCrossed className="w-5 h-5" />
-              <h3 className="text-base font-black text-white">Layanan Catering &amp; Event Khusus</h3>
+              <h3 className="text-base font-black text-slate-900">Layanan Catering &amp; Event Khusus</h3>
             </div>
 
-            <p className="text-xs text-stone-300 leading-relaxed">
+            <p className="text-xs text-slate-600 leading-relaxed">
               Menerima prasmanan shabu &amp; BBQ untuk acara kantor, family gathering, pernikahan intimate, atau tour rombongan villa mulai dari 20 pax hingga 300+ pax.
             </p>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800 space-y-1">
-                <span className="font-bold text-white block">Full Service Kru &amp; Chef</span>
-                <p className="text-[11px] text-stone-400">Waiter standby meracik kuah &amp; memanggang daging.</p>
+              <div className="p-3 rounded-xl bg-white border border-amber-200/80 space-y-1 shadow-xs">
+                <span className="font-bold text-slate-900 block">Full Service Kru &amp; Chef</span>
+                <p className="text-[11px] text-slate-500">Waiter standby meracik kuah &amp; memanggang daging.</p>
               </div>
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800 space-y-1">
-                <span className="font-bold text-white block">Peralatan Buffet Lengkap</span>
-                <p className="text-[11px] text-stone-400">Chafing dish, kompor, meja saji &amp; tenda portable.</p>
+              <div className="p-3 rounded-xl bg-white border border-amber-200/80 space-y-1 shadow-xs">
+                <span className="font-bold text-slate-900 block">Peralatan Buffet Lengkap</span>
+                <p className="text-[11px] text-slate-500">Chafing dish, kompor, meja saji &amp; tenda portable.</p>
               </div>
             </div>
 
@@ -1264,7 +1264,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               href={`https://wa.me/${waNumber.replace(/\D/g, '')}?text=Halo%20Shabu%20Ajhi,%20saya%20mau%20konsultasi%20paket%20catering%20event%20rombongan`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 text-center"
+              className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition flex items-center justify-center gap-2 text-center shadow-sm"
             >
               <span>Konsultasi Paket Event via WhatsApp</span>
               <ArrowRight className="w-4 h-4" />
@@ -1275,8 +1275,8 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* 3. Modal Program Partnership */}
       {(activeModal === 'partnership' || activeModal === 'mitra') && (
-        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-stone-900 max-w-md w-full rounded-3xl border border-stone-800 p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FFFDF7] max-w-md w-full rounded-3xl border border-amber-200 p-6 space-y-4 shadow-2xl relative text-slate-800">
             <button
               type="button"
               onClick={() => {
@@ -1284,28 +1284,28 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                 setPartnerSuccess(false);
                 setPartnerError(null);
               }}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800 transition cursor-pointer"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-amber-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-indigo-400">
+            <div className="flex items-center gap-2 text-rose-600">
               <HeartHandshake className="w-5 h-5" />
-              <h3 className="text-base font-black text-white">Program Partnership</h3>
+              <h3 className="text-base font-black text-slate-900">Program Partnership</h3>
             </div>
 
-            <p className="text-xs text-stone-300 leading-relaxed">
+            <p className="text-xs text-slate-600 leading-relaxed">
               Kolaborasi dan kemitraan resmi bersama {tenant?.name || effectiveName || 'Shabu Ajhi'}.
             </p>
 
             {partnerSuccess ? (
-              <div className="p-5 rounded-2xl bg-emerald-950/50 border border-emerald-800/80 text-center space-y-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-900/60 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-700/60">
+              <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto border border-emerald-300">
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-emerald-200">Pengajuan Terkirim!</h4>
-                  <p className="text-xs text-emerald-300/80 leading-relaxed">
+                  <h4 className="text-sm font-bold text-emerald-900">Pengajuan Terkirim!</h4>
+                  <p className="text-xs text-emerald-700 leading-relaxed">
                     Data Anda telah tersimpan dan jendela chat WhatsApp telah dibuka untuk terhubung langsung dengan Admin kami.
                   </p>
                 </div>
@@ -1315,7 +1315,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     setActiveModal(null);
                     setPartnerSuccess(false);
                   }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold transition cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition cursor-pointer"
                 >
                   Tutup
                 </button>
@@ -1323,15 +1323,15 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             ) : (
               <form onSubmit={handleSubmitPartnership} className="space-y-3.5">
                 {partnerError && (
-                  <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{partnerError}</span>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
-                    Nama PIC / Kontak <span className="text-rose-500">*</span>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                    Nama PIC / Kontak <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -1339,13 +1339,13 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     placeholder="Nama Anda"
                     value={partnerName}
                     onChange={(e) => setPartnerName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs focus:outline-none focus:border-indigo-500 transition"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 placeholder:text-slate-400 text-xs focus:bg-white focus:outline-none focus:border-rose-500 transition"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
-                    Nomor WhatsApp <span className="text-rose-500">*</span>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                    Nomor WhatsApp <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="tel"
@@ -1353,12 +1353,12 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     placeholder="0812xxxxxx"
                     value={partnerPhone}
                     onChange={(e) => setPartnerPhone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs font-mono focus:outline-none focus:border-indigo-500 transition"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 placeholder:text-slate-400 text-xs font-mono focus:bg-white focus:outline-none focus:border-rose-500 transition"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-stone-300 uppercase tracking-wider block">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
                     Catatan / Rencana Kolaborasi
                   </label>
                   <textarea
@@ -1366,14 +1366,14 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     placeholder="Tuliskan rencana kerja sama atau kolaborasi Anda..."
                     value={partnerNotes}
                     onChange={(e) => setPartnerNotes(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-white placeholder:text-stone-500 text-xs resize-none focus:outline-none focus:border-indigo-500 transition"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 placeholder:text-slate-400 text-xs resize-none focus:bg-white focus:outline-none focus:border-rose-500 transition"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={isSubmittingPartner}
-                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-950/40"
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                 >
                   {isSubmittingPartner ? (
                     <>
@@ -1395,36 +1395,36 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
 
       {/* 4. Modal Ketentuan Sewa */}
       {activeModal === 'ketentuan' && (
-        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-stone-900 max-w-md w-full rounded-3xl border border-stone-800 p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FFFDF7] max-w-md w-full rounded-3xl border border-amber-200 p-6 space-y-4 shadow-2xl relative text-slate-800">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-white rounded-full hover:bg-stone-800"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-amber-100 transition"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-emerald-400">
+            <div className="flex items-center gap-2 text-emerald-600">
               <Info className="w-5 h-5" />
-              <h3 className="text-base font-black text-white">Ketentuan Peminjaman Alat Shabu &amp; BBQ</h3>
+              <h3 className="text-base font-black text-slate-900">Ketentuan Peminjaman Alat Shabu &amp; BBQ</h3>
             </div>
 
-            <div className="space-y-2 text-xs text-stone-300 leading-relaxed">
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800 space-y-1">
-                <span className="font-bold text-white">1. Alat Dipinjamkan Lengkap:</span>
-                <p className="text-stone-400">
+            <div className="space-y-2 text-xs text-slate-700 leading-relaxed">
+              <div className="p-3 rounded-xl bg-white border border-amber-200/80 space-y-1 shadow-xs">
+                <span className="font-bold text-slate-900">1. Alat Dipinjamkan Lengkap:</span>
+                <p className="text-slate-600">
                   Kompor portable, gas kaleng, grill pan/panci sekat 2 rasa, capitan, centong, dan set alat makan mangkok sumpit.
                 </p>
               </div>
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800 space-y-1">
-                <span className="font-bold text-emerald-400">2. 100% BEBAS CUCI:</span>
-                <p className="text-stone-400">
+              <div className="p-3 rounded-xl bg-white border border-amber-200/80 space-y-1 shadow-xs">
+                <span className="font-bold text-emerald-700">2. 100% BEBAS CUCI:</span>
+                <p className="text-slate-600">
                   Selesai santap, simpan kembali alat di dalam box pengantaran dalam kondisi kotor. Driver kami yang akan mengambil.
                 </p>
               </div>
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800 space-y-1">
-                <span className="font-bold text-white">3. Waktu Peminjaman:</span>
-                <p className="text-stone-400">
+              <div className="p-3 rounded-xl bg-white border border-amber-200/80 space-y-1 shadow-xs">
+                <span className="font-bold text-slate-900">3. Waktu Peminjaman:</span>
+                <p className="text-slate-600">
                   Maksimal 24 jam setelah pengantaran. Jadwal penjemputan disesuaikan saat check-out villa.
                 </p>
               </div>
@@ -1433,7 +1433,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
             <button
               type="button"
               onClick={() => setActiveModal(null)}
-              className="w-full py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs transition text-center cursor-pointer"
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs transition text-center cursor-pointer shadow-sm"
             >
               Saya Mengerti &bull; Lanjut Belanja
             </button>

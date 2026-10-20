@@ -94,7 +94,23 @@ export async function generateMetadata({
       null;
 
     const storeTitle = store?.name || metaObj.store_name || storeName;
+    const isPublicService =
+      metaObj.business_type === 'B2G' ||
+      metaObj.business_type === 'public_service' ||
+      metaObj.category === 'public_service' ||
+      metaObj.category === 'civic';
+
+    const pageTitle =
+      metaObj.meta_title ||
+      metaObj.seo?.title ||
+      metaObj.seo_title ||
+      (metaObj.tagline ? `${storeTitle} - ${metaObj.tagline}` : null) ||
+      `${storeTitle} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
+
     const storeDesc =
+      metaObj.meta_description ||
+      metaObj.seo?.description ||
+      metaObj.seo_description ||
       metaObj.description ||
       metaObj.bio ||
       metaObj.tagline ||
@@ -126,7 +142,8 @@ export async function generateMetadata({
       }
     }
 
-    const rawOgImage = explicitOgImage || bannerUrl || storeLogo || firstProductImage || '/default-og.png';
+    // Jika tenant memiliki logo resmi, prioritaskan agar preview WhatsApp menampilkan identitas tenant
+    const rawOgImage = explicitOgImage || storeLogo || bannerUrl || firstProductImage || '/default-og.png';
 
     // Normalisasi URL gambar ke Absolute URL kanonikal yang valid untuk bot crawler WhatsApp / Facebook
     let resolvedOgImage = rawOgImage;
@@ -147,13 +164,7 @@ export async function generateMetadata({
         ? 'image/webp'
         : 'image/png';
 
-    const isPublicService =
-      metaObj.business_type === 'B2G' ||
-      metaObj.business_type === 'public_service' ||
-      metaObj.category === 'public_service' ||
-      metaObj.category === 'civic';
-
-    const pageTitle = `${storeTitle} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
+    const ogTitle = metaObj.meta_title || metaObj.seo?.title || pageTitle;
 
     return {
       metadataBase: new URL(canonicalBaseUrl),
@@ -165,7 +176,7 @@ export async function generateMetadata({
         apple: resolvedLogo || '/favicon.ico',
       },
       openGraph: {
-        title: storeTitle,
+        title: ogTitle,
         description: storeDesc,
         url: canonicalUrl,
         siteName: storeTitle,
@@ -177,13 +188,13 @@ export async function generateMetadata({
             width: 1200,
             height: 630,
             type: imageMimeType,
-            alt: storeTitle,
+            alt: ogTitle,
           },
         ],
       },
       twitter: {
         card: 'summary_large_image',
-        title: storeTitle,
+        title: ogTitle,
         description: storeDesc,
         images: [resolvedOgImage],
       },

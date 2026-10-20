@@ -103,21 +103,29 @@ export async function getStoreShippingConfig(
         false
       );
 
+      const fnbKitchen = biteshipCfg.fnb_settings?.kitchen_address;
+      const resolvedPickup =
+        (selfPickup.address && selfPickup.address !== 'Dapur Utama / Outlet Resto' ? selfPickup.address : null) ||
+        (biteshipCfg.pickup_address && biteshipCfg.pickup_address !== 'Dapur Utama / Outlet Resto' ? biteshipCfg.pickup_address : null) ||
+        fnbKitchen ||
+        origin.address ||
+        null;
+
       return {
         tenant_slug: cleanSlug,
         is_self_pickup_enabled: isEnabled,
-        pickup_address: selfPickup.address || biteshipCfg.pickup_address || origin.address || null,
+        pickup_address: resolvedPickup,
         pickup_maps_url: selfPickup.maps_url || biteshipCfg.pickup_maps_url || null,
         pickup_operational_hours: selfPickup.operational_hours || biteshipCfg.pickup_operational_hours || null,
         pickup_instructions: selfPickup.instructions || biteshipCfg.pickup_instructions || null,
-        origin_address: origin.address || null,
+        origin_address: origin.address || fnbKitchen || null,
         origin_city: origin.city || null,
         origin_district: origin.district || null,
         origin_postal_code: origin.postal_code || null,
       };
     }
 
-    // 3. Fallback ke tenants.metadata.shipping_config
+    // 3. Fallback ke tenants.metadata.shipping_config & warehouse_address
     const { data: tenantRow } = await supabase
       .from('tenants')
       .select('id, metadata')
@@ -127,7 +135,35 @@ export async function getStoreShippingConfig(
     if (tenantRow?.metadata) {
       const meta = tenantRow.metadata;
       const shipMeta = meta.shipping_config || meta.store_shipping_config || {};
-      const selfPickup = shipMeta.self_pickup || {};
+      const selfPickup = shipMeta.self_pickup || meta.self_pickup_config || {};
+
+      const warehouseAddr =
+        typeof meta.warehouse_address === 'string'
+          ? meta.warehouse_address
+          : meta.warehouse_address?.address;
+
+      const resolvedOrigin =
+        shipMeta.origin?.address ||
+        warehouseAddr ||
+        meta.basic_shipping?.origin_address ||
+        meta.shipping_config?.fnb_settings?.kitchen_address ||
+        meta.fnb_settings?.kitchen_address ||
+        meta.kitchen_address ||
+        meta.store_address ||
+        meta.address ||
+        meta.origin_address ||
+        null;
+
+      const rawPickup =
+        selfPickup.address ||
+        shipMeta.pickup_address ||
+        meta.self_pickup_config?.pickup_address ||
+        meta.pickup_address;
+
+      const resolvedPickup =
+        rawPickup && rawPickup !== 'Dapur Utama / Outlet Resto'
+          ? rawPickup
+          : (resolvedOrigin || rawPickup || null);
 
       return {
         tenant_id: tenantRow.id,
@@ -135,15 +171,16 @@ export async function getStoreShippingConfig(
         is_self_pickup_enabled: Boolean(
           selfPickup.is_enabled ??
           shipMeta.is_self_pickup_enabled ??
+          meta.self_pickup_config?.is_enabled ??
           meta.is_self_pickup_enabled ??
           false
         ),
-        pickup_address: selfPickup.address || shipMeta.pickup_address || shipMeta.origin?.address || meta.pickup_address || null,
-        pickup_maps_url: selfPickup.maps_url || shipMeta.pickup_maps_url || meta.pickup_maps_url || null,
-        pickup_operational_hours: selfPickup.operational_hours || shipMeta.pickup_operational_hours || meta.pickup_operational_hours || null,
-        pickup_instructions: selfPickup.instructions || shipMeta.pickup_instructions || meta.pickup_instructions || null,
-        origin_address: shipMeta.origin?.address || meta.origin_address || null,
-        origin_city: shipMeta.origin?.city || null,
+        pickup_address: resolvedPickup,
+        pickup_maps_url: selfPickup.maps_url || shipMeta.pickup_maps_url || meta.self_pickup_config?.pickup_maps_url || meta.pickup_maps_url || null,
+        pickup_operational_hours: selfPickup.operational_hours || shipMeta.pickup_operational_hours || meta.self_pickup_config?.pickup_operational_hours || meta.pickup_operational_hours || null,
+        pickup_instructions: selfPickup.instructions || shipMeta.pickup_instructions || meta.self_pickup_config?.pickup_instructions || meta.pickup_instructions || null,
+        origin_address: resolvedOrigin,
+        origin_city: shipMeta.origin?.city || meta.basic_shipping?.origin_city || null,
         origin_district: shipMeta.origin?.district || null,
         origin_postal_code: shipMeta.origin?.postal_code || null,
       };
@@ -238,6 +275,55 @@ export async function saveStoreShippingConfig(
         },
         { onConflict: 'tenant_slug' }
       );
+
+    // 3. Sinkronkan ke tenants.metadata
+    try {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('metadata')
+        .eq('slug', cleanSlug)
+        .maybeSingle();
+
+      if (tenantRow) {
+        const currentMeta = tenantRow.metadata || {};
+        const updatedMeta = {
+          ...currentMeta,
+          pickup_address: pickupAddress,
+          pickup_maps_url: config.pickup_maps_url || null,
+          pickup_operational_hours: config.pickup_operational_hours || null,
+          self_pickup_config: {
+            ...(currentMeta.self_pickup_config || {}),
+            is_enabled: isEnabled,
+            pickup_address: pickupAddress,
+            pickup_maps_url: config.pickup_maps_url || null,
+            pickup_operational_hours: config.pickup_operational_hours || null,
+            pickup_instructions: config.pickup_instructions || null,
+          },
+          shipping_config: {
+            ...(currentMeta.shipping_config || {}),
+            is_self_pickup_enabled: isEnabled,
+            pickup_address: pickupAddress,
+            pickup_maps_url: config.pickup_maps_url || null,
+            pickup_operational_hours: config.pickup_operational_hours || null,
+            pickup_instructions: config.pickup_instructions || null,
+            self_pickup: {
+              is_enabled: isEnabled,
+              address: pickupAddress,
+              maps_url: config.pickup_maps_url || null,
+              operational_hours: config.pickup_operational_hours || null,
+              instructions: config.pickup_instructions || null,
+            },
+          },
+        };
+
+        await supabase
+          .from('tenants')
+          .update({ metadata: updatedMeta, updated_at: now })
+          .eq('slug', cleanSlug);
+      }
+    } catch (metaErr) {
+      console.warn('[Self-Pickup Config] Note updating tenants metadata:', metaErr);
+    }
 
     return {
       success: true,

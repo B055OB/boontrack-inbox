@@ -82,9 +82,9 @@ export default function BiteshipCourierConfig({
   }, [isFnbCateringProp]);
 
   // Origin Warehouse Info
-  const [senderName, setSenderName] = useState('Admin Gudang OnlineBoost');
-  const [senderPhone, setSenderPhone] = useState('081298765432');
-  const [originAddress, setOriginAddress] = useState('Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2');
+  const [senderName, setSenderName] = useState(displayName ? `Admin Gudang ${displayName}` : 'Admin Gudang');
+  const [senderPhone, setSenderPhone] = useState('');
+  const [originAddress, setOriginAddress] = useState('');
   const [originCity, setOriginCity] = useState('Kota Bandung');
   const [originDistrict, setOriginDistrict] = useState('Rancasari');
   const [originPostalCode, setOriginPostalCode] = useState('40286');
@@ -144,13 +144,15 @@ export default function BiteshipCourierConfig({
             .eq('tenant_slug', tenantSlug)
             .maybeSingle();
 
-          if (data?.biteship_config) {
-            const cfg = data.biteship_config;
+          const cfg = data?.biteship_config;
+          if (cfg) {
             setIsEnabled(cfg.is_enabled ?? true);
             if (cfg.origin) {
-              setSenderName(cfg.origin.sender_name || 'Admin Gudang OnlineBoost');
-              setSenderPhone(cfg.origin.sender_phone || '081298765432');
-              setOriginAddress(cfg.origin.address || 'Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2');
+              setSenderName(cfg.origin.sender_name || (displayName ? `Admin Gudang ${displayName}` : 'Admin Gudang'));
+              setSenderPhone(cfg.origin.sender_phone || '');
+              if (cfg.origin.address && !cfg.origin.address.includes('Soekarno Hatta')) {
+                setOriginAddress(cfg.origin.address);
+              }
               setOriginCity(cfg.origin.city || 'Kota Bandung');
               setOriginDistrict(cfg.origin.district || 'Rancasari');
               setOriginPostalCode(cfg.origin.postal_code || '40286');
@@ -171,18 +173,54 @@ export default function BiteshipCourierConfig({
             }
           }
 
-          // Also check tenants table metadata for Lincah config & fnb_catering flag
+          // Check tenants table metadata for dynamic origin, warehouse address & fnb_catering
           const { data: tenantRow } = await supabase
             .from('tenants')
             .select('metadata')
             .eq('slug', tenantSlug)
             .maybeSingle();
 
-          if (tenantRow?.metadata?.fnb_catering === true || tenantRow?.metadata?.vertical === 'fnb-culinary') {
+          const meta = tenantRow?.metadata || {};
+
+          if (meta.fnb_catering === true || meta.vertical === 'fnb-culinary' || isFnbCateringProp) {
             setIsFnbCatering(true);
           }
 
-          const tLincah = tenantRow?.metadata?.shipping_config?.lincah || tenantRow?.metadata?.lincah_config || tenantRow?.metadata?.shipping_settings;
+          const fnbKitchen =
+            cfg?.fnb_settings?.kitchen_address ||
+            meta.shipping_config?.fnb_settings?.kitchen_address ||
+            meta.fnb_settings?.kitchen_address;
+
+          const warehouseAddr =
+            typeof meta.warehouse_address === 'string'
+              ? meta.warehouse_address
+              : meta.warehouse_address?.address;
+
+          const basicShipping = meta.basic_shipping?.origin_address;
+          const kitchenAddr = meta.kitchen_address;
+          const storeAddr = meta.store_address || meta.address || (tenantRow as any)?.address;
+
+          // Prioritaskan alamat gudang / dapur riil dari profil database
+          const dynamicOrigin =
+            (cfg?.origin?.address && !cfg.origin.address.includes('Soekarno Hatta') ? cfg.origin.address : '') ||
+            (fnbKitchen && fnbKitchen !== 'Dapur Utama / Outlet Resto' ? fnbKitchen : '') ||
+            warehouseAddr ||
+            basicShipping ||
+            kitchenAddr ||
+            storeAddr ||
+            '';
+
+          if (dynamicOrigin) {
+            setOriginAddress(dynamicOrigin);
+          }
+          if (meta.basic_shipping?.origin_city) {
+            setOriginCity(meta.basic_shipping.origin_city);
+          }
+          if (meta.whatsapp_number || meta.phone) {
+            setSenderPhone((prev) => prev || meta.whatsapp_number || meta.phone || '');
+          }
+
+          const tLincah = meta.shipping_config?.lincah || meta.lincah_config || meta.shipping_settings;
           if (tLincah?.api_key) {
             setLincahApiKey((prev) => prev || tLincah.api_key);
             setLincahApiKeyReadOnly((prev) => prev || tLincah.api_key_read_only || tLincah.secret || '');
@@ -193,16 +231,30 @@ export default function BiteshipCourierConfig({
           const storeShipping = await getStoreShippingConfig(tenantSlug, supabase);
           if (storeShipping) {
             setIsSelfPickupEnabled(storeShipping.is_self_pickup_enabled);
-            if (storeShipping.pickup_address) {
+            const isPlaceholder =
+              !storeShipping.pickup_address ||
+              storeShipping.pickup_address === 'Dapur Utama / Outlet Resto' ||
+              storeShipping.pickup_address.includes('Soekarno Hatta');
+
+            if (!isPlaceholder && storeShipping.pickup_address) {
               setPickupAddress(storeShipping.pickup_address);
-              setUseOriginAsPickup(storeShipping.pickup_address === (storeShipping.origin_address || originAddress));
+              setUseOriginAsPickup(
+                storeShipping.pickup_address === (storeShipping.origin_address || dynamicOrigin)
+              );
+            } else {
+              setPickupAddress(dynamicOrigin || '');
+              setUseOriginAsPickup(true);
             }
+
             if (storeShipping.pickup_maps_url) {
               setPickupMapsUrl(storeShipping.pickup_maps_url);
             }
             if (storeShipping.pickup_instructions || storeShipping.pickup_operational_hours) {
               setPickupInstructions(storeShipping.pickup_instructions || storeShipping.pickup_operational_hours || '');
             }
+          } else if (dynamicOrigin) {
+            setPickupAddress(dynamicOrigin);
+            setUseOriginAsPickup(true);
           }
         }
       } catch (err) {
@@ -210,7 +262,7 @@ export default function BiteshipCourierConfig({
       }
     }
     loadConfig();
-  }, [tenantSlug, displayName]);
+  }, [tenantSlug, displayName, isFnbCateringProp]);
 
   const toggleCourier = (id: string) => {
     setCouriers((prev) =>
@@ -225,52 +277,71 @@ export default function BiteshipCourierConfig({
 
     const effectivePickupAddress = useOriginAsPickup ? originAddress : (pickupAddress || originAddress);
 
-    const payload: any = {
-      is_enabled: isEnabled,
-      is_self_pickup_enabled: isSelfPickupEnabled,
-      pickup_address: effectivePickupAddress,
-      pickup_maps_url: pickupMapsUrl,
-      pickup_operational_hours: pickupInstructions,
-      pickup_instructions: pickupInstructions,
-      self_pickup: {
-        is_enabled: isSelfPickupEnabled,
-        address: effectivePickupAddress,
-        maps_url: pickupMapsUrl,
-        operational_hours: pickupInstructions,
-        instructions: pickupInstructions,
-      },
-      origin: {
-        sender_name: senderName,
-        sender_phone: senderPhone,
-        address: originAddress,
-        city: originCity,
-        district: originDistrict,
-        postal_code: originPostalCode,
-      },
-      couriers,
-      auto_pickup: autoPickup,
-      free_shipping_threshold: freeShippingThreshold,
-      routing_rules: {
-        instant: 'biteship',
-        regular: 'lincah',
-      },
-      ...(lincahApiKey ? {
-        lincah: {
-          provider: 'lincah',
-          status: 'connected',
-          is_connected: true,
-          api_key: lincahApiKey,
-          secret: lincahApiKeyReadOnly,
-          api_key_read_only: lincahApiKeyReadOnly,
-          updated_at: new Date().toISOString(),
-        }
-      } : {}),
-      updated_at: new Date().toISOString(),
-    };
-
     try {
       const supabase = getSupabase();
       if (supabase) {
+        // Ambil biteship_config saat ini untuk merge agar fnb_settings / fleet tidak hilang
+        const { data: currentSettings } = await supabase
+          .from('tenant_settings')
+          .select('biteship_config')
+          .eq('tenant_slug', tenantSlug)
+          .maybeSingle();
+
+        const currentBiteship = currentSettings?.biteship_config || {};
+
+        const payload: any = {
+          ...currentBiteship,
+          is_enabled: isEnabled,
+          is_self_pickup_enabled: isSelfPickupEnabled,
+          pickup_address: effectivePickupAddress,
+          pickup_maps_url: pickupMapsUrl,
+          pickup_operational_hours: pickupInstructions,
+          pickup_instructions: pickupInstructions,
+          self_pickup: {
+            is_enabled: isSelfPickupEnabled,
+            address: effectivePickupAddress,
+            maps_url: pickupMapsUrl,
+            operational_hours: pickupInstructions,
+            instructions: pickupInstructions,
+          },
+          origin: {
+            ...(currentBiteship.origin || {}),
+            sender_name: senderName,
+            sender_phone: senderPhone,
+            address: originAddress,
+            city: originCity,
+            district: originDistrict,
+            postal_code: originPostalCode,
+          },
+          couriers,
+          auto_pickup: autoPickup,
+          free_shipping_threshold: freeShippingThreshold,
+          routing_rules: {
+            ...(currentBiteship.routing_rules || {}),
+            instant: currentBiteship.routing_rules?.instant || 'biteship',
+            regular: currentBiteship.routing_rules?.regular || 'lincah',
+          },
+          ...(lincahApiKey ? {
+            lincah: {
+              provider: 'lincah',
+              status: 'connected',
+              is_connected: true,
+              api_key: lincahApiKey,
+              secret: lincahApiKeyReadOnly,
+              api_key_read_only: lincahApiKeyReadOnly,
+              updated_at: new Date().toISOString(),
+            }
+          } : {}),
+          updated_at: new Date().toISOString(),
+        };
+
+        if (isFnbCatering) {
+          payload.fnb_settings = {
+            ...(currentBiteship.fnb_settings || {}),
+            kitchen_address: originAddress || currentBiteship.fnb_settings?.kitchen_address || '',
+          };
+        }
+
         await supabase
           .from('tenant_settings')
           .upsert(
@@ -282,7 +353,7 @@ export default function BiteshipCourierConfig({
             { onConflict: 'tenant_slug' }
           );
 
-        // Synchronize to store_shipping_configs table
+        // 2. Synchronize to store_shipping_configs table
         await saveStoreShippingConfig({
           tenant_slug: tenantSlug,
           is_self_pickup_enabled: isSelfPickupEnabled,
@@ -295,14 +366,59 @@ export default function BiteshipCourierConfig({
           origin_district: originDistrict,
           origin_postal_code: originPostalCode,
         }, supabase);
+
+        // 3. Synchronize to tenants.metadata for universal storefront access
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow) {
+          const currentMeta = tenantRow.metadata || {};
+          const updatedMeta = {
+            ...currentMeta,
+            pickup_address: effectivePickupAddress,
+            pickup_maps_url: pickupMapsUrl,
+            pickup_operational_hours: pickupInstructions,
+            self_pickup_config: {
+              ...(currentMeta.self_pickup_config || {}),
+              is_enabled: isSelfPickupEnabled,
+              pickup_address: effectivePickupAddress,
+              pickup_maps_url: pickupMapsUrl,
+              pickup_operational_hours: pickupInstructions,
+              pickup_instructions: pickupInstructions,
+            },
+            shipping_config: {
+              ...(currentMeta.shipping_config || {}),
+              is_self_pickup_enabled: isSelfPickupEnabled,
+              pickup_address: effectivePickupAddress,
+              pickup_maps_url: pickupMapsUrl,
+              pickup_operational_hours: pickupInstructions,
+              pickup_instructions: pickupInstructions,
+              self_pickup: {
+                is_enabled: isSelfPickupEnabled,
+                address: effectivePickupAddress,
+                maps_url: pickupMapsUrl,
+                operational_hours: pickupInstructions,
+                instructions: pickupInstructions,
+              },
+            },
+          };
+
+          await supabase
+            .from('tenants')
+            .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
+            .eq('slug', tenantSlug);
+        }
       }
 
-      setFeedback('✅ Pengaturan Logistik & Ekspedisi berhasil disimpan!');
-      if (onSaved) onSaved('✅ Pengaturan Logistik & Ekspedisi berhasil disimpan!');
+      setFeedback('✅ Pengaturan Logistik & Lokasi Pickup berhasil disimpan!');
+      if (onSaved) onSaved('✅ Pengaturan Logistik & Lokasi Pickup berhasil disimpan!');
       setTimeout(() => setFeedback(null), 4000);
-    } catch {
-      setFeedback('✅ Pengaturan disimpan secara lokal.');
-      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      setFeedback(`❌ Gagal menyimpan: ${err?.message || 'Error'}`);
+      setTimeout(() => setFeedback(null), 4000);
     } finally {
       setSaving(false);
     }
@@ -838,7 +954,7 @@ export default function BiteshipCourierConfig({
                   type="text"
                   value={originAddress}
                   onChange={(e) => setOriginAddress(e.target.value)}
-                  placeholder="Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2"
+                  placeholder="Contoh: Jl. Dadali Campernik 1 No. 3 Bojongsoang"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
