@@ -165,6 +165,56 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
             error: null,
           };
         }
+        if (procName === 'fn_reserve_studio_credits') {
+          const { p_tenant_id, p_cost, p_job_id, p_idempotency_key, p_actor_id, p_actor_role } = args || {};
+          const currentBal = inMemoryEntitlements[p_tenant_id]?.credits_remaining ?? 50;
+          if (currentBal < p_cost) {
+            return {
+              data: [
+                {
+                  success: false,
+                  status_code: 'INSUFFICIENT_CREDITS',
+                  remaining_credits: currentBal,
+                  is_unlimited: false,
+                  message: `Render Credits Anda tidak mencukupi (Butuh ${p_cost} Credits). Silakan lakukan top-up kredit.`,
+                },
+              ],
+              error: null,
+            };
+          }
+
+          const newBal = currentBal - p_cost;
+          if (inMemoryEntitlements[p_tenant_id]) {
+            inMemoryEntitlements[p_tenant_id].credits_remaining = newBal;
+          }
+
+          inMemoryLedger.push({
+            id: `reserve-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            tenant_id: p_tenant_id,
+            job_id: p_job_id,
+            idempotency_key: p_idempotency_key,
+            amount: -p_cost,
+            balance_after: newBal,
+            type: 'RESERVE',
+            action: 'STUDIO_RENDER_JOB',
+            actor_id: p_actor_id || 'STUDIO_RENDER',
+            actor_role: p_actor_role || 'CREATOR',
+            reason: 'Hold credits for render job',
+            description: 'Hold credits for render job',
+          });
+
+          return {
+            data: [
+              {
+                success: true,
+                status_code: 'RESERVED_SUCCESS',
+                remaining_credits: newBal,
+                is_unlimited: false,
+              },
+            ],
+            error: null,
+          };
+        }
         return { data: null, error: null };
       }),
       from: jest.fn().mockImplementation((table: string) => {
@@ -186,26 +236,23 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
             return { data: null, error: null };
           }),
           update: jest.fn().mockImplementation((updatePayload: any) => {
-            return {
-              eq: jest.fn().mockImplementation(async (col: string, val: any) => {
+            const updateBuilder: any = {
+              eq: jest.fn().mockImplementation((col: string, val: any) => {
                 if (table === 'tenant_entitlements' && col === 'tenant_id') {
                   if (inMemoryEntitlements[val]) {
                     Object.assign(inMemoryEntitlements[val], updatePayload);
                   }
-                  return { data: inMemoryEntitlements[val], error: null };
                 }
                 if (table === 'studio_jobs' && col === 'id') {
                   if (inMemoryJobs[val]) {
                     Object.assign(inMemoryJobs[val], updatePayload);
                   }
-                  return { data: inMemoryJobs[val], error: null };
                 }
-                if (table === 'tenant_credit_ledger') {
-                  return { data: null, error: null };
-                }
-                return { data: null, error: null };
+                return updateBuilder;
               }),
+              then: (resolve: any) => resolve({ data: null, error: null }),
             };
+            return updateBuilder;
           }),
           eq: jest.fn().mockImplementation((col: string, val: any) => {
             currentEqFilters[col] = val;

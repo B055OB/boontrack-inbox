@@ -210,120 +210,67 @@ export class StudioCreditService {
       };
     }
 
-    // 2. Call RPC fn_reserve_studio_credits
-    try {
-      const { data: rpcData, error: rpcError } = await supabase.rpc('fn_reserve_studio_credits', {
-        p_tenant_id: tenant.id,
-        p_cost: amount,
-        p_job_id: resolvedJobId,
-        p_idempotency_key: idempotencyKey,
-        p_actor_id: 'STUDIO_RENDER',
-        p_actor_role: 'CREATOR',
-      });
+    // 2. Call RPC fn_reserve_studio_credits (Strict Atomic Transaction, Zero Non-Atomic Fallback)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('fn_reserve_studio_credits', {
+      p_tenant_id: tenant.id,
+      p_cost: amount,
+      p_job_id: resolvedJobId,
+      p_idempotency_key: idempotencyKey,
+      p_actor_id: 'STUDIO_RENDER',
+      p_actor_role: 'CREATOR',
+    });
 
-      if (!rpcError && rpcData) {
-        const resultItem = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-        if (resultItem && resultItem.success === false) {
-          const isInsufficient = resultItem.status_code === 'INSUFFICIENT_CREDITS';
-          return {
-            success: false,
-            statusCode: isInsufficient ? 402 : 400,
-            message: resultItem.message || `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits). Silakan lakukan top-up kredit.`,
-            credits_remaining: resultItem.remaining_credits ?? 0,
-          };
-        }
-
-        const remaining = typeof resultItem === 'number'
-          ? resultItem
-          : (resultItem.remaining_credits ?? resultItem.new_balance ?? 0);
-
-        // Enrich newly inserted ledger row with action and metadata
-        try {
-          await supabase
-            .from('tenant_credit_ledger')
-            .update({
-              action: 'STUDIO_RENDER_JOB',
-              description,
-              balance_after: remaining,
-              metadata: {
-                event: 'STUDIO_RENDER_JOB',
-                type: 'CREDIT_OUT',
-                job_id: resolvedJobId,
-              },
-            })
-            .eq('job_id', resolvedJobId)
-            .eq('type', 'RESERVE');
-        } catch {}
-
-        return {
-          success: true,
-          statusCode: 200,
-          credits_remaining: remaining,
-          is_unlimited: false,
-        };
-      }
-    } catch {
-      // Fall through to atomic fallback
-    }
-
-    // 3. Direct Atomic Fallback via tenant_entitlements & tenant_credit_ledger
-    const currentBalance = entitlements?.credits_remaining ?? 0;
-    if (currentBalance < amount) {
-      return {
-        success: false,
-        statusCode: 402,
-        message: `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits, Tersedia: ${currentBalance}). Silakan lakukan top-up kredit.`,
-        credits_remaining: currentBalance,
-      };
-    }
-
-    const newBalance = currentBalance - amount;
-
-    const { error: updateErr } = await supabase
-      .from('tenant_entitlements')
-      .update({
-        credits_remaining: newBalance,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('tenant_id', tenant.id);
-
-    if (updateErr) {
+    if (rpcError) {
+      console.error('[StudioCreditService] Error executing fn_reserve_studio_credits RPC:', rpcError);
       return {
         success: false,
         statusCode: 500,
-        message: 'Gagal memperbarui saldo kredit render.',
+        message: `Gagal memproses reservasi kredit atomik: ${rpcError.message}`,
       };
     }
 
-    // Record into tenant_credit_ledger
+    const resultItem = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    if (!resultItem || resultItem.success === false) {
+      const isInsufficient = resultItem?.status_code === 'INSUFFICIENT_CREDITS';
+      return {
+        success: false,
+        statusCode: isInsufficient ? 402 : 400,
+        message:
+          resultItem?.message ||
+          `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits). Silakan lakukan top-up kredit.`,
+        credits_remaining: resultItem?.remaining_credits ?? 0,
+      };
+    }
+
+    const remaining = typeof resultItem === 'number'
+      ? resultItem
+      : (resultItem.remaining_credits ?? resultItem.new_balance ?? 0);
+
+    // Enrich newly inserted ledger row with action and metadata
     try {
-      await supabase.from('tenant_credit_ledger').insert({
-        tenant_id: tenant.id,
-        job_id: resolvedJobId,
-        idempotency_key: idempotencyKey,
-        amount: -amount,
-        balance_after: newBalance,
-        action: 'STUDIO_RENDER_JOB',
-        type: 'RESERVE',
-        actor_id: 'STUDIO_RENDER',
-        actor_role: 'CREATOR',
-        reason: 'STUDIO_RENDER_JOB',
-        description,
-        metadata: {
-          event: 'STUDIO_RENDER_JOB',
-          type: 'CREDIT_OUT',
-          job_id: resolvedJobId,
-        },
-      });
-    } catch (ledgerErr) {
-      console.warn('[StudioCreditService] Warning inserting into tenant_credit_ledger:', ledgerErr);
+      await supabase
+        .from('tenant_credit_ledger')
+        .update({
+          action: 'STUDIO_RENDER_JOB',
+          description,
+          balance_after: remaining,
+          metadata: {
+            event: 'STUDIO_RENDER_JOB',
+            type: 'CREDIT_OUT',
+            job_id: resolvedJobId,
+          },
+        })
+        .eq('job_id', resolvedJobId)
+        .eq('type', 'RESERVE');
+    } catch (enrichErr) {
+      console.warn('[StudioCreditService] Warning enriching reserve ledger row:', enrichErr);
     }
 
     return {
       success: true,
       statusCode: 200,
-      credits_remaining: newBalance,
-      is_unlimited: false,
+      credits_remaining: remaining,
+      is_unlimited: Boolean(resultItem.is_unlimited),
     };
   }
 
