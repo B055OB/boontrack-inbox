@@ -107,10 +107,63 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
           return { data: { user: null }, error: { message: 'Unknown token' } };
         }),
       },
-      rpc: jest.fn().mockImplementation(async (procName: string) => {
-        if (procName === 'fn_release_studio_credits') {
-          // Fall back to direct atomic fallback logic in StudioCreditService
-          return { data: null, error: { message: 'RPC not installed, using fallback' } };
+      rpc: jest.fn().mockImplementation(async (procName: string, args: any) => {
+        if (procName === 'refund_studio_credits_atomic') {
+          const { p_tenant_id, p_job_id, p_amount, p_idempotency_key, p_description } = args || {};
+          const existing = inMemoryLedger.find(
+            (entry) =>
+              (p_job_id && entry.job_id === p_job_id && entry.type === 'REFUND') ||
+              (p_idempotency_key && entry.idempotency_key === p_idempotency_key)
+          );
+
+          const currentBal = inMemoryEntitlements[p_tenant_id]?.credits_remaining ?? 50;
+
+          if (existing) {
+            return {
+              data: [
+                {
+                  success: true,
+                  already_refunded: true,
+                  credits_restored: 0,
+                  new_balance: currentBal,
+                  message: 'Job sudah pernah di-refund sebelumnya (Idempotent Hit)',
+                },
+              ],
+              error: null,
+            };
+          }
+
+          const restoreAmount = p_amount || 3;
+          const newBal = currentBal + restoreAmount;
+          if (inMemoryEntitlements[p_tenant_id]) {
+            inMemoryEntitlements[p_tenant_id].credits_remaining = newBal;
+          }
+
+          inMemoryLedger.push({
+            id: `refund-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            tenant_id: p_tenant_id,
+            job_id: p_job_id,
+            idempotency_key: p_idempotency_key,
+            amount: restoreAmount,
+            balance_after: newBal,
+            type: 'REFUND',
+            action: 'STUDIO_RENDER_JOB',
+            reason: 'RENDER_FAILED_OR_TIMEOUT',
+            description: p_description,
+          });
+
+          return {
+            data: [
+              {
+                success: true,
+                already_refunded: false,
+                credits_restored: restoreAmount,
+                new_balance: newBal,
+                message: 'Kredit berhasil dikembalikan secara atomik',
+              },
+            ],
+            error: null,
+          };
         }
         return { data: null, error: null };
       }),
