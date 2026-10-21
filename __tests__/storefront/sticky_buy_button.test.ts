@@ -138,4 +138,37 @@ describe('TASK P1: Mobile Storefront Sticky Buy Button & Scroll Jump Prevention'
       expect(focusOptions).toEqual({ preventScroll: true });
     });
   });
+
+  describe('5. Section #9 (Checkout & Voucher) & Floating CTA Visibility Guard', () => {
+    it('should define isCheckoutSectionDisabled guard in page.tsx checking single_page_config and metadata', () => {
+      expect(pageCode).toContain('const isCheckoutSectionDisabled = useMemo(() => {');
+      expect(pageCode).toContain('config.enable_payment === false');
+      expect(pageCode).toContain('(product?.single_page_config as any)?.enable_payment === false');
+      expect(pageCode).toContain('(product?.fulfillment_metadata?.single_page_config as any)?.enable_payment === false');
+    });
+
+    it('should completely hide Section #9 (payment_voucher) when isCheckoutSectionDisabled is true', () => {
+      expect(pageCode).toContain("case 'payment_voucher':");
+      expect(pageCode).toContain('if (isCheckoutSectionDisabled) {');
+      expect(pageCode).toContain('return null;');
+    });
+
+    it('should define hideFloatingCta guard respecting hide_floating_cta and isCheckoutSectionDisabled', () => {
+      expect(pageCode).toContain('const hideFloatingCta = useMemo(() => {');
+      expect(pageCode).toContain('product.metadata?.hide_floating_cta === true');
+      expect(pageCode).toContain('isCheckoutSectionDisabled');
+    });
+
+    it('should conditionally render StickyBuyButton only when !hideFloatingCta', () => {
+      expect(pageCode).toContain('{!hideFloatingCta && (');
+      expect(pageCode).toContain('<StickyBuyButton');
+    });
+
+    it('should ensure SinglePageBuilderModal has toggle for hide_floating_cta', () => {
+      const modalCode = fs.readFileSync(path.join(process.cwd(), 'app/[tenant]/dashboard/components/SinglePageBuilderModal.tsx'), 'utf-8');
+      expect(modalCode).toContain('hide_floating_cta');
+      expect(modalCode).toContain('Sembunyikan Sticky CTA Bar Bawah (Floating Button)');
+    });
+  });
 });
+

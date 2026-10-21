@@ -71,30 +71,30 @@ function SectionToggleHeader({
       className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
         enabled
           ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-200'
-          : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
+          : 'bg-slate-100 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200'
       }`}
     >
       <div className="space-y-0.5 min-w-0">
         <div className="flex items-center gap-2">
           <span
             className={`inline-block w-2.5 h-2.5 rounded-full ${
-              enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'
+              enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
             }`}
           />
-          <h4 className="text-xs font-black tracking-tight text-white">
+          <h4 className="text-xs font-black tracking-tight text-slate-900 dark:text-white">
             Aktifkan Section Ini (Tampil di Halaman)
           </h4>
           <span
             className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
               enabled
                 ? 'bg-indigo-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                : 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
             }`}
           >
             {enabled ? 'Aktif' : 'Nonaktif'}
           </span>
         </div>
-        <p className="text-[11px] text-slate-400 leading-tight">
+        <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-tight">
           {description}
         </p>
       </div>
@@ -404,10 +404,14 @@ export default function SinglePageBuilderModal({
                         </button>
                       </div>
 
-                      <span className="text-[11px] shrink-0 font-mono font-bold text-slate-400">#{idx + 1}</span>
+                      <span className="text-[11px] shrink-0 font-mono font-bold text-slate-500 dark:text-slate-400">#{idx + 1}</span>
                       <span className="text-sm shrink-0">{tab.icon}</span>
-                      <span className={`truncate text-xs font-bold text-slate-200 hover:text-white ${
-                        isActive ? 'text-indigo-300 font-black' : ''
+                      <span className={`truncate text-xs font-bold transition-colors ${
+                        isActive
+                          ? 'text-indigo-600 dark:text-indigo-300 font-black'
+                          : isEnabled
+                          ? 'text-slate-900 dark:text-slate-100'
+                          : 'text-slate-700 dark:text-slate-300 font-semibold'
                       }`}>
                         {tab.label.replace(/^(#?\d+[\.\s]*)/, '')}
                       </span>
@@ -425,8 +429,8 @@ export default function SinglePageBuilderModal({
                       }}
                       className={`ml-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
                         isEnabled
-                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800 hover:bg-emerald-900/60'
-                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-200 dark:hover:bg-emerald-900/60'
+                          : 'bg-slate-200 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-700'
                       }`}
                       title={`Klik untuk On/Off: ${isEnabled ? 'Aktif' : 'Nonaktif'}`}
                     >
@@ -2046,6 +2050,46 @@ export default function SinglePageBuilderModal({
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
+              {/* Opsi Sembunyikan Floating CTA Bar Bawah */}
+              <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black tracking-tight text-slate-900 dark:text-white">
+                      Sembunyikan Sticky CTA Bar Bawah (Floating Button)
+                    </h4>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        (singlePageForm as any).hide_floating_cta || (singlePageForm as any).enable_sticky_button === false
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      {(singlePageForm as any).hide_floating_cta || (singlePageForm as any).enable_sticky_button === false ? 'Tersembunyi' : 'Tampil'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                    Jika diaktifkan, tombol aksi melayang di bagian paling bawah layar tidak akan dimunculkan ke pengunjung.
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean((singlePageForm as any).hide_floating_cta || (singlePageForm as any).enable_sticky_button === false)}
+                    onChange={(e) => {
+                      const isHide = e.target.checked;
+                      setSinglePageForm((p: any) => ({
+                        ...p,
+                        hide_floating_cta: isHide,
+                        enable_sticky_button: !isHide,
+                      }));
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                 </label>
               </div>
 

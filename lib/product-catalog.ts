@@ -103,6 +103,7 @@ export interface SinglePageConfig {
   enable_offer?: boolean;             // default: true
   enable_faq?: boolean;               // default: false
   enable_payment?: boolean;           // default: true
+  hide_floating_cta?: boolean;        // default: false
   enable_custom_html?: boolean;       // default: false
   is_custom_html_enabled?: boolean;   // default: false
   use_custom_html?: boolean;          // flag for custom html mode

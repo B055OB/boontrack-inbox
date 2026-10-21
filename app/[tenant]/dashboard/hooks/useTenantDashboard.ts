@@ -1937,6 +1937,7 @@ export function useTenantDashboard() {
             : ['custom_html', 'payment_voucher'],
           checkout_mode: (cleanSpForm as any).checkout_mode || 'inline',
           enable_sticky_button: (cleanSpForm as any).enable_sticky_button,
+          hide_floating_cta: Boolean((cleanSpForm as any).hide_floating_cta),
         }
       : {
           enable_custom_html: Boolean(cleanSpForm.enable_custom_html),
@@ -1952,6 +1953,8 @@ export function useTenantDashboard() {
       checkout_action_mode: cleanSpForm.checkout_action_mode || 'DIRECT',
       whatsapp_custom_message: cleanSpForm.whatsapp_custom_message || '',
       whatsapp_number: cleanSpForm.whatsapp_number || '',
+      hide_floating_cta: Boolean((cleanSpForm as any).hide_floating_cta),
+      enable_sticky_button: (cleanSpForm as any).enable_sticky_button,
     });
 
     // Pertahankan local state form agar tidak mental balik
@@ -1997,6 +2000,8 @@ export function useTenantDashboard() {
             use_custom_html: updatedConfig.use_custom_html,
             custom_html: updatedConfig.custom_html,
             sections_override: updatedConfig.sections_override,
+            hide_floating_cta: Boolean((cleanSpForm as any).hide_floating_cta),
+            enable_sticky_button: (cleanSpForm as any).enable_sticky_button,
           },
         });
         updatedTargetProduct = updatedItem;
