@@ -1,6 +1,7 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
@@ -457,7 +458,19 @@ export async function POST(
         }
       );
     } catch (railwayErr) {
-      console.warn('Railway backend product save sync note:', railwayErr);
+      console.warn('[Products Route] Core backend sync skipped:', railwayErr);
+    }
+
+    // Instant Next.js ISR Cache Revalidation for Storefront & Product Pages
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}`, 'page');
+      revalidatePath(`/${slug}`, 'layout');
+      revalidatePath(`/${slug}/p/[slug]`, 'page');
+      revalidatePath('/[tenant]', 'page');
+      revalidatePath('/[tenant]', 'layout');
+    } catch (revalErr) {
+      console.debug('[Products Route] Cache revalidation note:', revalErr);
     }
 
     return NextResponse.json({
@@ -572,7 +585,19 @@ export async function DELETE(
         }
       );
     } catch (railwayErr) {
-      console.warn('Railway backend product delete sync note:', railwayErr);
+      console.warn('[Products Route] Core backend sync skipped:', railwayErr);
+    }
+
+    // Instant Next.js ISR Cache Revalidation for Storefront & Product Pages
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}`, 'page');
+      revalidatePath(`/${slug}`, 'layout');
+      revalidatePath(`/${slug}/p/[slug]`, 'page');
+      revalidatePath('/[tenant]', 'page');
+      revalidatePath('/[tenant]', 'layout');
+    } catch (revalErr) {
+      console.debug('[Products Route] Cache revalidation note:', revalErr);
     }
 
     return NextResponse.json({
@@ -604,20 +629,39 @@ export async function GET(
         .maybeSingle();
 
       let products: any[] = Array.isArray(tenantRow?.metadata?.products)
-        ? tenantRow.metadata.products
-        : (tenantRow?.metadata?.product && tenantRow.metadata.product.name && tenantRow.metadata.product.name !== slug)
+        ? tenantRow.metadata.products.filter((p: any) => {
+            if (!p || typeof p !== 'object') return false;
+            if (p.is_active === false || p.is_active === 'false' || p.is_active === 0 || p.is_active === '0') return false;
+            const st = typeof p.status === 'string' ? p.status.toLowerCase().trim() : '';
+            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
+            return true;
+          })
+        : (tenantRow?.metadata?.product &&
+           tenantRow.metadata.product.name &&
+           tenantRow.metadata.product.name !== slug &&
+           tenantRow.metadata.product.is_active !== false &&
+           !['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(String(tenantRow.metadata.product.status || '').toLowerCase().trim()))
         ? [tenantRow.metadata.product]
         : [];
 
-      // Query juga dari tabel SQL `products` jika ada
+      // Query juga dari tabel SQL `products` jika ada (hanya ambil produk aktif)
       if (tenantRow?.id) {
         const { data: sqlProds } = await supabase
           .from('products')
           .select('*')
-          .eq('tenant_id', tenantRow.id);
+          .eq('tenant_id', tenantRow.id)
+          .eq('is_active', true);
 
         if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-          const sqlMapped = sqlProds.map((sp: any, idx: number) => ({
+          const activeSqlProds = sqlProds.filter((sp: any) => {
+            if (!sp) return false;
+            if (sp.is_active === false || sp.is_active === 'false' || sp.is_active === 0 || sp.is_active === '0') return false;
+            const st = typeof sp.status === 'string' ? sp.status.toLowerCase().trim() : '';
+            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
+            return true;
+          });
+
+          const sqlMapped = activeSqlProds.map((sp: any, idx: number) => ({
             id: sp.id,
             name: sp.title || `Produk ${idx + 1}`,
             title: sp.title || `Produk ${idx + 1}`,
@@ -632,6 +676,8 @@ export async function GET(
             stock: sp.stock !== undefined ? Number(sp.stock) : 999,
             sku: sp.sku || '',
             is_unlimited: sp.is_unlimited_stock ?? true,
+            is_active: sp.is_active !== false,
+            status: sp.status || 'ACTIVE',
             fulfillment_metadata: sp.fulfillment_metadata,
             single_page_config: sp.fulfillment_metadata?.single_page_config,
           }));

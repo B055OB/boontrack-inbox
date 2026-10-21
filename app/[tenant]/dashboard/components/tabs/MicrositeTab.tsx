@@ -258,15 +258,30 @@ export default function MicrositeTab({
         storefront_template: activeTemplate,
         bio: bioText,
         featured_product_ids: featuredProductIds,
+        show_products: showProducts,
+        display_catalog: showProducts,
         microsite_show_products: showProducts,
         microsite_featured_product_ids: featuredProductIds,
         microsite_product_mode: productMode,
+        theme: {
+          ...(currentMeta.theme || {}),
+          show_products: showProducts,
+        },
+        theme_config: {
+          ...(currentMeta.theme_config || {}),
+          show_products: showProducts,
+        },
         microsite: {
           ...(currentMeta.microsite || {}),
           buttons,
           show_products: showProducts,
           featured_product_ids: featuredProductIds,
           product_mode: productMode,
+        },
+        sections: {
+          ...(currentMeta.sections || {}),
+          catalog: { is_active: showProducts },
+          products: { is_active: showProducts },
         },
       };
 
@@ -285,6 +300,8 @@ export default function MicrositeTab({
           body: JSON.stringify({
             template: activeTemplate,
             bio: bioText,
+            show_products: showProducts,
+            display_catalog: showProducts,
             microsite_show_products: showProducts,
             microsite_featured_product_ids: featuredProductIds,
             microsite_product_mode: productMode,

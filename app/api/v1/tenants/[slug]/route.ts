@@ -59,12 +59,20 @@ export async function GET(
     const metadata = (typeof tenantRow.metadata === 'object' && tenantRow.metadata !== null) ? tenantRow.metadata : {};
     const product = (typeof metadata.product === 'object' && metadata.product !== null) ? metadata.product : {};
 
-    const productsList =
+    const rawProductsList =
       Array.isArray(metadata.products) && metadata.products.length > 0
         ? metadata.products
         : product.name
         ? [product]
         : [];
+
+    const productsList = rawProductsList.filter((prod: any) => {
+      if (!prod) return false;
+      if (prod.is_active === false) return false;
+      const status = String(prod.status || '').toLowerCase().trim();
+      if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(status)) return false;
+      return true;
+    });
 
     const packages: Array<{
       id: string;

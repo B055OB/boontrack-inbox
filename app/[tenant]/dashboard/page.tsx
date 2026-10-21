@@ -937,6 +937,8 @@ export default function TenantDashboardPage() {
           currentVisualTheme={activeVisualTheme}
           initialButtons={livePreviewButtons}
           featuredProductIds={livePreviewFeaturedProductIds}
+          showProducts={livePreviewShowProducts}
+          onShowProductsChange={(show) => setLivePreviewShowProducts(show)}
           onThemeChange={handleThemeChange}
           onSaved={(msg) => {
             setSaveFeedback(msg);
