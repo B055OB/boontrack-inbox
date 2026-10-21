@@ -479,6 +479,10 @@ function SingleProductContent() {
             ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
             single_page_config: {
               ...(match?.single_page_config || {}),
+              ...(match?.fulfillment_metadata?.single_page_config || {}),
+              ...(match?.metadata?.single_page_config || {}),
+              ...(sqlProd.single_page_config || {}),
+              ...(sqlProd.metadata?.single_page_config || {}),
               ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
               banner_url: freshImage || match?.single_page_config?.banner_url || match?.image
             }
@@ -558,7 +562,14 @@ function SingleProductContent() {
               enable_testimonials: isCustomHtmlActive ? false : (cfg.enable_testimonials ?? true),
               enable_offer: isCustomHtmlActive ? false : (cfg.enable_offer ?? true),
               enable_faq: isCustomHtmlActive ? false : (cfg.enable_faq ?? false),
-              enable_payment: cfg.enable_payment !== false,
+              enable_payment:
+                cfg.enable_payment !== false &&
+                (match?.fulfillment_metadata?.single_page_config as any)?.enable_payment !== false &&
+                (match?.metadata?.single_page_config as any)?.enable_payment !== false &&
+                (match?.metadata as any)?.enable_payment !== false &&
+                (sqlProd?.fulfillment_metadata?.single_page_config as any)?.enable_payment !== false &&
+                (sqlProd?.metadata?.single_page_config as any)?.enable_payment !== false &&
+                (sqlProd?.metadata as any)?.enable_payment !== false,
               enable_media_gallery: isCustomHtmlActive ? false : (cfg.enable_media_gallery ?? Boolean(cfg.gallery_images && cfg.gallery_images.length > 0)),
               enable_custom_html: isCustomHtmlActive,
               is_custom_html_enabled: isCustomHtmlActive,
@@ -597,7 +608,21 @@ function SingleProductContent() {
               micro_copy: cfg.micro_copy || match?.metadata?.micro_copy || (match?.fulfillment_metadata as any)?.micro_copy || (match?.fulfillment_metadata?.single_page_config?.micro_copy) || (sqlProd?.fulfillment_metadata as any)?.micro_copy || undefined,
               section_order: cfg.section_order || (match?.fulfillment_metadata?.single_page_config as any)?.section_order || (match?.metadata as any)?.section_order || [],
               checkout_mode: (cfg as any).checkout_mode || (match?.fulfillment_metadata?.single_page_config as any)?.checkout_mode || (match?.metadata as any)?.checkout_mode || 'inline',
-              enable_sticky_button: (cfg as any).enable_sticky_button !== false && (match?.fulfillment_metadata?.single_page_config as any)?.enable_sticky_button !== false && (match?.metadata as any)?.enable_sticky_button !== false,
+              enable_sticky_button:
+                (cfg as any).enable_sticky_button !== false &&
+                (match?.fulfillment_metadata?.single_page_config as any)?.enable_sticky_button !== false &&
+                (match?.metadata as any)?.enable_sticky_button !== false &&
+                (sqlProd?.metadata as any)?.enable_sticky_button !== false &&
+                !(cfg as any).hide_floating_cta &&
+                !match?.metadata?.hide_floating_cta &&
+                !sqlProd?.metadata?.hide_floating_cta,
+              hide_floating_cta: Boolean(
+                (cfg as any).hide_floating_cta ||
+                match?.metadata?.hide_floating_cta ||
+                (match?.fulfillment_metadata?.single_page_config as any)?.hide_floating_cta ||
+                sqlProd?.metadata?.hide_floating_cta ||
+                (sqlProd?.fulfillment_metadata?.single_page_config as any)?.hide_floating_cta
+              ),
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -717,6 +742,31 @@ function SingleProductContent() {
 
   const product: ProductItem = resolvedData?.product || ({} as ProductItem);
   const config: SinglePageConfig = resolvedData?.config || ({} as SinglePageConfig);
+
+  // Section #9 & Checkout Section Visibility Guard
+  const isCheckoutSectionDisabled = useMemo(() => {
+    return Boolean(
+      config.enable_payment === false ||
+      (config as any).enable_checkout === false ||
+      (product?.single_page_config as any)?.enable_payment === false ||
+      (product?.fulfillment_metadata?.single_page_config as any)?.enable_payment === false ||
+      (product?.metadata?.single_page_config as any)?.enable_payment === false ||
+      (product?.metadata as any)?.enable_payment === false ||
+      (product?.metadata as any)?.enable_checkout === false
+    );
+  }, [config, product]);
+
+  // Floating CTA Bar (StickyBuyButton) Visibility Guard
+  const hideFloatingCta = useMemo(() => {
+    return Boolean(
+      product.metadata?.hide_floating_cta === true ||
+      (product as any)?.hide_floating_cta === true ||
+      (config as any)?.hide_floating_cta === true ||
+      (config as any)?.enable_sticky_button === false ||
+      (product?.metadata as any)?.enable_sticky_button === false ||
+      isCheckoutSectionDisabled
+    );
+  }, [product, config, isCheckoutSectionDisabled]);
 
   const categoryLabels = useMemo(() => {
     return resolveCategoryLabels(config, product.product_type || product.type, product.category);
@@ -1955,6 +2005,10 @@ function SingleProductContent() {
       if (!opened || opened.closed || typeof opened.closed === 'undefined') {
         window.location.assign(externalAffiliateUrl);
       }
+      return;
+    }
+
+    if (!isAffiliateProduct && isCheckoutSectionDisabled) {
       return;
     }
 
@@ -4609,7 +4663,7 @@ function SingleProductContent() {
 
           return effectiveOrder.map((sectionId) => {
             if (config.sections_override === false && sectionId !== 'custom_html') {
-              if (sectionId === 'payment_voucher' && config.enable_payment !== false) {
+              if (sectionId === 'payment_voucher' && !isCheckoutSectionDisabled) {
                 // Section Checkout tetap aktif dan dirender di bawah custom HTML jika enable_payment true
               } else {
                 return null;
@@ -5078,10 +5132,13 @@ function SingleProductContent() {
                 ) : null;
 
               case 'payment_voucher':
+                if (isCheckoutSectionDisabled) {
+                  return null;
+                }
                 if ((config as any).checkout_mode === 'drawer' || (config as any).checkout_mode === 'popup' || (config as any).checkout_mode === 'modal') {
                   return null;
                 }
-                return config.enable_payment !== false ? (
+                return (
                   <React.Fragment key="section-payment-voucher">
                     {/* 7.5 Mini Intake Form (Dynamic Lead Capture & Positive Friction Intake) */}
                     {config.intake_form_config?.enabled && (
@@ -5179,7 +5236,7 @@ function SingleProductContent() {
                       </section>
                     )}
                   </React.Fragment>
-                ) : null;
+                );
 
               case 'custom_html':
                 return ((config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html) && config.custom_html) ? (
@@ -5206,7 +5263,7 @@ function SingleProductContent() {
       </main>
 
       {/* 4. Sticky Bottom CTA (Mobile & Desktop) */}
-      {config.enable_payment !== false && (config as any).enable_sticky_button !== false && (
+      {!hideFloatingCta && (
         <StickyBuyButton
           totalAmount={totalAmount}
           priceLabel={categoryLabels.priceLabel}
@@ -5273,7 +5330,7 @@ function SingleProductContent() {
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
-      {checkoutOpen && (
+      {checkoutOpen && !isCheckoutSectionDisabled && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
