@@ -564,14 +564,14 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border bg-card text-foreground hover:bg-muted/80 transition active:scale-95 cursor-pointer theme-toggle-btn"
+              className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition active:scale-95 cursor-pointer theme-toggle-btn shadow-xs"
               title={themeMode === 'dark' ? 'Ganti ke Mode Terang (Light Mode)' : 'Ganti ke Mode Gelap (Dark Mode)'}
               aria-label="Toggle Theme"
             >
               {themeMode === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
+                <Sun className="w-4 h-4 text-amber-500 animate-spin-slow" />
               ) : (
-                <Moon className="w-4 h-4 text-foreground" />
+                <Moon className="w-4 h-4 text-white" />
               )}
             </button>
 
@@ -649,17 +649,17 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-border bg-card text-foreground hover:bg-muted/80 active:scale-95 cursor-pointer shadow-2xs theme-toggle-btn"
+              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition-colors active:scale-95 cursor-pointer shadow-xs theme-toggle-btn"
               title={themeMode === 'dark' ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
             >
               {themeMode === 'dark' ? (
                 <>
-                  <Sun className="w-4 h-4 text-amber-400" />
+                  <Sun className="w-4 h-4 text-amber-500" />
                   <span className="text-xs font-semibold">Light Mode</span>
                 </>
               ) : (
                 <>
-                  <Moon className="w-4 h-4 text-foreground" />
+                  <Moon className="w-4 h-4 text-white" />
                   <span className="text-xs font-semibold">Dark Mode</span>
                 </>
               )}

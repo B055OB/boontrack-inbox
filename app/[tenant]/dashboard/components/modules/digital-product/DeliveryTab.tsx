@@ -136,16 +136,16 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-200">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
             <Download className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm sm:text-base font-black text-slate-900">
+            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
               Log Distribusi Produk Digital &amp; Lisensi
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Riwayat pengiriman otomatis tautan akses file, kode lisensi, dan log download pasca transaksi lunas.
             </p>
           </div>
@@ -156,12 +156,12 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
             type="button"
             onClick={() => fetchDeliveries()}
             disabled={isLoading}
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer disabled:opacity-50"
+            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer disabled:opacity-50"
             title="Segarkan data log"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} />
           </button>
-          <span className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+          <span className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             <span>Sistem Distribusi Otomatis 24/7 Aktif</span>
           </span>
@@ -170,30 +170,30 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
 
       {/* LOADING STATE */}
       {isLoading ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs flex flex-col items-center justify-center space-y-3">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center shadow-xs flex flex-col items-center justify-center space-y-3">
           <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
-          <p className="text-xs font-semibold text-slate-500">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
             Memuat riwayat distribusi produk digital...
           </p>
         </div>
       ) : deliveries.length === 0 ? (
         /* EMPTY STATE RESMI (SESUAI SPESIFIKASI) */
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-14 text-center shadow-xs flex flex-col items-center justify-center max-w-xl mx-auto space-y-4 my-6">
-          <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shadow-2xs">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-8 sm:p-14 text-center shadow-xs flex flex-col items-center justify-center max-w-xl mx-auto space-y-4 my-6">
+          <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-900 shadow-2xs">
             <Download className="w-8 h-8" />
           </div>
           <div className="space-y-2 max-w-md">
-            <h3 className="text-base font-black text-slate-900">
+            <h3 className="text-base font-black text-slate-900 dark:text-white">
               Belum Ada Pengiriman Produk Digital
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
               Belum ada pengiriman produk digital. Riwayat pengiriman otomatis file dan lisensi pelanggan akan muncul di sini setelah transaksi selesai.
             </p>
           </div>
           <button
             type="button"
             onClick={() => fetchDeliveries()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Segarkan Log</span>
@@ -201,10 +201,10 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
         </div>
       ) : (
         /* TABEL LOG DISTRIBUSI NYATA */
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="py-3 px-4">Order &amp; Pembeli</th>
                   <th className="py-3 px-4">Produk Digital</th>
@@ -214,11 +214,11 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
                   <th className="py-3 px-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                 {deliveries.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                  <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition">
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{item.customerName}</div>
+                      <div className="font-bold text-slate-900 dark:text-white">{item.customerName}</div>
                       <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
                         <span>{item.orderId}</span>
                         <span>•</span>

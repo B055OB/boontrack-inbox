@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
           image: payload.image,
           image_base64: payload.image_base64,
           mime_type: payload.mime_type,
+          temperature: 0.2,
         }),
         cache: 'no-store',
       });
