@@ -2033,9 +2033,11 @@ export function useTenantDashboard() {
           const existingMetaProducts: ProductItem[] = Array.isArray(tenantRow.metadata?.products)
             ? tenantRow.metadata.products
             : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
+          const allKnownProducts = existingMetaProducts;
 
           const targetProd = cleanUpdatedProducts.find(p => isTargetProduct(p)) || updatedTargetProduct;
           if (targetProd) {
+            const isTargetActive = targetProd.is_active !== false;
             const targetSku = (targetProd.sku || '').trim().toLowerCase();
             const targetId = String(targetProd.id || '').trim().toLowerCase();
             const targetSlug = (targetProd.slug || prodSlug).trim().toLowerCase();
@@ -2053,9 +2055,11 @@ export function useTenantDashboard() {
               finalMergedProducts[editIndex] = {
                 ...finalMergedProducts[editIndex],
                 ...targetProd,
+                is_active: isTargetActive,
               };
             } else {
-              finalMergedProducts = [targetProd, ...existingMetaProducts];
+              const fullProductItem = { ...targetProd, is_active: isTargetActive };
+              finalMergedProducts = [fullProductItem, ...allKnownProducts];
             }
 
             const cleanFinalMerged = sanitizeProductPayload(finalMergedProducts);
