@@ -45,7 +45,7 @@ export function StickyBuyButton({
   dynamicCtaPrefix = 'Beli Sekarang',
   isAffiliateProduct = false,
   externalAffiliateUrl,
-  affiliateCtaLabel = 'Beli Sekarang (Mitra Resmi)',
+  affiliateCtaLabel = 'Saya Mau Pesan ↗',
   targetFormId = 'checkout-form',
   onOpenCheckout,
   onExternalClick,
@@ -110,7 +110,7 @@ export function StickyBuyButton({
   };
 
   const hasValidExternalUrl = Boolean(
-    isAffiliateProduct &&
+    (isAffiliateProduct || Boolean(externalAffiliateUrl)) &&
       externalAffiliateUrl &&
       externalAffiliateUrl.trim() !== '' &&
       !externalAffiliateUrl.trim().startsWith('#')
@@ -159,7 +159,7 @@ export function StickyBuyButton({
         {/* Left: Total Amount Display */}
         <div className="text-left shrink-0">
           <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
-            {priceLabel}
+            {isAffiliateProduct ? 'Harga Produk' : priceLabel}
           </span>
           <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
             {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
@@ -226,7 +226,9 @@ export function StickyBuyButton({
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleAnchorClick}
-              className="flex-1 py-3.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition cursor-pointer text-center"
+              id="sticky-affiliate-button"
+              data-testid="sticky-affiliate-button"
+              className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer text-center no-underline"
             >
               <span className="truncate">{affiliateCtaLabel}</span>
               <ExternalLink className="w-4 h-4 shrink-0" />

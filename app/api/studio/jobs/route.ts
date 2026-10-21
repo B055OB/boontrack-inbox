@@ -3,6 +3,7 @@
  * @description Studio Render Jobs Gateway API
  * Compliant with § 53.3 & § 54 Architecture Guardrails (Zero hardcoding, Supabase single source of truth)
  * Fetches media render job queue & telemetry history for the authenticated tenant workspace.
+ * Secured with strict Supabase Auth Session validation (Tenant Isolation) & Worker Service Authentication.
  */
 
 import { NextResponse } from 'next/server';
@@ -13,78 +14,279 @@ export const runtime = 'nodejs';
 
 const IS_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function resolveTenantId(supabase: any, tenantIdentifier?: string | null): Promise<string | null> {
-  if (!tenantIdentifier) {
-    const { data } = await supabase.from('tenants').select('id').limit(1).maybeSingle();
-    return data?.id || null;
+/**
+ * Extracts Bearer token or Supabase Auth cookie from incoming request.
+ */
+async function extractTokenFromRequest(req: Request): Promise<string> {
+  // 1. Authorization header (Bearer)
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const t = authHeader.slice(7).trim();
+    if (t) return t;
+  } else if (authHeader && !authHeader.toLowerCase().startsWith('basic ')) {
+    return authHeader;
   }
 
-  const clean = tenantIdentifier.trim().toLowerCase();
-  if (IS_UUID_REGEX.test(clean)) {
-    return clean;
+  // 2. Direct x-access-token / x-auth-token headers
+  const customHeader = req.headers.get('x-access-token') || req.headers.get('x-auth-token');
+  if (customHeader?.trim()) return customHeader.trim();
+
+  // 3. Inspect raw cookie header on Request
+  const cookieHeader = req.headers.get('cookie') || '';
+  if (cookieHeader) {
+    const cookiesMap: Record<string, string> = {};
+    cookieHeader.split(';').forEach((part) => {
+      const [key, ...vals] = part.trim().split('=');
+      if (key) cookiesMap[key] = vals.join('=');
+    });
+
+    if (cookiesMap['sb-access-token']) return cookiesMap['sb-access-token'].trim();
+    if (cookiesMap['access_token']) return cookiesMap['access_token'].trim();
+    if (cookiesMap['supabase-auth-token']) return cookiesMap['supabase-auth-token'].trim();
+
+    for (const [name, val] of Object.entries(cookiesMap)) {
+      if (name.startsWith('sb-') && name.endsWith('-auth-token')) {
+        try {
+          const raw = decodeURIComponent(val);
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0]) {
+            return parsed[0].trim();
+          }
+          if (parsed?.access_token && typeof parsed.access_token === 'string') {
+            return parsed.access_token.trim();
+          }
+        } catch {
+          if (val) return val.trim();
+        }
+      }
+    }
   }
 
-  const { data } = await supabase.from('tenants').select('id').eq('slug', clean).maybeSingle();
-  return data?.id || null;
+  // 4. NextRequest.cookies (if incoming request is NextRequest)
+  if ('cookies' in req && typeof (req as any).cookies?.getAll === 'function') {
+    try {
+      const directCookie =
+        (req as any).cookies.get('sb-access-token')?.value ||
+        (req as any).cookies.get('access_token')?.value ||
+        (req as any).cookies.get('supabase-auth-token')?.value;
+      if (directCookie) return directCookie.trim();
+
+      const allCookies = (req as any).cookies.getAll();
+      for (const c of allCookies) {
+        if (c.name.startsWith('sb-') && c.name.endsWith('-auth-token')) {
+          try {
+            const raw = decodeURIComponent(c.value);
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0]) {
+              return parsed[0].trim();
+            }
+            if (parsed?.access_token && typeof parsed.access_token === 'string') {
+              return parsed.access_token.trim();
+            }
+          } catch {
+            if (c.value) return c.value.trim();
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 5. next/headers cookies() fallback (safeguarded for SSR & unit tests)
+  try {
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    const token =
+      cookieStore.get('sb-access-token')?.value ||
+      cookieStore.get('access_token')?.value ||
+      cookieStore.get('supabase-auth-token')?.value;
+    if (token) return token.trim();
+
+    for (const c of cookieStore.getAll()) {
+      if (c.name.startsWith('sb-') && c.name.endsWith('-auth-token')) {
+        try {
+          const raw = decodeURIComponent(c.value);
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0]) {
+            return parsed[0].trim();
+          }
+          if (parsed?.access_token && typeof parsed.access_token === 'string') {
+            return parsed.access_token.trim();
+          }
+        } catch {
+          if (c.value) return c.value.trim();
+        }
+      }
+    }
+  } catch {}
+
+  return '';
 }
 
 /**
  * GET /api/studio/jobs
  * Query render job history with status and telemetry metrics.
- * Auto-refunds any jobs in FAILED or TIMEOUT status.
+ * Strictly enforces Supabase Auth session & tenant isolation:
+ * - 401 Unauthorized if unauthenticated
+ * - 403 Forbidden if tenant not found or user is not owner/member of tenant
+ * - Query ALWAYS filtered with .eq('tenant_id', verifiedTenantId)
  */
 export async function GET(req: Request) {
   try {
+    let supabase: any;
+    try {
+      supabase = getSupabaseAdmin() || getSupabase();
+    } catch {
+      supabase = getSupabase();
+    }
+
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, message: 'Database client tidak tersedia.' },
+        { status: 500 }
+      );
+    }
+
+    // 1. Authenticate user session via Supabase Auth server-side
+    const token = await extractTokenFromRequest(req);
+    if (!token) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.' },
+        { status: 401 }
+      );
+    }
+
+    const { data: authData, error: authErr } = await supabase.auth.getUser(token);
+    if (authErr || !authData?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.' },
+        { status: 401 }
+      );
+    }
+
+    const user = authData.user;
+    const userId = user.id;
+    const userEmail = (user.email || '').trim().toLowerCase();
+
+    // 2. Resolve target tenant
     const { searchParams } = new URL(req.url);
-    const tenantParam = searchParams.get('tenant_id') || req.headers.get('x-tenant-id');
+    const tenantParam = searchParams.get('tenant_id') || searchParams.get('tenant') || req.headers.get('x-tenant-id');
     const statusFilter = searchParams.get('status');
     const limit = Math.max(1, Math.min(Number(searchParams.get('limit')) || 50, 100));
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    let resolvedTenant: any = null;
 
-    if (!supabase) {
-      return NextResponse.json({
-        success: true,
-        jobs: [],
-        telemetry: {
-          total: 0,
-          completed: 0,
-          processing: 0,
-          queued: 0,
-          failed: 0,
-          worker_status: 'STANDBY',
-        },
-      });
-    }
-
-    let tenantId: string | null = null;
     if (tenantParam) {
-      tenantId = await resolveTenantId(supabase, tenantParam);
-      if (!tenantId) {
-        return NextResponse.json({
-          success: true,
-          jobs: [],
-          telemetry: {
-            total: 0,
-            completed: 0,
-            processing: 0,
-            queued: 0,
-            failed: 0,
-            worker_status: 'STANDBY',
-          },
-        });
+      const cleanParam = tenantParam.trim().toLowerCase();
+      const isUuid = IS_UUID_REGEX.test(cleanParam);
+      let tQuery = supabase.from('tenants').select('id, slug, user_id, owner_id, email, owner_email, metadata');
+      if (isUuid) {
+        tQuery = tQuery.eq('id', cleanParam);
+      } else {
+        tQuery = tQuery.eq('slug', cleanParam);
+      }
+      const { data: tData, error: tErr } = await tQuery.maybeSingle();
+      if (tErr || !tData) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Tenant tidak valid atau tidak ditemukan.' },
+          { status: 403 }
+        );
+      }
+      resolvedTenant = tData;
+    } else {
+      // Auto-resolve active workspace tenant for this user
+      const { data: ownedTenant } = await supabase
+        .from('tenants')
+        .select('id, slug, user_id, owner_id, email, owner_email, metadata')
+        .or(`user_id.eq.${userId},owner_id.eq.${userId}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (ownedTenant) {
+        resolvedTenant = ownedTenant;
+      } else {
+        let tuQuery = supabase
+          .from('tenant_users')
+          .select('tenant_id')
+          .eq('is_active', true);
+        if (userEmail) {
+          tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
+        } else {
+          tuQuery = tuQuery.eq('user_id', userId);
+        }
+        const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
+        if (memberRow?.tenant_id) {
+          const { data: memberTenant } = await supabase
+            .from('tenants')
+            .select('id, slug, user_id, owner_id, email, owner_email, metadata')
+            .eq('id', memberRow.tenant_id)
+            .maybeSingle();
+          resolvedTenant = memberTenant;
+        }
+      }
+
+      if (!resolvedTenant) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Parameter tenant_id diperlukan atau context workspace tidak ditemukan.' },
+          { status: 403 }
+        );
       }
     }
+
+    // 3. Verify user is owner or active member of the resolved tenant
+    const appRole = String(user.app_metadata?.role || user.app_metadata?.user_role || '').trim().toUpperCase();
+    const isSuperAdmin = appRole === 'SUPERADMIN';
+
+    const isOwner =
+      (resolvedTenant.user_id && resolvedTenant.user_id === userId) ||
+      (resolvedTenant.owner_id && resolvedTenant.owner_id === userId) ||
+      (resolvedTenant.metadata?.user_id && resolvedTenant.metadata.user_id === userId) ||
+      (resolvedTenant.metadata?.owner_id && resolvedTenant.metadata.owner_id === userId) ||
+      (userEmail && (
+        (resolvedTenant.email && resolvedTenant.email.toLowerCase().trim() === userEmail) ||
+        (resolvedTenant.owner_email && resolvedTenant.owner_email.toLowerCase().trim() === userEmail) ||
+        (resolvedTenant.metadata?.owner_email && resolvedTenant.metadata.owner_email.toLowerCase().trim() === userEmail)
+      ));
+
+    let isMember = false;
+    if (!isSuperAdmin && !isOwner) {
+      try {
+        let memberQuery = supabase
+          .from('tenant_users')
+          .select('id, role, is_active')
+          .or(`tenant_id.eq.${resolvedTenant.id},tenant_slug.eq.${resolvedTenant.slug}`)
+          .eq('is_active', true);
+
+        if (userEmail) {
+          memberQuery = memberQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
+        } else {
+          memberQuery = memberQuery.eq('user_id', userId);
+        }
+
+        const { data: memberRecords } = await memberQuery;
+        if (Array.isArray(memberRecords) && memberRecords.length > 0) {
+          isMember = true;
+        }
+      } catch (tuErr) {
+        console.warn('[Studio Jobs API] Error checking tenant_users membership:', tuErr);
+      }
+    }
+
+    if (!isSuperAdmin && !isOwner && !isMember) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: Anda tidak memiliki hak akses ke data tenant ini.' },
+        { status: 403 }
+      );
+    }
+
+    // 4. Query studio_jobs with mandatory tenant isolation filter
+    const verifiedTenantId = resolvedTenant.id;
 
     let query = supabase
       .from('studio_jobs')
       .select('id, tenant_id, user_id, status, job_type, payload, output_url, error_message, attempt, created_at, updated_at')
+      .eq('tenant_id', verifiedTenantId)
       .order('created_at', { ascending: false })
       .limit(limit);
-
-    if (tenantId) {
-      query = query.eq('tenant_id', tenantId);
-    }
 
     if (statusFilter && statusFilter !== 'ALL') {
       query = query.eq('status', statusFilter.toUpperCase());
@@ -128,10 +330,10 @@ export async function GET(req: Request) {
 
     // Calculate live telemetry counts
     const total = jobList.length;
-    const completed = jobList.filter(j => j.status === 'COMPLETED').length;
-    const processing = jobList.filter(j => j.status === 'PROCESSING').length;
-    const queued = jobList.filter(j => j.status === 'QUEUED').length;
-    const failed = jobList.filter(j => j.status === 'FAILED' || j.status === 'TIMEOUT').length;
+    const completed = jobList.filter((j: any) => j.status === 'COMPLETED').length;
+    const processing = jobList.filter((j: any) => j.status === 'PROCESSING').length;
+    const queued = jobList.filter((j: any) => j.status === 'QUEUED').length;
+    const failed = jobList.filter((j: any) => j.status === 'FAILED' || j.status === 'TIMEOUT').length;
 
     return NextResponse.json({
       success: true,
@@ -158,10 +360,41 @@ export async function GET(req: Request) {
 /**
  * PATCH /api/studio/jobs
  * Worker status update handler: QUEUED -> PROCESSING -> COMPLETED / FAILED.
+ * Strictly requires worker service authentication (STUDIO_WORKER_SECRET or INTERNAL_WORKER_SECRET).
+ * Rejects with 401 Unauthorized before touching Supabase Admin if secret is missing or mismatched.
  * Auto-refunds credits if status is changed to FAILED or TIMEOUT.
  */
 export async function PATCH(req: Request) {
   try {
+    // 1. Worker Service Authentication (Strict CTO Gate)
+    const expectedSecret = (
+      process.env.STUDIO_WORKER_SECRET ||
+      process.env.INTERNAL_WORKER_SECRET
+    )?.trim();
+
+    const authHeader = req.headers.get('authorization')?.trim() || '';
+    let bearerToken = '';
+    if (authHeader.toLowerCase().startsWith('bearer ')) {
+      bearerToken = authHeader.slice(7).trim();
+    } else if (authHeader && !authHeader.toLowerCase().startsWith('basic ')) {
+      bearerToken = authHeader.trim();
+    }
+
+    const workerSecretHeader =
+      req.headers.get('x-worker-secret')?.trim() ||
+      req.headers.get('x-internal-worker-secret')?.trim() ||
+      '';
+
+    const providedToken = workerSecretHeader || bearerToken;
+
+    if (!expectedSecret || !providedToken || providedToken !== expectedSecret) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized: Kredensial worker tidak valid atau tidak disertakan.' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Only proceed to body parsing and Supabase Admin mutation AFTER worker auth passes
     const body = await req.json();
     const { job_id, status, output_url, error_message } = body;
 
@@ -181,7 +414,13 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
+    let supabase: any;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch (dbErr: any) {
+      return NextResponse.json({ success: false, message: 'Database client tidak tersedia: ' + (dbErr?.message || '') }, { status: 500 });
+    }
+
     if (!supabase) {
       return NextResponse.json({ success: false, message: 'Database client tidak tersedia.' }, { status: 500 });
     }

@@ -4,7 +4,7 @@
  * Covers:
  * 1. GET /api/studio/jobs: Queries render jobs and calculates live telemetry metrics.
  * 2. Status filtering (COMPLETED, PROCESSING, QUEUED, FAILED).
- * 3. Fallback when Supabase client is offline / unconfigured.
+ * 3. Handling when Supabase client is offline / unconfigured (500).
  * 4. Telemetry worker_status state transitions ('ACTIVE_RENDERING' vs 'STANDBY').
  */
 
@@ -79,16 +79,28 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     },
   ];
 
-  it('calculates correct telemetry counts and active worker status', async () => {
+  const createMockSupabase = (jobsData: any[]) => {
     const mockQueryBuilder: any = {
       select: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
-      then: (resolve: any) => resolve({ data: mockJobs, error: null }),
+      then: (resolve: any) => resolve({ data: jobsData, error: null }),
     };
 
-    const mockSupabase: any = {
+    return {
+      auth: {
+        getUser: jest.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123',
+              email: 'user-123@example.com',
+              app_metadata: { role: 'authenticated' },
+            },
+          },
+          error: null,
+        }),
+      },
       from: jest.fn().mockImplementation((table: string) => {
         if (table === 'studio_jobs') return mockQueryBuilder;
         if (table === 'tenants') {
@@ -96,16 +108,29 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
             select: jest.fn().mockReturnThis(),
             limit: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
-            maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'tenant-123' } }),
+            or: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: {
+                id: 'tenant-123',
+                slug: 'demo-store',
+                user_id: 'user-123',
+                owner_id: 'user-123',
+              },
+            }),
           };
         }
         return mockQueryBuilder;
       }),
     };
+  };
 
+  it('calculates correct telemetry counts and active worker status', async () => {
+    const mockSupabase = createMockSupabase(mockJobs);
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=demo-store');
+    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
+      headers: { authorization: 'Bearer valid-test-token' },
+    });
     const res = await GET(req);
     const json = await res.json();
 
@@ -123,22 +148,12 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
 
   it('sets worker_status to STANDBY when no jobs are currently processing', async () => {
     const onlyCompletedJobs = [mockJobs[0], mockJobs[3]]; // completed + failed only
-
-    const mockQueryBuilder: any = {
-      select: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      then: (resolve: any) => resolve({ data: onlyCompletedJobs, error: null }),
-    };
-
-    const mockSupabase: any = {
-      from: jest.fn().mockReturnValue(mockQueryBuilder),
-    };
-
+    const mockSupabase = createMockSupabase(onlyCompletedJobs);
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs');
+    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
+      headers: { authorization: 'Bearer valid-test-token' },
+    });
     const res = await GET(req);
     const json = await res.json();
 
@@ -148,19 +163,18 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     expect(json.telemetry.worker_status).toBe('STANDBY');
   });
 
-  it('gracefully handles missing database client with zeroed telemetry and empty jobs array', async () => {
+  it('gracefully handles missing database client with 500 status', async () => {
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(null as any);
     jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(null as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs');
+    const req = new Request('http://localhost:3000/api/studio/jobs', {
+      headers: { authorization: 'Bearer valid-test-token' },
+    });
     const res = await GET(req);
     const json = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(json.jobs).toEqual([]);
-    expect(json.telemetry.total).toBe(0);
-    expect(json.telemetry.worker_status).toBe('STANDBY');
+    expect(res.status).toBe(500);
+    expect(json.success).toBe(false);
   });
 
   it('supports status query filtering parameter', async () => {
@@ -174,12 +188,35 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     };
 
     const mockSupabase: any = {
-      from: jest.fn().mockReturnValue(mockQueryBuilder),
+      auth: {
+        getUser: jest.fn().mockResolvedValue({
+          data: {
+            user: { id: 'user-123', email: 'user-123@example.com' },
+          },
+          error: null,
+        }),
+      },
+      from: jest.fn().mockImplementation((table: string) => {
+        if (table === 'studio_jobs') return mockQueryBuilder;
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: { id: 'tenant-123', user_id: 'user-123' },
+            }),
+          };
+        }
+        return mockQueryBuilder;
+      }),
     };
 
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs?status=COMPLETED');
+    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=tenant-123&status=COMPLETED', {
+      headers: { authorization: 'Bearer valid-test-token' },
+    });
     const res = await GET(req);
     const json = await res.json();
 

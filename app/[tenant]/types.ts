@@ -30,6 +30,8 @@ export interface Product {
   requires_shipping?: boolean;
   external_url?: string;
   affiliate_url?: string;
+  affiliate_link?: string;
+  bypass_checkout?: boolean;
   cta_label?: string;
   checkout_type?: string;
   slug?: string;

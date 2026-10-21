@@ -84,7 +84,8 @@ import {
   resolveProductDefaultCta,
   resolveProductCtaLabel,
   normalizeBriefingUrl,
-  resolveCategoryLabels
+  resolveCategoryLabels,
+  resolveProductExternalUrl
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -463,6 +464,18 @@ function SingleProductContent() {
             is_unlimited: sqlProd.is_unlimited_stock,
             download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || match?.download_url || '',
             fulfillment_metadata: sqlProd.fulfillment_metadata || match?.fulfillment_metadata,
+            checkout_type: (sqlProd as any).checkout_type || (sqlProd as any).metadata?.checkout_type || match?.checkout_type,
+            external_url: (sqlProd as any).external_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url,
+            affiliate_link: (sqlProd as any).affiliate_link || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.external_url || match?.affiliate_link,
+            affiliate_url: (sqlProd as any).affiliate_url || (sqlProd as any).metadata?.affiliate_url || (sqlProd as any).metadata?.external_url || match?.affiliate_url,
+            bypass_checkout: Boolean((sqlProd as any).bypass_checkout || (sqlProd as any).metadata?.bypass_checkout || match?.bypass_checkout || match?.metadata?.bypass_checkout),
+            cta_label: (sqlProd as any).cta_label || (sqlProd as any).metadata?.cta_label || match?.cta_label,
+            meta_pixel_id_override: (sqlProd as any).meta_pixel_id_override || (sqlProd as any).metadata?.meta_pixel_id_override || match?.meta_pixel_id_override,
+            tiktok_pixel_id_override: (sqlProd as any).tiktok_pixel_id_override || (sqlProd as any).metadata?.tiktok_pixel_id_override || match?.tiktok_pixel_id_override,
+            metadata: {
+              ...(match?.metadata || {}),
+              ...(sqlProd.metadata || {}),
+            },
             ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
             single_page_config: {
               ...(match?.single_page_config || {}),
@@ -621,9 +634,59 @@ function SingleProductContent() {
               weight_grams: match.weight_grams,
               fulfillment_metadata: match.fulfillment_metadata,
               single_page_config: dynamicConfig,
-              checkout_type: match.checkout_type || match.metadata?.checkout_type || (match.external_url || match.metadata?.external_url ? 'external' : 'internal'),
-              external_url: match.external_url || match.metadata?.external_url || match.metadata?.link_external || '',
-              cta_label: match.cta_label || match.metadata?.cta_label || '',
+              checkout_type: ((
+                sqlProd?.checkout_type ||
+                (sqlProd?.metadata as any)?.checkout_type ||
+                match.checkout_type ||
+                match.metadata?.checkout_type ||
+                (match.external_url || match.metadata?.external_url || match.affiliate_link || match.metadata?.affiliate_link ? 'external' : 'internal')
+              ) === 'external' ? 'external' : 'internal'),
+              external_url: (
+                sqlProd?.external_url ||
+                (sqlProd?.metadata as any)?.external_url ||
+                (sqlProd?.metadata as any)?.affiliate_link ||
+                (sqlProd?.metadata as any)?.link_external ||
+                (sqlProd?.metadata as any)?.affiliate_url ||
+                match.external_url ||
+                match.metadata?.external_url ||
+                match.metadata?.link_external ||
+                match.affiliate_link ||
+                match.metadata?.affiliate_link ||
+                match.affiliate_url ||
+                match.metadata?.affiliate_url ||
+                ''
+              ),
+              affiliate_link: (
+                (sqlProd as any)?.affiliate_link ||
+                (sqlProd?.metadata as any)?.affiliate_link ||
+                sqlProd?.external_url ||
+                match.affiliate_link ||
+                match.metadata?.affiliate_link ||
+                match.external_url ||
+                ''
+              ),
+              affiliate_url: (
+                (sqlProd as any)?.affiliate_url ||
+                (sqlProd?.metadata as any)?.affiliate_url ||
+                sqlProd?.external_url ||
+                match.affiliate_url ||
+                match.metadata?.affiliate_url ||
+                match.external_url ||
+                ''
+              ),
+              bypass_checkout: Boolean(
+                (sqlProd as any)?.bypass_checkout ||
+                (sqlProd?.metadata as any)?.bypass_checkout ||
+                match.bypass_checkout ||
+                match.metadata?.bypass_checkout
+              ),
+              cta_label: (
+                sqlProd?.cta_label ||
+                (sqlProd?.metadata as any)?.cta_label ||
+                match.cta_label ||
+                match.metadata?.cta_label ||
+                ''
+              ),
               meta_pixel_id_override: match.meta_pixel_id_override || match.metadata?.meta_pixel_id_override || (sqlProd as any)?.meta_pixel_id_override || '',
               tiktok_pixel_id_override: match.tiktok_pixel_id_override || match.metadata?.tiktok_pixel_id_override || (sqlProd as any)?.tiktok_pixel_id_override || '',
               order_bumps: match.order_bumps || match.metadata?.order_bumps || match.fulfillment_metadata?.order_bumps,
@@ -681,21 +744,37 @@ function SingleProductContent() {
     return selectedBumpItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
   }, [selectedBumpItems]);
 
-  const isAffiliateProduct = Boolean(
-    product.checkout_type === 'external' ||
-    product.external_url ||
-    product.metadata?.external_url ||
-    (product as any)?.metadata?.link_external
-  );
-  const externalAffiliateUrl =
+  const rawExternalAffiliateUrl =
+    resolveProductExternalUrl(product) ||
     product.external_url ||
     product.metadata?.external_url ||
     (product as any)?.metadata?.link_external ||
+    (product as any)?.affiliate_link ||
+    (product as any)?.metadata?.affiliate_link ||
+    (product as any)?.affiliate_url ||
+    (product as any)?.metadata?.affiliate_url ||
+    (product as any)?.fulfillment_metadata?.external_url ||
+    (product as any)?.fulfillment_metadata?.affiliate_url ||
+    (product as any)?.fulfillment_metadata?.affiliate_link ||
+    (product as any)?.fulfillment_metadata?.access_url ||
+    (config as any)?.external_url ||
     '';
+  const externalAffiliateUrl = typeof rawExternalAffiliateUrl === 'string' ? rawExternalAffiliateUrl.trim() : '';
+
+  const isAffiliateProduct = Boolean(
+    externalAffiliateUrl ||
+    product.checkout_type === 'external' ||
+    (product as any)?.bypass_checkout ||
+    (product as any)?.metadata?.bypass_checkout ||
+    (product as any)?.fulfillment_metadata?.bypass_checkout ||
+    (product as any)?.is_external
+  );
   const affiliateCtaLabel =
     product.cta_label ||
     product.metadata?.cta_label ||
-    'Beli Sekarang';
+    (product as any)?.affiliate_cta_label ||
+    (product.metadata as any)?.affiliate_cta_label ||
+    'Saya Mau Pesan ↗';
 
   const rawQueryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
   const queryPhone = sanitizePhoneInputForPrefix(rawQueryPhone);
@@ -799,7 +878,10 @@ function SingleProductContent() {
     }
   }, [product?.meta_pixel_id_override, product?.tiktok_pixel_id_override]);
 
-  const [uniqueCode] = useState(() => Math.floor(1 + Math.random() * 999));
+  const [uniqueCode] = useState(() => {
+    if (isAffiliateProduct) return 0;
+    return Math.floor(1 + Math.random() * 999);
+  });
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(() => {
@@ -1561,12 +1643,14 @@ function SingleProductContent() {
   // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
-  const currentUniqueCode = uniqueCode;
+  const currentUniqueCode = isAffiliateProduct ? 0 : uniqueCode;
 
-  // 4. Total Bayar Presisi (QRIS: Potongan acak 3 digit 1-999; Manual: Tambahan kode unik)
-  const totalAmount = isQris
-    ? Math.max(1000, netProductPrice + effectiveShippingCost - currentUniqueCode)
-    : netProductPrice + effectiveShippingCost + currentUniqueCode;
+  // 4. Total Bayar Presisi (Affiliate/Bypass: Tanpa kode unik; QRIS: Potongan acak; Manual: Tambahan kode unik)
+  const totalAmount = isAffiliateProduct
+    ? (netProductPrice + effectiveShippingCost)
+    : (isQris
+        ? Math.max(1000, netProductPrice + effectiveShippingCost - currentUniqueCode)
+        : netProductPrice + effectiveShippingCost + currentUniqueCode);
 
   useEffect(() => {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
@@ -1723,14 +1807,57 @@ function SingleProductContent() {
 
   const handleExternalProductClick = () => {
     trackContactEvent('Affiliate Outbound Click');
+    const effectiveValue = Number(basePrice ?? product.price) || 0;
+    const eventId = `AFF_${product.id || slug}_${Date.now()}`;
+    const productName = (product as any)?.title || product.name || 'Product';
+
+    // 1. Meta Pixel InitiateCheckout
     if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
       (window as any).fbq("track", "InitiateCheckout", {
-        content_name: (product as any)?.title || product.name,
-        content_ids: [product.id || product.slug],
+        content_name: productName,
+        content_ids: [String(product.id || slug)],
         content_type: "product",
-        value: Number(product.price) || 0,
+        value: effectiveValue,
         currency: "IDR"
+      }, { eventID: eventId });
+    }
+
+    // 1b. TikTok Pixel InitiateCheckout
+    if (typeof window !== 'undefined' && typeof (window as any).ttq?.track === 'function') {
+      (window as any).ttq.track('InitiateCheckout', {
+        content_name: productName,
+        content_id: String(product.id || slug),
+        value: effectiveValue,
+        currency: 'IDR',
+      }, { event_id: eventId });
+    }
+
+    // 2. Dispatch Server-Side CAPI
+    try {
+      const trackingContext = getClientTrackingContext();
+      const trackingParams = getTrackingParams();
+      fetch('/api/v1/tracking/capi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: tenant,
+          eventName: 'InitiateCheckout',
+          eventId: eventId,
+          amount: effectiveValue,
+          currency: 'IDR',
+          contentName: productName,
+          contentIds: [String(product.id || slug)],
+          fbc: trackingContext.fbc,
+          fbp: trackingContext.fbp,
+          userAgent: trackingContext.client_user_agent,
+          ctwa_clid: trackingParams.ctwa_clid,
+        }),
+        keepalive: true,
+      }).catch((err) => {
+        console.warn('[AffiliateOutbound] CAPI dispatch warning:', err);
       });
+    } catch (err) {
+      console.warn('[AffiliateOutbound] CAPI trigger error:', err);
     }
   };
 
@@ -1824,7 +1951,10 @@ function SingleProductContent() {
     triggerInitiateCheckout();
     if (isAffiliateProduct && externalAffiliateUrl) {
       handleExternalProductClick();
-      window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
+      const opened = window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
+      if (!opened || opened.closed || typeof opened.closed === 'undefined') {
+        window.location.assign(externalAffiliateUrl);
+      }
       return;
     }
 
@@ -4591,10 +4721,10 @@ function SingleProductContent() {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={handleExternalProductClick}
-                            className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 transition cursor-pointer text-sm"
+                            className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer text-sm sm:text-base"
                           >
                             <span>{affiliateCtaLabel}</span>
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="w-5 h-5" />
                           </a>
                         ) : isCustomLinkMode ? (
                           <button
@@ -5001,63 +5131,68 @@ function SingleProductContent() {
                     })()}
 
                     {/* 8. Ultra-Lean Single Page Checkout Section */}
-                    <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-                      <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                        <div>
-                          <h2 className="text-base font-black text-slate-900">
-                            {isAffiliateProduct
-                              ? 'Beli Melalui Platform Partner / Web Resmi'
-                              : isPaid
-                              ? 'Status Pemesanan & Akses Layanan'
-                              : categoryLabels.checkoutSectionTitle}
-                          </h2>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-semibold">
-                            {isPaid ? 'Status Tagihan' : categoryLabels.billStatusLabel}
+                    {isAffiliateProduct ? (
+                      <section id="checkout-section" className="bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-5">
+                        <div className="max-w-md mx-auto space-y-1.5">
+                          <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                            Harga Produk
                           </span>
-                          <span className="text-sm font-black text-emerald-600">
-                            {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
-                          </span>
+                          <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                            {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+                          </div>
+                          {promoPrice > basePrice && (
+                            <div className="text-xs text-slate-400 line-through font-medium">
+                              Rp {promoPrice.toLocaleString('id-ID')}
+                            </div>
+                          )}
                         </div>
-                      </div>
 
-                      {isAffiliateProduct ? (
-                        <div className="text-center p-6 space-y-4 bg-gradient-to-b from-purple-50/50 via-slate-50 to-white border border-purple-200/70 rounded-2xl">
-                          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-xs">
-                            <ExternalLink className="w-6 h-6" />
+                        <div className="pt-2 max-w-md mx-auto">
+                          <a
+                            href={externalAffiliateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={handleExternalProductClick}
+                            id="direct-affiliate-checkout-cta"
+                            data-testid="direct-affiliate-checkout-cta"
+                            className="w-full inline-flex items-center justify-center gap-2.5 py-4 px-8 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 active:scale-98 text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-600/25 transition-all hover:shadow-emerald-600/40 cursor-pointer no-underline tracking-wide"
+                          >
+                            <span>{affiliateCtaLabel}</span>
+                            <ExternalLink className="w-5 h-5 shrink-0" />
+                          </a>
+                        </div>
+                      </section>
+                    ) : (
+                      <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                        <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                          <div>
+                            <h2 className="text-base font-black text-slate-900">
+                              {isPaid
+                                ? 'Status Pemesanan & Akses Layanan'
+                                : categoryLabels.checkoutSectionTitle}
+                            </h2>
                           </div>
-                          <div className="space-y-1.5">
-                            <h3 className="text-base font-black text-slate-900">
-                              Produk Mitra Resmi (Bypass Checkout)
-                            </h3>
-                            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                              Pesanan untuk produk ini diproses langsung melalui platform partner resmi kami (Shopee, TikTok Shop, Sejoli, atau website resmi). Klik tombol di bawah untuk diarahkan langsung ke halaman pemesanan:
-                            </p>
-                          </div>
-                          <div className="pt-2">
-                            <a
-                              href={externalAffiliateUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={handleExternalProductClick}
-                              className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                            >
-                              <span>{affiliateCtaLabel}</span>
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 block font-semibold">
+                              {isPaid ? 'Status Tagihan' : categoryLabels.billStatusLabel}
+                            </span>
+                            <span className="text-sm font-black text-emerald-600">
+                              {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+                            </span>
                           </div>
                         </div>
-                      ) : isPaid && requiresDeliveryPayload ? (
-                        <div className="space-y-3">
-                          {renderDeliveryPayloadCard()}
-                        </div>
-                      ) : actionMode === 'WHATSAPP' ? (
-                        renderWhatsAppOrderCard()
-                      ) : (
-                        renderCheckoutForm()
-                      )}
-                    </section>
+
+                        {isPaid && requiresDeliveryPayload ? (
+                          <div className="space-y-3">
+                            {renderDeliveryPayloadCard()}
+                          </div>
+                        ) : actionMode === 'WHATSAPP' ? (
+                          renderWhatsAppOrderCard()
+                        ) : (
+                          renderCheckoutForm()
+                        )}
+                      </section>
+                    )}
                   </React.Fragment>
                 ) : null;
 
@@ -5159,7 +5294,7 @@ function SingleProductContent() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
                 <Lock className="w-4 h-4 text-blue-600" />
-                <span>{categoryLabels.checkoutSectionTitle}</span>
+                <span>{isAffiliateProduct ? 'Pemesanan Produk' : categoryLabels.checkoutSectionTitle}</span>
               </h3>
               <button 
                 type="button"
@@ -5170,7 +5305,31 @@ function SingleProductContent() {
               </button>
             </div>
 
-            {renderCheckoutForm()}
+            {isAffiliateProduct ? (
+              <div className="p-4 text-center space-y-4">
+                <div className="space-y-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Harga</span>
+                  <div className="text-2xl font-black text-slate-900">
+                    {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+                  </div>
+                </div>
+                <a
+                  href={externalAffiliateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    handleExternalProductClick();
+                    setCheckoutOpen(false);
+                  }}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer text-sm no-underline"
+                >
+                  <span>{affiliateCtaLabel}</span>
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                </a>
+              </div>
+            ) : (
+              renderCheckoutForm()
+            )}
           </div>
         </div>
       )}
