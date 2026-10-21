@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+const Section10CustomHtml = dynamic(() => import('../Section10CustomHtml'), { ssr: false });
 import type { Product } from '@/app/[tenant]/types';
 import { getProductPageUrl } from '@/lib/storefront-urls';
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -1602,6 +1603,11 @@ export default function PersonalAuthorityTemplate({
         titleText={copy.testimonials_title || 'Testimonial Pelanggan'}
         dynamicTestimonials={dynamicTestimonials}
       />
+
+      {/* SECTION 10: CUSTOM HTML & SCRIPT */}
+      <div className="max-w-5xl mx-auto px-4 w-full">
+        <Section10CustomHtml metadata={tenantMetadata || tenant?.metadata} />
+      </div>
 
       {/* FOOTER */}
       <footer className="mt-auto bg-slate-900 text-slate-400 py-10 px-4 sm:px-6 border-t border-slate-800 text-xs">

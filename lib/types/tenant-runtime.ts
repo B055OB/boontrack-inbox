@@ -118,6 +118,7 @@ export interface StorefrontSectionsConfig {
   offer_bonus?: StorefrontSectionConfig;
   faq?: StorefrontSectionConfig;
   payment_voucher?: StorefrontSectionConfig;
+  section_10?: StorefrontSectionConfig;
   [key: string]: StorefrontSectionConfig | undefined;
 }
 

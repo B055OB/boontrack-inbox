@@ -11,6 +11,7 @@ const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 import FloatingCartBar from '@/components/cart/FloatingCartBar';
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
+const Section10CustomHtml = dynamic(() => import('../Section10CustomHtml'), { ssr: false });
 import FnbCateringStorefrontView from './FnbCateringStorefrontView';
 
 
@@ -342,6 +343,10 @@ export function StorefrontTemplate({
       </header>
 
       {/* Catalog Grid */}
+      <div className="max-w-7xl mx-auto px-4 w-full">
+        <Section10CustomHtml metadata={tenantMetadata} />
+      </div>
+
       {!isCatalogDisabled && sections.catalog?.is_active !== false && (
         <main className="max-w-7xl mx-auto px-4 py-8 flex-1">
           <div className="mb-6">

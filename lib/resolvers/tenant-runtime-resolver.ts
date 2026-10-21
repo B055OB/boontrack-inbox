@@ -677,17 +677,24 @@ export function resolveStorefrontSections(
     legacyToggleKeys: string[] = [],
     defaultActive = true
   ): StorefrontSectionConfig => {
-    // 1. Direct key under sections / storefront_sections
+    // 1. Direct key under sections / storefront_sections / theme_config / metadata
     for (const k of keys) {
-      const direct = rawSections[k];
+      const direct = rawSections[k] ?? meta.theme_config?.[k] ?? meta[k];
       if (direct !== undefined) {
         if (typeof direct === 'boolean') {
-          return { is_active: direct };
+          return { is_active: direct, is_enabled: direct };
         }
         if (direct && typeof direct === 'object') {
+          const isActive =
+            direct.is_active !== undefined
+              ? Boolean(direct.is_active)
+              : direct.is_enabled !== undefined
+              ? Boolean(direct.is_enabled)
+              : defaultActive;
           return {
             ...direct,
-            is_active: direct.is_active !== undefined ? Boolean(direct.is_active) : defaultActive,
+            is_active: isActive,
+            is_enabled: direct.is_enabled !== undefined ? Boolean(direct.is_enabled) : isActive,
           };
         }
       }
@@ -771,6 +778,7 @@ export function resolveStorefrontSections(
     offer_bonus: normalizeSection(['offer_bonus'], ['enable_offer']),
     faq: normalizeSection(['faq'], ['enable_faq'], false),
     payment_voucher: normalizeSection(['payment_voucher'], ['enable_payment']),
+    section_10: normalizeSection(['section_10', 'custom_html'], ['enable_section_10', 'enable_custom_html'], false),
     ...rawSections,
   };
 }

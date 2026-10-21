@@ -9,6 +9,7 @@ import type { Product } from '@/app/[tenant]/types';
 
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
+const Section10CustomHtml = dynamic(() => import('../Section10CustomHtml'), { ssr: false });
 
 
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -768,6 +769,9 @@ export default function MicrositeBioTemplate({
             </div>
           )}
         </div>
+
+        {/* ── Section 10: Custom HTML & Tracking Script (Zero Hardcoding Policy) ── */}
+        <Section10CustomHtml metadata={tenantMetadata} />
 
         {/* ── Product Catalog (Modern Cards or Compact List) ── */}
         {showProducts && visibleProducts.length > 0 && (
