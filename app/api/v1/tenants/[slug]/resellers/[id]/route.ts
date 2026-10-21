@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyTenantOwnerOrAdmin } from '@/lib/auth/creator-auth-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic';
  *
  * P0 Isolation: Wajib difilter eq('id', id).eq('tenant_id', tenant.id).
  * P0 Atomic Validation: Wajib validasi affected rows (data.length > 0).
+ * P1 Anti-IDOR: Hanya pemilik toko sah atau admin yang berhak memutasi status kemitraan.
  */
 export async function PATCH(
   req: NextRequest,
@@ -44,6 +46,19 @@ export async function PATCH(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // P1: Anti-IDOR & Otorisasi Pemilik Toko
+    const auth = await verifyTenantOwnerOrAdmin(req, cleanSlug, { supabaseClient: supabaseAdmin });
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+          message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+        },
+        { status: auth.errorStatus || 401 }
+      );
+    }
 
     // 1. Resolve Tenant (Strict Scope Isolation)
     const { data: tenant, error: tenantErr } = await supabaseAdmin

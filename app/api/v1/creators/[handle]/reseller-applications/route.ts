@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyCreatorSession } from '@/lib/auth/creator-auth-guard';
+import {
+  getResellerWalletMetricsFromLedger,
+  resolveResellerUserIdByCode,
+} from '@/lib/attribution/reseller-attribution-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * GET /api/v1/creators/[handle]/reseller-applications
  * Mengambil daftar produk tenant yang membuka program reseller/komisi,
  * status kemitraan kreator saat ini (NONE / PENDING / APPROVED / REJECTED / REVOKED),
- * serta metrik dompet ringkas (Saldo Siap Tarik, Total Produk Terjual).
+ * serta metrik dompet ringkas (Saldo Siap Tarik, Total Produk Terjual) bersumber dari reseller_commission_ledger.
  */
 export async function GET(
   req: NextRequest,
@@ -25,6 +30,19 @@ export async function GET(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // P1: Anti-IDOR & Otorisasi Sesi Server
+    const auth = await verifyCreatorSession(req, cleanHandle, { supabaseClient: supabaseAdmin });
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+          message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+        },
+        { status: auth.errorStatus || 401 }
+      );
+    }
 
     // 1. Resolve Creator Profile
     const baseHandle = cleanHandle.replace(/_+$/, '');
@@ -45,42 +63,25 @@ export async function GET(
 
     const creatorTenantId = creator.tenant_id;
 
-    // 2. Resolve Creator Wallet Metrics (Saldo Siap Tarik & Total Terjual)
-    let balanceReady = 0;
-    let productsSold = 0;
-    let totalEarned = 0;
+    // 2. Resolve Creator Wallet Metrics from Canonical Ledger (Single Source of Truth)
+    const resellerUserIds = new Set<string>();
+    if (creatorTenantId) resellerUserIds.add(creatorTenantId);
+    if (creator.id) resellerUserIds.add(creator.id);
+    if (auth.userId) resellerUserIds.add(auth.userId);
 
-    try {
-      // Find reseller ID in store_resellers corresponding to this handle
-      const { data: storeResellers } = await supabaseAdmin
-        .from('store_resellers')
-        .select('id')
-        .eq('code', cleanHandle);
-
-      const resellerIds = (storeResellers || []).map((sr: any) => sr.id);
-
-      if (resellerIds.length > 0) {
-        const { data: comms } = await supabaseAdmin
-          .from('reseller_commissions')
-          .select('commission_amount, status')
-          .in('reseller_id', resellerIds);
-
-        if (comms && comms.length > 0) {
-          comms.forEach((c: any) => {
-            const amt = Number(c.commission_amount || 0);
-            if (c.status === 'APPROVED') {
-              balanceReady += amt;
-              productsSold += 1;
-            } else if (c.status === 'PAID') {
-              totalEarned += amt;
-              productsSold += 1;
-            }
-          });
-        }
-      }
-    } catch (wErr) {
-      console.warn('[Creator Reseller Applications] Wallet metrics note:', wErr);
+    const resolved = await resolveResellerUserIdByCode(null, cleanHandle, supabaseAdmin);
+    if (resolved?.resellerUserId) {
+      resellerUserIds.add(resolved.resellerUserId);
     }
+
+    const walletMetrics = await getResellerWalletMetricsFromLedger({
+      resellerUserIds: Array.from(resellerUserIds),
+      supabaseClient: supabaseAdmin,
+    });
+
+    const balanceReady = walletMetrics.balanceReady;
+    const productsSold = walletMetrics.productsSold;
+    const totalEarned = walletMetrics.totalEarned;
 
     // 3. Fetch Existing Partnerships for this Creator
     const { data: partnerships } = await supabaseAdmin
@@ -267,6 +268,19 @@ export async function POST(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // P1: Anti-IDOR & Otorisasi Sesi Server
+    const auth = await verifyCreatorSession(req, cleanHandle, { supabaseClient: supabaseAdmin });
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+          message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+        },
+        { status: auth.errorStatus || 401 }
+      );
+    }
 
     // 1. Resolve Creator Profile
     const baseHandle = cleanHandle.replace(/_+$/, '');

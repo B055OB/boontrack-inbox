@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { sanitizeCreatorProfileDto, verifyCreatorSession } from '@/lib/auth/creator-auth-guard';
+import { hashPassword } from '@/lib/auth/password-hasher';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +48,7 @@ async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null
 /**
  * GET /api/creator/profile
  * Retrieves creator profile by handle or tenant_id (Fail-Closed)
+ * P0 Security: Sanitasi DTO - DILARANG mengekspos PIN plaintext, pin_hash, atau password hash.
  */
 export async function GET(req: Request) {
   try {
@@ -91,7 +94,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
-      data: profile || null,
+      data: sanitizeCreatorProfileDto(profile),
     });
   } catch (err: any) {
     console.error('[Creator Profile API] Fatal GET error:', err);
@@ -188,7 +191,7 @@ export async function POST(req: Request) {
     // Check for existing profile by tenant_id or handle
     const { data: existingProfile } = await supabase
       .from('creator_profiles')
-      .select('id, handle, tenant_id')
+      .select('id, handle, tenant_id, theme_config')
       .or(`tenant_id.eq.${resolvedTenantId},handle.eq.${cleanHandle}`)
       .limit(1)
       .maybeSingle();
@@ -201,13 +204,40 @@ export async function POST(req: Request) {
       );
     }
 
-    const themeConfig = {
+    // P1: Anti-IDOR Check:
+    // If profile already exists, verify caller session!
+    // An unauthenticated user cannot modify existing profile data, even if passing is_registration: true.
+    if (existingProfile?.id) {
+      const auth = await verifyCreatorSession(req, cleanHandle, { supabaseClient: supabase });
+      if (!auth.authorized) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+            message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+          },
+          { status: auth.errorStatus || 401 }
+        );
+      }
+    } else if (!is_registration) {
+      return NextResponse.json(
+        { success: false, error: 'NOT_FOUND', message: 'Profil kreator tidak ditemukan untuk diperbarui.' },
+        { status: 404 }
+      );
+    }
+
+    // P0 Security: Hash PIN if provided (DILARANG simpan plaintext PIN)
+    let pinHash: string | undefined = undefined;
+    if (body.pin && typeof body.pin === 'string' && body.pin.trim()) {
+      pinHash = await hashPassword(body.pin.trim());
+    }
+
+    const themeConfig: Record<string, any> = {
       theme: theme || 'clean_light',
       display_name: displayName,
       displayName: displayName,
       avatar_url: (avatar_url || '').trim(),
       whatsapp: (body.whatsapp || '').trim(),
-      pin: (body.pin || '').trim(),
       links: Array.isArray(links) ? links : [],
       qris_config: {
         enabled: Boolean(qris_config.enabled),
@@ -216,6 +246,12 @@ export async function POST(req: Request) {
         nmid: qris_config.nmid || '',
       },
     };
+
+    if (pinHash) {
+      themeConfig.pin_hash = pinHash;
+    } else if (existingProfile?.theme_config?.pin_hash) {
+      themeConfig.pin_hash = existingProfile.theme_config.pin_hash;
+    }
 
     const payload: Record<string, any> = {
       tenant_id: resolvedTenantId,
@@ -227,6 +263,10 @@ export async function POST(req: Request) {
       is_verified: Boolean(is_verified),
       updated_at: new Date().toISOString(),
     };
+
+    if (pinHash) {
+      payload.pin_hash = pinHash;
+    }
 
     if (body.telegram_chat_id !== undefined) {
       payload.telegram_chat_id = body.telegram_chat_id ? String(body.telegram_chat_id).trim() : null;
@@ -274,7 +314,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       message: 'Profil kreator dan konfigurasi bio link berhasil disimpan.',
-      data: savedData,
+      data: sanitizeCreatorProfileDto(savedData),
     });
   } catch (err: any) {
     console.error('[Creator Profile API] Fatal POST error:', err);
