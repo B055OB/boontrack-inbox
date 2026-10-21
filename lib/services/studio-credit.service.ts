@@ -27,6 +27,7 @@ export interface TenantEntitlement {
 export interface CreditReserveResult {
   success: boolean;
   statusCode?: number;
+  status_code?: string;
   message?: string;
   credits_remaining?: number;
   is_unlimited?: boolean;
@@ -207,12 +208,16 @@ export class StudioCreditService {
     const resultItem = Array.isArray(rpcData) ? rpcData[0] : rpcData;
     if (!resultItem || resultItem.success === false) {
       const isInsufficient = resultItem?.status_code === 'INSUFFICIENT_CREDITS';
+      const isInvalidCost = resultItem?.status_code === 'INVALID_COST';
       return {
         success: false,
         statusCode: isInsufficient ? 402 : 400,
+        status_code: resultItem?.status_code,
         message:
           resultItem?.message ||
-          `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits). Silakan lakukan top-up kredit.`,
+          (isInvalidCost
+            ? 'Biaya reservasi kredit tidak valid (p_cost harus > 0).'
+            : `Render Credits Anda tidak mencukupi (Butuh ${amount} Credits). Silakan lakukan top-up kredit.`),
         credits_remaining: resultItem?.remaining_credits ?? 0,
       };
     }
@@ -224,6 +229,7 @@ export class StudioCreditService {
     return {
       success: true,
       statusCode: 200,
+      status_code: resultItem?.status_code,
       credits_remaining: remaining,
       is_unlimited: Boolean(resultItem.is_unlimited),
     };

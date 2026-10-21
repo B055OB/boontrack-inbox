@@ -70,6 +70,12 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
         is_unlimited: false,
         tier: 'PRO_SCALE',
       },
+      [ATTACKER_TENANT_ID]: {
+        tenant_id: ATTACKER_TENANT_ID,
+        credits_remaining: 50,
+        is_unlimited: false,
+        tier: 'PRO_SCALE',
+      },
     };
 
     inMemoryLedger = [];
@@ -171,11 +177,27 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
           const { p_tenant_id, p_cost, p_job_id, p_idempotency_key, p_actor_id, p_actor_role, p_description, p_metadata } = args || {};
           const currentBal = inMemoryEntitlements[p_tenant_id]?.credits_remaining ?? 50;
 
-          // 1. Idempotency Check
+          // 0. Cost parameter validation
+          if (p_cost === null || p_cost === undefined || p_cost <= 0) {
+            return {
+              data: [
+                {
+                  success: false,
+                  status_code: 'INVALID_COST',
+                  remaining_credits: 0,
+                  is_unlimited: false,
+                },
+              ],
+              error: null,
+            };
+          }
+
+          // 1. Tenant-Scoped Idempotency Check (Zero Cross-Tenant Collision)
           const existing = inMemoryLedger.find(
             (entry) =>
-              (p_job_id && entry.job_id === p_job_id && entry.type === 'RESERVE') ||
-              (p_idempotency_key && entry.idempotency_key === p_idempotency_key)
+              entry.tenant_id === p_tenant_id &&
+              ((p_job_id && entry.job_id === p_job_id && entry.type === 'RESERVE') ||
+               (p_idempotency_key && entry.idempotency_key === p_idempotency_key))
           );
 
           if (existing) {
@@ -299,9 +321,13 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
           limit: jest.fn().mockReturnThis(),
           maybeSingle: jest.fn().mockImplementation(async () => {
             if (table === 'tenants') {
+              const tid = currentEqFilters['id'] || currentEqFilters['slug'];
+              if (tid && inMemoryTenants[tid]) return { data: inMemoryTenants[tid], error: null };
               return { data: inMemoryTenants[TEST_TENANT_ID], error: null };
             }
             if (table === 'tenant_entitlements') {
+              const tid = currentEqFilters['tenant_id'];
+              if (tid && inMemoryEntitlements[tid]) return { data: inMemoryEntitlements[tid], error: null };
               return { data: inMemoryEntitlements[TEST_TENANT_ID], error: null };
             }
             if (table === 'studio_jobs') {
@@ -341,9 +367,14 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
     jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(mockSupabase as any);
 
-    // Spy on resolveTenant and getEntitlements
-    jest.spyOn(StudioCreditService, 'resolveTenant').mockResolvedValue(inMemoryTenants[TEST_TENANT_ID]);
-    jest.spyOn(StudioCreditService, 'getEntitlements').mockImplementation(async () => {
+    // Spy on resolveTenant and getEntitlements with dynamic tenant mapping
+    jest.spyOn(StudioCreditService, 'resolveTenant').mockImplementation(async (tenantIdOrSlug: string) => {
+      if (inMemoryTenants[tenantIdOrSlug]) return inMemoryTenants[tenantIdOrSlug];
+      const match = Object.values(inMemoryTenants).find(t => t.slug === tenantIdOrSlug || t.id === tenantIdOrSlug);
+      return match || inMemoryTenants[TEST_TENANT_ID];
+    });
+    jest.spyOn(StudioCreditService, 'getEntitlements').mockImplementation(async (tenantIdOrSlug?: string) => {
+      if (tenantIdOrSlug && inMemoryEntitlements[tenantIdOrSlug]) return inMemoryEntitlements[tenantIdOrSlug];
       return inMemoryEntitlements[TEST_TENANT_ID];
     });
   });
@@ -602,6 +633,79 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
       expect(ledgerCountAfterRetry).toBe(1);
 
       console.log(`[CANARY TEST 4b - IDEMPOTENT RETRY] Retry with same jobId ${testJobId} did not double-deduct credits | Remaining: ${res2.credits_remaining}`);
+    });
+  });
+
+  describe('5. Audit PR #66: Tenant-Scoped Idempotency & Cost Parameter Validation', () => {
+    it('lintas tenant: job_id yang sama pada tenant berbeda TIDAK BOLEH memicu IDEMPOTENT_HIT milik tenant lain', async () => {
+      const collisionJobId = 'job-cross-tenant-shared-999';
+      const cost = 3;
+
+      // 1. Tenant A (Canary Pilot Store) melakukan reservasi kredit untuk job_id
+      const resA = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        cost,
+        'Render Job Tenant A',
+        collisionJobId
+      );
+
+      expect(resA.success).toBe(true);
+      expect(resA.status_code).not.toBe('IDEMPOTENT_HIT');
+      expect(inMemoryEntitlements[TEST_TENANT_ID].credits_remaining).toBe(47);
+
+      // 2. Tenant B (Attacker/Separate Store) memanggil reservasi dengan job_id yang SAMA
+      // Wajib TIDAK memicu IDEMPOTENT_HIT milik Tenant A, melainkan melakukan reservasi mandiri untuk Tenant B
+      const resB = await StudioCreditService.reserveCredits(
+        ATTACKER_TENANT_ID,
+        cost,
+        'Render Job Tenant B (Same Job ID)',
+        collisionJobId
+      );
+
+      expect(resB.success).toBe(true);
+      expect(resB.status_code).not.toBe('IDEMPOTENT_HIT');
+      expect(inMemoryEntitlements[ATTACKER_TENANT_ID].credits_remaining).toBe(47);
+
+      // Pastikan ada 2 entri ledger terpisah untuk masing-masing tenant
+      const ledgerA = inMemoryLedger.find((l) => l.tenant_id === TEST_TENANT_ID && l.job_id === collisionJobId);
+      const ledgerB = inMemoryLedger.find((l) => l.tenant_id === ATTACKER_TENANT_ID && l.job_id === collisionJobId);
+
+      expect(ledgerA).toBeDefined();
+      expect(ledgerB).toBeDefined();
+      expect(ledgerA?.tenant_id).toBe(TEST_TENANT_ID);
+      expect(ledgerB?.tenant_id).toBe(ATTACKER_TENANT_ID);
+
+      console.log(`[CANARY TEST 5a - TENANT SCOPED IDEMPOTENCY] Job ID collision across tenants prevented cleanly. Tenant A and B have isolated reservations.`);
+    });
+
+    it('validasi p_cost <= 0 ditolak dengan status INVALID_COST', async () => {
+      // 1. Biaya 0 (Zero Cost)
+      const resZero = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        0,
+        'Zero cost test job',
+        'job-zero-cost-test'
+      );
+
+      expect(resZero.success).toBe(false);
+      expect(resZero.statusCode).toBe(400);
+      expect(resZero.status_code).toBe('INVALID_COST');
+      expect(resZero.message).toContain('Biaya reservasi kredit tidak valid');
+
+      // 2. Biaya negatif (Negative Cost)
+      const resNegative = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        -5,
+        'Negative cost test job',
+        'job-negative-cost-test'
+      );
+
+      expect(resNegative.success).toBe(false);
+      expect(resNegative.statusCode).toBe(400);
+      expect(resNegative.status_code).toBe('INVALID_COST');
+      expect(resNegative.message).toContain('Biaya reservasi kredit tidak valid');
+
+      console.log(`[CANARY TEST 5b - INVALID COST REJECTION] p_cost <= 0 rejected with INVALID_COST.`);
     });
   });
 });
