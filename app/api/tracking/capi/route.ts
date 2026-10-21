@@ -29,17 +29,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. Resolve tenantSlug from body, referer, origin, or SKU prefix
-    let tenantSlug = rawBody.tenantSlug || rawBody.tenant_slug;
-    if (!tenantSlug) {
+    // 1. Resolve tenantSlug or tenantId from body, headers, or referer
+    let tenantSlug =
+      rawBody.tenantSlug ||
+      rawBody.tenant_slug ||
+      req.headers.get('x-tenant-slug') ||
+      '';
+    let tenantId =
+      rawBody.tenantId ||
+      rawBody.tenant_id ||
+      req.headers.get('x-tenant-id') ||
+      '';
+
+    if (!tenantSlug && !tenantId) {
       const referer = req.headers.get('referer') || '';
       try {
         const url = new URL(referer);
         const pathParts = url.pathname.split('/').filter(Boolean);
-        if (pathParts.length > 0 && !['api', 'dashboard', 'creator'].includes(pathParts[0])) {
+        if (
+          pathParts.length > 0 &&
+          !['api', 'dashboard', 'creator', '_next', 'static', 'admin'].includes(pathParts[0])
+        ) {
           tenantSlug = pathParts[0];
         }
       } catch {}
+    }
+
+    // Fail-closed: Never fallback to any hardcoded default tenant
+    if (!tenantSlug && !tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Tenant context (tenant_id or tenant_slug) is required for tracking',
+        },
+        { status: 400 }
+      );
     }
 
     const contentIds =
@@ -48,21 +72,26 @@ export async function POST(req: NextRequest) {
       rawBody.customData?.content_ids ||
       [];
 
-    if (!tenantSlug && Array.isArray(contentIds)) {
-      if (contentIds.some((id: string) => String(id).toUpperCase().startsWith('OB-'))) {
-        tenantSlug = 'onlineboost';
-      }
-    }
-
     // 2. Normalize payload
     const normalizedBody = {
-      tenantSlug: tenantSlug || 'onlineboost',
+      tenantSlug: tenantSlug || undefined,
+      tenantId: tenantId || undefined,
       eventName: rawBody.eventName || rawBody.event_name || 'InitiateCheckout',
-      eventId: rawBody.eventId || rawBody.event_id || `BEACON_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      eventId:
+        rawBody.eventId ||
+        rawBody.event_id ||
+        `BEACON_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       amount: rawBody.amount || rawBody.custom_data?.value || rawBody.customData?.value || 0,
-      currency: rawBody.currency || rawBody.custom_data?.currency || rawBody.customData?.currency || 'IDR',
+      currency:
+        rawBody.currency ||
+        rawBody.custom_data?.currency ||
+        rawBody.customData?.currency ||
+        'IDR',
       contentIds,
-      contentName: rawBody.contentName || rawBody.custom_data?.content_name || 'Storefront Beacon',
+      contentName:
+        rawBody.contentName ||
+        rawBody.custom_data?.content_name ||
+        'Storefront Beacon',
       customData: rawBody.custom_data || rawBody.customData || {},
       userAgent: req.headers.get('user-agent') || undefined,
     };

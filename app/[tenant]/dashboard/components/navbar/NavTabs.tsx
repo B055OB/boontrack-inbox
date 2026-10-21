@@ -117,15 +117,15 @@ export default function NavTabs({
   const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase().trim();
   const isDakwah = rawCat.includes('DAKWAH') || rawCat.includes('KAJIAN') || rawCat.includes('ISLAM');
 
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => rawCat.includes(k));
-  const isFieldService = !isProService && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => rawCat.includes(k)));
+  const isDigital = ['DIGITAL_PRODUCT', 'DIGITAL_FILE', 'DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD'].some((k) => rawCat.includes(k)) || isDakwah || Boolean(capabilities?.digital_fulfillment);
+  const isProService = !isDigital && ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => rawCat.includes(k));
+  const isFieldService = !isDigital && !isProService && capabilities?.field_service !== false && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => rawCat.includes(k)));
   const isFood = ['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => rawCat.includes(k));
-  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD'].some((k) => rawCat.includes(k)) || isDakwah || Boolean(capabilities?.digital_fulfillment);
   const isAgency = ['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'CAMPAIGN', 'TALENT', 'AFFILIATE'].some((k) => rawCat.includes(k));
 
   const isPhysical = (!isDigital && !isProService && !isFieldService && !isAgency) || rawCat === 'PHYSICAL' || rawCat === 'RETAIL' || isFood;
-  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false;
-  const showBooking = isProService || isFieldService || Boolean(capabilities?.booking);
+  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false && !isDigital;
+  const showBooking = capabilities?.booking !== false && !isDigital && (isProService || isFieldService || Boolean(capabilities?.booking));
   const showDigital = isDigital || Boolean(capabilities?.digital_fulfillment);
 
   // Entitlement Ads Tracking Pro: terkunci untuk Solo/Trial

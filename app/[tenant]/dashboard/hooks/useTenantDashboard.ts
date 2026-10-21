@@ -824,9 +824,14 @@ export function useTenantDashboard() {
             tenant.metadata?.business_category ||
             'PHYSICAL';
           setStoreCategory(resolvedBusinessType);
-          if (tenant.metadata?.capabilities) {
-            setCapabilities(tenant.metadata.capabilities);
-          }
+          const metaFeatures = tenant.metadata?.features || {};
+          const metaCaps = (tenant.metadata?.capabilities || {}) as Record<string, any>;
+          setCapabilities({
+            ...metaCaps,
+            ...(metaFeatures.booking_slots === false ? { booking: false } : {}),
+            ...(metaFeatures.field_service === false ? { field_service: false } : {}),
+            ...(metaFeatures.digital_products === true ? { digital_fulfillment: true } : {}),
+          });
 
           const storeNameFromDb =
             tenant.name ||
@@ -961,16 +966,17 @@ export function useTenantDashboard() {
             'PHYSICAL'
           ).toUpperCase();
 
-          if (['FOOD', 'FNB', 'KULINER'].some(k => rawCat.includes(k))) {
+          const features = tenant.metadata?.features || {};
+          if (features.digital_products === true || ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK'].some(k => rawCat.includes(k))) {
+            setStoreCategory('DIGITAL');
+          } else if (['FOOD', 'FNB', 'KULINER'].some(k => rawCat.includes(k))) {
             setStoreCategory('FOOD');
           } else if (['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => rawCat.includes(k))) {
             setStoreCategory('PROFESSIONAL_SERVICE');
-          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => rawCat.includes(k))) {
+          } else if (features.field_service !== false && ['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => rawCat.includes(k))) {
             setStoreCategory('FIELD_SERVICE');
           } else if (['AGENCY', 'CREATOR'].some(k => rawCat.includes(k))) {
             setStoreCategory('CREATOR_AGENCY');
-          } else if (['DIGITAL', 'COURSE', 'SOFTWARE'].some(k => rawCat.includes(k))) {
-            setStoreCategory('DIGITAL');
           } else {
             setStoreCategory('PHYSICAL');
           }

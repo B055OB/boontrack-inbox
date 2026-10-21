@@ -1604,10 +1604,26 @@ export default function PersonalAuthorityTemplate({
         dynamicTestimonials={dynamicTestimonials}
       />
 
-      {/* SECTION 10: CUSTOM HTML & SCRIPT */}
-      <div className="max-w-5xl mx-auto px-4 w-full">
-        <Section10CustomHtml metadata={tenantMetadata || tenant?.metadata} />
-      </div>
+      {/* SECTION 10: CUSTOM HTML & SCRIPT (Strict Multi-Tenant Scoping) */}
+      {(() => {
+        const meta = tenantMetadata || tenant?.metadata;
+        const sec10 =
+          meta?.theme_config?.section_10 ||
+          meta?.storefront_sections?.section_10 ||
+          meta?.sections?.section_10 ||
+          meta?.section_10 ||
+          sections?.section_10;
+        const isEnabled = Boolean(sec10?.is_enabled ?? sec10?.is_active);
+        const html = sec10?.html_content || sec10?.custom_html || sec10?.html;
+        if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
+          return null;
+        }
+        return (
+          <div className="max-w-5xl mx-auto px-4 w-full">
+            <Section10CustomHtml metadata={meta} />
+          </div>
+        );
+      })()}
 
       {/* FOOTER */}
       <footer className="mt-auto bg-slate-900 text-slate-400 py-10 px-4 sm:px-6 border-t border-slate-800 text-xs">

@@ -770,8 +770,20 @@ export default function MicrositeBioTemplate({
           )}
         </div>
 
-        {/* ── Section 10: Custom HTML & Tracking Script (Zero Hardcoding Policy) ── */}
-        <Section10CustomHtml metadata={tenantMetadata} />
+        {/* ── Section 10: Custom HTML & Tracking Script (Strict Multi-Tenant Scoping) ── */}
+        {(() => {
+          const sec10 =
+            tenantMetadata?.theme_config?.section_10 ||
+            tenantMetadata?.storefront_sections?.section_10 ||
+            tenantMetadata?.sections?.section_10 ||
+            tenantMetadata?.section_10;
+          const isEnabled = Boolean(sec10?.is_enabled ?? sec10?.is_active);
+          const html = sec10?.html_content || sec10?.custom_html || sec10?.html;
+          if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
+            return null;
+          }
+          return <Section10CustomHtml metadata={tenantMetadata} />;
+        })()}
 
         {/* ── Product Catalog (Modern Cards or Compact List) ── */}
         {showProducts && visibleProducts.length > 0 && (

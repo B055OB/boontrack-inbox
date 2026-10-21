@@ -832,8 +832,6 @@ function SingleProductContent() {
     (product as any)?.fulfillment_metadata?.external_url ||
     (product as any)?.fulfillment_metadata?.affiliate_url ||
     (product as any)?.fulfillment_metadata?.affiliate_link ||
-    (product as any)?.fulfillment_metadata?.access_url ||
-    (config as any)?.external_url ||
     '';
   const externalAffiliateUrl = typeof rawExternalAffiliateUrl === 'string' ? rawExternalAffiliateUrl.trim() : '';
 

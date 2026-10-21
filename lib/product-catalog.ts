@@ -1187,8 +1187,7 @@ export function resolveProductExternalUrl(item: any): string | null {
     item.metadata?.link_external ||
     item.fulfillment_metadata?.external_url ||
     item.fulfillment_metadata?.affiliate_url ||
-    item.fulfillment_metadata?.affiliate_link ||
-    item.fulfillment_metadata?.access_url;
+    item.fulfillment_metadata?.affiliate_link;
 
   if (candidate && typeof candidate === 'string') {
     const trimmed = candidate.trim();

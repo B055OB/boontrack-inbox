@@ -85,8 +85,17 @@ export interface MenuRegistryContext {
  */
 export function getVerticalCatalogConfig(storeCategory?: string) {
   const norm = (storeCategory || '').toUpperCase().trim();
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
-  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI'].some((k) => norm.includes(k));
+  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => norm.includes(k));
+  const isProService = !isDigital && ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
+  const isFieldService = !isDigital && !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI'].some((k) => norm.includes(k));
+
+  if (isDigital) {
+    return {
+      label: 'Katalog & Produk',
+      badge: 'Digital',
+      icon: Package,
+    };
+  }
 
   if (isProService) {
     return {
@@ -114,9 +123,9 @@ export function getVerticalCatalogConfig(storeCategory?: string) {
       };
     case 'digital-product':
       return {
-        label: 'Produk & Materi Digital',
+        label: 'Katalog & Produk',
         badge: 'Digital',
-        icon: FileText,
+        icon: Package,
       };
     case 'pro-service':
       return {
@@ -176,13 +185,13 @@ export function buildMenuRegistry(ctx: MenuRegistryContext): NavMenuGroup[] {
   const categoryOrType = storeCategory || businessType;
   const normCategory = (categoryOrType || '').toUpperCase().trim();
   const isFood = ['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => normCategory.includes(k));
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => normCategory.includes(k));
-  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => normCategory.includes(k));
-  const isBookingActive = isProService || isFieldService || capabilities?.booking === true;
-  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => normCategory.includes(k)) || capabilities?.digital_fulfillment === true;
+  const isDigital = ['DIGITAL_PRODUCT', 'DIGITAL_FILE', 'DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => normCategory.includes(k)) || capabilities?.digital_fulfillment === true;
+  const isProService = !isDigital && ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => normCategory.includes(k));
+  const isFieldService = !isDigital && !isProService && capabilities?.field_service !== false && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => normCategory.includes(k));
+  const isBookingActive = capabilities?.booking !== false && !isDigital && (isProService || isFieldService || capabilities?.booking === true);
   const isAgency = ['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'CAMPAIGN', 'TALENT', 'AFFILIATE'].some((k) => normCategory.includes(k));
   const isPhysical = (!isDigital && !isProService && !isFieldService && !isAgency) || normCategory === 'PHYSICAL' || normCategory === 'RETAIL' || isFood;
-  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false;
+  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false && !isDigital;
 
   const verticalCatalog = getVerticalCatalogConfig(categoryOrType);
 

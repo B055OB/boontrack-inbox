@@ -38,7 +38,7 @@ export default function Section10CustomHtml({
     metadata?.section_10;
 
   const isEnabled = Boolean(sec?.is_enabled ?? sec?.is_active ?? false);
-  const rawHtml = sec?.custom_html || sec?.html || '';
+  const rawHtml = sec?.html_content || sec?.custom_html || sec?.html || '';
 
   // 2. Fail-closed: Zero vertical placeholder leakage if disabled or empty
   if (!isEnabled || !rawHtml || typeof rawHtml !== 'string' || !rawHtml.trim()) {
@@ -78,8 +78,8 @@ export default function Section10CustomHtml({
   return (
     <div
       ref={containerRef}
-      id="section-10-custom-html"
-      className={`w-full overflow-hidden transition-all ${className}`}
+      id="onlineboost-landing-root"
+      className={`ob-sec10-wrap w-full overflow-hidden transition-all ${className}`}
       dangerouslySetInnerHTML={{ __html: rawHtml }}
     />
   );

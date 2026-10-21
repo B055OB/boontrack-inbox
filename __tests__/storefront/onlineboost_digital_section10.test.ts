@@ -100,16 +100,66 @@ describe('OnlineBoost Digital Product Conversion & Section 10 Custom HTML Inject
       expect(section10Code).toContain("oldScript.parentNode?.replaceChild(newScript, oldScript)");
     });
 
-    it('integrates Section10CustomHtml into MicrositeBioTemplate and StorefrontTemplate', () => {
+    it('integrates Section10CustomHtml into MicrositeBioTemplate, StorefrontTemplate, and PersonalAuthorityTemplate with strict multi-tenant guards', () => {
+      const personalAuthorityTemplatePath = path.resolve(
+        process.cwd(),
+        'app/[tenant]/components/templates/PersonalAuthorityTemplate.tsx'
+      );
+      const personalAuthorityCode = fs.readFileSync(personalAuthorityTemplatePath, 'utf-8');
+
       expect(micrositeCode).toContain('Section10CustomHtml');
-      expect(micrositeCode).toContain('<Section10CustomHtml metadata={tenantMetadata} />');
+      expect(micrositeCode).toContain('if (!isEnabled || !html || typeof html !== \'string\' || !html.trim())');
       expect(storefrontCode).toContain('Section10CustomHtml');
-      expect(storefrontCode).toContain('<Section10CustomHtml metadata={tenantMetadata} />');
+      expect(storefrontCode).toContain('if (!isEnabled || !html || typeof html !== \'string\' || !html.trim())');
+      expect(personalAuthorityCode).toContain('Section10CustomHtml');
+      expect(personalAuthorityCode).toContain('if (!isEnabled || !html || typeof html !== \'string\' || !html.trim())');
     });
 
-    it('provides CAPI beacon bridge at /api/tracking/capi', () => {
-      expect(trackingCapiCode).toContain("rawBody.eventName || rawBody.event_name || 'InitiateCheckout'");
-      expect(trackingCapiCode).toContain("v1CapiPost");
+    it('scopes Section10 wrapper to #onlineboost-landing-root and .ob-sec10-wrap', () => {
+      expect(section10Code).toContain('id="onlineboost-landing-root"');
+      expect(section10Code).toContain('className={`ob-sec10-wrap');
+    });
+
+    it('sanitizes CAPI tracking bridge at /api/tracking/capi (zero hardcoding, fail-closed on unknown tenant)', () => {
+      expect(trackingCapiCode).toContain("Tenant context (tenant_id or tenant_slug) is required for tracking");
+      expect(trackingCapiCode).not.toContain("tenantSlug || 'onlineboost'");
+      expect(trackingCapiCode).not.toContain("startsWith('OB-')");
+    });
+  });
+
+  describe('3. Field Service Module Suppression & External URL Purge', () => {
+    it('verifies resolveProductExternalUrl ignores fulfillment_metadata.access_url', () => {
+      const { resolveProductExternalUrl } = require('@/lib/product-catalog');
+      const itemWithAccessUrl = {
+        fulfillment_metadata: {
+          access_url: 'https://onlineboost.id/smoke-test',
+        },
+      };
+      expect(resolveProductExternalUrl(itemWithAccessUrl)).toBeNull();
+    });
+
+    it('verifies menuRegistry resolves digital products vertical without field service or booking', () => {
+      const { getVerticalCatalogConfig, buildMenuRegistry } = require('@/app/[tenant]/dashboard/components/sidebar/menuRegistry');
+      const config = getVerticalCatalogConfig('DIGITAL_PRODUCT');
+      expect(config.label).toBe('Katalog & Produk');
+      expect(config.badge).toBe('Digital');
+
+      const groups = buildMenuRegistry({
+        storeCategory: 'DIGITAL_PRODUCT',
+        capabilities: {
+          booking: false,
+          field_service: false,
+          digital_fulfillment: true,
+        },
+      });
+
+      const kelolaToko = groups.find((g: any) => g.id === 'kelola-toko');
+      expect(kelolaToko).toBeDefined();
+      const itemIds = kelolaToko.items.map((i: any) => i.id);
+      expect(itemIds).not.toContain('booking');
+      expect(itemIds).not.toContain('shipping');
+      expect(itemIds).toContain('catalog');
+      expect(itemIds).toContain('orders');
     });
   });
 });

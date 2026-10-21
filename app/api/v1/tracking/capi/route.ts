@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const {
       tenantSlug,
+      tenant_slug,
+      tenantId,
+      tenant_id,
       eventName,
       eventId,
       orderId,
@@ -46,10 +49,11 @@ export async function POST(req: NextRequest) {
       customData,
     } = body;
 
-    const cleanSlug = String(tenantSlug || '').trim().toLowerCase();
-    if (!cleanSlug) {
+    const cleanSlug = String(tenantSlug || tenant_slug || '').trim().toLowerCase();
+    const cleanTenantId = String(tenantId || tenant_id || '').trim();
+    if (!cleanSlug && !cleanTenantId) {
       return NextResponse.json(
-        { success: false, error: 'tenantSlug is required' },
+        { success: false, error: 'tenantSlug or tenantId is required' },
         { status: 400 }
       );
     }
@@ -68,11 +72,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Single Source of Truth: Ambil data tenant & konfigurasi pixel dari database
-    const { data: tenant, error: tenantErr } = await supabase
+    let tenantQuery = supabase
       .from('tenants')
-      .select('id, slug, tier, metadata')
-      .eq('slug', cleanSlug)
-      .maybeSingle();
+      .select('id, slug, tier, metadata');
+
+    if (cleanSlug) {
+      tenantQuery = tenantQuery.eq('slug', cleanSlug);
+    } else {
+      tenantQuery = tenantQuery.eq('id', cleanTenantId);
+    }
+
+    const { data: tenant, error: tenantErr } = await tenantQuery.maybeSingle();
 
     if (tenantErr || !tenant) {
       return NextResponse.json(
@@ -91,15 +101,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const integrationsMeta = tenant.metadata?.integrations || {};
     const pixelConfig = tenant.metadata?.pixel_config || {};
     const trackingMeta = tenant.metadata?.tracking || {};
     const metaPixelId =
+      integrationsMeta.meta_dataset_id ||
+      integrationsMeta.meta_pixel_id ||
+      trackingMeta.meta_dataset_id ||
       trackingMeta.meta_pixel_id ||
+      pixelConfig.meta_dataset_id ||
       pixelConfig.meta_pixel_id ||
+      tenant.metadata?.meta_dataset_id ||
       tenant.metadata?.meta_pixel_id ||
       tenant.metadata?.pixel_id ||
       tenant.metadata?.facebook_pixel_id;
     const metaAccessToken =
+      integrationsMeta.meta_access_token ||
       trackingMeta.meta_access_token ||
       pixelConfig.meta_access_token ||
       tenant.metadata?.meta_access_token ||
