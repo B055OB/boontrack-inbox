@@ -326,7 +326,7 @@ export function resolveCategoryLabels(
     ctaLabel: custom.cta_label || (isPhysical ? 'Beli Sekarang' : isFnb ? 'Pesan Menu Sekarang' : isService ? 'Booking Jadwal Sekarang' : 'Beli Sekarang'),
     freeCtaLabel: custom.free_cta_label || (isPhysical ? 'Klaim Sampel Gratis' : isFnb ? 'Klaim Porsi Gratis' : isService ? 'Konsultasi Gratis Sekarang' : 'Klaim Sekarang (Gratis)'),
     addToCartLabel: custom.add_to_cart_label || '+ Keranjang',
-    affiliateCtaLabel: custom.affiliate_cta_label || (isPhysical ? 'Beli di Mitra / Marketplace Resmi' : 'Beli Sekarang (Mitra Resmi)'),
+    affiliateCtaLabel: custom.affiliate_cta_label || 'Saya Mau Pesan ↗',
     headerSecurityBadge: custom.header_security_badge || (isPhysical ? 'Garansi 100% Produk Original' : isFnb ? 'Jaminan Mutu & Higienis' : isService ? 'Layanan Profesional Terverifikasi' : 'Garansi Akses Resmi'),
     directStoreBadge: custom.direct_store_badge || (isPhysical ? 'Direct Store (100% Toko Resmi)' : isFnb ? 'Dapur Resmi Terverifikasi' : 'Direct Store (100% Toko Resmi)'),
     discountBadgeLabel: custom.discount_badge_label || (isPhysical ? 'Promo Diskon Hari Ini' : isFnb ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini'),
@@ -506,6 +506,9 @@ export interface ProductItem {
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
   external_url?: string;
+  affiliate_url?: string;
+  affiliate_link?: string;
+  bypass_checkout?: boolean;
   cta_label?: string;
   micro_copy?: string;
   checkout_type?: 'internal' | 'external';
@@ -1162,10 +1165,9 @@ export function resolveSinglePageProduct(
 export function resolveProductExternalUrl(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
-  // Never treat internal checkout, landing page products, or CTWA mastery as external
+  // Never treat explicit internal checkout or specific internal products as external
   if (
     item?.checkout_type === 'internal' ||
-    item?.single_page_config ||
     item?.slug === 'ctwa-mastery-7day' ||
     item?.id === 'c7ba0001-7de7-4888-9999-000000000001'
   ) {
@@ -1176,8 +1178,16 @@ export function resolveProductExternalUrl(item: any): string | null {
   const candidate =
     item.external_url ||
     item.affiliate_url ||
+    item.affiliate_link ||
+    item.link_external ||
     item.metadata?.external_url ||
-    item.metadata?.affiliate_url;
+    item.metadata?.affiliate_url ||
+    item.metadata?.affiliate_link ||
+    item.metadata?.link_external ||
+    item.fulfillment_metadata?.external_url ||
+    item.fulfillment_metadata?.affiliate_url ||
+    item.fulfillment_metadata?.affiliate_link ||
+    item.fulfillment_metadata?.access_url;
 
   if (candidate && typeof candidate === 'string') {
     const trimmed = candidate.trim();

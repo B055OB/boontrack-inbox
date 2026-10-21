@@ -8,7 +8,7 @@ import { getActiveAffiliateCode, getActiveResellerCode, getTrackingData, getClie
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
-import { normalizeBriefingUrl, resolveCategoryLabels } from "@/lib/product-catalog";
+import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl } from "@/lib/product-catalog";
 import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
@@ -95,6 +95,35 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     (product as any)?.metadata?.limit_single_item
   );
 
+  const resolvedExternalUrl = React.useMemo(() => {
+    if (!product) return null;
+    return (
+      resolveProductExternalUrl(product) ||
+      (product as any).external_url ||
+      (product as any).affiliate_link ||
+      (product as any).affiliate_url ||
+      (product as any).link_external ||
+      (product as any).metadata?.external_url ||
+      (product as any).metadata?.affiliate_link ||
+      (product as any).metadata?.affiliate_url ||
+      (product as any).metadata?.link_external ||
+      null
+    );
+  }, [product]);
+
+  const isAffiliate = Boolean(
+    resolvedExternalUrl ||
+    (product as any)?.external_url ||
+    (product as any)?.affiliate_link ||
+    (product as any)?.affiliate_url ||
+    (product as any)?.link_external ||
+    (product as any)?.checkout_type === 'external' ||
+    (product as any)?.bypass_checkout ||
+    (product as any)?.metadata?.bypass_checkout ||
+    (product as any)?.fulfillment_metadata?.bypass_checkout ||
+    (product as any)?.is_external
+  );
+
   useEffect(() => {
     if (isLimitSingleItem && quantity !== 1) {
       setQuantity(1);
@@ -123,7 +152,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const [tenantTTPixel, setTenantTTPixel] = useState<string>("");
 
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');
-  const [uniqueCode] = useState(() => Math.floor(1 + Math.random() * 999));
+  const [uniqueCode] = useState(() => {
+    if (isAffiliate) return 0;
+    return Math.floor(1 + Math.random() * 999);
+  });
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<{
@@ -253,8 +285,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const isQris = paymentMethod === 'qris';
   const isPickup = isFood ? (foodDiningOption !== 'INSTANT') : (fulfillmentType === 'PICKUP');
 
-  // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS bypass kode unik & gunakan nominal bulat pas
+  // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS / Affiliate external link bypass kode unik & gunakan nominal bulat pas
   const isOnlineboostOrGateway =
+    isAffiliate ||
     (tenantSlug || '').toLowerCase() === 'onlineboost' ||
     (tenantData?.payment_settings?.provider === 'xendit') ||
     (tenantData?.payment_settings?.mode === 'PAYMENT_GATEWAY') ||
@@ -1004,26 +1037,30 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           </button>
         </div>
 
-        {product.external_url ? (
-          <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">
-            <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-2xl flex items-center justify-center mx-auto border border-purple-500/30">
-              <ExternalLink className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="inline-block px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold rounded-full mb-1">
-                Produk Mitra Resmi
-              </span>
-              <h4 className="font-bold text-white text-base mt-1">{product.title}</h4>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Produk ini ditransaksikan langsung melalui link partner resmi kami (Shopee, TikTok, Sejoli, dll).
-              </p>
-            </div>
-            <div className="pt-2">
+        {((isAffiliate || Boolean(resolvedExternalUrl)) && (resolvedExternalUrl || (product as any)?.external_url || (product as any)?.affiliate_link || (product as any)?.affiliate_url || (product as any)?.metadata?.external_url)) ? (() => {
+          const effectiveExternalUrl = resolvedExternalUrl || (product as any)?.external_url || (product as any)?.affiliate_link || (product as any)?.affiliate_url || (product as any)?.metadata?.external_url;
+          return (
+          <div className="space-y-4 py-2 animate-in fade-in duration-200">
+            <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-black text-white text-base leading-snug">{product.title}</h4>
+                  <p className="text-xs text-slate-400 mt-1">Pemesanan Langsung</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Harga</span>
+                  <span className="text-base font-black text-emerald-400">
+                    Rp {Number(product.price || 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+
               <a
-                href={product.external_url}
+                href={effectiveExternalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
+                onClick={async () => {
+                  const eventId = `AFF_MODAL_${product.id || 'prod'}_${Date.now()}`;
                   if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                     (window as any).fbq("track", "InitiateCheckout", {
                       content_name: product.title || (product as any).name,
@@ -1031,18 +1068,48 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                       content_type: "product",
                       value: Number(product.price) || 0,
                       currency: "IDR"
+                    }, { eventID: eventId });
+                  }
+                  if (typeof window !== "undefined" && typeof (window as any).ttq?.track === "function") {
+                    (window as any).ttq.track("InitiateCheckout", {
+                      content_name: product.title || (product as any).name,
+                      content_id: product.id || (product as any).slug,
+                      content_type: "product",
+                      value: Number(product.price) || 0,
+                      currency: "IDR"
                     });
                   }
+                  try {
+                    const clientCtx = getClientTrackingContext();
+                    fetch('/api/v1/tracking/capi', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tenantSlug,
+                        eventName: 'InitiateCheckout',
+                        eventId,
+                        amount: Number(product.price) || 0,
+                        currency: 'IDR',
+                        contentName: product.title || (product as any).name,
+                        contentIds: [String(product.id || (product as any).slug)],
+                        fbc: clientCtx.fbc,
+                        fbp: clientCtx.fbp,
+                        userAgent: clientCtx.client_user_agent,
+                      }),
+                      keepalive: true,
+                    }).catch(() => {});
+                  } catch (_) {}
                   onClose();
                 }}
-                className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-purple-600/30 cursor-pointer text-center"
+                className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-black text-sm rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-600/30 cursor-pointer text-center no-underline"
               >
-                <span>{product.cta_label || 'Beli di Platform Partner'}</span>
-                <ExternalLink className="w-4 h-4" />
+                <span>{product.cta_label || 'Saya Mau Pesan ↗'}</span>
+                <ExternalLink className="w-4 h-4 shrink-0" />
               </a>
             </div>
           </div>
-        ) : paymentData ? (
+          );
+        })() : paymentData ? (
           orderStatus === 'PAID' ? (
             /* Tampilan Lunas / Akses Digital Siap (Native Thank You Screen) */
             <div className="text-center space-y-4 py-2 animate-in fade-in duration-200">
