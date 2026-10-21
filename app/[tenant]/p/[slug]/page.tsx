@@ -5132,7 +5132,7 @@ function SingleProductContent() {
 
                     {/* 8. Ultra-Lean Single Page Checkout Section */}
                     {isAffiliateProduct ? (
-                      <section id="checkout-section" className="bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-5">
+                      <section id="checkout-section" className="bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-3">
                         <div className="max-w-md mx-auto space-y-1.5">
                           <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400 block">
                             Harga Produk
@@ -5145,21 +5145,6 @@ function SingleProductContent() {
                               Rp {promoPrice.toLocaleString('id-ID')}
                             </div>
                           )}
-                        </div>
-
-                        <div className="pt-2 max-w-md mx-auto">
-                          <a
-                            href={externalAffiliateUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={handleExternalProductClick}
-                            id="direct-affiliate-checkout-cta"
-                            data-testid="direct-affiliate-checkout-cta"
-                            className="w-full inline-flex items-center justify-center gap-2.5 py-4 px-8 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 active:scale-98 text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-600/25 transition-all hover:shadow-emerald-600/40 cursor-pointer no-underline tracking-wide"
-                          >
-                            <span>{affiliateCtaLabel}</span>
-                            <ExternalLink className="w-5 h-5 shrink-0" />
-                          </a>
                         </div>
                       </section>
                     ) : (
