@@ -178,7 +178,7 @@ export async function GET(req: Request) {
     if (tenantParam) {
       const cleanParam = tenantParam.trim().toLowerCase();
       const isUuid = IS_UUID_REGEX.test(cleanParam);
-      let tQuery = supabase.from('tenants').select('id, slug, user_id, owner_id, email, owner_email, metadata');
+      let tQuery = supabase.from('tenants').select('id, slug, metadata');
       if (isUuid) {
         tQuery = tQuery.eq('id', cleanParam);
       } else {
@@ -194,34 +194,23 @@ export async function GET(req: Request) {
       resolvedTenant = tData;
     } else {
       // Auto-resolve active workspace tenant for this user
-      const { data: ownedTenant } = await supabase
-        .from('tenants')
-        .select('id, slug, user_id, owner_id, email, owner_email, metadata')
-        .or(`user_id.eq.${userId},owner_id.eq.${userId}`)
-        .limit(1)
-        .maybeSingle();
-
-      if (ownedTenant) {
-        resolvedTenant = ownedTenant;
+      let tuQuery = supabase
+        .from('tenant_users')
+        .select('tenant_id')
+        .eq('is_active', true);
+      if (userEmail) {
+        tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
       } else {
-        let tuQuery = supabase
-          .from('tenant_users')
-          .select('tenant_id')
-          .eq('is_active', true);
-        if (userEmail) {
-          tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
-        } else {
-          tuQuery = tuQuery.eq('user_id', userId);
-        }
-        const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
-        if (memberRow?.tenant_id) {
-          const { data: memberTenant } = await supabase
-            .from('tenants')
-            .select('id, slug, user_id, owner_id, email, owner_email, metadata')
-            .eq('id', memberRow.tenant_id)
-            .maybeSingle();
-          resolvedTenant = memberTenant;
-        }
+        tuQuery = tuQuery.eq('user_id', userId);
+      }
+      const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
+      if (memberRow?.tenant_id) {
+        const { data: memberTenant } = await supabase
+          .from('tenants')
+          .select('id, slug, metadata')
+          .eq('id', memberRow.tenant_id)
+          .maybeSingle();
+        resolvedTenant = memberTenant;
       }
 
       if (!resolvedTenant) {
@@ -244,6 +233,7 @@ export async function GET(req: Request) {
       (userEmail && (
         (resolvedTenant.email && resolvedTenant.email.toLowerCase().trim() === userEmail) ||
         (resolvedTenant.owner_email && resolvedTenant.owner_email.toLowerCase().trim() === userEmail) ||
+        (resolvedTenant.metadata?.email && resolvedTenant.metadata.email.toLowerCase().trim() === userEmail) ||
         (resolvedTenant.metadata?.owner_email && resolvedTenant.metadata.owner_email.toLowerCase().trim() === userEmail)
       ));
 
@@ -257,14 +247,11 @@ export async function GET(req: Request) {
           .eq('is_active', true);
 
         if (userEmail) {
-          memberQuery = memberQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
-        } else {
-          memberQuery = memberQuery.eq('user_id', userId);
-        }
-
-        const { data: memberRecords } = await memberQuery;
-        if (Array.isArray(memberRecords) && memberRecords.length > 0) {
-          isMember = true;
+          memberQuery = memberQuery.eq('email', userEmail);
+          const { data: memberRecords } = await memberQuery;
+          if (Array.isArray(memberRecords) && memberRecords.length > 0) {
+            isMember = true;
+          }
         }
       } catch (tuErr) {
         console.warn('[Studio Jobs API] Error checking tenant_users membership:', tuErr);
@@ -367,10 +354,8 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     // 1. Worker Service Authentication (Strict CTO Gate)
-    const expectedSecret = (
-      process.env.STUDIO_WORKER_SECRET ||
-      process.env.INTERNAL_WORKER_SECRET
-    )?.trim();
+    const studioSecret = process.env.STUDIO_WORKER_SECRET?.trim();
+    const internalSecret = process.env.INTERNAL_WORKER_SECRET?.trim();
 
     const authHeader = req.headers.get('authorization')?.trim() || '';
     let bearerToken = '';
@@ -387,7 +372,12 @@ export async function PATCH(req: Request) {
 
     const providedToken = workerSecretHeader || bearerToken;
 
-    if (!expectedSecret || !providedToken || providedToken !== expectedSecret) {
+    const isSecretValid =
+      Boolean(providedToken) &&
+      ((studioSecret && providedToken === studioSecret) ||
+       (internalSecret && providedToken === internalSecret));
+
+    if (!isSecretValid) {
       return NextResponse.json(
         { success: false, message: 'Unauthorized: Kredensial worker tidak valid atau tidak disertakan.' },
         { status: 401 }
@@ -396,7 +386,9 @@ export async function PATCH(req: Request) {
 
     // 2. Only proceed to body parsing and Supabase Admin mutation AFTER worker auth passes
     const body = await req.json();
-    const { job_id, status, output_url, error_message } = body;
+    const rawJobId = body.job_id || body.jobId;
+    const { status, output_url, error_message } = body;
+    const job_id = rawJobId;
 
     if (!job_id || !status) {
       return NextResponse.json(
