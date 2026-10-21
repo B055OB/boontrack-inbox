@@ -32,9 +32,11 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
   let inMemoryEntitlements: Record<string, any> = {};
   let inMemoryLedger: Array<any> = [];
   let inMemoryJobs: Record<string, any> = {};
+  let updateLedgerCalls: Array<any> = [];
 
   beforeEach(() => {
     jest.clearAllMocks();
+    updateLedgerCalls = [];
     process.env = {
       ...originalEnv,
       STUDIO_WORKER_SECRET: CANARY_WORKER_SECRET,
@@ -166,8 +168,30 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
           };
         }
         if (procName === 'fn_reserve_studio_credits') {
-          const { p_tenant_id, p_cost, p_job_id, p_idempotency_key, p_actor_id, p_actor_role } = args || {};
+          const { p_tenant_id, p_cost, p_job_id, p_idempotency_key, p_actor_id, p_actor_role, p_description, p_metadata } = args || {};
           const currentBal = inMemoryEntitlements[p_tenant_id]?.credits_remaining ?? 50;
+
+          // 1. Idempotency Check
+          const existing = inMemoryLedger.find(
+            (entry) =>
+              (p_job_id && entry.job_id === p_job_id && entry.type === 'RESERVE') ||
+              (p_idempotency_key && entry.idempotency_key === p_idempotency_key)
+          );
+
+          if (existing) {
+            return {
+              data: [
+                {
+                  success: true,
+                  status_code: 'IDEMPOTENT_HIT',
+                  remaining_credits: currentBal,
+                  is_unlimited: false,
+                },
+              ],
+              error: null,
+            };
+          }
+
           if (currentBal < p_cost) {
             return {
               data: [
@@ -188,6 +212,14 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
             inMemoryEntitlements[p_tenant_id].credits_remaining = newBal;
           }
 
+          const desc = p_description || 'Studio render job';
+          const meta = {
+            ...(p_metadata || {}),
+            event: 'STUDIO_RENDER_JOB',
+            type: 'CREDIT_OUT',
+            job_id: p_job_id,
+          };
+
           inMemoryLedger.push({
             id: `reserve-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             tenant_id: p_tenant_id,
@@ -199,8 +231,9 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
             action: 'STUDIO_RENDER_JOB',
             actor_id: p_actor_id || 'STUDIO_RENDER',
             actor_role: p_actor_role || 'CREATOR',
-            reason: 'Hold credits for render job',
-            description: 'Hold credits for render job',
+            reason: 'STUDIO_RENDER_JOB',
+            description: desc,
+            metadata: meta,
           });
 
           return {
@@ -247,6 +280,9 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
                   if (inMemoryJobs[val]) {
                     Object.assign(inMemoryJobs[val], updatePayload);
                   }
+                }
+                if (table === 'tenant_credit_ledger') {
+                  updateLedgerCalls.push({ col, val, updatePayload });
                 }
                 return updateBuilder;
               }),
@@ -491,4 +527,82 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
       console.log(`[CANARY TEST 3 - CROSS-TENANT ISOLATION] Attacker access to ${TEST_TENANT_ID} rejected with 403 Forbidden | Data Leak: ZERO`);
     });
   });
+
+  describe('4. Uji Single-Transaction Atomic Reservation & Zero Post-Update Ledger (PR #63)', () => {
+    it('menghasilkan row ledger dengan description dan metadata lengkap secara atomik tanpa post-update manual', async () => {
+      updateLedgerCalls = [];
+      const testJobId = 'job-atomic-verify-001';
+      const testDesc = 'Render UGC Video 4K: Kampanye Hari Kartini';
+      const cost = 4;
+      const initialCredits = inMemoryEntitlements[TEST_TENANT_ID].credits_remaining;
+
+      const res = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        cost,
+        testDesc,
+        testJobId
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.credits_remaining).toBe(initialCredits - cost);
+
+      // Verifikasi bahwa row ledger langsung berisi description dan metadata lengkap
+      const ledgerEntry = inMemoryLedger.find((e) => e.job_id === testJobId && e.type === 'RESERVE');
+      expect(ledgerEntry).toBeDefined();
+      expect(ledgerEntry.description).toBe(testDesc);
+      expect(ledgerEntry.metadata).toMatchObject({
+        event: 'STUDIO_RENDER_JOB',
+        type: 'CREDIT_OUT',
+        job_id: testJobId,
+      });
+      expect(ledgerEntry.action).toBe('STUDIO_RENDER_JOB');
+      expect(ledgerEntry.amount).toBe(-cost);
+      expect(ledgerEntry.balance_after).toBe(initialCredits - cost);
+
+      // Verifikasi ZERO post-update ke tenant_credit_ledger
+      expect(updateLedgerCalls.length).toBe(0);
+      console.log(`[CANARY TEST 4a - ZERO POST-UPDATE] Job ${testJobId} ledger row created atomically with description & metadata | updateLedgerCalls: 0`);
+    });
+
+    it('menangani retry dengan idempotency key yang sama tanpa menduplikasi pemotongan kredit atau baris ledger', async () => {
+      const testJobId = 'job-idempotency-probe-002';
+      const testDesc = 'Render UGC Video Retry Test';
+      const cost = 3;
+      const balanceBefore = inMemoryEntitlements[TEST_TENANT_ID].credits_remaining;
+
+      // Pemanggilan pertama: harus berhasil dan memotong saldo
+      const res1 = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        cost,
+        testDesc,
+        testJobId
+      );
+      expect(res1.success).toBe(true);
+      expect(res1.credits_remaining).toBe(balanceBefore - cost);
+      expect(inMemoryEntitlements[TEST_TENANT_ID].credits_remaining).toBe(balanceBefore - cost);
+
+      const ledgerCountAfterFirst = inMemoryLedger.filter((e) => e.job_id === testJobId).length;
+      expect(ledgerCountAfterFirst).toBe(1);
+
+      // Pemanggilan retry dengan jobId & idempotency key yang sama
+      const res2 = await StudioCreditService.reserveCredits(
+        TEST_TENANT_ID,
+        cost,
+        testDesc,
+        testJobId
+      );
+      expect(res2.success).toBe(true);
+
+      // Saldo TIDAK boleh terpotong lagi
+      expect(res2.credits_remaining).toBe(balanceBefore - cost);
+      expect(inMemoryEntitlements[TEST_TENANT_ID].credits_remaining).toBe(balanceBefore - cost);
+
+      // Ledger TIDAK boleh bertambah baris ganda
+      const ledgerCountAfterRetry = inMemoryLedger.filter((e) => e.job_id === testJobId).length;
+      expect(ledgerCountAfterRetry).toBe(1);
+
+      console.log(`[CANARY TEST 4b - IDEMPOTENT RETRY] Retry with same jobId ${testJobId} did not double-deduct credits | Remaining: ${res2.credits_remaining}`);
+    });
+  });
 });
+

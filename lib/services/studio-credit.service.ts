@@ -177,40 +177,13 @@ export class StudioCreditService {
     const resolvedJobId = jobId || `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const idempotencyKey = `RESERVE_${tenant.id}_${resolvedJobId}`;
 
-    // 1. Check if Founder or Unlimited
-    const entitlements = await this.getEntitlements(tenant.id);
-    if (entitlements && entitlements.is_unlimited) {
-      try {
-        await supabase.from('tenant_credit_ledger').insert({
-          tenant_id: tenant.id,
-          job_id: resolvedJobId,
-          idempotency_key: idempotencyKey,
-          amount: 0,
-          balance_after: entitlements.credits_remaining,
-          action: 'STUDIO_RENDER_JOB',
-          type: 'RESERVE',
-          reason: 'STUDIO_RENDER_JOB',
-          actor_id: 'STUDIO_RENDER',
-          actor_role: 'CREATOR',
-          description: `[Founder Unlimited] ${description} (${amount} requested)`,
-          metadata: {
-            event: 'STUDIO_RENDER_JOB',
-            type: 'CREDIT_OUT',
-            job_id: resolvedJobId,
-            is_unlimited: true,
-          },
-        });
-      } catch {}
+    const metadata = {
+      event: 'STUDIO_RENDER_JOB',
+      type: 'CREDIT_OUT',
+      job_id: resolvedJobId,
+    };
 
-      return {
-        success: true,
-        statusCode: 200,
-        credits_remaining: entitlements.credits_remaining,
-        is_unlimited: true,
-      };
-    }
-
-    // 2. Call RPC fn_reserve_studio_credits (Strict Atomic Transaction, Zero Non-Atomic Fallback)
+    // Single-Transaction Atomic Reservation & Zero Post-Update Ledger
     const { data: rpcData, error: rpcError } = await supabase.rpc('fn_reserve_studio_credits', {
       p_tenant_id: tenant.id,
       p_cost: amount,
@@ -218,6 +191,8 @@ export class StudioCreditService {
       p_idempotency_key: idempotencyKey,
       p_actor_id: 'STUDIO_RENDER',
       p_actor_role: 'CREATOR',
+      p_description: description,
+      p_metadata: metadata,
     });
 
     if (rpcError) {
@@ -245,26 +220,6 @@ export class StudioCreditService {
     const remaining = typeof resultItem === 'number'
       ? resultItem
       : (resultItem.remaining_credits ?? resultItem.new_balance ?? 0);
-
-    // Enrich newly inserted ledger row with action and metadata
-    try {
-      await supabase
-        .from('tenant_credit_ledger')
-        .update({
-          action: 'STUDIO_RENDER_JOB',
-          description,
-          balance_after: remaining,
-          metadata: {
-            event: 'STUDIO_RENDER_JOB',
-            type: 'CREDIT_OUT',
-            job_id: resolvedJobId,
-          },
-        })
-        .eq('job_id', resolvedJobId)
-        .eq('type', 'RESERVE');
-    } catch (enrichErr) {
-      console.warn('[StudioCreditService] Warning enriching reserve ledger row:', enrichErr);
-    }
 
     return {
       success: true,
