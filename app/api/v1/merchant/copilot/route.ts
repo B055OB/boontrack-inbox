@@ -128,10 +128,11 @@ export async function POST(req: NextRequest) {
               session_id: sessionId,
               conversation_history: activeHistory,
               history: activeHistory,
-              context: context || {
+              context: context || body.tenant_context || {
                 tenant_slug: slug,
                 store_name: storeName,
               },
+              temperature: 0.2,
             }),
             cache: 'no-store',
             signal: controller.signal,

@@ -495,6 +495,7 @@ export default function BoonPilotWidget({
           message: userText,
           conversation_history,
           tenant_context,
+          temperature: 0.2,
         }),
       });
 

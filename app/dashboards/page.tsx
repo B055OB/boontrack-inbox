@@ -1759,8 +1759,8 @@ export default function ShowcaseDashboard() {
             <span className="text-xs font-black text-slate-100 truncate">{STORE.name}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={toggleTheme} className="p-1.5 rounded-lg border border-slate-700/80 bg-slate-900/50 text-slate-300 cursor-pointer transition active:scale-95 theme-toggle-btn">
-              {themeMode === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            <button type="button" onClick={toggleTheme} className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition active:scale-95 cursor-pointer theme-toggle-btn shadow-xs">
+              {themeMode === 'dark' ? <Sun className="w-4 h-4 text-amber-500 animate-spin-slow" /> : <Moon className="w-4 h-4 text-white" />}
             </button>
             <button type="button" onClick={() => setActiveTab('orders')} className={`p-1.5 rounded-lg border transition cursor-pointer ${activeTab === 'orders' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
               <ShoppingBag className="w-4 h-4" />
@@ -1796,11 +1796,11 @@ export default function ShowcaseDashboard() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-slate-900/50 text-slate-300 hover:text-white hover:bg-slate-800 font-bold flex items-center gap-2 text-xs transition active:scale-95 cursor-pointer theme-toggle-btn"
+              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition-colors active:scale-95 cursor-pointer shadow-xs theme-toggle-btn"
             >
               {themeMode === 'dark'
-                ? <><Sun className="w-3.5 h-3.5 text-amber-400" /><span className="text-[11px] font-semibold text-slate-300">Light Mode</span></>
-                : <><Moon className="w-3.5 h-3.5 text-slate-400" /><span className="text-[11px] font-semibold text-slate-300">Dark Mode</span></>}
+                ? <><Sun className="w-3.5 h-3.5 text-amber-500" /><span className="text-[11px] font-semibold">Light Mode</span></>
+                : <><Moon className="w-3.5 h-3.5 text-white" /><span className="text-[11px] font-semibold">Dark Mode</span></>}
             </button>
             <span className="px-2.5 py-1 rounded-xl bg-emerald-950/60 text-emerald-400 border border-emerald-700/50 font-bold flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />

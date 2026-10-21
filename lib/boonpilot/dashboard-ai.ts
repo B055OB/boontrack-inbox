@@ -11,6 +11,7 @@
 
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveCanonicalTier, CANONICAL_TIERS } from '@/lib/subscription-tiers';
+import { fetchActiveCatalog, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
 
 export interface DashboardAiInput {
   tenant_slug: string;
@@ -307,6 +308,7 @@ export async function handleDashboardAiChat(
   let tenantName = slug.replace(/[-_]/g, ' ').toUpperCase();
   let currentTier: 'CHECKOUT_LITE' | 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
   let tenantMetadata: any = {};
+  let catalogGrounding = '';
 
   try {
     const supabase = getSupabase();
@@ -322,6 +324,19 @@ export async function handleDashboardAiChat(
         tenantMetadata = tenantRow.metadata || {};
         const resolved = resolveCanonicalTier(tenantRow.tier);
         currentTier = resolved.key;
+      }
+
+      // Fetch active catalog context for active tenant
+      try {
+        const catalogProducts = await fetchActiveCatalog(slug, { supabaseClient: supabase });
+        if (catalogProducts && catalogProducts.length > 0) {
+          catalogGrounding = formatProductCatalogForBotKnowledge(
+            { slug, metadata: tenantMetadata },
+            catalogProducts
+          );
+        }
+      } catch (catErr) {
+        console.warn('[DashboardAI] Failed to fetch catalog context:', catErr);
       }
     }
   } catch (err) {
@@ -388,6 +403,11 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
 1. Jika toko ber-tier CHECKOUT_LITE atau STARTER dan menanyakan fitur Conversion API (CAPI), Multi-Seat CS, atau automation skala lanjut:
    Arahkan secara edukatif dan solutif untuk upgrade paket ke PRO_SCALE (untuk CAPI/Ads Tracking) atau ENTERPRISE (untuk Multi-Seat CS/Broadcast) melalui menu Settings/Pengaturan.
 2. DILARANG KERAS menjanjikan ketersediaan fitur di luar paket langganan aktif toko saat ini.`;
+
+  // Catalog Grounding Injection (Tenant Active Catalog)
+  if (catalogGrounding) {
+    systemPrompt += `\n\nKATALOG PRODUK TOKO AKTIF (${slug}):\n${catalogGrounding}\n\nATURAN KATALOG: Gunakan informasi produk, harga resmi, dan link checkout resmi di atas saat merchant menanyakan produk atau harga toko.`;
+  }
 
   // Deterministic Vision Directive Injection (§30.1 & §30.2)
   if (hasImage) {
@@ -472,7 +492,13 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents }),
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2048,
+          },
+        }),
       });
 
       if (res.ok) {

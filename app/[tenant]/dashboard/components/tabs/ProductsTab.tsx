@@ -201,11 +201,11 @@ export default function ProductsTab({
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               <span>{headerTitle}</span>
             </h2>
             {isCheckoutLite && (
@@ -214,7 +214,7 @@ export default function ProductsTab({
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {headerDesc}
           </p>
         </div>
@@ -352,7 +352,7 @@ export default function ProductsTab({
         <div className="space-y-4">
           {/* Search & Category Filter Bar */}
           {products.length > 3 && (
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
               <div className="relative flex-1 w-full max-w-sm">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -360,7 +360,7 @@ export default function ProductsTab({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Cari produk berdasarkan nama, SKU..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-medium dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400"
                 />
               </div>
 
@@ -370,7 +370,7 @@ export default function ProductsTab({
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-white font-bold focus:outline-none cursor-pointer"
                   >
                     <option value="ALL">Semua Kategori</option>
                     {categories.map((cat) => (
@@ -385,7 +385,7 @@ export default function ProductsTab({
           )}
 
           {filteredProducts.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-xs text-slate-400">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-8 text-center text-xs text-slate-400">
               Tidak ada produk yang cocok dengan pencarian Anda.
             </div>
           ) : (
@@ -402,7 +402,7 @@ export default function ProductsTab({
                 return (
                   <div
                     key={p.id}
-                    className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                    className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                   >
                     <div className="flex items-start gap-4">
                       <ProductCardImage src={(p as any).image_url || p.image} alt={p.name} />
@@ -451,11 +451,11 @@ export default function ProductsTab({
                           </button>
                         </div>
 
-                        <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-sm mt-1 line-clamp-1">
                           {p.name}
                         </h3>
                         <div className="flex items-baseline gap-1 mt-1">
-                          <span className="text-xs font-black text-blue-600">
+                          <span className="text-xs font-black text-blue-600 dark:text-blue-400">
                             Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
                           </span>
                           {p.promo_price ? (
@@ -464,13 +464,13 @@ export default function ProductsTab({
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1.5">
                           {p.description}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/80 text-xs">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-400 font-bold">
                           SKU: {p.sku || 'SKU-AUTO'}

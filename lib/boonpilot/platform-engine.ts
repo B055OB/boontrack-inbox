@@ -1089,7 +1089,7 @@ export async function processBoonPilotPlatformChat(
         body: JSON.stringify({
           contents,
           generationConfig: {
-            temperature: 0.7,
+            temperature: 0.2,
             maxOutputTokens: 2048,
           },
         }),
