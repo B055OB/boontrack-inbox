@@ -2,17 +2,18 @@
  * scripts/canary-studio-jobs.mjs
  * Executive Canary Probe for Studio Render Jobs API Gateway & Credit Reconciliation
  *
- * Verifies Production Real E2E Pipeline (No Mock / Fail-Closed):
- * 1. Happy Path: Real Supabase DB check, credit reservation, HTTP PATCH 200 OK via x-worker-secret, DB status COMPLETED & credits settled.
- * 2. Failure & Auto-Refund: Real HTTP PATCH status FAILED, DB auto-refund row check, idempotent retry verification (zero double-refund).
- * 3. Cross-Tenant Security: Real HTTP GET with foreign authenticated session token -> HTTP 403 Forbidden with zero data leak.
- * 4. Cleanup: Purges canary jobs, ledger entries, test auth users, and restores initial tenant balance.
+ * STRICT ISOLATION GUARDRAILS:
+ * 1. Dedicated Canary Tenant ('canary-studio-probe'): Zero impact to real merchant stores.
+ * 2. Production Reservation Pipeline: Uses StudioCreditService.reserveJobCredits() directly for credit deductions.
+ * 3. Real HTTP & Webhook Flow: Triggers FAILED / auto-refund via HTTP PATCH to /api/studio/jobs.
+ * 4. Safe Cleanup: Scoped strictly to WHERE tenant_id = canaryTenant.id.
  */
 
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import createJiti from 'jiti';
 
 // 1. Load environment variables from .env.local and .env
 const envFiles = ['.env.local', '.env'];
@@ -56,13 +57,75 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Load production StudioCreditService via jiti
+const jitiLoader = (typeof createJiti === 'function' ? createJiti : createJiti.default)(
+  path.resolve('scripts/canary-studio-jobs.mjs'),
+  { alias: { '@': process.cwd() } }
+);
+const { StudioCreditService } = jitiLoader(path.resolve('lib/services/studio-credit.service.ts'));
+
 console.log('\n========================================================================');
-console.log('   🕊️  BOONTRACK CANARY AUDIT: STUDIO JOBS API & CREDIT RECONCILIATION');
+console.log('   🕊️  BOONTRACK CANARY AUDIT: DEDICATED PROBE & PRODUCTION CREDIT PIPELINE');
 console.log(`   Host Target   : ${TARGET_URL}`);
 console.log(`   Supabase Host : ${new URL(SUPABASE_URL).hostname}`);
+console.log(`   Probe Target  : Dedicated Tenant ('canary-studio-probe')`);
 console.log(`   Worker Auth   : [CONFIGURED - FAIL-CLOSED ACTIVE]`);
 console.log(`   Timestamp     : ${new Date().toISOString()}`);
 console.log('========================================================================\n');
+
+/**
+ * Ensures dedicated canary tenant exists with initial 50 credits in tenant_entitlements.
+ * Never touches real merchant tenants.
+ */
+async function ensureCanaryTenant() {
+  const canarySlug = 'canary-studio-probe';
+
+  let { data: canaryTenant } = await supabase
+    .from('tenants')
+    .select('id, slug, tier, is_active')
+    .eq('slug', canarySlug)
+    .maybeSingle();
+
+  if (!canaryTenant) {
+    let insertRes = await supabase.from('tenants').insert({
+      slug: canarySlug,
+      name: 'Canary Studio Test Tenant',
+      tier: 'PRO',
+      is_active: true,
+    }).select('id, slug, tier, is_active').maybeSingle();
+
+    if (insertRes.error && insertRes.error.message.includes('enum')) {
+      insertRes = await supabase.from('tenants').insert({
+        slug: canarySlug,
+        name: 'Canary Studio Test Tenant',
+        tier: 'PRO_SCALE',
+        is_active: true,
+      }).select('id, slug, tier, is_active').maybeSingle();
+    }
+
+    if (insertRes.error || !insertRes.data) {
+      throw new Error(`Gagal membuat dedicated canary tenant: ${insertRes.error?.message}`);
+    }
+    canaryTenant = insertRes.data;
+  }
+
+  // Ensure 50 credits in tenant_entitlements
+  const { error: entErr } = await supabase
+    .from('tenant_entitlements')
+    .upsert({
+      tenant_id: canaryTenant.id,
+      credits_remaining: 50,
+      is_unlimited: false,
+      tier: canaryTenant.tier || 'PRO_SCALE',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+
+  if (entErr) {
+    throw new Error(`Gagal menyiapkan tenant_entitlements canary: ${entErr.message}`);
+  }
+
+  return canaryTenant;
+}
 
 async function runCanary() {
   const results = {
@@ -72,27 +135,13 @@ async function runCanary() {
     test3_cross_tenant_isolated: false,
   };
 
-  const testJobIds = [];
-  const testLedgerIds = [];
+  let canaryTenant = null;
   let testAttackerUserId = null;
-  let tenant = null;
-  let initialEntitlement = null;
-  let originalBalance = null;
 
   try {
-    // 0. Resolve Live Test Tenant & User from Supabase
-    const { data: tenantRow, error: tenantErr } = await supabase
-      .from('tenants')
-      .select('id, slug, tier')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (tenantErr || !tenantRow) {
-      throw new Error(`Gagal memuat tenant aktif dari Supabase: ${tenantErr?.message || 'Data kosong'}`);
-    }
-    tenant = tenantRow;
+    // 1. Resolve Dedicated Canary Tenant
+    canaryTenant = await ensureCanaryTenant();
+    console.log(`   • Dedicated Canary Tenant: ${canaryTenant.slug} (${canaryTenant.id})`);
 
     const { data: usersData, error: userListErr } = await supabase.auth.admin.listUsers({ perPage: 1 });
     if (userListErr || !usersData?.users?.length) {
@@ -100,73 +149,40 @@ async function runCanary() {
     }
     const testUserId = usersData.users[0].id;
 
-    // Read real starting credit balance from tenant_entitlements
-    const { data: entRow } = await supabase
-      .from('tenant_entitlements')
-      .select('id, credits_remaining, is_unlimited')
-      .eq('tenant_id', tenant.id)
-      .maybeSingle();
-
-    initialEntitlement = entRow;
-    originalBalance = entRow?.credits_remaining ?? 50;
-
-    if (!entRow) {
-      await supabase.from('tenant_entitlements').insert({
-        tenant_id: tenant.id,
-        credits_remaining: originalBalance,
-        tier: tenant.tier || 'PRO_SCALE',
-        is_unlimited: false,
-        updated_at: new Date().toISOString(),
-      });
-    } else if (entRow.is_unlimited) {
-      await supabase.from('tenant_entitlements').update({
-        is_unlimited: false,
-      }).eq('tenant_id', tenant.id);
-    }
-
     // --- TEST 1: Happy Path (Render Job COMPLETED & Credits Deducted) ---
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('▶ [TEST 1/3] UJI JOB SUKSES (HAPPY PATH & CREDIT SETTLEMENT)');
+    console.log('▶ [TEST 1/3] UJI JOB SUKSES (HAPPY PATH & PRODUCTION RESERVATION)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const happyJobId = crypto.randomUUID();
-    testJobIds.push(happyJobId);
     const renderCost = 3;
-    const reservedBalance = originalBalance - renderCost;
+    const initialCredits = 50;
 
-    console.log(`   • Tenant Uji       : ${tenant.slug} (${tenant.id})`);
+    console.log(`   • Tenant Uji       : ${canaryTenant.slug} (${canaryTenant.id})`);
     console.log(`   • Canary Job ID    : ${happyJobId}`);
-    console.log(`   • Saldo DB Awal    : ${originalBalance} Credits`);
+    console.log(`   • Saldo DB Awal    : ${initialCredits} Credits`);
     console.log(`   • Biaya Render MP4 : ${renderCost} Credits`);
-    console.log(`   • Saldo Reservasi  : ${reservedBalance} Credits`);
 
-    // Reserve credits in DB
-    await supabase.from('tenant_entitlements').update({
-      credits_remaining: reservedBalance,
-      updated_at: new Date().toISOString(),
-    }).eq('tenant_id', tenant.id);
+    // Use official production reservation method (StudioCreditService.reserveJobCredits)
+    console.log(`   • Memanggil StudioCreditService.reserveJobCredits() (Jalur Produksi)...`);
+    const reserveRes = await StudioCreditService.reserveJobCredits(
+      canaryTenant.id,
+      renderCost,
+      `[Canary Probe] Video render MP4: ${happyJobId}`,
+      happyJobId
+    );
 
-    const reserveKey = `CANARY_RESERVE_${tenant.id}_${happyJobId}`;
-    const { data: reserveLedger } = await supabase.from('tenant_credit_ledger').insert({
-      tenant_id: tenant.id,
-      job_id: happyJobId,
-      idempotency_key: reserveKey,
-      amount: -renderCost,
-      balance_after: reservedBalance,
-      action: 'STUDIO_RENDER_JOB',
-      type: 'RESERVE',
-      actor_id: 'CANARY_PROBE',
-      actor_role: 'SYSTEM',
-      reason: 'STUDIO_RENDER_JOB',
-      description: `[Canary Probe] Reserve credits for happy job ${happyJobId}`,
-      metadata: { is_canary: true, job_id: happyJobId },
-    }).select('id').single();
-    if (reserveLedger?.id) testLedgerIds.push(reserveLedger.id);
+    if (!reserveRes.success) {
+      throw new Error(`Reservasi saldo gagal lewat StudioCreditService: ${reserveRes.message}`);
+    }
+
+    const expectedBalanceAfterReserve = initialCredits - renderCost; // 47
+    console.log(`   • Saldo Pasca-Reservasi: ${reserveRes.credits_remaining} Credits (Tepat terpotong -${renderCost})`);
 
     // Insert job into studio_jobs
     await supabase.from('studio_jobs').insert({
       id: happyJobId,
-      tenant_id: tenant.id,
+      tenant_id: canaryTenant.id,
       user_id: testUserId,
       status: 'PROCESSING',
       job_type: 'VIDEO_RENDER',
@@ -194,14 +210,25 @@ async function runCanary() {
     }
 
     // Verify DB State
-    const { data: dbHappyJob } = await supabase.from('studio_jobs').select('status, output_url').eq('id', happyJobId).single();
+    const { data: dbHappyJob } = await supabase
+      .from('studio_jobs')
+      .select('status, output_url')
+      .eq('id', happyJobId)
+      .eq('tenant_id', canaryTenant.id)
+      .single();
+
     if (dbHappyJob?.status !== 'COMPLETED') {
       throw new Error(`Happy Path DB gagal: status adalah ${dbHappyJob?.status}, diharapkan COMPLETED`);
     }
 
-    const { data: dbHappyEnt } = await supabase.from('tenant_entitlements').select('credits_remaining').eq('tenant_id', tenant.id).single();
-    if (dbHappyEnt?.credits_remaining !== reservedBalance) {
-      throw new Error(`Happy Path DB saldo mismatch: Saldo ${dbHappyEnt?.credits_remaining}, diharapkan ${reservedBalance}`);
+    const { data: dbHappyEnt } = await supabase
+      .from('tenant_entitlements')
+      .select('credits_remaining')
+      .eq('tenant_id', canaryTenant.id)
+      .single();
+
+    if (dbHappyEnt?.credits_remaining !== expectedBalanceAfterReserve) {
+      throw new Error(`Happy Path DB saldo mismatch: Saldo ${dbHappyEnt?.credits_remaining}, diharapkan ${expectedBalanceAfterReserve}`);
     }
 
     results.test1_happy_path = true;
@@ -216,41 +243,29 @@ async function runCanary() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const failedJobId = crypto.randomUUID();
-    testJobIds.push(failedJobId);
-    const preFailBalance = reservedBalance;
-    const failReservedBalance = preFailBalance - renderCost;
+    const balanceBeforeFail = expectedBalanceAfterReserve; // 47
+    const expectedAfterFailReserve = balanceBeforeFail - renderCost; // 44
 
     console.log(`   • Failed Job ID    : ${failedJobId}`);
-    console.log(`   • Saldo Sebelum Job: ${preFailBalance} Credits`);
-    console.log(`   • Saldo Reservasi  : ${failReservedBalance} Credits (Terpotong -${renderCost})`);
+    console.log(`   • Saldo Sebelum Job: ${balanceBeforeFail} Credits`);
+    console.log(`   • Memanggil StudioCreditService.reserveJobCredits() untuk job gagal...`);
 
-    // Reserve credits in DB
-    await supabase.from('tenant_entitlements').update({
-      credits_remaining: failReservedBalance,
-      updated_at: new Date().toISOString(),
-    }).eq('tenant_id', tenant.id);
+    const failReserveRes = await StudioCreditService.reserveJobCredits(
+      canaryTenant.id,
+      renderCost,
+      `[Canary Probe] Failed video render probe: ${failedJobId}`,
+      failedJobId
+    );
 
-    const failReserveKey = `CANARY_RESERVE_${tenant.id}_${failedJobId}`;
-    const { data: failReserveLedger } = await supabase.from('tenant_credit_ledger').insert({
-      tenant_id: tenant.id,
-      job_id: failedJobId,
-      idempotency_key: failReserveKey,
-      amount: -renderCost,
-      balance_after: failReservedBalance,
-      action: 'STUDIO_RENDER_JOB',
-      type: 'RESERVE',
-      actor_id: 'CANARY_PROBE',
-      actor_role: 'SYSTEM',
-      reason: 'STUDIO_RENDER_JOB',
-      description: `[Canary Probe] Reserve credits for failed job ${failedJobId}`,
-      metadata: { is_canary: true, job_id: failedJobId },
-    }).select('id').single();
-    if (failReserveLedger?.id) testLedgerIds.push(failReserveLedger.id);
+    if (!failReserveRes.success) {
+      throw new Error(`Reservasi job gagal lewat StudioCreditService gagal: ${failReserveRes.message}`);
+    }
+    console.log(`   • Saldo Pasca-Reservasi: ${failReserveRes.credits_remaining} Credits (${balanceBeforeFail} - ${renderCost})`);
 
     // Insert job into studio_jobs
     await supabase.from('studio_jobs').insert({
       id: failedJobId,
-      tenant_id: tenant.id,
+      tenant_id: canaryTenant.id,
       user_id: testUserId,
       status: 'PROCESSING',
       job_type: 'VIDEO_RENDER',
@@ -282,21 +297,21 @@ async function runCanary() {
       .from('tenant_credit_ledger')
       .select('id, amount, balance_after, type')
       .eq('job_id', failedJobId)
+      .eq('tenant_id', canaryTenant.id)
       .eq('type', 'REFUND');
 
     if (!refundRows || refundRows.length === 0) {
       throw new Error('Failure Path DB gagal: Tidak ditemukan row REFUND di tenant_credit_ledger');
     }
-    refundRows.forEach(r => testLedgerIds.push(r.id));
 
     const { data: dbRestoredEnt } = await supabase
       .from('tenant_entitlements')
       .select('credits_remaining')
-      .eq('tenant_id', tenant.id)
+      .eq('tenant_id', canaryTenant.id)
       .single();
 
-    if (dbRestoredEnt?.credits_remaining !== preFailBalance) {
-      throw new Error(`Auto-refund DB saldo mismatch: Saldo ${dbRestoredEnt?.credits_remaining}, diharapkan ${preFailBalance}`);
+    if (dbRestoredEnt?.credits_remaining !== balanceBeforeFail) {
+      throw new Error(`Auto-refund DB saldo mismatch: Saldo ${dbRestoredEnt?.credits_remaining}, diharapkan ${balanceBeforeFail}`);
     }
 
     results.test2_auto_refund = true;
@@ -330,6 +345,7 @@ async function runCanary() {
       .from('tenant_credit_ledger')
       .select('id')
       .eq('job_id', failedJobId)
+      .eq('tenant_id', canaryTenant.id)
       .eq('type', 'REFUND');
 
     if (postRetryLedgers?.length !== 1) {
@@ -339,11 +355,11 @@ async function runCanary() {
     const { data: postRetryEnt } = await supabase
       .from('tenant_entitlements')
       .select('credits_remaining')
-      .eq('tenant_id', tenant.id)
+      .eq('tenant_id', canaryTenant.id)
       .single();
 
-    if (postRetryEnt?.credits_remaining !== preFailBalance) {
-      throw new Error(`Idempotency saldo terlanggar: Saldo ${postRetryEnt?.credits_remaining}, diharapkan tetap ${preFailBalance}`);
+    if (postRetryEnt?.credits_remaining !== balanceBeforeFail) {
+      throw new Error(`Idempotency saldo terlanggar: Saldo ${postRetryEnt?.credits_remaining}, diharapkan tetap ${balanceBeforeFail}`);
     }
 
     results.test2_idempotent = true;
@@ -369,8 +385,13 @@ async function runCanary() {
     }
     testAttackerUserId = attackerUser.user.id;
 
-    // Sign in to receive genuine Supabase session JWT
-    const { data: sessionData, error: sessionErr } = await supabase.auth.signInWithPassword({
+    // Sign in to receive genuine Supabase session JWT via separate client (prevent mutating admin service-role)
+    const attackerClient = createClient(
+      SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: sessionData, error: sessionErr } = await attackerClient.auth.signInWithPassword({
       email: attackerEmail,
       password: attackerPassword,
     });
@@ -380,11 +401,11 @@ async function runCanary() {
     }
     const attackerToken = sessionData.session.access_token;
 
-    console.log(`   • Target Tenant    : ${tenant.slug} (${tenant.id})`);
+    console.log(`   • Target Tenant    : ${canaryTenant.slug} (${canaryTenant.id})`);
     console.log(`   • Penyerang Asing  : ${attackerEmail}`);
-    console.log(`   • Mengirim HTTP GET /api/studio/jobs?tenant_id=${tenant.id} dengan Bearer Token asing...`);
+    console.log(`   • Mengirim HTTP GET /api/studio/jobs?tenant_id=${canaryTenant.id} dengan Bearer Token asing...`);
 
-    const isolationRes = await fetch(`${TARGET_URL}/api/studio/jobs?tenant_id=${tenant.id}`, {
+    const isolationRes = await fetch(`${TARGET_URL}/api/studio/jobs?tenant_id=${canaryTenant.id}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${attackerToken}`,
@@ -406,30 +427,41 @@ async function runCanary() {
     console.log(`   ✅ [PASS] Zero Data Leak: Tidak ada metadata atau data jobs milik tenant yang bocor.`);
 
   } finally {
-    // --- CLEANUP TEST DATA ---
+    // --- SAFE CLEANUP (STRICTLY SCOPED TO CANARY TENANT) ---
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('▶ [CLEANUP] PEMBERSIHAN DATA UJI CANARY DARI SUPABASE');
+    console.log('▶ [CLEANUP] SAFE ISOLATED CLEANUP (CANARY TENANT ONLY)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (testJobIds.length > 0) {
-      await supabase.from('studio_jobs').delete().in('id', testJobIds);
-      console.log(`   🧹 Bersihkan ${testJobIds.length} canary jobs dari studio_jobs.`);
+    if (canaryTenant?.id) {
+      // 1. Delete studio_jobs strictly for canary tenant
+      const delJobsRes = await supabase
+        .from('studio_jobs')
+        .delete({ count: 'exact' })
+        .eq('tenant_id', canaryTenant.id);
+      const jobsDeleted = delJobsRes.count ?? delJobsRes.data?.length ?? 0;
+      console.log(`   🧹 Bersihkan ${jobsDeleted} jobs dari studio_jobs milik canary tenant.`);
+
+      // 2. Delete tenant_credit_ledger strictly for canary tenant
+      const delLedgerRes = await supabase
+        .from('tenant_credit_ledger')
+        .delete({ count: 'exact' })
+        .eq('tenant_id', canaryTenant.id);
+      const ledgerDeleted = delLedgerRes.count ?? delLedgerRes.data?.length ?? 0;
+      console.log(`   🧹 Bersihkan ${ledgerDeleted} ledger entries dari tenant_credit_ledger milik canary tenant.`);
+
+      // 3. Reset canary tenant credit balance to 50
+      await supabase
+        .from('tenant_entitlements')
+        .update({
+          credits_remaining: 50,
+          is_unlimited: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', canaryTenant.id);
+      console.log('   🧹 Reset saldo tenant canary kembali ke 50 Credits (Tenant lain tidak disentuh).');
     }
 
-    if (testLedgerIds.length > 0) {
-      await supabase.from('tenant_credit_ledger').delete().in('id', testLedgerIds);
-      console.log(`   🧹 Bersihkan ${testLedgerIds.length} canary ledger entries dari tenant_credit_ledger.`);
-    }
-
-    if (tenant && originalBalance !== null) {
-      await supabase.from('tenant_entitlements').update({
-        credits_remaining: originalBalance,
-        is_unlimited: initialEntitlement?.is_unlimited ?? false,
-        updated_at: new Date().toISOString(),
-      }).eq('tenant_id', tenant.id);
-      console.log(`   🧹 Pulihkan saldo tenant ke nilai awal (${originalBalance} Credits).`);
-    }
-
+    // 4. Delete temporary test attacker user
     if (testAttackerUserId) {
       await supabase.auth.admin.deleteUser(testAttackerUserId);
       console.log('   🧹 Hapus akun penyerang sementara dari auth.users.');
@@ -440,12 +472,12 @@ async function runCanary() {
   console.log('\n========================================================================');
   console.log('   📊 EXECUTIVE CANARY AUDIT REPORT FOR CTO');
   console.log('========================================================================');
-  console.log(`   1. Uji Job Sukses (Happy Path)        : ${results.test1_happy_path ? '✅ PASSED (200 OK, Real DB Settled)' : '❌ FAILED'}`);
+  console.log(`   1. Uji Job Sukses (Happy Path)        : ${results.test1_happy_path ? '✅ PASSED (200 OK, Real DB Settled via StudioCreditService)' : '❌ FAILED'}`);
   console.log(`   2. Uji Job Gagal (Auto-Refund)        : ${results.test2_auto_refund ? '✅ PASSED (Real DB Refund Verified)' : '❌ FAILED'}`);
   console.log(`   3. Uji Idempotensi Refund             : ${results.test2_idempotent ? '✅ PASSED (Zero Double-Refund in DB)' : '❌ FAILED'}`);
   console.log(`   4. Uji Isolasi Cross-Tenant           : ${results.test3_cross_tenant_isolated ? '✅ PASSED (Real HTTP 403 Forbidden Gate)' : '❌ FAILED'}`);
   console.log('------------------------------------------------------------------------');
-  console.log('   STATUS CANARY PIPELINE : 100% HEALTHY, LIVE E2E & AUDIT-COMPLIANT 🛡️');
+  console.log('   STATUS CANARY PIPELINE : 100% HEALTHY, DEDICATED PROBE & AUDIT-COMPLIANT 🛡️');
   console.log('========================================================================\n');
 }
 

@@ -140,6 +140,18 @@ export class StudioCreditService {
   }
 
   /**
+   * Alias for reserveCredits (Mandated production reservation method).
+   */
+  static async reserveJobCredits(
+    tenantIdOrSlug: string,
+    amount: number = 1,
+    description: string = 'Studio render job',
+    jobId?: string
+  ): Promise<CreditReserveResult> {
+    return this.reserveCredits(tenantIdOrSlug, amount, description, jobId);
+  }
+
+  /**
    * Atomically reserve / deduct credits before queueing a studio render job.
    * Two-phase commit Phase 1: Deduct credits (event: 'STUDIO_RENDER_JOB', type: 'CREDIT_OUT').
    * If insufficient, returns statusCode: 402.
