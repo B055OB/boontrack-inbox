@@ -102,7 +102,8 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     (p as any).is_active === 0 ||
     (p as any).is_active === "0" ||
     (typeof (p as any).status === "string" &&
-      ['draft', 'inactive', 'archived', 'hidden', 'sembunyi'].includes((p as any).status.toLowerCase().trim()));
+      (['draft', 'inactive', 'archived'].includes((p as any).status.toLowerCase().trim()) ||
+       ['hidden', 'sembunyi'].includes((p as any).status.toLowerCase().trim())));
 
   const rawType = String((p as any).type || (p as any).product_type || "").toLowerCase();
   const rawCat = String(p.category || "").toLowerCase();

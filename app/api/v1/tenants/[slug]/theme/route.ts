@@ -22,6 +22,7 @@ export interface StoreThemeConfig {
   template: 'default' | 'personal' | 'microsite';
   chat_enabled: boolean;
   chat_position: 'bottom-right' | 'bottom-left';
+  show_products?: boolean;
   updated_at?: string;
 }
 
