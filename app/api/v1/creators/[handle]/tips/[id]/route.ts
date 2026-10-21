@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyCreatorSession } from '@/lib/auth/creator-auth-guard';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * PATCH /api/v1/creators/[handle]/tips/[id]
  * Memperbarui status traktir (misal: READ atau VERIFIED).
- * Menjaga isolasi: hanya creator pemilik yang dapat mengubah status.
+ * P1 Anti-IDOR: Hanya pemilik creator sah atau admin yang berhak mengubah status.
  */
 export async function PATCH(
   req: NextRequest,
@@ -35,6 +36,19 @@ export async function PATCH(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // P1: Anti-IDOR: Otorisasi Sesi Server Kreator
+    const auth = await verifyCreatorSession(req, cleanHandle, { supabaseClient: supabaseAdmin });
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+          message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+        },
+        { status: auth.errorStatus || 401 }
+      );
+    }
 
     // 1. Resolve Creator
     const baseHandle = cleanHandle.replace(/_+$/, '');

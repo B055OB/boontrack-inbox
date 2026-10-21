@@ -484,3 +484,133 @@ export async function recordResellerCommissionLedger(params: {
     };
   }
 }
+
+export interface ResellerWalletMetrics {
+  balanceReady: number;
+  pendingClearance: number;
+  totalEarned: number;
+  totalPaid: number;
+  productsSold: number;
+}
+
+/**
+ * P1: Canonical Ledger Wallet Reader (Single Source of Truth)
+ * Menghitung saldo siap tarik, komisi tertahan (pending clearance), total komisi diperoleh,
+ * dan jumlah transaksi penjualan murni bersumber dari `reseller_commission_ledger`.
+ */
+export async function getResellerWalletMetricsFromLedger(params: {
+  resellerUserIds: string[];
+  tenantId?: string;
+  supabaseClient?: any;
+}): Promise<ResellerWalletMetrics> {
+  const { resellerUserIds, tenantId } = params;
+  const cleanIds = Array.from(new Set((resellerUserIds || []).filter(Boolean)));
+
+  if (cleanIds.length === 0) {
+    return {
+      balanceReady: 0,
+      pendingClearance: 0,
+      totalEarned: 0,
+      totalPaid: 0,
+      productsSold: 0,
+    };
+  }
+
+  const supabase = params.supabaseClient || getSupabaseAdmin() || getSupabase();
+  if (!supabase) {
+    return {
+      balanceReady: 0,
+      pendingClearance: 0,
+      totalEarned: 0,
+      totalPaid: 0,
+      productsSold: 0,
+    };
+  }
+
+  try {
+    let query = supabase
+      .from('reseller_commission_ledger')
+      .select('id, tenant_id, entry_type, amount, status, available_at, created_at')
+      .in('reseller_user_id', cleanIds);
+
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    const { data: entries, error } = await query;
+
+    if (error || !entries) {
+      console.warn('[getResellerWalletMetricsFromLedger] Ledger query note:', error?.message);
+      return {
+        balanceReady: 0,
+        pendingClearance: 0,
+        totalEarned: 0,
+        totalPaid: 0,
+        productsSold: 0,
+      };
+    }
+
+    let balanceReady = 0;
+    let pendingClearance = 0;
+    let totalEarned = 0;
+    let totalPaid = 0;
+    let productsSold = 0;
+
+    const now = new Date();
+
+    entries.forEach((entry: any) => {
+      const amt = Number(entry.amount || 0);
+      const entryType = String(entry.entry_type || 'EARNED').toUpperCase();
+      const status = String(entry.status || '').toUpperCase();
+      const availableAt = entry.available_at ? new Date(entry.available_at) : now;
+
+      if (entryType === 'EARNED') {
+        if (status !== 'CANCELLED') {
+          totalEarned += amt;
+          productsSold += 1;
+
+          if (status === 'AVAILABLE' || (status === 'PENDING_CLEARANCE' && now >= availableAt)) {
+            balanceReady += amt;
+          } else if (status === 'PENDING_CLEARANCE' && now < availableAt) {
+            pendingClearance += amt;
+          } else if (status === 'PAID') {
+            totalPaid += amt;
+          }
+        }
+      } else if (entryType === 'REVERSAL') {
+        if (status !== 'CANCELLED') {
+          totalEarned -= amt;
+          balanceReady -= amt;
+        }
+      } else if (entryType === 'PAYOUT') {
+        if (status !== 'CANCELLED') {
+          totalPaid += amt;
+          balanceReady -= amt;
+        }
+      } else if (entryType === 'ADJUSTMENT') {
+        if (status !== 'CANCELLED') {
+          balanceReady += amt;
+          totalEarned += amt;
+        }
+      }
+    });
+
+    return {
+      balanceReady: Math.max(0, balanceReady),
+      pendingClearance: Math.max(0, pendingClearance),
+      totalEarned: Math.max(0, totalEarned),
+      totalPaid: Math.max(0, totalPaid),
+      productsSold,
+    };
+  } catch (err) {
+    console.error('[getResellerWalletMetricsFromLedger] Fatal error:', err);
+    return {
+      balanceReady: 0,
+      pendingClearance: 0,
+      totalEarned: 0,
+      totalPaid: 0,
+      productsSold: 0,
+    };
+  }
+}
+
