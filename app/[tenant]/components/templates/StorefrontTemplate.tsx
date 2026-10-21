@@ -277,6 +277,27 @@ export function StorefrontTemplate({
   const copy = resolveStorefrontCopy(meta, effectiveName);
   const storeLogo = meta?.logo_url || meta?.store_logo_url || tenant?.logo_url;
 
+  const isCatalogDisabled =
+    meta?.show_products === false ||
+    meta?.display_catalog === false ||
+    meta?.theme?.show_products === false ||
+    meta?.theme_config?.show_products === false ||
+    meta?.microsite?.show_products === false ||
+    meta?.microsite_show_products === false ||
+    sections.catalog?.is_active === false ||
+    sections.products?.is_active === false;
+
+  const activeProducts = useMemo(() => {
+    if (isCatalogDisabled) return [];
+    return (products || []).filter((p: any) => {
+      if (!p) return false;
+      if (p.is_active === false || p.is_active === 'false' || p.is_active === 0 || p.is_active === '0') return false;
+      const st = typeof p.status === 'string' ? p.status.toLowerCase().trim() : '';
+      if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
+      return true;
+    });
+  }, [products, isCatalogDisabled]);
+
   return (
     <div data-template={context?.templateCode || 'SHOP_V1'} className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
       {/* Header */}
@@ -309,28 +330,32 @@ export function StorefrontTemplate({
                 <span>{totalCartCount} Item</span>
               </button>
             )}
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Katalog Aktif
+            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+              isCatalogDisabled
+                ? 'bg-slate-100 text-slate-600 border-slate-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              {isCatalogDisabled ? 'Profil Toko' : 'Katalog Aktif'}
             </span>
           </div>
         </div>
       </header>
 
       {/* Catalog Grid */}
-      {sections.catalog?.is_active !== false && (
+      {!isCatalogDisabled && sections.catalog?.is_active !== false && (
         <main className="max-w-7xl mx-auto px-4 py-8 flex-1">
           <div className="mb-6">
             <h2 className="text-xl font-black text-slate-900">{copy.catalog_title || 'Katalog Produk & Layanan'}</h2>
             <p className="text-xs text-slate-500 mt-1">Pilih produk untuk memesan langsung via WhatsApp &amp; QRIS.</p>
           </div>
 
-          {products.length === 0 ? (
+          {activeProducts.length === 0 ? (
             <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-xs">
               <p className="text-sm text-slate-500">Belum ada produk aktif di etalase toko ini.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {products.map((item: any, idx: number) => {
+              {activeProducts.map((item: any, idx: number) => {
                 const handleCheckout = (e?: React.MouseEvent) => {
                   if (e) e.stopPropagation();
                   if (onInitiateCheckout) {

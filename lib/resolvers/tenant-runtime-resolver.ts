@@ -703,6 +703,23 @@ export function resolveStorefrontSections(
       }
     }
 
+    // Also check theme, theme_config, and microsite for catalog/product visibility toggles
+    if (keys.includes('featured_catalog') || keys.includes('catalog') || keys.includes('products')) {
+      const themeShow =
+        meta.show_products ??
+        meta.display_catalog ??
+        meta.theme?.show_products ??
+        meta.theme_config?.show_products ??
+        meta.microsite?.show_products ??
+        meta.microsite_settings?.show_products ??
+        meta.microsite_show_products;
+      if (themeShow !== undefined) {
+        if (typeof themeShow === 'boolean') return { is_active: themeShow };
+        if (themeShow === 'false' || themeShow === false) return { is_active: false };
+        if (themeShow === 'true' || themeShow === true) return { is_active: true };
+      }
+    }
+
     // Also check theme.chat_enabled for chat toggles
     if (keys.includes('floating_chat') || keys.includes('chat')) {
       if (meta.theme?.chat_enabled !== undefined) {
@@ -720,7 +737,17 @@ export function resolveStorefrontSections(
   const intakeSec = normalizeSection(['intake_form', 'lead_form'], ['enable_intake_form', 'enable_lead_form', 'show_intake_form']);
   const benefitsSec = normalizeSection(['benefits', 'authority_checklist'], ['enable_benefits', 'enable_us_vs_them', 'enable_authority_checklist']);
   const chatSec = normalizeSection(['floating_chat', 'chat', 'webchat'], ['chat_enabled', 'is_chat_enabled', 'enable_floating_chat', 'enable_chat']);
-  const catalogSec = normalizeSection(['featured_catalog', 'catalog', 'products'], ['enable_catalog', 'enable_featured_catalog', 'show_catalog']);
+  const catalogSec = normalizeSection(
+    ['featured_catalog', 'catalog', 'products'],
+    [
+      'enable_catalog',
+      'enable_featured_catalog',
+      'show_catalog',
+      'show_products',
+      'display_catalog',
+      'microsite_show_products',
+    ]
+  );
   const hoursSec = normalizeSection(['operating_hours', 'booking', 'schedule'], ['enable_operating_hours', 'enable_booking', 'enable_schedule']);
   const testiSec = normalizeSection(['testimonials', 'reviews'], ['enable_testimonials']);
   const visualSec = normalizeSection(['instagram_feed', 'visual_feed', 'gallery'], ['enable_instagram_feed', 'enable_instagram', 'enable_visual_feed']);

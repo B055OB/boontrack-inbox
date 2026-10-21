@@ -102,7 +102,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     (p as any).is_active === 0 ||
     (p as any).is_active === "0" ||
     (typeof (p as any).status === "string" &&
-      ['draft', 'inactive', 'archived'].includes((p as any).status.toLowerCase()));
+      ['draft', 'inactive', 'archived', 'hidden', 'sembunyi'].includes((p as any).status.toLowerCase().trim()));
 
   const rawType = String((p as any).type || (p as any).product_type || "").toLowerCase();
   const rawCat = String(p.category || "").toLowerCase();
@@ -254,8 +254,15 @@ export default function TenantStorefrontPage() {
           const { data: prodsData } = await supabase
             .from("products")
             .select("*")
-            .eq("tenant_id", tenantRow.id);
-          sqlProducts = prodsData || [];
+            .eq("tenant_id", tenantRow.id)
+            .eq("is_active", true);
+          sqlProducts = (prodsData || []).filter((sp: any) => {
+            if (!sp) return false;
+            if (sp.is_active === false || sp.is_active === "false" || sp.is_active === 0 || sp.is_active === "0") return false;
+            const st = typeof sp.status === "string" ? sp.status.toLowerCase().trim() : "";
+            if (["draft", "hidden", "archived", "inactive", "sembunyi"].includes(st)) return false;
+            return true;
+          });
         } catch {}
 
         if (isMounted) {
@@ -265,12 +272,18 @@ export default function TenantStorefrontPage() {
           setTenantMetadata(meta);
 
           const rawProds = Array.isArray(meta.products) ? meta.products : [];
-          const prodsList = rawProds.filter((p: any) => p !== null && typeof p === "object");
+          const prodsList = rawProds.filter((p: any) => {
+            if (!p || typeof p !== "object") return false;
+            if (p.is_active === false || p.is_active === "false" || p.is_active === 0 || p.is_active === "0") return false;
+            const st = typeof p.status === "string" ? p.status.toLowerCase().trim() : "";
+            if (["draft", "hidden", "archived", "inactive", "sembunyi"].includes(st)) return false;
+            return true;
+          });
           const combinedProds = [...prodsList];
           const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || "").toLowerCase()));
           const existingIds = new Set(prodsList.map((p: any) => String(p.id)));
 
-          for (const sp of (sqlProducts || [])) {
+          for (const sp of sqlProducts) {
             if (!sp) continue;
             const spSlug = (sp.slug || "").toLowerCase();
             const spId = String(sp.id);
@@ -304,6 +317,8 @@ export default function TenantStorefrontPage() {
                 is_unlimited: sp.is_unlimited_stock ?? true,
                 fulfillment_metadata: sp.fulfillment_metadata,
                 single_page_config: sp.fulfillment_metadata?.single_page_config,
+                is_active: sp.is_active !== false,
+                status: sp.status || 'ACTIVE',
               });
             }
           }

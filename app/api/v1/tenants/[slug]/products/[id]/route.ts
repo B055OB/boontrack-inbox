@@ -1,6 +1,7 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import {
@@ -218,6 +219,19 @@ async function handleProductMutation(
       console.warn('[Product ID Route] Non-fatal metadata sync warning:', metaUpdateErr);
     }
 
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}/p/[slug]`);
+      if (updatedRow.slug) {
+        revalidatePath(`/${slug}/p/${updatedRow.slug}`);
+      }
+      revalidatePath(`/${slug}/p/${productId}`);
+      revalidatePath(`/[tenant]`);
+      revalidatePath(`/shop/${slug}`);
+    } catch (revalErr) {
+      console.warn('[Product ID Route] Non-fatal ISR revalidatePath warning:', revalErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Produk berhasil diperbarui.',
@@ -284,6 +298,16 @@ export async function DELETE(
         },
       })
       .eq('id', tenant.id);
+
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}/p/[slug]`);
+      revalidatePath(`/${slug}/p/${productId}`);
+      revalidatePath(`/[tenant]`);
+      revalidatePath(`/shop/${slug}`);
+    } catch (revalErr) {
+      console.warn('[Product ID Route] Non-fatal ISR revalidatePath warning in DELETE:', revalErr);
+    }
 
     return NextResponse.json({ success: true, message: 'Produk berhasil dihapus.' });
   } catch (err: unknown) {

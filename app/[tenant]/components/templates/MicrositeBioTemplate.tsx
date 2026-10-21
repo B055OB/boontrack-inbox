@@ -501,13 +501,23 @@ export default function MicrositeBioTemplate({
   }, [tenant, tenantMetadata, tenantSlug]);
 
   // ── Product catalog visibility ────────────────────────────────────────────
-  // Checks (in order): microsite_settings.show_products → microsite.show_products → microsite_show_products (legacy)
-  // Default to true jika storeProducts ada isinya agar katalog merchant tidak hilang secara diam-diam
+  // Checks section toggles, theme config, and microsite settings
+  const isCatalogSectionDisabled =
+    tenantMetadata?.sections?.catalog?.is_active === false ||
+    tenantMetadata?.sections?.products?.is_active === false ||
+    tenantMetadata?.storefront_sections?.catalog?.is_active === false ||
+    tenantMetadata?.storefront_sections?.products?.is_active === false;
+
   const showProducts =
-    tenantMetadata?.microsite_settings?.show_products ??
-    tenantMetadata?.microsite?.show_products ??
-    tenantMetadata?.microsite_show_products ??
-    true;
+    !isCatalogSectionDisabled &&
+    (tenantMetadata?.show_products ??
+      tenantMetadata?.display_catalog ??
+      tenantMetadata?.theme_config?.show_products ??
+      tenantMetadata?.theme?.show_products ??
+      tenantMetadata?.microsite_settings?.show_products ??
+      tenantMetadata?.microsite?.show_products ??
+      tenantMetadata?.microsite_show_products ??
+      true);
 
   const featuredIds: string[] = React.useMemo(() => {
     const raw =
@@ -524,12 +534,19 @@ export default function MicrositeBioTemplate({
 
   const visibleProducts = React.useMemo(() => {
     if (!showProducts || !Array.isArray(storeProducts) || storeProducts.length === 0) return [];
+    const activeOnly = storeProducts.filter((p: any) => {
+      if (!p) return false;
+      if (p.is_active === false || p.is_active === 'false' || p.is_active === 0 || p.is_active === '0') return false;
+      const st = typeof p.status === 'string' ? p.status.toLowerCase().trim() : '';
+      if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
+      return true;
+    });
     if (productMode === 'manual' && featuredIds.length > 0) {
-      const filtered = storeProducts.filter((p) => featuredIds.includes(String(p.id)));
+      const filtered = activeOnly.filter((p) => featuredIds.includes(String(p.id)));
       if (filtered.length > 0) return filtered;
     }
     // Default mode 'all': tampilkan seluruh produk katalog aktif
-    return storeProducts;
+    return activeOnly;
   }, [showProducts, storeProducts, productMode, featuredIds]);
 
   const isDigitalCatalog = ['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR', 'AGENCY'].some((k) =>
@@ -557,13 +574,13 @@ export default function MicrositeBioTemplate({
     if (whatsappUrl) {
       btns.push({ id: 'whatsapp', label: 'Chat WhatsApp CS', url: whatsappUrl, icon: 'whatsapp', badge: 'Respon Cepat' });
     }
-    if (storeProducts && storeProducts.length > 0) {
+    if (showProducts && visibleProducts.length > 0) {
       btns.push({
         id: 'catalog',
         label: 'Katalog Produk & Promo',
         url: '#products',
         icon: 'link',
-        badge: `${storeProducts.length} Pilihan`,
+        badge: `${visibleProducts.length} Pilihan`,
       });
     }
     if (tenantMetadata?.links?.gofood) {

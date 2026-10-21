@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Smartphone,
   Crown,
+  ShoppingBag,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
@@ -37,7 +38,9 @@ export interface ThemeTabProps {
   currentVisualTheme?: VisualThemeType;
   initialButtons?: BioButton[];
   featuredProductIds?: string[];
+  showProducts?: boolean;
   onThemeChange?: (themeId: VisualThemeType) => void;
+  onShowProductsChange?: (show: boolean) => void;
   onUpgrade?: () => void;
   onSaved?: (msg: string) => void;
   customDomain?: string | null;
@@ -58,13 +61,18 @@ export default function ThemeTab({
   currentVisualTheme = 'aurora_gradient',
   initialButtons = [],
   featuredProductIds = [],
+  showProducts,
   onThemeChange,
+  onShowProductsChange,
   onUpgrade,
   onSaved,
   customDomain,
   isCheckoutLite = false,
 }: ThemeTabProps) {
   const [selectedTheme, setSelectedTheme] = useState<VisualThemeType>(currentVisualTheme);
+  const [showProductsState, setShowProductsState] = useState<boolean>(() => {
+    return showProducts !== undefined ? showProducts : true;
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -75,6 +83,42 @@ export default function ThemeTab({
       setSelectedTheme(currentVisualTheme);
     }
   }, [currentVisualTheme]);
+
+  useEffect(() => {
+    if (showProducts !== undefined && showProducts !== showProductsState) {
+      setShowProductsState(showProducts);
+    }
+  }, [showProducts]);
+
+  // Load initial product visibility from Supabase if not provided
+  useEffect(() => {
+    async function loadVisibility() {
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        const meta = tenantRow?.metadata || {};
+        const isProdVisible =
+          meta.show_products ??
+          meta.display_catalog ??
+          meta.theme?.show_products ??
+          meta.theme_config?.show_products ??
+          meta.microsite?.show_products ??
+          meta.microsite_show_products ??
+          true;
+        setShowProductsState(Boolean(isProdVisible));
+      } catch (err) {
+        console.debug('[ThemeTab] Load visibility error:', err);
+      }
+    }
+    if (showProducts === undefined) {
+      loadVisibility();
+    }
+  }, [tenantSlug, showProducts]);
 
   const isThemeLocked = useCallback(
     (theme: VisualThemeOption) => {
@@ -150,16 +194,18 @@ export default function ThemeTab({
         }
       }
 
-      // 2. Gateway API Fallback
-      if (!saveSuccess) {
-        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
-          method: 'POST',
+      // Always sync to Theme API to guarantee Next.js ISR cache revalidation (Zero stale cache)
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visual_theme: theme.id }),
+          body: JSON.stringify({
+            visual_theme: theme.id,
+            show_products: showProductsState,
+          }),
         });
-        if (res.ok) {
-          saveSuccess = true;
-        }
+      } catch (apiErr) {
+        console.warn('[ThemeTab] Theme API revalidate note:', apiErr);
       }
 
       const successNotice = `Tema visual berhasil diperbarui ke "${theme.title}"!`;
@@ -171,6 +217,100 @@ export default function ThemeTab({
       setSelectedTheme(previousTheme);
       onThemeChange?.(previousTheme);
       setErrorMessage('Gagal menyimpan perubahan tema visual. Silakan coba kembali.');
+      setTimeout(() => setErrorMessage(null), 4000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleShowProducts = async (newVal: boolean) => {
+    if (isSubscriptionExpired) {
+      setErrorMessage('Masa aktif toko telah habis. Lakukan perpanjangan untuk mengubah pengaturan.');
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
+    const previousVal = showProductsState;
+    setShowProductsState(newVal);
+    onShowProductsChange?.(newVal);
+    setIsSaving(true);
+    setToastMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const supabase = getSupabase();
+      let currentMeta: Record<string, any> = {};
+
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        currentMeta = tenantRow?.metadata || {};
+      }
+
+      const updatedMeta = {
+        ...currentMeta,
+        show_products: newVal,
+        display_catalog: newVal,
+        microsite_show_products: newVal,
+        theme: {
+          ...(currentMeta.theme || {}),
+          show_products: newVal,
+        },
+        theme_config: {
+          ...(currentMeta.theme_config || {}),
+          show_products: newVal,
+        },
+        microsite: {
+          ...(currentMeta.microsite || {}),
+          show_products: newVal,
+        },
+        sections: {
+          ...(currentMeta.sections || {}),
+          catalog: { is_active: newVal },
+          products: { is_active: newVal },
+        },
+      };
+
+      if (supabase) {
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('slug', tenantSlug);
+      }
+
+      // Always trigger theme API to ensure Next.js ISR cache revalidation is called on server
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            show_products: newVal,
+            display_catalog: newVal,
+            visual_theme: selectedTheme,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('[ThemeTab] Theme API revalidate note:', apiErr);
+      }
+
+      const successNotice = newVal
+        ? 'Etalase produk berhasil diaktifkan di halaman depan.'
+        : 'Etalase produk berhasil disembunyikan dari halaman depan.';
+      setToastMessage(successNotice);
+      onSaved?.(successNotice);
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (err: any) {
+      console.warn('[ThemeTab] Gagal mengubah visibilitas produk:', err);
+      setShowProductsState(previousVal);
+      onShowProductsChange?.(previousVal);
+      setErrorMessage('Gagal menyimpan pengaturan visibilitas produk. Silakan coba kembali.');
       setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setIsSaving(false);
@@ -209,9 +349,56 @@ export default function ThemeTab({
             {isSaving && (
               <span className="px-3 py-1.5 bg-muted text-muted-foreground rounded-lg text-xs font-semibold flex items-center gap-2 shrink-0 border border-border">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
-                <span>Menyimpan tema...</span>
+                <span>Menyimpan pengaturan...</span>
               </span>
             )}
+          </div>
+
+          {/* Card Pengaturan Visibilitas Katalog Produk di Halaman Depan */}
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+                  showProductsState
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-foreground">
+                    Tampilkan Produk di Halaman Depan
+                  </h3>
+                  <span
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                      showProductsState
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                    }`}
+                  >
+                    {showProductsState ? 'Aktif (Tampil)' : 'Sembunyi'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {showProductsState
+                    ? 'Katalog produk & etalase toko ditampilkan di halaman publik toko Anda.'
+                    : 'Katalog produk disembunyikan. Cocok jika Anda hanya ingin menampilkan bio link, profil, atau formulir.'}
+                </p>
+              </div>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showProductsState}
+                disabled={isSaving || isSubscriptionExpired}
+                onChange={(e) => handleToggleShowProducts(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
           </div>
 
           {/* Feedback Banners */}
@@ -362,6 +549,7 @@ export default function ThemeTab({
             visualTheme={selectedTheme}
             buttons={initialButtons}
             products={products}
+            showProducts={showProductsState}
             featuredProductIds={featuredProductIds}
           />
         </div>
@@ -378,6 +566,7 @@ export default function ThemeTab({
           visualTheme={selectedTheme}
           buttons={initialButtons}
           products={products}
+          showProducts={showProductsState}
           featuredProductIds={featuredProductIds}
         />
       </div>

@@ -103,10 +103,23 @@ export async function GET(
       metadata.microsite_featured_product_ids ||
       [];
 
+    const showProducts =
+      metadata.show_products ??
+      metadata.display_catalog ??
+      metadata.theme?.show_products ??
+      metadata.theme_config?.show_products ??
+      metadata.microsite?.show_products ??
+      metadata.microsite_show_products ??
+      true;
+
     return NextResponse.json({
       success: true,
       slug,
-      theme,
+      theme: {
+        ...theme,
+        show_products: showProducts,
+      },
+      show_products: showProducts,
       tier: tenantRow.tier,
       isTeamScale,
       featured_product_ids: Array.isArray(featIds) ? featIds.map(String).slice(0, 5) : [],
@@ -133,6 +146,8 @@ export async function PUT(
 
     const body = await req.json();
     const { template, visual_theme, theme_id, chat_enabled, chat_position, featured_product_ids } = body;
+    const rawShowProducts = body.show_products !== undefined ? body.show_products : body.display_catalog;
+    const showProducts = rawShowProducts !== undefined ? Boolean(rawShowProducts) : undefined;
 
     const supabase = getSupabase();
     const { data: tenantRow, error: fetchErr } = await supabase
@@ -220,6 +235,20 @@ export async function PUT(
       updatedMetadata.microsite.featured_product_ids = cleanIds;
     }
 
+    if (showProducts !== undefined) {
+      standardizedTheme.show_products = showProducts;
+      updatedMetadata.show_products = showProducts;
+      updatedMetadata.display_catalog = showProducts;
+      updatedMetadata.microsite_show_products = showProducts;
+      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
+      updatedMetadata.microsite.show_products = showProducts;
+      if (!updatedMetadata.theme_config) updatedMetadata.theme_config = {};
+      updatedMetadata.theme_config.show_products = showProducts;
+      if (!updatedMetadata.sections) updatedMetadata.sections = {};
+      updatedMetadata.sections.catalog = { is_active: showProducts };
+      updatedMetadata.sections.products = { is_active: showProducts };
+    }
+
     const { error: updateErr } = await supabase
       .from('tenants')
       .update({
@@ -239,6 +268,7 @@ export async function PUT(
       revalidatePath(`/${slug}`);
       revalidatePath(`/${slug}`, 'page');
       revalidatePath(`/${slug}`, 'layout');
+      revalidatePath(`/${slug}/p/[slug]`, 'page');
       revalidatePath('/[tenant]', 'page');
       revalidatePath('/[tenant]', 'layout');
     } catch (revalErr) {

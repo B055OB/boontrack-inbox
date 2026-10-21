@@ -366,6 +366,7 @@ function SingleProductContent() {
         }
 
         let sqlProd: any = null;
+        let isSqlExplicitlyInactive = false;
 
         // SINGLE-PASS ATOMIC LOOKUP (P0.2):
         // Eksekusi query produk wajib mengikat sekaligus: WHERE tenant_id = tenantRow.id AND slug = slug.
@@ -378,7 +379,15 @@ function SingleProductContent() {
             .eq("slug", slug)
             .maybeSingle();
 
-          sqlProd = directSqlProd;
+          if (directSqlProd) {
+            const sqlStatus = String((directSqlProd as any).status || '').toLowerCase().trim();
+            if (directSqlProd.is_active === false || ['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(sqlStatus)) {
+              isSqlExplicitlyInactive = true;
+              sqlProd = null;
+            } else {
+              sqlProd = directSqlProd;
+            }
+          }
         }
         const adsTrackingCfg = settingsRes.data?.ads_tracking_config;
 
@@ -417,10 +426,23 @@ function SingleProductContent() {
 
         const rawProds = tenantRow?.metadata?.products;
         const prods = Array.isArray(rawProds)
-          ? rawProds.filter((p: any) => p !== null && typeof p === 'object')
-          : (tenantRow?.metadata?.product && typeof tenantRow.metadata.product === 'object' ? [tenantRow.metadata.product] : []);
+          ? rawProds.filter((p: any) => {
+              if (!p || typeof p !== 'object') return false;
+              if (p.is_active === false) return false;
+              const status = String(p.status || '').toLowerCase().trim();
+              if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(status)) return false;
+              return true;
+            })
+          : (tenantRow?.metadata?.product && typeof tenantRow.metadata.product === 'object'
+              ? [tenantRow.metadata.product].filter((p: any) => {
+                  if (!p || typeof p !== 'object') return false;
+                  if (p.is_active === false) return false;
+                  const status = String(p.status || '').toLowerCase().trim();
+                  return !['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(status);
+                })
+              : []);
         const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-        let match = prods.length > 0
+        let match = (!isSqlExplicitlyInactive && prods.length > 0)
           ? prods.find((p: any) => {
               if (!p || typeof p !== 'object') return false;
               const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -441,6 +463,10 @@ function SingleProductContent() {
               return false;
             })
           : null;
+
+        if (isSqlExplicitlyInactive) {
+          match = null;
+        }
 
         // PERBAIKAN: Jika sqlProd ada, selalu gabungkan dan prioritaskan data tabel products (single source of truth)
         if (sqlProd) {
