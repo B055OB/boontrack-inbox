@@ -6,7 +6,9 @@
  * 1. Dedicated Canary Tenant ('canary-studio-probe'): Zero impact to real merchant stores.
  * 2. Production Reservation Pipeline: Uses StudioCreditService.reserveJobCredits() directly for credit deductions.
  * 3. Real HTTP & Webhook Flow: Triggers FAILED / auto-refund via HTTP PATCH to /api/studio/jobs.
- * 4. Safe Cleanup: Scoped strictly to WHERE tenant_id = canaryTenant.id.
+ * 4. Precision Scoped Cleanup: Deletes ONLY activeJobIds created during current run, preserving audit history.
+ * 5. Organic Balance Mutation: Saldo mutates naturally (S_akhir === S_awal - 3), with zero hard-reset in cleanup.
+ * 6. Atomic Concurrency: Tests parallel race condition via Promise.all with zero double-refund.
  */
 
 import fs from 'fs';
@@ -65,7 +67,7 @@ const jitiLoader = (typeof createJiti === 'function' ? createJiti : createJiti.d
 const { StudioCreditService } = jitiLoader(path.resolve('lib/services/studio-credit.service.ts'));
 
 console.log('\n========================================================================');
-console.log('   🕊️  BOONTRACK CANARY AUDIT: DEDICATED PROBE & PRODUCTION CREDIT PIPELINE');
+console.log('   🕊️  BOONTRACK CANARY AUDIT: ATOMIC CONCURRENCY & SCOPED CLEANUP PROBE');
 console.log(`   Host Target   : ${TARGET_URL}`);
 console.log(`   Supabase Host : ${new URL(SUPABASE_URL).hostname}`);
 console.log(`   Probe Target  : Dedicated Tenant ('canary-studio-probe')`);
@@ -74,7 +76,8 @@ console.log(`   Timestamp     : ${new Date().toISOString()}`);
 console.log('========================================================================\n');
 
 /**
- * Ensures dedicated canary tenant exists with initial 50 credits in tenant_entitlements.
+ * Ensures dedicated canary tenant exists.
+ * Does NOT hard reset balance to 50 if already initialized with sufficient credits (>= 10).
  * Never touches real merchant tenants.
  */
 async function ensureCanaryTenant() {
@@ -109,19 +112,35 @@ async function ensureCanaryTenant() {
     canaryTenant = insertRes.data;
   }
 
-  // Ensure 50 credits in tenant_entitlements
-  const { error: entErr } = await supabase
+  // Check existing entitlements without overwriting
+  const { data: existingEnt } = await supabase
     .from('tenant_entitlements')
-    .upsert({
-      tenant_id: canaryTenant.id,
-      credits_remaining: 50,
-      is_unlimited: false,
-      tier: canaryTenant.tier || 'PRO_SCALE',
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'tenant_id' });
+    .select('credits_remaining, is_unlimited, tier')
+    .eq('tenant_id', canaryTenant.id)
+    .maybeSingle();
 
-  if (entErr) {
-    throw new Error(`Gagal menyiapkan tenant_entitlements canary: ${entErr.message}`);
+  if (!existingEnt) {
+    const { error: entErr } = await supabase
+      .from('tenant_entitlements')
+      .insert({
+        tenant_id: canaryTenant.id,
+        credits_remaining: 50,
+        is_unlimited: false,
+        tier: canaryTenant.tier || 'PRO_SCALE',
+        updated_at: new Date().toISOString(),
+      });
+    if (entErr) throw new Error(`Gagal inisialisasi tenant_entitlements canary: ${entErr.message}`);
+  } else if (existingEnt.credits_remaining < 10) {
+    // If credit has depleted organically over multiple runs (< 10), top up buffer (+50)
+    const { error: topupErr } = await supabase
+      .from('tenant_entitlements')
+      .update({
+        credits_remaining: existingEnt.credits_remaining + 50,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', canaryTenant.id);
+    if (topupErr) throw new Error(`Gagal top up buffer tenant_entitlements canary: ${topupErr.message}`);
+    console.log(`   ℹ️ Saldo canary mendekati habis (${existingEnt.credits_remaining}), menambah top-up buffer organik.`);
   }
 
   return canaryTenant;
@@ -131,17 +150,33 @@ async function runCanary() {
   const results = {
     test1_happy_path: false,
     test2_auto_refund: false,
-    test2_idempotent: false,
+    test2_atomic_concurrency: false,
     test3_cross_tenant_isolated: false,
+    balance_isolation_valid: false,
   };
 
   let canaryTenant = null;
   let testAttackerUserId = null;
+  const activeJobIds = [];
 
   try {
     // 1. Resolve Dedicated Canary Tenant
     canaryTenant = await ensureCanaryTenant();
-    console.log(`   • Dedicated Canary Tenant: ${canaryTenant.slug} (${canaryTenant.id})`);
+
+    // 2. Baca saldo awal tenant sebelum rangkaian tes dimulai (S_awal)
+    const { data: initialEntRow, error: entReadErr } = await supabase
+      .from('tenant_entitlements')
+      .select('credits_remaining')
+      .eq('tenant_id', canaryTenant.id)
+      .single();
+
+    if (entReadErr || !initialEntRow) {
+      throw new Error(`Gagal membaca saldo awal tenant: ${entReadErr?.message}`);
+    }
+
+    const S_awal = initialEntRow.credits_remaining;
+    console.log(`   • Dedicated Canary Tenant   : ${canaryTenant.slug} (${canaryTenant.id})`);
+    console.log(`   • Saldo DB Awal (S_awal)    : ${S_awal} Credits`);
 
     const { data: usersData, error: userListErr } = await supabase.auth.admin.listUsers({ perPage: 1 });
     if (userListErr || !usersData?.users?.length) {
@@ -155,12 +190,12 @@ async function runCanary() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const happyJobId = crypto.randomUUID();
+    activeJobIds.push(happyJobId);
     const renderCost = 3;
-    const initialCredits = 50;
 
     console.log(`   • Tenant Uji       : ${canaryTenant.slug} (${canaryTenant.id})`);
     console.log(`   • Canary Job ID    : ${happyJobId}`);
-    console.log(`   • Saldo DB Awal    : ${initialCredits} Credits`);
+    console.log(`   • Saldo Sebelum Job: ${S_awal} Credits`);
     console.log(`   • Biaya Render MP4 : ${renderCost} Credits`);
 
     // Use official production reservation method (StudioCreditService.reserveJobCredits)
@@ -176,7 +211,7 @@ async function runCanary() {
       throw new Error(`Reservasi saldo gagal lewat StudioCreditService: ${reserveRes.message}`);
     }
 
-    const expectedBalanceAfterReserve = initialCredits - renderCost; // 47
+    const expectedBalanceAfterHappy = S_awal - renderCost;
     console.log(`   • Saldo Pasca-Reservasi: ${reserveRes.credits_remaining} Credits (Tepat terpotong -${renderCost})`);
 
     // Insert job into studio_jobs
@@ -227,24 +262,24 @@ async function runCanary() {
       .eq('tenant_id', canaryTenant.id)
       .single();
 
-    if (dbHappyEnt?.credits_remaining !== expectedBalanceAfterReserve) {
-      throw new Error(`Happy Path DB saldo mismatch: Saldo ${dbHappyEnt?.credits_remaining}, diharapkan ${expectedBalanceAfterReserve}`);
+    if (dbHappyEnt?.credits_remaining !== expectedBalanceAfterHappy) {
+      throw new Error(`Happy Path DB saldo mismatch: Saldo ${dbHappyEnt?.credits_remaining}, diharapkan ${expectedBalanceAfterHappy}`);
     }
 
     results.test1_happy_path = true;
     console.log(`   ✅ [PASS] HTTP Response 200 OK.`);
     console.log(`   ✅ [PASS] Status DB terupdate menjadi 'COMPLETED'.`);
     console.log(`   ✅ [PASS] Output URL: ${dbHappyJob.output_url}`);
-    console.log(`   ✅ [PASS] Saldo akhir tenant di DB terpotong presisi: ${dbHappyEnt.credits_remaining} Credits.`);
+    console.log(`   ✅ [PASS] Saldo akhir tenant di DB terpotong presisi: ${dbHappyEnt.credits_remaining} Credits (S_awal - 3).`);
 
-    // --- TEST 2: Failure & Auto-Refund (Idempotent Safeguard) ---
+    // --- TEST 2: Uji Konkurensi & Idempotensi Atomik (Parallel Race Condition) ---
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('▶ [TEST 2/3] UJI JOB GAGAL & SAFEGUARD AUTO-REFUND IDEMPOTEN');
+    console.log('▶ [TEST 2/3] UJI KONKURENSI & IDEMPOTENSI ATOMIK (PARALLEL RACE CONDITION)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const failedJobId = crypto.randomUUID();
-    const balanceBeforeFail = expectedBalanceAfterReserve; // 47
-    const expectedAfterFailReserve = balanceBeforeFail - renderCost; // 44
+    activeJobIds.push(failedJobId);
+    const balanceBeforeFail = expectedBalanceAfterHappy; // S_awal - 3
 
     console.log(`   • Failed Job ID    : ${failedJobId}`);
     console.log(`   • Saldo Sebelum Job: ${balanceBeforeFail} Credits`);
@@ -272,27 +307,45 @@ async function runCanary() {
       payload: { is_canary: true, prompt: 'Canary E2E Failure Path Render' },
     });
 
-    console.log(`   • Mengirim HTTP PATCH status FAILED ke endpoint API...`);
-    const failPatchRes = await fetch(`${TARGET_URL}/api/studio/jobs`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-worker-secret': WORKER_SECRET,
-      },
-      body: JSON.stringify({
-        job_id: failedJobId,
-        jobId: failedJobId,
-        status: 'FAILED',
-        error_message: 'FFmpeg SIGKILL: GPU memory allocation timeout on node worker-canary',
-      }),
-    });
+    // Uji Konkurensi Atomik: Tembakkan dua request PATCH FAILED bersamaan via Promise.all
+    console.log(`   • [RACE CONDITION TEST] Menembakkan 2 request HTTP PATCH FAILED secara simultan (Promise.all)...`);
 
-    const failJson = await failPatchRes.json();
-    if (failPatchRes.status !== 200 || !failJson.success) {
-      throw new Error(`Failure Path HTTP PATCH gagal: HTTP ${failPatchRes.status} - ${JSON.stringify(failJson)}`);
+    const failurePayload = {
+      job_id: failedJobId,
+      jobId: failedJobId,
+      status: 'FAILED',
+      error_message: 'Worker FFmpeg SIGKILL: GPU memory allocation timeout on node worker-canary (Simultaneous Race)',
+    };
+
+    const [raceResA, raceResB] = await Promise.all([
+      fetch(`${TARGET_URL}/api/studio/jobs`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-worker-secret': WORKER_SECRET,
+        },
+        body: JSON.stringify(failurePayload),
+      }),
+      fetch(`${TARGET_URL}/api/studio/jobs`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-worker-secret': WORKER_SECRET,
+        },
+        body: JSON.stringify(failurePayload),
+      }),
+    ]);
+
+    const [raceJsonA, raceJsonB] = await Promise.all([raceResA.json(), raceResB.json()]);
+
+    if (raceResA.status !== 200 || raceResB.status !== 200) {
+      throw new Error(`Simultaneous HTTP PATCH gagal: HTTP ${raceResA.status} / HTTP ${raceResB.status}`);
     }
 
-    // Verify DB Refund Entry and Credit Restoration
+    console.log(`   • Response Request 1: HTTP ${raceResA.status} (Success: ${raceJsonA.success})`);
+    console.log(`   • Response Request 2: HTTP ${raceResB.status} (Success: ${raceJsonB.success})`);
+
+    // Verifikasi DB Ledger: Wajib TEPAT 1 baris refund untuk failedJobId
     const { data: refundRows } = await supabase
       .from('tenant_credit_ledger')
       .select('id, amount, balance_after, type')
@@ -300,10 +353,11 @@ async function runCanary() {
       .eq('tenant_id', canaryTenant.id)
       .eq('type', 'REFUND');
 
-    if (!refundRows || refundRows.length === 0) {
-      throw new Error('Failure Path DB gagal: Tidak ditemukan row REFUND di tenant_credit_ledger');
+    if (!refundRows || refundRows.length !== 1) {
+      throw new Error(`Uji Konkurensi GAGAL: Ditemukan ${refundRows ? refundRows.length : 0} baris refund di tenant_credit_ledger (seharusnya TEPAT 1)`);
     }
 
+    // Verifikasi Saldo: Saldo pulih tepat +3 (kembali ke balanceBeforeFail, BUKAN +6)
     const { data: dbRestoredEnt } = await supabase
       .from('tenant_entitlements')
       .select('credits_remaining')
@@ -311,61 +365,15 @@ async function runCanary() {
       .single();
 
     if (dbRestoredEnt?.credits_remaining !== balanceBeforeFail) {
-      throw new Error(`Auto-refund DB saldo mismatch: Saldo ${dbRestoredEnt?.credits_remaining}, diharapkan ${balanceBeforeFail}`);
+      throw new Error(`Saldo pulih tidak tepat di level konkuren: Saldo ${dbRestoredEnt?.credits_remaining}, diharapkan tepat ${balanceBeforeFail} (+3, BUKAN +6)`);
     }
 
     results.test2_auto_refund = true;
-    console.log(`   ✅ [PASS] HTTP Response 200 OK | Status: FAILED.`);
-    console.log(`   ✅ [PASS] Row REFUND tercatat di tenant_credit_ledger (${refundRows[0].id}).`);
-    console.log(`   ✅ [PASS] Saldo pulih otomatis di Supabase: ${dbRestoredEnt.credits_remaining} Credits.`);
-
-    // Test Idempotency: Re-send identical PATCH
-    console.log(`   • Menguji Idempotensi: Mengirim ULANG HTTP PATCH FAILED yang identik...`);
-    const retryPatchRes = await fetch(`${TARGET_URL}/api/studio/jobs`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-worker-secret': WORKER_SECRET,
-      },
-      body: JSON.stringify({
-        job_id: failedJobId,
-        jobId: failedJobId,
-        status: 'FAILED',
-        error_message: 'FFmpeg SIGKILL: GPU memory allocation timeout on node worker-canary',
-      }),
-    });
-
-    const retryJson = await retryPatchRes.json();
-    if (retryPatchRes.status !== 200) {
-      throw new Error(`Retry HTTP PATCH gagal: HTTP ${retryPatchRes.status} - ${JSON.stringify(retryJson)}`);
-    }
-
-    // Verify Zero Duplicate Refund in DB Ledger & Saldo
-    const { data: postRetryLedgers } = await supabase
-      .from('tenant_credit_ledger')
-      .select('id')
-      .eq('job_id', failedJobId)
-      .eq('tenant_id', canaryTenant.id)
-      .eq('type', 'REFUND');
-
-    if (postRetryLedgers?.length !== 1) {
-      throw new Error(`Idempotency guard gagal: Ditemukan ${postRetryLedgers?.length} baris refund (seharusnya tepat 1)`);
-    }
-
-    const { data: postRetryEnt } = await supabase
-      .from('tenant_entitlements')
-      .select('credits_remaining')
-      .eq('tenant_id', canaryTenant.id)
-      .single();
-
-    if (postRetryEnt?.credits_remaining !== balanceBeforeFail) {
-      throw new Error(`Idempotency saldo terlanggar: Saldo ${postRetryEnt?.credits_remaining}, diharapkan tetap ${balanceBeforeFail}`);
-    }
-
-    results.test2_idempotent = true;
-    console.log(`   ✅ [PASS] Retry HTTP 200 OK.`);
-    console.log(`   ✅ [PASS] Ledger tetap memiliki tepat 1 baris refund (Zero Double-Refund Guard Passed).`);
-    console.log(`   ✅ [PASS] Saldo DB tetap ${postRetryEnt.credits_remaining} Credits (Tidak terduplikasi).`);
+    results.test2_atomic_concurrency = true;
+    console.log(`   ✅ [PASS] Kedua request konkuren menghasilkan HTTP 200 OK.`);
+    console.log(`   ✅ [PASS] Tepat 1 record refund masuk ke tenant_credit_ledger (${refundRows[0].id}).`);
+    console.log(`   ✅ [PASS] Saldo pulih tepat +3 (${dbRestoredEnt.credits_remaining} Credits, bukan +6).`);
+    console.log(`   ✅ [PASS] Zero double-refund terbukti di level konkuren (Atomic Concurrency Verified).`);
 
     // --- TEST 3: Cross-Tenant Security Isolation ---
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -426,42 +434,65 @@ async function runCanary() {
     console.log(`   ✅ [PASS] Pesan: '${isolationJson.message}'.`);
     console.log(`   ✅ [PASS] Zero Data Leak: Tidak ada metadata atau data jobs milik tenant yang bocor.`);
 
-  } finally {
-    // --- SAFE CLEANUP (STRICTLY SCOPED TO CANARY TENANT) ---
+    // --- VALIDASI MUTASI SALDO ORGANIK ---
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('▶ [CLEANUP] SAFE ISOLATED CLEANUP (CANARY TENANT ONLY)');
+    console.log('▶ [VALIDASI MUTASI SALDO] VERIFIKASI SALDO AKHIR PASCA-RUN SECARA ORGANIK');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (canaryTenant?.id) {
-      // 1. Delete studio_jobs strictly for canary tenant
+    const { data: finalEntRow, error: finalEntErr } = await supabase
+      .from('tenant_entitlements')
+      .select('credits_remaining')
+      .eq('tenant_id', canaryTenant.id)
+      .single();
+
+    if (finalEntErr || !finalEntRow) {
+      throw new Error(`Gagal membaca saldo akhir tenant: ${finalEntErr?.message}`);
+    }
+
+    const S_akhir = finalEntRow.credits_remaining;
+    const expectedFinalBalance = S_awal - 3;
+
+    console.log(`   • Saldo Awal (S_awal)   : ${S_awal} Credits`);
+    console.log(`   • Mutasi Happy Path     : -3 Credits`);
+    console.log(`   • Mutasi Failure Path   : -3 lalu +3 (Net: +0 Credits)`);
+    console.log(`   • Saldo Akhir Terukur   : ${S_akhir} Credits`);
+    console.log(`   • Saldo Akhir Diharapkan: ${expectedFinalBalance} Credits (S_awal - 3)`);
+
+    if (S_akhir !== expectedFinalBalance) {
+      throw new Error(`Validasi mutasi saldo organik GAGAL: Saldo akhir ${S_akhir}, diharapkan persis ${expectedFinalBalance}`);
+    }
+
+    results.balance_isolation_valid = true;
+    console.log(`   ✅ [PASS] Saldo akhir pasca-run persis (S_awal - 3) = ${S_akhir} Credits.`);
+
+  } finally {
+    // --- SCOPED PRECISION CLEANUP (BY ACTIVE JOB IDS ONLY) ---
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('▶ [CLEANUP] CLEANUP PRESISI BERDASARKAN JOB ID (ZERO HARD RESET)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    if (activeJobIds.length > 0) {
+      // 1. Delete studio_jobs strictly matching activeJobIds
       const delJobsRes = await supabase
         .from('studio_jobs')
         .delete({ count: 'exact' })
-        .eq('tenant_id', canaryTenant.id);
+        .in('id', activeJobIds);
       const jobsDeleted = delJobsRes.count ?? delJobsRes.data?.length ?? 0;
-      console.log(`   🧹 Bersihkan ${jobsDeleted} jobs dari studio_jobs milik canary tenant.`);
+      console.log(`   🧹 Hapus ${jobsDeleted} job dari studio_jobs berdasarkan activeJobIds: [${activeJobIds.join(', ')}].`);
 
-      // 2. Delete tenant_credit_ledger strictly for canary tenant
+      // 2. Delete tenant_credit_ledger strictly matching activeJobIds
       const delLedgerRes = await supabase
         .from('tenant_credit_ledger')
         .delete({ count: 'exact' })
-        .eq('tenant_id', canaryTenant.id);
+        .in('job_id', activeJobIds);
       const ledgerDeleted = delLedgerRes.count ?? delLedgerRes.data?.length ?? 0;
-      console.log(`   🧹 Bersihkan ${ledgerDeleted} ledger entries dari tenant_credit_ledger milik canary tenant.`);
-
-      // 3. Reset canary tenant credit balance to 50
-      await supabase
-        .from('tenant_entitlements')
-        .update({
-          credits_remaining: 50,
-          is_unlimited: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('tenant_id', canaryTenant.id);
-      console.log('   🧹 Reset saldo tenant canary kembali ke 50 Credits (Tenant lain tidak disentuh).');
+      console.log(`   🧹 Hapus ${ledgerDeleted} ledger entries dari tenant_credit_ledger berdasarkan activeJobIds.`);
     }
 
-    // 4. Delete temporary test attacker user
+    console.log(`   🛡️ Histori audit run sebelumnya tetap terjaga (Zero bulk-delete).`);
+    console.log(`   🛡️ Saldo tenant dibiarkan berkurang secara organik (Tanpa hard-reset ke 50).`);
+
+    // 3. Delete temporary test attacker user
     if (testAttackerUserId) {
       await supabase.auth.admin.deleteUser(testAttackerUserId);
       console.log('   🧹 Hapus akun penyerang sementara dari auth.users.');
@@ -472,12 +503,13 @@ async function runCanary() {
   console.log('\n========================================================================');
   console.log('   📊 EXECUTIVE CANARY AUDIT REPORT FOR CTO');
   console.log('========================================================================');
-  console.log(`   1. Uji Job Sukses (Happy Path)        : ${results.test1_happy_path ? '✅ PASSED (200 OK, Real DB Settled via StudioCreditService)' : '❌ FAILED'}`);
+  console.log(`   1. Uji Job Sukses (Happy Path)        : ${results.test1_happy_path ? '✅ PASSED (200 OK, -3 Credits via StudioCreditService)' : '❌ FAILED'}`);
   console.log(`   2. Uji Job Gagal (Auto-Refund)        : ${results.test2_auto_refund ? '✅ PASSED (Real DB Refund Verified)' : '❌ FAILED'}`);
-  console.log(`   3. Uji Idempotensi Refund             : ${results.test2_idempotent ? '✅ PASSED (Zero Double-Refund in DB)' : '❌ FAILED'}`);
+  console.log(`   3. Uji Konkurensi & Idempotensi Atomik: ${results.test2_atomic_concurrency ? '✅ PASSED (Promise.all Race Condition, 1 Ledger Row, +3 Restored)' : '❌ FAILED'}`);
   console.log(`   4. Uji Isolasi Cross-Tenant           : ${results.test3_cross_tenant_isolated ? '✅ PASSED (Real HTTP 403 Forbidden Gate)' : '❌ FAILED'}`);
+  console.log(`   5. Validasi Mutasi Saldo Organik      : ${results.balance_isolation_valid ? '✅ PASSED (S_akhir === S_awal - 3, Zero Hard Reset)' : '❌ FAILED'}`);
   console.log('------------------------------------------------------------------------');
-  console.log('   STATUS CANARY PIPELINE : 100% HEALTHY, DEDICATED PROBE & AUDIT-COMPLIANT 🛡️');
+  console.log('   STATUS CANARY PIPELINE : 100% HEALTHY, ATOMIC CONCURRENCY & SCOPED CLEANUP 🛡️');
   console.log('========================================================================\n');
 }
 

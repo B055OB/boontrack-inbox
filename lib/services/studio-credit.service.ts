@@ -44,6 +44,7 @@ export interface CreditLedgerEntry {
 
 export class StudioCreditService {
   private static inFlightTopups = new Map<string, Promise<any>>();
+  private static inFlightRefunds = new Map<string, Promise<CreditReserveResult>>();
 
   /**
    * Helper: Resolve tenant record by ID or slug
@@ -328,8 +329,37 @@ export class StudioCreditService {
   /**
    * Auto-refund credits when a render job ends in FAILED or TIMEOUT.
    * Two-phase commit Phase 2: Auto-refund (type: 'CREDIT_REFUND', metadata: { job_id }).
+   * Protected with inFlightRefunds anti-race condition lock to guarantee atomic concurrency.
    */
   static async refundJobCredits(params: {
+    tenantIdOrSlug?: string;
+    jobId: string;
+    amount?: number;
+    reason?: string;
+  }): Promise<CreditReserveResult> {
+    const { jobId } = params;
+    if (!jobId) {
+      return { success: false, message: 'jobId wajib disertakan untuk refund.' };
+    }
+
+    // ANTI-RACE CONDITION LOCK:
+    // Re-use active in-flight Promise for concurrent requests on the same jobId
+    const activePromise = this.inFlightRefunds.get(jobId);
+    if (activePromise) {
+      return await activePromise;
+    }
+
+    const execution = this._executeRefundJobCredits(params);
+    this.inFlightRefunds.set(jobId, execution);
+
+    try {
+      return await execution;
+    } finally {
+      this.inFlightRefunds.delete(jobId);
+    }
+  }
+
+  private static async _executeRefundJobCredits(params: {
     tenantIdOrSlug?: string;
     jobId: string;
     amount?: number;
@@ -437,10 +467,13 @@ export class StudioCreditService {
       })
       .eq('tenant_id', tenant.id);
 
+    const idempotencyKey = `REFUND_${tenant.id}_${jobId}`;
+
     try {
       await supabase.from('tenant_credit_ledger').insert({
         tenant_id: tenant.id,
         job_id: jobId,
+        idempotency_key: idempotencyKey,
         amount: finalAmount,
         balance_after: newBalance,
         action: 'STUDIO_RENDER_JOB',

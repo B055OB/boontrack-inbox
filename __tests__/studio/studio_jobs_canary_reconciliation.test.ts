@@ -307,7 +307,7 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
         output_url: null,
       };
 
-      // 2. Kirim PATCH /api/studio/jobs dengan status FAILED
+      // 2. Uji Konkurensi & Idempotensi Atomik: Tembakkan 2 request PATCH FAILED bersamaan (Promise.all)
       const patchFailReq1 = new NextRequest('http://localhost:3000/api/studio/jobs', {
         method: 'PATCH',
         headers: {
@@ -317,26 +317,10 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
         body: JSON.stringify({
           job_id: jobId,
           status: 'FAILED',
-          error_message: 'Worker FFmpeg SIGKILL: GPU memory allocation timeout',
+          error_message: 'Worker FFmpeg SIGKILL: GPU memory allocation timeout (Race Request 1)',
         }),
       });
 
-      const patchFailRes1 = await PATCH(patchFailReq1);
-      const patchFailJson1 = await patchFailRes1.json();
-
-      // 3. Verifikasi auto-refund pertama
-      expect(patchFailRes1.status).toBe(200);
-      expect(patchFailJson1.success).toBe(true);
-      expect(patchFailJson1.status).toBe('FAILED');
-      expect(patchFailJson1.refunded).toBe(true);
-      expect(inMemoryJobs[jobId].status).toBe('FAILED');
-
-      // Saldo kredit harus kembali pulih +3 (dari 47 menjadi 50)
-      expect(inMemoryEntitlements[TEST_TENANT_ID].credits_remaining).toBe(50);
-
-      console.log(`[CANARY TEST 2 - AUTO-REFUND 1] Job ${jobId} FAILED -> Auto-Refund executed | Saldo Pulih: 50 Credits`);
-
-      // 4. Uji Idempotensi: Panggil ulang PATCH FAILED dengan job_id yang sama
       const patchFailReq2 = new NextRequest('http://localhost:3000/api/studio/jobs', {
         method: 'PATCH',
         headers: {
@@ -346,21 +330,38 @@ describe('CANARY TEST: Studio Jobs API & Credit Reconciliation Gateway', () => {
         body: JSON.stringify({
           job_id: jobId,
           status: 'FAILED',
-          error_message: 'Worker FFmpeg SIGKILL retry ping',
+          error_message: 'Worker FFmpeg SIGKILL retry ping (Race Request 2)',
         }),
       });
 
-      const patchFailRes2 = await PATCH(patchFailReq2);
-      const patchFailJson2 = await patchFailRes2.json();
+      // Tembakkan secara paralel / simultan
+      const [patchFailRes1, patchFailRes2] = await Promise.all([
+        PATCH(patchFailReq1),
+        PATCH(patchFailReq2),
+      ]);
 
+      const [patchFailJson1, patchFailJson2] = await Promise.all([
+        patchFailRes1.json(),
+        patchFailRes2.json(),
+      ]);
+
+      // 3. Verifikasi response kedua request konkuren
+      expect(patchFailRes1.status).toBe(200);
       expect(patchFailRes2.status).toBe(200);
+      expect(patchFailJson1.success).toBe(true);
       expect(patchFailJson2.success).toBe(true);
-      expect(patchFailJson2.status).toBe('FAILED');
+      expect(inMemoryJobs[jobId].status).toBe('FAILED');
 
-      // Pastikan saldo TIDAK bertambah lagi (tetap 50, bukan 53)
+      // Tepat 1 record refund di ledger
+      const refundEntries = inMemoryLedger.filter(
+        (entry) => entry.job_id === jobId && entry.type === 'REFUND'
+      );
+      expect(refundEntries.length).toBe(1);
+
+      // Saldo pulih tepat +3 (dari 47 kembali ke 50, BUKAN 53)
       expect(inMemoryEntitlements[TEST_TENANT_ID].credits_remaining).toBe(50);
 
-      console.log(`[CANARY TEST 2 - IDEMPOTENCY CHECK] Re-run PATCH FAILED for ${jobId} -> Saldo Tetap 50 (Zero Double-Refund Guard Passed)`);
+      console.log(`[CANARY TEST 2 - ATOMIC CONCURRENCY] Concurrent PATCH FAILED for ${jobId} -> Saldo Pulih Tepat 50 (Zero Double-Refund Guard Passed under Concurrency)`);
     });
   });
 
