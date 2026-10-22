@@ -1,18 +1,33 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { isPrivilegedOrderCaller } from '@/lib/auth/order-auth-guard';
+import { maskPhone, maskEmail } from '@/lib/tracking/gtm-datalayer';
+
+function maskName(name?: string | null): string | null {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  return trimmed
+    .split(/\s+/)
+    .map((w) => (w.length > 1 ? `${w.charAt(0)}***` : w))
+    .join(' ');
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
  * GET /api/v1/orders/[id]
- * Endpoint rincian order dengan Hard-Gate Asset & Fulfillment Link (ACT-02).
+ * Endpoint rincian order dengan Hard-Gate Asset & Fulfillment Link (ACT-02)
+ * dan Perlindungan PII Pelanggan (Anti-Harvesting Guardrail).
  *
- * Security Invariant:
- * Properti `fulfillment_url`, link Google Meet, download link, kredensial/token akses
- * WAJIB bernilai `null` atau di-strip total jika order.payment_status !== 'PAID'.
- * Isolasi tenant: dilarang melakukan cross-tenant template asset fallback.
+ * Security Invariants:
+ * 1. Properti `fulfillment_url`, link Google Meet, download link, kredensial/token akses
+ *    WAJIB bernilai `null` atau di-strip total jika order.payment_status !== 'PAID'.
+ * 2. Mengetahui Order ID saja TIDAK BOLEH membocorkan PII kontak sensitif pembeli lain.
+ *    Kueri tanpa otentikasi merchant/internal wajib mengembalikan nomor telepon dan email termaskir.
+ * 3. Normalisasi metode pembayaran tidak boleh berasumsi buta 'QRIS' tanpa justifikasi order tersimpan.
  */
 export async function GET(
   req: NextRequest,
@@ -143,7 +158,23 @@ export async function GET(
       }
     }
 
-    // 4. SANITASI MUTLAK: Jika belum PAID, seluruh properti fulfillment WAJIB null / stripped
+    // 4. Authorization & PII Protection:
+    // Determine whether caller is privileged (merchant session, internal secret, supabase user).
+    // Knowing an order ID alone MUST NOT expose sensitive customer details (PII) to an unauthenticated caller.
+    const isPrivileged = await isPrivilegedOrderCaller(req, order);
+
+    // 5. Payment method normalization:
+    // Do NOT blindly default to 'QRIS' unless justified by persisted order artifacts.
+    let resolvedPaymentMethod: string | null = null;
+    if (order.payment_method) {
+      resolvedPaymentMethod = String(order.payment_method).toUpperCase().trim();
+    } else if (order.qr_code_url || order.qr_string || (order.metadata && typeof order.metadata === 'object' && order.metadata.qr_string)) {
+      resolvedPaymentMethod = 'QRIS';
+    } else if (order.bank_account || (order.metadata && typeof order.metadata === 'object' && (order.metadata.bank_account || order.metadata.unique_code))) {
+      resolvedPaymentMethod = 'MANUAL_TRANSFER';
+    }
+
+    // 6. SANITASI MUTLAK: Jika belum PAID, seluruh properti fulfillment WAJIB null / stripped (ACT-02)
     const responsePayload = {
       success: true,
       order_id: order.id,
@@ -153,13 +184,19 @@ export async function GET(
       order_status: isPaid ? 'COMPLETED' : (order.order_status || 'PENDING'),
       gross_amount: Number(order.gross_amount ?? order.total_amount ?? 0),
       tenant_slug: order.tenant_slug || null,
-      customer_name: order.customer_name || null,
-      customer_email: order.customer_email || null,
-      customer_phone: order.customer_phone || null,
+      customer_name: isPrivileged ? (order.customer_name || null) : maskName(order.customer_name),
+      customer_email: isPrivileged ? (order.customer_email || null) : (order.customer_email ? maskEmail(order.customer_email) : null),
+      customer_phone: isPrivileged ? (order.customer_phone || null) : (order.customer_phone ? maskPhone(order.customer_phone) : null),
       product_id: order.product_id || null,
       product_title: order.product_title || order.product_name || 'Pesanan Produk',
       paid_at: isPaid ? (order.paid_at || order.updated_at) : null,
       created_at: order.created_at || null,
+
+      // Safe Payment & Presentation Metadata
+      payment_method: resolvedPaymentMethod,
+      qr_code_url: order.qr_code_url || null,
+      qr_string: order.qr_string || (order.metadata && typeof order.metadata === 'object' ? order.metadata.qr_string : null) || null,
+      unique_code: Number(order.unique_code ?? (order.metadata && typeof order.metadata === 'object' ? order.metadata.unique_code : 0) ?? 0),
 
       // Hard-Gated Asset & Fulfillment Properties (ACT-02)
       fulfillment_url: isPaid ? resolvedFulfillmentUrl : null,
