@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { sanitizePublicTenantMetadata } from '@/lib/product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,7 +149,7 @@ export async function GET(
         trial_ends_at: trialEndsAt,
         days_left: daysLeft,
         is_expired: isExpired,
-        metadata,
+        metadata: sanitizePublicTenantMetadata(metadata),
         packages:
           packages.length > 0
             ? packages

@@ -1166,11 +1166,17 @@ export function resolveSinglePageProduct(
 export function resolveProductExternalUrl(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
-  // Never treat explicit internal checkout or specific internal products as external
+  // Never treat explicit internal checkout, digital fulfillment, or protected access items as external affiliate destinations
   if (
     item?.checkout_type === 'internal' ||
-    item?.slug === 'ctwa-mastery-7day' ||
-    item?.id === 'c7ba0001-7de7-4888-9999-000000000001'
+    item?.fulfillment_metadata?.delivery_type ||
+    item?.fulfillment_metadata?.access_url ||
+    item?.download_url ||
+    item?.link_digital ||
+    item?.is_digital === true ||
+    item?.category === 'digital' ||
+    item?.category === 'PRODUK_DIGITAL' ||
+    String(item?.product_type || '').toUpperCase() === 'DIGITAL'
   ) {
     return null;
   }
@@ -1539,6 +1545,90 @@ export function safeJsonStringify(val: any, indent?: number): string {
       indent
     );
   }
+}
+
+/**
+ * Sanitizes a product payload for public, unauthenticated egress.
+ * HARD-GATE INVARIANT: Digital product download URLs, Telegram invite links, meeting URLs,
+ * and protected fulfillment credentials must NEVER be exposed in public catalog payloads
+ * before verified payment.
+ */
+export function sanitizePublicProduct<T = any>(product: T): T {
+  if (!product || typeof product !== 'object') return product;
+
+  if (Array.isArray(product)) {
+    return product.map((p) => sanitizePublicProduct(p)) as any;
+  }
+
+  const clean: Record<string, any> = { ...(product as Record<string, any>) };
+
+  // Strip top-level digital & fulfillment asset links
+  clean.download_url = null;
+  clean.link_digital = null;
+  clean.delivery_url = null;
+  clean.asset_reference = null;
+  if ('access_url' in clean) {
+    clean.access_url = null;
+  }
+
+  // Sanitize fulfillment_metadata if present
+  if (clean.fulfillment_metadata && typeof clean.fulfillment_metadata === 'object') {
+    clean.fulfillment_metadata = {
+      ...clean.fulfillment_metadata,
+      access_url: null,
+      meeting_url: null,
+      google_meet_url: null,
+      credentials: null,
+      license_key: null,
+      instructions: clean.fulfillment_metadata.instructions
+        ? (clean.fulfillment_metadata.instructions.includes('http') || clean.fulfillment_metadata.instructions.includes('t.me')
+            ? ''
+            : clean.fulfillment_metadata.instructions)
+        : '',
+    };
+  }
+
+  // Sanitize embedded metadata if present
+  if (clean.metadata && typeof clean.metadata === 'object') {
+    const cleanMeta = { ...clean.metadata };
+    delete cleanMeta.download_url;
+    delete cleanMeta.link_digital;
+    delete cleanMeta.delivery_url;
+    delete cleanMeta.access_url;
+    if (cleanMeta.fulfillment_metadata && typeof cleanMeta.fulfillment_metadata === 'object') {
+      cleanMeta.fulfillment_metadata = {
+        ...cleanMeta.fulfillment_metadata,
+        access_url: null,
+        meeting_url: null,
+        google_meet_url: null,
+        credentials: null,
+        license_key: null,
+      };
+    }
+    clean.metadata = cleanMeta;
+  }
+
+  return clean as T;
+}
+
+/**
+ * Sanitizes tenant metadata before public, unauthenticated exposure.
+ * Recursively strips protected product fulfillment credentials and access URLs.
+ */
+export function sanitizePublicTenantMetadata(metadata: any): any {
+  if (!metadata || typeof metadata !== 'object') return metadata;
+
+  const clean = { ...metadata };
+
+  if (Array.isArray(clean.products)) {
+    clean.products = clean.products.map((p: any) => sanitizePublicProduct(p));
+  }
+
+  if (clean.product && typeof clean.product === 'object') {
+    clean.product = sanitizePublicProduct(clean.product);
+  }
+
+  return clean;
 }
 
 /**

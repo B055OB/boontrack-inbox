@@ -487,9 +487,20 @@ function SingleProductContent() {
             image: freshImage || match?.image,
             image_url: freshImage || match?.image_url || match?.image,
             stock: sqlProd.stock,
-            is_unlimited: sqlProd.is_unlimited_stock,
-            download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || match?.download_url || '',
-            fulfillment_metadata: sqlProd.fulfillment_metadata || match?.fulfillment_metadata,
+            download_url: '',
+            fulfillment_metadata: sqlProd.fulfillment_metadata
+              ? {
+                  ...sqlProd.fulfillment_metadata,
+                  access_url: null,
+                  instructions: null,
+                }
+              : (match?.fulfillment_metadata
+              ? {
+                  ...match.fulfillment_metadata,
+                  access_url: null,
+                  instructions: null,
+                }
+              : null),
             checkout_type: (sqlProd as any).checkout_type || (sqlProd as any).metadata?.checkout_type || match?.checkout_type,
             external_url: (sqlProd as any).external_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url,
             affiliate_link: (sqlProd as any).affiliate_link || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.external_url || match?.affiliate_link,
@@ -676,14 +687,20 @@ function SingleProductContent() {
               originalPrice: match.original_price || match.originalPrice || (sqlProd as any)?.original_price || (sqlProd as any)?.originalPrice || undefined,
               variants: match.variants || (match.product_type === 'FOOD' ? 'Porsi Standar' : 'Format Digital • Akses Instan'),
               promo: dynamicConfig.badge_text,
-              description: dynamicConfig.subheadline,
-              download_url: match.download_url || match.link_digital || match.delivery_url || match.fulfillment_metadata?.access_url || '',
+              description: dynamicConfig.subheadline || '',
+              download_url: '',
               image: resolvedBannerImage,
               stock: match.stock || 999,
               sku: match.sku || '',
               is_unlimited: match.is_unlimited ?? true,
               weight_grams: match.weight_grams,
-              fulfillment_metadata: match.fulfillment_metadata,
+              fulfillment_metadata: match.fulfillment_metadata
+                ? {
+                    ...match.fulfillment_metadata,
+                    access_url: null,
+                    instructions: null,
+                  }
+                : null,
               single_page_config: dynamicConfig,
               checkout_type: ((
                 sqlProd?.checkout_type ||
@@ -820,28 +837,21 @@ function SingleProductContent() {
     return selectedBumpItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
   }, [selectedBumpItems]);
 
-  const rawExternalAffiliateUrl =
-    resolveProductExternalUrl(product) ||
-    product.external_url ||
-    product.metadata?.external_url ||
-    (product as any)?.metadata?.link_external ||
-    (product as any)?.affiliate_link ||
-    (product as any)?.metadata?.affiliate_link ||
-    (product as any)?.affiliate_url ||
-    (product as any)?.metadata?.affiliate_url ||
-    (product as any)?.fulfillment_metadata?.external_url ||
-    (product as any)?.fulfillment_metadata?.affiliate_url ||
-    (product as any)?.fulfillment_metadata?.affiliate_link ||
-    '';
+  const rawExternalAffiliateUrl = resolveProductExternalUrl(product) || '';
   const externalAffiliateUrl = typeof rawExternalAffiliateUrl === 'string' ? rawExternalAffiliateUrl.trim() : '';
 
   const isAffiliateProduct = Boolean(
-    externalAffiliateUrl ||
-    product.checkout_type === 'external' ||
-    (product as any)?.bypass_checkout ||
-    (product as any)?.metadata?.bypass_checkout ||
-    (product as any)?.fulfillment_metadata?.bypass_checkout ||
-    (product as any)?.is_external
+    !product.fulfillment_metadata?.access_url &&
+    !product.download_url &&
+    product.checkout_type !== 'internal' &&
+    (
+      externalAffiliateUrl ||
+      product.checkout_type === 'external' ||
+      (product as any)?.bypass_checkout ||
+      (product as any)?.metadata?.bypass_checkout ||
+      (product as any)?.fulfillment_metadata?.bypass_checkout ||
+      (product as any)?.is_external
+    )
   );
   const affiliateCtaLabel =
     product.cta_label ||
@@ -1102,9 +1112,56 @@ function SingleProductContent() {
     (isPhysicalPreset && fulfillmentType === 'DELIVERY' && (requiresShipping || isExplicitShippingRequired))
   );
 
-  // Status Pembayaran dari query param (jika redirect sukses dari invoice/gateway)
-  const statusParam = (searchParams.get('status') || searchParams.get('order_status') || '').toUpperCase();
-  const isPaid = statusParam === 'PAID' || statusParam === 'SUCCESS' || statusParam === 'SETTLED' || statusParam === 'COMPLETED';
+  // Status Pembayaran dari server-verified order (query params polos seperti ?status=PAID DILARANG memberikan akses)
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [verifiedFulfillment, setVerifiedFulfillment] = useState<FulfillmentMetadata | null>(null);
+
+  useEffect(() => {
+    const orderId = (searchParams.get('order_id') || searchParams.get('orderId') || searchParams.get('order') || '').trim();
+    if (!orderId) {
+      setIsPaid(false);
+      setVerifiedFulfillment(null);
+      return;
+    }
+
+    let isMounted = true;
+    fetch(`/api/orders/${encodeURIComponent(orderId)}/status`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted || !data) return;
+        const serverStatus = String(data.payment_status || data.status || '').toUpperCase();
+        const serverPaid = serverStatus === 'PAID' || serverStatus === 'SETTLED' || serverStatus === 'COMPLETED';
+        const orderTenantSlug = String(data.tenant_slug || '').toLowerCase();
+        const currentStoreSlug = String(slug || '').toLowerCase();
+        const tenantMatches = !orderTenantSlug || orderTenantSlug === currentStoreSlug;
+
+        if (serverPaid && tenantMatches) {
+          setIsPaid(true);
+          const meta = data.fulfillment_metadata || (data.access_url || data.download_url ? {
+            delivery_type: data.delivery_type || 'DOWNLOAD_LINK',
+            access_url: data.access_url || data.download_url,
+            instructions: data.instructions || '',
+            license_key: data.license_key || '',
+            file_format: data.file_format || '',
+            button_text: data.button_text || '',
+          } : null);
+          setVerifiedFulfillment(meta);
+        } else {
+          setIsPaid(false);
+          setVerifiedFulfillment(null);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsPaid(false);
+          setVerifiedFulfillment(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchParams, slug]);
 
   // Dynamic Shipping Rates State (Universal Real-Time Courier Engine)
   interface ShippingRateOption {
@@ -2623,13 +2680,14 @@ function SingleProductContent() {
   };
 
   const renderDeliveryPayloadCard = () => {
-    if (!requiresDeliveryPayload) return null;
-    const meta: FulfillmentMetadata = product.fulfillment_metadata || {
+    if (!requiresDeliveryPayload || !isPaid) return null;
+    const meta: FulfillmentMetadata = verifiedFulfillment || (isPaid ? (product.fulfillment_metadata || {
       delivery_type: 'DOWNLOAD_LINK',
       access_url: product.download_url || '',
       instructions: '',
-    };
-    const accessUrl = meta.access_url || product.download_url;
+    }) : { delivery_type: 'DOWNLOAD_LINK', access_url: '', instructions: '' });
+    const accessUrl = meta.access_url || meta.download_url;
+    if (!accessUrl && !meta.license_key && !meta.instructions) return null;
 
     return (
       <div className="bg-emerald-50/90 border-2 border-emerald-500/80 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5 animate-in fade-in duration-300 text-xs">

@@ -11,6 +11,7 @@ import {
   DbProductType,
   sanitizeProductPayload,
   safeJsonStringify,
+  sanitizePublicProduct,
 } from '@/lib/product-catalog';
 
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
@@ -695,7 +696,7 @@ export async function GET(
       if (products.length > 0) {
         return NextResponse.json({
           success: true,
-          products,
+          products: products.map((p) => sanitizePublicProduct(p)),
         });
       }
     } catch (supabaseErr) {
@@ -716,7 +717,7 @@ export async function GET(
         if (Array.isArray(rData.products) && rData.products.length > 0) {
           return NextResponse.json({
             success: true,
-            products: rData.products,
+            products: rData.products.map((p: any) => sanitizePublicProduct(p)),
           });
         }
       }

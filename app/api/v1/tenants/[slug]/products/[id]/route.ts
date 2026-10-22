@@ -8,6 +8,7 @@ import {
   slugify,
   mapToDbProductType,
   sanitizeProductPayload,
+  sanitizePublicProduct,
 } from '@/lib/product-catalog';
 
 export const dynamic = 'force-dynamic';
@@ -43,12 +44,12 @@ export async function GET(
       const metaProds = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
       const match = metaProds.find((p: any) => String(p.id) === String(productId) || p.slug === String(productId));
       if (match) {
-        return NextResponse.json({ success: true, product: match });
+        return NextResponse.json({ success: true, product: sanitizePublicProduct(match) });
       }
       return NextResponse.json({ success: false, error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, product });
+    return NextResponse.json({ success: true, product: sanitizePublicProduct(product) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching product';
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
