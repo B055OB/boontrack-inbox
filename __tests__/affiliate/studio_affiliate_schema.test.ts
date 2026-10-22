@@ -76,6 +76,12 @@ describe('Studio Affiliate Database Schema & Commission Standardization', () => 
 
   describe('2. Uniform Commission Percentage for Studio Tokens (25% Direct + 5% AM Override)', () => {
     it('records studio token commission with product_type = "STUDIO" for SETTLED status', async () => {
+      // Mock idempotency check (no existing commission)
+      mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
+        data: null,
+        error: null,
+      });
+
       // Mock affiliate lookup: recruiter with 25% commission rate & parent AM
       mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
         data: {
@@ -140,6 +146,12 @@ describe('Studio Affiliate Database Schema & Commission Standardization', () => 
     });
 
     it('records studio token commission for PAID status', async () => {
+      // Mock idempotency check (no existing commission)
+      mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
+        data: null,
+        error: null,
+      });
+
       mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
         data: {
           id: 'aff-solo-01',

@@ -67,6 +67,13 @@ function createMockSupabase() {
           filters.push({ field, op: 'eq', val });
           return builder;
         },
+        in: (field: string, val: any) => {
+          filters.push({ field, op: 'in', val });
+          return builder;
+        },
+        or: (_clause: string) => {
+          return builder;
+        },
         ilike: (field: string, pattern: string) => {
           ilikeFilter = { field, pattern };
           return builder;
@@ -95,7 +102,11 @@ function createMockSupabase() {
           }
           if (table === 'tenant_credit_ledger') {
             const tenantFilter = filters.find(f => f.field === 'tenant_id');
+            const inFilter = filters.find(f => f.field === 'idempotency_key');
             let entries = dbLedger.filter(l => !tenantFilter || l.tenant_id === tenantFilter.val);
+            if (inFilter && Array.isArray(inFilter.val)) {
+              entries = entries.filter(l => inFilter.val.includes((l as any).idempotency_key) || inFilter.val.some((k: string) => l.description?.includes(k)));
+            }
             if (ilikeFilter) {
               const cleanSub = ilikeFilter.pattern.replace(/%/g, '').toLowerCase();
               entries = entries.filter(l => l.description.toLowerCase().includes(cleanSub));
@@ -125,13 +136,14 @@ function createMockSupabase() {
         }),
         insert: async (record: any) => {
           if (table === 'tenant_credit_ledger') {
-            const entry: MockLedgerEntry = {
+            const entry: any = {
               id: `ledger_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               tenant_id: record.tenant_id,
               amount: record.amount,
               balance_after: record.balance_after,
               action: record.action,
               description: record.description,
+              idempotency_key: record.idempotency_key,
               created_at: new Date().toISOString(),
             };
             dbLedger.push(entry);

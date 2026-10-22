@@ -151,7 +151,7 @@ describe('Navigation Sidebar Menu Registry Architecture', () => {
       expect(fnb.badge).toBe('FnB');
 
       const digital = getVerticalCatalogConfig('DIGITAL_PRODUCT');
-      expect(digital.label).toBe('Produk & Materi Digital');
+      expect(digital.label).toBe('Katalog & Produk');
       expect(digital.badge).toBe('Digital');
 
       const defaultPhysical = getVerticalCatalogConfig('PHYSICAL_RETAIL');

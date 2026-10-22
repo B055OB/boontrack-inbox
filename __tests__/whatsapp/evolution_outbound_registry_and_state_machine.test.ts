@@ -326,6 +326,12 @@ jest.mock('@/lib/supabaseClient', () => {
           })),
         };
       }),
+      rpc: jest.fn().mockImplementation((fnName: string, _args: any) => {
+        if (fnName === 'fn_toggle_bot_session_state') {
+          return Promise.resolve({ data: { success: true }, error: null });
+        }
+        return Promise.resolve({ data: null, error: { message: 'not mocked' } });
+      }),
     })),
   };
 });
@@ -558,8 +564,8 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
     });
   });
 
-  describe('3. Mobile CS Outbound Takeover (HUMAN_PAUSED + 24h Sliding Window)', () => {
-    it('sets status to HUMAN_PAUSED and extends paused_until by 24 hours on human CS mobile message', async () => {
+  describe('3. Mobile CS Outbound Takeover (HUMAN_PAUSED + 30m Sliding Window)', () => {
+    it('sets status to HUMAN_PAUSED and extends paused_until by 30 minutes on human CS mobile message', async () => {
       const targetPhone = '628123456789';
       const humanCsText = 'Halo kak, barangnya ready ya. Bisa langsung ditransfer ke BCA kami.';
       const humanMsgId = '3EB0HUMAN123';
@@ -600,10 +606,10 @@ describe('Audit Patch: Evolution Outbound Registry & State Machine', () => {
       expect(session.current_state).toBe('HUMAN_PAUSED');
       expect(session.paused_by).toBe('cs_mobile_outbound');
 
-      // 2. Sliding window paused_until must be approximately now + 24 hours (86,400,000 ms)
+      // 2. Sliding window paused_until must be approximately now + 30 minutes (1,800,000 ms)
       const pausedUntilMs = new Date(session.paused_until).getTime();
-      const expectedMin = beforeTime + 24 * 60 * 60 * 1000 - 1000;
-      const expectedMax = afterTime + 24 * 60 * 60 * 1000 + 1000;
+      const expectedMin = beforeTime + 30 * 60 * 1000 - 1000;
+      const expectedMax = afterTime + 30 * 60 * 1000 + 1000;
       expect(pausedUntilMs).toBeGreaterThanOrEqual(expectedMin);
       expect(pausedUntilMs).toBeLessThanOrEqual(expectedMax);
 

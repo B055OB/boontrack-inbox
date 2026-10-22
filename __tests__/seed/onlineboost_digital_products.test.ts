@@ -23,8 +23,32 @@ describe('Backend Seeding: 2 SKU Digital & Cover Image untuk Tenant onlineboost'
   });
 
   describe('2. Data Record Produk Specification', () => {
-    it('should contain exactly 2 digital product records in seed configuration', () => {
-      expect(SEED_PRODUCTS).toHaveLength(2);
+    it('should contain exactly 4 digital product records in seed configuration', () => {
+      expect(SEED_PRODUCTS).toHaveLength(4);
+    });
+
+    it('should match exact specification for Smoke Test product (OB-TEST-1500)', () => {
+      const prodSmoke = SEED_PRODUCTS.find(p => p.sku === 'OB-TEST-1500');
+      expect(prodSmoke).toBeDefined();
+      expect(prodSmoke?.name).toBe('Tiket Uji Coba OnlineBoost (Smoke Test)');
+      expect(prodSmoke?.price).toBe(1500);
+      expect(prodSmoke?.is_digital).toBe(true);
+      expect(prodSmoke?.requires_shipping).toBe(false);
+      expect(prodSmoke?.status).toBe('ACTIVE');
+      expect(prodSmoke?.slug).toBe('ob-test-1500');
+      expect(prodSmoke?.fulfillment_metadata?.access_url).toBe('https://onlineboost.id/smoke-test');
+    });
+
+    it('should match exact specification for Inkubasi Batch 1 product (OB-BATCH1-249K)', () => {
+      const prodBatch = SEED_PRODUCTS.find(p => p.sku === 'OB-BATCH1-249K');
+      expect(prodBatch).toBeDefined();
+      expect(prodBatch?.name).toBe('Tiket Inkubasi OnlineBoost Batch 1');
+      expect(prodBatch?.price).toBe(249000);
+      expect(prodBatch?.is_digital).toBe(true);
+      expect(prodBatch?.requires_shipping).toBe(false);
+      expect(prodBatch?.status).toBe('ACTIVE');
+      expect(prodBatch?.slug).toBe('ob-batch1-249k');
+      expect(prodBatch?.fulfillment_metadata?.access_url).toBe('https://onlineboost.id/onboarding');
     });
 
     it('should match exact specification for Produk 1 (Sel A: ACADEMY_CTWA_BATCH1_A)', () => {

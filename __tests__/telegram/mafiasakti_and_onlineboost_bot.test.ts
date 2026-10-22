@@ -120,6 +120,30 @@ global.fetch = jest.fn((url: any, opts: any) => {
     }
   }
 
+  // Mock Supabase tenant_telegram_bots queries
+  if (urlStr.includes('tenant_telegram_bots')) {
+    if (urlStr.includes('boonshop')) {
+      return createPostgrestMockResponse([
+        {
+          id: 'bot-boonshop-uuid',
+          tenant_id: 'tenant-boonshop-uuid',
+          bot_username: 'boonshop_bot',
+          bot_token: 'mock_token_boonshop_123',
+          is_active: true,
+        },
+      ]);
+    }
+    return createPostgrestMockResponse([
+      {
+        id: 'bot-onlineboost-uuid',
+        tenant_id: 'e12acd29-6c18-487b-ade7-5422878c1c36',
+        bot_username: 'onlineboostbot',
+        bot_token: 'mock_token_onlineboost_123',
+        is_active: true,
+      },
+    ]);
+  }
+
   return createPostgrestMockResponse([]);
 }) as any;
 

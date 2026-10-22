@@ -1,6 +1,36 @@
 import { POST } from '@/app/api/whatsapp/connect-manual/route';
 import { NextRequest } from 'next/server';
 
+const mockQueryBuilder: any = {
+  select: jest.fn().mockImplementation(() => mockQueryBuilder),
+  eq: jest.fn().mockImplementation(() => mockQueryBuilder),
+  or: jest.fn().mockImplementation(() => mockQueryBuilder),
+  maybeSingle: jest.fn().mockResolvedValue({
+    data: {
+      id: 'e12acd29-6c18-487b-ade7-5422878c1c36',
+      slug: 'onlineboost',
+      metadata: {},
+    },
+    error: null,
+  }),
+  insert: jest.fn().mockResolvedValue({ data: null, error: null }),
+  update: jest.fn().mockImplementation(() => mockQueryBuilder),
+  then: (resolve: any) =>
+    resolve({
+      data: [{ id: 'e12acd29-6c18-487b-ade7-5422878c1c36', slug: 'onlineboost' }],
+      error: null,
+    }),
+};
+
+const mockSupabase = {
+  from: jest.fn(() => mockQueryBuilder),
+};
+
+jest.mock('@/lib/supabaseClient', () => ({
+  getSupabaseAdmin: jest.fn(() => mockSupabase),
+  getSupabase: jest.fn(() => mockSupabase),
+}));
+
 describe('POST /api/whatsapp/connect-manual', () => {
   const originalFetch = global.fetch;
 
