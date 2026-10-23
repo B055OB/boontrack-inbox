@@ -36,7 +36,7 @@ describe('TASK: FIX WABA METADATA MAPPING & UNLOCK META CLOUD API TAB FOR TENANT
 
     it('renders ACTIVE badge when WABA credentials exist and tier is unlocked', () => {
       expect(whatsAppTabCode).toContain('ACTIVE');
-      expect(whatsAppTabCode).toContain('SETUP REQUIRED');
+      expect(whatsAppTabCode).toContain('SIAP SETUP');
     });
 
     it('isolates Direct Connect QR auto-fetch so it does not fire in WABA mode', () => {

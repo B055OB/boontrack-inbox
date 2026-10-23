@@ -620,8 +620,8 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     // Regex parsing dari external_id:
     // Format standar: TOPUP-STUDIO-{tenantSlug}-{credits}-{timestamp}
     // Format alternatif: TOPUP-STUDIO-{tenantSlug}-{packageId}-{credits}-{timestamp}
-    const matchWithPkg = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](ketengan|starter|creator|pro_monthly)[-_](d+)[-_](d+)$/i);
-    const matchSimple = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](d+)[-_](d+)$/i);
+    const matchWithPkg = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](ketengan|starter|creator|pro_monthly)[-_](\d+)[-_](\d+)$/i);
+    const matchSimple = tokenTxId.match(/^TOPUP[-_]STUDIO[-_](.+?)[-_](\d+)[-_](\d+)$/i);
 
     if (matchWithPkg) {
       if (!studioTenantSlug) studioTenantSlug = matchWithPkg[1];
