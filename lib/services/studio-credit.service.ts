@@ -481,7 +481,14 @@ export class StudioCreditService {
       const activePromise = this.inFlightTopups.get(txKey);
       if (activePromise) {
         console.log(`[StudioCreditService] Re-using in-flight top-up execution for key: ${txKey}`);
-        return await activePromise;
+        const result = await activePromise;
+        return {
+          ...result,
+          isExisting: true,
+          commissionRecorded: false,
+          commissionAmount: 0,
+          message: `Transaction ${params.transactionId || params.invoiceId} already processed previously (in-flight duplicate).`,
+        };
       }
     }
 

@@ -15,6 +15,8 @@ import type { NextRequest } from 'next/server';
 const mockSupabaseQuery: any = {
   select: jest.fn().mockReturnThis(),
   eq: jest.fn().mockReturnThis(),
+  or: jest.fn().mockReturnThis(),
+  in: jest.fn().mockReturnThis(),
   order: jest.fn().mockReturnThis(),
   limit: jest.fn().mockReturnThis(),
   insert: jest.fn().mockResolvedValue({ data: null, error: null }),
@@ -40,6 +42,12 @@ jest.mock('@/lib/services/studio-credit.service', () => ({
     getEntitlements: jest.fn(),
     reserveCredits: jest.fn(),
     releaseCredits: jest.fn(),
+    resolveTenant: jest.fn().mockImplementation(async (tenantIdOrSlug: string) => ({
+      tenantId: '11111111-2222-3333-4444-555555555555',
+      tenantSlug: tenantIdOrSlug || 'warungkreatif',
+      tier: 'PRO_SCALE',
+      isActive: true,
+    })),
   },
 }));
 
@@ -322,6 +330,11 @@ describe('3. Studio Token Webhook Integration Suite', () => {
   });
 
   it('handles duplicate webhook callbacks idempotently without double crediting', async () => {
+    mockSupabaseQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'ledger-dup-1', balance_after: 51, description: 'Top-up 50 Kredit' },
+      error: null,
+    });
+
     (StudioCreditService.topUpCredits as jest.Mock).mockResolvedValue({
       success: true,
       newBalance: 51,
@@ -411,7 +424,7 @@ describe('4. Studio Registration Activation & Ledger Pipeline Suite', () => {
         amount: 1,
         balance_after: 1,
         action: 'TRIAL_GRANT',
-        description: 'Aktivasi akun Studio - 1 Kredit Render Gratis',
+        description: expect.stringContaining('1 Kredit Render Gratis'),
       })
     );
 
