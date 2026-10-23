@@ -44,6 +44,56 @@ export function cleanSessionCookie(val?: string | null): string {
   }
 }
 
+/**
+ * Unambiguously resolves the authoritative tenant row for an order.
+ * Primary-Key Precedence:
+ * 1. If order.tenant_id is provided, queries strictly by id.
+ *    If order.tenant_slug is also provided, asserts fetched tenant.slug matches order.tenant_slug.
+ *    If there is a conflict between tenant_id and tenant_slug, fails closed (returns null).
+ * 2. If order.tenant_id is missing, falls back to querying strictly by slug.
+ * 3. If both are missing, returns null.
+ */
+export async function resolveAuthoritativeTenantForOrder(
+  supabase: any,
+  order: { tenant_id?: string | null; tenant_slug?: string | null }
+): Promise<any | null> {
+  if (!supabase || !order) return null;
+  const orderTenantId = String(order.tenant_id || '').toLowerCase().trim();
+  const orderTenantSlug = String(order.tenant_slug || '').toLowerCase().trim();
+
+  // 1. Primary-key resolution if tenant_id is provided
+  if (orderTenantId && orderTenantId !== '00000000-0000-0000-0000-000000000000') {
+    const { data: tenantById } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', orderTenantId)
+      .maybeSingle();
+
+    if (!tenantById) return null;
+
+    // Cross-check: If order also claims a tenant_slug, it MUST match the tenant row's slug
+    if (orderTenantSlug && tenantById.slug && tenantById.slug.toLowerCase().trim() !== orderTenantSlug) {
+      console.warn(`[TenantAuthGuard] Conflicting tenant_id (${orderTenantId}) and tenant_slug (${orderTenantSlug}) detected on order.`);
+      return null; // Reject conflicting tenant identifiers (Fail Closed)
+    }
+
+    return tenantById;
+  }
+
+  // 2. Secondary resolution by slug if tenant_id is absent
+  if (orderTenantSlug && orderTenantSlug !== 'none') {
+    const { data: tenantBySlug } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('slug', orderTenantSlug)
+      .maybeSingle();
+
+    return tenantBySlug || null;
+  }
+
+  return null;
+}
+
 export {
   extractMerchantSessionToken,
   verifyMerchantSessionToken,
@@ -202,11 +252,7 @@ export async function verifyOrderMutationAuthorization(
         };
       }
 
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('*')
-        .or(`slug.eq.${orderTenantSlug || 'none'},id.eq.${orderTenantId || '00000000-0000-0000-0000-000000000000'}`)
-        .maybeSingle();
+      const tenantRow = await resolveAuthoritativeTenantForOrder(supabase, order);
 
       if (tenantRow) {
         const userId = user.id;
@@ -289,4 +335,82 @@ export async function verifyOrderMutationAuthorization(
     status: 401,
     error: 'Unauthorized: Sesi token autentikasi resmi (Supabase Auth server-side, bt_merchant_token HMAC, atau secret internal) diperlukan. Akses berbasis cookie slug polos tanpa verifikasi kriptografis ditolak.',
   };
+}
+
+/**
+ * Checks whether an inbound request to read order details originates from a privileged caller:
+ * 1. Dedicated internal machine secret (x-internal-secret or Bearer ADMIN_INTERNAL_SECRET)
+ * 2. Cryptographically signed merchant session token (HMAC-SHA256) matching order tenant
+ * 3. Supabase Auth JWT belonging to SUPERADMIN/AFFILIATE_MANAGER or the tenant owner.
+ *
+ * If false, caller is an unauthenticated public buyer or external visitor.
+ */
+export async function isPrivilegedOrderCaller(
+  req: NextRequest,
+  order: {
+    id?: string;
+    tenant_id?: string | null;
+    tenant_slug?: string | null;
+  }
+): Promise<boolean> {
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
+
+  // 1. Machine-to-Machine Dedicated Internal Secret
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  if (
+    envAdminSecret &&
+    envAdminSecret.length >= 16 &&
+    (safeCompare(internalSecret, envAdminSecret) || safeCompare(authHeader, `Bearer ${envAdminSecret}`))
+  ) {
+    return true;
+  }
+
+  // 2. Dedicated Server-Signed Merchant Session Token (HMAC-SHA256)
+  const merchantToken = extractMerchantSessionToken(req);
+  if (merchantToken && order?.tenant_slug) {
+    const sessionRes = verifyMerchantSessionToken(merchantToken, order.tenant_slug);
+    if (sessionRes.valid) {
+      return true;
+    }
+  }
+
+  // 3. Cryptographic Supabase Auth JWT
+  const token = extractSupabaseToken(req);
+  if (token) {
+    try {
+      const supabase = getSupabaseAdmin() || getSupabase();
+      if (supabase) {
+        const { data: authData } = await supabase.auth.getUser(token);
+        if (authData?.user) {
+          const appRole = String(
+            authData.user.app_metadata?.role || authData.user.app_metadata?.user_role || ''
+          ).trim().toUpperCase();
+          if (appRole === 'SUPERADMIN' || appRole === 'AFFILIATE_MANAGER') {
+            return true;
+          }
+
+          const tenantRow = await resolveAuthoritativeTenantForOrder(supabase, order);
+
+          if (tenantRow) {
+            const userId = authData.user.id;
+            const userEmail = (authData.user.email || '').toLowerCase().trim();
+            if (
+              (tenantRow.user_id && tenantRow.user_id === userId) ||
+              (tenantRow.owner_id && tenantRow.owner_id === userId) ||
+              (tenantRow.metadata?.user_id && tenantRow.metadata.user_id === userId) ||
+              (userEmail && (
+                (tenantRow.email && tenantRow.email.toLowerCase().trim() === userEmail) ||
+                (tenantRow.owner_email && tenantRow.owner_email.toLowerCase().trim() === userEmail)
+              ))
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return false;
 }

@@ -14,8 +14,11 @@
  */
 export function crc16ccitt(input: string): string {
   let crc = 0xFFFF;
-  for (let i = 0; i < input.length; i++) {
-    crc ^= input.charCodeAt(i) << 8;
+  const bytes = typeof Buffer !== 'undefined'
+    ? Buffer.from(input, 'utf8')
+    : new TextEncoder().encode(input);
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i] << 8;
     for (let j = 0; j < 8; j++) {
       if ((crc & 0x8000) !== 0) {
         crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
@@ -99,4 +102,344 @@ export function generateDynamicQRIS(staticQris: string, amount: number): string 
   const checksum = crc16ccitt(payloadWithTag63);
 
   return payloadWithTag63 + checksum;
+}
+
+export interface QrValidationResult {
+  isValid: boolean;
+  type?: 'emvco_raw' | 'quickchart_emvco' | 'image_url';
+  rawEmvco?: string;
+  imageUrl?: string;
+  error?: string;
+}
+
+const ALLOWED_QR_IMAGE_DOMAINS = [
+  'boontrack.com',
+  'supabase.co',
+  'r2.dev',
+  'cloudinary.com',
+  'images.unsplash.com',
+];
+
+/**
+ * Strict hostname check for approved QR image storage/CDN domains.
+ * Strictly verifies that the hostname is an exact match or a valid subdomain
+ * with a period boundary (e.g. assets.boontrack.com, xxx.supabase.co).
+ * Explicitly rejects lookalike domains (e.g. evil-boontrack.com, boontrack.com.attacker.com).
+ */
+export function isAllowedQrHostname(hostname?: string | null): boolean {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const cleanHost = hostname.toLowerCase().trim().replace(/\.$/, '');
+
+  return ALLOWED_QR_IMAGE_DOMAINS.some((domain) => {
+    return cleanHost === domain || cleanHost.endsWith('.' + domain);
+  });
+}
+
+/**
+ * Strict hostname check for approved external QR service providers (strictly quickchart.io).
+ * Rejects subdomains (e.g. sub.quickchart.io), unapproved hosts, and lookalike domains.
+ */
+export function isAllowedQrServiceHost(hostname?: string | null): boolean {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const cleanHost = hostname.toLowerCase().trim().replace(/\.$/, '');
+  return cleanHost === 'quickchart.io';
+}
+
+/**
+ * Validates whether a URL points to a supported image file or trusted image host.
+ * Strictly enforces HTTPS, allowed hostname, and supported image extension/storage path.
+ */
+export function isSupportedQrImageUrl(url?: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('https://')) return false;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:') return false;
+
+    // Reject lookalike or unapproved domains
+    if (!isAllowedQrHostname(parsed.hostname)) {
+      return false;
+    }
+
+    const pathname = parsed.pathname.toLowerCase();
+    const hasImageExt = /\.(png|jpe?g|webp|svg|gif)$/i.test(pathname);
+    const isStandardStoragePath = /^\/storage\/v1\/object\/public\//i.test(pathname);
+    return hasImageExt || isStandardStoragePath;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates nested TLV structure inside Merchant Account Information (Tags 26 to 51).
+ * Confirms:
+ * 1. Sub-tags are 2 numeric digits
+ * 2. Sub-lengths are 2 numeric digits
+ * 3. Sub-values do not overflow parent tag length
+ * 4. Sub-tag 00 (globally unique identifier) is present
+ */
+export function validateNestedTlv(parentTag: string, val: string): { valid: boolean; error?: string } {
+  if (!val || typeof val !== 'string') {
+    return { valid: false, error: `Value untuk Tag ${parentTag} kosong.` };
+  }
+  let subIdx = 0;
+  let hasSubTag00 = false;
+
+  while (subIdx < val.length) {
+    if (subIdx + 4 > val.length) {
+      return { valid: false, error: `Nested TLV di dalam Tag ${parentTag} terpotong sebelum sub-tag selesai.` };
+    }
+    const subTag = val.slice(subIdx, subIdx + 2);
+    const subLenStr = val.slice(subIdx + 2, subIdx + 4);
+    if (!/^\d{2}$/.test(subTag) || !/^\d{2}$/.test(subLenStr)) {
+      return { valid: false, error: `Sub-tag (${subTag}) atau sub-length (${subLenStr}) di dalam Tag ${parentTag} bukan 2 digit numerik.` };
+    }
+    const subLen = parseInt(subLenStr, 10);
+    subIdx += 4;
+    if (subIdx + subLen > val.length) {
+      return { valid: false, error: `Value untuk sub-tag ${subTag} di dalam Tag ${parentTag} melebihi panjang parent tag.` };
+    }
+    if (subTag === '00') hasSubTag00 = true;
+    subIdx += subLen;
+  }
+
+  if (!hasSubTag00) {
+    return { valid: false, error: `Merchant Account Info Tag ${parentTag} wajib memuat Sub-tag 00 (GUID).` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates EMVCo TLV (Tag-Length-Value) data structure defensively.
+ * Asserts:
+ * 1. String length >= 25 characters
+ * 2. Starts with Tag 00 Length 02 Value 01 ("000201")
+ * 3. Contains Tag 01 with initiation method "11" (static) or "12" (dynamic)
+ * 4. Each tag and length are 2 numeric digits
+ * 5. Tag value character count strictly matches declared length without truncation or overflow
+ * 6. Nested TLV for Merchant Account Information (Tags 26-51) is valid
+ * 7. Tag 63 (CRC) is MANDATORY, has length 04, is strictly the final tag, and matches CRC16-CCITT checksum.
+ */
+export function validateEmvcoTlv(raw: string): { valid: boolean; error?: string } {
+  if (!raw || typeof raw !== 'string') return { valid: false, error: 'Payload QRIS kosong.' };
+  const trimmed = raw.trim();
+  if (trimmed.length < 25) {
+    return { valid: false, error: 'Panjang payload EMVCo kurang dari 25 karakter.' };
+  }
+  if (!trimmed.startsWith('000201')) {
+    return { valid: false, error: 'Payload QRIS wajib diawali Tag Format Indicator 000201.' };
+  }
+
+  let idx = 0;
+  let hasTag00 = false;
+  let hasTag01 = false;
+  let hasTag63 = false;
+
+  while (idx < trimmed.length) {
+    if (idx + 4 > trimmed.length) {
+      return { valid: false, error: 'Struktur TLV QRIS terpotong sebelum tag dan panjang selesai.' };
+    }
+    const tag = trimmed.slice(idx, idx + 2);
+    const lenStr = trimmed.slice(idx + 2, idx + 4);
+    if (!/^\d{2}$/.test(tag) || !/^\d{2}$/.test(lenStr)) {
+      return { valid: false, error: `Tag (${tag}) atau Length (${lenStr}) pada payload QRIS bukan format 2-digit numerik.` };
+    }
+    const len = parseInt(lenStr, 10);
+    idx += 4;
+    if (idx + len > trimmed.length) {
+      return { valid: false, error: `Value untuk Tag ${tag} melebihi sisa panjang string payload EMVCo.` };
+    }
+    const val = trimmed.slice(idx, idx + len);
+    if (tag === '00' && val === '01') hasTag00 = true;
+    if (tag === '01' && (val === '11' || val === '12')) hasTag01 = true;
+
+    // Nested TLV check for Merchant Account Information (Tag 26 through 51)
+    const tagNum = parseInt(tag, 10);
+    if (tagNum >= 26 && tagNum <= 51) {
+      const nestedRes = validateNestedTlv(tag, val);
+      if (!nestedRes.valid) {
+        return nestedRes;
+      }
+    }
+
+    // CRC validation for Tag 63 (Checksum) - MANDATORY
+    if (tag === '63') {
+      hasTag63 = true;
+      if (len !== 4) {
+        return { valid: false, error: 'Tag 63 (CRC) wajib memiliki panjang tepat 4 karakter.' };
+      }
+      idx += len;
+      if (idx !== trimmed.length) {
+        return { valid: false, error: 'Tag 63 (CRC) wajib menjadi tag terakhir pada payload EMVCo.' };
+      }
+      const strBeforeCrc = trimmed.slice(0, idx - 4);
+      const expectedCrc = crc16ccitt(strBeforeCrc);
+      if (val.toUpperCase() !== expectedCrc.toUpperCase()) {
+        return { valid: false, error: `Checksum CRC16 tidak valid: diharapkan ${expectedCrc}, diterima ${val.toUpperCase()}.` };
+      }
+      break;
+    }
+
+    idx += len;
+  }
+
+  if (!hasTag00 || !hasTag01) {
+    return { valid: false, error: 'Payload EMVCo tidak memuat Tag 00 atau Tag 01 yang valid.' };
+  }
+
+  if (!hasTag63) {
+    return { valid: false, error: 'Payload EMVCo wajib memuat Tag 63 (CRC16 Checksum).' };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Extract raw EMVCo QRIS string from string or QuickChart/QR service URL.
+ * Validates through validateEmvcoTlv() before returning.
+ * Strictly verifies HTTPS, approved service host, single parameter decoding, and full EMVCo TLV integrity.
+ */
+export function extractRawQrString(strOrUrl?: string): string {
+  if (!strOrUrl || typeof strOrUrl !== 'string') return '';
+  const trimmed = strOrUrl.trim();
+
+  // 1. Direct raw string
+  if (trimmed.startsWith('000201')) {
+    const check = validateEmvcoTlv(trimmed);
+    return check.valid ? trimmed : '';
+  }
+
+  // 2. URL extraction
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:') return '';
+    if (!isAllowedQrServiceHost(parsed.hostname)) return '';
+
+    const textParam = parsed.searchParams.get('text');
+    if (!textParam) return '';
+    const cleanText = textParam.trim();
+    if (cleanText.startsWith('000201')) {
+      const check = validateEmvcoTlv(cleanText);
+      return check.valid ? cleanText : '';
+    }
+  } catch {
+    // Not a valid URL
+  }
+
+  return '';
+}
+
+/**
+ * Strict QR Validity Detection:
+ * - Parses URLs using `new URL()`.
+ * - Requires HTTPS and strictly matches approved hostnames (does not use `.includes('quickchart.io/qr')`).
+ * - Applies strict hostname checks to any embedded text= paths; rejects unapproved hosts.
+ * - Confirms QuickChart URLs have non-empty, validly encoded EMVCo payloads (000201...).
+ * - Avoids double-decoding: URLSearchParams.get('text') already decodes the value.
+ * - Confirms direct EMVCo payloads satisfy national standards, valid TLV structure, and mandatory Tag 63 CRC.
+ * - Confirms image URLs have supported format or trusted origin over HTTPS.
+ */
+export function validateAndExtractQr(orderOrPayload: any): QrValidationResult {
+  if (!orderOrPayload) {
+    return { isValid: false, error: 'Data QRIS kosong.' };
+  }
+
+  const qrString = typeof orderOrPayload === 'string'
+    ? orderOrPayload
+    : (orderOrPayload.qr_string || (orderOrPayload.metadata && typeof orderOrPayload.metadata === 'object' ? orderOrPayload.metadata.qr_string : ''));
+  const qrCodeUrl = typeof orderOrPayload === 'object'
+    ? (orderOrPayload.qr_code_url || (orderOrPayload.metadata && typeof orderOrPayload.metadata === 'object' ? orderOrPayload.metadata.qr_code_url : ''))
+    : '';
+
+  // 1. Direct EMVCo string validation
+  if (qrString && typeof qrString === 'string') {
+    const trimmed = qrString.trim();
+    if (trimmed.startsWith('000201')) {
+      const tlvCheck = validateEmvcoTlv(trimmed);
+      if (tlvCheck.valid) {
+        return { isValid: true, type: 'emvco_raw', rawEmvco: trimmed };
+      }
+      return {
+        isValid: false,
+        error: tlvCheck.error || 'Struktur data TLV EMVCo tidak valid.',
+      };
+    }
+    if (trimmed && !qrCodeUrl) {
+      return {
+        isValid: false,
+        error: 'Payload string QRIS tidak memenuhi standar EMVCo (harus diawali 000201 dan minimal 25 karakter).',
+      };
+    }
+  }
+
+  // 2. URL validation
+  if (qrCodeUrl && typeof qrCodeUrl === 'string') {
+    const trimmedUrl = qrCodeUrl.trim();
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmedUrl);
+    } catch {
+      return {
+        isValid: false,
+        error: 'URL barcode tidak valid atau rusak.',
+      };
+    }
+
+    // Origin validation: Require HTTPS
+    if (parsed.protocol !== 'https:') {
+      return {
+        isValid: false,
+        error: 'URL barcode wajib menggunakan protokol HTTPS.',
+      };
+    }
+
+    const textParam = parsed.searchParams.get('text');
+
+    // QR service URL validation (e.g. QuickChart) or any embedded text= path
+    if (textParam !== null || parsed.pathname === '/qr') {
+      // Strictly match approved QR service hostnames (exact quickchart.io); reject unapproved hosts
+      if (!isAllowedQrServiceHost(parsed.hostname)) {
+        return {
+          isValid: false,
+          error: 'Host QR service tidak diizinkan atau tidak terdaftar.',
+        };
+      }
+
+      if (!textParam) {
+        return { isValid: false, error: 'URL QuickChart tidak memuat parameter payload text QRIS.' };
+      }
+
+      // Avoid double-decoding: searchParams.get('text') already decodes the parameter
+      const cleanText = textParam.trim();
+      if (!cleanText.startsWith('000201')) {
+        return {
+          isValid: false,
+          error: 'Payload QRIS pada URL QuickChart tidak valid (harus diawali 000201 dan minimal 25 karakter).',
+        };
+      }
+
+      const tlvCheck = validateEmvcoTlv(cleanText);
+      if (tlvCheck.valid) {
+        return { isValid: true, type: 'quickchart_emvco', rawEmvco: cleanText, imageUrl: trimmedUrl };
+      }
+      return {
+        isValid: false,
+        error: tlvCheck.error || 'Struktur data TLV EMVCo pada URL QuickChart tidak valid.',
+      };
+    }
+
+    // Supported Image URL validation
+    if (isSupportedQrImageUrl(trimmedUrl)) {
+      return { isValid: true, type: 'image_url', imageUrl: trimmedUrl };
+    }
+
+    return {
+      isValid: false,
+      error: 'URL barcode bukan merupakan file gambar yang didukung (.png, .jpg, .webp, .svg) atau host terpercaya.',
+    };
+  }
+
+  return { isValid: false, error: 'Data QRIS belum tersedia pada pesanan.' };
 }

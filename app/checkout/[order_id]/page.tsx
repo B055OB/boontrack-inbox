@@ -31,26 +31,10 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
-import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+import { generateDynamicQRIS, validateAndExtractQr, extractRawQrString } from '@/lib/qris-dynamic';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
-
-function extractRawQrString(strOrUrl?: string): string {
-  if (!strOrUrl) return '';
-  const trimmed = strOrUrl.trim();
-  if (trimmed.startsWith('000201')) return trimmed;
-  if (trimmed.includes('text=000201') || trimmed.includes('text=')) {
-    try {
-      const match = trimmed.match(/[?&]text=([^&]+)/);
-      if (match && match[1]) {
-        const decoded = decodeURIComponent(match[1]);
-        if (decoded.startsWith('000201')) return decoded;
-      }
-    } catch {}
-  }
-  return '';
-}
 
 
 
@@ -291,13 +275,48 @@ export default function CheckoutPage({ params }: Props) {
           }
         }
 
-        // 3. Fallback fetch dari API backend
-        const res = await fetch(getBackendApiUrl(`/api/v1/orders/${orderId}`));
+        // 3. Gateway fetch dari API internal Next.js (/api/v1/orders/[id])
+        const res = await fetch(`/api/v1/orders/${encodeURIComponent(orderId)}`, {
+          cache: 'no-store',
+        });
         if (res.ok) {
           const data = await res.json();
-          setOrder((prev: any) => ({ ...prev, ...data }));
-          if (data?.status === 'PAID' || data?.payment_status === 'PAID') {
-            triggerPurchasePixels(data);
+          const apiOrderId = String(data.order_id || data.id || '').trim();
+          const apiCorrelationId = String(data.correlation_id || '').trim();
+          const isTargetOrder =
+            (apiOrderId && apiOrderId.toLowerCase() === orderId.toLowerCase()) ||
+            (apiCorrelationId && apiCorrelationId.toLowerCase() === orderId.toLowerCase());
+
+          if (data && isTargetOrder) {
+            // Normalisasi metode pembayaran: jangan berasumsi buta 'qris'
+            let normalizedPaymentMethod = data.payment_method ? String(data.payment_method).toLowerCase().trim() : null;
+            if (!normalizedPaymentMethod) {
+              if (data.qr_code_url || data.qr_string) {
+                normalizedPaymentMethod = 'qris';
+              } else if (data.unique_code && Number(data.unique_code) > 0) {
+                normalizedPaymentMethod = 'manual_transfer';
+              }
+            }
+
+            const normalizedOrder = {
+              ...data,
+              id: apiOrderId || orderId,
+              order_id: apiOrderId || orderId,
+              tenant_slug: data.tenant_slug || null,
+              qr_code_url: data.qr_code_url || null,
+              qr_string: data.qr_string || null,
+              unique_code: Number(data.unique_code ?? 0),
+              gross_amount: Number(data.gross_amount ?? data.total_amount ?? 0),
+              total_amount: Number(data.gross_amount ?? data.total_amount ?? 0),
+              payment_method: normalizedPaymentMethod,
+              status: String(data.status || 'PENDING').toUpperCase(),
+              payment_status: String(data.payment_status || 'PENDING').toUpperCase(),
+              order_status: String(data.order_status || 'PENDING').toUpperCase(),
+            };
+            setOrder((prev: any) => ({ ...prev, ...normalizedOrder }));
+            if (normalizedOrder.status === 'PAID' || normalizedOrder.payment_status === 'PAID') {
+              triggerPurchasePixels(normalizedOrder);
+            }
           }
         }
       } catch (err) {
@@ -436,8 +455,9 @@ export default function CheckoutPage({ params }: Props) {
             const accounts = extractTenantBankAccounts(data);
             setBankAccounts(accounts);
 
-            // Jika order belum memiliki fulfillment_metadata atau download_url, perkaya dari katalog tenant
-            if (!order?.download_url || !order?.fulfillment_metadata?.access_url) {
+            // HARD-GATE: Hanya perkaya aset fulfillment jika order sudah diverifikasi LUNAS (PAID)
+            const isCurrentlyPaid = ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(String(order?.payment_status || order?.status || '').toUpperCase());
+            if (isCurrentlyPaid && (!order?.download_url || !order?.fulfillment_metadata?.access_url)) {
               const pList: any[] = Array.isArray(data?.metadata?.products) ? data.metadata.products : [];
               const pId = String(order.product_id || '').trim();
               const pTitle = String(order.product_title || '').trim().toLowerCase();
@@ -496,9 +516,86 @@ export default function CheckoutPage({ params }: Props) {
 
   // Request dynamic QRIS jika belum ada qr_code_url atau qr_string
   const ensureDynamicQris = React.useCallback(async (isRetry = false) => {
-    if (!order || order.payment_method === 'manual_transfer') return;
-    const hasValidQr = Boolean(order.qr_string || (order.qr_code_url && extractRawQrString(order.qr_code_url)));
-    if (hasValidQr && !isRetry) return;
+    let currentOrder = order;
+
+    // Jika state order belum terisi, coba pulihkan dari server (/api/v1/orders/[id]) alih-alih silent abort
+    if (!currentOrder) {
+      try {
+        setIsGeneratingQris(true);
+        setQrisError(null);
+        const recoveryRes = await fetch(`/api/v1/orders/${encodeURIComponent(orderId)}`, { cache: 'no-store' });
+        if (recoveryRes.ok) {
+          const recoveryData = await recoveryRes.json();
+          const recOrderId = String(recoveryData.order_id || recoveryData.id || '').trim();
+          const recCorrelationId = String(recoveryData.correlation_id || '').trim();
+          const isTargetOrder =
+            (recOrderId && recOrderId.toLowerCase() === orderId.toLowerCase()) ||
+            (recCorrelationId && recCorrelationId.toLowerCase() === orderId.toLowerCase());
+
+          if (recoveryData && isTargetOrder) {
+            let recPaymentMethod = recoveryData.payment_method ? String(recoveryData.payment_method).toLowerCase().trim() : null;
+            if (!recPaymentMethod) {
+              if (recoveryData.qr_code_url || recoveryData.qr_string) {
+                recPaymentMethod = 'qris';
+              } else if (recoveryData.unique_code && Number(recoveryData.unique_code) > 0) {
+                recPaymentMethod = 'manual_transfer';
+              }
+            }
+
+            currentOrder = {
+              ...recoveryData,
+              id: recOrderId || orderId,
+              order_id: recOrderId || orderId,
+              tenant_slug: recoveryData.tenant_slug || null,
+              qr_code_url: recoveryData.qr_code_url || null,
+              qr_string: recoveryData.qr_string || null,
+              unique_code: Number(recoveryData.unique_code ?? 0),
+              gross_amount: Number(recoveryData.gross_amount ?? recoveryData.total_amount ?? 0),
+              total_amount: Number(recoveryData.gross_amount ?? recoveryData.total_amount ?? 0),
+              payment_method: recPaymentMethod,
+              status: String(recoveryData.status || 'PENDING').toUpperCase(),
+              payment_status: String(recoveryData.payment_status || 'PENDING').toUpperCase(),
+              order_status: String(recoveryData.order_status || 'PENDING').toUpperCase(),
+            };
+            setOrder((prev: any) => ({ ...prev, ...currentOrder }));
+          }
+        }
+      } catch (recErr) {
+        console.warn('[Checkout Page] Failed to recover order during QRIS ensure:', recErr);
+      }
+    }
+
+    if (!currentOrder) {
+      setIsGeneratingQris(false);
+      setQrisError('Data pesanan belum termuat dari server. Silakan muat ulang halaman atau hubungi toko.');
+      return;
+    }
+
+    if (currentOrder.payment_method === 'manual_transfer') {
+      setIsGeneratingQris(false);
+      return;
+    }
+
+    // CTO REQUIREMENT 2 & 3: QR VALIDITY HARDENING & PERSISTENCE PRESERVATION
+    // 1. Cek apakah order SUDAH memiliki data QRIS tersimpan (persisted QR data)
+    const persistedQrCodeUrl = currentOrder.qr_code_url || (currentOrder.metadata && typeof currentOrder.metadata === 'object' ? currentOrder.metadata.qr_code_url : '');
+    const persistedQrString = currentOrder.qr_string || (currentOrder.metadata && typeof currentOrder.metadata === 'object' ? currentOrder.metadata.qr_string : '');
+    const hasPersistedQris = Boolean(persistedQrString || persistedQrCodeUrl);
+
+    if (hasPersistedQris) {
+      const qrValidation = validateAndExtractQr(currentOrder);
+      setIsGeneratingQris(false);
+      if (qrValidation.isValid) {
+        setQrisError(null);
+        return;
+      } else {
+        // DILARANG membuat payment baru ketika order sudah memiliki data QRIS tersimpan!
+        // Tampilkan error terverifikasi yang jelas dan actionable
+        setQrisError(qrValidation.error || 'Barcode QRIS yang tersimpan tidak valid atau tidak dapat dirender.');
+        return;
+      }
+    }
+
     if (isGeneratingQris && !isRetry) return;
 
     setIsGeneratingQris(true);
@@ -512,7 +609,7 @@ export default function CheckoutPage({ params }: Props) {
 
     const handleQrisFallback = (errorMessage: string) => {
       setQrisError(errorMessage);
-      const availableAccounts = bankAccounts.length > 0 ? bankAccounts : extractTenantBankAccounts(tenant || order);
+      const availableAccounts = bankAccounts.length > 0 ? bankAccounts : extractTenantBankAccounts(tenant || currentOrder);
       // Jika toko memiliki rekening bank dan bukan retry eksplisit, otomatis alihkan ke Transfer Bank Manual
       if (availableAccounts.length > 0 && !isRetry) {
         setOrder((prev: any) => ({
@@ -523,7 +620,7 @@ export default function CheckoutPage({ params }: Props) {
     };
 
     try {
-      const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
+      const gross = Number(currentOrder.gross_amount || currentOrder.total_amount || currentOrder.amount || 0);
       const res = await fetch('/api/v1/payments/qris/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -533,14 +630,14 @@ export default function CheckoutPage({ params }: Props) {
           order_id: orderId,
           amount: gross,
           total_amount: gross,
-          tenant_slug: order.tenant_slug || order.tenant_id || '',
-          tenant_id: order.tenant_id || '',
-          customer_phone: order.customer_phone,
-          customer_name: order.customer_name,
-          customer_email: order.customer_email || '',
-          product_id: order.product_id,
-          product_name: order.product_title,
-          productTitle: order.product_title,
+          tenant_slug: currentOrder.tenant_slug || currentOrder.tenant_id || '',
+          tenant_id: currentOrder.tenant_id || '',
+          customer_phone: currentOrder.customer_phone,
+          customer_name: currentOrder.customer_name,
+          customer_email: currentOrder.customer_email || '',
+          product_id: currentOrder.product_id,
+          product_name: currentOrder.product_title,
+          productTitle: currentOrder.product_title,
         })
       });
 
@@ -852,12 +949,21 @@ export default function CheckoutPage({ params }: Props) {
     '';
 
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
-  const orderQrRaw = order?.qr_string || extractRawQrString(order?.qr_code_url);
-  const orderQrImage = order?.qr_code_url || (orderQrRaw && (orderQrRaw.startsWith('http://') || orderQrRaw.startsWith('https://')) ? orderQrRaw : '');
-  const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
+
+  // Validasi ketat payload QRIS order & fallback (EMVCo payload vs Image URL vs Invalid)
+  const orderQrValidation = validateAndExtractQr(order);
+  const fallbackQrValidation = validateAndExtractQr({
+    qr_string: fallbackQrisString,
+    qr_code_url: fallbackQrisImage,
+  });
+
+  const orderQrRaw = orderQrValidation.isValid ? (orderQrValidation.rawEmvco || '') : '';
+  const orderQrImage = orderQrValidation.isValid && orderQrValidation.type === 'image_url' ? (orderQrValidation.imageUrl || '') : '';
+  const fallbackQrImage = fallbackQrValidation.isValid && fallbackQrValidation.type === 'image_url' ? (fallbackQrValidation.imageUrl || '') : '';
+  const candidateQrImageUrl = orderQrImage || fallbackQrImage;
 
   // Resolusi payload string QRIS resmi:
-  // 1. Prioritas Utama: String QRIS resmi dari response Xendit Gateway (orderQrRaw)
+  // 1. Prioritas Utama: String QRIS resmi dari response order (orderQrRaw)
   //    Jika string adalah dynamic (000201010212), JANGAN ubah/inject ulang agar CRC16 resmi tidak rusak.
   // 2. Prioritas Kedua: String QRIS merchant klinik non-DANA jika toko menggunakan static merchant QR
   const orderQr = orderQrRaw || '';
@@ -868,8 +974,9 @@ export default function CheckoutPage({ params }: Props) {
     rawQrisValue = orderQr;
   } else if (orderQr && orderQr.startsWith('000201') && !orderQr.includes('ID.DANA.WWW')) {
     rawQrisValue = orderQr.startsWith('000201010211') ? (generateDynamicQRIS(orderQr, grossAmount) || orderQr) : orderQr;
-  } else if (fallbackQrisString && fallbackQrisString.startsWith('000201') && !fallbackQrisString.includes('ID.DANA.WWW')) {
-    rawQrisValue = generateDynamicQRIS(fallbackQrisString, grossAmount) || fallbackQrisString;
+  } else if (fallbackQrValidation.isValid && fallbackQrValidation.rawEmvco && fallbackQrValidation.rawEmvco.startsWith('000201') && !fallbackQrValidation.rawEmvco.includes('ID.DANA.WWW')) {
+    const fallbackRaw = fallbackQrValidation.rawEmvco;
+    rawQrisValue = generateDynamicQRIS(fallbackRaw, grossAmount) || fallbackRaw;
   } else if (orderQr && orderQr.startsWith('000201')) {
     rawQrisValue = orderQr;
   }
@@ -925,7 +1032,7 @@ export default function CheckoutPage({ params }: Props) {
     tenant?.metadata?.appointment_url ||
     tenant?.metadata?.booking_url ||
     tenant?.metadata?.calendar_url ||
-    (order?.product_title?.toLowerCase().includes('konsul') ? 'https://cal.com/solusiads/konsultasi-1on1' : null);
+    null;
 
   const accessUrlCandidate =
     appointmentUrl ||
@@ -935,9 +1042,7 @@ export default function CheckoutPage({ params }: Props) {
     order?.asset_reference ||
     order?.delivery_url ||
     order?.access_url ||
-    (order?.product_id === 'ctwa-mastery-7day' || (order?.product_title || '').toLowerCase().includes('ctwa')
-      ? 'https://t.me/+zhWxgGbzZxhmMjU1'
-      : null);
+    null;
 
   const deliveryType = String(
     resolvedFulfillment?.delivery_type ||
@@ -1480,6 +1585,9 @@ export default function CheckoutPage({ params }: Props) {
                   src={candidateQrImageUrl}
                   alt="QRIS Toko Resmi"
                   className="w-full h-auto max-h-[280px] object-contain rounded-lg"
+                  onError={() => {
+                    setQrisError('Gagal memuat file gambar barcode QRIS resmi toko. Silakan gunakan opsi Transfer Bank Manual.');
+                  }}
                 />
               </div>
               <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
