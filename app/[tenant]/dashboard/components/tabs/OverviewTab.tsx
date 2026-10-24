@@ -25,7 +25,8 @@ import {
   extractOrderAmount,
 } from '@/lib/finance-engine';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
-import { exportOrdersToMetaCsv } from '@/lib/utils/orderFulfillment';
+import { exportOrdersToMetaCsv, MetaCsvExportSummary } from '@/lib/utils/orderFulfillment';
+import { MetaCsvExportSummaryModal } from '../MetaCsvExportSummaryModal';
 
 export interface OverviewTabProps {
   totalOmzet: number;
@@ -60,6 +61,10 @@ export default function OverviewTab({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING_VERIFICATION' | 'PENDING'>('ALL');
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [activeBankAccounts, setActiveBankAccounts] = useState<{ bank_name: string; account_number: string; account_holder: string }[]>([]);
+
+  // State untuk ringkasan ekspor Meta CSV (Audit & Validasi Ketat)
+  const [metaExportSummary, setMetaExportSummary] = useState<MetaCsvExportSummary | null>(null);
+  const [isExportSummaryModalOpen, setIsExportSummaryModalOpen] = useState(false);
 
   // Financial Metrics dynamically calculated by universal finance engine
   const financialMetrics = useMemo(() => {
@@ -329,7 +334,11 @@ export default function OverviewTab({
           <button
             type="button"
             id="overview-export-meta-csv-btn"
-            onClick={() => exportOrdersToMetaCsv(filteredTransactions, tenantSlug || 'default')}
+            onClick={() => {
+              const summary = exportOrdersToMetaCsv(filteredTransactions, tenantSlug || 'default');
+              setMetaExportSummary(summary);
+              setIsExportSummaryModalOpen(true);
+            }}
             className="px-3 py-1.5 bg-card hover:bg-muted border border-border text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
           >
             <Download className="w-3.5 h-3.5" />
@@ -570,6 +579,15 @@ export default function OverviewTab({
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* META CSV EXPORT SUMMARY MODAL (SKIP SUMMARY & AUDIT)      */}
+      {/* ======================================================== */}
+      <MetaCsvExportSummaryModal
+        isOpen={isExportSummaryModalOpen}
+        onClose={() => setIsExportSummaryModalOpen(false)}
+        summary={metaExportSummary}
+      />
     </div>
   );
 }
