@@ -618,26 +618,401 @@ export function formatIsoWithOffset(date: Date, offsetHours: number = 7): string
   return `${YYYY}-${MM}-${DD}T${hh}:${mm}:${ss}${offsetFormatted}`;
 }
 
+export interface DateParseResult {
+  valid: boolean;
+  date?: Date;
+  isoWithOffset: string; // ISO 8601 with +07:00 (WIB)
+  isoUtc: string;        // ISO 8601 UTC (.toISOString())
+  unixSeconds: number;   // Epoch seconds integer for Meta CAPI
+  reason?: string;
+}
+
 /**
- * Generates CSV string for orders aligned with Meta Offline Event Manager & CAPI standard.
- * Features:
- * - event_name: 'Purchase'
- * - event_time: Full ISO 8601 with offset (e.g. +07:00 WIB)
- * - value: Pure numeric amount (gross_amount / total_amount)
- * - currency: ISO 3-letter currency (default: 'IDR')
- * - phone: E.164 normalized phone digits (e.g. '6281314495884')
- * - order_id: Invoice/order reference for deduplication
- * - Operational fields alongside Meta fields for merchant audit
- * 
- * STRICT INTEGRITY:
- * - Baris dengan tanggal invalid ditolak (tidak diganti dengan waktu saat ini / new Date()).
- * - Baris dengan nominal invalid/kosong/non-angka ditolak (tidak dipaksa menjadi 0).
+ * Deterministically parses date strings, numbers, or Date objects into WIB (UTC+07:00) by contract.
+ * Dates without offset (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss) are anchored to WIB deterministically,
+ * NEVER floating with machine/server runtime timezone.
  */
-export function generateOrdersMetaCsvString(
+export function parseDeterministicDate(
+  val: any,
+  offsetHours: number = 7
+): DateParseResult {
+  if (val === undefined || val === null || val === '') {
+    return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: 'Tanggal transaksi wajib diisi.' };
+  }
+
+  // 1. Date instance
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) {
+      return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: 'Objek Date tidak valid.' };
+    }
+    const isoUtc = val.toISOString();
+    const isoWithOffset = formatIsoWithOffset(val, offsetHours);
+    const unixSeconds = Math.floor(val.getTime() / 1000);
+    return { valid: true, date: val, isoWithOffset, isoUtc, unixSeconds };
+  }
+
+  // 2. Numeric input (Unix timestamp or Excel serial)
+  if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val) || val <= 0) {
+      return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: 'Angka tanggal/serial tidak valid.' };
+    }
+    // Unix timestamp in seconds (10 digits: ~1970 to 2286)
+    if (val >= 1000000000 && val < 10000000000) {
+      const d = new Date(val * 1000);
+      return {
+        valid: true,
+        date: d,
+        isoWithOffset: formatIsoWithOffset(d, offsetHours),
+        isoUtc: d.toISOString(),
+        unixSeconds: Math.floor(val),
+      };
+    }
+    // Unix timestamp in ms (13 digits)
+    if (val >= 1000000000000 && val < 10000000000000) {
+      const d = new Date(val);
+      return {
+        valid: true,
+        date: d,
+        isoWithOffset: formatIsoWithOffset(d, offsetHours),
+        isoUtc: d.toISOString(),
+        unixSeconds: Math.floor(val / 1000),
+      };
+    }
+    // Excel serial date number
+    // Excel epoch base: Dec 30 1899 (25569 days to Jan 1 1970)
+    const msSinceEpoch = Math.round((val - 25569) * 86400 * 1000);
+    const utcDate = new Date(msSinceEpoch);
+    if (!isNaN(utcDate.getTime())) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const y = utcDate.getUTCFullYear();
+      const m = pad(utcDate.getUTCMonth() + 1);
+      const d = pad(utcDate.getUTCDate());
+      const hh = pad(utcDate.getUTCHours());
+      const mm = pad(utcDate.getUTCMinutes());
+      const ss = pad(utcDate.getUTCSeconds());
+      const offsetSign = offsetHours >= 0 ? '+' : '-';
+      const offsetStr = `${offsetSign}${pad(Math.abs(offsetHours))}:00`;
+      const anchoredStr = `${y}-${m}-${d}T${hh}:${mm}:${ss}${offsetStr}`;
+      const anchoredDate = new Date(anchoredStr);
+      if (!isNaN(anchoredDate.getTime())) {
+        return {
+          valid: true,
+          date: anchoredDate,
+          isoWithOffset: formatIsoWithOffset(anchoredDate, offsetHours),
+          isoUtc: anchoredDate.toISOString(),
+          unixSeconds: Math.floor(anchoredDate.getTime() / 1000),
+        };
+      }
+    }
+    return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: `Serial tanggal Excel '${val}' tidak valid.` };
+  }
+
+  // 3. String input
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s) {
+      return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: 'Tanggal transaksi wajib diisi.' };
+    }
+
+    // Unix timestamp numeric strings
+    if (/^\d{10}$/.test(s)) {
+      const sec = parseInt(s, 10);
+      const d = new Date(sec * 1000);
+      return {
+        valid: true,
+        date: d,
+        isoWithOffset: formatIsoWithOffset(d, offsetHours),
+        isoUtc: d.toISOString(),
+        unixSeconds: sec,
+      };
+    }
+    if (/^\d{13}$/.test(s)) {
+      const ms = parseInt(s, 10);
+      const d = new Date(ms);
+      return {
+        valid: true,
+        date: d,
+        isoWithOffset: formatIsoWithOffset(d, offsetHours),
+        isoUtc: d.toISOString(),
+        unixSeconds: Math.floor(ms / 1000),
+      };
+    }
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const offsetSign = offsetHours >= 0 ? '+' : '-';
+    const offsetStr = `${offsetSign}${pad(Math.abs(offsetHours))}:00`;
+
+    // Case 3a: Date-only format: YYYY-MM-DD (e.g. 2026-10-10) -> Anchored to WIB midnight deterministically
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const targetStr = `${s}T00:00:00${offsetStr}`;
+      const d = new Date(targetStr);
+      if (!isNaN(d.getTime())) {
+        return {
+          valid: true,
+          date: d,
+          isoWithOffset: formatIsoWithOffset(d, offsetHours),
+          isoUtc: d.toISOString(),
+          unixSeconds: Math.floor(d.getTime() / 1000),
+        };
+      }
+    }
+
+    // Case 3b: Date-only Indonesian format: DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if (dmyMatch) {
+      const day = dmyMatch[1].padStart(2, '0');
+      const month = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      const targetStr = `${year}-${month}-${day}T00:00:00${offsetStr}`;
+      const d = new Date(targetStr);
+      if (!isNaN(d.getTime())) {
+        return {
+          valid: true,
+          date: d,
+          isoWithOffset: formatIsoWithOffset(d, offsetHours),
+          isoUtc: d.toISOString(),
+          unixSeconds: Math.floor(d.getTime() / 1000),
+        };
+      }
+    }
+
+    // Case 3c: Date-time WITHOUT timezone offset: YYYY-MM-DD[ T]HH:mm(:ss)?
+    // e.g. "2026-10-10 14:30:00" or "2026-10-10T14:30:00" -> Anchored to WIB deterministically
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(s)) {
+      const normalizedIso = s.replace(' ', 'T');
+      const withSeconds = normalizedIso.length === 16 ? `${normalizedIso}:00` : normalizedIso;
+      const targetStr = `${withSeconds}${offsetStr}`;
+      const d = new Date(targetStr);
+      if (!isNaN(d.getTime())) {
+        return {
+          valid: true,
+          date: d,
+          isoWithOffset: formatIsoWithOffset(d, offsetHours),
+          isoUtc: d.toISOString(),
+          unixSeconds: Math.floor(d.getTime() / 1000),
+        };
+      }
+    }
+
+    // Case 3d: Date-time WITH explicit timezone offset (Z, +HH:mm, -HH:mm)
+    if (/[zZ]|[+-]\d{2}(?::?\d{2})?$/.test(s)) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        return {
+          valid: true,
+          date: d,
+          isoWithOffset: formatIsoWithOffset(d, offsetHours),
+          isoUtc: d.toISOString(),
+          unixSeconds: Math.floor(d.getTime() / 1000),
+        };
+      }
+    }
+
+    return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: `Tanggal transaksi '${s}' tidak valid atau format tidak dikenali.` };
+  }
+
+  return { valid: false, isoWithOffset: '', isoUtc: '', unixSeconds: 0, reason: 'Format tanggal transaksi tidak didukung.' };
+}
+
+export interface NominalParseResult {
+  valid: boolean;
+  value: number;
+  reason?: string;
+}
+
+/**
+ * Parses amount string/number to clean positive number strictly.
+ * Rejects empty values, non-numeric strings, letters, illegal symbols,
+ * ambiguous decimals, and consecutive/misplaced separators.
+ */
+export function parseStrictNominal(val: any): NominalParseResult {
+  if (val === undefined || val === null || val === '') {
+    return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
+  }
+
+  if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val)) {
+      return { valid: false, value: 0, reason: 'Nominal transaksi bukan angka valid.' };
+    }
+    if (val <= 0) {
+      return { valid: false, value: 0, reason: `Nominal transaksi '${val}' tidak valid atau harus lebih dari 0.` };
+    }
+    return { valid: true, value: val };
+  }
+
+  const str = String(val).trim();
+  if (!str) {
+    return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
+  }
+
+  // 1. Strip valid currency prefixes/suffixes
+  const withoutCurrency = str.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
+
+  // 2. Reject if any characters other than digits, whitespace, dot, comma, and optional leading minus remain
+  if (!/^-?[0-9.,\s]+$/.test(withoutCurrency)) {
+    return {
+      valid: false,
+      value: 0,
+      reason: `Nominal transaksi '${str}' tidak valid atau mengandung karakter tidak dikenal.`,
+    };
+  }
+
+  const cleaned = withoutCurrency.replace(/\s+/g, '');
+
+  // 3. Reject consecutive dots or commas
+  if (/\.{2,}|,{2,}|\.,|,\./.test(cleaned)) {
+    return {
+      valid: false,
+      value: 0,
+      reason: `Nominal transaksi '${str}' memiliki format pemisah tidak valid.`,
+    };
+  }
+
+  // 4. Reject starting or ending with dot or comma (ignoring optional leading minus)
+  if (/^[.,]|[.,]$/.test(cleaned.replace(/^-/, ''))) {
+    return {
+      valid: false,
+      value: 0,
+      reason: `Nominal transaksi '${str}' tidak boleh diawali atau diakhiri tanda baca.`,
+    };
+  }
+
+  // 5. Separator analysis
+  let num: number;
+  const hasDot = cleaned.includes('.');
+  const hasComma = cleaned.includes(',');
+
+  if (hasDot && hasComma) {
+    const lastDot = cleaned.lastIndexOf('.');
+    const lastComma = cleaned.lastIndexOf(',');
+
+    if (lastComma > lastDot) {
+      // Indonesian/European: 150.000,00
+      const partsBeforeComma = cleaned.slice(0, lastComma).split('.');
+      if (!/^\d{1,3}$/.test(partsBeforeComma[0])) {
+        return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+      }
+      for (let i = 1; i < partsBeforeComma.length; i++) {
+        if (!/^\d{3}$/.test(partsBeforeComma[i])) {
+          return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+        }
+      }
+      const decimalPart = cleaned.slice(lastComma + 1);
+      if (!/^\d{1,2}$/.test(decimalPart)) {
+        return { valid: false, value: 0, reason: `Format desimal '${str}' ambigu atau tidak valid.` };
+      }
+      num = Number(cleaned.slice(0, lastComma).replace(/\./g, '') + '.' + decimalPart);
+    } else {
+      // US format: 150,000.00
+      const partsBeforeDot = cleaned.slice(0, lastDot).split(',');
+      if (!/^\d{1,3}$/.test(partsBeforeDot[0])) {
+        return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+      }
+      for (let i = 1; i < partsBeforeDot.length; i++) {
+        if (!/^\d{3}$/.test(partsBeforeDot[i])) {
+          return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+        }
+      }
+      const decimalPart = cleaned.slice(lastDot + 1);
+      if (!/^\d{1,2}$/.test(decimalPart)) {
+        return { valid: false, value: 0, reason: `Format desimal '${str}' ambigu atau tidak valid.` };
+      }
+      num = Number(cleaned.slice(0, lastDot).replace(/,/g, '') + '.' + decimalPart);
+    }
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      // Multiple dots: e.g. 1.500.000
+      if (!/^\d{1,3}$/.test(parts[0])) {
+        return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+      }
+      for (let i = 1; i < parts.length; i++) {
+        if (!/^\d{3}$/.test(parts[i])) {
+          return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+        }
+      }
+      num = Number(cleaned.replace(/\./g, ''));
+    } else {
+      // Single dot: e.g. "150.000" vs "150.50"
+      if (parts[1].length === 3) {
+        num = Number(cleaned.replace(/\./g, ''));
+      } else if (parts[1].length === 1 || parts[1].length === 2) {
+        num = Number(cleaned);
+      } else {
+        return { valid: false, value: 0, reason: `Format desimal/ribuan '${str}' ambigu.` };
+      }
+    }
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    if (parts.length > 2) {
+      // Multiple commas: e.g. 1,500,000
+      if (!/^\d{1,3}$/.test(parts[0])) {
+        return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+      }
+      for (let i = 1; i < parts.length; i++) {
+        if (!/^\d{3}$/.test(parts[i])) {
+          return { valid: false, value: 0, reason: `Format ribuan '${str}' ambigu atau tidak valid.` };
+        }
+      }
+      num = Number(cleaned.replace(/,/g, ''));
+    } else {
+      // Single comma: e.g. "150,000" vs "150,50"
+      if (parts[1].length === 3) {
+        num = Number(cleaned.replace(/,/g, ''));
+      } else if (parts[1].length === 1 || parts[1].length === 2) {
+        num = Number(cleaned.replace(',', '.'));
+      } else {
+        return { valid: false, value: 0, reason: `Format desimal/ribuan '${str}' ambigu.` };
+      }
+    }
+  } else {
+    // Pure integer string
+    num = Number(cleaned);
+  }
+
+  if (isNaN(num) || !isFinite(num)) {
+    return { valid: false, value: 0, reason: `Nominal transaksi '${str}' bukan angka valid.` };
+  }
+
+  if (num <= 0) {
+    return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid atau harus lebih dari 0.` };
+  }
+
+  return { valid: true, value: num };
+}
+
+export interface MetaCsvExportSkipDetail {
+  orderId: string;
+  reason: 'invalid_date' | 'invalid_amount' | 'missing_date' | 'missing_amount' | string;
+  message: string;
+  rawDate?: any;
+  rawValue?: any;
+}
+
+export interface MetaCsvExportSummary {
+  totalRows: number;
+  exportedRows: number;
+  skippedRows: number;
+  skippedDetails: MetaCsvExportSkipDetail[];
+}
+
+export interface GenerateOrdersMetaCsvResult {
+  csv: string;
+  summary: MetaCsvExportSummary;
+}
+
+/**
+ * Generates CSV string and audit summary for orders aligned with Meta Offline Event Manager & CAPI standard.
+ * Features:
+ * - Transparent skip summary: returns totalRows, exportedRows, skippedRows, and detailed skip reasons.
+ * - Strict integrity: Invalid date or invalid nominal is rejected (NEVER silently coerced to now or 0).
+ * - Deterministic timezone: Anchored to WIB (+07:00).
+ */
+export function generateOrdersMetaCsv(
   orders: any[],
   tenantSlug?: string,
   currency: string = 'IDR'
-): string {
+): GenerateOrdersMetaCsvResult {
   const headers = [
     'event_name',
     'event_time',
@@ -666,78 +1041,45 @@ export function generateOrdersMetaCsvString(
   };
 
   const rows: string[] = [];
+  const skippedDetails: MetaCsvExportSkipDetail[] = [];
+  const totalRows = (orders || []).length;
 
-  for (const ord of (orders || [])) {
+  for (let idx = 0; idx < totalRows; idx++) {
+    const ord = orders[idx];
+    const orderId = String(ord.order_id || ord.invoice_number || ord.invoice_no || ord.order_number || ord.id || `row_${idx + 1}`).replace(/^#/, '');
     const eventName = 'Purchase';
 
-    // 1. Strict Date Validation (NO SILENT FALLBACK TO NOW)
+    // 1. Strict & Deterministic Date Validation
     const rawDate = ord.paid_at || ord.created_at || ord.createdDate || ord.date;
-    if (!rawDate) {
-      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: tanggal transaksi tidak ditemukan.`);
+    const parsedDate = parseDeterministicDate(rawDate, 7);
+    if (!parsedDate.valid) {
+      const skipReason = !rawDate ? 'missing_date' : 'invalid_date';
+      skippedDetails.push({
+        orderId,
+        reason: skipReason,
+        message: parsedDate.reason || `Tanggal transaksi '${rawDate}' tidak valid.`,
+        rawDate,
+      });
+      console.warn(`[Meta CSV Export] Order ${orderId} ditolak (${skipReason}): ${parsedDate.reason || 'tanggal tidak valid'}`);
       continue;
     }
+    const eventTime = parsedDate.isoWithOffset;
 
-    let eventTime: string;
-    try {
-      const d = new Date(rawDate);
-      if (isNaN(d.getTime())) {
-        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: tanggal transaksi '${rawDate}' tidak valid.`);
-        continue;
-      }
-      eventTime = formatIsoWithOffset(d, 7);
-    } catch (dateErr) {
-      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: gagal memformat tanggal transaksi:`, dateErr);
-      continue;
-    }
-
-    // 2. Strict Nominal Validation (NO SILENT FALLBACK TO 0)
+    // 2. Strict Nominal Validation
     const rawValue = ord.total_amount ?? ord.gross_amount ?? ord.amount;
-    if (rawValue === undefined || rawValue === null || rawValue === '') {
-      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal transaksi kosong.`);
+    const parsedNominal = parseStrictNominal(rawValue);
+    if (!parsedNominal.valid) {
+      const skipReason = (rawValue === undefined || rawValue === null || rawValue === '') ? 'missing_amount' : 'invalid_amount';
+      skippedDetails.push({
+        orderId,
+        reason: skipReason,
+        message: parsedNominal.reason || `Nominal transaksi '${rawValue}' tidak valid.`,
+        rawValue,
+      });
+      console.warn(`[Meta CSV Export] Order ${orderId} ditolak (${skipReason}): ${parsedNominal.reason || 'nominal tidak valid'}`);
       continue;
     }
-
-    let numValue: number;
-    if (typeof rawValue === 'number') {
-      if (isNaN(rawValue) || !isFinite(rawValue) || rawValue <= 0) {
-        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal numerik '${rawValue}' tidak valid.`);
-        continue;
-      }
-      numValue = rawValue;
-    } else {
-      const rawStr = String(rawValue).trim();
-      const cleanedStr = rawStr.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
-      if (/[a-zA-Z]/.test(cleanedStr)) {
-        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal '${rawValue}' mengandung karakter tidak valid.`);
-        continue;
-      }
-      let cleaned = cleanedStr.replace(/\s+/g, '');
-      if (cleaned.includes('.') && cleaned.includes(',')) {
-        if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
-          cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-        } else {
-          cleaned = cleaned.replace(/,/g, '');
-        }
-      } else if (cleaned.includes('.')) {
-        const parts = cleaned.split('.');
-        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
-          cleaned = cleaned.replace(/\./g, '');
-        }
-      } else if (cleaned.includes(',')) {
-        const parts = cleaned.split(',');
-        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
-          cleaned = cleaned.replace(/,/g, '');
-        } else {
-          cleaned = cleaned.replace(',', '.');
-        }
-      }
-      const parsedNum = Number(cleaned);
-      if (isNaN(parsedNum) || !isFinite(parsedNum) || parsedNum <= 0) {
-        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal '${rawValue}' tidak dapat dikonversi ke angka positif.`);
-        continue;
-      }
-      numValue = parsedNum;
-    }
+    const numValue = parsedNominal.value;
 
     // currency: ISO currency code
     const curr = String(ord.currency || currency || 'IDR').toUpperCase();
@@ -752,9 +1094,6 @@ export function generateOrdersMetaCsvString(
     } else if (phoneDigits.startsWith('8')) {
       phoneDigits = '62' + phoneDigits;
     }
-
-    // order_id: invoice or order reference
-    const orderId = String(ord.order_id || ord.invoice_number || ord.invoice_no || ord.order_number || ord.id || '').replace(/^#/, '');
 
     // Operational fields
     const custName = ord.customer_name || ord.name || 'Pelanggan';
@@ -786,34 +1125,71 @@ export function generateOrdersMetaCsvString(
     ].join(','));
   }
 
-  return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const summary: MetaCsvExportSummary = {
+    totalRows,
+    exportedRows: rows.length,
+    skippedRows: skippedDetails.length,
+    skippedDetails,
+  };
+
+  return { csv, summary };
+}
+
+/**
+ * Backward-compatible helper that generates Meta CSV as raw string.
+ */
+export function generateOrdersMetaCsvString(
+  orders: any[],
+  tenantSlug?: string,
+  currency: string = 'IDR'
+): string {
+  return generateOrdersMetaCsv(orders, tenantSlug, currency).csv;
 }
 
 /**
  * Export orders to Meta Offline Conversions & CAPI compliant CSV format.
- * Triggers client-side CSV download in browser.
+ * Triggers client-side CSV download in browser if valid rows exist.
+ * Returns MetaCsvExportSummary detailing total, exported, and skipped rows for UI/logs.
  */
 export function exportOrdersToMetaCsv(
   orders: any[],
   tenantSlug?: string,
   currency: string = 'IDR'
-): void {
+): MetaCsvExportSummary {
   if (!orders || orders.length === 0) {
     if (typeof alert !== 'undefined') {
       alert('Tidak ada pesanan untuk diekspor.');
     }
-    return;
+    return {
+      totalRows: 0,
+      exportedRows: 0,
+      skippedRows: 0,
+      skippedDetails: [],
+    };
   }
 
-  const csvContent = generateOrdersMetaCsvString(orders, tenantSlug, currency);
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  const dateStr = new Date().toISOString().slice(0, 10);
-  link.setAttribute('download', `Meta_Offline_Events_${tenantSlug || 'store'}_${dateStr}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const { csv, summary } = generateOrdersMetaCsv(orders, tenantSlug, currency);
+
+  if (summary.skippedRows > 0) {
+    console.warn(
+      `[Meta CSV Export] ${summary.skippedRows} dari ${summary.totalRows} pesanan dilewati karena data tidak valid:`,
+      summary.skippedDetails
+    );
+  }
+
+  if (summary.exportedRows > 0 && typeof document !== 'undefined') {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('download', `Meta_Offline_Events_${tenantSlug || 'store'}_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  return summary;
 }

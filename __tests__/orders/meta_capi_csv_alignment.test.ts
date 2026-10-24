@@ -5,8 +5,12 @@
  */
 
 import {
+  generateOrdersMetaCsv,
   generateOrdersMetaCsvString,
+  exportOrdersToMetaCsv,
   formatIsoWithOffset,
+  parseDeterministicDate,
+  parseStrictNominal,
   OrderRecord,
 } from '@/lib/utils/orderFulfillment';
 import {
@@ -380,90 +384,165 @@ describe('Tenant Dashboard CSV Export & Bulk Import - Meta Offline Event & CAPI 
       expect(() => formatIsoWithOffset(null as any, 7)).toThrow();
     });
 
-    it('generateOrdersMetaCsvString menolak baris dengan tanggal invalid (tidak menghasilkan timestamp sekarang)', () => {
-      const invalidDateOrders: OrderRecord[] = [
+    it('generateOrdersMetaCsv mengembalikan ringkasan rekap (summary) penolakan baris secara transparan', () => {
+      const mixedOrders: OrderRecord[] = [
         {
-          id: 'ord-bad-date-1',
-          order_id: 'INV-BAD-DATE-1',
-          customer_name: 'Budi Test',
-          customer_phone: '081200000001',
+          id: 'ord-valid-1',
+          order_id: 'INV-VALID-1',
+          customer_name: 'Dewi Sukses',
+          customer_phone: '081211112222',
           total_amount: 150000,
+          created_at: '2026-10-10T10:00:00+07:00',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-bad-date',
+          order_id: 'INV-BAD-DATE',
+          customer_name: 'Budi Bad Date',
+          customer_phone: '081233334444',
+          total_amount: 200000,
           created_at: 'invalid-date-format',
           status: 'PAID',
         },
         {
-          id: 'ord-bad-date-2',
-          order_id: 'INV-BAD-DATE-2',
-          customer_name: 'Siti Test',
-          customer_phone: '081200000002',
-          total_amount: 200000,
+          id: 'ord-bad-amt',
+          order_id: 'INV-BAD-AMT',
+          customer_name: 'Siti Bad Amount',
+          customer_phone: '081255556666',
+          total_amount: 0,
+          created_at: '2026-10-10T10:00:00+07:00',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-missing-date',
+          order_id: 'INV-MISSING-DATE',
+          customer_name: 'Andi No Date',
+          customer_phone: '081277778888',
+          total_amount: 300000,
           created_at: '',
           status: 'PAID',
         },
       ];
 
-      const csv = generateOrdersMetaCsvString(invalidDateOrders, 'toko-berkah', 'IDR');
-      const lines = csv.split('\r\n').filter(Boolean);
+      const { csv, summary } = generateOrdersMetaCsv(mixedOrders, 'toko-berkah', 'IDR');
 
-      // Hanya header yang dihasilkan, 0 baris data lolos
-      expect(lines).toHaveLength(1);
-      expect(csv).not.toContain('INV-BAD-DATE-1');
-      expect(csv).not.toContain('INV-BAD-DATE-2');
-      const dataLines = lines.slice(1);
-      expect(dataLines).toHaveLength(0);
+      // Rekap summary transparan
+      expect(summary.totalRows).toBe(4);
+      expect(summary.exportedRows).toBe(1);
+      expect(summary.skippedRows).toBe(3);
+      expect(summary.skippedDetails).toHaveLength(3);
+
+      expect(summary.skippedDetails[0].orderId).toBe('INV-BAD-DATE');
+      expect(summary.skippedDetails[0].reason).toBe('invalid_date');
+
+      expect(summary.skippedDetails[1].orderId).toBe('INV-BAD-AMT');
+      expect(summary.skippedDetails[1].reason).toBe('invalid_amount');
+
+      expect(summary.skippedDetails[2].orderId).toBe('INV-MISSING-DATE');
+      expect(summary.skippedDetails[2].reason).toBe('missing_date');
+
+      // CSV hanya memuat 1 baris data valid
+      const lines = csv.split('\r\n').filter(Boolean);
+      expect(lines).toHaveLength(2); // Header + 1 baris
+      expect(csv).toContain('INV-VALID-1');
+      expect(csv).not.toContain('INV-BAD-DATE');
+      expect(csv).not.toContain('INV-BAD-AMT');
+      expect(csv).not.toContain('INV-MISSING-DATE');
+
+      // exportOrdersToMetaCsv juga mengembalikan summary
+      const exportSummary = exportOrdersToMetaCsv(mixedOrders, 'toko-berkah', 'IDR');
+      expect(exportSummary.totalRows).toBe(4);
+      expect(exportSummary.exportedRows).toBe(1);
+      expect(exportSummary.skippedRows).toBe(3);
     });
 
-    it('generateOrdersMetaCsvString menolak baris dengan nominal kosong, non-angka, atau <= 0 (tidak menghasilkan 0)', () => {
-      const invalidNominalOrders: OrderRecord[] = [
-        {
-          id: 'ord-zero-1',
-          order_id: 'INV-ZERO-1',
-          customer_name: 'Budi Nol',
-          customer_phone: '081200000001',
-          total_amount: 0,
-          created_at: '2026-10-10T10:00:00.000Z',
-          status: 'PAID',
-        },
-        {
-          id: 'ord-nan-2',
-          order_id: 'INV-NAN-2',
-          customer_name: 'Siti Corrupt',
-          customer_phone: '081200000002',
-          total_amount: 'corrupt-value' as any,
-          created_at: '2026-10-10T10:00:00.000Z',
-          status: 'PAID',
-        },
-        {
-          id: 'ord-empty-3',
-          order_id: 'INV-EMPTY-3',
-          customer_name: 'Andi Kosong',
-          customer_phone: '081200000003',
-          total_amount: '' as any,
-          created_at: '2026-10-10T10:00:00.000Z',
-          status: 'PAID',
-        },
-        {
-          id: 'ord-neg-4',
-          order_id: 'INV-NEG-4',
-          customer_name: 'Rudi Negatif',
-          customer_phone: '081200000004',
-          total_amount: -50000,
-          created_at: '2026-10-10T10:00:00.000Z',
-          status: 'PAID',
-        },
-      ];
+    it('parseStrictNominal menolak nilai ambigu, malformed, karakter non-angka, dan format desimal/ribuan cacat', () => {
+      // 1. Karakter non-angka dan simbol ilegal (tidak boleh sekadar di-strip)
+      expect(parseStrictNominal('100$50').valid).toBe(false);
+      expect(parseStrictNominal('150k').valid).toBe(false);
+      expect(parseStrictNominal('150rb').valid).toBe(false);
+      expect(parseStrictNominal('100#50').valid).toBe(false);
+      expect(parseStrictNominal('100@50').valid).toBe(false);
+      expect(parseStrictNominal('100!50').valid).toBe(false);
+      expect(parseStrictNominal('123a456').valid).toBe(false);
+      expect(parseStrictNominal('100(diskon)').valid).toBe(false);
+      expect(parseStrictNominal('150.000 - 200.000').valid).toBe(false);
 
-      const csv = generateOrdersMetaCsvString(invalidNominalOrders, 'toko-berkah', 'IDR');
-      const lines = csv.split('\r\n').filter(Boolean);
+      // 2. Pemisah berurutan / cacat
+      expect(parseStrictNominal('150..000').valid).toBe(false);
+      expect(parseStrictNominal('150,,000').valid).toBe(false);
+      expect(parseStrictNominal('150.,000').valid).toBe(false);
+      expect(parseStrictNominal('150,.000').valid).toBe(false);
 
-      // Seluruh 4 baris harus ditolak karena nominal tidak valid
-      expect(lines).toHaveLength(1); // Hanya header
-      expect(csv).not.toContain('INV-ZERO-1');
-      expect(csv).not.toContain('INV-NAN-2');
-      expect(csv).not.toContain('INV-EMPTY-3');
-      expect(csv).not.toContain('INV-NEG-4');
-      // Pastikan nominal 0 tidak diproduksi di data row
-      expect(csv).not.toMatch(/,0,/);
+      // 3. Diawali atau diakhiri titik/koma
+      expect(parseStrictNominal('.150000').valid).toBe(false);
+      expect(parseStrictNominal('150000.').valid).toBe(false);
+      expect(parseStrictNominal(',150000').valid).toBe(false);
+      expect(parseStrictNominal('150000,').valid).toBe(false);
+
+      // 4. Format ribuan/desimal ambigu atau grouping tidak valid
+      expect(parseStrictNominal('15.00,00').valid).toBe(false);
+      expect(parseStrictNominal('1.50.000').valid).toBe(false);
+      expect(parseStrictNominal('10.20.30').valid).toBe(false);
+      expect(parseStrictNominal('150.0000').valid).toBe(false); // lebih dari 3 desimal / ambigu
+
+      // 5. Kosong, nol, atau negatif
+      expect(parseStrictNominal('').valid).toBe(false);
+      expect(parseStrictNominal(0).valid).toBe(false);
+      expect(parseStrictNominal('0').valid).toBe(false);
+      expect(parseStrictNominal(-50000).valid).toBe(false);
+
+      // 6. Kasus valid yang harus diterima dengan presisi
+      expect(parseStrictNominal(150000)).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150.000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('1.500.000')).toEqual({ valid: true, value: 1500000 });
+      expect(parseStrictNominal('Rp 150.000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('IDR 150.000,50')).toEqual({ valid: true, value: 150000.5 });
+      expect(parseStrictNominal('150,000.00')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150.50')).toEqual({ valid: true, value: 150.5 });
+      expect(parseStrictNominal('150,50')).toEqual({ valid: true, value: 150.5 });
+    });
+
+    it('parseDeterministicDate menafsirkan tanggal tanpa offset secara deterministik ke zona waktu kontrak (WIB / +07:00)', () => {
+      // 1. Date-only format YYYY-MM-DD wajib ditafsirkan sebagai midnight WIB (+07:00), bukan mengambang
+      const resDateOnly = parseDeterministicDate('2026-10-10');
+      expect(resDateOnly.valid).toBe(true);
+      expect(resDateOnly.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+      expect(resDateOnly.isoUtc).toBe('2026-10-09T17:00:00.000Z');
+      expect(resDateOnly.unixSeconds).toBe(1791565200);
+
+      // 2. Format Indonesia DD/MM/YYYY dan DD-MM-YYYY
+      const resIndoSlash = parseDeterministicDate('10/10/2026');
+      expect(resIndoSlash.valid).toBe(true);
+      expect(resIndoSlash.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+
+      const resIndoDash = parseDeterministicDate('10-10-2026');
+      expect(resIndoDash.valid).toBe(true);
+      expect(resIndoDash.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+
+      // 3. Date-time tanpa offset (YYYY-MM-DD HH:mm:ss atau YYYY-MM-DDTHH:mm:ss)
+      const resDateTimeSpace = parseDeterministicDate('2026-10-10 14:30:00');
+      expect(resDateTimeSpace.valid).toBe(true);
+      expect(resDateTimeSpace.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+      expect(resDateTimeSpace.isoUtc).toBe('2026-10-10T07:30:00.000Z');
+      expect(resDateTimeSpace.unixSeconds).toBe(1791617400);
+
+      const resDateTimeT = parseDeterministicDate('2026-10-10T14:30:00');
+      expect(resDateTimeT.valid).toBe(true);
+      expect(resDateTimeT.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+      expect(resDateTimeT.isoUtc).toBe('2026-10-10T07:30:00.000Z');
+
+      // 4. Date-time dengan explicit offset (Z)
+      const resExplicitUtc = parseDeterministicDate('2026-10-10T07:30:00.000Z');
+      expect(resExplicitUtc.valid).toBe(true);
+      expect(resExplicitUtc.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+
+      // 5. Tanggal invalid / kosong
+      expect(parseDeterministicDate('bukan-tanggal').valid).toBe(false);
+      expect(parseDeterministicDate('').valid).toBe(false);
+      expect(parseDeterministicDate(null).valid).toBe(false);
+      expect(parseDeterministicDate(undefined).valid).toBe(false);
     });
 
     it('OrderBulkImportService.parseTransactionDate menolak tanggal invalid/kosong (tidak menghasilkan new Date() atau now unix timestamp)', () => {
