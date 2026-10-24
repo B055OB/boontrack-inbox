@@ -596,6 +596,10 @@ export function exportOrdersToLincahCsv(orders: OrderItem[], tenantSlug: string)
  * Example: 2026-10-09T10:00:00+07:00
  */
 export function formatIsoWithOffset(date: Date, offsetHours: number = 7): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    throw new Error('[formatIsoWithOffset] Date invalid atau bukan objek Date yang valid.');
+  }
+
   const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
   const sign = offsetHours >= 0 ? '+' : '-';
   const totalOffsetMinutes = Math.abs(offsetHours) * 60;
@@ -624,6 +628,10 @@ export function formatIsoWithOffset(date: Date, offsetHours: number = 7): string
  * - phone: E.164 normalized phone digits (e.g. '6281314495884')
  * - order_id: Invoice/order reference for deduplication
  * - Operational fields alongside Meta fields for merchant audit
+ * 
+ * STRICT INTEGRITY:
+ * - Baris dengan tanggal invalid ditolak (tidak diganti dengan waktu saat ini / new Date()).
+ * - Baris dengan nominal invalid/kosong/non-angka ditolak (tidak dipaksa menjadi 0).
  */
 export function generateOrdersMetaCsvString(
   orders: any[],
@@ -657,28 +665,79 @@ export function generateOrdersMetaCsvString(
     return str;
   };
 
-  const rows = (orders || []).map((ord) => {
+  const rows: string[] = [];
+
+  for (const ord of (orders || [])) {
     const eventName = 'Purchase';
 
-    // event_time: full ISO 8601 with +07:00 offset (WIB)
-    const rawDate = ord.paid_at || ord.created_at || ord.createdDate || ord.date || new Date().toISOString();
+    // 1. Strict Date Validation (NO SILENT FALLBACK TO NOW)
+    const rawDate = ord.paid_at || ord.created_at || ord.createdDate || ord.date;
+    if (!rawDate) {
+      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: tanggal transaksi tidak ditemukan.`);
+      continue;
+    }
+
     let eventTime: string;
     try {
       const d = new Date(rawDate);
       if (isNaN(d.getTime())) {
-        eventTime = formatIsoWithOffset(new Date(), 7);
-      } else {
-        eventTime = formatIsoWithOffset(d, 7);
+        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: tanggal transaksi '${rawDate}' tidak valid.`);
+        continue;
       }
-    } catch {
-      eventTime = formatIsoWithOffset(new Date(), 7);
+      eventTime = formatIsoWithOffset(d, 7);
+    } catch (dateErr) {
+      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: gagal memformat tanggal transaksi:`, dateErr);
+      continue;
     }
 
-    // value: pure numeric value
-    const rawValue = ord.total_amount ?? ord.gross_amount ?? ord.amount ?? 0;
-    const numValue = typeof rawValue === 'number'
-      ? rawValue
-      : Number(String(rawValue).replace(/[^0-9.-]/g, '')) || 0;
+    // 2. Strict Nominal Validation (NO SILENT FALLBACK TO 0)
+    const rawValue = ord.total_amount ?? ord.gross_amount ?? ord.amount;
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal transaksi kosong.`);
+      continue;
+    }
+
+    let numValue: number;
+    if (typeof rawValue === 'number') {
+      if (isNaN(rawValue) || !isFinite(rawValue) || rawValue <= 0) {
+        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal numerik '${rawValue}' tidak valid.`);
+        continue;
+      }
+      numValue = rawValue;
+    } else {
+      const rawStr = String(rawValue).trim();
+      const cleanedStr = rawStr.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
+      if (/[a-zA-Z]/.test(cleanedStr)) {
+        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal '${rawValue}' mengandung karakter tidak valid.`);
+        continue;
+      }
+      let cleaned = cleanedStr.replace(/\s+/g, '');
+      if (cleaned.includes('.') && cleaned.includes(',')) {
+        if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+          cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+        } else {
+          cleaned = cleaned.replace(/,/g, '');
+        }
+      } else if (cleaned.includes('.')) {
+        const parts = cleaned.split('.');
+        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      } else if (cleaned.includes(',')) {
+        const parts = cleaned.split(',');
+        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+          cleaned = cleaned.replace(/,/g, '');
+        } else {
+          cleaned = cleaned.replace(',', '.');
+        }
+      }
+      const parsedNum = Number(cleaned);
+      if (isNaN(parsedNum) || !isFinite(parsedNum) || parsedNum <= 0) {
+        console.warn(`[Meta CSV Export] Order ${ord.id || ord.order_id || 'unknown'} ditolak: nominal '${rawValue}' tidak dapat dikonversi ke angka positif.`);
+        continue;
+      }
+      numValue = parsedNum;
+    }
 
     // currency: ISO currency code
     const curr = String(ord.currency || currency || 'IDR').toUpperCase();
@@ -708,7 +767,7 @@ export function generateOrdersMetaCsvString(
     const orderStatus = ord.order_status || 'COMPLETED';
     const notes = ord.notes || ord.catatan || '';
 
-    return [
+    rows.push([
       escapeCsv(eventName),
       escapeCsv(eventTime),
       escapeCsv(numValue),
@@ -724,8 +783,8 @@ export function generateOrdersMetaCsvString(
       escapeCsv(paymentStatus),
       escapeCsv(orderStatus),
       escapeCsv(notes),
-    ].join(',');
-  });
+    ].join(','));
+  }
 
   return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
 }

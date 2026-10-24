@@ -288,12 +288,14 @@ describe('Tenant Dashboard CSV Export & Bulk Import - Meta Offline Event & CAPI 
           phone: '081122334455',
           product_name: 'Barang A',
           total_amount: 160000,
+          event_time: '2026-10-10T10:00:00+07:00',
         },
         {
           customer_name: 'Ani',
           phone: '082233445566',
           product_name: 'Barang B',
           gross_amount: 170000,
+          event_time: '2026-10-10T10:00:00+07:00',
         },
       ];
 
@@ -368,6 +370,172 @@ describe('Tenant Dashboard CSV Export & Bulk Import - Meta Offline Event & CAPI 
 
       // Pastikan tanggal asli 15 Juni 2026 tetap dipertahankan murni, TIDAK diubah ke tanggal hari ini
       expect(lines[1]).toContain('2026-06-15T15:30:00+07:00');
+    });
+  });
+
+  describe('5. P0 Remediation: Strict Meta CAPI & CSV Validation (Zero Silent Fallbacks)', () => {
+    it('formatIsoWithOffset melempar error eksplisit jika Date invalid (tidak fallback ke waktu sekarang)', () => {
+      const invalidDate = new Date('invalid-date-string');
+      expect(() => formatIsoWithOffset(invalidDate, 7)).toThrow(/Date invalid atau bukan objek Date yang valid/);
+      expect(() => formatIsoWithOffset(null as any, 7)).toThrow();
+    });
+
+    it('generateOrdersMetaCsvString menolak baris dengan tanggal invalid (tidak menghasilkan timestamp sekarang)', () => {
+      const invalidDateOrders: OrderRecord[] = [
+        {
+          id: 'ord-bad-date-1',
+          order_id: 'INV-BAD-DATE-1',
+          customer_name: 'Budi Test',
+          customer_phone: '081200000001',
+          total_amount: 150000,
+          created_at: 'invalid-date-format',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-bad-date-2',
+          order_id: 'INV-BAD-DATE-2',
+          customer_name: 'Siti Test',
+          customer_phone: '081200000002',
+          total_amount: 200000,
+          created_at: '',
+          status: 'PAID',
+        },
+      ];
+
+      const csv = generateOrdersMetaCsvString(invalidDateOrders, 'toko-berkah', 'IDR');
+      const lines = csv.split('\r\n').filter(Boolean);
+
+      // Hanya header yang dihasilkan, 0 baris data lolos
+      expect(lines).toHaveLength(1);
+      expect(csv).not.toContain('INV-BAD-DATE-1');
+      expect(csv).not.toContain('INV-BAD-DATE-2');
+      const dataLines = lines.slice(1);
+      expect(dataLines).toHaveLength(0);
+    });
+
+    it('generateOrdersMetaCsvString menolak baris dengan nominal kosong, non-angka, atau <= 0 (tidak menghasilkan 0)', () => {
+      const invalidNominalOrders: OrderRecord[] = [
+        {
+          id: 'ord-zero-1',
+          order_id: 'INV-ZERO-1',
+          customer_name: 'Budi Nol',
+          customer_phone: '081200000001',
+          total_amount: 0,
+          created_at: '2026-10-10T10:00:00.000Z',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-nan-2',
+          order_id: 'INV-NAN-2',
+          customer_name: 'Siti Corrupt',
+          customer_phone: '081200000002',
+          total_amount: 'corrupt-value' as any,
+          created_at: '2026-10-10T10:00:00.000Z',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-empty-3',
+          order_id: 'INV-EMPTY-3',
+          customer_name: 'Andi Kosong',
+          customer_phone: '081200000003',
+          total_amount: '' as any,
+          created_at: '2026-10-10T10:00:00.000Z',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-neg-4',
+          order_id: 'INV-NEG-4',
+          customer_name: 'Rudi Negatif',
+          customer_phone: '081200000004',
+          total_amount: -50000,
+          created_at: '2026-10-10T10:00:00.000Z',
+          status: 'PAID',
+        },
+      ];
+
+      const csv = generateOrdersMetaCsvString(invalidNominalOrders, 'toko-berkah', 'IDR');
+      const lines = csv.split('\r\n').filter(Boolean);
+
+      // Seluruh 4 baris harus ditolak karena nominal tidak valid
+      expect(lines).toHaveLength(1); // Hanya header
+      expect(csv).not.toContain('INV-ZERO-1');
+      expect(csv).not.toContain('INV-NAN-2');
+      expect(csv).not.toContain('INV-EMPTY-3');
+      expect(csv).not.toContain('INV-NEG-4');
+      // Pastikan nominal 0 tidak diproduksi di data row
+      expect(csv).not.toMatch(/,0,/);
+    });
+
+    it('OrderBulkImportService.parseTransactionDate menolak tanggal invalid/kosong (tidak menghasilkan new Date() atau now unix timestamp)', () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+
+      const res1 = OrderBulkImportService.parseTransactionDate('not-a-date');
+      expect(res1.valid).toBe(false);
+      expect(res1.isoString).toBe('');
+      expect(res1.unixSeconds).toBe(0);
+      expect(res1.unixSeconds).not.toBeCloseTo(nowSeconds, -2);
+
+      const res2 = OrderBulkImportService.parseTransactionDate('');
+      expect(res2.valid).toBe(false);
+      expect(res2.unixSeconds).toBe(0);
+
+      const res3 = OrderBulkImportService.parseTransactionDate(null);
+      expect(res3.valid).toBe(false);
+
+      const res4 = OrderBulkImportService.parseTransactionDate(undefined);
+      expect(res4.valid).toBe(false);
+
+      const res5 = OrderBulkImportService.parseTransactionDate(-999);
+      expect(res5.valid).toBe(false);
+    });
+
+    it('OrderBulkImportService.validateRows menolak baris dengan tanggal invalid atau nominal invalid/kosong ke errors array', () => {
+      const corruptRows: RawImportOrderRow[] = [
+        {
+          customer_name: 'Customer Invalid Date',
+          phone: '081234567890',
+          product_name: 'Barang A',
+          total_amount: 150000,
+          event_time: 'bukan-tanggal-valid',
+        },
+        {
+          customer_name: 'Customer Invalid Nominal 0',
+          phone: '081234567891',
+          product_name: 'Barang B',
+          total_amount: 0,
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+        {
+          customer_name: 'Customer Empty Nominal',
+          phone: '081234567892',
+          product_name: 'Barang C',
+          total_amount: '',
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+        {
+          customer_name: 'Customer Corrupt String Nominal',
+          phone: '081234567893',
+          product_name: 'Barang D',
+          total_amount: 'abc-xyz',
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+      ];
+
+      const { valid, errors } = OrderBulkImportService.validateRows(corruptRows);
+
+      // Tidak ada baris yang lolos ke valid
+      expect(valid).toHaveLength(0);
+      // Semua baris tercatat di errors
+      expect(errors).toHaveLength(4);
+
+      // Error baris 1: tanggal invalid
+      expect(errors[0].reason).toMatch(/Tanggal transaksi .* tidak valid/);
+      // Error baris 2: nominal 0 ditolak
+      expect(errors[1].reason).toMatch(/Nominal transaksi .* tidak valid atau harus lebih dari 0/);
+      // Error baris 3: nominal kosong ditolak
+      expect(errors[2].reason).toMatch(/Nominal transaksi .* wajib diisi/);
+      // Error baris 4: nominal non-angka ditolak
+      expect(errors[3].reason).toMatch(/Nominal transaksi .* tidak valid atau mengandung karakter tidak dikenal/);
     });
   });
 });

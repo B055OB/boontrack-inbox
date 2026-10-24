@@ -312,47 +312,68 @@ export class OrderBulkImportService {
   /**
    * Helper: Parse transaction date string or Excel date to ISO string and integer Unix seconds.
    * If date-only (YYYY-MM-DD), parses deterministically with tenant UTC offset (+07:00).
+   * 
+   * STRICT INTEGRITY:
+   * Returns valid: false if date is missing, empty, or unparseable.
+   * NEVER silently falls back to new Date() / current timestamp!
    */
-  public static parseTransactionDate(val: any): { isoString: string; unixSeconds: number } {
-    if (val instanceof Date && !isNaN(val.getTime())) {
-      const ms = val.getTime();
-      return { isoString: val.toISOString(), unixSeconds: Math.floor(ms / 1000) };
+  public static parseTransactionDate(val: any): { valid: boolean; isoString: string; unixSeconds: number; reason?: string } {
+    if (val === undefined || val === null || val === '') {
+      return { valid: false, isoString: '', unixSeconds: 0, reason: 'Tanggal transaksi (kolom event_time/Tanggal) wajib diisi.' };
     }
-    if (typeof val === 'number' && val > 0) {
+
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) {
+        return { valid: false, isoString: '', unixSeconds: 0, reason: 'Tanggal transaksi bukan objek tanggal yang valid.' };
+      }
+      const ms = val.getTime();
+      return { valid: true, isoString: val.toISOString(), unixSeconds: Math.floor(ms / 1000) };
+    }
+
+    if (typeof val === 'number') {
+      if (isNaN(val) || !isFinite(val) || val <= 0) {
+        return { valid: false, isoString: '', unixSeconds: 0, reason: 'Tanggal transaksi dalam format angka/serial tidak valid.' };
+      }
       // Unix timestamp in seconds (10 digits)
       if (val >= 1000000000 && val < 10000000000) {
         const ms = val * 1000;
-        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(val) };
+        return { valid: true, isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(val) };
       }
       // Unix timestamp in milliseconds (13 digits)
       if (val >= 1000000000000 && val < 10000000000000) {
-        return { isoString: new Date(val).toISOString(), unixSeconds: Math.floor(val / 1000) };
+        return { valid: true, isoString: new Date(val).toISOString(), unixSeconds: Math.floor(val / 1000) };
       }
       // Excel serial date number
       const ms = Math.round((val - 25569) * 86400 * 1000);
       const date = new Date(ms);
       if (!isNaN(date.getTime())) {
-        return { isoString: date.toISOString(), unixSeconds: Math.floor(ms / 1000) };
+        return { valid: true, isoString: date.toISOString(), unixSeconds: Math.floor(ms / 1000) };
       }
+      return { valid: false, isoString: '', unixSeconds: 0, reason: `Serial tanggal Excel '${val}' tidak valid.` };
     }
-    if (typeof val === 'string' && val.trim()) {
+
+    if (typeof val === 'string') {
       const s = val.trim();
+      if (!s) {
+        return { valid: false, isoString: '', unixSeconds: 0, reason: 'Tanggal transaksi (kolom event_time/Tanggal) wajib diisi.' };
+      }
       // Numeric string (Unix seconds or ms)
       if (/^\d{10}$/.test(s)) {
         const sec = parseInt(s, 10);
-        return { isoString: new Date(sec * 1000).toISOString(), unixSeconds: sec };
+        return { valid: true, isoString: new Date(sec * 1000).toISOString(), unixSeconds: sec };
       }
       if (/^\d{13}$/.test(s)) {
         const ms = parseInt(s, 10);
-        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(ms / 1000) };
+        return { valid: true, isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(ms / 1000) };
       }
       const parsed = new Date(s);
       if (!isNaN(parsed.getTime())) {
-        return { isoString: parsed.toISOString(), unixSeconds: Math.floor(parsed.getTime() / 1000) };
+        return { valid: true, isoString: parsed.toISOString(), unixSeconds: Math.floor(parsed.getTime() / 1000) };
       }
+      return { valid: false, isoString: '', unixSeconds: 0, reason: `Tanggal transaksi '${s}' tidak valid atau format tidak dikenali.` };
     }
-    const now = new Date();
-    return { isoString: now.toISOString(), unixSeconds: Math.floor(now.getTime() / 1000) };
+
+    return { valid: false, isoString: '', unixSeconds: 0, reason: 'Format tanggal transaksi tidak didukung.' };
   }
 
   /**
@@ -551,8 +572,18 @@ export class OrderBulkImportService {
         row.tanggal ??
         row.date ??
         row.created_at;
+      const parsedDate = this.parseTransactionDate(rawDate);
+      if (!parsedDate.valid) {
+        errors.push({
+          row: rowNum,
+          reason: parsedDate.reason || `Tanggal transaksi '${rawDate}' tidak valid.`,
+          data: row,
+        });
+        return;
+      }
 
-      const { isoString: transactionDate, unixSeconds: unixEventTime } = this.parseTransactionDate(rawDate);
+      const transactionDate = parsedDate.isoString;
+      const unixEventTime = parsedDate.unixSeconds;
 
       const rawInvoice = String(
         row['order_id'] ??
