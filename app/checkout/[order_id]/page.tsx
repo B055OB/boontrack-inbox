@@ -760,23 +760,21 @@ export default function CheckoutPage({ params }: Props) {
 
   const netProductPrice = Number(order?.net_product_price || Math.max(0, basePrice - productDiscount));
 
-  const isOnlineboostTenant =
-    (order?.tenant_slug || '').toLowerCase() === 'onlineboost' ||
-    (tenant?.slug || '').toLowerCase() === 'onlineboost';
-  const isGatewayPayment =
-    isOnlineboostTenant ||
+  // GUARDRAIL P1: Eliminasi Kode Unik pada Payment Gateway / QRIS (Xendit Dynamic QRIS)
+  // Kode unik hanya aktif jika metode pembayaran adalah opsi transfer rekening bank manual.
+  const isGatewayOrQris =
+    !isManual ||
+    order?.payment_method === 'qris' ||
     order?.payment_method === 'xendit' ||
     order?.payment_method === 'xendit_qris' ||
     tenant?.payment_settings?.provider === 'xendit' ||
-    tenant?.metadata?.payment_settings?.provider === 'xendit';
+    tenant?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+    tenant?.metadata?.payment_settings?.provider === 'xendit' ||
+    tenant?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
 
-  const uniqueCode = isGatewayPayment
+  const uniqueCode = isGatewayOrQris
     ? 0
-    : (rawUniqueCode > 0
-        ? rawUniqueCode
-        : (!isManual && (basePrice - productDiscount + netShippingCost) > grossAmount
-            ? (basePrice - productDiscount + netShippingCost) - grossAmount
-            : 0));
+    : (rawUniqueCode > 0 ? rawUniqueCode : 0);
 
   const rawOrderType =
     order?.product_type ||

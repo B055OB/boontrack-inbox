@@ -21,6 +21,8 @@ export interface CreateOrderPayload {
   adminFee?: number;
   uniqueCode?: number;
   paymentMethod?: 'qris' | 'manual_transfer';
+  isGateway?: boolean;
+  isXendit?: boolean;
   affiliateCommission?: number;
   customerName: string;
   customerPhone: string;
@@ -272,17 +274,30 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual
   const adminFee = 0;
 
-  // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Gateway
-  const cleanTenantSlug = String(payload.tenantSlug || '').trim().toLowerCase();
-  const isXenditGatewayTenant =
-    cleanTenantSlug === 'onlineboost' ||
-    String(paymentMethod).toLowerCase().includes('xendit') ||
+  // GUARDRAIL P1: Eliminasi Kode Unik pada Payment Gateway / QRIS (Xendit Dynamic QRIS)
+  // Kode unik hanya aktif jika toko menyediakan / pembeli memilih opsi transfer rekening bank manual.
+  // Untuk QRIS dan payment gateway resmi, tagihan bulat presisi sesuai harga produk (nett).
+  const cleanPaymentMethod = String(paymentMethod || 'qris').trim().toLowerCase();
+  const isManualTransfer =
+    cleanPaymentMethod === 'manual_transfer' ||
+    cleanPaymentMethod === 'manual' ||
+    cleanPaymentMethod === 'bank_transfer' ||
+    cleanPaymentMethod === 'transfer_bank' ||
+    cleanPaymentMethod.includes('manual');
+
+  const isGatewayOrQris =
+    cleanPaymentMethod === 'qris' ||
+    cleanPaymentMethod.includes('qris') ||
+    cleanPaymentMethod.includes('xendit') ||
+    cleanPaymentMethod === 'gateway' ||
+    Boolean(payload.isGateway || payload.isXendit) ||
     tenantRowData?.payment_settings?.provider === 'xendit' ||
     tenantRowData?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
     tenantRowData?.metadata?.payment_settings?.provider === 'xendit' ||
-    tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
+    tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
+    !isManualTransfer;
 
-  const uniqueCode = isXenditGatewayTenant
+  const uniqueCode = isGatewayOrQris
     ? 0
     : (payload.uniqueCode !== undefined && payload.uniqueCode !== null
       ? payload.uniqueCode
@@ -294,16 +309,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }));
 
   let grossAmount = payload.amount;
-  if (isXenditGatewayTenant) {
+  if (isGatewayOrQris) {
     grossAmount = netProductPrice + netShippingCost;
-  } else if (!grossAmount || verifiedOrderBumps.length > 0) {
-    if (paymentMethod === 'qris') {
-      grossAmount = Math.max(1000, (netProductPrice + netShippingCost) - uniqueCode);
-    } else {
-      grossAmount = netProductPrice + netShippingCost + uniqueCode;
-    }
-  } else if (paymentMethod === 'qris' && payload.amount === (netProductPrice + netShippingCost) && uniqueCode > 0) {
-    grossAmount = Math.max(1000, payload.amount - uniqueCode);
+  } else if (!grossAmount || verifiedOrderBumps.length > 0 || grossAmount === (netProductPrice + netShippingCost)) {
+    grossAmount = netProductPrice + netShippingCost + uniqueCode;
   }
 
   const affiliateCommission = payload.affiliateCommission ?? 0;
@@ -859,5 +868,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     qrCodeUrl,
     invoiceUrl,
     referenceToken: payload.reference_token || null,
+    uniqueCode,
+    unique_code: uniqueCode,
+    grossAmount,
+    gross_amount: grossAmount,
   };
 }

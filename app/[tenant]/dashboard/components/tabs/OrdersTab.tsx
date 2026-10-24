@@ -84,6 +84,8 @@ export interface OrdersTabProps {
   loading?: boolean;
   onRefresh?: () => void;
   onOrderUpdated?: (order: OrderItem) => void;
+  onOrdersSynced?: (orders: OrderItem[]) => void;
+  swrIntervalMs?: number;
 }
 
 export function mapRawOrder(o: any): OrderItem {
@@ -143,6 +145,8 @@ export default function OrdersTab({
   loading: propLoading,
   onRefresh: propOnRefresh,
   onOrderUpdated,
+  onOrdersSynced,
+  swrIntervalMs,
 }: OrdersTabProps) {
   const [internalOrders, setInternalOrders] = useState<OrderItem[]>(() => {
     return Array.isArray(propOrders) ? propOrders.map(mapRawOrder) : [];
@@ -154,17 +158,7 @@ export default function OrdersTab({
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-
-  // Sync propOrders ke internalOrders secara reaktif
-  useEffect(() => {
-    if (Array.isArray(propOrders)) {
-      setInternalOrders(propOrders.map(mapRawOrder));
-      setInternalLoading(false);
-    }
-  }, [propOrders]);
-
-  const orders: OrderItem[] = internalOrders;
-  const loading = propLoading ?? internalLoading;
+  const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
 
   // State untuk dialog konfirmasi pembayaran manual
   const [orderToConfirm, setOrderToConfirm] = useState<OrderItem | null>(null);
@@ -173,42 +167,196 @@ export default function OrdersTab({
   // State floating toast notifikasi
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const fetchOrders = useCallback(async () => {
-    if (propOnRefresh) {
-      propOnRefresh();
-      return;
-    }
-    setInternalLoading(true);
-    try {
-      let url = `/api/orders?tenant=${encodeURIComponent(tenantSlug)}`;
-      if (archiveFilter === 'ARCHIVED') {
-        url += '&archived=true';
-      } else if (archiveFilter === 'ALL') {
-        url += '&include_archived=true';
-      }
-      if (dateRange.startDate) url += `&start_date=${encodeURIComponent(dateRange.startDate)}`;
-      if (dateRange.endDate) url += `&end_date=${encodeURIComponent(dateRange.endDate)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const rawList = Array.isArray(data) ? data : (Array.isArray(data?.orders) ? data.orders : Array.isArray(data?.data) ? data.data : []);
-        const mappedList: OrderItem[] = rawList.map(mapRawOrder);
-        setInternalOrders(mappedList);
-      } else {
-        setInternalOrders([]);
-      }
-    } catch (err) {
-      console.warn('Gagal memuat daftar pesanan:', err);
-    } finally {
+  const isFetchingRef = React.useRef(false);
+  const activeAbortRef = React.useRef<AbortController | null>(null);
+
+  // Sync propOrders ke internalOrders secara reaktif (tanpa menimpa status PAID yang sudah valid)
+  useEffect(() => {
+    if (Array.isArray(propOrders) && propOrders.length > 0) {
+      setInternalOrders((prev) => {
+        if (!prev || prev.length === 0) {
+          return propOrders.map(mapRawOrder);
+        }
+        const prevMap = new Map(prev.map((o) => [o.id, o]));
+        return propOrders.map((raw) => {
+          const mapped = mapRawOrder(raw);
+          const existing = prevMap.get(mapped.id);
+          if (
+            existing &&
+            isValidPaidStatus(existing.payment_status || existing.status) &&
+            !isValidPaidStatus(mapped.payment_status || mapped.status)
+          ) {
+            return { ...mapped, ...existing };
+          }
+          return mapped;
+        });
+      });
       setInternalLoading(false);
     }
-  }, [tenantSlug, propOnRefresh, archiveFilter, dateRange.startDate, dateRange.endDate]);
+  }, [propOrders]);
 
+  const orders: OrderItem[] = internalOrders;
+  const loading = propLoading ?? internalLoading;
+
+  // SWR Revalidation: fetch data pesanan terbaru secara efisien dan mutlak terisolasi per tenant
+  const fetchOrders = useCallback(
+    async (options?: { isBackground?: boolean }) => {
+      const isBackground = options?.isBackground === true;
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
+      if (!isBackground) {
+        setInternalLoading(true);
+      }
+
+      try {
+        if (activeAbortRef.current) {
+          activeAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        activeAbortRef.current = controller;
+
+        let url = `/api/orders?tenant=${encodeURIComponent(tenantSlug)}`;
+        if (archiveFilter === 'ARCHIVED') {
+          url += '&archived=true';
+        } else if (archiveFilter === 'ALL') {
+          url += '&include_archived=true';
+        }
+        if (dateRange.startDate) url += `&start_date=${encodeURIComponent(dateRange.startDate)}`;
+        if (dateRange.endDate) url += `&end_date=${encodeURIComponent(dateRange.endDate)}`;
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const rawList = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.orders)
+            ? data.orders
+            : Array.isArray(data?.data)
+            ? data.data
+            : [];
+          const mappedList: OrderItem[] = rawList.map(mapRawOrder);
+
+          setInternalOrders((prev) => {
+            const prevMap = new Map(prev.map((o) => [o.id, o]));
+            const newlyPaidOrders: OrderItem[] = [];
+            let hasAnyDiff = prev.length !== mappedList.length;
+
+            for (const newOrd of mappedList) {
+              const oldOrd = prevMap.get(newOrd.id);
+              if (!oldOrd) {
+                hasAnyDiff = true;
+              } else {
+                const oldStatus = oldOrd.payment_status || oldOrd.status;
+                const newStatus = newOrd.payment_status || newOrd.status;
+                if (
+                  oldStatus !== newStatus ||
+                  oldOrd.is_archived !== newOrd.is_archived ||
+                  oldOrd.shipping_status !== newOrd.shipping_status
+                ) {
+                  hasAnyDiff = true;
+                  if (!isValidPaidStatus(oldStatus) && isValidPaidStatus(newStatus)) {
+                    newlyPaidOrders.push(newOrd);
+                  }
+                }
+              }
+            }
+
+            if (hasAnyDiff) {
+              for (const newOrd of mappedList) {
+                const oldOrd = prevMap.get(newOrd.id);
+                if (oldOrd) {
+                  const oldStatus = oldOrd.payment_status || oldOrd.status;
+                  const newStatus = newOrd.payment_status || newOrd.status;
+                  if (oldStatus !== newStatus) {
+                    onOrderUpdated?.(newOrd);
+                    if (selectedOrder?.id === newOrd.id || selectedOrder?.invoice_no === newOrd.invoice_no) {
+                      setSelectedOrder(newOrd);
+                    }
+                  }
+                }
+              }
+              onOrdersSynced?.(mappedList);
+
+              if (newlyPaidOrders.length > 0) {
+                const first = newlyPaidOrders[0];
+                setToast({
+                  message: `Pesanan #${first.invoice_no} (${first.customer_name}) berhasil diverifikasi LUNAS!`,
+                  type: 'success',
+                });
+                setTimeout(() => setToast(null), 4000);
+              }
+
+              return mappedList;
+            }
+
+            return prev;
+          });
+        }
+        propOnRefresh?.();
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.warn('[OrdersTab SWR] Gagal memuat pesanan:', err);
+        }
+      } finally {
+        isFetchingRef.current = false;
+        if (!isBackground) {
+          setInternalLoading(false);
+        }
+      }
+    },
+    [tenantSlug, archiveFilter, dateRange.startDate, dateRange.endDate, onOrderUpdated, onOrdersSynced, propOnRefresh, selectedOrder]
+  );
+
+  // SWR Realtime Polling & Window Focus / Visibility Invalidation
   useEffect(() => {
-    if (!propOrders || propOrders.length === 0) {
-      fetchOrders();
-    }
-  }, [fetchOrders, propOrders]);
+    if (!tenantSlug) return;
+
+    // 1. Initial fetch on mount (background fetch jika initial propOrders sudah tersedia)
+    fetchOrders({ isBackground: Array.isArray(propOrders) && propOrders.length > 0 });
+
+    // 2. Periodic SWR polling (default 5 detik)
+    const intervalMs = swrIntervalMs || 5000;
+    const timer = setInterval(() => {
+      // Hanya polling jika tab / dokumen browser sedang aktif dilihat (hemat resource & query)
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchOrders({ isBackground: true });
+    }, intervalMs);
+
+    // 3. Window focus & visibilitychange revalidation
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        fetchOrders({ isBackground: true });
+      }
+    };
+
+    // 4. Custom window events (order:paid, order:updated, swr:revalidate:orders)
+    const handleCustomRevalidate = () => {
+      fetchOrders({ isBackground: true });
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('swr:revalidate:orders', handleCustomRevalidate);
+    window.addEventListener('order:paid', handleCustomRevalidate);
+    window.addEventListener('order:updated', handleCustomRevalidate);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('swr:revalidate:orders', handleCustomRevalidate);
+      window.removeEventListener('order:paid', handleCustomRevalidate);
+      window.removeEventListener('order:updated', handleCustomRevalidate);
+      if (activeAbortRef.current) {
+        activeAbortRef.current.abort();
+      }
+    };
+  }, [tenantSlug, fetchOrders, swrIntervalMs, propOrders]);
 
   const handleOrderUpdated = (updatedOrder: OrderItem) => {
     setInternalOrders((prev) =>
@@ -330,7 +478,6 @@ export default function OrdersTab({
     return matchSearch && matchStatus && matchArchive && matchDate;
   });
 
-  const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Aksi Konfirmasi Bayar Manual (Tandai Lunas)
@@ -595,7 +742,7 @@ export default function OrdersTab({
           <button
             type="button"
             id="orders-refresh-btn"
-            onClick={fetchOrders}
+            onClick={() => fetchOrders({ isBackground: false })}
             disabled={loading}
             className="bg-card hover:bg-muted text-foreground border border-border font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
           >

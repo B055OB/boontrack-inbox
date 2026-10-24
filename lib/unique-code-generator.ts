@@ -40,15 +40,25 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
   const cleanSlug = String(tenantSlug || '').trim().toLowerCase();
   const cleanMethod = String(paymentMethod || '').trim().toLowerCase();
 
-  // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Payment Gateway
-  // Official payment gateway QRIS tidak boleh memakai mutasi 3 digit, nominal wajib bulat pas.
-  if (
-    cleanSlug === 'onlineboost' ||
+  // GUARDRAIL P1: Eliminasi Kode Unik pada Payment Gateway / QRIS (Xendit Dynamic QRIS)
+  // Official payment gateway QRIS tidak lagi memakai mutasi 3 digit, nominal wajib bulat pas (nett).
+  // Kode unik HANYA aktif jika toko menyediakan / pembeli memilih opsi transfer rekening bank manual.
+  const isManualTransfer =
+    cleanMethod === 'manual_transfer' ||
+    cleanMethod === 'manual' ||
+    cleanMethod === 'bank_transfer' ||
+    cleanMethod === 'transfer_bank' ||
+    cleanMethod.includes('manual');
+
+  const isGatewayOrQris =
+    cleanMethod === 'qris' ||
+    cleanMethod.includes('qris') ||
     cleanMethod.includes('xendit') ||
     cleanMethod === 'gateway' ||
-    (options as any).isGateway ||
-    (options as any).isXendit
-  ) {
+    Boolean((options as any).isGateway || (options as any).isXendit) ||
+    !isManualTransfer;
+
+  if (isGatewayOrQris) {
     return 0;
   }
 
@@ -141,11 +151,7 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
   for (let c = minCode; c <= maxCode; c++) {
     if (!takenCodes.has(c)) {
       if (baseAmount > 0) {
-        const resultingAmount =
-          paymentMethod === 'qris'
-            ? Math.max(1000, baseAmount - c)
-            : baseAmount + c;
-
+        const resultingAmount = baseAmount + c;
         if (!takenAmounts.has(resultingAmount)) {
           candidatePool.push(c);
         }
