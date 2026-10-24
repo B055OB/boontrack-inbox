@@ -117,13 +117,22 @@ export async function GET(
       metadata.microsite_show_products ??
       true;
 
+    const section10 =
+      metadata.theme_config?.section_10 ||
+      metadata.storefront_sections?.section_10 ||
+      metadata.sections?.section_10 ||
+      metadata.section_10 ||
+      null;
+
     return NextResponse.json({
       success: true,
       slug,
       theme: {
         ...theme,
         show_products: showProducts,
+        section_10: section10,
       },
+      section_10: section10,
       show_products: showProducts,
       tier: tenantRow.tier,
       isTeamScale,
@@ -263,6 +272,29 @@ export async function PUT(
       updatedMetadata.sections.products = { is_active: showProducts };
     }
 
+    if (body.section_10 && typeof body.section_10 === 'object') {
+      const isSec10Active = Boolean(body.section_10.is_enabled ?? body.section_10.is_active);
+      const rawSec10Html =
+        typeof body.section_10.custom_html === 'string'
+          ? body.section_10.custom_html
+          : typeof body.section_10.html_content === 'string'
+          ? body.section_10.html_content
+          : body.section_10.html || '';
+
+      const sec10Config = {
+        is_enabled: isSec10Active,
+        is_active: isSec10Active,
+        custom_html: rawSec10Html,
+        title: body.section_10.title || 'Section 10 Custom HTML',
+      };
+
+      if (!updatedMetadata.theme_config) updatedMetadata.theme_config = {};
+      updatedMetadata.theme_config.section_10 = sec10Config;
+
+      if (!updatedMetadata.sections) updatedMetadata.sections = {};
+      updatedMetadata.sections.section_10 = sec10Config;
+    }
+
     const { error: updateErr } = await supabase
       .from('tenants')
       .update({
@@ -293,6 +325,7 @@ export async function PUT(
       success: true,
       message: 'Template tampilan toko berhasil disimpan.',
       theme: standardizedTheme,
+      section_10: updatedMetadata.theme_config?.section_10,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Gagal memperbarui tema toko';

@@ -1620,7 +1620,7 @@ export default function PersonalAuthorityTemplate({
         }
         return (
           <div className="max-w-5xl mx-auto px-4 w-full">
-            <Section10CustomHtml metadata={meta} />
+            <Section10CustomHtml metadata={meta} tenantSlug={tenantSlug} />
           </div>
         );
       })()}

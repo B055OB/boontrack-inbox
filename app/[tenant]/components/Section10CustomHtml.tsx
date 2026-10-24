@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { useParams } from 'next/navigation';
 
 export interface Section10Config {
   is_enabled?: boolean;
@@ -14,6 +15,7 @@ interface Section10CustomHtmlProps {
   metadata?: Record<string, any> | null;
   sectionConfig?: Section10Config | null;
   className?: string;
+  tenantSlug?: string;
 }
 
 /**
@@ -26,8 +28,10 @@ export default function Section10CustomHtml({
   metadata,
   sectionConfig,
   className = '',
+  tenantSlug: propTenantSlug,
 }: Section10CustomHtmlProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const routeParams = useParams();
 
   // 1. Dynamic resolution across theme_config, storefront_sections, sections, and root metadata
   const sec =
@@ -38,14 +42,33 @@ export default function Section10CustomHtml({
     metadata?.section_10;
 
   const isEnabled = Boolean(sec?.is_enabled ?? sec?.is_active ?? false);
-  const rawHtml = sec?.html_content || sec?.custom_html || sec?.html || '';
+  const rawSourceHtml = sec?.html_content || sec?.custom_html || sec?.html || '';
 
-  // 2. Fail-closed: Zero vertical placeholder leakage if disabled or empty
+  // 2. Strict tenant-scoped asset base resolution (Zero Cross-Tenant Leakage)
+  const effectiveSlug =
+    propTenantSlug ||
+    (routeParams?.tenant as string) ||
+    metadata?.slug ||
+    metadata?.tenant_slug ||
+    sectionConfig?.tenant_slug ||
+    '';
+  const assetBase = effectiveSlug ? `/tenants/${encodeURIComponent(effectiveSlug)}/` : '';
+
+  // Dynamically resolve relative asset references (CSS, JS, images) to tenant directory
+  let rawHtml = rawSourceHtml;
+  if (rawHtml && assetBase) {
+    rawHtml = rawHtml.replace(
+      /(href|src)=["'](?!https?:\/\/|\/|#|data:)([^"']+)["']/gi,
+      (_match: string, attr: string, val: string) => `${attr}="${assetBase}${val}"`
+    );
+  }
+
+  // 3. Fail-closed: Zero vertical placeholder leakage if disabled or empty
   if (!isEnabled || !rawHtml || typeof rawHtml !== 'string' || !rawHtml.trim()) {
     return null;
   }
 
-  // 3. Browser script re-hydration: HTML5 spec ignores script tags in innerHTML / dangerouslySetInnerHTML
+  // 4. Browser script re-hydration: HTML5 spec ignores script tags in innerHTML / dangerouslySetInnerHTML
   useEffect(() => {
     if (!rawHtml || typeof window === 'undefined') return;
 
@@ -62,6 +85,7 @@ export default function Section10CustomHtml({
           newScript.setAttribute(attr.name, attr.value);
         });
         newScript.dataset.hydrated = 'true';
+        newScript.async = false; // Preserve sequential script execution order
 
         // Copy script content
         if (oldScript.innerHTML) {

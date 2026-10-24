@@ -12,6 +12,8 @@ import {
   Smartphone,
   Crown,
   ShoppingBag,
+  Code2,
+  Save,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
@@ -77,6 +79,13 @@ export default function ThemeTab({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Section 10 (Custom HTML) State & Hydration
+  const [isSection10Active, setIsSection10Active] = useState<boolean>(false);
+  const [section10Html, setSection10Html] = useState<string>('');
+  const [section10Title, setSection10Title] = useState<string>('OnlineBoost Batch 1');
+  const [isSavingSec10, setIsSavingSec10] = useState<boolean>(false);
+  const [sec10Toast, setSec10Toast] = useState<string | null>(null);
+
   // Sync state if prop changes externally
   useEffect(() => {
     if (currentVisualTheme && currentVisualTheme !== selectedTheme) {
@@ -90,9 +99,9 @@ export default function ThemeTab({
     }
   }, [showProducts]);
 
-  // Load initial product visibility from Supabase if not provided
+  // Load initial product visibility and Section 10 from Supabase
   useEffect(() => {
-    async function loadVisibility() {
+    async function loadThemeSettings() {
       try {
         const supabase = getSupabase();
         if (!supabase) return;
@@ -110,14 +119,26 @@ export default function ThemeTab({
           meta.microsite?.show_products ??
           meta.microsite_show_products ??
           true;
-        setShowProductsState(Boolean(isProdVisible));
+        if (showProducts === undefined) {
+          setShowProductsState(Boolean(isProdVisible));
+        }
+
+        // Hydrate Section 10 configuration
+        const sec10 =
+          meta.theme_config?.section_10 ||
+          meta.storefront_sections?.section_10 ||
+          meta.sections?.section_10 ||
+          meta.section_10;
+        if (sec10) {
+          setIsSection10Active(Boolean(sec10.is_enabled ?? sec10.is_active));
+          setSection10Html(sec10.custom_html || sec10.html_content || sec10.html || '');
+          if (sec10.title) setSection10Title(sec10.title);
+        }
       } catch (err) {
-        console.debug('[ThemeTab] Load visibility error:', err);
+        console.debug('[ThemeTab] Load theme settings error:', err);
       }
     }
-    if (showProducts === undefined) {
-      loadVisibility();
-    }
+    loadThemeSettings();
   }, [tenantSlug, showProducts]);
 
   const isThemeLocked = useCallback(
@@ -314,6 +335,88 @@ export default function ThemeTab({
       setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveSection10 = async (overrideEnabled?: boolean) => {
+    if (isSubscriptionExpired) {
+      setErrorMessage('Masa aktif toko telah habis. Lakukan perpanjangan untuk mengubah pengaturan.');
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
+    const enabledToSave = overrideEnabled !== undefined ? overrideEnabled : isSection10Active;
+    setIsSavingSec10(true);
+    setSec10Toast(null);
+
+    try {
+      const supabase = getSupabase();
+      let currentMeta: Record<string, any> = {};
+
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        currentMeta = tenantRow?.metadata || {};
+      }
+
+      const sec10Data = {
+        is_enabled: enabledToSave,
+        is_active: enabledToSave,
+        custom_html: section10Html,
+        title: section10Title || 'OnlineBoost Batch 1',
+      };
+
+      const updatedMeta = {
+        ...currentMeta,
+        theme_config: {
+          ...(currentMeta.theme_config || {}),
+          section_10: sec10Data,
+        },
+        sections: {
+          ...(currentMeta.sections || {}),
+          section_10: sec10Data,
+        },
+      };
+
+      if (supabase) {
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('slug', tenantSlug);
+      }
+
+      // Sync to Theme API for server revalidation
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section_10: sec10Data,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('[ThemeTab] Theme API Section 10 sync note:', apiErr);
+      }
+
+      const notice = enabledToSave
+        ? 'Section 10 (Custom HTML) berhasil disimpan dan aktif di storefront.'
+        : 'Section 10 (Custom HTML) dinonaktifkan dari storefront.';
+      setSec10Toast(notice);
+      onSaved?.(notice);
+      setTimeout(() => setSec10Toast(null), 3500);
+    } catch (err: any) {
+      console.warn('[ThemeTab] Gagal menyimpan Section 10:', err);
+      setErrorMessage('Gagal menyimpan Section 10 (Custom HTML). Silakan coba lagi.');
+      setTimeout(() => setErrorMessage(null), 4000);
+    } finally {
+      setIsSavingSec10(false);
     }
   };
 
@@ -526,6 +629,107 @@ export default function ThemeTab({
                 </div>
               );
             })}
+          </div>
+
+          {/* Card Section 10: Custom HTML & Landing Page Synchronization */}
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+                    isSection10Active
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <Code2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-foreground">
+                      Section 10 (Custom HTML &amp; Landing Page)
+                    </h3>
+                    <span
+                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                        isSection10Active
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                      }`}
+                    >
+                      {isSection10Active ? 'Aktif di Storefront' : 'Non-Aktif'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Injeksi kode HTML, CSS, dan JavaScript landing page kustom dengan rehidrasi skrip dinamis.
+                  </p>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isSection10Active}
+                  disabled={isSavingSec10 || isSubscriptionExpired}
+                  onChange={(e) => {
+                    const nextVal = e.target.checked;
+                    setIsSection10Active(nextVal);
+                    handleSaveSection10(nextVal);
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+
+            {/* Feedback Banner Section 10 */}
+            {sec10Toast && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800/80 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="font-semibold">{sec10Toast}</span>
+              </div>
+            )}
+
+            {/* Custom HTML Code Editor / Textarea */}
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-medium">Konten Custom HTML (Section 10)</span>
+                <span className="font-mono text-[11px]">
+                  {section10Html ? `${section10Html.length.toLocaleString('id-ID')} karakter` : 'Kosong'}
+                </span>
+              </div>
+
+              <textarea
+                value={section10Html}
+                onChange={(e) => setSection10Html(e.target.value)}
+                placeholder="<!-- Masukkan kode HTML landing page, skrip, dan stylesheet di sini -->"
+                rows={8}
+                className="w-full p-3 font-mono text-xs rounded-xl bg-slate-950 text-slate-100 border border-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-y leading-relaxed"
+              />
+
+              <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  Tag &lt;script&gt; dan &lt;style&gt; dipertahankan penuh tanpa pemotongan.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSaveSection10()}
+                  disabled={isSavingSec10 || isSubscriptionExpired}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSec10 ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Simpan Section 10</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Pengaturan Custom Domain Toko */}
