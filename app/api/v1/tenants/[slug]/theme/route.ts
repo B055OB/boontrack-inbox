@@ -4,6 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export type VisualThemeType =
   | 'clean_minimal'
@@ -138,6 +142,15 @@ export async function PUT(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // 0. Enforce Server-Authoritative Authentication & Role Authorization (P0 Security Mandate)
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     // 1. Enforce Subscription Mutation Guard (Read-only mode for expired trial)
     const perm = await checkTenantMutationPermission(slug);

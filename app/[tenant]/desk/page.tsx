@@ -393,16 +393,21 @@ export default function DeskOperatorPage() {
   };
 
   // ── Action: Logout ──
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      document.cookie = 'merchant_store=; path=/; max-age=0;';
-      document.cookie = 'merchant_session=; path=/; max-age=0;';
-      document.cookie = 'bt_tenant=; path=/; max-age=0;';
-      localStorage.removeItem('merchant_store');
-      localStorage.removeItem('merchant_session');
-      localStorage.removeItem('bt_tenant');
+  // ── Action: Logout ──
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error('Gagal mengakhiri sesi pada server.');
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+      }
+      router.push(`/login?redirectTo=/${tenantSlug}/desk`);
+    } catch (err: any) {
+      console.error('Logout error:', err);
+      alert(err.message || 'Gagal logout dari server. Silakan coba kembali.');
     }
-    router.push(`/login?redirectTo=/${tenantSlug}/desk`);
   };
 
   return (

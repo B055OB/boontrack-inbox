@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 import { recordResellerCommissionOnCanonicalEvent } from '@/lib/store-reseller';
+import { verifyOrderMutationAuthorization } from '@/lib/auth/order-auth-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,15 @@ export async function POST(
       return NextResponse.json(
         { success: false, error: `Order #${orderId} not found` },
         { status: 404 }
+      );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const authResult = await verifyOrderMutationAuthorization(req, order);
+    if (!authResult.authorized) {
+      return NextResponse.json(
+        { success: false, error: authResult.error || 'Unauthorized' },
+        { status: authResult.status }
       );
     }
 

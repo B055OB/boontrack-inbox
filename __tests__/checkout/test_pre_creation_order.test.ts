@@ -201,6 +201,7 @@ const mockSupabaseAdmin = {
 import { POST as createQrisHandler } from '@/app/api/v1/payments/qris/create/route';
 import { POST as readerNotificationHandler } from '@/app/api/v1/reader/notification/route';
 import { POST as quickPaidHandler } from '@/app/api/v1/tenants/[slug]/orders/[id]/quick-paid/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
   const testOrderId = 'ORD-TEST-998877';
@@ -335,8 +336,12 @@ describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
       },
     };
 
+    const merchantToken = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
     const req = new NextRequest(`http://localhost:3000/api/v1/tenants/demo-store/orders/${testOrderId}/quick-paid`, {
       method: 'POST',
+      headers: {
+        cookie: `bt_merchant_token=${merchantToken}`,
+      },
     });
 
     const params = Promise.resolve({ slug: 'demo-store', id: testOrderId });
@@ -357,5 +362,44 @@ describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
     expect(mockDispatchedNotifications.length).toBe(1);
     expect(mockDispatchedNotifications[0].orderId).toBe(testOrderId);
     expect(mockDispatchedNotifications[0].accessUrl).toBe('https://t.me/joinchat/digital_mastery');
+  });
+
+  it('4. Rejects unauthenticated Quick-Paid button request with 401 Unauthorized', async () => {
+    // Seed pre-created pending order
+    mockOrdersDb[testOrderId] = {
+      id: testOrderId,
+      tenant_slug: 'demo-store',
+      customer_name: 'Budi Santoso',
+      customer_phone: '081234567890',
+      gross_amount: 99450,
+      product_id: 'prod_99',
+      product_title: 'Ecourse Digital Mastery',
+      status: 'PENDING',
+      payment_status: 'PENDING',
+      order_status: 'PENDING',
+    };
+
+    const initialNotificationCount = mockDispatchedNotifications.length;
+
+    const unauthReq = new NextRequest(`http://localhost:3000/api/v1/tenants/demo-store/orders/${testOrderId}/quick-paid`, {
+      method: 'POST',
+    });
+
+    const params = Promise.resolve({ slug: 'demo-store', id: testOrderId });
+    const res = await quickPaidHandler(unauthReq, { params });
+    expect(res.status).toBe(401);
+
+    const data = await res.json();
+    expect(data.success).toBe(false);
+
+    // Verify order remains strictly PENDING across status fields
+    const orderInDb = mockOrdersDb[testOrderId];
+    expect(orderInDb.status).toBe('PENDING');
+    expect(orderInDb.payment_status).toBe('PENDING');
+    expect(orderInDb.order_status).toBe('PENDING');
+
+    // Verify no fulfillment notifications were dispatched
+    expect(mockDispatchedNotifications.length).toBe(initialNotificationCount);
+    expect(mockDispatchedNotifications.length).toBe(0);
   });
 });

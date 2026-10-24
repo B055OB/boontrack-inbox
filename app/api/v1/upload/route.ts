@@ -191,7 +191,62 @@ export function getR2Client(): { client: S3Client; bucket: string; publicUrlBase
 }
 
 /**
- * Failover resilient engine: Simpan asset ke Supabase Storage (bucket: store-assets)
+ * Resolves Supabase storage bucket dynamically with staging isolation awareness.
+ */
+export function getSupabaseStorageBucket(): string {
+  const custom = cleanEnv(process.env.SUPABASE_STORAGE_BUCKET);
+  if (custom) return custom;
+  const isStaging =
+    process.env.VERCEL_ENV === 'preview' ||
+    process.env.APP_ENV === 'staging';
+  if (isStaging) return ''; // Fail-closed di staging jika bucket staging belum didefinisikan
+  return 'store-assets';
+}
+
+/**
+ * Validates write permission for a specific storage engine independently.
+ * Prevents accidental write-throughs to production buckets when in staging/preview.
+ */
+export function isStorageTargetAllowedForWrite(target: 'r2' | 'supabase'): {
+  allowed: boolean;
+  reason?: string;
+} {
+  const isStaging =
+    process.env.VERCEL_ENV === 'preview' ||
+    process.env.APP_ENV === 'staging';
+
+  if (!isStaging) {
+    // Lingkungan produksi dan pengujian lokal non-staging diizinkan
+    return { allowed: true };
+  }
+
+  if (target === 'r2') {
+    const r2Bucket = cleanEnv(process.env.R2_BUCKET_NAME);
+    if (!r2Bucket || r2Bucket === 'boontrack-media') {
+      return {
+        allowed: false,
+        reason: "Target R2 masih menunjuk bucket produksi ('boontrack-media') atau belum dikonfigurasi.",
+      };
+    }
+    return { allowed: true };
+  }
+
+  if (target === 'supabase') {
+    const sbBucket = getSupabaseStorageBucket();
+    if (!sbBucket || sbBucket === 'store-assets') {
+      return {
+        allowed: false,
+        reason: "Target Supabase masih menunjuk bucket produksi ('store-assets') atau belum dikonfigurasi.",
+      };
+    }
+    return { allowed: true };
+  }
+
+  return { allowed: false, reason: 'Target storage tidak dikenal.' };
+}
+
+/**
+ * Failover resilient engine: Simpan asset ke Supabase Storage
  */
 export async function uploadToSupabaseStorage(
   buffer: Buffer,
@@ -206,16 +261,22 @@ export async function uploadToSupabaseStorage(
       return null;
     }
 
+    const targetBucket = getSupabaseStorageBucket();
+    if (!targetBucket) {
+      console.warn('[Upload Route] Supabase upload aborted: No valid staging bucket configured');
+      return null;
+    }
+
     // 1. Coba upload langsung dengan path standar: products/... atau media/...
     const { error: directError } = await supabase.storage
-      .from('store-assets')
+      .from(targetBucket)
       .upload(key, buffer, {
         contentType,
         upsert: true,
       });
 
     if (!directError) {
-      const { data: pubData } = supabase.storage.from('store-assets').getPublicUrl(key);
+      const { data: pubData } = supabase.storage.from(targetBucket).getPublicUrl(key);
       return { publicUrl: pubData.publicUrl, path: `/${key}` };
     }
 
@@ -224,14 +285,14 @@ export async function uploadToSupabaseStorage(
     // 2. Fallback: upload dengan prefix tenantSlug jika direktori scoped
     const tenantKey = `${tenantSlug}/${key}`;
     const { error: tenantError } = await supabase.storage
-      .from('store-assets')
+      .from(targetBucket)
       .upload(tenantKey, buffer, {
         contentType,
         upsert: true,
       });
 
     if (!tenantError) {
-      const { data: tPub } = supabase.storage.from('store-assets').getPublicUrl(tenantKey);
+      const { data: tPub } = supabase.storage.from(targetBucket).getPublicUrl(tenantKey);
       return { publicUrl: tPub.publicUrl, path: `/${tenantKey}` };
     }
 
@@ -277,7 +338,9 @@ export async function POST(req: NextRequest) {
 
     // Engine 1: Cloudflare R2 Upload via S3Client
     const r2Config = getR2Client();
-    if (r2Config) {
+    const r2WriteGuard = isStorageTargetAllowedForWrite('r2');
+
+    if (r2Config && r2WriteGuard.allowed) {
       try {
         const s3Promise = r2Config.client.send(
           new PutObjectCommand({
@@ -289,11 +352,17 @@ export async function POST(req: NextRequest) {
         );
 
         // Timeout 5 detik agar jika TLS handshake bermasalah di Vercel edge, langsung failover tanpa hang
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Cloudflare R2 timeout (5000ms)')), 5000)
-        );
+        let timer: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Cloudflare R2 timeout (5000ms)')), 5000);
+          if (timer.unref) timer.unref();
+        });
 
-        await Promise.race([s3Promise, timeoutPromise]);
+        try {
+          await Promise.race([s3Promise, timeoutPromise]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
 
         const canonicalAssetUrl = `${r2Config.publicUrlBase}/${key}`;
         const rawR2Url = canonicalAssetUrl;
@@ -301,25 +370,35 @@ export async function POST(req: NextRequest) {
         storageEngine = 'cloudflare_r2';
         uploadSuccess = true;
 
-        // Async sync ke Supabase Storage sebagai replika backup
-        uploadToSupabaseStorage(
-          buffer,
-          key,
-          tenantSlug,
-          file.type || (isQris ? 'image/png' : 'image/webp')
-        ).catch((sbErr) => {
-          console.debug('[Upload Route] Background backup sync note:', sbErr);
-        });
+        // Async sync ke Supabase Storage sebagai replika backup hanya jika target Supabase terisolasi aman
+        const sbReplicaGuard = isStorageTargetAllowedForWrite('supabase');
+        if (sbReplicaGuard.allowed) {
+          uploadToSupabaseStorage(
+            buffer,
+            key,
+            tenantSlug,
+            file.type || (isQris ? 'image/png' : 'image/webp')
+          ).catch((sbErr) => {
+            console.debug('[Upload Route] Background backup sync note:', sbErr);
+          });
+        } else {
+          console.warn(`[STORAGE_SECURITY] Staging background sync to Supabase bypassed: ${sbReplicaGuard.reason}`);
+        }
       } catch (r2Err: any) {
         console.warn('[Upload Route] Primary R2 upload failed, initiating Supabase Storage failover:', r2Err?.message || r2Err);
         uploadErrorMsg = formatUploadError(r2Err);
       }
     } else {
-      console.warn('[Upload Route] Cloudflare R2 not configured, utilizing Supabase Storage as primary engine.');
+      if (!r2WriteGuard.allowed) {
+        console.warn(`[STORAGE_SECURITY] Staging primary R2 upload bypassed: ${r2WriteGuard.reason}`);
+      } else {
+        console.warn('[Upload Route] Cloudflare R2 not configured, utilizing Supabase Storage as primary engine.');
+      }
     }
 
     // Engine 2: Supabase Storage Failover
-    if (!uploadSuccess) {
+    const sbFailoverGuard = isStorageTargetAllowedForWrite('supabase');
+    if (!uploadSuccess && sbFailoverGuard.allowed) {
       console.log(`[Upload Route] Executing Supabase Storage upload for tenant: ${tenantSlug}...`);
       const sbResult = await uploadToSupabaseStorage(
         buffer,
@@ -333,13 +412,21 @@ export async function POST(req: NextRequest) {
         storageEngine = 'supabase_storage';
         uploadSuccess = true;
       }
+    } else if (!uploadSuccess && !sbFailoverGuard.allowed) {
+      console.warn(`[STORAGE_SECURITY] Staging failover to Supabase blocked: ${sbFailoverGuard.reason}`);
     }
 
     if (!uploadSuccess || !finalUrl) {
+      const isStaging = process.env.VERCEL_ENV === 'preview' || process.env.APP_ENV === 'staging';
+      const stagingBlockedMsg =
+        !r2WriteGuard.allowed && !sbFailoverGuard.allowed
+          ? 'Akses upload staging diblokir: Seluruh target storage (R2 & Supabase) belum terisolasi dari bucket produksi.'
+          : (uploadErrorMsg || 'Gagal mengunggah media ke semua server cloud storage. Silakan coba beberapa saat lagi.');
+
       return NextResponse.json(
         {
           status: 'error',
-          detail: uploadErrorMsg || 'Gagal mengunggah media ke semua server cloud storage. Silakan coba beberapa saat lagi.',
+          detail: isStaging ? stagingBlockedMsg : (uploadErrorMsg || 'Gagal mengunggah media ke semua server cloud storage. Silakan coba beberapa saat lagi.'),
         },
         { status: 500 }
       );

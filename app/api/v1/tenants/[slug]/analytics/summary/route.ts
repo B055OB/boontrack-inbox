@@ -3,6 +3,10 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { calculateFinancialMetrics } from '@/lib/finance-engine';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +26,15 @@ export async function GET(
         orders_count: 0,
         total_omzet: 0,
       });
+    }
+
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(_req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const supabase = getSupabaseAdmin() || getSupabase();

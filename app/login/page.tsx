@@ -223,85 +223,46 @@ function MerchantLoginForm() {
       return;
     }
 
+    if (!accessKey.trim()) {
+      setErrorMessage(
+        isPublicService
+          ? 'Silakan masukkan PIN / Kode Akses Operator.'
+          : 'Silakan masukkan PIN / Password akses toko Anda.'
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 1. Dynamic Check via Supabase Database (ZERO HARDCODING POLICY)
-      let storeExists = false;
-      let expectedPin: string | null = null;
-      let resolvedTenantName: string | null = null;
+      // Server-Authoritative Owner Login (P0 Security Mandate)
+      const res = await fetch('/api/v1/auth/owner-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: cleanSlug,
+          accessKey: accessKey.trim(),
+          redirectTo: resolvedRedirect || searchParams.get('redirectTo') || undefined,
+        }),
+      });
 
-      try {
-        const supabase = getSupabase();
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('slug, name, metadata, tier, access_password')
-          .eq('slug', cleanSlug)
-          .maybeSingle();
+      const data = await res.json();
 
-        if (tenantRow) {
-          storeExists = true;
-          resolvedTenantName = tenantRow.metadata?.title || tenantRow.name || null;
-          const meta = tenantRow.metadata || {};
-          expectedPin =
-            meta.access_pin ||
-            meta.pin_hash ||
-            meta.pin ||
-            tenantRow.access_password ||
-            null;
-        } else {
-          // Fallback check core backend API check-slug
-          const res = await fetch(`https://api.boontrack.com/api/v1/shop/subscriptions/check-slug/${cleanSlug}`, {
-            cache: 'no-store',
-          });
-          const data = await res.json();
-          if (data.available === false) {
-            storeExists = true;
-          }
-        }
-      } catch {
-        // Fallback network tolerance
-        storeExists = true;
-      }
-
-      if (!storeExists) {
-        setErrorMessage(
-          isPublicService
-            ? `Unit layanan "${cleanSlug}" belum terdaftar. Silakan periksa ID Operator Anda.`
-            : `Toko "${cleanSlug}" belum terdaftar. Silakan daftar toko baru atau periksa penulisan nama toko Anda.`
-        );
+      if (!res.ok || !data.success) {
+        setErrorMessage(data.error || 'Autentikasi gagal. Periksa kembali nama toko dan PIN akses Anda.');
         setLoading(false);
         return;
       }
 
-      // 2. Validate PIN / Access Password if configured on tenant
-      if (expectedPin) {
-        if (!accessKey.trim()) {
-          setErrorMessage(
-            isPublicService
-              ? 'Loket ini dilindungi PIN / Password. Silakan masukkan PIN / Kode Akses Operator Anda.'
-              : 'Toko ini dilindungi PIN. Silakan masukkan PIN / Password akses toko Anda.'
-          );
-          setLoading(false);
-          return;
-        }
-        if (expectedPin !== accessKey.trim()) {
-          setErrorMessage(
-            isPublicService
-              ? 'PIN / Kode Akses Operator yang Anda masukkan salah. Hubungi Administrator SIMDUK kelurahan.'
-              : 'PIN / Password akses yang Anda masukkan salah. Gunakan opsi "Lupa PIN" jika memerlukan bantuan.'
-          );
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 3. Persist session state to localStorage & cookies (Guarantees zero redirect loops)
+      // Persist client state (Non-sensitive store slug and user role)
       if (typeof window !== 'undefined') {
         localStorage.setItem('merchant_store', cleanSlug);
         localStorage.setItem('merchant_session', cleanSlug);
         localStorage.setItem('bt_tenant', cleanSlug);
-        if (accessKey.trim()) localStorage.setItem('merchant_pin', accessKey.trim());
+        localStorage.setItem('user_role', 'OWNER');
+        localStorage.removeItem('cs_user_phone');
+        localStorage.removeItem('cs_user_name');
+        localStorage.removeItem('merchant_pin'); // P0 SECURITY: Purge plaintext PIN from browser storage
         localStorage.setItem('merchant_login_at', new Date().toISOString());
 
         document.cookie = `merchant_store=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
@@ -311,30 +272,16 @@ function MerchantLoginForm() {
 
       setSuccessMessage(
         isPublicService
-          ? `Akses operator terverifikasi! Mengalihkan ke Desk Operator ${resolvedTenantName || tenantTitle || cleanSlug.toUpperCase()}...`
+          ? `Akses operator terverifikasi! Mengalihkan ke Desk Operator ${data.tenant?.name || tenantTitle || cleanSlug.toUpperCase()}...`
           : `Toko terverifikasi! Mengalihkan ke Dashboard ${cleanSlug.toUpperCase()}...`
       );
 
+      const dest = data.redirectUrl || (isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard`);
+
+      // Deterministic navigation without race condition
       setTimeout(() => {
-        let dest = isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard`;
-        if (typeof window !== 'undefined') {
-          const isDashboardHost =
-            window.location.hostname === 'shop.boontrack.com' ||
-            window.location.hostname.startsWith('dashboard.');
-          if (isDashboardHost && !isPublicService) {
-            dest = `/${cleanSlug}`;
-          }
-          const params = new URLSearchParams(window.location.search);
-          const redirectParam = params.get('redirectTo');
-          if (redirectParam && redirectParam.startsWith('/')) {
-            dest = redirectParam;
-          }
-        }
-        router.push(dest);
-        setTimeout(() => {
-          window.location.href = dest;
-        }, 300);
-      }, 500);
+        window.location.href = dest;
+      }, 400);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kendala saat memeriksa akses. Silakan coba lagi.';
       setErrorMessage(msg);
@@ -398,8 +345,10 @@ function MerchantLoginForm() {
         localStorage.setItem('merchant_store', cleanSlug);
         localStorage.setItem('merchant_session', cleanSlug);
         localStorage.setItem('bt_tenant', cleanSlug);
-        localStorage.setItem('cs_user_name', data.user?.name || (isPublicService ? 'Petugas Lapangan' : 'CS Agent'));
-        localStorage.setItem('cs_user_phone', data.user?.phone || csPhone.trim());
+        localStorage.setItem('user_role', 'CS');
+        localStorage.removeItem('merchant_pin'); // P0 SECURITY: Purge plaintext PIN
+        localStorage.setItem('cs_user_name', data.cs?.name || data.user?.name || (isPublicService ? 'Petugas Lapangan' : 'CS Agent'));
+        localStorage.setItem('cs_user_phone', data.cs?.phone || data.user?.phone || csPhone.trim());
         localStorage.setItem('merchant_login_at', new Date().toISOString());
 
         document.cookie = `merchant_store=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
@@ -409,17 +358,16 @@ function MerchantLoginForm() {
 
       setSuccessMessage(
         isPublicService
-          ? `Login Petugas Berhasil! Selamat datang, ${data.user?.name || 'Petugas'}. Mengalihkan ke Loket...`
-          : `Login CS Berhasil! Selamat datang, ${data.user?.name || 'CS'}. Mengalihkan ke Inbox...`
+          ? `Login Petugas Berhasil! Selamat datang, ${data.cs?.name || data.user?.name || 'Petugas'}. Mengalihkan ke Loket...`
+          : `Login CS Berhasil! Selamat datang, ${data.cs?.name || data.user?.name || 'CS'}. Mengalihkan ke Inbox...`
       );
 
+      const dest = data.redirectUrl || (isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard?tab=inbox`);
+
+      // Deterministic navigation without race condition
       setTimeout(() => {
-        const dest = isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard?tab=inbox`;
-        router.push(dest);
-        setTimeout(() => {
-          window.location.href = dest;
-        }, 300);
-      }, 500);
+        window.location.href = dest;
+      }, 400);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat login.';
       setErrorMessage(msg);
@@ -633,6 +581,7 @@ function MerchantLoginForm() {
                 <div className="relative">
                   <input
                     type="password"
+                    required
                     value={accessKey}
                     onChange={(e) => setAccessKey(e.target.value)}
                     placeholder="••••••••"
@@ -661,7 +610,7 @@ function MerchantLoginForm() {
               {/* Button Submit */}
               <button
                 type="submit"
-                disabled={loading || !storeSlug.trim()}
+                disabled={loading || !storeSlug.trim() || !accessKey.trim()}
                 className={`w-full py-3.5 ${
                   isPublicService
                     ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'

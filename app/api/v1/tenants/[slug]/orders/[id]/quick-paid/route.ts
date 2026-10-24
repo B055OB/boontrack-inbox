@@ -8,6 +8,7 @@ import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 import { recordResellerCommissionOnCanonicalEvent } from '@/lib/store-reseller';
+import { verifyOrderMutationAuthorization } from '@/lib/auth/order-auth-guard';
 
 export async function POST(
   req: NextRequest,
@@ -161,6 +162,19 @@ export async function POST(
           error: `Order not found: ${orderIdentifier}${searchErr ? ' (' + (searchErr.message || searchErr) + ')' : ''}`,
         },
         { status: 404 }
+      );
+    }
+
+    // ── STRICT SERVER-SIDE AUTHENTICATION & RBAC GUARD (P0 SECURITY MANDATE) ──
+    const effectiveScopeSlug = slug || tenantSlugFromSession;
+    const authResult = await verifyOrderMutationAuthorization(req, order, effectiveScopeSlug);
+    if (!authResult.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: authResult.error || 'Unauthorized: Anda tidak memiliki wewenang untuk mengubah status finansial pesanan ini.',
+        },
+        { status: authResult.status || 401 }
       );
     }
 

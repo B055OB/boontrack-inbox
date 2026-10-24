@@ -17,6 +17,7 @@
 
 import { NextRequest } from 'next/server';
 import { middleware } from '@/middleware';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () => {
   describe('A. studio.boontrack.com Host Detection & Rewriting', () => {
@@ -141,11 +142,12 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/studio/fcd-automator');
     });
 
-    it('11. Redirects authenticated user with active session cookie from root / to /desk', async () => {
+    it('11. Redirects authenticated user with valid HMAC session token from root / to /desk', async () => {
+      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
       const req = new NextRequest('https://studio.boontrack.com/', {
         headers: {
           host: 'studio.boontrack.com',
-          cookie: 'merchant_store=my-studio-brand; studio_session=true',
+          cookie: `bt_merchant_token=${validToken}`,
         },
       });
 
@@ -155,7 +157,37 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(location).toBe('https://studio.boontrack.com/desk');
     });
 
-    it('12. Redirects authenticated user visiting /studio to /desk', async () => {
+    it('11b. Rejects unauthenticated user with raw/plain cookie from root / and rewrites to /studio landing', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/', {
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: 'merchant_store=my-studio-brand; studio_session=true',
+        },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio');
+    });
+
+    it('12. Redirects authenticated user with valid HMAC session token visiting /studio to /desk', async () => {
+      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
+      const req = new NextRequest('https://studio.boontrack.com/studio', {
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(307);
+      const location = res.headers.get('location');
+      expect(location).toBe('https://studio.boontrack.com/desk');
+    });
+
+    it('12b. Rejects unauthenticated user with raw/plain cookie visiting /studio and passes through to landing page', async () => {
       const req = new NextRequest('https://studio.boontrack.com/studio', {
         headers: {
           host: 'studio.boontrack.com',
@@ -164,9 +196,9 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(307);
-      const location = res.headers.get('location');
-      expect(location).toBe('https://studio.boontrack.com/desk');
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeNull();
     });
 
     it('13. Rewrites /login to /login on studio.boontrack.com', async () => {

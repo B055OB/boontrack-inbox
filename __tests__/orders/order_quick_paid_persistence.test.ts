@@ -15,6 +15,7 @@
 import { NextRequest } from 'next/server';
 import { POST as quickPaidRoute } from '@/app/api/v1/tenants/[slug]/orders/[id]/quick-paid/route';
 import { POST as approveRoute } from '@/app/api/orders/[orderId]/approve/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 let mockOrdersDatabase: any[] = [];
 let mockAuditLogsDatabase: any[] = [];
@@ -195,11 +196,13 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
   describe('1. POST /api/v1/tenants/[slug]/orders/[id]/quick-paid', () => {
     it('successfully persists PAID status, paid_at, and writes to order_audit_logs for UUID order', async () => {
       const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${orderUuid}/quick-paid`, {
         method: 'POST',
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'user-agent': 'Mozilla/5.0 Test Dashboard',
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -235,9 +238,13 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
 
     it('safely handles non-UUID string order ID without throwing Postgres syntax error', async () => {
       const stringOrderId = 'ORD-STRING-999';
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${stringOrderId}/quick-paid`, {
         method: 'POST',
-        headers: { host: 'dashboard.boontrack.com' },
+        headers: {
+          host: 'dashboard.boontrack.com',
+          cookie: `bt_merchant_token=${token}`,
+        },
       });
 
       const res = await quickPaidRoute(req, {
@@ -268,9 +275,13 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
         paid_at: null,
       });
 
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${legacyId}/quick-paid`, {
         method: 'POST',
-        headers: { host: 'dashboard.boontrack.com' },
+        headers: {
+          host: 'dashboard.boontrack.com',
+          cookie: `bt_merchant_token=${token}`,
+        },
       });
 
       const res = await quickPaidRoute(req, {
@@ -302,10 +313,11 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
         paid_at: null,
       });
 
+      const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${buzzerOrderId}/quick-paid`, {
         method: 'POST',
         headers: {
-          cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -339,10 +351,11 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
         paid_at: null,
       });
 
+      const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${displayOrderNum}/quick-paid`, {
         method: 'POST',
         headers: {
-          cookie: 'merchant_store=buzzerukm',
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -358,15 +371,127 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
       const stored = mockOrdersDatabase.find((o) => o.id === internalId);
       expect(stored.status).toBe('PAID');
     });
+
+    it('[P0 RBAC] Rejects quick-paid mutation when authenticated role is CS with 403 Forbidden', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const csToken = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'CS' });
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${orderUuid}/quick-paid`, {
+        method: 'POST',
+        headers: {
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'demo-store', id: orderUuid }),
+      });
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('tidak memiliki wewenang');
+    });
+
+    it('[P0 SECURITY] Rejects unauthenticated quick-paid request with 401 Unauthorized', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${orderUuid}/quick-paid`, {
+        method: 'POST',
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'demo-store', id: orderUuid }),
+      });
+
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+    });
+
+    it('[P0 TENANT ISOLATION] Rejects cross-tenant quick-paid request with 403 Forbidden', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const alienToken = signMerchantSessionToken({ tenantSlug: 'evil-tenant', role: 'OWNER' });
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${orderUuid}/quick-paid`, {
+        method: 'POST',
+        headers: {
+          cookie: `bt_merchant_token=${alienToken}`,
+        },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'demo-store', id: orderUuid }),
+      });
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+    });
   });
 
   describe('2. POST /api/orders/[id]/approve', () => {
-    it('successfully approves order, persists PAID, and logs to order_audit_logs', async () => {
+    it('fails closed with 401 Unauthorized when accessed without authentication', async () => {
       const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/orders/${orderUuid}/approve`, {
+        method: 'POST',
+      });
+
+      const res = await approveRoute(req, {
+        params: Promise.resolve({ id: orderUuid }),
+      });
+
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/unauthorized/i);
+    });
+
+    it('rejects CS role mutation with 403 Forbidden', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'CS' });
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/orders/${orderUuid}/approve`, {
+        method: 'POST',
+        headers: {
+          cookie: `bt_merchant_token=${token}`,
+        },
+      });
+
+      const res = await approveRoute(req, {
+        params: Promise.resolve({ id: orderUuid }),
+      });
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/forbidden/i);
+    });
+
+    it('rejects cross-tenant order approval with 403 Forbidden', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const token = signMerchantSessionToken({ tenantSlug: 'attacker-store', role: 'OWNER' });
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/orders/${orderUuid}/approve`, {
+        method: 'POST',
+        headers: {
+          cookie: `bt_merchant_token=${token}`,
+        },
+      });
+
+      const res = await approveRoute(req, {
+        params: Promise.resolve({ id: orderUuid }),
+      });
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/forbidden/i);
+    });
+
+    it('successfully approves order, persists PAID, and logs to order_audit_logs when authenticated as OWNER', async () => {
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/orders/${orderUuid}/approve`, {
         method: 'POST',
         headers: {
           'x-forwarded-for': '198.51.100.42',
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -396,8 +521,12 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
     it('successfully marks PAID when accessed via direct /api/v1/orders/[id]/quick-paid', async () => {
       const directRoute = (await import('@/app/api/v1/orders/[id]/quick-paid/route')).POST;
       const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const token = signMerchantSessionToken({ tenantSlug: 'demo-store', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/orders/${orderUuid}/quick-paid`, {
         method: 'POST',
+        headers: {
+          cookie: `bt_merchant_token=${token}`,
+        },
       });
 
       const res = await directRoute(req, {
@@ -437,10 +566,11 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
         });
       }
 
+      const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${buzzerOrderId}/quick-paid`, {
         method: 'POST',
         headers: {
-          cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import React from 'react';
+import { verifyMerchantSessionToken } from '@/lib/auth/merchant-session-edge';
 
 type Props = {
   children: React.ReactNode;
@@ -38,9 +39,10 @@ const RESERVED_SLUGS = new Set([
  * Server-Side Tenant Dashboard Layout Guard (Defense-in-depth)
  * 
  * Memastikan setiap render rute dashboard tenant pada tingkat server Next.js:
- * 1. Menolak akses anonim / tanpa session cookie.
- * 2. Menolak akses silang tenant (Tenant A tidak bisa membuka dashboard Tenant B).
- * 3. Menghindari flash data sensitif ke browser sebelum login terverifikasi.
+ * 1. Memverifikasi token kriptografis server-signed (bt_merchant_token) dengan strict tenant binding.
+ * 2. Menolak akses anonim / tanpa session cookie yang sah.
+ * 3. Menolak akses silang tenant (Tenant A tidak bisa membuka dashboard Tenant B).
+ * 4. Menghindari flash data sensitif ke browser sebelum login terverifikasi.
  */
 export default async function TenantDashboardLayout({ children, params }: Props) {
   const { tenant } = await params;
@@ -60,14 +62,16 @@ export default async function TenantDashboardLayout({ children, params }: Props)
     }
   };
 
-  const merchantStore = cleanVal(cookieStore.get('merchant_store')?.value);
-  const merchantSession = cleanVal(cookieStore.get('merchant_session')?.value);
-  const btTenant = cleanVal(cookieStore.get('bt_tenant')?.value);
+  // 1. Primary & Exclusive: Verifikasi token kriptografis HMAC-SHA256 server (Zero Trust on plaintext cookies)
+  // Plain cookies (merchant_store, merchant_session, bt_tenant) are non-authoritative and cannot grant access.
+  const tokenCookie = cookieStore.get('bt_merchant_token')?.value;
+  let isAuthorized = false;
 
-  const isAuthorized =
-    merchantStore === cleanTenant ||
-    merchantSession === cleanTenant ||
-    btTenant === cleanTenant;
+  if (tokenCookie) {
+    const tokenVerification = await verifyMerchantSessionToken(tokenCookie, cleanTenant);
+    // Zero Trust: Token invalid/kadaluwarsa/salah tenant langsung ditolak (FAIL-CLOSED)
+    isAuthorized = Boolean(tokenVerification?.valid && tokenVerification.payload);
+  }
 
   if (!isAuthorized) {
     redirect(`/login?redirectTo=/${encodeURIComponent(cleanTenant)}/dashboard`);

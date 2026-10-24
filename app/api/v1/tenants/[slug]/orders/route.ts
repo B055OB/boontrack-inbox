@@ -3,6 +3,13 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { extractOrderAmount } from '@/lib/finance-engine';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+  validateTenantIdentityConsistency,
+  type CanonicalTenantRecord,
+  type MerchantSessionPayload,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,53 +28,19 @@ export async function GET(
       );
     }
 
-    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY) ──
-    const cleanCookie = (val?: string | null) => {
-      if (!val) return '';
-      try {
-        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-      } catch {
-        return val.toLowerCase().trim();
+    // ── 1. AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(_req);
+    let merchantAuth: MerchantSessionPayload | null = null;
+
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
       }
-    };
-
-    const cookieStore =
-      cleanCookie(_req.cookies.get('merchant_store')?.value) ||
-      cleanCookie(_req.cookies.get('merchant_session')?.value) ||
-      cleanCookie(_req.cookies.get('bt_tenant')?.value);
-
-    const headerTenant = cleanCookie(
-      _req.headers.get('x-tenant-slug') || _req.headers.get('x-tenant-id')
-    );
-
-    const authHeader = _req.headers.get('authorization')?.trim();
-    const internalSecret = _req.headers.get('x-internal-secret')?.trim();
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-    const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
-
-    const isInternalAuth =
-      (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
-      (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`);
-
-    const normalizedReqSlug = slug.toLowerCase().trim();
-
-    // Early fail-closed on missing authentication
-    if (!isInternalAuth && !cookieStore && !headerTenant) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', message: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
-        { status: 401 }
-      );
+      merchantAuth = authResult.payload;
     }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
-    const cookieMatchesReqSlug = cookieStore === normalizedReqSlug;
-    const headerMatchesReqSlug = headerTenant === normalizedReqSlug;
-    if (!isInternalAuth && !isUuid && !cookieMatchesReqSlug && !headerMatchesReqSlug) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Akses ditolak untuk tenant ini.', message: 'Unauthorized: Akses ditolak untuk tenant ini.', orders: [], count: 0 },
-        { status: 401 }
-      );
-    }
 
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
@@ -77,7 +50,7 @@ export async function GET(
       );
     }
 
-    // Fail-Closed Tenant Resolution (§0.14 & §47.3)
+    // ── 2. FAIL-CLOSED CANONICAL TENANT RESOLUTION (§0.14 & §47.3) ──
     let tenantQuery = supabase.from('tenants').select('id, slug');
     if (isUuid) {
       tenantQuery = tenantQuery.eq('id', slug);
@@ -94,7 +67,7 @@ export async function GET(
       );
     }
 
-    if (!tenantRow) {
+    if (!tenantRow || !tenantRow.id || !tenantRow.slug) {
       return NextResponse.json(
         { success: false, error: 'TENANT_NOT_FOUND', message: `Tenant tidak ditemukan untuk: ${slug}`, orders: [], count: 0 },
         { status: 404 }
@@ -103,20 +76,29 @@ export async function GET(
 
     const targetSlug = String(tenantRow.slug || slug);
     const tenantUuid = String(tenantRow.id || '');
+    const canonicalTenant: CanonicalTenantRecord = {
+      id: tenantUuid,
+      slug: targetSlug,
+    };
 
-    const normalizedTargetSlug = targetSlug.toLowerCase().trim();
-    const normalizedTargetUuid = tenantUuid.toLowerCase().trim();
-
-    const isAuthorized =
-      isInternalAuth ||
-      (cookieStore && (cookieStore === normalizedTargetSlug || cookieStore === normalizedTargetUuid)) ||
-      (headerTenant && (headerTenant === normalizedTargetSlug || headerTenant === normalizedTargetUuid));
-
-    if (!isAuthorized) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', message: 'Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
-        { status: 401 }
-      );
+    // ── 3. STRICT TENANT IDENTITY CONSISTENCY CHECK AGAINST CANONICAL RECORD ──
+    // If the signed token contains both tenant slug and tenant UUID, both must agree with that canonical record.
+    // Do not accept a matching slug when the UUID contradicts it, or vice versa.
+    // Deliberate legacy-token rotation compatibility is preserved when explicitly supported and safe.
+    if (!isInternalAuth && merchantAuth) {
+      const identityCheck = validateTenantIdentityConsistency(merchantAuth, canonicalTenant);
+      if (!identityCheck.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: identityCheck.error || 'Forbidden: Kontradiksi identitas tenant.',
+            message: identityCheck.error || 'Forbidden: Kontradiksi identitas tenant.',
+            orders: [],
+            count: 0,
+          },
+          { status: identityCheck.status }
+        );
+      }
     }
 
     const { searchParams } = new URL(_req.url);

@@ -4,6 +4,7 @@
  */
 import { NextRequest } from 'next/server';
 import { middleware } from '@/middleware';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () => {
   it('1. Internally rewrites root / to /login without redirect (stays under dashboard.boontrack.com)', async () => {
@@ -55,10 +56,42 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('5. [TENANT ISOLATION] Blocks cross-tenant access when Tenant A cookie visits Tenant B with 302 Redirect', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'tenant-alpha', role: 'OWNER' });
     const req = new NextRequest('https://dashboard.boontrack.com/solusi-ads', {
       headers: {
         host: 'dashboard.boontrack.com',
-        cookie: 'merchant_store=tenant-alpha; merchant_session=tenant-alpha',
+        cookie: `bt_merchant_token=${token}`,
+      },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBeDefined();
+    expect(location).toContain('/login?redirectTo=');
+  });
+
+  it('5b. [P0 PLAINTEXT COOKIE REMOVAL] Rejects access when ONLY plaintext cookie is present without signed token', async () => {
+    const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm', {
+      headers: {
+        host: 'dashboard.boontrack.com',
+        cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+      },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBeDefined();
+    expect(location).toContain('/login?redirectTo=');
+  });
+
+  it('5c. [P0 CRYPTO INTEGRITY] Rejects access when bt_merchant_token signature is forged/invalid', async () => {
+    const forgedToken = 'eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRTbHVnIjoiYnV6emVydWttIn0.invalidsignature123';
+    const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm', {
+      headers: {
+        host: 'dashboard.boontrack.com',
+        cookie: `bt_merchant_token=${forgedToken}`,
       },
     });
 
@@ -70,10 +103,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('6. Allows authenticated tenant to access their own dashboard (/buzzerukm) and rewrites to /buzzerukm/dashboard', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
     const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm', {
       headers: {
         host: 'dashboard.boontrack.com',
-        cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        cookie: `bt_merchant_token=${token}`,
       },
     });
 
@@ -85,10 +119,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('7. Allows authenticated tenant on /buzzerukm/settings and rewrites to /buzzerukm/dashboard/settings', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
     const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm/settings', {
       headers: {
         host: 'dashboard.boontrack.com',
-        cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        cookie: `bt_merchant_token=${token}`,
       },
     });
 
@@ -100,10 +135,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('8. Handles /buzzerukm/dashboard without duplicating dashboard segment when authenticated', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
     const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm/dashboard', {
       headers: {
         host: 'dashboard.boontrack.com',
-        cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        cookie: `bt_merchant_token=${token}`,
       },
     });
 
@@ -116,10 +152,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('9. Preserves query parameters during rewrite for authenticated tenant (e.g. ?tab=orders)', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
     const req = new NextRequest('https://dashboard.boontrack.com/buzzerukm?tab=orders', {
       headers: {
         host: 'dashboard.boontrack.com',
-        cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        cookie: `bt_merchant_token=${token}`,
       },
     });
 
@@ -133,10 +170,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   it('10. Works 100% dynamically for any authenticated tenant slug (Zero Hardcoding)', async () => {
     const testSlugs = ['toko-kreatif', 'klinik-sehat', 'warung-kopi', 'digital-pro'];
     for (const slug of testSlugs) {
+      const token = signMerchantSessionToken({ tenantSlug: slug, role: 'OWNER' });
       const req = new NextRequest(`https://dashboard.boontrack.com/${slug}`, {
         headers: {
           host: 'dashboard.boontrack.com',
-          cookie: `merchant_store=${slug}; merchant_session=${slug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
       });
       const res = await middleware(req);
@@ -158,10 +196,11 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
   });
 
   it('12. [TENANT ISOLATION] Standard domain /:slug/dashboard blocks cross-tenant access with 302 Redirect', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'other-merchant', role: 'OWNER' });
     const req = new NextRequest('https://boontrack.com/solusi-ads/dashboard', {
       headers: {
         host: 'boontrack.com',
-        cookie: 'merchant_store=other-merchant; merchant_session=other-merchant',
+        cookie: `bt_merchant_token=${token}`,
       },
     });
 

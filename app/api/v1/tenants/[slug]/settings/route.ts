@@ -5,6 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export function sanitizePhoneNumber(raw: unknown): string {
   if (!raw) return '';
@@ -34,6 +38,17 @@ export async function GET(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(_req);
+    let callerRole: string = 'OWNER';
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT', 'CS', 'OPERATOR']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+      callerRole = authResult.payload.role || 'MERCHANT';
+    }
 
     // 1. Coba sync dari Core Backend (Railway) jika online
     try {
@@ -226,6 +241,12 @@ export async function GET(
       ? 'expired'
       : String(tenantRow.subscription_status || metadata.subscription_status || tenantRow.status || 'active').toLowerCase();
 
+    const isCsRole = callerRole === 'CS' || callerRole === 'OPERATOR';
+    const effectiveCapiToken = isCsRole ? null : (metadata.capi_token || adsTrackingConfig?.meta_capi_token || null);
+    const sanitizedWabaConfig = isCsRole && wabaConfig
+      ? { ...wabaConfig, access_token: null, permanent_access_token: null }
+      : wabaConfig;
+
     // 4. Return data asli database tanpa data dummy
     return NextResponse.json({
       success: true,
@@ -257,10 +278,10 @@ export async function GET(
         boonpilot_configuration: metadata.boonpilot_configuration || metadata.boonpilot_proposal || null,
         sales_policy: metadata.sales_policy || metadata.playbook || metadata.seller_playbook || null,
         playbook: metadata.playbook || metadata.seller_playbook || metadata.sales_policy || null,
-        bank: metadata.bank || null,
-        bank_settings: metadata.bank_settings || metadata.bank_transfer || null,
-        bank_transfer: metadata.bank_transfer || metadata.bank_settings || null,
-        bank_accounts: Array.isArray(metadata.bank_accounts) ? metadata.bank_accounts : [],
+        bank: isCsRole ? null : (metadata.bank || null),
+        bank_settings: isCsRole ? null : (metadata.bank_settings || metadata.bank_transfer || null),
+        bank_transfer: isCsRole ? null : (metadata.bank_transfer || metadata.bank_settings || null),
+        bank_accounts: isCsRole ? [] : (Array.isArray(metadata.bank_accounts) ? metadata.bank_accounts : []),
         is_bank_transfer_active: metadata.is_bank_transfer_active ?? metadata.enable_manual_transfer ?? metadata.payment_config?.enable_manual_transfer ?? metadata.bank_settings?.is_active ?? metadata.bank_transfer?.is_active ?? true,
         integration: metadata.integration || {
           whatsapp_status: 'DISCONNECTED',
@@ -296,15 +317,15 @@ export async function GET(
           ...metadata,
           tracking: adsTrackingConfig || metadata.tracking,
           ads_tracking_config: adsTrackingConfig || metadata.ads_tracking_config,
-          waba_config: wabaConfig || metadata.waba_config,
+          waba_config: sanitizedWabaConfig || metadata.waba_config,
           pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
-          capi_token: metadata.capi_token || adsTrackingConfig?.meta_capi_token || null,
+          capi_token: effectiveCapiToken,
         },
         ads_tracking_config: adsTrackingConfig,
         tracking: adsTrackingConfig,
         pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
-        capi_token: metadata.capi_token || adsTrackingConfig?.meta_capi_token || null,
-        waba_config: wabaConfig,
+        capi_token: effectiveCapiToken,
+        waba_config: sanitizedWabaConfig,
         waba_phone_number_id: tenantRow.waba_phone_number_id || metadata.waba_phone_number_id || wabaConfig?.phone_number_id || null,
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
@@ -331,6 +352,15 @@ export async function PUT(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {

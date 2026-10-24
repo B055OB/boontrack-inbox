@@ -7,6 +7,10 @@ import { extractOrderAmount } from '@/lib/finance-engine';
 import { orderEventBus } from '@/lib/email/order-event-bus';
 import { normalizeBriefingUrl } from '@/lib/product-catalog';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,54 +39,22 @@ export async function GET(req: NextRequest) {
     let targetSlug = tenantSlug || tenantParam.trim();
     let tenantUuid: string | null = null;
 
-    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY) ──
-    const cleanCookie = (val?: string | null) => {
-      if (!val) return '';
-      try {
-        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-      } catch {
-        return val.toLowerCase().trim();
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    let merchantAuth: any = null;
+
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, targetSlug || undefined, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
       }
-    };
-
-    const cookieStore =
-      cleanCookie(req.cookies.get('merchant_store')?.value) ||
-      cleanCookie(req.cookies.get('merchant_session')?.value) ||
-      cleanCookie(req.cookies.get('bt_tenant')?.value);
-
-    const headerTenant = cleanCookie(
-      req.headers.get('x-tenant-slug') || req.headers.get('x-tenant-id')
-    );
-
-    const authHeader = req.headers.get('authorization')?.trim();
-    const internalSecret = req.headers.get('x-internal-secret')?.trim();
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-    const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
-
-    const isInternalAuth =
-      (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
-      (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`);
-
-    const normalizedReqSlug = targetSlug.toLowerCase().trim();
-
-    // Early fail-closed on missing authentication
-    if (!isInternalAuth && !cookieStore && !headerTenant) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
-        { status: 401 }
-      );
+      merchantAuth = authResult.payload;
+      if (!targetSlug && merchantAuth.tenantSlug) {
+        targetSlug = merchantAuth.tenantSlug;
+      }
     }
 
-    // Early fail-closed on cross-tenant mismatch
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSlug);
-    const cookieMatchesReqSlug = cookieStore === normalizedReqSlug;
-    const headerMatchesReqSlug = headerTenant === normalizedReqSlug;
-    if (!isInternalAuth && !isUuid && !cookieMatchesReqSlug && !headerMatchesReqSlug) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Akses ditolak untuk tenant ini.', orders: [], count: 0 },
-        { status: 401 }
-      );
-    }
 
     // Resolve BOTH tenant_slug and tenant_id (UUID) from Supabase tenants table
     let tenantRow: any = null;
@@ -126,19 +98,16 @@ export async function GET(req: NextRequest) {
     targetSlug = String(tenantRow.slug || targetSlug);
     tenantUuid = String(tenantRow.id || '');
 
-    const normalizedTargetSlug = (targetSlug || '').toLowerCase().trim();
-    const normalizedTargetUuid = (tenantUuid || '').toLowerCase().trim();
-
-    const isAuthorized =
-      isInternalAuth ||
-      (cookieStore && (cookieStore === normalizedTargetSlug || cookieStore === normalizedTargetUuid)) ||
-      (headerTenant && (headerTenant === normalizedTargetSlug || headerTenant === normalizedTargetUuid));
-
-    if (!isAuthorized) {
-      return NextResponse.json(
-        { success: false, error: 'UNAUTHORIZED', message: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.', orders: [], count: 0 },
-        { status: 401 }
-      );
+    // Assert that the verified token slug matches the resolved tenant row slug
+    if (!isInternalAuth && merchantAuth) {
+      const verifiedSlug = String(merchantAuth.tenantSlug || '').toLowerCase().trim();
+      const resolvedSlug = String(targetSlug || '').toLowerCase().trim();
+      if (verifiedSlug !== resolvedSlug) {
+        return NextResponse.json(
+          { success: false, error: `Forbidden: Sesi merchant ('${verifiedSlug}') tidak cocok dengan target toko ('${resolvedSlug}').`, orders: [], count: 0 },
+          { status: 403 }
+        );
+      }
     }
 
     const startDate = searchParams.get('start_date') || searchParams.get('startDate');

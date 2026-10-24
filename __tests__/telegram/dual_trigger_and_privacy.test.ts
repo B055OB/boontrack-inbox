@@ -206,7 +206,17 @@ describe('GET /api/v1/notifications/telegram-link Route Handler', () => {
       return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     });
 
-    const req = new NextRequest('http://localhost:3000/api/v1/notifications/telegram-link?slug=boon');
+    const { signMerchantSessionToken } = await import('@/lib/auth/merchant-session');
+    const token = signMerchantSessionToken({
+      tenantSlug: 'boon',
+      role: 'OWNER',
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/v1/notifications/telegram-link?slug=boon', {
+      headers: {
+        cookie: `bt_merchant_token=${token}`,
+      },
+    });
     const res = await getTelegramLink(req);
     const data = await res.json();
 

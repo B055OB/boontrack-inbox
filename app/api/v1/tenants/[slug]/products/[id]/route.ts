@@ -10,6 +10,10 @@ import {
   sanitizeProductPayload,
   sanitizePublicProduct,
 } from '@/lib/product-catalog';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +81,15 @@ async function handleProductMutation(
   try {
     const { slug: rawSlug, id: productId } = await paramsPromise;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {
@@ -253,6 +266,15 @@ export async function DELETE(
   try {
     const { slug: rawSlug, id: productId } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {
