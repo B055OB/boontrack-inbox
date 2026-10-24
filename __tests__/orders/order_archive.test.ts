@@ -13,6 +13,7 @@ import { NextRequest } from 'next/server';
 import { PATCH, DELETE } from '@/app/api/v1/orders/[id]/archive/route';
 import { GET as getOrders } from '@/app/api/orders/route';
 import { calculateFinancialMetrics } from '@/lib/finance-engine';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 // Mock in-memory orders database for testing
 let mockOrdersDatabase: any[] = [];
@@ -171,12 +172,64 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
   });
 
   describe('1. PATCH /api/v1/orders/[id]/archive (Idempotent Soft-Archive)', () => {
-    it('successfully archives an active pending order with status 200', async () => {
+    it('fails closed with 401 Unauthorized when accessed without authentication', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-active-pending/archive', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_archived: true }),
+      });
+
+      const res = await PATCH(req, { params: Promise.resolve({ id: 'ord-active-pending' }) });
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('UNAUTHORIZED');
+    });
+
+    it('fails closed with 401 when accessed with plain cookie only without cryptographic signature', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-active-pending/archive', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           cookie: `merchant_store=${tenantSlug}`,
+        },
+        body: JSON.stringify({ is_archived: true }),
+      });
+
+      const res = await PATCH(req, { params: Promise.resolve({ id: 'ord-active-pending' }) });
+      expect(res.status).toBe(401);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('UNAUTHORIZED');
+    });
+
+    it('rejects CS role mutation with 403 Forbidden', async () => {
+      const csToken = signMerchantSessionToken({ tenantSlug, role: 'CS' });
+      const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-active-pending/archive', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({ is_archived: true }),
+      });
+
+      const res = await PATCH(req, { params: Promise.resolve({ id: 'ord-active-pending' }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('FORBIDDEN');
+    });
+
+    it('successfully archives an active pending order with status 200 for OWNER', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
+      const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-active-pending/archive', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${token}`,
         },
         body: JSON.stringify({ is_archived: true }),
       });
@@ -196,11 +249,12 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('remains idempotent when archiving an already archived order', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-already-archived/archive', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
         body: JSON.stringify({ is_archived: true }),
       });
@@ -214,11 +268,12 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('successfully unarchives / restores an archived order with is_archived: false', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-already-archived/archive', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
         body: JSON.stringify({ is_archived: false }),
       });
@@ -235,11 +290,12 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('enforces Tenant Isolation: returns 403 Forbidden when unauthorized tenant attempts to archive', async () => {
+      const attackerToken = signMerchantSessionToken({ tenantSlug: 'another-unauthorized-merchant', role: 'OWNER' });
       const req = new NextRequest('https://boontrack.com/api/v1/orders/ord-active-pending/archive', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          cookie: 'merchant_store=another-unauthorized-merchant',
+          cookie: `bt_merchant_token=${attackerToken}`,
         },
         body: JSON.stringify({ is_archived: true }),
       });
@@ -253,11 +309,12 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('returns 404 Not Found for non-existent order ID', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest('https://boontrack.com/api/v1/orders/non-existent-order/archive', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
         body: JSON.stringify({ is_archived: true }),
       });
@@ -285,9 +342,10 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
 
   describe('3. GET /api/orders (Soft-Archive Filters & UI Hygiene)', () => {
     it('default query excludes archived orders (only returns active orders)', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest(`https://boontrack.com/api/orders?tenant=${tenantSlug}`, {
         headers: {
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -305,9 +363,10 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('returns only archived orders when ?archived=true is passed', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest(`https://boontrack.com/api/orders?tenant=${tenantSlug}&archived=true`, {
         headers: {
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 
@@ -322,9 +381,10 @@ describe('SPRINT 3: Soft-Archive Order System & UI Hygiene', () => {
     });
 
     it('returns all orders when ?include_archived=true is passed', async () => {
+      const token = signMerchantSessionToken({ tenantSlug, role: 'OWNER' });
       const req = new NextRequest(`https://boontrack.com/api/orders?tenant=${tenantSlug}&include_archived=true`, {
         headers: {
-          cookie: `merchant_store=${tenantSlug}`,
+          cookie: `bt_merchant_token=${token}`,
         },
       });
 

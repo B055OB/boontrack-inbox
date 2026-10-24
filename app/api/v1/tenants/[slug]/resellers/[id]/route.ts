@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { verifyTenantOwnerOrAdmin } from '@/lib/auth/creator-auth-guard';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +50,15 @@ export async function PATCH(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, cleanSlug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     // P1: Anti-IDOR & Otorisasi Pemilik Toko
     const auth = await verifyTenantOwnerOrAdmin(req, cleanSlug, { supabaseClient: supabaseAdmin });

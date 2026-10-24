@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { sendEvolutionTextMessage } from '@/lib/whatsapp/evolution-webhook-handler';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +25,15 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Parameter tenant_slug wajib diisi' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, cleanSlug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     if (!Array.isArray(recipients) || recipients.length === 0) {

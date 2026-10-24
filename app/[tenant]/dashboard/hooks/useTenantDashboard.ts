@@ -293,6 +293,26 @@ export function useTenantDashboard() {
   // Authentication & Security Guard State (P0 Broken Access Control Remediation)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
+  // Role-Based Access Control State (P0 Security Mandate)
+  const [userRole, setUserRole] = useState<'OWNER' | 'CS' | 'OPERATOR'>(() => {
+    if (typeof window !== 'undefined') {
+      const storedRole = localStorage.getItem('user_role');
+      if (storedRole === 'CS' || localStorage.getItem('cs_user_phone')) {
+        return 'CS';
+      }
+    }
+    return 'OWNER';
+  });
+
+  const RESTRICTED_CS_TABS = new Set<DashboardTab>([
+    'finance',
+    'settings',
+    'integration',
+    'reseller',
+    'campaigns',
+    'broadcast',
+  ]);
+
   const checkClientSession = (slug: string): boolean => {
     if (typeof window === 'undefined') return false;
     const clean = slug.toLowerCase().trim();
@@ -314,6 +334,10 @@ export function useTenantDashboard() {
   };
 
   const handleSelectTab = (tab: DashboardTab) => {
+    if (userRole === 'CS' && RESTRICTED_CS_TABS.has(tab)) {
+      setSaveFeedback('Akses Dibatasi: Tab ini hanya dapat diakses oleh Pemilik Toko (Owner).');
+      return;
+    }
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
   };
@@ -380,7 +404,11 @@ export function useTenantDashboard() {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab')?.toLowerCase();
       if (tabParam && ['docs', 'documentation', 'inbox', 'orders', 'catalog', 'products', 'whatsapp', 'shipping', 'ads_tracking', 'settings'].includes(tabParam)) {
-        setActiveTab(tabParam as DashboardTab);
+        if (userRole === 'CS' && RESTRICTED_CS_TABS.has(tabParam as DashboardTab)) {
+          setActiveTab('inbox');
+        } else {
+          setActiveTab(tabParam as DashboardTab);
+        }
       }
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
@@ -789,26 +817,7 @@ export function useTenantDashboard() {
           return;
         }
 
-        // Security Guard 2: Verifikasi PIN jika tenant dilindungi PIN
-        const expectedPin =
-          tenant.metadata?.access_pin ||
-          tenant.metadata?.pin_hash ||
-          tenant.metadata?.pin ||
-          null;
-
-        if (expectedPin) {
-          const storedPin = typeof window !== 'undefined' ? localStorage.getItem('merchant_pin') : null;
-          if (!storedPin || storedPin.trim() !== String(expectedPin).trim()) {
-            setIsAuthenticated(false);
-            const redirectTarget = typeof window !== 'undefined'
-              ? window.location.pathname + window.location.search
-              : `/${tenantSlug}/dashboard`;
-            router.replace(`/login?redirectTo=${encodeURIComponent(redirectTarget)}`);
-            return;
-          }
-        }
-
-        // Sesi & kredensial terverifikasi valid
+        // Sesi & kredensial terverifikasi valid di server (layout.tsx & middleware HMAC guard)
         setIsAuthenticated(true);
         if (tenant.id) {
           setTenantId(tenant.id);
@@ -1756,6 +1765,10 @@ export function useTenantDashboard() {
   };
 
   const handleDeleteProduct = async (id: number | string) => {
+    if (userRole === 'CS') {
+      setSaveFeedback('Akses Dibatasi: Petugas CS tidak memiliki wewenang untuk menghapus produk.');
+      return;
+    }
     if (isSubscriptionExpired) {
       setSaveFeedback('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
       setIsUpsellModalOpen(true);
@@ -2850,6 +2863,7 @@ export function useTenantDashboard() {
     handleToggleProductActive,
     handleSaveProductForm,
     handleDeleteProduct,
+    userRole,
 
     // Bulk Import Modal
     isBulkImportModalOpen,

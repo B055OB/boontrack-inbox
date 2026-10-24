@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { verifyOrderMutationAuthorization } from '@/lib/auth/order-auth-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,43 +67,17 @@ export async function PATCH(
       );
     }
 
-    // 2. Validasi Tenant Isolation & Sesi Pengguna
-    const cleanCredential = (val?: string | null) => {
-      if (!val) return '';
-      try {
-        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-      } catch {
-        return val.toLowerCase().trim();
-      }
-    };
-
-    const cookieStore =
-      cleanCredential(req.cookies.get('merchant_store')?.value) ||
-      cleanCredential(req.cookies.get('merchant_session')?.value) ||
-      cleanCredential(req.cookies.get('bt_tenant')?.value);
-
-    const headerTenant = cleanCredential(
-      req.headers.get('x-tenant-slug') || req.headers.get('x-tenant-id')
-    );
-
-    const expectedTenantSlug = cleanCredential(order.tenant_slug);
-    const expectedTenantId = cleanCredential(order.tenant_id);
-
-    if (cookieStore || headerTenant) {
-      const isAuthorized =
-        (cookieStore && (cookieStore === expectedTenantSlug || cookieStore === expectedTenantId)) ||
-        (headerTenant && (headerTenant === expectedTenantSlug || headerTenant === expectedTenantId));
-
-      if (!isAuthorized) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'FORBIDDEN',
-            message: 'Akses ditolak: Anda tidak memiliki izin mengarsipkan pesanan tenant ini.',
-          },
-          { status: 403 }
-        );
-      }
+    // 2. Validasi Tenant Isolation & Sesi Pengguna (P0 Security Guard)
+    const authRes = await verifyOrderMutationAuthorization(req, order);
+    if (!authRes.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: authRes.status === 403 ? 'FORBIDDEN' : 'UNAUTHORIZED',
+          message: authRes.error || 'Akses ditolak: Autentikasi diperlukan.',
+        },
+        { status: authRes.status }
+      );
     }
 
     // 3. Update kolom is_archived secara idempotent

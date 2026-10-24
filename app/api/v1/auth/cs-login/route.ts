@@ -1,8 +1,23 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
+import {
+  enforceLoginRateLimit,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from '@/lib/auth/rate-limiter';
 
 export const dynamic = 'force-dynamic';
+
+function safeComparePin(configured?: string | null, provided?: string | null): boolean {
+  if (!configured || !provided) return false;
+  const bufConfigured = Buffer.from(String(configured).trim());
+  const bufProvided = Buffer.from(String(provided).trim());
+  if (bufConfigured.length !== bufProvided.length) return false;
+  return crypto.timingSafeEqual(bufConfigured, bufProvided);
+}
 
 function normalizePhone(rawPhone: string): { international: string; local: string } {
   const digits = rawPhone.replace(/\D/g, '');
@@ -26,6 +41,7 @@ function normalizePhone(rawPhone: string): { international: string; local: strin
 /**
  * POST /api/v1/auth/cs-login
  * Direct CS Access Authentication (Bypasses email magic link delays)
+ * Rate-limited against brute-force attacks.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -50,6 +66,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Fail-Closed Guard 1: PIN Tenant wajib diisi
+    if (!rawPin) {
+      recordLoginFailure(req, cleanSlug);
+      return NextResponse.json(
+        { success: false, error: 'PIN Tenant wajib diisi.' },
+        { status: 401 }
+      );
+    }
+
+    // 0. Rate Limiting Check (Anti-Brute-Force Guard)
+    const rateCheck = enforceLoginRateLimit(req, cleanSlug);
+    if (rateCheck.isLimited) {
+      return NextResponse.json(
+        { success: false, error: rateCheck.error || 'Terlalu banyak percobaan login. Silakan tunggu sebentar.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateCheck.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json(
@@ -61,34 +100,46 @@ export async function POST(req: NextRequest) {
     // 1. Single Source of Truth: Lookup tenant dynamically from Supabase
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('id, slug, name, tier, metadata')
+      .select('id, slug, name, tier, metadata, access_password')
       .eq('slug', cleanSlug)
       .maybeSingle();
 
     if (tenantErr || !tenant) {
+      recordLoginFailure(req, cleanSlug);
       return NextResponse.json(
         { success: false, error: `Toko "${cleanSlug}" tidak ditemukan. Periksa kembali nama toko Anda.` },
         { status: 404 }
       );
     }
 
-    // 2. Validate Tenant PIN
+    // 2. Validate Tenant PIN with Fail-Closed Invariant
     const meta = tenant.metadata || {};
-    const configuredPin = meta.access_pin || meta.pin_hash || meta.pin;
+    const configuredPin =
+      meta.access_pin ||
+      meta.pin_hash ||
+      meta.pin ||
+      tenant.access_password ||
+      null;
 
-    if (configuredPin) {
-      if (!rawPin) {
-        return NextResponse.json(
-          { success: false, error: 'Toko ini dilindungi PIN. Silakan masukkan PIN Tenant yang diberikan pemilik toko.' },
-          { status: 401 }
-        );
-      }
-      if (String(configuredPin).trim() !== rawPin) {
-        return NextResponse.json(
-          { success: false, error: 'PIN Tenant salah. Silakan tanyakan PIN akses yang benar kepada pemilik toko.' },
-          { status: 401 }
-        );
-      }
+    // Fail-Closed Guard 2: Jika tenant belum mengonfigurasi PIN / Password, tolak 403 Forbidden
+    if (!configuredPin) {
+      recordLoginFailure(req, cleanSlug);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Toko ini belum mengonfigurasi PIN akses atau akun belum diaktifkan. Silakan hubungi pemilik toko untuk inisialisasi PIN toko.',
+        },
+        { status: 403 }
+      );
+    }
+
+    // Fail-Closed Guard 3: Kredensial wajib cocok dengan perbandingan constant-time
+    if (!safeComparePin(String(configuredPin), rawPin)) {
+      recordLoginFailure(req, cleanSlug);
+      return NextResponse.json(
+        { success: false, error: 'PIN Tenant salah. Silakan tanyakan PIN akses yang benar kepada pemilik toko.' },
+        { status: 401 }
+      );
     }
 
     // 3. Normalize CS Phone Number
@@ -134,6 +185,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!matchedMember) {
+      recordLoginFailure(req, cleanSlug);
       return NextResponse.json(
         {
           success: false,
@@ -143,8 +195,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Reset rate limiter on successful login
+    recordLoginSuccess(req, cleanSlug);
+
     // 5. Success - Set Response Cookies & Payload
-    const redirectUrl = `/${cleanSlug}/dashboard`;
+    const redirectUrl = `/${cleanSlug}/dashboard?tab=inbox`;
     const response = NextResponse.json({
       success: true,
       message: `Login CS berhasil! Selamat datang, ${matchedMember.name}.`,
@@ -164,12 +219,35 @@ export async function POST(req: NextRequest) {
       redirectUrl,
     });
 
-    // Set secure authentication cookies
-    response.cookies.set('merchant_store', cleanSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    response.cookies.set('merchant_session', cleanSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    response.cookies.set('bt_tenant', cleanSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    response.cookies.set('cs_session_name', matchedMember.name, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    response.cookies.set('cs_session_phone', intlPhone, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieBaseOptions = {
+      path: '/',
+      maxAge: 2592000,
+      sameSite: 'lax' as const,
+      secure: isProd,
+    };
+
+    // Mint server-signed cryptographic token for CS session
+    const csToken = signMerchantSessionToken({
+      tenantSlug: cleanSlug,
+      tenantId: tenant.id,
+      role: 'CS',
+      userId: matchedMember.id,
+      name: matchedMember.name,
+      phone: intlPhone,
+      ttlMs: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    // Set secure authentication cookies (Strictly Host-Only, ZERO wildcard domain)
+    response.cookies.set('bt_merchant_token', csToken, {
+      ...cookieBaseOptions,
+      httpOnly: true,
+    });
+    response.cookies.set('merchant_store', cleanSlug, cookieBaseOptions);
+    response.cookies.set('merchant_session', cleanSlug, cookieBaseOptions);
+    response.cookies.set('bt_tenant', cleanSlug, cookieBaseOptions);
+    response.cookies.set('cs_session_name', matchedMember.name, cookieBaseOptions);
+    response.cookies.set('cs_session_phone', intlPhone, cookieBaseOptions);
 
     return response;
   } catch (err: any) {

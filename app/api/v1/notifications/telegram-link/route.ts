@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, isValidUuid } from '@/lib/supabaseClient';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +39,15 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Parameter "slug" atau "tenant_id" wajib diisi.' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, tenantRef, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     if (!telegram_chat_id || typeof telegram_chat_id !== 'string') {
@@ -161,6 +174,15 @@ export async function GET(req: NextRequest) {
         { success: false, error: 'Query param "slug" atau "tenant_id" wajib diisi.' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, tenantParam, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const supabase = getSupabaseAdmin();

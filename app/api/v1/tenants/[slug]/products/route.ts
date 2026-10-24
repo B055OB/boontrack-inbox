@@ -13,6 +13,10 @@ import {
   safeJsonStringify,
   sanitizePublicProduct,
 } from '@/lib/product-catalog';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
@@ -54,6 +58,15 @@ export async function POST(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {
@@ -493,6 +506,15 @@ export async function DELETE(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
 
     const perm = await checkTenantMutationPermission(slug);
     if (!perm.allowed && perm.response) {

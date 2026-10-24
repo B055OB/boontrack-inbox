@@ -189,17 +189,30 @@ export default function DashboardSidebar({
 
   const handleLogout = async () => {
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        await supabase.auth.signOut();
+      // 1. Invalidate Server-Side Session and HttpOnly cookie
+      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error('Gagal mengakhiri sesi pada server. Silakan coba lagi.');
       }
-    } catch (err) {
-      console.warn('Logout note:', err);
-    } finally {
+
+      // 2. Sign out Supabase auth client if active
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          await supabase.auth.signOut();
+        }
+      } catch (sbErr) {
+        console.warn('Supabase signout note:', sbErr);
+      }
+
+      // 3. Clear client-side presentation storage and redirect
       if (typeof window !== 'undefined') {
         localStorage.clear();
         window.location.href = '/login';
       }
+    } catch (err: any) {
+      console.error('Logout error:', err);
+      alert(err.message || 'Gagal logout. Silakan periksa koneksi internet Anda.');
     }
   };
 

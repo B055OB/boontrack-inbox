@@ -21,7 +21,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 export interface OrderMutationAuthResult {
   authorized: boolean;
-  status: 200 | 401 | 403;
+  status: 200 | 401 | 403 | 500;
   error?: string;
   callerType?: 'machine_internal' | 'supabase_user' | 'merchant_session';
   callerTenant?: string;
@@ -316,6 +316,16 @@ export async function verifyOrderMutationAuthorization(
         authorized: false,
         status: 403,
         error: `Forbidden: Route tenant ('${normalizedRouteSlug}') tidak cocok dengan tenant pesanan ('${orderTenantSlug}').`,
+      };
+    }
+
+    // Role Authorization: Financial order mutations (quick-paid, approval) are restricted to OWNER / MERCHANT
+    const callerRole = sessionRes.payload.role || 'MERCHANT';
+    if (callerRole === 'CS' || callerRole === 'OPERATOR') {
+      return {
+        authorized: false,
+        status: 403,
+        error: `Forbidden: Peran '${callerRole}' tidak memiliki wewenang untuk mengubah status finansial pesanan.`,
       };
     }
 

@@ -165,12 +165,14 @@ jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => mockSupabase),
 }));
 
-// Import target routes after mocking
 import { GET as getTenantBySlug } from '@/app/api/v1/tenants/[slug]/route';
 import { GET as getTenantOrders } from '@/app/api/v1/tenants/[slug]/orders/route';
 import { GET as getOrdersGlobal } from '@/app/api/orders/route';
 import { GET as getCrmContacts } from '@/app/api/v1/crm/contacts/route';
 import { GET as getConversations } from '@/app/api/inbox/conversations/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
+
+const VALID_TOKEN = signMerchantSessionToken({ tenantSlug: VALID_TENANT_SLUG, role: 'OWNER' });
 
 describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
   beforeEach(() => {
@@ -198,7 +200,7 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
 
     it('1.2 GET /api/v1/tenants/[slug]/orders returns 503 on database query failure', async () => {
       const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${VALID_TENANT_SLUG}/orders`, {
-        headers: { cookie: `merchant_store=${VALID_TENANT_SLUG}` },
+        headers: { cookie: `bt_merchant_token=${VALID_TOKEN}` },
       });
       const res = await getTenantOrders(req, { params: Promise.resolve({ slug: VALID_TENANT_SLUG }) });
 
@@ -210,7 +212,7 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
 
     it('1.3 GET /api/orders returns 503 on database query failure', async () => {
       const req = new NextRequest(`http://localhost:3000/api/orders?slug=${VALID_TENANT_SLUG}`, {
-        headers: { cookie: `merchant_store=${VALID_TENANT_SLUG}` },
+        headers: { cookie: `bt_merchant_token=${VALID_TOKEN}` },
       });
       const res = await getOrdersGlobal(req);
 
@@ -263,8 +265,9 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
     });
 
     it('2.2 GET /api/v1/tenants/[slug]/orders returns 404 when tenant is missing', async () => {
+      const nonExistentToken = signMerchantSessionToken({ tenantSlug: 'nonexistent-brand', role: 'OWNER' });
       const req = new NextRequest('http://localhost:3000/api/v1/tenants/nonexistent-brand/orders', {
-        headers: { cookie: 'merchant_store=nonexistent-brand' },
+        headers: { cookie: `bt_merchant_token=${nonExistentToken}` },
       });
       const res = await getTenantOrders(req, { params: Promise.resolve({ slug: 'nonexistent-brand' }) });
 
@@ -275,8 +278,9 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
     });
 
     it('2.3 GET /api/orders returns 404 when tenant is missing', async () => {
+      const nonExistentToken = signMerchantSessionToken({ tenantSlug: 'nonexistent-brand', role: 'OWNER' });
       const req = new NextRequest('http://localhost:3000/api/orders?slug=nonexistent-brand', {
-        headers: { cookie: 'merchant_store=nonexistent-brand' },
+        headers: { cookie: `bt_merchant_token=${nonExistentToken}` },
       });
       const res = await getOrdersGlobal(req);
 
@@ -370,7 +374,7 @@ describe('P0/P1 API Contract Remediation & Isolation Test Suite', () => {
 
     it('4.2 GET /api/v1/tenants/[slug]/orders normalizes null status and payment_status to avoid toLowerCase crashes', async () => {
       const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${VALID_TENANT_SLUG}/orders`, {
-        headers: { cookie: `merchant_store=${VALID_TENANT_SLUG}` },
+        headers: { cookie: `bt_merchant_token=${VALID_TOKEN}` },
       });
       const res = await getTenantOrders(req, { params: Promise.resolve({ slug: VALID_TENANT_SLUG }) });
 

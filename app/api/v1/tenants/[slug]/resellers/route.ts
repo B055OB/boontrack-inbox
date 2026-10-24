@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +25,15 @@ export async function GET(
         { success: false, error: 'BAD_REQUEST', message: 'Parameter slug tenant wajib diisi.' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult =  authorizeMerchantRequest(req, cleanSlug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const supabaseAdmin = getSupabaseAdmin();

@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getSupabase } from '@/lib/supabaseClient';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +17,15 @@ export async function POST(req: NextRequest) {
         { status: 'error', detail: 'Parameter tenant_slug dan domain wajib diisi.' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, tenant_slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const backendUrl = getBackendApiUrl('/api/v1/store/custom-domain');
@@ -78,6 +91,15 @@ export async function DELETE(req: NextRequest) {
         { status: 'error', detail: 'Parameter tenant_slug wajib disertakan.' },
         { status: 400 }
       );
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, tenantSlug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const backendUrl = getBackendApiUrl(`/api/v1/store/custom-domain?tenant_slug=${encodeURIComponent(tenantSlug)}`);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { extractMerchantSessionToken, verifyMerchantSessionToken } from '@/lib/auth/merchant-session-edge';
 
 /**
  * ============================================================
@@ -330,6 +331,25 @@ function setReferralCookies(res: NextResponse, refCode: string, hostClean?: stri
 }
 
 /**
+ * Pasang cookie reseller tenant (?r=) pada response NextResponse
+ * Invariant (ADR Attribution Separation):
+ * ?r= diisolasi murni ke cookie bt_reseller_code dan TIDAK PERNAH disalin ke platform referral cookies (ref, boontrack_referral_code).
+ */
+function setResellerCookie(res: NextResponse, resellerCode: string, hostClean?: string) {
+  if (!resellerCode) return;
+  const cookieOptions: any = {
+    maxAge: 30 * 24 * 60 * 60, // 30 hari (2592000 detik)
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  };
+  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))) {
+    cookieOptions.domain = '.boontrack.com';
+  }
+  res.cookies.set('bt_reseller_code', resellerCode, cookieOptions);
+}
+
+/**
  * Extract subdomain from incoming request hostname for *.boontrack.com.
  */
 function extractSubdomain(hostWithPort: string): string | null {
@@ -365,34 +385,20 @@ function extractSubdomain(hostWithPort: string): string | null {
  * Helper untuk memeriksa apakah request memiliki sesi login merchant aktif yang COCOK dengan target slug tenant.
  * Mencegah Tenant A mengakses dashboard Tenant B (Tenant Isolation Guard) dan memblokir akses anonim/incognito.
  */
-function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
+async function hasValidTenantSession(req: NextRequest, targetSlug?: string): Promise<boolean> {
   const cleanTarget = targetSlug ? targetSlug.toLowerCase().trim() : '';
 
-  const cleanCookie = (val?: string) => {
-    if (!val) return '';
-    try {
-      return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-    } catch {
-      return val.toLowerCase().trim();
-    }
-  };
-
-  const merchantStore = cleanCookie(req.cookies.get('merchant_store')?.value);
-  const merchantSession = cleanCookie(req.cookies.get('merchant_session')?.value);
-  const btTenant = cleanCookie(req.cookies.get('bt_tenant')?.value);
-  const studioSession = cleanCookie(req.cookies.get('studio_session')?.value);
-
-  // Jika targetSlug ditentukan, cookie WAJIB cocok dengan targetSlug
-  if (cleanTarget) {
-    return (
-      merchantStore === cleanTarget ||
-      merchantSession === cleanTarget ||
-      btTenant === cleanTarget
-    );
+  // P0 SECURITY INVARIANT:
+  // Zero Trust on plaintext cookies (merchant_store, merchant_session, bt_tenant, studio_session).
+  // Plain cookies are non-authoritative routing context only and CANNOT grant authorization.
+  // Protected dashboard access strictly requires a valid cryptographically signed server token (bt_merchant_token).
+  const token = extractMerchantSessionToken(req);
+  if (!token) {
+    return false;
   }
 
-  // Jika targetSlug tidak ditentukan (misal /dashboard umum), pastikan setidaknya salah satu cookie sesi merchant ada
-  return Boolean(merchantStore || merchantSession || btTenant || studioSession);
+  const verified = await verifyMerchantSessionToken(token, cleanTarget || undefined);
+  return Boolean(verified.valid && verified.payload);
 }
 
 async function handleRouting(req: NextRequest, hostClean: string) {
@@ -484,12 +490,37 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ===========================================================================
   // 1. DASHBOARD SUBDOMAIN ROUTING (dashboard.boontrack.com) - URUTAN PALING ATAS
   // ===========================================================================
+  const subdomain = extractSubdomain(host);
+
   const isDashboardDomain =
     host.startsWith('dashboard.boontrack.com') ||
     hostClean === 'dashboard.boontrack.com' ||
     host.startsWith('dashboard.localhost') ||
     hostClean === 'dashboard.localhost' ||
-    host.startsWith('dashboard.');
+    host.startsWith('dashboard.') ||
+    subdomain === 'dashboard';
+
+  const isStudioHost =
+    hostClean === 'studio.boontrack.com' ||
+    hostClean.startsWith('studio.') ||
+    subdomain === 'studio';
+
+  // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
+  // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
+  // Non-dashboard hosts (such as boontrack.com/login, shop.boontrack.com/login) redirect 302 to canonical dashboard.
+  if (pathname === '/login' || pathname.startsWith('/login/')) {
+    if (!isDashboardDomain && !isStudioHost) {
+      const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
+      const targetBase = isLocal
+        ? `${req.nextUrl.protocol}//dashboard.localhost${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`
+        : 'https://dashboard.boontrack.com';
+      const targetUrl = new URL(`${targetBase}${pathname}`);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        targetUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(targetUrl, 302);
+    }
+  }
 
   if (isDashboardDomain) {
     // A. Root frontpage (/) atau (/login) -> Internal rewrite langsung ke /login (URL browser tetap dashboard.boontrack.com)
@@ -543,7 +574,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
       // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
       // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
-      if (!hasValidTenantSession(req, tenantSlug)) {
+      if (!(await hasValidTenantSession(req, tenantSlug))) {
         const loginUrl = req.nextUrl.clone();
         loginUrl.pathname = '/login';
         const redirectTarget = pathname + (req.nextUrl.search || '');
@@ -570,8 +601,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.next();
   }
 
-  const subdomain = extractSubdomain(host);
-
   const isCreatorHost =
     hostClean === 'creator.boontrack.com' ||
     hostClean.startsWith('creator.') ||
@@ -583,15 +612,19 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (pathname.startsWith('/@')) {
     const handle = pathname.replace(/^\/@+/, '').trim();
     if (handle) {
-      const refCode = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r') || handle;
+      const platformRef = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || handle;
+      const resellerCode = req.nextUrl.searchParams.get('r');
       // Jika hostname BUKAN creator.boontrack.com (misal shop.boontrack.com atau boontrack.com)
       // -> Lakukan 301 Canonical Redirect ke https://creator.boontrack.com/@${handle}
       if (!isCreatorHost) {
         const targetUrl = new URL(`https://creator.boontrack.com/@${handle}`, req.url);
         targetUrl.search = req.nextUrl.search;
         const res = NextResponse.redirect(targetUrl, 301);
-        if (refCode) {
-          setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
+        if (platformRef) {
+          setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
+        }
+        if (resellerCode) {
+          setResellerCookie(res, resellerCode.trim().toLowerCase(), hostClean);
         }
         return res;
       }
@@ -600,8 +633,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       const url = req.nextUrl.clone();
       url.pathname = `/creator/${handle}`;
       const res = NextResponse.rewrite(url);
-      if (refCode) {
-        setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
+      if (platformRef) {
+        setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
+      }
+      if (resellerCode) {
+        setResellerCookie(res, resellerCode.trim().toLowerCase(), hostClean);
       }
       return res;
     }
@@ -639,9 +675,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     if (pathname === '/' || pathname === '') {
       url.pathname = '/creator';
       const res = NextResponse.rewrite(url);
-      const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r');
-      if (refParam) {
-        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      const platformRef = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff');
+      const resellerCode = req.nextUrl.searchParams.get('r');
+      if (platformRef) {
+        setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
+      }
+      if (resellerCode) {
+        setResellerCookie(res, resellerCode.trim().toLowerCase(), hostClean);
       }
       return res;
     }
@@ -673,8 +713,9 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       ? pathname.slice('/creator/'.length)
       : pathname.replace(/^\/+/, '');
     const cleanSlug = relativePath.replace(/^@+/, '').trim();
-    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || req.nextUrl.searchParams.get('r');
-    const refCode = refParam || cleanSlug;
+    const platformRef = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff');
+    const refCode = platformRef || cleanSlug;
+    const resellerCode = req.nextUrl.searchParams.get('r');
 
     if (cleanSlug) {
       url.pathname = `/creator/${cleanSlug}`;
@@ -682,13 +723,19 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       if (refCode) {
         setReferralCookies(res, refCode.trim().toLowerCase(), hostClean);
       }
+      if (resellerCode) {
+        setResellerCookie(res, resellerCode.trim().toLowerCase(), hostClean);
+      }
       return res;
     }
 
     url.pathname = `/creator${pathname}`;
     const res = NextResponse.rewrite(url);
-    if (refParam) {
-      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    if (platformRef) {
+      setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
+    }
+    if (resellerCode) {
+      setResellerCookie(res, resellerCode.trim().toLowerCase(), hostClean);
     }
     return res;
   }
@@ -696,18 +743,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ===========================================================================
   // SUBDOMAIN STUDIO (studio.boontrack.com) - ARSITEKTUR TERISOLASI (P0)
   // ===========================================================================
-  const isStudioHost =
-    hostClean === 'studio.boontrack.com' ||
-    hostClean.startsWith('studio.') ||
-    subdomain === 'studio';
-
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
-    // Deteksi sesi login aktif Studio / Merchant
-    const hasStudioAuth =
-      hasValidTenantSession(req) ||
-      Boolean(req.cookies.get('studio_session')?.value);
+    // Deteksi sesi login aktif Studio / Merchant (Cryptographically signed token only)
+    const hasStudioAuth = await hasValidTenantSession(req);
 
     // 1. Root / ->
     //    - Jika pengguna sudah login: redirect ke /desk (Workspace Dashboard)
@@ -949,14 +989,18 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(targetUrl, 302);
     }
 
-    // 4. Extract query referral (ref / r / aff)
-    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r') || req.nextUrl.searchParams.get('aff');
+    // 4. Extract query referral separately (ref / aff vs r)
+    const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
+    const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();
 
     // 5. Root storefront & SaaS lander (/) -> Pass-through alami ke app/page.tsx dengan referral cookies
     if (pathname === '/' || pathname === '') {
       const res = NextResponse.next();
-      if (refParam) {
-        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      if (platformRef) {
+        setReferralCookies(res, platformRef, hostClean);
+      }
+      if (resellerParam) {
+        setResellerCookie(res, resellerParam, hostClean);
       }
       return res;
     }
@@ -974,8 +1018,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
     if (firstSegment && SHOP_SYSTEM_ROUTES.has(firstSegment)) {
       const res = NextResponse.next();
-      if (refParam) {
-        setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+      if (platformRef) {
+        setReferralCookies(res, platformRef, hostClean);
+      }
+      if (resellerParam) {
+        setResellerCookie(res, resellerParam, hostClean);
       }
       const isSensitive =
         pathname.startsWith('/checkout') ||
@@ -1008,8 +1055,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     if (tenantSlug) {
       applyStorefrontCacheHeaders(res, tenantSlug, resolvedId);
     }
-    if (refParam) {
-      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    if (platformRef) {
+      setReferralCookies(res, platformRef, hostClean);
+    }
+    if (resellerParam) {
+      setResellerCookie(res, resellerParam, hostClean);
     }
     return res;
   }
@@ -1020,7 +1070,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
   if (dashboardMatch || isGenericDashboard) {
     const targetSlug = dashboardMatch ? dashboardMatch[1] : undefined;
-    if (!hasValidTenantSession(req, targetSlug)) {
+    if (!(await hasValidTenantSession(req, targetSlug))) {
       const loginUrl = req.nextUrl.clone();
       loginUrl.pathname = '/login';
       const redirectTarget = pathname + (req.nextUrl.search || '');
@@ -1111,10 +1161,14 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     pathname.startsWith('/hotel') ||
     pathname.startsWith('/clinic')
   ) {
-    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
+    const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
+    const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();
     const res = NextResponse.next();
-    if (refParam) {
-      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    if (platformRef) {
+      setReferralCookies(res, platformRef, hostClean);
+    }
+    if (resellerParam) {
+      setResellerCookie(res, resellerParam, hostClean);
     }
     const isSensitive =
       pathname.startsWith('/checkout') ||
@@ -1199,10 +1253,14 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean === 'boontrack.com' ||
     hostClean === 'www.boontrack.com'
   ) {
-    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
+    const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
+    const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();
     const res = NextResponse.next();
-    if (refParam) {
-      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    if (platformRef) {
+      setReferralCookies(res, platformRef, hostClean);
+    }
+    if (resellerParam) {
+      setResellerCookie(res, resellerParam, hostClean);
     }
     return res;
   }
@@ -1423,24 +1481,32 @@ export async function middleware(req: NextRequest) {
 
   const res = await handleRouting(req, hostClean);
 
-  // ── ATTACH CROSS-DOMAIN WILDCARD REFERRAL COOKIE (.boontrack.com) ──
-  // Menjamin jika request membawa ?ref= atau ?r= (pada shop.boontrack.com, studio.boontrack.com, dll.),
-  // cookie referral otomatis terpasang dengan domain='.boontrack.com' sehingga session konsisten di seluruh pilar.
-  const refCode = (
+  // ── ATTACH CROSS-DOMAIN WILDCARD REFERRAL & RESELLER COOKIES (.boontrack.com) ──
+  // Invariant (P0 Attribution Separation):
+  // 1. Platform affiliate (?ref= / ?aff=) sets ref, boontrack_referral_code, boontrack_merchant_ref.
+  // 2. Tenant reseller (?r=) sets bt_reseller_code ONLY and is NEVER copied to platform referral cookies.
+  const platformRef = (
     req.nextUrl.searchParams.get('ref') ||
+    req.nextUrl.searchParams.get('aff') ||
+    ''
+  ).trim().toLowerCase();
+
+  const resellerCode = (
     req.nextUrl.searchParams.get('r') ||
     ''
   ).trim().toLowerCase();
 
   if (
-    refCode &&
-    refCode !== '1' &&
-    refCode !== 'null' &&
     res &&
     !req.nextUrl.pathname.startsWith('/api') &&
     !req.nextUrl.pathname.startsWith('/_next')
   ) {
-    setReferralCookies(res, refCode, hostClean);
+    if (platformRef && platformRef !== '1' && platformRef !== 'null') {
+      setReferralCookies(res, platformRef, hostClean);
+    }
+    if (resellerCode && resellerCode !== '1' && resellerCode !== 'null') {
+      setResellerCookie(res, resellerCode, hostClean);
+    }
   }
 
   return res;

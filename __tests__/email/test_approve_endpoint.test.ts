@@ -5,6 +5,7 @@
 
 import { NextRequest } from 'next/server';
 import { POST as approveHandler } from '@/app/api/orders/[orderId]/approve/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 jest.mock('@/lib/whatsapp', () => ({
   sendOrderFulfillmentNotification: jest.fn(async () => ({ success: true })),
@@ -74,8 +75,12 @@ jest.mock('@/lib/supabaseClient', () => ({
 
 describe('POST /api/orders/[id]/approve', () => {
   it('approves order to PAID, dispatches WhatsApp and dual fulfillment emails', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'buzzerukm', role: 'OWNER' });
     const req = new NextRequest('http://localhost:3000/api/orders/ORD-TEST-APPROVE-1/approve', {
       method: 'POST',
+      headers: {
+        cookie: `bt_merchant_token=${token}`,
+      },
     });
 
     const res = await approveHandler(req, {
