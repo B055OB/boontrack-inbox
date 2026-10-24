@@ -784,21 +784,21 @@ export default function CheckoutPage({ params }: Props) {
       ? 'FIELD_SERVICE'
       : 'DIGITAL');
   const orderRequirements = resolveFulfillmentRequirements(rawOrderType);
+  const statusUpper = String(order?.status || '').toUpperCase().trim();
+  const paymentStatusUpper = String(order?.payment_status || '').toUpperCase().trim();
+  const orderStatusUpper = String(order?.order_status || '').toUpperCase().trim();
+
+  const isExplicitlyPaid =
+    ['PAID', 'LUNAS', 'SETTLED', 'SETTLEMENT', 'SUCCESS', 'COMPLETED', 'VERIFIED'].includes(statusUpper) ||
+    ['PAID', 'LUNAS', 'SETTLED', 'SETTLEMENT', 'SUCCESS', 'COMPLETED', 'VERIFIED'].includes(paymentStatusUpper) ||
+    ['PAID', 'LUNAS', 'SETTLED', 'SETTLEMENT', 'SUCCESS', 'COMPLETED', 'VERIFIED'].includes(orderStatusUpper);
+
   const isPaidOrder =
-    (order?.status === 'PAID' ||
-      order?.status === 'COMPLETED' ||
-      order?.status === 'SUCCESS' ||
-      order?.status === 'SETTLED' ||
-      order?.payment_status === 'PAID' ||
-      order?.order_status === 'PAID') &&
-    order?.status !== 'PENDING' &&
-    order?.status !== 'WAITING_PAYMENT' &&
-    order?.status !== 'WAITING_CONFIRMATION' &&
-    order?.status !== 'EXPIRED' &&
-    order?.status !== 'CANCELLED' &&
-    order?.payment_status !== 'PENDING' &&
-    order?.payment_status !== 'WAITING_PAYMENT' &&
-    order?.payment_status !== 'WAITING_CONFIRMATION';
+    isExplicitlyPaid &&
+    statusUpper !== 'EXPIRED' &&
+    statusUpper !== 'CANCELLED' &&
+    paymentStatusUpper !== 'EXPIRED' &&
+    paymentStatusUpper !== 'CANCELLED';
 
   const isTenantAuthorized = Boolean(
     tenant &&

@@ -1,4 +1,21 @@
 /**
+ * ⚠️ ARCHITECTURAL WARNING: PRODUCTION XENDIT WEBHOOK 100% ROUTED TO RAILWAY BACKEND
+ * ====================================================================================
+ * Single Source of Truth / Konstitusi: ARCHITECTURE.md § 70 (Payment Webhook Routing)
+ *
+ * JALUR RESMI WEBHOOK PRODUKSI:
+ * 👉 https://api.boontrack.com/api/v1/payments/xendit/callback
+ *
+ * PERINGATAN KONFIGURASI GANDA (DUAL-INGESTION HAZARD):
+ * - Frontend Next.js (dashboard.boontrack.com) bertindak sebagai CONSUMER MURNI (read & mutate via API/SWR).
+ * - Pemrosesan webhook resmi (verifikasi token, mutasi status DB ke PAID, pencatatan ledger finansial,
+ *   dan dispatch notifikasi WhatsApp via worker) 100% didelegasikan ke Railway backend (boontrack-core).
+ * - DILARANG KERAS mengonfigurasi webhook Xendit Dashboard ke rute lokal Next.js ini di lingkungan produksi!
+ *
+ * Endpoint lokal ini dipertahankan hanya untuk backwards compatibility, dev staging, dan mock testing lokal.
+ * ====================================================================================
+ */
+/**
  * POST /api/webhooks/xendit/paid
  *
  * Idempotent Webhook Handler for Xendit PAID Notifications (Directive RE-01 / Sprint P0)
