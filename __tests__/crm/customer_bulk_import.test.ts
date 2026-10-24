@@ -308,6 +308,7 @@ describe('Customer & Meta Custom Audience Bulk Import Module', () => {
           'Kota (Opsional)': 'Bandung',
           'Nama Produk': 'Produk A',
           'Nominal (Rp)': 100000,
+          'Tanggal Transaksi (YYYY-MM-DD)': '2026-10-10',
         },
         {
           'Nama Pembeli': 'Siti Toko',
@@ -315,6 +316,7 @@ describe('Customer & Meta Custom Audience Bulk Import Module', () => {
           'kota': 'Semarang',
           'Nama Produk': 'Produk B',
           'Nominal (Rp)': 250000,
+          'Tanggal Transaksi (YYYY-MM-DD)': '2026-10-10',
         },
       ];
 

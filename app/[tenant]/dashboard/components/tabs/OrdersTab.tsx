@@ -41,7 +41,9 @@ import {
   printOrderInvoice,
   exportOrdersToLincahCsv,
   exportOrdersToMetaCsv,
+  MetaCsvExportSummary,
 } from '@/lib/utils/orderFulfillment';
+import { MetaCsvExportSummaryModal } from '../MetaCsvExportSummaryModal';
 import {
   isValidPaidStatus,
   isPendingVerificationStatus,
@@ -159,6 +161,10 @@ export default function OrdersTab({
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+
+  // State untuk ringkasan ekspor Meta CSV (Audit & Validasi Ketat)
+  const [metaExportSummary, setMetaExportSummary] = useState<MetaCsvExportSummary | null>(null);
+  const [isExportSummaryModalOpen, setIsExportSummaryModalOpen] = useState(false);
 
   // State untuk dialog konfirmasi pembayaran manual
   const [orderToConfirm, setOrderToConfirm] = useState<OrderItem | null>(null);
@@ -706,7 +712,11 @@ export default function OrdersTab({
           <button
             type="button"
             id="orders-export-meta-csv-btn"
-            onClick={() => exportOrdersToMetaCsv(filteredOrders, tenantSlug)}
+            onClick={() => {
+              const summary = exportOrdersToMetaCsv(filteredOrders, tenantSlug);
+              setMetaExportSummary(summary);
+              setIsExportSummaryModalOpen(true);
+            }}
             disabled={filteredOrders.length === 0}
             className="bg-card hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             title="Export pesanan ke format CSV Meta Offline Events / CAPI (kompatibel Ads Manager)"
@@ -1666,6 +1676,15 @@ export default function OrdersTab({
         onClose={() => setIsImportModalOpen(false)}
         tenantSlug={tenantSlug}
         onImportSuccess={() => fetchOrders()}
+      />
+
+      {/* ======================================================== */}
+      {/* META CSV EXPORT SUMMARY MODAL (SKIP SUMMARY & AUDIT)      */}
+      {/* ======================================================== */}
+      <MetaCsvExportSummaryModal
+        isOpen={isExportSummaryModalOpen}
+        onClose={() => setIsExportSummaryModalOpen(false)}
+        summary={metaExportSummary}
       />
     </div>
   );

@@ -190,12 +190,14 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
           nomor_whatsapp: '0812-3456-7890',
           nama_produk: 'Serum Glowing',
           nominal: '150.000',
+          tanggal_transaksi: '2026-10-10',
         },
         {
           nama_pembeli: 'Dewi Lestari',
           nomor_whatsapp: '6285712345678',
           nama_produk: 'Cream Malam',
           nominal: 200000,
+          tanggal_transaksi: '2026-10-10',
         },
       ];
 
@@ -213,12 +215,14 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
           nomor_whatsapp: '081987654321',
           nama_produk: 'Madu Asli 500g',
           nominal: 'Rp 175.000',
+          tanggal_transaksi: '2026-10-10',
         },
         {
           nama_pembeli: 'Rina Nose',
           nomor_whatsapp: '081311223344',
           nama_produk: 'Gamis Katun',
           nominal: '350.000,00',
+          tanggal_transaksi: '2026-10-10',
         },
       ];
 
@@ -412,6 +416,7 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
           nomor_whatsapp: '081234567890',
           nama_produk: 'Sepatu Kulit 42',
           nominal: 450000,
+          tanggal_transaksi: '2026-10-10',
         },
       ];
 
@@ -492,6 +497,7 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
               nomor_whatsapp: '081234567890',
               nama_produk: 'Paket Glow',
               nominal: 150000,
+              tanggal_transaksi: '2026-10-10',
             },
           ],
           syncMetaCapi: false,

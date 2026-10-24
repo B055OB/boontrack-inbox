@@ -5,8 +5,12 @@
  */
 
 import {
+  generateOrdersMetaCsv,
   generateOrdersMetaCsvString,
+  exportOrdersToMetaCsv,
   formatIsoWithOffset,
+  parseDeterministicDate,
+  parseStrictNominal,
   OrderRecord,
 } from '@/lib/utils/orderFulfillment';
 import {
@@ -288,12 +292,14 @@ describe('Tenant Dashboard CSV Export & Bulk Import - Meta Offline Event & CAPI 
           phone: '081122334455',
           product_name: 'Barang A',
           total_amount: 160000,
+          event_time: '2026-10-10T10:00:00+07:00',
         },
         {
           customer_name: 'Ani',
           phone: '082233445566',
           product_name: 'Barang B',
           gross_amount: 170000,
+          event_time: '2026-10-10T10:00:00+07:00',
         },
       ];
 
@@ -368,6 +374,247 @@ describe('Tenant Dashboard CSV Export & Bulk Import - Meta Offline Event & CAPI 
 
       // Pastikan tanggal asli 15 Juni 2026 tetap dipertahankan murni, TIDAK diubah ke tanggal hari ini
       expect(lines[1]).toContain('2026-06-15T15:30:00+07:00');
+    });
+  });
+
+  describe('5. P0 Remediation: Strict Meta CAPI & CSV Validation (Zero Silent Fallbacks)', () => {
+    it('formatIsoWithOffset melempar error eksplisit jika Date invalid (tidak fallback ke waktu sekarang)', () => {
+      const invalidDate = new Date('invalid-date-string');
+      expect(() => formatIsoWithOffset(invalidDate, 7)).toThrow(/Date invalid atau bukan objek Date yang valid/);
+      expect(() => formatIsoWithOffset(null as any, 7)).toThrow();
+    });
+
+    it('generateOrdersMetaCsv mengembalikan ringkasan rekap (summary) penolakan baris secara transparan', () => {
+      const mixedOrders: OrderRecord[] = [
+        {
+          id: 'ord-valid-1',
+          order_id: 'INV-VALID-1',
+          customer_name: 'Dewi Sukses',
+          customer_phone: '081211112222',
+          total_amount: 150000,
+          created_at: '2026-10-10T10:00:00+07:00',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-bad-date',
+          order_id: 'INV-BAD-DATE',
+          customer_name: 'Budi Bad Date',
+          customer_phone: '081233334444',
+          total_amount: 200000,
+          created_at: 'invalid-date-format',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-bad-amt',
+          order_id: 'INV-BAD-AMT',
+          customer_name: 'Siti Bad Amount',
+          customer_phone: '081255556666',
+          total_amount: 0,
+          created_at: '2026-10-10T10:00:00+07:00',
+          status: 'PAID',
+        },
+        {
+          id: 'ord-missing-date',
+          order_id: 'INV-MISSING-DATE',
+          customer_name: 'Andi No Date',
+          customer_phone: '081277778888',
+          total_amount: 300000,
+          created_at: '',
+          status: 'PAID',
+        },
+      ];
+
+      const { csv, summary } = generateOrdersMetaCsv(mixedOrders, 'toko-berkah', 'IDR');
+
+      // Rekap summary transparan
+      expect(summary.totalRows).toBe(4);
+      expect(summary.exportedRows).toBe(1);
+      expect(summary.skippedRows).toBe(3);
+      expect(summary.skippedDetails).toHaveLength(3);
+
+      expect(summary.skippedDetails[0].orderId).toBe('INV-BAD-DATE');
+      expect(summary.skippedDetails[0].reason).toBe('invalid_date');
+
+      expect(summary.skippedDetails[1].orderId).toBe('INV-BAD-AMT');
+      expect(summary.skippedDetails[1].reason).toBe('invalid_amount');
+
+      expect(summary.skippedDetails[2].orderId).toBe('INV-MISSING-DATE');
+      expect(summary.skippedDetails[2].reason).toBe('missing_date');
+
+      // CSV hanya memuat 1 baris data valid
+      const lines = csv.split('\r\n').filter(Boolean);
+      expect(lines).toHaveLength(2); // Header + 1 baris
+      expect(csv).toContain('INV-VALID-1');
+      expect(csv).not.toContain('INV-BAD-DATE');
+      expect(csv).not.toContain('INV-BAD-AMT');
+      expect(csv).not.toContain('INV-MISSING-DATE');
+
+      // exportOrdersToMetaCsv juga mengembalikan summary
+      const exportSummary = exportOrdersToMetaCsv(mixedOrders, 'toko-berkah', 'IDR');
+      expect(exportSummary.totalRows).toBe(4);
+      expect(exportSummary.exportedRows).toBe(1);
+      expect(exportSummary.skippedRows).toBe(3);
+    });
+
+    it('parseStrictNominal menolak nilai ambigu, malformed, karakter non-angka, dan format desimal/ribuan cacat', () => {
+      // 1. Karakter non-angka dan simbol ilegal (tidak boleh sekadar di-strip)
+      expect(parseStrictNominal('100$50').valid).toBe(false);
+      expect(parseStrictNominal('150k').valid).toBe(false);
+      expect(parseStrictNominal('150rb').valid).toBe(false);
+      expect(parseStrictNominal('100#50').valid).toBe(false);
+      expect(parseStrictNominal('100@50').valid).toBe(false);
+      expect(parseStrictNominal('100!50').valid).toBe(false);
+      expect(parseStrictNominal('123a456').valid).toBe(false);
+      expect(parseStrictNominal('100(diskon)').valid).toBe(false);
+      expect(parseStrictNominal('150.000 - 200.000').valid).toBe(false);
+
+      // 2. Pemisah berurutan / cacat
+      expect(parseStrictNominal('150..000').valid).toBe(false);
+      expect(parseStrictNominal('150,,000').valid).toBe(false);
+      expect(parseStrictNominal('150.,000').valid).toBe(false);
+      expect(parseStrictNominal('150,.000').valid).toBe(false);
+
+      // 3. Diawali atau diakhiri titik/koma
+      expect(parseStrictNominal('.150000').valid).toBe(false);
+      expect(parseStrictNominal('150000.').valid).toBe(false);
+      expect(parseStrictNominal(',150000').valid).toBe(false);
+      expect(parseStrictNominal('150000,').valid).toBe(false);
+
+      // 4. Format ribuan/desimal ambigu atau grouping tidak valid
+      expect(parseStrictNominal('15.00,00').valid).toBe(false);
+      expect(parseStrictNominal('1.50.000').valid).toBe(false);
+      expect(parseStrictNominal('10.20.30').valid).toBe(false);
+      expect(parseStrictNominal('150.0000').valid).toBe(false); // lebih dari 3 desimal / ambigu
+
+      // 5. Kosong, nol, atau negatif
+      expect(parseStrictNominal('').valid).toBe(false);
+      expect(parseStrictNominal(0).valid).toBe(false);
+      expect(parseStrictNominal('0').valid).toBe(false);
+      expect(parseStrictNominal(-50000).valid).toBe(false);
+
+      // 6. Kasus valid yang harus diterima dengan presisi
+      expect(parseStrictNominal(150000)).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150.000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('1.500.000')).toEqual({ valid: true, value: 1500000 });
+      expect(parseStrictNominal('Rp 150.000')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('IDR 150.000,50')).toEqual({ valid: true, value: 150000.5 });
+      expect(parseStrictNominal('150,000.00')).toEqual({ valid: true, value: 150000 });
+      expect(parseStrictNominal('150.50')).toEqual({ valid: true, value: 150.5 });
+      expect(parseStrictNominal('150,50')).toEqual({ valid: true, value: 150.5 });
+    });
+
+    it('parseDeterministicDate menafsirkan tanggal tanpa offset secara deterministik ke zona waktu kontrak (WIB / +07:00)', () => {
+      // 1. Date-only format YYYY-MM-DD wajib ditafsirkan sebagai midnight WIB (+07:00), bukan mengambang
+      const resDateOnly = parseDeterministicDate('2026-10-10');
+      expect(resDateOnly.valid).toBe(true);
+      expect(resDateOnly.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+      expect(resDateOnly.isoUtc).toBe('2026-10-09T17:00:00.000Z');
+      expect(resDateOnly.unixSeconds).toBe(1791565200);
+
+      // 2. Format Indonesia DD/MM/YYYY dan DD-MM-YYYY
+      const resIndoSlash = parseDeterministicDate('10/10/2026');
+      expect(resIndoSlash.valid).toBe(true);
+      expect(resIndoSlash.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+
+      const resIndoDash = parseDeterministicDate('10-10-2026');
+      expect(resIndoDash.valid).toBe(true);
+      expect(resIndoDash.isoWithOffset).toBe('2026-10-10T00:00:00+07:00');
+
+      // 3. Date-time tanpa offset (YYYY-MM-DD HH:mm:ss atau YYYY-MM-DDTHH:mm:ss)
+      const resDateTimeSpace = parseDeterministicDate('2026-10-10 14:30:00');
+      expect(resDateTimeSpace.valid).toBe(true);
+      expect(resDateTimeSpace.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+      expect(resDateTimeSpace.isoUtc).toBe('2026-10-10T07:30:00.000Z');
+      expect(resDateTimeSpace.unixSeconds).toBe(1791617400);
+
+      const resDateTimeT = parseDeterministicDate('2026-10-10T14:30:00');
+      expect(resDateTimeT.valid).toBe(true);
+      expect(resDateTimeT.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+      expect(resDateTimeT.isoUtc).toBe('2026-10-10T07:30:00.000Z');
+
+      // 4. Date-time dengan explicit offset (Z)
+      const resExplicitUtc = parseDeterministicDate('2026-10-10T07:30:00.000Z');
+      expect(resExplicitUtc.valid).toBe(true);
+      expect(resExplicitUtc.isoWithOffset).toBe('2026-10-10T14:30:00+07:00');
+
+      // 5. Tanggal invalid / kosong
+      expect(parseDeterministicDate('bukan-tanggal').valid).toBe(false);
+      expect(parseDeterministicDate('').valid).toBe(false);
+      expect(parseDeterministicDate(null).valid).toBe(false);
+      expect(parseDeterministicDate(undefined).valid).toBe(false);
+    });
+
+    it('OrderBulkImportService.parseTransactionDate menolak tanggal invalid/kosong (tidak menghasilkan new Date() atau now unix timestamp)', () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+
+      const res1 = OrderBulkImportService.parseTransactionDate('not-a-date');
+      expect(res1.valid).toBe(false);
+      expect(res1.isoString).toBe('');
+      expect(res1.unixSeconds).toBe(0);
+      expect(res1.unixSeconds).not.toBeCloseTo(nowSeconds, -2);
+
+      const res2 = OrderBulkImportService.parseTransactionDate('');
+      expect(res2.valid).toBe(false);
+      expect(res2.unixSeconds).toBe(0);
+
+      const res3 = OrderBulkImportService.parseTransactionDate(null);
+      expect(res3.valid).toBe(false);
+
+      const res4 = OrderBulkImportService.parseTransactionDate(undefined);
+      expect(res4.valid).toBe(false);
+
+      const res5 = OrderBulkImportService.parseTransactionDate(-999);
+      expect(res5.valid).toBe(false);
+    });
+
+    it('OrderBulkImportService.validateRows menolak baris dengan tanggal invalid atau nominal invalid/kosong ke errors array', () => {
+      const corruptRows: RawImportOrderRow[] = [
+        {
+          customer_name: 'Customer Invalid Date',
+          phone: '081234567890',
+          product_name: 'Barang A',
+          total_amount: 150000,
+          event_time: 'bukan-tanggal-valid',
+        },
+        {
+          customer_name: 'Customer Invalid Nominal 0',
+          phone: '081234567891',
+          product_name: 'Barang B',
+          total_amount: 0,
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+        {
+          customer_name: 'Customer Empty Nominal',
+          phone: '081234567892',
+          product_name: 'Barang C',
+          total_amount: '',
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+        {
+          customer_name: 'Customer Corrupt String Nominal',
+          phone: '081234567893',
+          product_name: 'Barang D',
+          total_amount: 'abc-xyz',
+          event_time: '2026-10-10T10:00:00+07:00',
+        },
+      ];
+
+      const { valid, errors } = OrderBulkImportService.validateRows(corruptRows);
+
+      // Tidak ada baris yang lolos ke valid
+      expect(valid).toHaveLength(0);
+      // Semua baris tercatat di errors
+      expect(errors).toHaveLength(4);
+
+      // Error baris 1: tanggal invalid
+      expect(errors[0].reason).toMatch(/Tanggal transaksi .* tidak valid/);
+      // Error baris 2: nominal 0 ditolak
+      expect(errors[1].reason).toMatch(/Nominal transaksi .* tidak valid atau harus lebih dari 0/);
+      // Error baris 3: nominal kosong ditolak
+      expect(errors[2].reason).toMatch(/Nominal transaksi .* wajib diisi/);
+      // Error baris 4: nominal non-angka ditolak
+      expect(errors[3].reason).toMatch(/Nominal transaksi .* tidak valid atau mengandung karakter tidak dikenal/);
     });
   });
 });

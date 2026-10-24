@@ -19,6 +19,10 @@ import {
   parseName,
 } from '@/lib/tracking/meta-capi';
 import { CustomerBulkImportService } from '@/lib/services/customer-bulk-import.service';
+import {
+  parseDeterministicDate,
+  parseStrictNominal,
+} from '@/lib/utils/orderFulfillment';
 
 export interface RawImportOrderRow {
   tanggal_transaksi?: string | number | Date;
@@ -239,120 +243,25 @@ export class OrderBulkImportService {
 
   /**
    * Helper: Parse amount string/number to clean positive number.
-   * Empty, corrupted, or non-numeric values are NOT silently coerced to 0,
-   * but return strict validation failure with reason.
+   * Uses shared parseStrictNominal to strictly reject empty, corrupt, or ambiguous values.
    */
   public static parseNominal(val: any): NominalParseResult {
-    if (val === undefined || val === null || val === '') {
-      return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
-    }
-
-    if (typeof val === 'number') {
-      if (isNaN(val) || !isFinite(val)) {
-        return { valid: false, value: 0, reason: 'Nominal transaksi bukan angka valid.' };
-      }
-      if (val <= 0) {
-        return { valid: false, value: 0, reason: `Nominal transaksi '${val}' tidak valid atau harus lebih dari 0.` };
-      }
-      return { valid: true, value: val };
-    }
-
-    const str = String(val).trim();
-    if (!str) {
-      return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
-    }
-
-    // Strip currency prefixes/suffixes like "Rp", "Rp.", "IDR", "IDR."
-    const withoutCurrency = str.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
-
-    // If there are alphabetic characters remaining, it's corrupted text (e.g. "abc", "corrupt")
-    if (/[a-zA-Z]/.test(withoutCurrency)) {
-      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid atau mengandung karakter tidak dikenal.` };
-    }
-
-    let cleaned = withoutCurrency.replace(/\s+/g, '');
-
-    // Format separators
-    if (cleaned.includes('.') && cleaned.includes(',')) {
-      if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
-        // Format Indonesia/Eropa: 150.000,00 -> 150000.00
-        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-      } else {
-        // Format US: 150,000.00 -> 150000.00
-        cleaned = cleaned.replace(/,/g, '');
-      }
-    } else if (cleaned.includes('.')) {
-      const parts = cleaned.split('.');
-      if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
-        // Ribuan: 150.000 -> 150000
-        cleaned = cleaned.replace(/\./g, '');
-      }
-    } else if (cleaned.includes(',')) {
-      const parts = cleaned.split(',');
-      if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
-        // Ribuan US: 150,000 -> 150000
-        cleaned = cleaned.replace(/,/g, '');
-      } else {
-        // Koma desimal: 150000,50 -> 150000.50
-        cleaned = cleaned.replace(',', '.');
-      }
-    }
-
-    const num = Number(cleaned);
-    if (isNaN(num) || !isFinite(num)) {
-      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid.` };
-    }
-    if (num <= 0) {
-      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid atau harus lebih dari 0.` };
-    }
-
-    return { valid: true, value: num };
+    return parseStrictNominal(val);
   }
 
   /**
    * Helper: Parse transaction date string or Excel date to ISO string and integer Unix seconds.
-   * If date-only (YYYY-MM-DD), parses deterministically with tenant UTC offset (+07:00).
+   * Deterministically parses dates anchored to WIB (UTC+07:00) without timezone drift.
+   * Returns valid: false if date is missing, empty, or unparseable.
    */
-  public static parseTransactionDate(val: any): { isoString: string; unixSeconds: number } {
-    if (val instanceof Date && !isNaN(val.getTime())) {
-      const ms = val.getTime();
-      return { isoString: val.toISOString(), unixSeconds: Math.floor(ms / 1000) };
-    }
-    if (typeof val === 'number' && val > 0) {
-      // Unix timestamp in seconds (10 digits)
-      if (val >= 1000000000 && val < 10000000000) {
-        const ms = val * 1000;
-        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(val) };
-      }
-      // Unix timestamp in milliseconds (13 digits)
-      if (val >= 1000000000000 && val < 10000000000000) {
-        return { isoString: new Date(val).toISOString(), unixSeconds: Math.floor(val / 1000) };
-      }
-      // Excel serial date number
-      const ms = Math.round((val - 25569) * 86400 * 1000);
-      const date = new Date(ms);
-      if (!isNaN(date.getTime())) {
-        return { isoString: date.toISOString(), unixSeconds: Math.floor(ms / 1000) };
-      }
-    }
-    if (typeof val === 'string' && val.trim()) {
-      const s = val.trim();
-      // Numeric string (Unix seconds or ms)
-      if (/^\d{10}$/.test(s)) {
-        const sec = parseInt(s, 10);
-        return { isoString: new Date(sec * 1000).toISOString(), unixSeconds: sec };
-      }
-      if (/^\d{13}$/.test(s)) {
-        const ms = parseInt(s, 10);
-        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(ms / 1000) };
-      }
-      const parsed = new Date(s);
-      if (!isNaN(parsed.getTime())) {
-        return { isoString: parsed.toISOString(), unixSeconds: Math.floor(parsed.getTime() / 1000) };
-      }
-    }
-    const now = new Date();
-    return { isoString: now.toISOString(), unixSeconds: Math.floor(now.getTime() / 1000) };
+  public static parseTransactionDate(val: any, defaultOffsetHours: number = 7): { valid: boolean; isoString: string; unixSeconds: number; reason?: string } {
+    const res = parseDeterministicDate(val, defaultOffsetHours);
+    return {
+      valid: res.valid,
+      isoString: res.isoWithOffset,
+      unixSeconds: res.unixSeconds,
+      reason: res.reason,
+    };
   }
 
   /**
@@ -551,8 +460,18 @@ export class OrderBulkImportService {
         row.tanggal ??
         row.date ??
         row.created_at;
+      const parsedDate = this.parseTransactionDate(rawDate);
+      if (!parsedDate.valid) {
+        errors.push({
+          row: rowNum,
+          reason: parsedDate.reason || `Tanggal transaksi '${rawDate}' tidak valid.`,
+          data: row,
+        });
+        return;
+      }
 
-      const { isoString: transactionDate, unixSeconds: unixEventTime } = this.parseTransactionDate(rawDate);
+      const transactionDate = parsedDate.isoString;
+      const unixEventTime = parsedDate.unixSeconds;
 
       const rawInvoice = String(
         row['order_id'] ??
