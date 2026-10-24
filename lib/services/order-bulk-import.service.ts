@@ -36,11 +36,18 @@ export interface RawImportOrderRow {
   [key: string]: any;
 }
 
+export interface NominalParseResult {
+  valid: boolean;
+  value: number;
+  reason?: string;
+}
+
 export interface ValidatedImportOrder {
   rowIndex: number;
   orderId: string;
   orderNumber: string;
   transactionDate: string;
+  unixEventTime?: number;
   customerName: string;
   customerPhone: string;
   customerPhoneNormalized: string;
@@ -51,6 +58,8 @@ export interface ValidatedImportOrder {
   grossAmount: number;
   paymentMethod: string;
   notes?: string;
+  currency?: string;
+  eventName?: string;
 }
 
 export interface RowValidationError {
@@ -73,7 +82,8 @@ export interface BulkImportResult {
     total_revenue_idr: number;
     formatted_revenue: string;
     meta_capi_synced: number;
-    meta_capi_status: 'DISPATCHED' | 'SKIPPED_NO_PIXEL' | 'DISABLED' | 'PARTIAL_ERROR' | 'FAILED';
+    meta_capi_skipped_outside_window?: number;
+    meta_capi_status: 'DISPATCHED' | 'SKIPPED_NO_PIXEL' | 'SKIPPED_OUTSIDE_WINDOW' | 'DISABLED' | 'PARTIAL_ERROR' | 'FAILED';
     batch_id: string;
   };
   errors: RowValidationError[];
@@ -86,6 +96,12 @@ export class OrderBulkImportService {
    */
   public static generateTemplateExcel(): Buffer {
     const headers = [
+      'event_name',
+      'event_time',
+      'value',
+      'currency',
+      'phone',
+      'order_id',
       'Tanggal Transaksi (YYYY-MM-DD)',
       'Nomor Invoice (Opsional)',
       'Nama Pembeli',
@@ -101,6 +117,12 @@ export class OrderBulkImportService {
 
     const sampleRows = [
       [
+        'Purchase',
+        '2026-10-10T10:00:00+07:00',
+        150000,
+        'IDR',
+        '6281234567890',
+        'INV-OFFLINE-001',
         '2026-10-10',
         'INV-OFFLINE-001',
         'Budi Santoso',
@@ -114,6 +136,12 @@ export class OrderBulkImportService {
         'Pelanggan offline toko',
       ],
       [
+        'Purchase',
+        '2026-10-10T10:00:00+07:00',
+        350000,
+        'IDR',
+        '6285712345678',
+        'INV-OFFLINE-002',
         '2026-10-10',
         'INV-OFFLINE-002',
         'Siti Nurhaliza',
@@ -130,6 +158,12 @@ export class OrderBulkImportService {
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
     ws['!cols'] = [
+      { wch: 15 },
+      { wch: 28 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 20 },
       { wch: 25 },
       { wch: 22 },
       { wch: 22 },
@@ -153,6 +187,12 @@ export class OrderBulkImportService {
    */
   public static generateTemplateCsv(): string {
     const headers = [
+      'event_name',
+      'event_time',
+      'value',
+      'currency',
+      'phone',
+      'order_id',
       'Tanggal Transaksi (YYYY-MM-DD)',
       'Nomor Invoice (Opsional)',
       'Nama Pembeli',
@@ -166,8 +206,8 @@ export class OrderBulkImportService {
       'Catatan / Alamat',
     ].join(',');
 
-    const sample1 = '2026-10-10,INV-OFFLINE-001,Budi Santoso,6281234567890,budi@gmail.com,Jakarta Selatan,Paket Glow Skincare 30ml,1,150000,Transfer Bank,Pelanggan offline toko';
-    const sample2 = '2026-10-10,INV-OFFLINE-002,Siti Nurhaliza,6285712345678,siti@gmail.com,Bandung,Gamis Silk Premium M,2,350000,QRIS Dinamis,Pesanan langsung via WhatsApp';
+    const sample1 = 'Purchase,2026-10-10T10:00:00+07:00,150000,IDR,6281234567890,INV-OFFLINE-001,2026-10-10,INV-OFFLINE-001,Budi Santoso,6281234567890,budi@gmail.com,Jakarta Selatan,Paket Glow Skincare 30ml,1,150000,Transfer Bank,Pelanggan offline toko';
+    const sample2 = 'Purchase,2026-10-10T10:00:00+07:00,350000,IDR,6285712345678,INV-OFFLINE-002,2026-10-10,INV-OFFLINE-002,Siti Nurhaliza,6285712345678,siti@gmail.com,Bandung,Gamis Silk Premium M,2,350000,QRIS Dinamis,Pesanan langsung via WhatsApp';
 
     return `${headers}\n${sample1}\n${sample2}\n`;
   }
@@ -198,59 +238,130 @@ export class OrderBulkImportService {
   }
 
   /**
-   * Helper: Parse amount string/number to clean integer/float.
+   * Helper: Parse amount string/number to clean positive number.
+   * Empty, corrupted, or non-numeric values are NOT silently coerced to 0,
+   * but return strict validation failure with reason.
    */
-  public static parseNominal(val: any): number {
-    if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    if (!val) return 0;
+  public static parseNominal(val: any): NominalParseResult {
+    if (val === undefined || val === null || val === '') {
+      return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
+    }
+
+    if (typeof val === 'number') {
+      if (isNaN(val) || !isFinite(val)) {
+        return { valid: false, value: 0, reason: 'Nominal transaksi bukan angka valid.' };
+      }
+      if (val <= 0) {
+        return { valid: false, value: 0, reason: `Nominal transaksi '${val}' tidak valid atau harus lebih dari 0.` };
+      }
+      return { valid: true, value: val };
+    }
+
     const str = String(val).trim();
-    // Remove "Rp", dots (thousand separators), spaces, and replace comma decimal with dot
-    let cleaned = str.replace(/rp\.?/gi, '').replace(/\s+/g, '');
+    if (!str) {
+      return { valid: false, value: 0, reason: 'Nominal transaksi (kolom value/Nominal) wajib diisi.' };
+    }
+
+    // Strip currency prefixes/suffixes like "Rp", "Rp.", "IDR", "IDR."
+    const withoutCurrency = str.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
+
+    // If there are alphabetic characters remaining, it's corrupted text (e.g. "abc", "corrupt")
+    if (/[a-zA-Z]/.test(withoutCurrency)) {
+      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid atau mengandung karakter tidak dikenal.` };
+    }
+
+    let cleaned = withoutCurrency.replace(/\s+/g, '');
+
+    // Format separators
     if (cleaned.includes('.') && cleaned.includes(',')) {
-      // Format Indonesia: 150.000,00 -> 150000.00
-      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+        // Format Indonesia/Eropa: 150.000,00 -> 150000.00
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      } else {
+        // Format US: 150,000.00 -> 150000.00
+        cleaned = cleaned.replace(/,/g, '');
+      }
     } else if (cleaned.includes('.')) {
-      // Bisa jadi 150.000 (ribuan) atau 150.50 (desimal)
       const parts = cleaned.split('.');
-      if (parts[parts.length - 1].length === 3) {
+      if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
         // Ribuan: 150.000 -> 150000
         cleaned = cleaned.replace(/\./g, '');
       }
     } else if (cleaned.includes(',')) {
       const parts = cleaned.split(',');
-      if (parts[parts.length - 1].length === 3) {
+      if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+        // Ribuan US: 150,000 -> 150000
         cleaned = cleaned.replace(/,/g, '');
       } else {
+        // Koma desimal: 150000,50 -> 150000.50
         cleaned = cleaned.replace(',', '.');
       }
     }
-    const num = parseFloat(cleaned.replace(/[^0-9.-]/g, ''));
-    return isNaN(num) ? 0 : num;
+
+    const num = Number(cleaned);
+    if (isNaN(num) || !isFinite(num)) {
+      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid.` };
+    }
+    if (num <= 0) {
+      return { valid: false, value: 0, reason: `Nominal transaksi '${str}' tidak valid atau harus lebih dari 0.` };
+    }
+
+    return { valid: true, value: num };
   }
 
   /**
-   * Helper: Parse transaction date string or Excel date to ISO string.
+   * Helper: Parse transaction date string or Excel date to ISO string and integer Unix seconds.
+   * If date-only (YYYY-MM-DD), parses deterministically with tenant UTC offset (+07:00).
    */
-  public static parseTransactionDate(val: any): string {
+  public static parseTransactionDate(val: any): { isoString: string; unixSeconds: number } {
     if (val instanceof Date && !isNaN(val.getTime())) {
-      return val.toISOString();
+      const ms = val.getTime();
+      return { isoString: val.toISOString(), unixSeconds: Math.floor(ms / 1000) };
     }
     if (typeof val === 'number' && val > 0) {
+      // Unix timestamp in seconds (10 digits)
+      if (val >= 1000000000 && val < 10000000000) {
+        const ms = val * 1000;
+        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(val) };
+      }
+      // Unix timestamp in milliseconds (13 digits)
+      if (val >= 1000000000000 && val < 10000000000000) {
+        return { isoString: new Date(val).toISOString(), unixSeconds: Math.floor(val / 1000) };
+      }
       // Excel serial date number
-      const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-      if (!isNaN(date.getTime())) return date.toISOString();
+      const ms = Math.round((val - 25569) * 86400 * 1000);
+      const date = new Date(ms);
+      if (!isNaN(date.getTime())) {
+        return { isoString: date.toISOString(), unixSeconds: Math.floor(ms / 1000) };
+      }
     }
     if (typeof val === 'string' && val.trim()) {
-      const parsed = new Date(val.trim());
-      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+      const s = val.trim();
+      // Numeric string (Unix seconds or ms)
+      if (/^\d{10}$/.test(s)) {
+        const sec = parseInt(s, 10);
+        return { isoString: new Date(sec * 1000).toISOString(), unixSeconds: sec };
+      }
+      if (/^\d{13}$/.test(s)) {
+        const ms = parseInt(s, 10);
+        return { isoString: new Date(ms).toISOString(), unixSeconds: Math.floor(ms / 1000) };
+      }
+      const parsed = new Date(s);
+      if (!isNaN(parsed.getTime())) {
+        return { isoString: parsed.toISOString(), unixSeconds: Math.floor(parsed.getTime() / 1000) };
+      }
     }
-    return new Date().toISOString();
+    const now = new Date();
+    return { isoString: now.toISOString(), unixSeconds: Math.floor(now.getTime() / 1000) };
   }
 
   /**
    * Validates a batch of raw rows.
    */
-  public static validateRows(rows: RawImportOrderRow[]): {
+  public static validateRows(
+    rows: RawImportOrderRow[],
+    options?: { tenantCurrency?: string; defaultOffsetHours?: number }
+  ): {
     valid: ValidatedImportOrder[];
     errors: RowValidationError[];
     totalRevenue: number;
@@ -264,14 +375,16 @@ export class OrderBulkImportService {
 
       // 1. Resolve Nama Pembeli
       const customerName = String(
+        row['customer_name'] ??
+        row['Customer Name'] ??
         row['Nama Pembeli'] ??
         row['nama_pembeli'] ??
+        row.customer_name ??
         row.nama_pembeli ??
         row.nama ??
-        row.customer_name ??
-        row.nama_pelanggan ??
-        row.pembeli ??
         row.name ??
+        row.pembeli ??
+        row.customer ??
         ''
       ).trim();
 
@@ -286,14 +399,16 @@ export class OrderBulkImportService {
 
       // 2. Resolve Nomor Telepon & Auto-Sanitizer (E.164: jika 08 -> 628, jika 8 -> 628, hapus non-digit)
       const rawPhoneVal =
+        row['phone'] ??
+        row['Phone'] ??
+        row['PHONE'] ??
         row['Nomor WhatsApp'] ??
         row['nomor_whatsapp'] ??
         row['whatsapp'] ??
-        row['phone'] ??
+        row.phone ??
         row.nomor_whatsapp ??
         row.no_hp ??
         row.telepon ??
-        row.phone ??
         row.whatsapp ??
         row.no_wa ??
         row.customer_phone ??
@@ -335,11 +450,13 @@ export class OrderBulkImportService {
 
       // 4. Resolve Nama Produk
       const productTitle = String(
+        row['product_name'] ??
+        row['Product Name'] ??
         row['Nama Produk'] ??
         row['nama_produk'] ??
+        row.product_name ??
         row.nama_produk ??
         row.produk ??
-        row.product_name ??
         row.product_title ??
         row.item ??
         row.nama_barang ??
@@ -355,51 +472,99 @@ export class OrderBulkImportService {
         return;
       }
 
-      // 5. Resolve Nominal Transaksi (pencarian header kolom harga fleksibel case-insensitive & support spasi)
+      // 5. Resolve Nominal Transaksi (pencarian header kolom harga fleksibel case-insensitive & support Meta 'value')
       const rawNominal =
+        row['value'] ??
+        row['Value'] ??
+        row['VALUE'] ??
         row['Nominal (Rp)'] ??
-        row['nominal'] ??
-        row['Nominal'] ??
-        row['total'] ??
-        row['amount'] ??
         row['nominal (rp)'] ??
         row['nominal(rp)'] ??
-        row['nominal__rp_'] ??
-        row['nominal_rp'] ??
+        row['Nominal'] ??
+        row['nominal'] ??
+        row['total_amount'] ??
+        row['Total Amount'] ??
+        row['gross_amount'] ??
+        row['Gross Amount'] ??
+        row['amount'] ??
+        row['Amount'] ??
+        row['total'] ??
+        row['Total'] ??
+        row['harga'] ??
+        row['Harga'] ??
+        row['total_harga'] ??
+        row['price'] ??
+        row.value ??
         row.nominal ??
-        row.total_harga ??
-        row.harga ??
-        row.total ??
+        row.total_amount ??
         row.gross_amount ??
         row.amount ??
-        row.total_amount ??
-        0;
+        row.total ??
+        row.nominal__rp_ ??
+        row.nominal_rp ??
+        undefined;
 
       const parsedNominal = this.parseNominal(rawNominal);
-      const cleanAmount = parsedNominal > 0 ? parsedNominal : Number(String(rawNominal).replace(/[^0-9]/g, ''));
-      const grossAmount = cleanAmount;
-      if (grossAmount <= 0) {
+      if (!parsedNominal.valid || parsedNominal.value <= 0) {
         errors.push({
           row: rowNum,
-          reason: `Nominal transaksi '${rawNominal}' tidak valid atau harus lebih dari 0.`,
+          reason: parsedNominal.reason || `Nominal transaksi '${rawNominal}' tidak valid atau harus lebih dari 0.`,
           data: row,
         });
         return;
       }
+      const grossAmount = parsedNominal.value;
 
-      // 6. Resolve Quantity & Date & Invoice
-      const rawQty = row.jumlah ?? row.qty ?? row.quantity ?? 1;
+      // 6. Resolve Currency (default: IDR)
+      const rawCurrency = String(
+        row['currency'] ??
+        row['Currency'] ??
+        row['CURRENCY'] ??
+        row['mata_uang'] ??
+        row.currency ??
+        options?.tenantCurrency ??
+        'IDR'
+      ).trim().toUpperCase();
+      const currency = rawCurrency || 'IDR';
+
+      // 7. Resolve Event Name (default: Purchase)
+      const rawEventName = String(
+        row['event_name'] ??
+        row['Event Name'] ??
+        row['event'] ??
+        row.event_name ??
+        'Purchase'
+      ).trim();
+      const eventName = rawEventName || 'Purchase';
+
+      // 8. Resolve Quantity & Date & Invoice
+      const rawQty = row['quantity'] ?? row['Jumlah'] ?? row.jumlah ?? row.qty ?? row.quantity ?? 1;
       const quantity = Math.max(1, parseInt(String(rawQty), 10) || 1);
 
-      const rawDate = row.tanggal_transaksi || row.tanggal || row.date || row.created_at;
-      const transactionDate = this.parseTransactionDate(rawDate);
+      const rawDate =
+        row['event_time'] ??
+        row['Event Time'] ??
+        row['Tanggal Transaksi (YYYY-MM-DD)'] ??
+        row['tanggal_transaksi'] ??
+        row.event_time ??
+        row.tanggal_transaksi ??
+        row.tanggal ??
+        row.date ??
+        row.created_at;
+
+      const { isoString: transactionDate, unixSeconds: unixEventTime } = this.parseTransactionDate(rawDate);
 
       const rawInvoice = String(
-        row.nomor_invoice ||
-        row.invoice ||
-        row.invoice_no ||
-        row.no_invoice ||
-        row.order_id ||
+        row['order_id'] ??
+        row['Order ID'] ??
+        row['orderid'] ??
+        row['nomor_invoice'] ??
+        row['Nomor Invoice (Opsional)'] ??
+        row.order_id ??
+        row.nomor_invoice ??
+        row.invoice ??
+        row.invoice_no ??
+        row.no_invoice ??
         ''
       ).trim();
 
@@ -407,15 +572,16 @@ export class OrderBulkImportService {
       const orderId = rawInvoice ? rawInvoice : `IMP-${uniqueSuffix}`;
       const orderNumber = rawInvoice ? rawInvoice : `IMP-${uniqueSuffix}`;
 
-      const customerEmail = String(row.email || row.customer_email || row.mail || '').trim() || undefined;
-      const paymentMethod = String(row.metode_pembayaran || row.metode || row.payment_method || 'Manual / Offline').trim();
-      const notes = String(row.catatan || row.notes || row.alamat || row.keterangan || '').trim() || undefined;
+      const customerEmail = String(row['email'] ?? row['Email (Opsional)'] ?? row.email ?? row.customer_email ?? row.mail ?? '').trim() || undefined;
+      const paymentMethod = String(row['payment_method'] ?? row['Metode Pembayaran'] ?? row.metode_pembayaran ?? row.metode ?? row.payment_method ?? 'Manual / Offline').trim();
+      const notes = String(row['notes'] ?? row['Catatan / Alamat'] ?? row['catatan'] ?? row.catatan ?? row.notes ?? row.alamat ?? row.keterangan ?? '').trim() || undefined;
 
       valid.push({
         rowIndex: rowNum,
         orderId,
         orderNumber,
         transactionDate,
+        unixEventTime,
         customerName,
         customerPhone: rawPhone,
         customerPhoneNormalized: normalizedPhone,
@@ -426,6 +592,8 @@ export class OrderBulkImportService {
         grossAmount,
         paymentMethod,
         notes,
+        currency,
+        eventName,
       });
 
       totalRevenue += grossAmount;
@@ -471,7 +639,9 @@ export class OrderBulkImportService {
     }
 
     const batchId = `BATCH-IMP-${Date.now()}`;
-    const { valid, errors, totalRevenue } = this.validateRows(rawRows);
+    const { valid, errors, totalRevenue } = this.validateRows(rawRows, {
+      tenantCurrency: tenant.metadata?.currency || 'IDR',
+    });
 
     if (valid.length === 0) {
       return {
@@ -515,6 +685,8 @@ export class OrderBulkImportService {
           source: 'bulk_import',
           batch_id: batchId,
           payment_method: o.paymentMethod,
+          currency: o.currency || 'IDR',
+          event_name: o.eventName || 'Purchase',
           city: o.city || null,
           notes: o.notes,
           synced_meta_capi: Boolean(options.syncMetaCapi),
@@ -604,8 +776,9 @@ export class OrderBulkImportService {
       } catch {}
     }
 
-    // 5. Meta Conversions API (CAPI) Batch Dispatch with Rolling Timestamp Injection
+    // 5. Meta Conversions API (CAPI) Batch Dispatch with Authentic Timestamps
     let metaCapiSynced = 0;
+    let metaCapiSkippedOutsideWindow = 0;
     let metaCapiStatus: BulkImportResult['summary']['meta_capi_status'] = 'DISABLED';
 
     const shouldSyncCapi = options.syncMetaCapi !== false;
@@ -639,88 +812,98 @@ export class OrderBulkImportService {
           const nowMs = Date.now();
           const sevenDaysMs = 7 * 24 * 3600 * 1000;
 
-          const capiEvents = valid.map(o => {
-            const hashedPhone = hashPhone(o.customerPhoneNormalized);
-            const parsedName = parseName(o.customerName);
-            const hashedFn = parsedName.firstName
-              ? (hashFirstName(parsedName.firstName) || hashSha256(parsedName.firstName.toLowerCase().trim()))
-              : undefined;
-            const hashedLn = parsedName.lastName
-              ? (hashLastName(parsedName.lastName) || hashSha256(parsedName.lastName.toLowerCase().trim()))
-              : undefined;
-            const hashedEm = o.customerEmail ? hashEmail(o.customerEmail) : undefined;
-
-            const userData: Record<string, any> = {
-              ph: hashedPhone ? [hashedPhone] : undefined,
-              fn: hashedFn ? [hashedFn] : undefined,
-              ln: hashedLn ? [hashedLn] : undefined,
-              em: hashedEm ? [hashedEm] : undefined,
-              country: [hashSha256('id')],
-            };
-
-            // Rolling Timestamp Injection untuk Import Data Historis:
-            // Meta Graph API menolak payload Conversions API dengan pesan Error Code 100
-            // jika event_time lebih dari 7 hari lalu.
-            // Database toko tetap menyimpan tanggal transaksi asli di orders.created_at & orders.paid_at.
-            // Jika delta_t > 7 hari, modulasi event_time khusus untuk CAPI ke rentang 12-96 jam terakhir (1-4 hari) acak & bertahap.
-            const originalTxMs = new Date(o.transactionDate).getTime();
+          // STRICT DATA INTEGRITY: Do NOT fabricate or silently replace historical timestamps.
+          // Meta Conversions API rejects events older than 7 days.
+          // We separate eligible recent events (<= 7 days) from historical events (> 7 days).
+          // Historical transactions are preserved authentically in the database (created_at & paid_at)
+          // and in export CSVs for Meta Offline Event Manager upload.
+          const eligibleOrders: ValidatedImportOrder[] = [];
+          for (const o of valid) {
+            const originalTxMs = o.unixEventTime ? o.unixEventTime * 1000 : new Date(o.transactionDate).getTime();
             const deltaMs = nowMs - originalTxMs;
 
-            let injectedEventTime: number;
-            if (isNaN(originalTxMs) || deltaMs > sevenDaysMs) {
-              const randomHoursAgo = Math.floor(Math.random() * (96 - 12 + 1)) + 12;
-              injectedEventTime = Math.floor((nowMs - (randomHoursAgo * 3600 * 1000)) / 1000);
+            if (isNaN(originalTxMs) || deltaMs > sevenDaysMs || deltaMs < -60000) {
+              metaCapiSkippedOutsideWindow++;
             } else {
-              injectedEventTime = Math.floor(originalTxMs / 1000);
-            }
-
-            return {
-              event_name: 'Purchase',
-              event_time: injectedEventTime,
-              event_id: `PURCHASE_${o.orderId}`,
-              action_source: 'physical_store',
-              user_data: userData,
-              custom_data: {
-                currency: 'IDR',
-                value: o.grossAmount,
-                content_name: o.productTitle,
-              },
-            };
-          });
-
-          // Meta Graph API Endpoint for Batch Events: Eksekusi dalam batch maksimal 400 data
-          const CAPI_BATCH_LIMIT = 400;
-          let anySuccess = false;
-          let anyFailure = false;
-
-          for (let i = 0; i < capiEvents.length; i += CAPI_BATCH_LIMIT) {
-            const batchChunk = capiEvents.slice(i, i + CAPI_BATCH_LIMIT);
-            const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`;
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                data: batchChunk,
-                ...(testEventCode ? { test_event_code: testEventCode } : {}),
-              }),
-            });
-
-            const capiResult = await res.json().catch(() => ({}));
-            if (res.ok) {
-              metaCapiSynced += batchChunk.length;
-              anySuccess = true;
-            } else {
-              console.warn(`[BulkImport] Meta CAPI batch (${i}-${i + batchChunk.length}) returned error:`, capiResult);
-              anyFailure = true;
+              eligibleOrders.push(o);
             }
           }
 
-          if (anySuccess && !anyFailure) {
-            metaCapiStatus = 'DISPATCHED';
-          } else if (anySuccess && anyFailure) {
-            metaCapiStatus = 'PARTIAL_ERROR';
+          if (eligibleOrders.length === 0) {
+            metaCapiStatus = 'SKIPPED_OUTSIDE_WINDOW';
           } else {
-            metaCapiStatus = 'FAILED';
+            const capiEvents = eligibleOrders.map(o => {
+              const hashedPhone = hashPhone(o.customerPhoneNormalized);
+              const parsedName = parseName(o.customerName);
+              const hashedFn = parsedName.firstName
+                ? (hashFirstName(parsedName.firstName) || hashSha256(parsedName.firstName.toLowerCase().trim()))
+                : undefined;
+              const hashedLn = parsedName.lastName
+                ? (hashLastName(parsedName.lastName) || hashSha256(parsedName.lastName.toLowerCase().trim()))
+                : undefined;
+              const hashedEm = o.customerEmail ? hashEmail(o.customerEmail) : undefined;
+
+              const userData: Record<string, any> = {
+                ph: hashedPhone ? [hashedPhone] : undefined,
+                fn: hashedFn ? [hashedFn] : undefined,
+                ln: hashedLn ? [hashedLn] : undefined,
+                em: hashedEm ? [hashedEm] : undefined,
+                country: [hashSha256('id')],
+              };
+
+              // Use authentic transaction timestamp strictly
+              const originalTxMs = o.unixEventTime ? o.unixEventTime * 1000 : new Date(o.transactionDate).getTime();
+              const eventTimeSec = o.unixEventTime || Math.floor(originalTxMs / 1000);
+
+              return {
+                event_name: o.eventName || 'Purchase',
+                event_time: eventTimeSec,
+                event_id: `PURCHASE_${o.orderId}`,
+                action_source: 'physical_store',
+                user_data: userData,
+                custom_data: {
+                  currency: o.currency || 'IDR',
+                  value: o.grossAmount,
+                  content_name: o.productTitle,
+                  order_id: o.orderId,
+                },
+              };
+            });
+
+            // Meta Graph API Endpoint for Batch Events: Eksekusi dalam batch maksimal 400 data
+            const CAPI_BATCH_LIMIT = 400;
+            let anySuccess = false;
+            let anyFailure = false;
+
+            for (let i = 0; i < capiEvents.length; i += CAPI_BATCH_LIMIT) {
+              const batchChunk = capiEvents.slice(i, i + CAPI_BATCH_LIMIT);
+              const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${accessToken}`;
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  data: batchChunk,
+                  ...(testEventCode ? { test_event_code: testEventCode } : {}),
+                }),
+              });
+
+              const capiResult = await res.json().catch(() => ({}));
+              if (res.ok) {
+                metaCapiSynced += batchChunk.length;
+                anySuccess = true;
+              } else {
+                console.warn(`[BulkImport] Meta CAPI batch (${i}-${i + batchChunk.length}) returned error:`, capiResult);
+                anyFailure = true;
+              }
+            }
+
+            if (anySuccess && !anyFailure) {
+              metaCapiStatus = 'DISPATCHED';
+            } else if (anySuccess && anyFailure) {
+              metaCapiStatus = 'PARTIAL_ERROR';
+            } else {
+              metaCapiStatus = 'FAILED';
+            }
           }
         } catch (capiErr) {
           console.warn('[BulkImport] Meta CAPI dispatch exception:', capiErr);
@@ -738,6 +921,7 @@ export class OrderBulkImportService {
         total_revenue_idr: totalRevenue,
         formatted_revenue: `Rp ${totalRevenue.toLocaleString('id-ID')}`,
         meta_capi_synced: metaCapiSynced,
+        meta_capi_skipped_outside_window: metaCapiSkippedOutsideWindow,
         meta_capi_status: metaCapiStatus,
         batch_id: batchId,
       },

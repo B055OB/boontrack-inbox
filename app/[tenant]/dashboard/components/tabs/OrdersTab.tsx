@@ -40,6 +40,7 @@ import {
   printThermalShippingLabel,
   printOrderInvoice,
   exportOrdersToLincahCsv,
+  exportOrdersToMetaCsv,
 } from '@/lib/utils/orderFulfillment';
 import {
   isValidPaidStatus,
@@ -552,6 +553,19 @@ export default function OrdersTab({
           >
             <Upload className="w-3.5 h-3.5" />
             <span>⬆️ Import Pesanan Excel/CSV</span>
+          </button>
+
+          {/* BULK EXPORT: Meta Offline Conversions & CAPI CSV */}
+          <button
+            type="button"
+            id="orders-export-meta-csv-btn"
+            onClick={() => exportOrdersToMetaCsv(filteredOrders, tenantSlug)}
+            disabled={filteredOrders.length === 0}
+            className="bg-card hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Export pesanan ke format CSV Meta Offline Events / CAPI (kompatibel Ads Manager)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Ekspor Meta CSV</span>
           </button>
 
           {/* BULK EXPORT: Lincah.id Mass Upload CSV */}
