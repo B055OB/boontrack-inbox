@@ -72,13 +72,23 @@ export async function POST(request: NextRequest) {
     const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : request.headers.get('x-real-ip') || undefined;
     const userAgent = request.headers.get('user-agent') || undefined;
 
-    // GUARDRAIL P0: Bypass Unique Code untuk OnlineBoost / Xendit Dynamic QRIS
-    // Paksa unique_code = 0 dan gunakan nominal bulat pas tanpa mutasi 3 digit
-    const isOnlineboost = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
-    const isXenditGateway =
-      isOnlineboost ||
-      String(payload.paymentMethod || '').trim().toLowerCase().includes('xendit') ||
-      Boolean(payload.isGateway || payload.isXendit);
+    // GUARDRAIL P1: Eliminasi Kode Unik pada Payment Gateway / QRIS (Xendit Dynamic QRIS)
+    // Paksa unique_code = 0 dan gunakan nominal bulat pas (nett) tanpa mutasi 3 digit
+    const cleanPaymentMethod = String(payload.paymentMethod || 'qris').trim().toLowerCase();
+    const isManualTransfer =
+      cleanPaymentMethod === 'manual_transfer' ||
+      cleanPaymentMethod === 'manual' ||
+      cleanPaymentMethod === 'bank_transfer' ||
+      cleanPaymentMethod === 'transfer_bank' ||
+      cleanPaymentMethod.includes('manual');
+
+    const isGatewayOrQris =
+      cleanPaymentMethod === 'qris' ||
+      cleanPaymentMethod.includes('qris') ||
+      cleanPaymentMethod.includes('xendit') ||
+      cleanPaymentMethod === 'gateway' ||
+      Boolean(payload.isGateway || payload.isXendit) ||
+      !isManualTransfer;
 
     // Atribusi Reseller (Directive RE-01 / Sprint P0): Tangkap cookie bt_reseller_code atau payload data-bt-reseller
     const cookieReseller = request.cookies.get('bt_reseller_code')?.value || null;
@@ -99,7 +109,7 @@ export async function POST(request: NextRequest) {
         resellerCode: resolvedResellerCode,
         'data-bt-reseller': resolvedResellerCode,
       } : {}),
-      ...(isXenditGateway ? { uniqueCode: 0, unique_code: 0 } : {}),
+      ...(isGatewayOrQris ? { uniqueCode: 0, unique_code: 0 } : {}),
       tracking_context: {
         ...payload.tracking_context,
         client_ip_address: payload.tracking_context?.client_ip_address || clientIp,

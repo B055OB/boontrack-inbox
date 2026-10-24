@@ -1772,16 +1772,16 @@ function SingleProductContent() {
   const effectiveShippingCost = (shouldShowAddressSection && requiresShipping && !isPickup) ? netShippingCost : 0;
 
   // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
+  // Official Payment Gateway (Xendit Dynamic QRIS): kode unik = 0, nominal bulat pas (nett).
+  // Kode unik hanya aktif jika metode pembayaran adalah transfer rekening bank manual.
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
-  const currentUniqueCode = isAffiliateProduct ? 0 : uniqueCode;
+  const currentUniqueCode = (isAffiliateProduct || isQris) ? 0 : uniqueCode;
 
-  // 4. Total Bayar Presisi (Affiliate/Bypass: Tanpa kode unik; QRIS: Potongan acak; Manual: Tambahan kode unik)
-  const totalAmount = isAffiliateProduct
+  // 4. Total Bayar Presisi (QRIS/Gateway/Affiliate: Bulat pas nett; Manual Transfer: Tambahan kode unik)
+  const totalAmount = (isAffiliateProduct || isQris)
     ? (netProductPrice + effectiveShippingCost)
-    : (isQris
-        ? Math.max(1000, netProductPrice + effectiveShippingCost - currentUniqueCode)
-        : netProductPrice + effectiveShippingCost + currentUniqueCode);
+    : (netProductPrice + effectiveShippingCost + currentUniqueCode);
 
   useEffect(() => {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID

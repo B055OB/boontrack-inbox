@@ -285,24 +285,24 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const isQris = paymentMethod === 'qris';
   const isPickup = isFood ? (foodDiningOption !== 'INSTANT') : (fulfillmentType === 'PICKUP');
 
-  // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS / Affiliate external link bypass kode unik & gunakan nominal bulat pas
-  const isOnlineboostOrGateway =
+  // GUARDRAIL P1: Eliminasi Kode Unik pada Payment Gateway / QRIS (Xendit Dynamic QRIS)
+  // Kode unik hanya aktif jika toko menyediakan / pembeli memilih opsi transfer rekening bank manual.
+  // Untuk QRIS dan payment gateway resmi, tagihan bulat presisi sesuai harga produk (nett).
+  const isGatewayOrQris =
+    isQris ||
     isAffiliate ||
-    (tenantSlug || '').toLowerCase() === 'onlineboost' ||
     (tenantData?.payment_settings?.provider === 'xendit') ||
     (tenantData?.payment_settings?.mode === 'PAYMENT_GATEWAY') ||
     (tenantData?.metadata?.payment_settings?.provider === 'xendit') ||
     (tenantData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY');
 
-  const currentUniqueCode = isOnlineboostOrGateway ? 0 : uniqueCode;
+  const currentUniqueCode = isGatewayOrQris ? 0 : uniqueCode;
   const currentShippingCost = isFood
     ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
     : (isPhysical && !isPickup ? shippingCost : 0);
-  const totalAmount = isOnlineboostOrGateway
+  const totalAmount = isGatewayOrQris
     ? (basePrice + adminFee + currentShippingCost)
-    : (isQris
-        ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
-        : basePrice + adminFee + currentUniqueCode + currentShippingCost);
+    : (basePrice + adminFee + currentUniqueCode + currentShippingCost);
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
 
   // Sinkronisasi Ongkos Kirim sesuai Layanan Kurir Terpilih (Instan vs Reguler)
@@ -1430,7 +1430,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               // Jika QRIS berasal dari Xendit / Payment Gateway, gunakan langsung tanpa mutasi Tag 54/CRC16
               const isDynamicQrisFromGateway =
                 candidateQris.startsWith('000201010212') ||
-                isOnlineboostOrGateway ||
                 Boolean(paymentData.qr_string || paymentData.qrString);
 
               const finalQrValue = isDynamicQrisFromGateway

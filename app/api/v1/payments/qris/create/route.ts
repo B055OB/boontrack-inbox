@@ -207,15 +207,14 @@ export async function POST(req: NextRequest) {
     const hasStaticOrDynamicQris = Boolean(tenantStaticQris && tenantStaticQris.trim().startsWith('000201'));
 
     // Pastikan isXenditGateway TIDAK dipaksa true jika merchant menggunakan QRIS statis/dinamis platform
+    // Prioritas Xendit Payment Gateway atau tanpa QRIS statis toko
     const isExplicitXendit =
-      targetTenantSlug === 'onlineboost' ||
-      cleanSlug === 'onlineboost' ||
       tenantRow.payment_settings?.provider === 'xendit' ||
       tenantRow.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
       tenantRow.metadata?.payment_settings?.provider === 'xendit' ||
       tenantRow.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY';
 
-    const isXenditGateway = isExplicitXendit && !hasStaticOrDynamicQris;
+    const isXenditGateway = isExplicitXendit || !hasStaticOrDynamicQris;
 
     // 4. KODE UNIK & LEDGER DETERMINISTIK
     // Hitung kode unik dan total transaksi murni di server.
@@ -234,8 +233,8 @@ export async function POST(req: NextRequest) {
     const requestedUniqueCode = body.unique_code !== undefined ? Number(body.unique_code) : undefined;
     const expectedSubtotal = productBasePrice * quantity;
 
-    if (isXenditGateway) {
-      // GUARDRAIL P0: OnlineBoost / Xendit Dynamic QRIS bypass kode unik & nominal bulat pas
+    if (isXenditGateway || body.unique_code === 0) {
+      // GUARDRAIL P1: Xendit Dynamic QRIS bypass kode unik & nominal bulat pas (nett)
       uniqueCode = 0;
       productBasePrice = expectedSubtotal;
       numAmount = expectedSubtotal;

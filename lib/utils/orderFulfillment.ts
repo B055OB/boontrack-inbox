@@ -590,3 +590,171 @@ export function exportOrdersToLincahCsv(orders: OrderItem[], tenantSlug: string)
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Format a Date object to ISO 8601 with a specific UTC offset (e.g., +07:00 for WIB).
+ * Example: 2026-10-09T10:00:00+07:00
+ */
+export function formatIsoWithOffset(date: Date, offsetHours: number = 7): string {
+  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const sign = offsetHours >= 0 ? '+' : '-';
+  const totalOffsetMinutes = Math.abs(offsetHours) * 60;
+  const offsetFormatted = `${sign}${pad(Math.floor(totalOffsetMinutes / 60))}:${pad(totalOffsetMinutes % 60)}`;
+
+  const utcMs = date.getTime() + date.getTimezoneOffset() * 60000;
+  const targetDate = new Date(utcMs + offsetHours * 3600000);
+
+  const YYYY = targetDate.getFullYear();
+  const MM = pad(targetDate.getMonth() + 1);
+  const DD = pad(targetDate.getDate());
+  const hh = pad(targetDate.getHours());
+  const mm = pad(targetDate.getMinutes());
+  const ss = pad(targetDate.getSeconds());
+
+  return `${YYYY}-${MM}-${DD}T${hh}:${mm}:${ss}${offsetFormatted}`;
+}
+
+/**
+ * Generates CSV string for orders aligned with Meta Offline Event Manager & CAPI standard.
+ * Features:
+ * - event_name: 'Purchase'
+ * - event_time: Full ISO 8601 with offset (e.g. +07:00 WIB)
+ * - value: Pure numeric amount (gross_amount / total_amount)
+ * - currency: ISO 3-letter currency (default: 'IDR')
+ * - phone: E.164 normalized phone digits (e.g. '6281314495884')
+ * - order_id: Invoice/order reference for deduplication
+ * - Operational fields alongside Meta fields for merchant audit
+ */
+export function generateOrdersMetaCsvString(
+  orders: any[],
+  tenantSlug?: string,
+  currency: string = 'IDR'
+): string {
+  const headers = [
+    'event_name',
+    'event_time',
+    'value',
+    'currency',
+    'phone',
+    'order_id',
+    'customer_name',
+    'customer_email',
+    'city',
+    'product_name',
+    'quantity',
+    'payment_method',
+    'payment_status',
+    'order_status',
+    'notes',
+  ];
+
+  const escapeCsv = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    const str = String(val).replace(/"/g, '""').trim();
+    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+      return `"${str}"`;
+    }
+    return str;
+  };
+
+  const rows = (orders || []).map((ord) => {
+    const eventName = 'Purchase';
+
+    // event_time: full ISO 8601 with +07:00 offset (WIB)
+    const rawDate = ord.paid_at || ord.created_at || ord.createdDate || ord.date || new Date().toISOString();
+    let eventTime: string;
+    try {
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) {
+        eventTime = formatIsoWithOffset(new Date(), 7);
+      } else {
+        eventTime = formatIsoWithOffset(d, 7);
+      }
+    } catch {
+      eventTime = formatIsoWithOffset(new Date(), 7);
+    }
+
+    // value: pure numeric value
+    const rawValue = ord.total_amount ?? ord.gross_amount ?? ord.amount ?? 0;
+    const numValue = typeof rawValue === 'number'
+      ? rawValue
+      : Number(String(rawValue).replace(/[^0-9.-]/g, '')) || 0;
+
+    // currency: ISO currency code
+    const curr = String(ord.currency || currency || 'IDR').toUpperCase();
+
+    // phone: E.164 normalized digits
+    const rawPhone = ord.customer_phone || ord.phone || ord.whatsapp || '';
+    let phoneDigits = String(rawPhone).replace(/\D/g, '');
+    if (phoneDigits.startsWith('08')) {
+      phoneDigits = '628' + phoneDigits.slice(2);
+    } else if (phoneDigits.startsWith('0')) {
+      phoneDigits = '62' + phoneDigits.slice(1);
+    } else if (phoneDigits.startsWith('8')) {
+      phoneDigits = '62' + phoneDigits;
+    }
+
+    // order_id: invoice or order reference
+    const orderId = String(ord.order_id || ord.invoice_number || ord.invoice_no || ord.order_number || ord.id || '').replace(/^#/, '');
+
+    // Operational fields
+    const custName = ord.customer_name || ord.name || 'Pelanggan';
+    const custEmail = ord.customer_email || ord.email || '';
+    const city = ord.shipping_address?.city || ord.city || '';
+    const productName = ord.items_summary || ord.product_title || ord.product_name || 'Produk Toko';
+    const qty = ord.quantity || 1;
+    const paymentMethod = ord.payment_method || 'Online';
+    const paymentStatus = ord.payment_status || ord.status || 'PAID';
+    const orderStatus = ord.order_status || 'COMPLETED';
+    const notes = ord.notes || ord.catatan || '';
+
+    return [
+      escapeCsv(eventName),
+      escapeCsv(eventTime),
+      escapeCsv(numValue),
+      escapeCsv(curr),
+      escapeCsv(phoneDigits),
+      escapeCsv(orderId),
+      escapeCsv(custName),
+      escapeCsv(custEmail),
+      escapeCsv(city),
+      escapeCsv(productName),
+      escapeCsv(qty),
+      escapeCsv(paymentMethod),
+      escapeCsv(paymentStatus),
+      escapeCsv(orderStatus),
+      escapeCsv(notes),
+    ].join(',');
+  });
+
+  return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+}
+
+/**
+ * Export orders to Meta Offline Conversions & CAPI compliant CSV format.
+ * Triggers client-side CSV download in browser.
+ */
+export function exportOrdersToMetaCsv(
+  orders: any[],
+  tenantSlug?: string,
+  currency: string = 'IDR'
+): void {
+  if (!orders || orders.length === 0) {
+    if (typeof alert !== 'undefined') {
+      alert('Tidak ada pesanan untuk diekspor.');
+    }
+    return;
+  }
+
+  const csvContent = generateOrdersMetaCsvString(orders, tenantSlug, currency);
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  link.setAttribute('download', `Meta_Offline_Events_${tenantSlug || 'store'}_${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

@@ -25,6 +25,7 @@ import {
   extractOrderAmount,
 } from '@/lib/finance-engine';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
+import { exportOrdersToMetaCsv } from '@/lib/utils/orderFulfillment';
 
 export interface OverviewTabProps {
   totalOmzet: number;
@@ -327,7 +328,8 @@ export default function OverviewTab({
 
           <button
             type="button"
-            onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')}
+            id="overview-export-meta-csv-btn"
+            onClick={() => exportOrdersToMetaCsv(filteredTransactions, tenantSlug || 'default')}
             className="px-3 py-1.5 bg-card hover:bg-muted border border-border text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
           >
             <Download className="w-3.5 h-3.5" />

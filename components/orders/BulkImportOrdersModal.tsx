@@ -87,27 +87,29 @@ export default function BulkImportOrdersModal({
         }
 
         const name = String(
+          row['customer_name'] ??
+          row['Customer Name'] ??
           row['Nama Pembeli'] ??
           row['nama_pembeli'] ??
           row['nama'] ??
-          row['customer_name'] ??
           row['pembeli'] ??
+          norm['customer_name'] ??
           norm['nama pembeli'] ??
           norm['nama_pembeli'] ??
-          norm['customer_name'] ??
           norm['nama'] ??
           ''
         ).trim();
 
         // Auto-Sanitizer: 08... -> 628..., 8... -> 628..., hapus karakter non-digit
         let phone = String(
+          row['phone'] ??
+          row['Phone'] ??
           row['Nomor WhatsApp'] ??
           row['whatsapp'] ??
-          row['phone'] ??
+          norm['phone'] ??
           norm['nomor whatsapp'] ??
           norm['nomor_whatsapp'] ??
           norm['whatsapp'] ??
-          norm['phone'] ??
           norm['no_hp'] ??
           norm['telepon'] ??
           ''
@@ -133,25 +135,36 @@ export default function BulkImportOrdersModal({
         ).trim();
 
         const product = String(
+          row['product_name'] ??
+          row['Product Name'] ??
           row['Nama Produk'] ??
           row['nama_produk'] ??
           row['produk'] ??
-          row['product_name'] ??
           row['product_title'] ??
+          norm['product_name'] ??
           norm['nama produk'] ??
           norm['nama_produk'] ??
           norm['produk'] ??
-          norm['product_name'] ??
           ''
         ).trim();
 
-        // Pencarian header kolom harga fleksibel (case-insensitive & support spasi):
+        // Pencarian header kolom harga fleksibel (case-insensitive & support Meta 'value'):
         const rawNominal =
+          row['value'] ??
+          row['Value'] ??
+          row['VALUE'] ??
           row['Nominal (Rp)'] ??
           row['nominal'] ??
           row['Nominal'] ??
+          row['total_amount'] ??
+          row['Total Amount'] ??
+          row['gross_amount'] ??
+          row['Gross Amount'] ??
           row['total'] ??
           row['amount'] ??
+          norm['value'] ??
+          norm['total_amount'] ??
+          norm['gross_amount'] ??
           norm['nominal (rp)'] ??
           norm['nominal(rp)'] ??
           norm['nominal__rp_'] ??
@@ -161,9 +174,45 @@ export default function BulkImportOrdersModal({
           norm['amount'] ??
           norm['total_harga'] ??
           norm['harga'] ??
-          norm['gross_amount'] ??
-          0;
-        const cleanAmount = Number(String(rawNominal).replace(/[^0-9]/g, ''));
+          undefined;
+
+        if (rawNominal === undefined || rawNominal === null || rawNominal === '') {
+          errors.push({ row: rowNum, reason: 'Nominal transaksi (kolom value/Nominal) kosong' });
+          return;
+        }
+
+        let cleanAmount = 0;
+        if (typeof rawNominal === 'number') {
+          cleanAmount = rawNominal;
+        } else {
+          const str = String(rawNominal).trim();
+          const withoutCurr = str.replace(/^(?:rp\.?|idr)\s*/i, '').replace(/\s*(?:idr|rp\.?)$/i, '').trim();
+          if (/[a-zA-Z]/.test(withoutCurr)) {
+            errors.push({ row: rowNum, reason: `Nominal '${rawNominal}' tidak valid (karakter tidak dikenal)` });
+            return;
+          }
+          let cleaned = withoutCurr.replace(/\s+/g, '');
+          if (cleaned.includes('.') && cleaned.includes(',')) {
+            if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+              cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+            } else {
+              cleaned = cleaned.replace(/,/g, '');
+            }
+          } else if (cleaned.includes('.')) {
+            const parts = cleaned.split('.');
+            if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+              cleaned = cleaned.replace(/\./g, '');
+            }
+          } else if (cleaned.includes(',')) {
+            const parts = cleaned.split(',');
+            if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+              cleaned = cleaned.replace(/,/g, '');
+            } else {
+              cleaned = cleaned.replace(',', '.');
+            }
+          }
+          cleanAmount = Number(cleaned);
+        }
 
         if (!name) {
           errors.push({ row: rowNum, reason: 'Nama pembeli kosong' });
@@ -181,14 +230,35 @@ export default function BulkImportOrdersModal({
         }
 
         if (isNaN(cleanAmount) || cleanAmount <= 0) {
-          errors.push({ row: rowNum, reason: `Nominal '${rawNominal}' tidak valid` });
+          errors.push({ row: rowNum, reason: `Nominal '${rawNominal}' tidak valid atau harus lebih dari 0` });
           return;
         }
+
+        const orderId = String(
+          row['order_id'] ??
+          row['Order ID'] ??
+          row['nomor_invoice'] ??
+          row['Nomor Invoice (Opsional)'] ??
+          norm['order_id'] ??
+          norm['nomor_invoice'] ??
+          norm['invoice'] ??
+          ''
+        ).trim();
+
+        const currency = String(
+          row['currency'] ??
+          row['Currency'] ??
+          norm['currency'] ??
+          'IDR'
+        ).trim().toUpperCase() || 'IDR';
 
         validRows.push({
           ...row,
           'Nomor WhatsApp': phone,
           'Nominal (Rp)': cleanAmount,
+          value: cleanAmount,
+          currency,
+          ...(orderId ? { order_id: orderId } : {}),
           ...(city ? { Kota: city } : {}),
         });
         totalRevenue += cleanAmount;
@@ -367,6 +437,8 @@ export default function BulkImportOrdersModal({
                         ? `${uploadResult.summary.meta_capi_synced} Event Terkirim`
                         : uploadResult.summary.meta_capi_status === 'SKIPPED_NO_PIXEL'
                         ? 'Dilewati (Tanpa Pixel)'
+                        : uploadResult.summary.meta_capi_status === 'SKIPPED_OUTSIDE_WINDOW'
+                        ? 'Dilewati (Di Luar Jendela 7 Hari)'
                         : 'Nonaktif'}
                     </span>
                   </div>

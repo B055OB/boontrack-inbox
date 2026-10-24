@@ -856,6 +856,9 @@ export default function TenantDashboardPage() {
           storePhone={storeWhatsapp || undefined}
           storeCity={undefined}
           orders={orders}
+          onOrdersSynced={(syncedOrders) => {
+            setOrders(syncedOrders);
+          }}
           onOrderUpdated={(updated) => {
             setOrders((prev: any[]) =>
               Array.isArray(prev)

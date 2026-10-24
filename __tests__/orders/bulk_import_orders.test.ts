@@ -326,9 +326,10 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
 
   describe('3. Trigger Meta Conversions API (CAPI) Batch Dispatch', () => {
     it('mengirim batch event Purchase ke Meta CAPI dengan action_source: physical_store dan SHA-256 hashing', async () => {
+      const recentDate = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       const rows = [
         {
-          tanggal_transaksi: '2026-10-10 10:00:00',
+          tanggal_transaksi: recentDate,
           nomor_invoice: 'INV-CAPI-001',
           nama_pembeli: 'Budi Santoso',
           nomor_whatsapp: '081234567890',
@@ -347,7 +348,7 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       expect(result.summary.meta_capi_synced).toBe(1);
       expect(result.summary.meta_capi_status).toBe('DISPATCHED');
 
-      // Verifikasi payload Meta CAPI dikirim
+      // Verifikasi payload Meta CAPI dikirim dengan timestamp autentik murni
       expect(capiFetchCalls).toHaveLength(1);
       const call = capiFetchCalls[0];
       expect(call.url).toContain('123456789012345'); // Pixel ID
@@ -357,6 +358,7 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       expect(body.data).toHaveLength(1);
       const event = body.data[0];
       expect(event.event_name).toBe('Purchase');
+      expect(event.event_time).toBe(Math.floor(new Date(recentDate).getTime() / 1000));
       expect(event.action_source).toBe('physical_store');
       expect(event.custom_data.currency).toBe('IDR');
       expect(event.custom_data.value).toBe(250000);
@@ -368,7 +370,7 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       expect(event.user_data.em[0]).toHaveLength(64);
     });
 
-    it('menginjeksi rolling timestamp (12-96 jam lalu) untuk data historis > 7 hari agar tidak ditolak Meta CAPI Error 100', async () => {
+    it('menolak memalsukan timestamp dan menandai SKIPPED_OUTSIDE_WINDOW untuk data historis > 7 hari', async () => {
       // Data transaksi 90 hari yang lalu
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().split('T')[0];
       const rows = [
@@ -388,15 +390,11 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       });
 
       expect(result.success).toBe(true);
-      expect(capiFetchCalls).toHaveLength(1);
-      const event = capiFetchCalls[0].body.data[0];
-
-      // Verifikasi event_time Meta CAPI dimodulasi ke rentang 12 - 96 jam terakhir
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const minExpectedTime = nowSeconds - (96 * 3600);
-      const maxExpectedTime = nowSeconds - (12 * 3600);
-      expect(event.event_time).toBeGreaterThanOrEqual(minExpectedTime - 5);
-      expect(event.event_time).toBeLessThanOrEqual(maxExpectedTime + 5);
+      // Tidak boleh mengirim event dengan timestamp palsu ke Meta CAPI
+      expect(capiFetchCalls).toHaveLength(0);
+      expect(result.summary.meta_capi_synced).toBe(0);
+      expect(result.summary.meta_capi_status).toBe('SKIPPED_OUTSIDE_WINDOW');
+      expect(result.summary.meta_capi_skipped_outside_window).toBe(1);
 
       // Verifikasi database toko tetap menyimpan tanggal transaksi asli 90 hari lalu
       const storedOrder = dbOrders.find(o => o.order_number === 'INV-HISTORIS-001');

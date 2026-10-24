@@ -30,11 +30,18 @@ export async function GET(
       paymentMethod,
     });
 
+    const isManual =
+      paymentMethod === 'manual_transfer' ||
+      paymentMethod === 'manual' ||
+      paymentMethod === 'bank_transfer' ||
+      paymentMethod === 'transfer_bank' ||
+      paymentMethod.includes('manual');
+
     const finalAmount =
       baseAmount > 0
-        ? paymentMethod === 'qris'
-          ? Math.max(1000, baseAmount - uniqueCode)
-          : baseAmount + uniqueCode
+        ? isManual
+          ? baseAmount + uniqueCode
+          : baseAmount
         : 0;
 
     return NextResponse.json({
