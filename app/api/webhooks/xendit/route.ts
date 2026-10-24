@@ -9,8 +9,21 @@ import {
 export const dynamic = 'force-dynamic';
 
 /**
- * Webhook Xendit Gateway (QRIS, Virtual Account, Invoice, Credit Card)
- * Route: /api/webhooks/xendit
+ * ⚠️ ARCHITECTURAL WARNING: PRODUCTION XENDIT WEBHOOK 100% ROUTED TO RAILWAY BACKEND
+ * ====================================================================================
+ * Single Source of Truth / Konstitusi: ARCHITECTURE.md § 70 (Payment Webhook Routing)
+ *
+ * JALUR RESMI WEBHOOK PRODUKSI:
+ * 👉 https://api.boontrack.com/api/v1/payments/xendit/callback
+ *
+ * PERINGATAN KONFIGURASI GANDA (DUAL-INGESTION HAZARD):
+ * - Frontend Next.js (dashboard.boontrack.com) bertindak sebagai CONSUMER MURNI (read & mutate via API/SWR).
+ * - Pemrosesan webhook resmi (verifikasi token, mutasi status DB ke PAID, pencatatan ledger finansial,
+ *   dan dispatch notifikasi WhatsApp via worker) 100% didelegasikan ke Railway backend (boontrack-core).
+ * - DILARANG KERAS mengonfigurasi webhook Xendit Dashboard ke rute lokal Next.js ini di lingkungan produksi!
+ *
+ * Endpoint lokal ini dipertahankan hanya untuk backwards compatibility, dev staging, dan mock testing lokal.
+ * ====================================================================================
  */
 export async function POST(req: NextRequest) {
   // 1. Strict Callback Token Validation (Fail-Closed)
@@ -48,7 +61,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     status: 'ONLINE',
-    service: 'BoonTrack Official Xendit Webhook Gateway',
+    service: 'BoonTrack Local Xendit Webhook Gateway (Deprecated for Production)',
+    official_production_ingress: 'https://api.boontrack.com/api/v1/payments/xendit/callback',
+    architecture_note: 'Production webhook 100% routed to Railway backend (api.boontrack.com). Frontend acts purely as a consumer (read & mutate via API/SWR). Do NOT configure this URL in Xendit production dashboard.',
     endpoint: '/api/webhooks/xendit',
     timestamp: new Date().toISOString(),
     logs: showLogs ? getRecentWebhookLogs() : undefined,

@@ -9,8 +9,18 @@ import {
 export const dynamic = 'force-dynamic';
 
 /**
- * Webhook Pembayaran QRIS / Mutasi Bank / Gateway (Midtrans, Xendit, Duitku, Reader)
- * Route alias: /api/webhooks/payment
+ * ⚠️ ARCHITECTURAL WARNING: PRODUCTION PAYMENT WEBHOOK 100% ROUTED TO RAILWAY BACKEND
+ * ====================================================================================
+ * Single Source of Truth / Konstitusi: ARCHITECTURE.md § 70 (Payment Webhook Routing)
+ *
+ * JALUR RESMI WEBHOOK PRODUKSI (XENDIT / PAYMENT GATEWAY):
+ * 👉 https://api.boontrack.com/api/v1/payments/xendit/callback
+ *
+ * PERINGATAN KONFIGURASI GANDA:
+ * - Frontend Next.js (dashboard.boontrack.com) bertindak sebagai CONSUMER MURNI (read & mutate via API/SWR).
+ * - Jalur produksi webhook payment gateway resmi 100% dialihkan ke backend Railway (api.boontrack.com).
+ * - DILARANG KERAS mengarahkan callback payment gateway pihak ketiga ke endpoint Next.js ini di produksi!
+ * ====================================================================================
  */
 export async function POST(req: NextRequest) {
   // 1. Strict Callback Token Validation (Fail-Closed)
@@ -48,7 +58,9 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     status: 'ONLINE',
-    service: 'BoonTrack Payment & QRIS Mutation Webhook (Plural Alias)',
+    service: 'BoonTrack Payment & QRIS Mutation Webhook (Plural Alias / Local)',
+    official_production_ingress: 'https://api.boontrack.com/api/v1/payments/xendit/callback',
+    architecture_note: 'Production Xendit gateway webhook is 100% routed to Railway backend (api.boontrack.com). Frontend is pure consumer.',
     endpoint: '/api/webhooks/payment',
     timestamp: new Date().toISOString(),
     logs: showLogs ? getRecentWebhookLogs() : undefined,

@@ -220,7 +220,11 @@ classDiagram
 - **Evolution API (WAHA)**: Handles self-hosted instance webhooks and formatted text menus.
 - **Telegram Bot API**: Handles `@boonshop_bot` webhook updates and inline keyboard markups.
 
-### 5.2 Payment Gateway Adapters
+### 5.2 Payment Gateway Adapters & Webhook Routing Standard
+- **Official Production Ingress**: All production Xendit payment callbacks are routed exclusively to the Railway backend:
+  `https://api.boontrack.com/api/v1/payments/xendit/callback`
+- **Backend Responsibilities**: Token verification (`x-callback-token`), distributed idempotency locking (Redis SETNX), atomic DB mutation to `PAID`, `financial_ledger` recording, and asynchronous worker dispatch (WhatsApp confirmation, Meta CAPI, digital fulfillment).
+- **Frontend Role (Pure Consumer)**: The Next.js frontend (`dashboard.boontrack.com`) operates purely as a consumer (read & mutate via API/SWR). External webhooks MUST NOT be directed to local Next.js routes to prevent split-brain dual-mutation hazards.
 - **Dynamic QRIS Aggregator**: Injects dynamic transaction amount into merchant static QRIS string and computes canonical EMVCo CRC16 checksum.
 - **Direct Bank Settlement**: Formats verified bank account numbers and payment instructions.
 
