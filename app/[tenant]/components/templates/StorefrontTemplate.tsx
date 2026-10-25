@@ -355,6 +355,12 @@ export function StorefrontTemplate({
         if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
           return null;
         }
+        // STRICT GUARDRAIL (Issue #77): Section 10 takeover DILARANG aktif di root storefront.
+        // Halaman root storefront wajib selalu merender frontpage standar katalog toko.
+        const isProductDetailRoute = false;
+        if (!isProductDetailRoute) {
+          return null;
+        }
         return (
           <div className="max-w-7xl mx-auto px-4 w-full">
             <Section10CustomHtml metadata={tenantMetadata} tenantSlug={tenantSlug} />

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { resolveCustomHtmlTenantAssets } from '@/lib/product-catalog';
+import { isSection10TakeoverEligible } from '@/app/[tenant]/p/[slug]/page';
 
 export interface Section10Config {
   is_enabled?: boolean;
@@ -63,6 +64,22 @@ export default function Section10CustomHtml({
       /(href|src)=["'](?!https?:\/\/|\/|#|data:)([^"']+)["']/gi,
       (_match: string, attr: string, val: string) => `${attr}="${assetBase}${val}"`
     );
+  }
+
+  // STRICT GUARDRAIL (CTO Mandate - Issue #77):
+  // Section 10 Takeover HANYA boleh dievaluasi dan dirender pada rute detail produk dinamis (/[tenant]/p/[slug] atau /[tenant]/p/[sku]).
+  // Di halaman root storefront (/[tenant]), Section 10 DILARANG KERAS dievaluasi atau dirender.
+  // Halaman root storefront wajib selalu merender frontpage standar toko.
+  const routeSlug = (routeParams?.slug as string) || '';
+  const routeSku = (routeParams?.sku as string) || sectionConfig?.sku || '';
+
+  const isTakeoverAllowed = Boolean(
+    (routeSlug || routeSku) &&
+    isSection10TakeoverEligible(effectiveSlug, routeSku, routeSlug)
+  );
+
+  if (!isTakeoverAllowed) {
+    return null;
   }
 
   // 3. Fail-closed: Zero vertical placeholder leakage if disabled or empty

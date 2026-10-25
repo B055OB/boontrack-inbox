@@ -279,5 +279,18 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
       expect(pageSource).toContain('!isCartDisabled && cartPolicy.showStickyCart &&');
       expect(pageSource).toContain('<CartDrawer');
     });
+
+    it('strictly prevents Section 10 takeover on root storefront route (/[tenant])', () => {
+      // 1. Direct invocation without route slug or SKU fails takeover eligibility
+      expect(isSection10TakeoverEligible('onlineboost', undefined, undefined)).toBe(false);
+      expect(isSection10TakeoverEligible('onlineboost', '', '')).toBe(false);
+
+      // 2. Section10CustomHtml component source verification: gates execution to product detail route
+      const sec10CompPath = path.resolve(process.cwd(), 'app/[tenant]/components/Section10CustomHtml.tsx');
+      const sec10CompSource = fs.readFileSync(sec10CompPath, 'utf-8');
+      expect(sec10CompSource).toContain('isSection10TakeoverEligible');
+      expect(sec10CompSource).toContain('isTakeoverAllowed');
+      expect(sec10CompSource).toContain('if (!isTakeoverAllowed)');
+    });
   });
 });
