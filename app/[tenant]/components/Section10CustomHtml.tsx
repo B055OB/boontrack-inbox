@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import { resolveCustomHtmlTenantAssets } from '@/lib/product-catalog';
 
 export interface Section10Config {
   is_enabled?: boolean;
@@ -52,10 +53,11 @@ export default function Section10CustomHtml({
     metadata?.tenant_slug ||
     sectionConfig?.tenant_slug ||
     '';
+
   const assetBase = effectiveSlug ? `/tenants/${encodeURIComponent(effectiveSlug)}/` : '';
 
-  // Dynamically resolve relative asset references (CSS, JS, images) to tenant directory
-  let rawHtml = rawSourceHtml;
+  // Dynamically resolve relative asset references (CSS, JS, images, lightboxes) to tenant directory
+  let rawHtml = resolveCustomHtmlTenantAssets(rawSourceHtml, effectiveSlug);
   if (rawHtml && assetBase) {
     rawHtml = rawHtml.replace(
       /(href|src)=["'](?!https?:\/\/|\/|#|data:)([^"']+)["']/gi,

@@ -1827,9 +1827,29 @@ export function useTenantDashboard() {
 
     const cfg = prod?.single_page_config || prod?.fulfillment_metadata?.single_page_config || (prod as any)?.metadata?.single_page_config;
 
+    const tenantSec10 =
+      tenantData?.metadata?.theme_config?.section_10 ||
+      tenantData?.metadata?.sections?.section_10 ||
+      tenantData?.metadata?.storefront_sections?.section_10 ||
+      tenantData?.metadata?.section_10;
+
+    const isTenantSec10Active = Boolean(tenantSec10?.is_enabled ?? tenantSec10?.is_active);
+    const tenantSec10Html =
+      typeof tenantSec10?.custom_html === 'string'
+        ? tenantSec10.custom_html
+        : typeof tenantSec10?.html_content === 'string'
+        ? tenantSec10.html_content
+        : typeof tenantSec10?.html === 'string'
+        ? tenantSec10.html
+        : '';
+
+    const isObBatch1 = prodSlug === 'ob-batch1-249k' || (prod as any)?.sku === 'OB-BATCH1-249K';
+    const fallbackSec10Html = (isObBatch1 && isTenantSec10Active && tenantSec10Html) ? tenantSec10Html : '';
+
+    const resolvedCustomHtml = cfg?.custom_html || fallbackSec10Html || '';
     const isCustomHtmlActive = Boolean(
-      (cfg?.enable_custom_html || (cfg as any)?.is_custom_html_enabled || (cfg as any)?.use_custom_html) &&
-      cfg?.custom_html?.trim()
+      ((cfg?.enable_custom_html || (cfg as any)?.is_custom_html_enabled || (cfg as any)?.use_custom_html) || (isObBatch1 && isTenantSec10Active)) &&
+      resolvedCustomHtml.trim()
     );
 
     setSinglePageForm({
@@ -1848,7 +1868,7 @@ export function useTenantDashboard() {
       enable_custom_html: isCustomHtmlActive || Boolean(cfg?.enable_custom_html),
       is_custom_html_enabled: isCustomHtmlActive || Boolean((cfg as any)?.is_custom_html_enabled),
       use_custom_html: isCustomHtmlActive || Boolean((cfg as any)?.use_custom_html),
-      custom_html: cfg?.custom_html || '',
+      custom_html: resolvedCustomHtml,
       sections_override: isCustomHtmlActive ? false : (cfg?.sections_override ?? true),
       active_section: isCustomHtmlActive ? 'custom_html' : ((cfg as any)?.active_section || undefined),
       enable_media_gallery: isCustomHtmlActive ? (cfg?.enable_media_gallery ?? false) : (cfg?.enable_media_gallery ?? Boolean(cfg?.gallery_images && cfg.gallery_images.length > 0)),

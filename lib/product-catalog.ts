@@ -1009,6 +1009,68 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       discount_coupon: "",
       affiliate_commission_rate: 0
     }
+  },
+  {
+    id: 7071500249,
+    sku: "OB-BATCH1-249K",
+    name: "Tiket Inkubasi OnlineBoost Batch 1",
+    title: "Tiket Inkubasi OnlineBoost Batch 1",
+    slug: "ob-batch1-249k",
+    price: 249000,
+    promo_price: 249000,
+    is_digital: true,
+    description: "Tiket resmi Program Inkubasi 30 Hari OnlineBoost. Toko online & lisensi kemitraan aktif selamanya, asisten WhatsApp AI 24 jam, generator video 9:16 Studio, dan produk lisensi komisi bersih Rp100.000 per transaksi.",
+    image: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+    image_url: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+    stock: 393,
+    is_unlimited: false,
+    category: "digital",
+    product_type: "DIGITAL",
+    requires_shipping: false,
+    weight_grams: 0,
+    link_digital: "https://onlineboost.id/onboarding",
+    single_page_config: {
+      slug: "ob-batch1-249k",
+      headline: "OnlineBoost Batch 1 — Metode Jualan Online dari Nol",
+      subheadline: "Program Inkubasi 30 Hari OnlineBoost: Sistem Jualan Mandiri dari HP",
+      banner_url: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+      badge_text: "Batch 1 Spesial",
+      enable_hero: false,
+      enable_client_logos: false,
+      enable_problem_solution: false,
+      enable_us_vs_them: false,
+      enable_testimonials: false,
+      enable_offer: false,
+      enable_faq: false,
+      enable_payment: true,
+      enable_custom_html: true,
+      is_custom_html_enabled: true,
+      use_custom_html: true,
+      active_section: "custom_html",
+      sections_override: false,
+      checkout_mode: "modal",
+      enable_qris: true,
+      enable_manual_transfer: true,
+      discount_coupon: "",
+      affiliate_commission_rate: 0,
+      checkout_action_mode: "DIRECT",
+      whatsapp_custom_message: "",
+      section_order: ["custom_html", "payment_voucher"],
+    },
+    fulfillment_metadata: {
+      type: "digital",
+      weight_grams: 0,
+      is_digital: true,
+      requires_shipping: false,
+      access_url: "https://onlineboost.id/onboarding",
+      instructions: "Selamat! Akses program inkubasi 30 hari dan aktivasi mesin kasir toko otomatis telah aktif.",
+      single_page_config: {
+        enable_custom_html: true,
+        is_custom_html_enabled: true,
+        active_section: "custom_html",
+        sections_override: false,
+      }
+    }
   }
 ];
 
@@ -1018,7 +1080,24 @@ export const DEFAULT_ONLINEBOOST_PRODUCTS: ProductItem[] = [
   DEFAULT_PRODUCTS[5], // Ecourse Member CPM
   DEFAULT_PRODUCTS[0], // Paid Traffic
   DEFAULT_PRODUCTS[6], // Modul Praktis CPM 24 Jam
+  DEFAULT_PRODUCTS[8] || DEFAULT_PRODUCTS.find((p) => p.sku === 'OB-BATCH1-249K')!, // Tiket Inkubasi OnlineBoost Batch 1
 ];
+
+/**
+ * Resolves relative URLs in custom HTML (href, src, data-lightbox-src, data-src, poster)
+ * to point to /tenants/[slug]/, preventing 404s when rendered on deep product routes.
+ */
+export function resolveCustomHtmlTenantAssets(rawHtml: string, tenantSlug: string): string {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  const cleanSlug = (tenantSlug || '').trim().toLowerCase();
+  if (!cleanSlug) return rawHtml;
+  const assetBase = `/tenants/${encodeURIComponent(cleanSlug)}/`;
+
+  return rawHtml.replace(
+    /(href|src|data-lightbox-src|data-src|poster)=["'](?!https?:\/\/|\/|#|data:|mailto:|tel:|javascript:)([^"']+)["']/gi,
+    (_match: string, attr: string, val: string) => `${attr}="${assetBase}${val}"`
+  );
+}
 
 export function resolveSinglePageProduct(
   tenantSlug: string,
@@ -1107,9 +1186,11 @@ export function resolveSinglePageProduct(
       const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       if (pSlug === normTarget || pNameSlug === normTarget) return true;
+      if (p.sku && p.sku.toLowerCase().replace(/[^a-z0-9]/g, '') === normTarget) return true;
       if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
       if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
       if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
+      if (normTarget.includes('batch1') && (pSlug.includes('batch1') || pNameSlug.includes('batch1') || (p.sku && p.sku.toLowerCase().includes('batch1')))) return true;
       return false;
     });
 
