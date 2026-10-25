@@ -98,102 +98,16 @@ export interface CreateOrderPayload {
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
-  // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-  // Server-side authoritative evaluation for OnlineBoost Batch 1 (OB-BATCH1-249K).
-  // HAPUS SELURUH FALLBACK HARDCODED (Dilarang menggunakan `?? 249000`).
-  // Jika produk tidak ditemukan di katalog server, atau harga tidak valid, atau nominal client dimanipulasi:
-  // SISTEM WAJIB FAIL-CLOSED TOTAL dan menolak transaksi live.
-  const isObTenant = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
-  const normProductId = String(payload.productId || '').toUpperCase().trim();
-  const normTitle = String(payload.productTitle || '').toLowerCase().trim();
-
-  const isBatch1Candidate = Boolean(
-    normProductId === 'OB-BATCH1-249K' ||
-    normProductId === 'OB-BATCH1' ||
-    normProductId === '7071500249' ||
-    normTitle.includes('inkubasi onlineboost batch 1') ||
-    (normTitle.includes('onlineboost') && normTitle.includes('batch 1'))
-  );
-
-  if (isBatch1Candidate) {
-    // Skenario C: Tenant salah — pemanggilan dengan tenant yang bukan otoritatif onlineboost ditolak dan fail-closed ke mode hold
-    if (!isObTenant) {
-      return getBatch1MockCheckoutResult();
-    }
-
-    // Authoritative server-side catalog lookup (HANYA dari katalog resmi server)
-    const authoritativeBatch1 = DEFAULT_PRODUCTS.find(
-      (p) => (p.sku || '').toUpperCase() === 'OB-BATCH1-249K' || (p.slug || '').toLowerCase() === 'ob-batch1-249k'
-    );
-
-    // Skenario A: Produk tidak ditemukan di katalog otoritatif server -> FAIL-CLOSED TOTAL (tanpa fallback harga)
-    if (!authoritativeBatch1) {
-      return getBatch1MockCheckoutResult();
-    }
-
-    // Skenario B: Ketiadaan atau invaliditas data harga otoritatif server (undefined, null, NaN, <= 0)
-    // Hapus seluruh fallback seperti `?? 249000`
-    const rawCatalogPrice = authoritativeBatch1.price;
-    if (
-      rawCatalogPrice === undefined ||
-      rawCatalogPrice === null ||
-      isNaN(Number(rawCatalogPrice)) ||
-      Number(rawCatalogPrice) <= 0
-    ) {
-      return getBatch1MockCheckoutResult();
-    }
-
-    const authoritativePrice = Number(rawCatalogPrice);
-
-    // Skenario D: Manipulasi nominal payload client
-    // Nominal transaksi wajib dikonstruksi sepenuhnya oleh server berdasarkan produk terverifikasi.
-    // Jika amount/price yang dikirim client tidak sinkron dengan harga resmi server, sistem langsung menahan (fail-closed)
-    if (
-      payload.amount === undefined ||
-      payload.amount === null ||
-      isNaN(Number(payload.amount)) ||
-      Number(payload.amount) !== authoritativePrice
-    ) {
-      return getBatch1MockCheckoutResult();
-    }
-
-    // Evaluasi melalui mock guard dengan konfigurasi resmi produk dari server
-    if (isBatch1MockCheckout({
-      id: authoritativeBatch1.id,
-      sku: authoritativeBatch1.sku,
-      title: authoritativeBatch1.name || authoritativeBatch1.title,
-      price: authoritativePrice,
-      amount: authoritativePrice,
-      metadata: payload.fulfillmentMetadata,
-      fulfillment_metadata: payload.fulfillmentMetadata,
-      single_page_config: authoritativeBatch1.single_page_config,
-      is_mock_only: authoritativeBatch1.single_page_config?.is_mock_only,
-      strict_hold: authoritativeBatch1.single_page_config?.strict_hold,
-    }, payload.tenantSlug)) {
-      return getBatch1MockCheckoutResult();
-    }
-  } else if (isObTenant) {
-    // Proteksi tambahan untuk produk lain milik tenant onlineboost jika memiliki mock flags
-    if (isBatch1MockCheckout({
-      id: payload.productId,
-      sku: payload.productId,
-      title: payload.productTitle,
-      price: payload.amount,
-      amount: payload.amount,
-      metadata: payload.fulfillmentMetadata,
-      fulfillment_metadata: payload.fulfillmentMetadata,
-    }, payload.tenantSlug)) {
-      return getBatch1MockCheckoutResult();
-    }
-  }
-
   // Normalisasi nomor HP customer ke format baku E.164 (628xxxxxxxxxx)
   if (payload.customerPhone) {
     payload.customerPhone = normalizePhoneToE164(payload.customerPhone);
   }
 
+  // =========================================================================
   // JALUR BROWSER (CLIENT-SIDE):
-  // Wajib menggunakan API route internal. Dilarang keras fallback ke direct Supabase client.
+  // Di lingkungan browser, client TIDAK mengevaluasi katalog otoritatif sendiri.
+  // Browser murni meneruskan payload ke API gateway internal server.
+  // =========================================================================
   if (typeof window !== 'undefined') {
     const endpoints = ['/api/checkout/create-order', '/api/orders'];
     let lastError: any = null;
@@ -234,6 +148,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
             qrCodeUrl: resJson.qrCodeUrl || resJson.qr_code_url || '',
             invoiceUrl: resJson.invoiceUrl || resJson.invoice_url || `/checkout/${resJson.orderId || resJson.id}`,
             referenceToken: resJson.referenceToken || resJson.reference_token || payload.reference_token || null,
+            uniqueCode: resJson.uniqueCode !== undefined ? resJson.uniqueCode : resJson.unique_code,
+            unique_code: resJson.unique_code !== undefined ? resJson.unique_code : resJson.uniqueCode,
+            grossAmount: resJson.grossAmount !== undefined ? resJson.grossAmount : resJson.gross_amount,
+            gross_amount: resJson.gross_amount !== undefined ? resJson.gross_amount : resJson.grossAmount,
           };
         }
 
@@ -252,6 +170,101 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
 
     throw lastError || new Error("Gagal memproses pesanan melalui gateway server. Silakan muat ulang halaman.");
+  }
+
+  // =========================================================================
+  // JALUR SERVER-SIDE ONLY (typeof window === 'undefined'):
+  // Lookup katalog otoritatif, validasi status/harga produk, dan konstruksi
+  // nominal order HANYA berjalan di lingkungan server ini.
+  // =========================================================================
+
+  // STRICT MULTI-TENANT ISOLATION:
+  // Evaluasi tenant `isObTenant` WAJIB menjadi syarat pembuka sebelum memeriksa Batch 1 candidate.
+  // DILARANG KERAS mengembalikan getBatch1MockCheckoutResult() untuk tenant selain onlineboost.
+  const normalizedTenant = String(payload.tenantSlug || '').trim().toLowerCase();
+  const isObTenant = normalizedTenant === 'onlineboost' || normalizedTenant === 'online-boost';
+
+  if (isObTenant) {
+    const normProductId = String(payload.productId || '').toUpperCase().trim();
+    const normTitle = String(payload.productTitle || '').toLowerCase().trim();
+
+    const isBatch1Candidate = Boolean(
+      normProductId === 'OB-BATCH1-249K' ||
+      normProductId === 'OB-BATCH1' ||
+      normProductId === '7071500249' ||
+      normTitle.includes('inkubasi onlineboost batch 1') ||
+      (normTitle.includes('onlineboost') && normTitle.includes('batch 1'))
+    );
+
+    if (isBatch1Candidate) {
+      // Authoritative server-side catalog lookup (HANYA dari katalog resmi server)
+      const authoritativeBatch1 = DEFAULT_PRODUCTS.find(
+        (p) => (p.sku || '').toUpperCase() === 'OB-BATCH1-249K' || (p.slug || '').toLowerCase() === 'ob-batch1-249k'
+      );
+
+      // Skenario A: Produk tidak ditemukan di katalog otoritatif server -> FAIL-CLOSED TOTAL
+      if (!authoritativeBatch1) {
+        return getBatch1MockCheckoutResult();
+      }
+
+      // Skenario C: Kunci harga katalog otoritatif WAJIB TEPAT Rp 249.000
+      // Kontrak harga SKU OB-BATCH1-249K dikunci mati pada tepat 249000.
+      // Jika harga hilang (null, undefined, NaN, 0) ATAU berubah ke nominal positif lain (misal 199000 / 299000),
+      // sistem WAJIB langsung fail-closed dan mengembalikan getBatch1MockCheckoutResult().
+      const rawCatalogPrice = authoritativeBatch1.price;
+      if (
+        typeof rawCatalogPrice !== 'number' ||
+        !Number.isFinite(rawCatalogPrice) ||
+        rawCatalogPrice !== 249000
+      ) {
+        return getBatch1MockCheckoutResult();
+      }
+
+      // Konstruksi harga order otoritatif langsung oleh server (BUKAN menggunakan payload.amount client)
+      const authoritativePrice = 249000;
+      const serverConstructedAmount = authoritativePrice;
+
+      // Tolak manipulasi client payload: nominal client tidak boleh dijadikan sumber harga.
+      // Jika payload.amount dikirim oleh client dan nilainya tidak sama dengan authoritativePrice, fail-closed!
+      if (
+        payload.amount === undefined ||
+        payload.amount === null ||
+        typeof payload.amount !== 'number' ||
+        !Number.isFinite(payload.amount) ||
+        payload.amount !== authoritativePrice
+      ) {
+        return getBatch1MockCheckoutResult();
+      }
+
+      // Terapkan serverConstructedAmount dan tahan di mock guard
+      if (isBatch1MockCheckout({
+        id: authoritativeBatch1.id,
+        sku: authoritativeBatch1.sku,
+        title: authoritativeBatch1.name || authoritativeBatch1.title,
+        price: serverConstructedAmount,
+        amount: serverConstructedAmount,
+        metadata: payload.fulfillmentMetadata,
+        fulfillment_metadata: payload.fulfillmentMetadata,
+        single_page_config: authoritativeBatch1.single_page_config,
+        is_mock_only: authoritativeBatch1.single_page_config?.is_mock_only,
+        strict_hold: authoritativeBatch1.single_page_config?.strict_hold,
+      }, payload.tenantSlug)) {
+        return getBatch1MockCheckoutResult();
+      }
+    } else {
+      // Proteksi tambahan untuk produk lain milik tenant onlineboost jika memiliki mock flags
+      if (isBatch1MockCheckout({
+        id: payload.productId,
+        sku: payload.productId,
+        title: payload.productTitle,
+        price: payload.amount,
+        amount: payload.amount,
+        metadata: payload.fulfillmentMetadata,
+        fulfillment_metadata: payload.fulfillmentMetadata,
+      }, payload.tenantSlug)) {
+        return getBatch1MockCheckoutResult();
+      }
+    }
   }
 
   // JALUR SERVER-SIDE ONLY:

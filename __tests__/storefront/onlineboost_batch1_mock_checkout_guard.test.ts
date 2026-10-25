@@ -357,17 +357,27 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       }
     });
 
-    it('fails closed when targeting Batch 1 under wrong or non-onlineboost tenant', async () => {
-      // Skenario C: Pemanggilan dengan tenant yang bukan otoritatif onlineboost ditolak dan fail-closed ke hold
-      const wrongTenants = ['unauthorized-tenant', 'attacker-brand', 'demo-store', 'happyeating', ''];
+    it('fails closed when authoritative server catalog price is mutated to another positive amount (199000, 299000) or invalid (0, NaN, undefined)', async () => {
+      // Perbaikan C: Kunci kontrak harga SKU OB-BATCH1-249K tepat Rp 249.000
+      // Jika harga di-mutate ke nominal positif lain (misal 199000 / 299000) atau kosong/invalid, sistem wajib fail-closed ke hold
+      const testCatalogPrices = [199000, 299000, 150000, 499000, 0, -249000, NaN, undefined, null];
 
-      for (const wrongTenant of wrongTenants) {
+      for (const badCatalogPrice of testCatalogPrices) {
+        const spyFind = jest.spyOn(DEFAULT_PRODUCTS, 'find').mockReturnValueOnce({
+          id: 7071500249,
+          sku: 'OB-BATCH1-249K',
+          name: 'Tiket Inkubasi OnlineBoost Batch 1',
+          slug: 'ob-batch1-249k',
+          price: badCatalogPrice as any,
+          single_page_config: { is_mock_only: true, strict_hold: true },
+        } as any);
+
         const result = await createOrderAndInvoice({
-          tenantSlug: wrongTenant,
+          tenantSlug: 'onlineboost',
           productId: 'OB-BATCH1-249K',
           productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
           amount: 249000,
-          customerName: 'Wrong Tenant QA',
+          customerName: 'Mutated Price QA',
           customerPhone: '081234567890',
         });
 
@@ -376,12 +386,39 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
         expect(result.isPaid).toBe(false);
         expect(result.fulfillment).toBeNull();
         expect(result.isMock).toBe(true);
+
+        spyFind.mockRestore();
       }
     });
 
-    it('completely ignores client payload amount/price manipulation (1000, 0, undefined, NaN) and routes to fail-closed hold', async () => {
-      // Skenario D: Payload client mencoba memanipulasi nominal amount/price
-      const manipulatedAmounts = [1000, 0, -50000, undefined, null, NaN, 248999, 249001];
+    it('enforces strict cross-tenant isolation: checkouts for non-onlineboost tenants (even with similar title/identifier) are NOT intercepted into getBatch1MockCheckoutResult', async () => {
+      // Perbaikan B: Checkout dari tenant selain onlineboost tidak terintersepsi menjadi getBatch1MockCheckoutResult
+      const nonObTenants = ['happyeating', 'tumbuh-kembang-anak', 'sample-brand', 'attacker-brand', 'demo-store'];
+
+      for (const tenant of nonObTenants) {
+        const result = await createOrderAndInvoice({
+          tenantSlug: tenant,
+          productId: 'OB-BATCH1-249K',
+          productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+          amount: 249000,
+          customerName: 'Cross-Tenant Isolation QA',
+          customerPhone: '081234567890',
+          customerEmail: 'isolation@example.com',
+          paymentMethod: 'qris',
+        });
+
+        // Wajib membuktikan bahwa checkout tenant non-onlineboost TIDAK menerima respons mock OnlineBoost
+        expect(result.status).not.toBe('MOCK_SIMULATED');
+        expect(result.orderId).not.toContain('ORD-MOCK-OB-BATCH1');
+        expect(result.isMock).toBeUndefined();
+        expect(result.invoiceUrl).not.toContain('mock=true');
+        expect(result.orderId).toMatch(/^ORD-\d+-\d+$/);
+      }
+    });
+
+    it('enforces server-side boundary: constructs order nominal from verified server catalog price (249000) and rejects client payload amount manipulation', async () => {
+      // Perbaikan A & Skenario D: Payload client mencoba menyisipkan atau memanipulasi nominal amount/price
+      const manipulatedAmounts = [1000, 0, -50000, 199000, 299000, undefined, null, NaN, 248999, 249001];
 
       for (const badAmount of manipulatedAmounts) {
         const result = await createOrderAndInvoice({
