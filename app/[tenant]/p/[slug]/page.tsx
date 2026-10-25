@@ -573,7 +573,9 @@ function SingleProductContent() {
               tenantRow?.metadata?.theme_config?.section_10 ||
               tenantRow?.metadata?.sections?.section_10 ||
               tenantRow?.metadata?.storefront_sections?.section_10 ||
-              tenantRow?.metadata?.section_10;
+              tenantRow?.metadata?.section_10 ||
+              (tenantRow as any)?.theme_config?.section_10 ||
+              (tenantRow as any)?.sections?.section_10;
 
             const isTenantSec10Active = Boolean(tenantSec10?.is_enabled ?? tenantSec10?.is_active);
             const tenantSec10Html =
@@ -597,19 +599,35 @@ function SingleProductContent() {
               (params?.slug as string) || match?.slug
             );
 
+            // Resilient candidate resolution: prioritize tenant-level section_10 HTML, then product custom_html
+            const candidateCustomHtml =
+              tenantSec10Html ||
+              (typeof cfg.custom_html === 'string' ? cfg.custom_html : '') ||
+              (typeof match?.metadata?.custom_html === 'string' ? match.metadata.custom_html : '') ||
+              (typeof match?.fulfillment_metadata?.single_page_config?.custom_html === 'string' ? match.fulfillment_metadata.single_page_config.custom_html : '');
+
+            const isCustomHtmlActiveFlag = Boolean(
+              isTenantSec10Active ||
+              cfg.enable_custom_html ||
+              (cfg as any).is_custom_html_enabled ||
+              (cfg as any).use_custom_html ||
+              match?.metadata?.enable_custom_html ||
+              match?.fulfillment_metadata?.single_page_config?.enable_custom_html
+            );
+
             const isMatchForSec10 = Boolean(
               isEligibleForSec10 &&
-              isTenantSec10Active &&
-              tenantSec10Html
+              isCustomHtmlActiveFlag &&
+              candidateCustomHtml?.trim()
             );
 
             const isCustomHtmlActive = Boolean(
               isEligibleForSec10 &&
               isMatchForSec10 &&
-              tenantSec10Html?.trim()
+              candidateCustomHtml?.trim()
             );
 
-            const rawCustomHtml = isCustomHtmlActive ? tenantSec10Html : (cfg.custom_html || '');
+            const rawCustomHtml = isCustomHtmlActive ? candidateCustomHtml : (cfg.custom_html || '');
 
             const resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
 

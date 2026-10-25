@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import { resolveCustomHtmlTenantAssets } from '@/lib/product-catalog';
 import { isSection10TakeoverEligible } from '@/lib/product-catalog';
 
@@ -34,6 +34,15 @@ export default function Section10CustomHtml({
 }: Section10CustomHtmlProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const routeParams = useParams();
+  const pathname = usePathname();
+
+  // STRICT GUARDRAIL (Anti-Leakage / Visual QA PR #78):
+  // Wajibkan pathname mengandung segmen /p/ (contoh: /\/p\/[^/]+/.test(pathname || '')).
+  // Jika pathname tidak mengandung /p/, Section10CustomHtml WAJIB return null secepatnya.
+  const isProductRoute = Boolean(pathname && /\/p\/[^/]+/.test(pathname || ''));
+  if (!isProductRoute) {
+    return null;
+  }
 
   // 1. Dynamic resolution across theme_config, storefront_sections, sections, and root metadata
   const sec =

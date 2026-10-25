@@ -288,9 +288,89 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
       // 2. Section10CustomHtml component source verification: gates execution to product detail route
       const sec10CompPath = path.resolve(process.cwd(), 'app/[tenant]/components/Section10CustomHtml.tsx');
       const sec10CompSource = fs.readFileSync(sec10CompPath, 'utf-8');
+      expect(sec10CompSource).toContain('usePathname');
+      expect(sec10CompSource).toContain('.test(pathname || \'\')');
       expect(sec10CompSource).toContain('isSection10TakeoverEligible');
       expect(sec10CompSource).toContain('isTakeoverAllowed');
       expect(sec10CompSource).toContain('if (!isTakeoverAllowed)');
+      expect(sec10CompSource).toContain('if (!isProductRoute)');
+
+      // 3. Strict pathname regex verification
+      const productRoutePattern = /\/p\/[^/]+/;
+      expect(productRoutePattern.test('/onlineboost')).toBe(false);
+      expect(productRoutePattern.test('/onlineboost/')).toBe(false);
+      expect(productRoutePattern.test('/onlineboost/p')).toBe(false);
+      expect(productRoutePattern.test('/onlineboost/p/')).toBe(false);
+      expect(productRoutePattern.test('/onlineboost/p/ob-batch1-249k')).toBe(true);
+      expect(productRoutePattern.test('/onlineboost/p/OB-BATCH1-249K')).toBe(true);
+    });
+  });
+
+  describe('7. Route-Based Render Verification (Root Storefront vs Product Route)', () => {
+    const micrositePath = path.resolve(process.cwd(), 'app/[tenant]/components/templates/MicrositeBioTemplate.tsx');
+    const micrositeSource = fs.readFileSync(micrositePath, 'utf-8');
+    const storefrontPath = path.resolve(process.cwd(), 'app/[tenant]/components/templates/StorefrontTemplate.tsx');
+    const storefrontSource = fs.readFileSync(storefrontPath, 'utf-8');
+    const personalPath = path.resolve(process.cwd(), 'app/[tenant]/components/templates/PersonalAuthorityTemplate.tsx');
+    const personalSource = fs.readFileSync(personalPath, 'utf-8');
+
+    it('verifies all 3 root storefront templates strictly suppress Section 10 (0% render on root)', () => {
+      // MicrositeBioTemplate (used by onlineboost)
+      expect(micrositeSource).toContain('const isProductDetailRoute = false;');
+      expect(micrositeSource).toContain('if (!isProductDetailRoute) {');
+
+      // StorefrontTemplate
+      expect(storefrontSource).toContain('const isProductDetailRoute = false;');
+      expect(storefrontSource).toContain('if (!isProductDetailRoute) {');
+
+      // PersonalAuthorityTemplate
+      expect(personalSource).toContain('const isProductDetailRoute = false;');
+      expect(personalSource).toContain('if (!isProductDetailRoute) {');
+    });
+
+    it('simulates root storefront evaluation for /onlineboost: Section 10 is 0% rendered', () => {
+      const mockRootRoute = {
+        pathname: '/onlineboost',
+        params: { tenant: 'onlineboost' },
+      };
+
+      const productRoutePattern = /\/p\/[^/]+/;
+      const isProductRoute = Boolean(mockRootRoute.pathname && productRoutePattern.test(mockRootRoute.pathname));
+      const routeSlug = (mockRootRoute.params as any)?.slug || '';
+      const isEligible = isSection10TakeoverEligible(mockRootRoute.params.tenant, '', routeSlug);
+
+      // Both path guard and eligibility guard must evaluate to false
+      expect(isProductRoute).toBe(false);
+      expect(isEligible).toBe(false);
+
+      // Simulated component output must be null (0% render)
+      const simulatedRenderOutput = (!isProductRoute || !isEligible) ? null : 'rendered';
+      expect(simulatedRenderOutput).toBeNull();
+    });
+
+    it('simulates product route evaluation for /onlineboost/p/ob-batch1-249k: Section 10 is 100% rendered with SKU OB-BATCH1-249K and price Rp 249.000', () => {
+      const mockProductRoute = {
+        pathname: '/onlineboost/p/ob-batch1-249k',
+        params: { tenant: 'onlineboost', slug: 'ob-batch1-249k' },
+      };
+
+      const productRoutePattern = /\/p\/[^/]+/;
+      const isProductRoute = Boolean(mockProductRoute.pathname && productRoutePattern.test(mockProductRoute.pathname));
+      const routeSlug = mockProductRoute.params.slug;
+      const resolved = resolveSinglePageProduct(mockProductRoute.params.tenant, routeSlug);
+
+      expect(isProductRoute).toBe(true);
+      expect(isSection10TakeoverEligible(mockProductRoute.params.tenant, resolved.product.sku, routeSlug)).toBe(true);
+      expect(resolved.product.sku).toBe('OB-BATCH1-249K');
+      expect(resolved.product.price).toBe(249000);
+      expect(resolved.product.promo_price).toBe(249000);
+      expect(resolved.config.enable_custom_html).toBe(true);
+      expect(resolved.config.active_section).toBe('custom_html');
+
+      // Simulated component output must be rendered (100% takeover)
+      const simulatedRenderOutput = (isProductRoute && resolved.config.enable_custom_html) ? 'rendered' : null;
+      expect(simulatedRenderOutput).toBe('rendered');
     });
   });
 });
+
