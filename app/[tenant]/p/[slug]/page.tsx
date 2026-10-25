@@ -87,7 +87,9 @@ import {
   resolveCategoryLabels,
   resolveProductExternalUrl,
   resolveCustomHtmlTenantAssets,
-  isSection10TakeoverEligible
+  isSection10TakeoverEligible,
+  isBatch1MockCheckout,
+  getBatch1MockCheckoutResult
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -2444,6 +2446,18 @@ function SingleProductContent() {
       : isPickup
       ? 'Ambil Sendiri di Toko (Self-Pickup)'
       : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
+
+    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
+    if (isObBatch1Target || isBatch1MockCheckout(product, tenant)) {
+      setLoading(false);
+      setIsPaid(true);
+      setVerifiedFulfillment(product.fulfillment_metadata || {
+        delivery_type: 'DOWNLOAD_LINK',
+        access_url: product.link_digital || 'https://onlineboost.id/onboarding',
+        instructions: 'Selamat! Akses program inkubasi 30 hari telah aktif (Mock Mode).',
+      });
+      return;
+    }
 
     try {
       const result = await createOrderAndInvoice({
@@ -5520,7 +5534,7 @@ function SingleProductContent() {
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
-      {checkoutOpen && !isCheckoutSectionDisabled && (
+      {checkoutOpen && (!isCheckoutSectionDisabled || isObBatch1Target) && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
