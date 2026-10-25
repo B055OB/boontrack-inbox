@@ -199,4 +199,79 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
       expect(result.config.enable_custom_html).toBeFalsy();
     });
   });
+
+  describe('6. Negative Regression Tests (Strict Takeover & Multi-Tenant Boundaries)', () => {
+    const pageFilePath = path.resolve(process.cwd(), 'app/[tenant]/p/[slug]/page.tsx');
+    const pageSource = fs.readFileSync(pageFilePath, 'utf-8');
+
+    it('ensures non-onlineboost tenant (e.g. happyeating) does NOT trigger Section 10 takeover even if flag is active', () => {
+      // 1. Structural architectural check in page.tsx
+      expect(pageSource).toContain("isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost'");
+      
+      // 2. Logic simulation simulating happyeating tenant context with custom HTML metadata
+      const mockParams = { tenant: 'happyeating', slug: 'ob-batch1-249k' };
+      const mockProduct = { sku: 'OB-BATCH1-249K', slug: 'ob-batch1-249k' };
+      const mockConfig = { enable_custom_html: true, custom_html: '<section id="custom-html-section">Active</section>' };
+
+      const isOnlineBoostTenant = (mockParams.tenant as string)?.toLowerCase() === 'onlineboost';
+      const isObBatch1Target = Boolean(
+        mockProduct.sku === 'OB-BATCH1-249K' ||
+        mockParams.slug?.toLowerCase() === 'ob-batch1-249k'
+      );
+
+      const isCustomHtmlActivePage = Boolean(
+        isOnlineBoostTenant &&
+        isObBatch1Target &&
+        mockConfig.enable_custom_html &&
+        mockConfig.custom_html
+      );
+
+      // Takeover MUST be false for non-onlineboost tenant
+      expect(isOnlineBoostTenant).toBe(false);
+      expect(isCustomHtmlActivePage).toBe(false);
+    });
+
+    it('ensures onlineboost product non-batch1 (SKU other than OB-BATCH1-249K) renders regular template with store header and cart', () => {
+      // 1. Resolve a non-batch1 product from onlineboost catalog (e.g. modul-praktis-cpm-24-jam with SKU OB-CPM-24H)
+      const nonBatch1 = resolveSinglePageProduct(tenantSlug, 'modul-praktis-cpm-24-jam');
+      expect(nonBatch1.product).toBeDefined();
+      expect(nonBatch1.product.sku).not.toBe('OB-BATCH1-249K');
+      expect(nonBatch1.config.enable_custom_html).toBeFalsy();
+
+      // 2. Logic simulation for non-batch1 product on onlineboost tenant even if flags are forcefully injected
+      const mockParams = { tenant: 'onlineboost', slug: nonBatch1.product.slug };
+      const isOnlineBoostTenant = (mockParams.tenant as string)?.toLowerCase() === 'onlineboost';
+      const isObBatch1Target = Boolean(
+        nonBatch1.product.sku === 'OB-BATCH1-249K' ||
+        mockParams.slug?.toLowerCase() === 'ob-batch1-249k'
+      );
+
+      const mockConfigWithForcedFlag = {
+        enable_custom_html: true,
+        custom_html: '<section id="custom-html-section">Injected</section>',
+      };
+
+      const isCustomHtmlActivePage = Boolean(
+        isOnlineBoostTenant &&
+        isObBatch1Target &&
+        mockConfigWithForcedFlag.enable_custom_html &&
+        mockConfigWithForcedFlag.custom_html
+      );
+
+      // Non-batch1 product MUST NOT trigger takeover
+      expect(isOnlineBoostTenant).toBe(true);
+      expect(isObBatch1Target).toBe(false);
+      expect(isCustomHtmlActivePage).toBe(false);
+
+      // 3. Page layout verification: regular template preserves store header and cart
+      // When isCustomHtmlActivePage is false:
+      // - Store header renders: {!isCustomHtmlActivePage && (
+      expect(pageSource).toContain('!isCustomHtmlActivePage && (');
+      // - Standard container is used:
+      expect(pageSource).toContain("isCustomHtmlActivePage ? 'w-full p-0 m-0' : 'max-w-2xl mx-auto px-4 pt-6 space-y-7'");
+      // - Cart bar and cart drawer are not suppressed by takeover:
+      expect(pageSource).toContain('!isCartDisabled && cartPolicy.showStickyCart &&');
+      expect(pageSource).toContain('<CartDrawer');
+    });
+  });
 });

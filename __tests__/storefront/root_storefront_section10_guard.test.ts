@@ -55,8 +55,8 @@ describe('Root Storefront Section 10 Anti-Leakage Guardrail (app/[tenant]/page.t
       expect(productCode).toContain('resolveCustomHtmlTenantAssets');
     });
 
-    it('verifies git working tree confirms ZERO modified lines in app/[tenant]/page.tsx', () => {
-      const gitDiffOutput = execSync('git diff app/[tenant]/page.tsx', { encoding: 'utf-8' }).trim();
+    it('verifies git diff against baseline origin/main confirms ZERO modified lines in app/[tenant]/page.tsx', () => {
+      const gitDiffOutput = execSync('git diff origin/main...HEAD -- app/[tenant]/page.tsx', { encoding: 'utf-8' }).trim();
       expect(gitDiffOutput).toBe('');
     });
   });
