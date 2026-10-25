@@ -818,14 +818,29 @@ export default function MicrositeBioTemplate({
                     ? `/${tenantSlug}/p/${productSlug}`
                     : null;
 
-                  const rawExternal = !dedicatedPageUrl
-                    ? (item.external_url ||
-                       (item as any).affiliate_url ||
-                       (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
-                       resolveProductExternalUrl(item))
+                  const externalCandidate =
+                    resolveProductExternalUrl(item) ||
+                    item.external_url ||
+                    (item as any).direct_url ||
+                    (item as any).affiliate_url ||
+                    (item as any).affiliate_link ||
+                    (item as any).link_external ||
+                    item.metadata?.external_url ||
+                    (item.metadata as any)?.direct_url ||
+                    item.metadata?.affiliate_url ||
+                    item.metadata?.affiliate_link ||
+                    item.metadata?.link_external ||
+                    ((item as any).fulfillment_metadata)?.external_url ||
+                    ((item as any).fulfillment_metadata)?.direct_url;
+                  const externalUrl = (externalCandidate && typeof externalCandidate === 'string')
+                    ? externalCandidate.trim()
                     : null;
-                  const externalUrl = rawExternal ? String(rawExternal).trim() : null;
-                  const isExternal = Boolean(externalUrl);
+                  const isExternal = Boolean(
+                    (item.checkout_type === 'external' || (item.metadata as any)?.checkout_type === 'external' || Boolean(externalUrl)) &&
+                    externalUrl &&
+                    (externalUrl.startsWith('http://') || externalUrl.startsWith('https://')) &&
+                    item.checkout_type !== 'internal'
+                  );
                   const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
 
                   const handleExternalClick = (e: React.MouseEvent) => {
@@ -856,15 +871,18 @@ export default function MicrositeBioTemplate({
                       onOutboundClick?.(externalUrl, ctaLabel);
                     } catch (_) {}
 
-                    window.open(externalUrl, "_blank", "noopener,noreferrer");
+                    const targetTag = (e.currentTarget?.tagName || '').toUpperCase();
+                    if (targetTag !== 'A') {
+                      window.open(externalUrl, "_blank", "noopener,noreferrer");
+                    }
                   };
 
                   const handleCardClick = (e: React.MouseEvent) => {
-                    if (dedicatedPageUrl) {
+                    if (isExternal && externalUrl) {
+                      handleExternalClick(e);
+                    } else if (dedicatedPageUrl) {
                       e.stopPropagation();
                       router.push(dedicatedPageUrl);
-                    } else if (isExternal && externalUrl) {
-                      handleExternalClick(e);
                     }
                   };
 
@@ -878,7 +896,34 @@ export default function MicrositeBioTemplate({
                     >
                       <div>
                         {/* Thumbnail Gambar Besar & Proporsional di Atas Kartu */}
-                        {dedicatedPageUrl ? (
+                        {isExternal && externalUrl ? (
+                          <a
+                            href={externalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={handleExternalClick}
+                            className="block group/thumb"
+                          >
+                            <div className="relative rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-white/10 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5 cursor-pointer">
+                              {safeImage ? (
+                                <img
+                                  src={safeImage}
+                                  alt={item.name}
+                                  className="w-full h-full object-contain group-hover/thumb:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                  <ShoppingBag className="w-8 h-8" />
+                                </div>
+                              )}
+                              {item.badge && (
+                                <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                                  {item.badge}
+                                </span>
+                              )}
+                            </div>
+                          </a>
+                        ) : dedicatedPageUrl ? (
                           <Link
                             href={dedicatedPageUrl}
                             onClick={(e) => e.stopPropagation()}
@@ -925,7 +970,19 @@ export default function MicrositeBioTemplate({
                         )}
 
                         {/* Info Produk: Judul penuh tanpa truncate, dibungkus Link jika ada dedicated page */}
-                        {dedicatedPageUrl ? (
+                        {isExternal && externalUrl ? (
+                          <a
+                            href={externalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={handleExternalClick}
+                            className="block group/title"
+                          >
+                            <h3 className="font-bold text-sm sm:text-base leading-snug group-hover/title:text-blue-600 dark:group-hover/title:text-cyan-400 transition-colors">
+                              {item.name}
+                            </h3>
+                          </a>
+                        ) : dedicatedPageUrl ? (
                           <Link
                             href={dedicatedPageUrl}
                             onClick={(e) => e.stopPropagation()}
@@ -1072,14 +1129,29 @@ export default function MicrositeBioTemplate({
                   ? `/${tenantSlug}/p/${productSlug}`
                   : null;
 
-                const rawExternal = !dedicatedPageUrl
-                  ? (item.external_url ||
-                     (item as any).affiliate_url ||
-                     (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
-                     resolveProductExternalUrl(item))
+                const externalCandidate =
+                  resolveProductExternalUrl(item) ||
+                  item.external_url ||
+                  (item as any).direct_url ||
+                  (item as any).affiliate_url ||
+                  (item as any).affiliate_link ||
+                  (item as any).link_external ||
+                  item.metadata?.external_url ||
+                  (item.metadata as any)?.direct_url ||
+                  item.metadata?.affiliate_url ||
+                  item.metadata?.affiliate_link ||
+                  item.metadata?.link_external ||
+                  ((item as any).fulfillment_metadata)?.external_url ||
+                  ((item as any).fulfillment_metadata)?.direct_url;
+                const externalUrl = (externalCandidate && typeof externalCandidate === 'string')
+                  ? externalCandidate.trim()
                   : null;
-                const externalUrl = rawExternal ? String(rawExternal).trim() : null;
-                const isExternal = Boolean(externalUrl);
+                const isExternal = Boolean(
+                  (item.checkout_type === 'external' || (item.metadata as any)?.checkout_type === 'external' || Boolean(externalUrl)) &&
+                  externalUrl &&
+                  (externalUrl.startsWith('http://') || externalUrl.startsWith('https://')) &&
+                  item.checkout_type !== 'internal'
+                );
                 const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
 
                 const handleExternalClick = (e: React.MouseEvent) => {
@@ -1110,15 +1182,18 @@ export default function MicrositeBioTemplate({
                     onOutboundClick?.(externalUrl, ctaLabel);
                   } catch (_) {}
 
-                  window.open(externalUrl, "_blank", "noopener,noreferrer");
+                  const targetTag = (e.currentTarget?.tagName || '').toUpperCase();
+                  if (targetTag !== 'A') {
+                    window.open(externalUrl, "_blank", "noopener,noreferrer");
+                  }
                 };
 
                 const handleCardClick = (e: React.MouseEvent) => {
-                  if (dedicatedPageUrl) {
+                  if (isExternal && externalUrl) {
+                    handleExternalClick(e);
+                  } else if (dedicatedPageUrl) {
                     e.stopPropagation();
                     router.push(dedicatedPageUrl);
-                  } else if (isExternal && externalUrl) {
-                    handleExternalClick(e);
                   }
                 };
 
@@ -1130,7 +1205,17 @@ export default function MicrositeBioTemplate({
                       dedicatedPageUrl || isExternal ? 'cursor-pointer active:scale-[0.99]' : ''
                     }`}
                   >
-                    {dedicatedPageUrl ? (
+                    {isExternal && externalUrl ? (
+                      <a
+                        href={externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={handleExternalClick}
+                        className="shrink-0 group/thumb"
+                      >
+                        <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
+                      </a>
+                    ) : dedicatedPageUrl ? (
                       <Link
                         href={dedicatedPageUrl}
                         onClick={(e) => e.stopPropagation()}
@@ -1143,7 +1228,17 @@ export default function MicrositeBioTemplate({
                     )}
 
                     <div className="flex-1 min-w-0 space-y-1">
-                      {dedicatedPageUrl ? (
+                      {isExternal && externalUrl ? (
+                        <a
+                          href={externalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={handleExternalClick}
+                          className="hover:underline block"
+                        >
+                          <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
+                        </a>
+                      ) : dedicatedPageUrl ? (
                         <Link
                           href={dedicatedPageUrl}
                           onClick={(e) => e.stopPropagation()}
@@ -1172,7 +1267,7 @@ export default function MicrositeBioTemplate({
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={handleExternalClick}
-                        className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                        className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md no-underline"
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>{ctaLabel}</span>

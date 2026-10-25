@@ -100,10 +100,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     return (
       resolveProductExternalUrl(product) ||
       (product as any).external_url ||
+      (product as any).direct_url ||
       (product as any).affiliate_link ||
       (product as any).affiliate_url ||
       (product as any).link_external ||
       (product as any).metadata?.external_url ||
+      (product as any).metadata?.direct_url ||
       (product as any).metadata?.affiliate_link ||
       (product as any).metadata?.affiliate_url ||
       (product as any).metadata?.link_external ||
@@ -114,6 +116,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const isAffiliate = Boolean(
     resolvedExternalUrl ||
     (product as any)?.external_url ||
+    (product as any)?.direct_url ||
     (product as any)?.affiliate_link ||
     (product as any)?.affiliate_url ||
     (product as any)?.link_external ||

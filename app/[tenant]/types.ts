@@ -29,6 +29,7 @@ export interface Product {
   product_type?: string;
   requires_shipping?: boolean;
   external_url?: string;
+  direct_url?: string;
   affiliate_url?: string;
   affiliate_link?: string;
   bypass_checkout?: boolean;
@@ -38,6 +39,7 @@ export interface Product {
   single_page_config?: any;
   single_page_enabled?: boolean;
   metadata?: Record<string, any>;
+  fulfillment_metadata?: Record<string, any>;
   is_active?: boolean;
 }
 

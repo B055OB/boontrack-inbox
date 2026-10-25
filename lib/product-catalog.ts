@@ -525,6 +525,7 @@ export interface ProductItem {
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
   external_url?: string;
+  direct_url?: string;
   affiliate_url?: string;
   affiliate_link?: string;
   bypass_checkout?: boolean;
@@ -1259,38 +1260,32 @@ export function resolveSinglePageProduct(
 
 /**
  * Resolves external / affiliate URL from a product object.
- * Checks external_url, affiliate_url, metadata.external_url, metadata.affiliate_url,
- * fulfillment_metadata.access_url, and download_url (if http/https).
+ * Checks external_url, direct_url, affiliate_url, metadata.external_url,
+ * metadata.direct_url, metadata.affiliate_url, fulfillment_metadata.external_url, etc.
+ * Never treats explicit internal checkout as external affiliate destination.
  */
 export function resolveProductExternalUrl(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
-  // Never treat explicit internal checkout, digital fulfillment, or protected access items as external affiliate destinations
-  if (
-    item?.checkout_type === 'internal' ||
-    item?.fulfillment_metadata?.delivery_type ||
-    item?.fulfillment_metadata?.access_url ||
-    item?.download_url ||
-    item?.link_digital ||
-    item?.is_digital === true ||
-    item?.category === 'digital' ||
-    item?.category === 'PRODUK_DIGITAL' ||
-    String(item?.product_type || '').toUpperCase() === 'DIGITAL'
-  ) {
+  // Never treat explicit internal checkout as external affiliate destination
+  if (item?.checkout_type === 'internal') {
     return null;
   }
 
   // Only external / affiliate referral URLs
   const candidate =
     item.external_url ||
+    item.direct_url ||
     item.affiliate_url ||
     item.affiliate_link ||
     item.link_external ||
     item.metadata?.external_url ||
+    item.metadata?.direct_url ||
     item.metadata?.affiliate_url ||
     item.metadata?.affiliate_link ||
     item.metadata?.link_external ||
     item.fulfillment_metadata?.external_url ||
+    item.fulfillment_metadata?.direct_url ||
     item.fulfillment_metadata?.affiliate_url ||
     item.fulfillment_metadata?.affiliate_link;
 

@@ -511,7 +511,8 @@ function SingleProductContent() {
                 }
               : null),
             checkout_type: (sqlProd as any).checkout_type || (sqlProd as any).metadata?.checkout_type || match?.checkout_type,
-            external_url: (sqlProd as any).external_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url,
+            direct_url: (sqlProd as any).direct_url || (sqlProd as any).metadata?.direct_url || match?.direct_url || (match?.metadata as any)?.direct_url,
+            external_url: (sqlProd as any).external_url || (sqlProd as any).direct_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.direct_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url || match?.direct_url,
             affiliate_link: (sqlProd as any).affiliate_link || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.external_url || match?.affiliate_link,
             affiliate_url: (sqlProd as any).affiliate_url || (sqlProd as any).metadata?.affiliate_url || (sqlProd as any).metadata?.external_url || match?.affiliate_url,
             bypass_checkout: Boolean((sqlProd as any).bypass_checkout || (sqlProd as any).metadata?.bypass_checkout || match?.bypass_checkout || match?.metadata?.bypass_checkout),
@@ -753,16 +754,27 @@ function SingleProductContent() {
                 (sqlProd?.metadata as any)?.checkout_type ||
                 match.checkout_type ||
                 match.metadata?.checkout_type ||
-                (match.external_url || match.metadata?.external_url || match.affiliate_link || match.metadata?.affiliate_link ? 'external' : 'internal')
+                (match.external_url || match.direct_url || match.metadata?.external_url || (match.metadata as any)?.direct_url || match.affiliate_link || match.metadata?.affiliate_link ? 'external' : 'internal')
               ) === 'external' ? 'external' : 'internal'),
+              direct_url: (
+                (sqlProd as any)?.direct_url ||
+                (sqlProd?.metadata as any)?.direct_url ||
+                match.direct_url ||
+                (match.metadata as any)?.direct_url ||
+                ''
+              ),
               external_url: (
                 sqlProd?.external_url ||
+                (sqlProd as any)?.direct_url ||
                 (sqlProd?.metadata as any)?.external_url ||
+                (sqlProd?.metadata as any)?.direct_url ||
                 (sqlProd?.metadata as any)?.affiliate_link ||
                 (sqlProd?.metadata as any)?.link_external ||
                 (sqlProd?.metadata as any)?.affiliate_url ||
                 match.external_url ||
+                match.direct_url ||
                 match.metadata?.external_url ||
+                (match.metadata as any)?.direct_url ||
                 match.metadata?.link_external ||
                 match.affiliate_link ||
                 match.metadata?.affiliate_link ||
@@ -902,15 +914,22 @@ function SingleProductContent() {
     return selectedBumpItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
   }, [selectedBumpItems]);
 
-  const rawExternalAffiliateUrl = resolveProductExternalUrl(product) || '';
+  const rawExternalAffiliateUrl =
+    resolveProductExternalUrl(product) ||
+    product.external_url ||
+    (product as any).direct_url ||
+    (product as any).affiliate_url ||
+    (product as any).affiliate_link ||
+    product.metadata?.external_url ||
+    (product.metadata as any)?.direct_url ||
+    product.metadata?.affiliate_url ||
+    '';
   const externalAffiliateUrl = typeof rawExternalAffiliateUrl === 'string' ? rawExternalAffiliateUrl.trim() : '';
 
   const isAffiliateProduct = Boolean(
-    !product.fulfillment_metadata?.access_url &&
-    !product.download_url &&
     product.checkout_type !== 'internal' &&
     (
-      externalAffiliateUrl ||
+      (externalAffiliateUrl && (externalAffiliateUrl.startsWith('http://') || externalAffiliateUrl.startsWith('https://'))) ||
       product.checkout_type === 'external' ||
       (product as any)?.bypass_checkout ||
       (product as any)?.metadata?.bypass_checkout ||
@@ -924,6 +943,25 @@ function SingleProductContent() {
     (product as any)?.affiliate_cta_label ||
     (product.metadata as any)?.affiliate_cta_label ||
     'Saya Mau Pesan ↗';
+
+  // Smooth direct redirect to external target URL for external products without long-form sales copy
+  useEffect(() => {
+    if (pageStatus === 'active' && isAffiliateProduct && externalAffiliateUrl) {
+      const hasCustomContent = Boolean(
+        isCustomHtmlActivePage ||
+        config.enable_problem_solution ||
+        config.enable_us_vs_them ||
+        config.enable_testimonials ||
+        config.custom_html
+      );
+      if (!hasCustomContent && typeof window !== 'undefined') {
+        const timer = setTimeout(() => {
+          window.location.assign(externalAffiliateUrl);
+        }, 150);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [pageStatus, isAffiliateProduct, externalAffiliateUrl, isCustomHtmlActivePage, config]);
 
   const rawQueryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
   const queryPhone = sanitizePhoneInputForPrefix(rawQueryPhone);
