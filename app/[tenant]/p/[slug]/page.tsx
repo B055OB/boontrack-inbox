@@ -584,45 +584,28 @@ function SingleProductContent() {
                 ? tenantSec10.html
                 : '';
 
+            const isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost';
+            const isObBatch1Target = Boolean(
+              match?.sku === 'OB-BATCH1-249K' ||
+              (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
+              match?.slug === 'ob-batch1-249k'
+            );
+
             const isMatchForSec10 = Boolean(
+              isOnlineBoostTenant &&
+              isObBatch1Target &&
               isTenantSec10Active &&
-              tenantSec10Html &&
-              (
-                (tenantSec10?.sku && match?.sku && tenantSec10.sku.toLowerCase() === match.sku.toLowerCase()) ||
-                (tenantSec10?.slug && match?.slug && tenantSec10.slug.toLowerCase() === match.slug.toLowerCase()) ||
-                (match?.slug === 'ob-batch1-249k' || match?.sku === 'OB-BATCH1-249K' || norm === 'obbatch1249k') ||
-                ((cfg.enable_custom_html || (cfg as any).is_custom_html_enabled || (cfg as any).use_custom_html) && !cfg.custom_html)
-              )
+              tenantSec10Html
             );
 
             const isCustomHtmlActive = Boolean(
-              (
-                cfg.enable_custom_html ||
-                (cfg as any).is_custom_html_enabled ||
-                (cfg as any).use_custom_html ||
-                match?.metadata?.enable_custom_html ||
-                match?.metadata?.is_custom_html_enabled ||
-                match?.metadata?.use_custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.enable_custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.is_custom_html_enabled ||
-                match?.fulfillment_metadata?.single_page_config?.use_custom_html ||
-                isMatchForSec10
-              ) &&
-              (
-                cfg.custom_html ||
-                match?.metadata?.custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.custom_html ||
-                (isMatchForSec10 ? tenantSec10Html : '')
-              )?.trim()
+              isOnlineBoostTenant &&
+              isObBatch1Target &&
+              isMatchForSec10 &&
+              tenantSec10Html?.trim()
             );
 
-            const rawCustomHtml = (
-              cfg.custom_html ||
-              match?.metadata?.custom_html ||
-              match?.fulfillment_metadata?.single_page_config?.custom_html ||
-              (isMatchForSec10 ? tenantSec10Html : '') ||
-              ''
-            );
+            const rawCustomHtml = isCustomHtmlActive ? tenantSec10Html : (cfg.custom_html || '');
 
             const resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
 
@@ -827,7 +810,16 @@ function SingleProductContent() {
   const product: ProductItem = resolvedData?.product || ({} as ProductItem);
   const config: SinglePageConfig = resolvedData?.config || ({} as SinglePageConfig);
 
+  const isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost';
+  const isObBatch1Target = Boolean(
+    product?.sku === 'OB-BATCH1-249K' ||
+    (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
+    product?.slug === 'ob-batch1-249k'
+  );
+
   const isCustomHtmlActivePage = Boolean(
+    isOnlineBoostTenant &&
+    isObBatch1Target &&
     (config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html) &&
     config.custom_html
   );
