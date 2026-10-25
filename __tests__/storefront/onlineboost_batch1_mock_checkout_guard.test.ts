@@ -303,6 +303,103 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       expect(orderResult.isSimulated).toBe(true);
       expect(orderResult.fulfillment).toBeNull();
     });
+
+    it('fails closed when product/SKU is not found in authoritative server catalog (without price fallback)', async () => {
+      // Skenario A: Produk tidak ditemukan di katalog server
+      const spyFind = jest.spyOn(DEFAULT_PRODUCTS, 'find').mockReturnValueOnce(undefined);
+
+      const result = await createOrderAndInvoice({
+        tenantSlug: 'onlineboost',
+        productId: 'OB-BATCH1-249K',
+        productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+        amount: 249000,
+        customerName: 'Missing Product QA',
+        customerPhone: '081234567890',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe('MOCK_SIMULATED');
+      expect(result.isPaid).toBe(false);
+      expect(result.fulfillment).toBeNull();
+      expect(result.isMock).toBe(true);
+
+      spyFind.mockRestore();
+    });
+
+    it('fails closed when authoritative server catalog price is missing or invalid (null, undefined, NaN, 0) proving ?? 249000 fallback is eliminated', async () => {
+      // Skenario B: Ketiadaan / invaliditas data harga otoritatif server (tanpa fallback hardcoded)
+      const invalidPrices = [undefined, null, NaN, 0, -1000];
+
+      for (const badPrice of invalidPrices) {
+        const spyFind = jest.spyOn(DEFAULT_PRODUCTS, 'find').mockReturnValueOnce({
+          id: 7071500249,
+          sku: 'OB-BATCH1-249K',
+          name: 'Tiket Inkubasi OnlineBoost Batch 1',
+          slug: 'ob-batch1-249k',
+          price: badPrice as any,
+        } as any);
+
+        const result = await createOrderAndInvoice({
+          tenantSlug: 'onlineboost',
+          productId: 'OB-BATCH1-249K',
+          productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+          amount: 249000,
+          customerName: 'Bad Price QA',
+          customerPhone: '081234567890',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.status).toBe('MOCK_SIMULATED');
+        expect(result.isPaid).toBe(false);
+        expect(result.fulfillment).toBeNull();
+
+        spyFind.mockRestore();
+      }
+    });
+
+    it('fails closed when targeting Batch 1 under wrong or non-onlineboost tenant', async () => {
+      // Skenario C: Pemanggilan dengan tenant yang bukan otoritatif onlineboost ditolak dan fail-closed ke hold
+      const wrongTenants = ['unauthorized-tenant', 'attacker-brand', 'demo-store', 'happyeating', ''];
+
+      for (const wrongTenant of wrongTenants) {
+        const result = await createOrderAndInvoice({
+          tenantSlug: wrongTenant,
+          productId: 'OB-BATCH1-249K',
+          productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+          amount: 249000,
+          customerName: 'Wrong Tenant QA',
+          customerPhone: '081234567890',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.status).toBe('MOCK_SIMULATED');
+        expect(result.isPaid).toBe(false);
+        expect(result.fulfillment).toBeNull();
+        expect(result.isMock).toBe(true);
+      }
+    });
+
+    it('completely ignores client payload amount/price manipulation (1000, 0, undefined, NaN) and routes to fail-closed hold', async () => {
+      // Skenario D: Payload client mencoba memanipulasi nominal amount/price
+      const manipulatedAmounts = [1000, 0, -50000, undefined, null, NaN, 248999, 249001];
+
+      for (const badAmount of manipulatedAmounts) {
+        const result = await createOrderAndInvoice({
+          tenantSlug: 'onlineboost',
+          productId: 'OB-BATCH1-249K',
+          productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+          amount: badAmount as any,
+          customerName: 'Manipulator QA',
+          customerPhone: '081234567890',
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.status).toBe('MOCK_SIMULATED');
+        expect(result.isPaid).toBe(false);
+        expect(result.fulfillment).toBeNull();
+        expect(result.isMock).toBe(true);
+      }
+    });
   });
 
   describe('5. Zero MDR Cut & Database Mutation Verification', () => {

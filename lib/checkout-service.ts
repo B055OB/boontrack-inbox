@@ -99,48 +99,92 @@ export interface CreateOrderPayload {
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-  // Evaluasi harga untuk Batch 1 mengacu pada harga server-side otoritatif (Rp 249.000)
-  // dari katalog resmi (DEFAULT_PRODUCTS.find), dan langsung menahan (mock/hold) bila harga tidak valid, kosong, atau dimanipulasi.
+  // Server-side authoritative evaluation for OnlineBoost Batch 1 (OB-BATCH1-249K).
+  // HAPUS SELURUH FALLBACK HARDCODED (Dilarang menggunakan `?? 249000`).
+  // Jika produk tidak ditemukan di katalog server, atau harga tidak valid, atau nominal client dimanipulasi:
+  // SISTEM WAJIB FAIL-CLOSED TOTAL dan menolak transaksi live.
   const isObTenant = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
   const normProductId = String(payload.productId || '').toUpperCase().trim();
   const normTitle = String(payload.productTitle || '').toLowerCase().trim();
 
-  // Authoritative server-side catalog lookup (Zero hardcoding bypass, isolated to onlineboost tenant)
-  const authoritativeBatch1 = isObTenant
-    ? DEFAULT_PRODUCTS.find((p) => (p.sku || '').toUpperCase() === 'OB-BATCH1-249K' || (p.slug || '').toLowerCase() === 'ob-batch1-249k')
-    : null;
-
-  const isBatch1Product = isObTenant && (
+  const isBatch1Candidate = Boolean(
     normProductId === 'OB-BATCH1-249K' ||
-    (authoritativeBatch1 && (String(authoritativeBatch1.id) === normProductId || String(authoritativeBatch1.sku).toUpperCase() === normProductId)) ||
+    normProductId === 'OB-BATCH1' ||
+    normProductId === '7071500249' ||
     normTitle.includes('inkubasi onlineboost batch 1') ||
     (normTitle.includes('onlineboost') && normTitle.includes('batch 1'))
   );
 
-  const authoritativePrice = authoritativeBatch1?.price ?? 249000;
+  if (isBatch1Candidate) {
+    // Skenario C: Tenant salah — pemanggilan dengan tenant yang bukan otoritatif onlineboost ditolak dan fail-closed ke mode hold
+    if (!isObTenant) {
+      return getBatch1MockCheckoutResult();
+    }
 
-  if (isBatch1Product && (
-    payload.amount === undefined ||
-    payload.amount === null ||
-    isNaN(Number(payload.amount)) ||
-    Number(payload.amount) !== authoritativePrice
-  )) {
-    return getBatch1MockCheckoutResult();
-  }
+    // Authoritative server-side catalog lookup (HANYA dari katalog resmi server)
+    const authoritativeBatch1 = DEFAULT_PRODUCTS.find(
+      (p) => (p.sku || '').toUpperCase() === 'OB-BATCH1-249K' || (p.slug || '').toLowerCase() === 'ob-batch1-249k'
+    );
 
-  if (isBatch1MockCheckout({
-    id: payload.productId,
-    sku: payload.productId,
-    title: payload.productTitle,
-    price: payload.amount,
-    amount: payload.amount,
-    metadata: payload.fulfillmentMetadata,
-    fulfillment_metadata: payload.fulfillmentMetadata,
-    single_page_config: authoritativeBatch1?.single_page_config,
-    is_mock_only: authoritativeBatch1?.single_page_config?.is_mock_only ?? true,
-    strict_hold: authoritativeBatch1?.single_page_config?.strict_hold ?? true,
-  }, payload.tenantSlug)) {
-    return getBatch1MockCheckoutResult();
+    // Skenario A: Produk tidak ditemukan di katalog otoritatif server -> FAIL-CLOSED TOTAL (tanpa fallback harga)
+    if (!authoritativeBatch1) {
+      return getBatch1MockCheckoutResult();
+    }
+
+    // Skenario B: Ketiadaan atau invaliditas data harga otoritatif server (undefined, null, NaN, <= 0)
+    // Hapus seluruh fallback seperti `?? 249000`
+    const rawCatalogPrice = authoritativeBatch1.price;
+    if (
+      rawCatalogPrice === undefined ||
+      rawCatalogPrice === null ||
+      isNaN(Number(rawCatalogPrice)) ||
+      Number(rawCatalogPrice) <= 0
+    ) {
+      return getBatch1MockCheckoutResult();
+    }
+
+    const authoritativePrice = Number(rawCatalogPrice);
+
+    // Skenario D: Manipulasi nominal payload client
+    // Nominal transaksi wajib dikonstruksi sepenuhnya oleh server berdasarkan produk terverifikasi.
+    // Jika amount/price yang dikirim client tidak sinkron dengan harga resmi server, sistem langsung menahan (fail-closed)
+    if (
+      payload.amount === undefined ||
+      payload.amount === null ||
+      isNaN(Number(payload.amount)) ||
+      Number(payload.amount) !== authoritativePrice
+    ) {
+      return getBatch1MockCheckoutResult();
+    }
+
+    // Evaluasi melalui mock guard dengan konfigurasi resmi produk dari server
+    if (isBatch1MockCheckout({
+      id: authoritativeBatch1.id,
+      sku: authoritativeBatch1.sku,
+      title: authoritativeBatch1.name || authoritativeBatch1.title,
+      price: authoritativePrice,
+      amount: authoritativePrice,
+      metadata: payload.fulfillmentMetadata,
+      fulfillment_metadata: payload.fulfillmentMetadata,
+      single_page_config: authoritativeBatch1.single_page_config,
+      is_mock_only: authoritativeBatch1.single_page_config?.is_mock_only,
+      strict_hold: authoritativeBatch1.single_page_config?.strict_hold,
+    }, payload.tenantSlug)) {
+      return getBatch1MockCheckoutResult();
+    }
+  } else if (isObTenant) {
+    // Proteksi tambahan untuk produk lain milik tenant onlineboost jika memiliki mock flags
+    if (isBatch1MockCheckout({
+      id: payload.productId,
+      sku: payload.productId,
+      title: payload.productTitle,
+      price: payload.amount,
+      amount: payload.amount,
+      metadata: payload.fulfillmentMetadata,
+      fulfillment_metadata: payload.fulfillmentMetadata,
+    }, payload.tenantSlug)) {
+      return getBatch1MockCheckoutResult();
+    }
   }
 
   // Normalisasi nomor HP customer ke format baku E.164 (628xxxxxxxxxx)
