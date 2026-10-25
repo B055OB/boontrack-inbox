@@ -19,42 +19,35 @@ describe('HOTFIX PR #78: Strict Mock-Only Guard for Checkout OB-BATCH1-249K', ()
   const productCatalogSource = fs.readFileSync(productCatalogPath, 'utf-8');
   const singleProductPageSource = fs.readFileSync(singleProductPagePath, 'utf-8');
 
-  describe('1. Catalog Security & Mock-Only Configuration for OB-BATCH1-249K', () => {
-    it('verifies OB-BATCH1-249K has live payments disabled and strict hold/mock flags active', () => {
+  describe('1. Catalog Security & Live Activation Configuration for OB-BATCH1-249K', () => {
+    it('verifies OB-BATCH1-249K has live payments and qris enabled with strict hold/mock flags released', () => {
       const batch1Prod = DEFAULT_PRODUCTS.find((p) => p.sku === 'OB-BATCH1-249K');
       expect(batch1Prod).toBeDefined();
       expect(batch1Prod?.sku).toBe('OB-BATCH1-249K');
       expect(batch1Prod?.slug).toBe('ob-batch1-249k');
+      expect(batch1Prod?.price).toBe(249000);
 
       const spc = batch1Prod?.single_page_config;
       expect(spc).toBeDefined();
-      // Verifikasi blocker CTO: enable_payment & enable_qris dinonaktifkan untuk live gateway
-      expect(spc?.enable_payment).toBe(false);
-      expect(spc?.enable_qris).toBe(false);
+      // Controlled Release Mandat CTO: enable_payment & enable_qris diaktifkan untuk live gateway
+      expect(spc?.enable_payment).toBe(true);
+      expect(spc?.enable_qris).toBe(true);
       expect(spc?.enable_manual_transfer).toBe(false);
-      expect(spc?.is_mock_only).toBe(true);
-      expect(spc?.strict_hold).toBe(true);
+      expect(spc?.is_mock_only).toBe(false);
+      expect(spc?.strict_hold).toBe(false);
     });
 
-    it('verifies isBatch1MockCheckout accurately flags target SKU, slug, and flags while preserving other products', () => {
-      // 1. Direct SKU match
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'ob-batch1-249k' }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, null)).toBe(true);
-
-      // 2. Direct Slug match
-      expect(isBatch1MockCheckout({ slug: 'ob-batch1-249k' }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ slug: 'OB-BATCH1-249K' }, 'onlineboost')).toBe(true);
-
-      // 3. Flags on metadata / single_page_config
+    it('verifies isBatch1MockCheckout accurately flags mock objects while allowing live checkout when released', () => {
+      // 1. Explicit mock flags return true
       expect(isBatch1MockCheckout({ metadata: { is_mock_only: true } })).toBe(true);
       expect(isBatch1MockCheckout({ single_page_config: { strict_hold: true } })).toBe(true);
       expect(isBatch1MockCheckout({ fulfillment_metadata: { is_mock_only: true } })).toBe(true);
 
-      // 4. Title match on OnlineBoost tenant
-      expect(isBatch1MockCheckout({ title: 'Tiket Inkubasi OnlineBoost Batch 1' }, 'onlineboost')).toBe(true);
+      // 2. Released catalog product returns false (allowing live checkout)
+      const batch1Prod = DEFAULT_PRODUCTS.find((p) => p.sku === 'OB-BATCH1-249K');
+      expect(isBatch1MockCheckout(batch1Prod, 'onlineboost')).toBe(false);
 
-      // 5. Unrelated products MUST return false (Zero cross-product / cross-tenant collateral)
+      // 3. Unrelated products MUST return false (Zero cross-product / cross-tenant collateral)
       expect(isBatch1MockCheckout({ sku: 'CPM-PRO-01', slug: 'cpm-pro-01' }, 'onlineboost')).toBe(false);
       expect(isBatch1MockCheckout({ sku: 'YOUTUBE-AI', slug: 'youtube-ai' }, 'onlineboost')).toBe(false);
       expect(isBatch1MockCheckout({ sku: 'PAKET-NASI-LIWET', slug: 'paket-nasi-liwet' }, 'happyeating')).toBe(false);
@@ -92,11 +85,11 @@ describe('HOTFIX PR #78: Strict Mock-Only Guard for Checkout OB-BATCH1-249K', ()
       expect(checkoutModalSource).toContain('candidateQris.startsWith(\'000201010212\')');
     });
 
-    it('verifies createOrderAndInvoice in lib/checkout-service.ts intercepts OB-BATCH1-249K mock-only', async () => {
+    it('verifies createOrderAndInvoice in lib/checkout-service.ts respects mock guard when explicitly flagged', async () => {
       expect(checkoutServiceSource).toContain('isBatch1MockCheckout');
       expect(checkoutServiceSource).toContain('getBatch1MockCheckoutResult');
 
-      // Call createOrderAndInvoice directly with target SKU
+      // Call createOrderAndInvoice directly with explicit mock flag
       const result = await createOrderAndInvoice({
         tenantSlug: 'onlineboost',
         productId: 'OB-BATCH1-249K',
@@ -104,6 +97,7 @@ describe('HOTFIX PR #78: Strict Mock-Only Guard for Checkout OB-BATCH1-249K', ()
         amount: 249000,
         customerName: 'Tester QA',
         customerPhone: '081234567890',
+        fulfillmentMetadata: { is_mock_only: true },
       });
 
       expect(result).toBeDefined();
@@ -116,14 +110,14 @@ describe('HOTFIX PR #78: Strict Mock-Only Guard for Checkout OB-BATCH1-249K', ()
 
     it('verifies SingleProductPage in app/[tenant]/p/[slug]/page.tsx guards OB-BATCH1-249K checkout', () => {
       expect(singleProductPageSource).toContain('isBatch1MockCheckout');
-      expect(singleProductPageSource).toContain('isObBatch1Target || isBatch1MockCheckout(product, tenant)');
+      expect(singleProductPageSource).toContain('if (isBatch1MockCheckout(product, tenant)) {');
       expect(singleProductPageSource).toContain('setIsPaid(true)');
       expect(singleProductPageSource).toContain('(!isCheckoutSectionDisabled || isObBatch1Target)');
     });
   });
 
   describe('3. Zero MDR Cut & Database Mutation Verification', () => {
-    it('guarantees createOrderAndInvoice never contacts live /api/checkout/create-order for OB-BATCH1-249K', async () => {
+    it('guarantees createOrderAndInvoice executes simulation when mock flag is present', async () => {
       const fetchSpy = jest.spyOn(global, 'fetch');
 
       const mockResult = await createOrderAndInvoice({
@@ -133,9 +127,10 @@ describe('HOTFIX PR #78: Strict Mock-Only Guard for Checkout OB-BATCH1-249K', ()
         amount: 249000,
         customerName: 'CTO QA Check',
         customerPhone: '081299998888',
+        fulfillmentMetadata: { is_mock_only: true },
       });
 
-      // Fetch tidak boleh dipanggil sama sekali untuk live order/invoice
+      // Fetch tidak boleh dipanggil sama sekali untuk live order/invoice saat mock flag aktif
       expect(fetchSpy).not.toHaveBeenCalledWith(
         expect.stringContaining('/api/checkout/create-order'),
         expect.anything()
