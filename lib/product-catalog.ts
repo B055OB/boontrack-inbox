@@ -2,6 +2,24 @@ import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
 import { getSupabaseAdmin, getSupabase } from './supabaseClient';
 import { isValidUuid } from './uuid-guard';
 
+/**
+ * Pure route/product eligibility guard for the OnlineBoost Section 10 takeover.
+ * Callers must still verify they are rendering within a product-detail route.
+ */
+export function isSection10TakeoverEligible(
+  tenant?: string | null,
+  sku?: string | null,
+  slug?: string | null
+): boolean {
+  const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
+  const isObBatch1Target = Boolean(
+    (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
+    (slug || '').toLowerCase() === 'ob-batch1-249k'
+  );
+  return Boolean(isOnlineBoostTenant && isObBatch1Target);
+}
+
+
 export interface VoucherConfig {
   code: string;
   discount_type: 'nominal' | 'percentage';
