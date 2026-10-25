@@ -632,7 +632,100 @@ function SingleProductContent() {
 
             const rawCustomHtml = isCustomHtmlActive ? candidateCustomHtml : (cfg.custom_html || '');
 
-            const resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
+            let resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
+            if (isEligibleForSec10 && resolvedCustomHtml) {
+              resolvedCustomHtml = resolvedCustomHtml
+                .replace(/\bbg-white\b/g, 'bg-[#0a0a0a]')
+                .replace(/\bbg-zinc-50\b/g, 'bg-zinc-950')
+                .replace(/\bbg-slate-50\b/g, 'bg-zinc-950')
+                .replace(/\bbg-gray-50\b/g, 'bg-zinc-950')
+                .replace(/\btext-slate-900\b/g, 'text-zinc-100')
+                .replace(/\btext-gray-900\b/g, 'text-zinc-100')
+                .replace(/\btext-black\b/g, 'text-zinc-100')
+                .replace(/\btext-slate-800\b/g, 'text-zinc-200')
+                .replace(/\btext-slate-700\b/g, 'text-zinc-200')
+                .replace(/\btext-slate-600\b/g, 'text-zinc-300')
+                .replace(/\btext-slate-500\b/g, 'text-zinc-400');
+
+              const darkStyleOverride = `
+<style id="ob-batch1-dark-theme-override">
+  #custom-html-section,
+  #onlineboost-landing-root,
+  .ob-sec10-wrap {
+    background-color: #0a0a0a !important;
+    color: #f4f4f5 !important;
+  }
+  .site-header {
+    background: rgba(10, 10, 10, 0.92) !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2) !important;
+  }
+  .hero-section {
+    background-color: #0a0a0a !important;
+  }
+  .hero-headline {
+    color: #ffffff !important;
+  }
+  .hero-headline .text-gradient-gold,
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: #fbbf24 !important;
+    text-shadow: 0 0 24px rgba(251, 191, 36, 0.25);
+  }
+  .hero-subheadline {
+    color: #d4d4d8 !important;
+  }
+  .badge-pill {
+    background: rgba(245, 158, 11, 0.1) !important;
+    border: 1px solid rgba(245, 158, 11, 0.2) !important;
+    color: #fcd34d !important;
+  }
+  .hero-trust-bar {
+    border-top-color: rgba(255, 255, 255, 0.08) !important;
+  }
+  .trust-item {
+    color: #e4e4e7 !important;
+  }
+  .trust-item svg,
+  .trust-item svg polyline {
+    color: #fbbf24 !important;
+    stroke: #fbbf24 !important;
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6));
+  }
+  .hero-micro-copy {
+    color: #e4e4e7 !important;
+  }
+  .hero-sub-checkout-trigger {
+    color: #fef08a !important;
+    text-shadow: 0 0 10px rgba(254, 240, 138, 0.3);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .hero-sub-checkout-trigger:hover {
+    color: #facc15 !important;
+  }
+  .glass-card,
+  .hero-showcase-card,
+  .comparison-panel,
+  .price-card,
+  .faq-item {
+    background: #11141a !important;
+    border-color: rgba(245, 158, 11, 0.18) !important;
+    color: #e4e4e7 !important;
+  }
+  section.section-padding,
+  .section-padding {
+    background-color: #0a0a0a !important;
+  }
+</style>`;
+
+              if (!resolvedCustomHtml.includes('id="ob-batch1-dark-theme-override"')) {
+                resolvedCustomHtml = darkStyleOverride + resolvedCustomHtml;
+              }
+            }
 
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
@@ -4813,14 +4906,22 @@ function SingleProductContent() {
   }
 
   return (
-    <div className={isCustomHtmlActivePage ? "w-full min-h-screen p-0 m-0 bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white" : "min-h-screen bg-white text-slate-900 font-sans pb-28 selection:bg-blue-600 selection:text-white"}>
+    <div className={isCustomHtmlActivePage ? "w-full min-h-screen p-0 m-0 " + (isOnlineBoostTenant && isObBatch1Target ? "bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-amber-500 selection:text-black" : "bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white") : (isOnlineBoostTenant && isObBatch1Target ? "min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans pb-28 selection:bg-amber-500 selection:text-black" : "min-h-screen bg-white text-slate-900 font-sans pb-28 selection:bg-blue-600 selection:text-white")}>
       {/* 1. Header Minimalis Brand */}
       {!isCustomHtmlActivePage && (
-        <header className="border-b border-slate-100 py-3.5 px-4 sticky top-0 bg-white/95 backdrop-blur z-30 flex items-center justify-between max-w-2xl mx-auto">
-          <div className="text-xs font-black uppercase tracking-wider text-blue-600">
+        <header className={
+          isOnlineBoostTenant && isObBatch1Target
+            ? "border-b border-amber-500/20 py-3.5 px-4 sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-md z-30 flex items-center justify-between max-w-2xl mx-auto text-zinc-100"
+            : "border-b border-slate-100 py-3.5 px-4 sticky top-0 bg-white/95 backdrop-blur z-30 flex items-center justify-between max-w-2xl mx-auto"
+        }>
+          <div className={isOnlineBoostTenant && isObBatch1Target ? "text-xs font-black uppercase tracking-wider text-amber-400" : "text-xs font-black uppercase tracking-wider text-blue-600"}>
             {tenant.toUpperCase()} OFFICIAL
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+          <div className={
+            isOnlineBoostTenant && isObBatch1Target
+              ? "flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full"
+              : "flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full"
+          }>
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>{categoryLabels.headerSecurityBadge}</span>
           </div>
