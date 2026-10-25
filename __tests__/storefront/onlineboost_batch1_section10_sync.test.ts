@@ -103,8 +103,9 @@ jest.mock('@/lib/supabaseClient', () => ({
   }),
 }));
 
-import { GET as getTenantTheme } from '@/app/api/v1/tenants/[slug]/theme/route';
-import { GET as getStoreTheme } from '@/app/api/v1/store/theme/route';
+import { GET as getTenantTheme, PUT as putTenantTheme } from '@/app/api/v1/tenants/[slug]/theme/route';
+import { GET as getStoreTheme, PUT as putStoreTheme } from '@/app/api/v1/store/theme/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 const ORIGINAL_HOLDING_CAROUSEL_SHA256 = 'bec47f3e5e16136450d14bbefc206bae31807ef61276d9622eabdde49353a48a';
 const APPROVED_PATCHED_CAROUSEL_SHA256 = 'd2f5bcffb72c667ea622386c16b72227abadfa5d4c3bdfc1afecfb45437f86e2';
@@ -312,9 +313,10 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
       expect(themeTabCode).toContain('setSection10Html(sec10.custom_html');
     });
 
-    it('implements handleSaveSection10 syncing to Supabase and Theme API', () => {
+    it('implements handleSaveSection10 syncing to Supabase and Theme API with res.ok verification', () => {
       expect(themeTabCode).toContain('handleSaveSection10');
       expect(themeTabCode).toContain('fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`');
+      expect(themeTabCode).toContain('if (!res.ok)');
       expect(themeTabCode).toContain('section_10: sec10Data');
     });
 
@@ -357,6 +359,95 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
     it('fails closed on missing slug at GET /api/v1/store/theme', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/store/theme');
       const res = await getStoreTheme(req);
+      expect(res.status).toBe(400);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('slug');
+    });
+
+    it('strictly rejects unauthenticated PUT mutations to /api/v1/tenants/[slug]/theme with 401', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/tenants/onlineboost/theme', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_10: {
+            is_enabled: true,
+            custom_html: '<div>Unauthorized Edit</div>',
+          },
+        }),
+      });
+
+      const res = await putTenantTheme(req, { params: Promise.resolve({ slug: 'onlineboost' }) });
+      expect(res.status).toBe(401);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Unauthorized|Kredensial tidak ditemukan/i);
+    });
+
+    it('strictly rejects cross-tenant PUT mutations when merchant session token does not match target slug with 403', async () => {
+      const foreignToken = signMerchantSessionToken({
+        tenantSlug: 'attacker-store',
+        tenantId: 'd6a782b1-4c12-4e92-b7b5-000000000099',
+        role: 'MERCHANT',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/tenants/onlineboost/theme', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${foreignToken}`,
+        },
+        body: JSON.stringify({
+          section_10: {
+            is_enabled: true,
+            custom_html: '<div>Cross Tenant Hijack</div>',
+          },
+        }),
+      });
+
+      const res = await putTenantTheme(req, { params: Promise.resolve({ slug: 'onlineboost' }) });
+      expect(res.status).toBe(403);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/tidak cocok dengan target toko|Forbidden/i);
+    });
+
+    it('strictly rejects cross-tenant PUT mutations via gateway /api/v1/store/theme with 403 or 401', async () => {
+      const foreignToken = signMerchantSessionToken({
+        tenantSlug: 'attacker-store',
+        tenantId: 'd6a782b1-4c12-4e92-b7b5-000000000099',
+        role: 'MERCHANT',
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/store/theme?slug=onlineboost', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${foreignToken}`,
+        },
+        body: JSON.stringify({
+          section_10: {
+            is_enabled: true,
+          },
+        }),
+      });
+
+      const res = await putStoreTheme(req);
+      expect(res.status).toBe(403);
+    });
+
+    it('fails closed on missing slug at PUT /api/v1/store/theme with 400', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/store/theme', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_10: { is_enabled: true },
+        }),
+      });
+      const res = await putStoreTheme(req);
       expect(res.status).toBe(400);
 
       const json = await res.json();

@@ -85,6 +85,7 @@ export default function ThemeTab({
   const [section10Title, setSection10Title] = useState<string>('OnlineBoost Batch 1');
   const [isSavingSec10, setIsSavingSec10] = useState<boolean>(false);
   const [sec10Toast, setSec10Toast] = useState<string | null>(null);
+  const [sec10Error, setSec10Error] = useState<string | null>(null);
 
   // Sync state if prop changes externally
   useEffect(() => {
@@ -340,29 +341,22 @@ export default function ThemeTab({
 
   const handleSaveSection10 = async (overrideEnabled?: boolean) => {
     if (isSubscriptionExpired) {
-      setErrorMessage('Masa aktif toko telah habis. Lakukan perpanjangan untuk mengubah pengaturan.');
-      setTimeout(() => setErrorMessage(null), 4000);
+      const expiredMsg = 'Masa aktif toko telah habis. Lakukan perpanjangan untuk mengubah pengaturan.';
+      setSec10Error(expiredMsg);
+      setErrorMessage(expiredMsg);
+      setTimeout(() => {
+        setSec10Error(null);
+        setErrorMessage(null);
+      }, 4000);
       return;
     }
 
     const enabledToSave = overrideEnabled !== undefined ? overrideEnabled : isSection10Active;
     setIsSavingSec10(true);
     setSec10Toast(null);
+    setSec10Error(null);
 
     try {
-      const supabase = getSupabase();
-      let currentMeta: Record<string, any> = {};
-
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        currentMeta = tenantRow?.metadata || {};
-      }
-
       const sec10Data = {
         is_enabled: enabledToSave,
         is_active: enabledToSave,
@@ -370,39 +364,53 @@ export default function ThemeTab({
         title: section10Title || 'OnlineBoost Batch 1',
       };
 
-      const updatedMeta = {
-        ...currentMeta,
-        theme_config: {
-          ...(currentMeta.theme_config || {}),
+      // 1. Authoritative mutation & ISR cache revalidation via Theme API
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           section_10: sec10Data,
-        },
-        sections: {
-          ...(currentMeta.sections || {}),
-          section_10: sec10Data,
-        },
-      };
+        }),
+      });
 
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Gagal menyimpan Section 10 (Status ${res.status})`);
+      }
+
+      // 2. Client-side direct Supabase mirror sync if available
+      const supabase = getSupabase();
       if (supabase) {
-        await supabase
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        const currentMeta = tenantRow?.metadata || {};
+        const updatedMeta = {
+          ...currentMeta,
+          theme_config: {
+            ...(currentMeta.theme_config || {}),
+            section_10: sec10Data,
+          },
+          sections: {
+            ...(currentMeta.sections || {}),
+            section_10: sec10Data,
+          },
+        };
+
+        const { error: updateErr } = await supabase
           .from('tenants')
           .update({
             metadata: updatedMeta,
             updated_at: new Date().toISOString(),
           })
           .eq('slug', tenantSlug);
-      }
 
-      // Sync to Theme API for server revalidation
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            section_10: sec10Data,
-          }),
-        });
-      } catch (apiErr) {
-        console.warn('[ThemeTab] Theme API Section 10 sync note:', apiErr);
+        if (updateErr) {
+          throw new Error(updateErr.message);
+        }
       }
 
       const notice = enabledToSave
@@ -413,8 +421,13 @@ export default function ThemeTab({
       setTimeout(() => setSec10Toast(null), 3500);
     } catch (err: any) {
       console.warn('[ThemeTab] Gagal menyimpan Section 10:', err);
-      setErrorMessage('Gagal menyimpan Section 10 (Custom HTML). Silakan coba lagi.');
-      setTimeout(() => setErrorMessage(null), 4000);
+      const errMsg = err instanceof Error ? err.message : 'Gagal menyimpan Section 10 (Custom HTML). Silakan coba lagi.';
+      setSec10Error(errMsg);
+      setErrorMessage(errMsg);
+      setTimeout(() => {
+        setSec10Error(null);
+        setErrorMessage(null);
+      }, 4000);
     } finally {
       setIsSavingSec10(false);
     }
@@ -686,6 +699,13 @@ export default function ThemeTab({
               <div className="p-3 bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800/80 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-fadeIn">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span className="font-semibold">{sec10Toast}</span>
+              </div>
+            )}
+
+            {sec10Error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 dark:bg-rose-950/40 dark:border-rose-800/80 rounded-xl text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span className="font-semibold">{sec10Error}</span>
               </div>
             )}
 
