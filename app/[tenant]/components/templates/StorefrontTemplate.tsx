@@ -357,7 +357,7 @@ export function StorefrontTemplate({
         }
         return (
           <div className="max-w-7xl mx-auto px-4 w-full">
-            <Section10CustomHtml metadata={tenantMetadata} />
+            <Section10CustomHtml metadata={tenantMetadata} tenantSlug={tenantSlug} />
           </div>
         );
       })()}

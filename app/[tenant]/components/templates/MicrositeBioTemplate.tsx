@@ -782,7 +782,7 @@ export default function MicrositeBioTemplate({
           if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
             return null;
           }
-          return <Section10CustomHtml metadata={tenantMetadata} />;
+          return <Section10CustomHtml metadata={tenantMetadata} tenantSlug={tenantSlug} />;
         })()}
 
         {/* ── Product Catalog (Modern Cards or Compact List) ── */}
