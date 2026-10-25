@@ -105,14 +105,16 @@ export function isBatch1MockCheckout(
   // 4. FAIL-CLOSED REGRESSION CHECKS FOR OB-BATCH1-249K:
   // Validasi Integritas Harga Server-Side: Harga patokan resmi server adalah Rp 249.000.
   // Input amount/price dari client hanya parameter pembanding, bukan sumber kebenaran harga.
-  // Setiap manipulasi nominal otomatis memicu fail-closed (return true).
+  // WAJIB ADA DAN VALID: jika price, amount, dan promo_price semuanya tidak tersedia (undefined, null, NaN),
+  // atau Number(rawPrice) !== 249000, fungsi WAJIB langsung return true (tahan di mock guard / fail-closed).
   const SERVER_LOCKED_PRICE = 249000;
   const clientPriceCandidate = product.price ?? product.amount ?? product.promo_price;
-  if (clientPriceCandidate !== undefined && clientPriceCandidate !== null) {
-    const numPrice = Number(clientPriceCandidate);
-    if (isNaN(numPrice) || numPrice !== SERVER_LOCKED_PRICE) {
-      return true; // FAIL-CLOSED on price manipulation
-    }
+  if (clientPriceCandidate === undefined || clientPriceCandidate === null) {
+    return true; // FAIL-CLOSED: Harga wajib ada dan terdefinisi
+  }
+  const numPrice = Number(clientPriceCandidate);
+  if (isNaN(numPrice) || numPrice !== SERVER_LOCKED_PRICE) {
+    return true; // FAIL-CLOSED: Harga tidak valid atau dimanipulasi
   }
 
   // Config fail-closed check:
@@ -163,6 +165,13 @@ export function getBatch1MockCheckoutResult(orderId?: string) {
     invoiceUrl: `/checkout/${finalOrderId}?mock=true`,
     isMock: true,
     is_mock: true,
+    status: 'MOCK_SIMULATED',
+    isPaid: false,
+    is_paid: false,
+    isSimulated: true,
+    is_simulated: true,
+    fulfillment: null,
+    fulfillment_data: null,
     success: true,
   };
 }

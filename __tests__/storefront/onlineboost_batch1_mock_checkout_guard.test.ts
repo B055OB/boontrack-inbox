@@ -43,41 +43,47 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       expect(isBatch1MockCheckout({ single_page_config: { strict_hold: true } })).toBe(true);
       expect(isBatch1MockCheckout({ fulfillment_metadata: { is_mock_only: true } })).toBe(true);
 
-      // 2. Direct SKU match on OnlineBoost tenant
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'ob-batch1-249k' }, 'onlineboost')).toBe(true);
+      // 2. Direct SKU match on OnlineBoost tenant (with mandatory price Rp 249.000)
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'ob-batch1-249k', price: 249000 }, 'onlineboost')).toBe(true);
 
       // 3. Direct Slug match on OnlineBoost tenant
-      expect(isBatch1MockCheckout({ slug: 'ob-batch1-249k' }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ slug: 'OB-BATCH1-249K' }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ slug: 'ob-batch1-249k', price: 249000 }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ slug: 'OB-BATCH1-249K', price: 249000 }, 'onlineboost')).toBe(true);
 
       // 4. Title match on OnlineBoost tenant
-      expect(isBatch1MockCheckout({ title: 'Tiket Inkubasi OnlineBoost Batch 1' }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ title: 'Tiket Inkubasi OnlineBoost Batch 1', price: 249000 }, 'onlineboost')).toBe(true);
 
       // 5. Default catalog product on OnlineBoost tenant
       const batch1Prod = DEFAULT_PRODUCTS.find((p) => p.sku === 'OB-BATCH1-249K');
       expect(isBatch1MockCheckout(batch1Prod, 'onlineboost')).toBe(true);
     });
 
-    it('returns valid simulation QRIS and mock orderId structure from getBatch1MockCheckoutResult', () => {
+    it('returns valid simulation QRIS and mock orderId structure without leaking real fulfillment', () => {
       const mockResult = getBatch1MockCheckoutResult();
       expect(mockResult.isMock).toBe(true);
       expect(mockResult.orderId).toMatch(/^ORD-MOCK-OB-BATCH1-\d+$/);
       expect(mockResult.qrString).toBe(BATCH1_MOCK_QRIS_STRING);
       expect(mockResult.qrString.startsWith('000201010212')).toBe(true);
       expect(mockResult.invoiceUrl).toContain('mock=true');
+      expect(mockResult.status).toBe('MOCK_SIMULATED');
+      expect(mockResult.isPaid).toBe(false);
+      expect(mockResult.isSimulated).toBe(true);
+      expect(mockResult.fulfillment).toBeNull();
+      expect((mockResult as any).access_url).toBeUndefined();
+      expect((mockResult as any).download_url).toBeUndefined();
     });
   });
 
   describe('2. Fail-Closed Security & Cross-Tenant Isolation Regressions', () => {
     it('enforces cross-tenant isolation: rejects wrong or unknown tenants from mock guard', () => {
       // Cross-tenant calls with OB-BATCH1 SKU must NEVER trigger OnlineBoost mock guard
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', slug: 'ob-batch1-249k' }, 'happyeating')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'wrong-tenant')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'unknown')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'demo-store')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, null)).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, '')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', slug: 'ob-batch1-249k', price: 249000 }, 'happyeating')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, 'wrong-tenant')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, 'unknown')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, 'demo-store')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, null)).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000 }, '')).toBe(false);
     });
 
     it('fails closed when configuration is null or metadata is empty for OB-BATCH1-249K', () => {
@@ -85,19 +91,83 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       expect(isBatch1MockCheckout(null, 'onlineboost')).toBe(true);
 
       // Null or empty single_page_config under OnlineBoost tenant fails closed
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', single_page_config: null }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', metadata: null }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', metadata: {} }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K' }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000, single_page_config: null }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000, metadata: null }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000, metadata: {} }, 'onlineboost')).toBe(true);
 
       // Incomplete payment enablement in single_page_config fails closed
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', single_page_config: { enable_payment: false } }, 'onlineboost')).toBe(true);
-      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', single_page_config: { enable_payment: true, enable_qris: false } }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000, single_page_config: { enable_payment: false } }, 'onlineboost')).toBe(true);
+      expect(isBatch1MockCheckout({ sku: 'OB-BATCH1-249K', price: 249000, single_page_config: { enable_payment: true, enable_qris: false } }, 'onlineboost')).toBe(true);
 
       // Audit Keamanan CTO: Injeksi client _is_db_verified via metadata/payload TIDAK BISA membypass mock guard
       expect(isBatch1MockCheckout({
         sku: 'OB-BATCH1-249K',
+        price: 249000,
         metadata: { _is_db_verified: true },
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+    });
+
+    it('fails closed when price is undefined, null, NaN, or missing even if database verified', () => {
+      // a. Objek produk dengan price, amount, dan promo_price semuanya undefined/null/NaN
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        _is_db_verified: true,
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        price: undefined,
+        amount: undefined,
+        promo_price: undefined,
+        _is_db_verified: true,
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        price: null as any,
+        amount: null as any,
+        promo_price: null as any,
+        _is_db_verified: true,
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        price: NaN,
+        amount: NaN,
+        promo_price: NaN,
+        _is_db_verified: true,
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+    });
+
+    it('fails closed when product is not database verified (_is_db_verified is false or missing)', () => {
+      // b. Produk belum terverifikasi (_is_db_verified tidak ada/false)
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        price: 249000,
+        _is_db_verified: false,
+        single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
+        is_mock_only: false,
+        strict_hold: false,
+      }, 'onlineboost')).toBe(true);
+
+      expect(isBatch1MockCheckout({
+        sku: 'OB-BATCH1-249K',
+        price: 249000,
         single_page_config: { enable_payment: true, enable_qris: true, is_mock_only: false, strict_hold: false },
         is_mock_only: false,
         strict_hold: false,
@@ -106,10 +176,10 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
 
     it('does not intercept unknown or unrelated SKUs (zero cross-product collateral)', () => {
       // Unrelated or unknown SKUs under OnlineBoost must NOT trigger mock checkout
-      expect(isBatch1MockCheckout({ sku: 'UNKNOWN-SKU-999', slug: 'unknown-sku-999' }, 'onlineboost')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'CPM-PRO-01', slug: 'cpm-pro-01' }, 'onlineboost')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'YOUTUBE-AI', slug: 'youtube-ai' }, 'onlineboost')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'PAKET-NASI-LIWET', slug: 'paket-nasi-liwet' }, 'happyeating')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'UNKNOWN-SKU-999', slug: 'unknown-sku-999', price: 249000 }, 'onlineboost')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'CPM-PRO-01', slug: 'cpm-pro-01', price: 499000 }, 'onlineboost')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'YOUTUBE-AI', slug: 'youtube-ai', price: 99000 }, 'onlineboost')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'PAKET-NASI-LIWET', slug: 'paket-nasi-liwet', price: 50000 }, 'happyeating')).toBe(false);
       expect(isBatch1MockCheckout(null)).toBe(false);
     });
 
@@ -143,11 +213,23 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       expect(checkoutModalSource).toContain('candidateQris.startsWith(\'000201010212\')');
     });
 
-    it('verifies SingleProductPage in app/[tenant]/p/[slug]/page.tsx guards OB-BATCH1-249K checkout with fail-closed hold', () => {
+    it('verifies SingleProductPage in app/[tenant]/p/[slug]/page.tsx separates simulation from PAID status and blocks fulfillment', () => {
       expect(singleProductPageSource).toContain('isBatch1MockCheckout');
       expect(singleProductPageSource).toContain('isBatch1MockCheckout(product, tenant)');
-      expect(singleProductPageSource).toContain('setIsPaid(true)');
-      expect(singleProductPageSource).toContain('(!isCheckoutSectionDisabled || isObBatch1Target)');
+
+      // CTO Mandat: Mock branch pada page.tsx TIDAK BOLEH memanggil setIsPaid(true) dan TIDAK BOLEH membocorkan fulfillment link
+      const guardStartIndex = singleProductPageSource.indexOf('// STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE - FAIL-CLOSED)');
+      expect(guardStartIndex).toBeGreaterThan(0);
+      const guardEndIndex = singleProductPageSource.indexOf('try {', guardStartIndex);
+      expect(guardEndIndex).toBeGreaterThan(guardStartIndex);
+
+      const mockGuardBranch = singleProductPageSource.slice(guardStartIndex, guardEndIndex);
+      expect(mockGuardBranch).toContain('setIsPaid(false);');
+      expect(mockGuardBranch).not.toContain('setIsPaid(true);');
+      expect(mockGuardBranch).toContain('setVerifiedFulfillment(null);');
+      expect(mockGuardBranch).not.toContain('https://onlineboost.id/onboarding');
+      expect(mockGuardBranch).not.toContain('link_digital');
+      expect(mockGuardBranch).toContain('SIMULASI / PREVIEW MODE — Pembayaran Live Belum Diaktifkan, Akses Produk Ditahan');
     });
   });
 
@@ -172,6 +254,27 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       expect(result.qrString).toBe(BATCH1_MOCK_QRIS_STRING);
       expect(result.qrString.startsWith('000201010212')).toBe(true);
       expect(result.invoiceUrl).toContain('mock=true');
+      expect(result.status).toBe('MOCK_SIMULATED');
+      expect(result.isPaid).toBe(false);
+      expect(result.isSimulated).toBe(true);
+      expect(result.fulfillment).toBeNull();
+      expect((result as any).access_url).toBeUndefined();
+    });
+
+    it('intercepts and holds when amount in createOrderAndInvoice is missing or manipulated for Batch 1', async () => {
+      const manipulatedResult = await createOrderAndInvoice({
+        tenantSlug: 'onlineboost',
+        productId: 'OB-BATCH1-249K',
+        productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+        amount: 5000, // manipulated price
+        customerName: 'Attacker QA',
+        customerPhone: '081234567890',
+      });
+
+      expect(manipulatedResult.isMock).toBe(true);
+      expect(manipulatedResult.status).toBe('MOCK_SIMULATED');
+      expect(manipulatedResult.isPaid).toBe(false);
+      expect(manipulatedResult.fulfillment).toBeNull();
     });
   });
 
@@ -199,6 +302,9 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
         expect.anything()
       );
       expect(mockResult.isMock).toBe(true);
+      expect(mockResult.isPaid).toBe(false);
+      expect(mockResult.status).toBe('MOCK_SIMULATED');
+      expect(mockResult.fulfillment).toBeNull();
 
       fetchSpy.mockRestore();
     });
@@ -207,8 +313,8 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
   describe('6. Separation: Live Order Contract for Standard / Non-Mock Products', () => {
     it('preserves live checkout path for authorized non-mock products without interception', () => {
       // Standard / other catalog products must return false from mock guard
-      expect(isBatch1MockCheckout({ sku: 'CPM-PRO-01', slug: 'cpm-pro-01' }, 'onlineboost')).toBe(false);
-      expect(isBatch1MockCheckout({ sku: 'PAKET-NASI-LIWET', slug: 'paket-nasi-liwet' }, 'happyeating')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'CPM-PRO-01', slug: 'cpm-pro-01', price: 499000 }, 'onlineboost')).toBe(false);
+      expect(isBatch1MockCheckout({ sku: 'PAKET-NASI-LIWET', slug: 'paket-nasi-liwet', price: 50000 }, 'happyeating')).toBe(false);
 
       // Verifies that live order processing contracts are untouched for non-mock products
       const isIntercepted = isBatch1MockCheckout(

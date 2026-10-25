@@ -99,6 +99,21 @@ export interface CreateOrderPayload {
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
+  // Evaluasi harga untuk Batch 1 mengacu pada harga server-side otoritatif (Rp 249.000),
+  // dan langsung menahan (mock/hold) bila harga tidak valid, kosong, atau dimanipulasi.
+  const isObTenant = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
+  const normProductId = String(payload.productId || '').toUpperCase().trim();
+  const normTitle = String(payload.productTitle || '').toLowerCase().trim();
+  const isBatch1Product = isObTenant && (
+    normProductId === 'OB-BATCH1-249K' ||
+    normTitle.includes('inkubasi onlineboost batch 1') ||
+    (normTitle.includes('onlineboost') && normTitle.includes('batch 1'))
+  );
+
+  if (isBatch1Product && (payload.amount === undefined || payload.amount === null || isNaN(Number(payload.amount)) || Number(payload.amount) !== 249000)) {
+    return getBatch1MockCheckoutResult();
+  }
+
   if (isBatch1MockCheckout({
     id: payload.productId,
     sku: payload.productId,
