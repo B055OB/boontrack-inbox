@@ -99,6 +99,101 @@ export default function Section10CustomHtml({
     return null;
   }
 
+  // STRICT DARK THEME ALIGNMENT (HOTFIX & STYLING):
+  // Pastikan tema gelap total diterapkan pada takeover Section 10 untuk menghindari tabrakan kontras visual (belang)
+  if (isTakeoverAllowed && rawHtml) {
+    rawHtml = rawHtml
+      .replace(/\bbg-white\b/g, 'bg-[#0a0a0a]')
+      .replace(/\bbg-zinc-50\b/g, 'bg-zinc-950')
+      .replace(/\bbg-slate-50\b/g, 'bg-zinc-950')
+      .replace(/\bbg-gray-50\b/g, 'bg-zinc-950')
+      .replace(/\btext-slate-900\b/g, 'text-zinc-100')
+      .replace(/\btext-gray-900\b/g, 'text-zinc-100')
+      .replace(/\btext-black\b/g, 'text-zinc-100')
+      .replace(/\btext-slate-800\b/g, 'text-zinc-200')
+      .replace(/\btext-slate-700\b/g, 'text-zinc-200')
+      .replace(/\btext-slate-600\b/g, 'text-zinc-300')
+      .replace(/\btext-slate-500\b/g, 'text-zinc-400');
+
+    const darkStyleOverride = `
+<style id="ob-sec10-dark-theme-override">
+  #onlineboost-landing-root,
+  .ob-sec10-wrap {
+    background-color: #0a0a0a !important;
+    color: #f4f4f5 !important;
+  }
+  .site-header {
+    background: rgba(10, 10, 10, 0.92) !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2) !important;
+  }
+  .hero-section {
+    background-color: #0a0a0a !important;
+  }
+  .hero-headline {
+    color: #ffffff !important;
+  }
+  .hero-headline .text-gradient-gold,
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: #fbbf24 !important;
+    text-shadow: 0 0 24px rgba(251, 191, 36, 0.25);
+  }
+  .hero-subheadline {
+    color: #d4d4d8 !important;
+  }
+  .badge-pill {
+    background: rgba(245, 158, 11, 0.1) !important;
+    border: 1px solid rgba(245, 158, 11, 0.2) !important;
+    color: #fcd34d !important;
+  }
+  .hero-trust-bar {
+    border-top-color: rgba(255, 255, 255, 0.08) !important;
+  }
+  .trust-item {
+    color: #e4e4e7 !important;
+  }
+  .trust-item svg,
+  .trust-item svg polyline {
+    color: #fbbf24 !important;
+    stroke: #fbbf24 !important;
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6));
+  }
+  .hero-micro-copy {
+    color: #e4e4e7 !important;
+  }
+  .hero-sub-checkout-trigger {
+    color: #fef08a !important;
+    text-shadow: 0 0 10px rgba(254, 240, 138, 0.3);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .hero-sub-checkout-trigger:hover {
+    color: #facc15 !important;
+  }
+  .glass-card,
+  .hero-showcase-card,
+  .comparison-panel,
+  .price-card,
+  .faq-item {
+    background: #11141a !important;
+    border-color: rgba(245, 158, 11, 0.18) !important;
+    color: #e4e4e7 !important;
+  }
+  section.section-padding,
+  .section-padding {
+    background-color: #0a0a0a !important;
+  }
+</style>`;
+
+    if (!rawHtml.includes('id="ob-sec10-dark-theme-override"')) {
+      rawHtml = darkStyleOverride + rawHtml;
+    }
+  }
+
   // 4. Browser script re-hydration: HTML5 spec ignores script tags in innerHTML / dangerouslySetInnerHTML
   useEffect(() => {
     if (!rawHtml || typeof window === 'undefined') return;
@@ -134,7 +229,7 @@ export default function Section10CustomHtml({
     <div
       ref={containerRef}
       id="onlineboost-landing-root"
-      className={`ob-sec10-wrap w-full overflow-hidden transition-all ${className}`}
+      className={`ob-sec10-wrap w-full overflow-hidden transition-all ${isTakeoverAllowed ? 'bg-[#0a0a0a] text-zinc-100' : ''} ${className}`}
       dangerouslySetInnerHTML={{ __html: rawHtml }}
     />
   );
