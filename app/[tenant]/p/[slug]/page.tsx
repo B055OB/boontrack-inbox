@@ -2541,7 +2541,7 @@ function SingleProductContent() {
       : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
 
     // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-    if (isObBatch1Target || isBatch1MockCheckout(product, tenant)) {
+    if (isBatch1MockCheckout(product, tenant)) {
       setLoading(false);
       setIsPaid(true);
       setVerifiedFulfillment(product.fulfillment_metadata || {

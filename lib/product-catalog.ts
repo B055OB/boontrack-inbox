@@ -40,24 +40,37 @@ export function isBatch1MockCheckout(
   tenantSlug?: string | null
 ): boolean {
   if (!product) return false;
-  const sku = (product.sku || product.metadata?.sku || product.fulfillment_metadata?.sku || '').toUpperCase();
-  const slug = (product.slug || product.metadata?.slug || product.single_page_config?.slug || '').toLowerCase();
-  const title = (product.title || product.name || '').toLowerCase();
 
-  const isObTenant = !tenantSlug || tenantSlug.toLowerCase() === 'onlineboost';
-
-  if (sku === 'OB-BATCH1-249K' || slug === 'ob-batch1-249k') {
-    return true;
+  // 1. Controlled Release Override: If mock guard is explicitly disabled/released, allow live gateway checkout
+  if (
+    product.is_mock_only === false ||
+    product.strict_hold === false ||
+    product.single_page_config?.is_mock_only === false ||
+    product.single_page_config?.strict_hold === false ||
+    product.metadata?.is_mock_only === false ||
+    product.metadata?.strict_hold === false
+  ) {
+    return false;
   }
+
+  // 2. Intercept if explicitly configured as mock only or strict hold
   if (Boolean(product.is_mock_only || product.metadata?.is_mock_only || product.single_page_config?.is_mock_only || product.fulfillment_metadata?.is_mock_only)) {
     return true;
   }
   if (Boolean(product.strict_hold || product.metadata?.strict_hold || product.single_page_config?.strict_hold)) {
     return true;
   }
-  if (isObTenant && (title.includes('inkubasi onlineboost batch 1') || (title.includes('onlineboost') && title.includes('batch 1')))) {
-    return true;
+
+  // 3. Check catalog definition in DEFAULT_PRODUCTS for released status
+  const sku = (product.sku || product.metadata?.sku || product.fulfillment_metadata?.sku || '').toUpperCase();
+  const slug = (product.slug || product.metadata?.slug || product.single_page_config?.slug || '').toLowerCase();
+  const catalogProd = DEFAULT_PRODUCTS.find(p => p.sku === sku || p.slug === slug);
+  if (catalogProd) {
+    if (catalogProd.single_page_config?.is_mock_only === false || catalogProd.single_page_config?.strict_hold === false) {
+      return false;
+    }
   }
+
   return false;
 }
 
@@ -1125,20 +1138,20 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       enable_testimonials: false,
       enable_offer: false,
       enable_faq: false,
-      enable_payment: false,
+      enable_payment: true,
       enable_custom_html: true,
       is_custom_html_enabled: true,
       use_custom_html: true,
       active_section: "custom_html",
       sections_override: false,
       checkout_mode: "modal",
-      enable_qris: false,
+      enable_qris: true,
       enable_manual_transfer: false,
       discount_coupon: "",
       affiliate_commission_rate: 0,
       checkout_action_mode: "DIRECT",
-      is_mock_only: true,
-      strict_hold: true,
+      is_mock_only: false,
+      strict_hold: false,
       whatsapp_custom_message: "",
       section_order: ["custom_html", "payment_voucher"],
     },
