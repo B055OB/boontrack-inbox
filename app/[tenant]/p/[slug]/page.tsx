@@ -85,7 +85,11 @@ import {
   resolveProductCtaLabel,
   normalizeBriefingUrl,
   resolveCategoryLabels,
-  resolveProductExternalUrl
+  resolveProductExternalUrl,
+  resolveCustomHtmlTenantAssets,
+  isSection10TakeoverEligible,
+  isBatch1MockCheckout,
+  getBatch1MockCheckoutResult
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -468,6 +472,13 @@ function SingleProductContent() {
           match = null;
         }
 
+        if (!match && !isSqlExplicitlyInactive) {
+          const fallbackResolved = resolveSinglePageProduct(tenant, slug);
+          if (fallbackResolved?.product && (fallbackResolved.product.price > 0 || fallbackResolved.product.sku)) {
+            match = fallbackResolved.product;
+          }
+        }
+
         // PERBAIKAN: Jika sqlProd ada, selalu gabungkan dan prioritaskan data tabel products (single source of truth)
         if (sqlProd) {
           const freshImage = (sqlProd as any).image_url || sqlProd.image;
@@ -502,7 +513,8 @@ function SingleProductContent() {
                 }
               : null),
             checkout_type: (sqlProd as any).checkout_type || (sqlProd as any).metadata?.checkout_type || match?.checkout_type,
-            external_url: (sqlProd as any).external_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url,
+            direct_url: (sqlProd as any).direct_url || (sqlProd as any).metadata?.direct_url || match?.direct_url || (match?.metadata as any)?.direct_url,
+            external_url: (sqlProd as any).external_url || (sqlProd as any).direct_url || (sqlProd as any).metadata?.external_url || (sqlProd as any).metadata?.direct_url || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.link_external || (sqlProd as any).metadata?.affiliate_url || match?.external_url || match?.direct_url,
             affiliate_link: (sqlProd as any).affiliate_link || (sqlProd as any).metadata?.affiliate_link || (sqlProd as any).metadata?.external_url || match?.affiliate_link,
             affiliate_url: (sqlProd as any).affiliate_url || (sqlProd as any).metadata?.affiliate_url || (sqlProd as any).metadata?.external_url || match?.affiliate_url,
             bypass_checkout: Boolean((sqlProd as any).bypass_checkout || (sqlProd as any).metadata?.bypass_checkout || match?.bypass_checkout || match?.metadata?.bypass_checkout),
@@ -560,31 +572,67 @@ function SingleProductContent() {
               cfg.banner_url || 
               '';
 
-            const isCustomHtmlActive = Boolean(
-              (
-                cfg.enable_custom_html ||
-                (cfg as any).is_custom_html_enabled ||
-                (cfg as any).use_custom_html ||
-                match?.metadata?.enable_custom_html ||
-                match?.metadata?.is_custom_html_enabled ||
-                match?.metadata?.use_custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.enable_custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.is_custom_html_enabled ||
-                match?.fulfillment_metadata?.single_page_config?.use_custom_html
-              ) &&
-              (
-                cfg.custom_html ||
-                match?.metadata?.custom_html ||
-                match?.fulfillment_metadata?.single_page_config?.custom_html
-              )?.trim()
+            const tenantSec10 =
+              tenantRow?.metadata?.theme_config?.section_10 ||
+              tenantRow?.metadata?.sections?.section_10 ||
+              tenantRow?.metadata?.storefront_sections?.section_10 ||
+              tenantRow?.metadata?.section_10 ||
+              (tenantRow as any)?.theme_config?.section_10 ||
+              (tenantRow as any)?.sections?.section_10;
+
+            const isTenantSec10Active = Boolean(tenantSec10?.is_enabled ?? tenantSec10?.is_active);
+            const tenantSec10Html =
+              typeof tenantSec10?.custom_html === 'string'
+                ? tenantSec10.custom_html
+                : typeof tenantSec10?.html_content === 'string'
+                ? tenantSec10.html_content
+                : typeof tenantSec10?.html === 'string'
+                ? tenantSec10.html
+                : '';
+
+            const isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost';
+            const isObBatch1Target = Boolean(
+              match?.sku === 'OB-BATCH1-249K' ||
+              (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
+              match?.slug === 'ob-batch1-249k'
+            );
+            const isEligibleForSec10 = isSection10TakeoverEligible(
+              params?.tenant as string,
+              match?.sku,
+              (params?.slug as string) || match?.slug
             );
 
-            const resolvedCustomHtml = (
-              cfg.custom_html ||
-              match?.metadata?.custom_html ||
-              match?.fulfillment_metadata?.single_page_config?.custom_html ||
-              ''
+            // Resilient candidate resolution: prioritize tenant-level section_10 HTML, then product custom_html
+            const candidateCustomHtml =
+              tenantSec10Html ||
+              (typeof cfg.custom_html === 'string' ? cfg.custom_html : '') ||
+              (typeof match?.metadata?.custom_html === 'string' ? match.metadata.custom_html : '') ||
+              (typeof match?.fulfillment_metadata?.single_page_config?.custom_html === 'string' ? match.fulfillment_metadata.single_page_config.custom_html : '');
+
+            const isCustomHtmlActiveFlag = Boolean(
+              isTenantSec10Active ||
+              cfg.enable_custom_html ||
+              (cfg as any).is_custom_html_enabled ||
+              (cfg as any).use_custom_html ||
+              match?.metadata?.enable_custom_html ||
+              match?.fulfillment_metadata?.single_page_config?.enable_custom_html
             );
+
+            const isMatchForSec10 = Boolean(
+              isEligibleForSec10 &&
+              isCustomHtmlActiveFlag &&
+              candidateCustomHtml?.trim()
+            );
+
+            const isCustomHtmlActive = Boolean(
+              isEligibleForSec10 &&
+              isMatchForSec10 &&
+              candidateCustomHtml?.trim()
+            );
+
+            const rawCustomHtml = isCustomHtmlActive ? candidateCustomHtml : (cfg.custom_html || '');
+
+            const resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
 
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
@@ -614,6 +662,7 @@ function SingleProductContent() {
               custom_html: resolvedCustomHtml,
               sections_override: isCustomHtmlActive ? false : (cfg.sections_override ?? true),
               active_section: isCustomHtmlActive ? 'custom_html' : ((cfg as any).active_section || undefined),
+              checkout_mode: (cfg as any).checkout_mode || (match?.fulfillment_metadata?.single_page_config as any)?.checkout_mode || (match?.metadata as any)?.checkout_mode || (isCustomHtmlActive ? 'modal' : 'inline'),
               client_logos: cfg.client_logos || builder.client_logos || match.client_logos || [],
               faqs: cfg.faqs || [],
               problem_title: ps.title || ps.problem_title || cfg.problem_title || '',
@@ -644,7 +693,6 @@ function SingleProductContent() {
               intake_form_config: cfg.intake_form_config || (match?.fulfillment_metadata?.single_page_config?.intake_form_config) || undefined,
               micro_copy: cfg.micro_copy || match?.metadata?.micro_copy || (match?.fulfillment_metadata as any)?.micro_copy || (match?.fulfillment_metadata?.single_page_config?.micro_copy) || (sqlProd?.fulfillment_metadata as any)?.micro_copy || undefined,
               section_order: cfg.section_order || (match?.fulfillment_metadata?.single_page_config as any)?.section_order || (match?.metadata as any)?.section_order || [],
-              checkout_mode: (cfg as any).checkout_mode || (match?.fulfillment_metadata?.single_page_config as any)?.checkout_mode || (match?.metadata as any)?.checkout_mode || 'inline',
               enable_sticky_button:
                 (cfg as any).enable_sticky_button !== false &&
                 (match?.fulfillment_metadata?.single_page_config as any)?.enable_sticky_button !== false &&
@@ -662,8 +710,9 @@ function SingleProductContent() {
               ),
             };
 
-            const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
-            const rawPromoPrice = match.promo_price !== undefined && match.promo_price !== null ? Number(match.promo_price) : (ob.promo_price !== undefined && ob.promo_price !== null ? Number(ob.promo_price) : rawPrice);
+            const isObBatch1Product = (match.slug === 'ob-batch1-249k' || match.sku === 'OB-BATCH1-249K' || norm === 'obbatch1249k');
+            const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : (isObBatch1Product ? 249000 : 0));
+            const rawPromoPrice = match.promo_price !== undefined && match.promo_price !== null ? Number(match.promo_price) : (ob.promo_price !== undefined && ob.promo_price !== null ? Number(ob.promo_price) : (isObBatch1Product ? 249000 : rawPrice));
 
             const dynamicProduct: ProductItem = {
               id: match.id || Date.now(),
@@ -690,8 +739,8 @@ function SingleProductContent() {
               description: dynamicConfig.subheadline || '',
               download_url: '',
               image: resolvedBannerImage,
-              stock: match.stock || 999,
-              sku: match.sku || '',
+              stock: match.stock || (isObBatch1Product ? 393 : 999),
+              sku: match.sku || (isObBatch1Product ? 'OB-BATCH1-249K' : ''),
               is_unlimited: match.is_unlimited ?? true,
               weight_grams: match.weight_grams,
               fulfillment_metadata: match.fulfillment_metadata
@@ -707,16 +756,27 @@ function SingleProductContent() {
                 (sqlProd?.metadata as any)?.checkout_type ||
                 match.checkout_type ||
                 match.metadata?.checkout_type ||
-                (match.external_url || match.metadata?.external_url || match.affiliate_link || match.metadata?.affiliate_link ? 'external' : 'internal')
+                (match.external_url || match.direct_url || match.metadata?.external_url || (match.metadata as any)?.direct_url || match.affiliate_link || match.metadata?.affiliate_link ? 'external' : 'internal')
               ) === 'external' ? 'external' : 'internal'),
+              direct_url: (
+                (sqlProd as any)?.direct_url ||
+                (sqlProd?.metadata as any)?.direct_url ||
+                match.direct_url ||
+                (match.metadata as any)?.direct_url ||
+                ''
+              ),
               external_url: (
                 sqlProd?.external_url ||
+                (sqlProd as any)?.direct_url ||
                 (sqlProd?.metadata as any)?.external_url ||
+                (sqlProd?.metadata as any)?.direct_url ||
                 (sqlProd?.metadata as any)?.affiliate_link ||
                 (sqlProd?.metadata as any)?.link_external ||
                 (sqlProd?.metadata as any)?.affiliate_url ||
                 match.external_url ||
+                match.direct_url ||
                 match.metadata?.external_url ||
+                (match.metadata as any)?.direct_url ||
                 match.metadata?.link_external ||
                 match.affiliate_link ||
                 match.metadata?.affiliate_link ||
@@ -786,6 +846,24 @@ function SingleProductContent() {
   const product: ProductItem = resolvedData?.product || ({} as ProductItem);
   const config: SinglePageConfig = resolvedData?.config || ({} as SinglePageConfig);
 
+  const isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost';
+  const isObBatch1Target = Boolean(
+    product?.sku === 'OB-BATCH1-249K' ||
+    (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
+    product?.slug === 'ob-batch1-249k'
+  );
+  const isEligibleForSec10 = isSection10TakeoverEligible(
+    params?.tenant as string,
+    product?.sku,
+    (params?.slug as string) || product?.slug
+  );
+
+  const isCustomHtmlActivePage = Boolean(
+    isEligibleForSec10 &&
+    (config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html) &&
+    config.custom_html
+  );
+
   // Section #9 & Checkout Section Visibility Guard
   const isCheckoutSectionDisabled = useMemo(() => {
     return Boolean(
@@ -802,6 +880,7 @@ function SingleProductContent() {
   // Floating CTA Bar (StickyBuyButton) Visibility Guard
   const hideFloatingCta = useMemo(() => {
     return Boolean(
+      isCustomHtmlActivePage ||
       product.metadata?.hide_floating_cta === true ||
       (product as any)?.hide_floating_cta === true ||
       (config as any)?.hide_floating_cta === true ||
@@ -809,7 +888,7 @@ function SingleProductContent() {
       (product?.metadata as any)?.enable_sticky_button === false ||
       isCheckoutSectionDisabled
     );
-  }, [product, config, isCheckoutSectionDisabled]);
+  }, [product, config, isCheckoutSectionDisabled, isCustomHtmlActivePage]);
 
   const categoryLabels = useMemo(() => {
     return resolveCategoryLabels(config, product.product_type || product.type, product.category);
@@ -837,15 +916,22 @@ function SingleProductContent() {
     return selectedBumpItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
   }, [selectedBumpItems]);
 
-  const rawExternalAffiliateUrl = resolveProductExternalUrl(product) || '';
+  const rawExternalAffiliateUrl =
+    resolveProductExternalUrl(product) ||
+    product.external_url ||
+    (product as any).direct_url ||
+    (product as any).affiliate_url ||
+    (product as any).affiliate_link ||
+    product.metadata?.external_url ||
+    (product.metadata as any)?.direct_url ||
+    product.metadata?.affiliate_url ||
+    '';
   const externalAffiliateUrl = typeof rawExternalAffiliateUrl === 'string' ? rawExternalAffiliateUrl.trim() : '';
 
   const isAffiliateProduct = Boolean(
-    !product.fulfillment_metadata?.access_url &&
-    !product.download_url &&
     product.checkout_type !== 'internal' &&
     (
-      externalAffiliateUrl ||
+      (externalAffiliateUrl && (externalAffiliateUrl.startsWith('http://') || externalAffiliateUrl.startsWith('https://'))) ||
       product.checkout_type === 'external' ||
       (product as any)?.bypass_checkout ||
       (product as any)?.metadata?.bypass_checkout ||
@@ -859,6 +945,25 @@ function SingleProductContent() {
     (product as any)?.affiliate_cta_label ||
     (product.metadata as any)?.affiliate_cta_label ||
     'Saya Mau Pesan ↗';
+
+  // Smooth direct redirect to external target URL for external products without long-form sales copy
+  useEffect(() => {
+    if (pageStatus === 'active' && isAffiliateProduct && externalAffiliateUrl) {
+      const hasCustomContent = Boolean(
+        isCustomHtmlActivePage ||
+        config.enable_problem_solution ||
+        config.enable_us_vs_them ||
+        config.enable_testimonials ||
+        config.custom_html
+      );
+      if (!hasCustomContent && typeof window !== 'undefined') {
+        const timer = setTimeout(() => {
+          window.location.assign(externalAffiliateUrl);
+        }, 150);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [pageStatus, isAffiliateProduct, externalAffiliateUrl, isCustomHtmlActivePage, config]);
 
   const rawQueryPhone = (searchParams.get('phone') || searchParams.get('wa') || searchParams.get('whatsapp') || '').trim();
   const queryPhone = sanitizePhoneInputForPrefix(rawQueryPhone);
@@ -1673,6 +1778,7 @@ function SingleProductContent() {
 
   const cartState = useCart(tenant);
   const isCartDisabled =
+    isCustomHtmlActivePage ||
     product.metadata?.enable_cart === false ||
     (product as any).enable_cart === false ||
     (product.product_type as string) === 'DIGITAL_FILE' ||
@@ -2143,7 +2249,7 @@ function SingleProductContent() {
   // Universal Headless Checkout Trigger ([data-bt-checkout], [href="#checkout"], and window 'open-checkout' event)
   useEffect(() => {
     const handleGlobalCheckoutClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], .sbp-btn') as HTMLElement | null;
+      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn') as HTMLElement | null;
       if (!target) return;
 
       e.preventDefault();
@@ -2227,7 +2333,10 @@ function SingleProductContent() {
           newScript.setAttribute(attr.name, attr.value);
         });
         newScript.dataset.hydrated = 'true';
-        newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+        newScript.async = false;
+        if (oldScript.innerHTML) {
+          newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+        }
         oldScript.parentNode?.replaceChild(newScript, oldScript);
       });
     }, 60);
@@ -2337,6 +2446,18 @@ function SingleProductContent() {
       : isPickup
       ? 'Ambil Sendiri di Toko (Self-Pickup)'
       : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
+
+    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
+    if (isObBatch1Target || isBatch1MockCheckout(product, tenant)) {
+      setLoading(false);
+      setIsPaid(true);
+      setVerifiedFulfillment(product.fulfillment_metadata || {
+        delivery_type: 'DOWNLOAD_LINK',
+        access_url: product.link_digital || 'https://onlineboost.id/onboarding',
+        instructions: 'Selamat! Akses program inkubasi 30 hari telah aktif (Mock Mode).',
+      });
+      return;
+    }
 
     try {
       const result = await createOrderAndInvoice({
@@ -4692,22 +4813,24 @@ function SingleProductContent() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans pb-28 selection:bg-blue-600 selection:text-white">
+    <div className={isCustomHtmlActivePage ? "w-full min-h-screen p-0 m-0 bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white" : "min-h-screen bg-white text-slate-900 font-sans pb-28 selection:bg-blue-600 selection:text-white"}>
       {/* 1. Header Minimalis Brand */}
-      <header className="border-b border-slate-100 py-3.5 px-4 sticky top-0 bg-white/95 backdrop-blur z-30 flex items-center justify-between max-w-2xl mx-auto">
-        <div className="text-xs font-black uppercase tracking-wider text-blue-600">
-          {tenant.toUpperCase()} OFFICIAL
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>{categoryLabels.headerSecurityBadge}</span>
-        </div>
-      </header>
+      {!isCustomHtmlActivePage && (
+        <header className="border-b border-slate-100 py-3.5 px-4 sticky top-0 bg-white/95 backdrop-blur z-30 flex items-center justify-between max-w-2xl mx-auto">
+          <div className="text-xs font-black uppercase tracking-wider text-blue-600">
+            {tenant.toUpperCase()} OFFICIAL
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>{categoryLabels.headerSecurityBadge}</span>
+          </div>
+        </header>
+      )}
 
       {/* 2. Main Offer Content (Formula Konversi Tinggi) */}
-      <main className="max-w-2xl mx-auto px-4 pt-6 space-y-7">
+      <main className={isCustomHtmlActivePage ? 'w-full p-0 m-0' : 'max-w-2xl mx-auto px-4 pt-6 space-y-7'}>
         {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
-        {isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
+        {!isCustomHtmlActivePage && isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
 
         {(() => {
           const isCustomHtml = Boolean(config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html);
@@ -4745,11 +4868,10 @@ function SingleProductContent() {
 
           return effectiveOrder.map((sectionId) => {
             if (config.sections_override === false && sectionId !== 'custom_html') {
-              if (sectionId === 'payment_voucher' && !isCheckoutSectionDisabled) {
-                // Section Checkout tetap aktif dan dirender di bawah custom HTML jika enable_payment true
-              } else {
-                return null;
-              }
+              return null;
+            }
+            if (isCustomHtmlActivePage && sectionId !== 'custom_html') {
+              return null;
             }
             switch (sectionId) {
               case 'hook':
@@ -5325,10 +5447,10 @@ function SingleProductContent() {
                   <section
                     key="section-custom-html"
                     id="custom-html-section"
-                    className="w-full my-4"
+                    className="w-full min-h-screen p-0 m-0"
                     dangerouslySetInnerHTML={{ __html: config.custom_html }}
                     onClick={(e) => {
-                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"]');
+                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger');
                       if (target) {
                         e.preventDefault();
                         handleOpenCheckout();
@@ -5412,7 +5534,7 @@ function SingleProductContent() {
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
-      {checkoutOpen && !isCheckoutSectionDisabled && (
+      {checkoutOpen && (!isCheckoutSectionDisabled || isObBatch1Target) && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
@@ -5459,7 +5581,7 @@ function SingleProductContent() {
       )}
 
       {/* ── FLOATING WHATSAPP BUTTON (POJOK KANAN BAWAH) ── */}
-      {wabaConsultationUrl && (actionMode === 'HYBRID' || actionMode === 'WHATSAPP') ? (
+      {!isCustomHtmlActivePage && wabaConsultationUrl && (actionMode === 'HYBRID' || actionMode === 'WHATSAPP') ? (
         <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
           <a
             href={wabaConsultationUrl}

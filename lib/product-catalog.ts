@@ -2,6 +2,84 @@ import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
 import { getSupabaseAdmin, getSupabase } from './supabaseClient';
 import { isValidUuid } from './uuid-guard';
 
+/**
+ * Pure route/product eligibility guard for the OnlineBoost Section 10 takeover.
+ * Callers must still verify they are rendering within a product-detail route.
+ */
+export function isSection10TakeoverEligible(
+  tenant?: string | null,
+  sku?: string | null,
+  slug?: string | null
+): boolean {
+  const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
+  const isObBatch1Target = Boolean(
+    (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
+    (slug || '').toLowerCase() === 'ob-batch1-249k'
+  );
+  return Boolean(isOnlineBoostTenant && isObBatch1Target);
+}
+
+/**
+ * Strict Mock-Only Guard for OnlineBoost Batch 1 checkout (OB-BATCH1-249K).
+ * Prevents invoking live payment gateways (Xendit/MDR) or creating live database invoices
+ * while pending official live gate release.
+ */
+export function isBatch1MockCheckout(
+  product?: {
+    id?: string | number;
+    sku?: string;
+    slug?: string;
+    title?: string;
+    name?: string;
+    metadata?: any;
+    fulfillment_metadata?: any;
+    single_page_config?: any;
+    is_mock_only?: boolean;
+    strict_hold?: boolean;
+  } | null,
+  tenantSlug?: string | null
+): boolean {
+  if (!product) return false;
+  const sku = (product.sku || product.metadata?.sku || product.fulfillment_metadata?.sku || '').toUpperCase();
+  const slug = (product.slug || product.metadata?.slug || product.single_page_config?.slug || '').toLowerCase();
+  const title = (product.title || product.name || '').toLowerCase();
+
+  const isObTenant = !tenantSlug || tenantSlug.toLowerCase() === 'onlineboost';
+
+  if (sku === 'OB-BATCH1-249K' || slug === 'ob-batch1-249k') {
+    return true;
+  }
+  if (Boolean(product.is_mock_only || product.metadata?.is_mock_only || product.single_page_config?.is_mock_only || product.fulfillment_metadata?.is_mock_only)) {
+    return true;
+  }
+  if (Boolean(product.strict_hold || product.metadata?.strict_hold || product.single_page_config?.strict_hold)) {
+    return true;
+  }
+  if (isObTenant && (title.includes('inkubasi onlineboost batch 1') || (title.includes('onlineboost') && title.includes('batch 1')))) {
+    return true;
+  }
+  return false;
+}
+
+export const BATCH1_MOCK_QRIS_STRING = '00020101021226660014ID.LINKAJA.WWW01189360001100000000000215MOCKONLINEBOOST52045812530336054062490005802ID5920ONLINEBOOST SIMULASI6007JAKARTA61051234062210117MOCK-BATCH1-SIMUL6304C701';
+
+export function getBatch1MockCheckoutResult(orderId?: string) {
+  const finalOrderId = orderId || `ORD-MOCK-OB-BATCH1-${Date.now()}`;
+  return {
+    orderId: finalOrderId,
+    order_id: finalOrderId,
+    id: finalOrderId,
+    qrString: BATCH1_MOCK_QRIS_STRING,
+    qr_string: BATCH1_MOCK_QRIS_STRING,
+    qrCodeUrl: '',
+    invoiceUrl: `/checkout/${finalOrderId}?mock=true`,
+    isMock: true,
+    is_mock: true,
+    success: true,
+  };
+}
+
+
 export interface VoucherConfig {
   code: string;
   discount_type: 'nominal' | 'percentage';
@@ -176,6 +254,10 @@ export interface SinglePageConfig {
   whatsapp_cta_label?: string;
   /** Optional override WhatsApp number for the secondary CTA (uses store number by default). */
   whatsapp_cta_number?: string;
+  /** Strict mock-only mode flag pending live gate release */
+  is_mock_only?: boolean;
+  /** Strict hold on live transactions flag */
+  strict_hold?: boolean;
   /** When true, hides Alamat Lengkap & Kecamatan/Kota fields (for digital/consultation products). Default: false */
   hide_address_for_digital?: boolean;
   /** Batasi pembelian maksimal 1 item per checkout (sembunyikan stepper kuantitas [- 1 +]) */
@@ -507,6 +589,7 @@ export interface ProductItem {
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
   external_url?: string;
+  direct_url?: string;
   affiliate_url?: string;
   affiliate_link?: string;
   bypass_checkout?: boolean;
@@ -1009,6 +1092,70 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       discount_coupon: "",
       affiliate_commission_rate: 0
     }
+  },
+  {
+    id: 7071500249,
+    sku: "OB-BATCH1-249K",
+    name: "Tiket Inkubasi OnlineBoost Batch 1",
+    title: "Tiket Inkubasi OnlineBoost Batch 1",
+    slug: "ob-batch1-249k",
+    price: 249000,
+    promo_price: 249000,
+    is_digital: true,
+    description: "Tiket resmi Program Inkubasi 30 Hari OnlineBoost. Toko online & lisensi kemitraan aktif selamanya, asisten WhatsApp AI 24 jam, generator video 9:16 Studio, dan produk lisensi komisi bersih Rp100.000 per transaksi.",
+    image: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+    image_url: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+    stock: 393,
+    is_unlimited: false,
+    category: "digital",
+    product_type: "DIGITAL",
+    requires_shipping: false,
+    weight_grams: 0,
+    link_digital: "https://onlineboost.id/onboarding",
+    single_page_config: {
+      slug: "ob-batch1-249k",
+      headline: "OnlineBoost Batch 1 — Metode Jualan Online dari Nol",
+      subheadline: "Program Inkubasi 30 Hari OnlineBoost: Sistem Jualan Mandiri dari HP",
+      banner_url: "https://assets.boontrack.com/tenants/system/studio/starter-pack/license_box_mockup.webp",
+      badge_text: "Batch 1 Spesial",
+      enable_hero: false,
+      enable_client_logos: false,
+      enable_problem_solution: false,
+      enable_us_vs_them: false,
+      enable_testimonials: false,
+      enable_offer: false,
+      enable_faq: false,
+      enable_payment: false,
+      enable_custom_html: true,
+      is_custom_html_enabled: true,
+      use_custom_html: true,
+      active_section: "custom_html",
+      sections_override: false,
+      checkout_mode: "modal",
+      enable_qris: false,
+      enable_manual_transfer: false,
+      discount_coupon: "",
+      affiliate_commission_rate: 0,
+      checkout_action_mode: "DIRECT",
+      is_mock_only: true,
+      strict_hold: true,
+      whatsapp_custom_message: "",
+      section_order: ["custom_html", "payment_voucher"],
+    },
+    fulfillment_metadata: {
+      type: "digital",
+      weight_grams: 0,
+      is_digital: true,
+      requires_shipping: false,
+      access_url: "https://onlineboost.id/onboarding",
+      instructions: "Selamat! Akses program inkubasi 30 hari dan aktivasi mesin kasir toko otomatis telah aktif.",
+      single_page_config: {
+        enable_custom_html: true,
+        is_custom_html_enabled: true,
+        active_section: "custom_html",
+        sections_override: false,
+      }
+    }
   }
 ];
 
@@ -1018,7 +1165,24 @@ export const DEFAULT_ONLINEBOOST_PRODUCTS: ProductItem[] = [
   DEFAULT_PRODUCTS[5], // Ecourse Member CPM
   DEFAULT_PRODUCTS[0], // Paid Traffic
   DEFAULT_PRODUCTS[6], // Modul Praktis CPM 24 Jam
+  DEFAULT_PRODUCTS[8] || DEFAULT_PRODUCTS.find((p) => p.sku === 'OB-BATCH1-249K')!, // Tiket Inkubasi OnlineBoost Batch 1
 ];
+
+/**
+ * Resolves relative URLs in custom HTML (href, src, data-lightbox-src, data-src, poster)
+ * to point to /tenants/[slug]/, preventing 404s when rendered on deep product routes.
+ */
+export function resolveCustomHtmlTenantAssets(rawHtml: string, tenantSlug: string): string {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  const cleanSlug = (tenantSlug || '').trim().toLowerCase();
+  if (!cleanSlug) return rawHtml;
+  const assetBase = `/tenants/${encodeURIComponent(cleanSlug)}/`;
+
+  return rawHtml.replace(
+    /(href|src|data-lightbox-src|data-src|poster)=["'](?!https?:\/\/|\/|#|data:|mailto:|tel:|javascript:)([^"']+)["']/gi,
+    (_match: string, attr: string, val: string) => `${attr}="${assetBase}${val}"`
+  );
+}
 
 export function resolveSinglePageProduct(
   tenantSlug: string,
@@ -1107,9 +1271,11 @@ export function resolveSinglePageProduct(
       const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       if (pSlug === normTarget || pNameSlug === normTarget) return true;
+      if (p.sku && p.sku.toLowerCase().replace(/[^a-z0-9]/g, '') === normTarget) return true;
       if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
       if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
       if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
+      if (normTarget.includes('batch1') && (pSlug.includes('batch1') || pNameSlug.includes('batch1') || (p.sku && p.sku.toLowerCase().includes('batch1')))) return true;
       return false;
     });
 
@@ -1160,38 +1326,32 @@ export function resolveSinglePageProduct(
 
 /**
  * Resolves external / affiliate URL from a product object.
- * Checks external_url, affiliate_url, metadata.external_url, metadata.affiliate_url,
- * fulfillment_metadata.access_url, and download_url (if http/https).
+ * Checks external_url, direct_url, affiliate_url, metadata.external_url,
+ * metadata.direct_url, metadata.affiliate_url, fulfillment_metadata.external_url, etc.
+ * Never treats explicit internal checkout as external affiliate destination.
  */
 export function resolveProductExternalUrl(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
-  // Never treat explicit internal checkout, digital fulfillment, or protected access items as external affiliate destinations
-  if (
-    item?.checkout_type === 'internal' ||
-    item?.fulfillment_metadata?.delivery_type ||
-    item?.fulfillment_metadata?.access_url ||
-    item?.download_url ||
-    item?.link_digital ||
-    item?.is_digital === true ||
-    item?.category === 'digital' ||
-    item?.category === 'PRODUK_DIGITAL' ||
-    String(item?.product_type || '').toUpperCase() === 'DIGITAL'
-  ) {
+  // Never treat explicit internal checkout as external affiliate destination
+  if (item?.checkout_type === 'internal') {
     return null;
   }
 
   // Only external / affiliate referral URLs
   const candidate =
     item.external_url ||
+    item.direct_url ||
     item.affiliate_url ||
     item.affiliate_link ||
     item.link_external ||
     item.metadata?.external_url ||
+    item.metadata?.direct_url ||
     item.metadata?.affiliate_url ||
     item.metadata?.affiliate_link ||
     item.metadata?.link_external ||
     item.fulfillment_metadata?.external_url ||
+    item.fulfillment_metadata?.direct_url ||
     item.fulfillment_metadata?.affiliate_url ||
     item.fulfillment_metadata?.affiliate_link;
 

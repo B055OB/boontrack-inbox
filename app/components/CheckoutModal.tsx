@@ -8,7 +8,7 @@ import { getActiveAffiliateCode, getActiveResellerCode, getTrackingData, getClie
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
-import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl } from "@/lib/product-catalog";
+import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult } from "@/lib/product-catalog";
 import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
@@ -46,6 +46,10 @@ interface CheckoutModalProps {
     product_type?: string;
     requires_shipping?: boolean;
     slug?: string;
+    sku?: string;
+    is_mock_only?: boolean;
+    strict_hold?: boolean;
+    single_page_config?: any;
     metadata?: any;
     fulfillment_metadata?: any;
     external_url?: string;
@@ -100,10 +104,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     return (
       resolveProductExternalUrl(product) ||
       (product as any).external_url ||
+      (product as any).direct_url ||
       (product as any).affiliate_link ||
       (product as any).affiliate_url ||
       (product as any).link_external ||
       (product as any).metadata?.external_url ||
+      (product as any).metadata?.direct_url ||
       (product as any).metadata?.affiliate_link ||
       (product as any).metadata?.affiliate_url ||
       (product as any).metadata?.link_external ||
@@ -114,6 +120,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const isAffiliate = Boolean(
     resolvedExternalUrl ||
     (product as any)?.external_url ||
+    (product as any)?.direct_url ||
     (product as any)?.affiliate_link ||
     (product as any)?.affiliate_url ||
     (product as any)?.link_external ||
@@ -166,6 +173,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     qrCodeUrl?: string;
     qr_code_url?: string;
     paymentMethod?: 'qris' | 'manual_transfer';
+    isMock?: boolean;
   } | null>(null);
   const qrData = paymentData;
   const [orderStatus, setOrderStatus] = useState<'PENDING' | 'PAID' | string>('PENDING');
@@ -609,7 +617,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   // Real-time polling to detect when order is paid & fire browser purchase events
   // Real-time polling & Supabase subscription to detect when order is paid & fire browser purchase events
   useEffect(() => {
-    if (!paymentData?.orderId) return;
+    if (!paymentData?.orderId || (paymentData as any)?.isMock || isBatch1MockCheckout(product, tenantSlug)) return;
 
     let active = true;
     const checkStatus = async () => {
@@ -782,6 +790,30 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     }
 
     setLoading(true);
+
+    // ── STRICT MOCK-ONLY GUARD (HOLD PENDING LIVE GATE RELEASE) ──
+    if (isBatch1MockCheckout(product, tenantSlug)) {
+      const mockResult = getBatch1MockCheckoutResult();
+      setPaymentData({
+        orderId: mockResult.orderId,
+        invoiceUrl: mockResult.invoiceUrl,
+        qr_string: mockResult.qrString,
+        qrString: mockResult.qrString,
+        qrCodeUrl: '',
+        paymentMethod: paymentMethod || 'qris',
+        isMock: true,
+      });
+      setOrderStatus('PENDING');
+      const resolvedMockAccess =
+        product?.download_url ||
+        product?.link_digital ||
+        product?.delivery_url ||
+        product?.fulfillment_metadata?.access_url ||
+        'https://onlineboost.id/onboarding';
+      setOrderFulfillment({ access_url: resolvedMockAccess });
+      setLoading(false);
+      return;
+    }
 
     const trackingParams = getTrackingData();
     const resolvedProductType = isBookingOrService
@@ -1427,8 +1459,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 tenantQrisImageUrl ||
                 '';
 
-              // Jika QRIS berasal dari Xendit / Payment Gateway, gunakan langsung tanpa mutasi Tag 54/CRC16
+              // Jika QRIS berasal dari Xendit / Payment Gateway atau Mock Simulasi, gunakan langsung tanpa mutasi Tag 54/CRC16
+              const isMockOrder = isBatch1MockCheckout(product, tenantSlug) || Boolean((paymentData as any)?.isMock);
               const isDynamicQrisFromGateway =
+                isMockOrder ||
                 candidateQris.startsWith('000201010212') ||
                 Boolean(paymentData.qr_string || paymentData.qrString);
 
@@ -1440,6 +1474,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
               const qrContainer = candidateQris ? (
                 <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                  {isMockOrder && (
+                    <div className="w-full mb-3 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center">
+                      <div className="flex items-center justify-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold text-xs">
+                        <ShieldCheck className="w-4 h-4 text-amber-500" />
+                        <span>SIMULASI CHECKOUT MOCK (HOLD GATE)</span>
+                      </div>
+                      <p className="text-[10px] text-amber-800 dark:text-amber-200 mt-0.5">
+                        Mode pengujian QA &amp; simulasi tanpa pemotongan MDR dan tanpa invoice database riil.
+                      </p>
+                    </div>
+                  )}
                   <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
                     <QRCodeSVG
                       value={finalQrValue}
@@ -1530,11 +1575,39 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 <div className="space-y-3">
                   {qrContainer}
 
-                  {/* Realtime Detection Banner */}
-                  <div className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-300 text-xs">
-                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                    <span className="text-[11px] font-medium">Menunggu pembayaran... Terverifikasi otomatis dalam detik saat lunas</span>
-                  </div>
+                  {/* Realtime Detection Banner / Mock Simulation Action */}
+                  {isMockOrder ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2 py-2 px-3 bg-amber-950/60 border border-amber-800/60 rounded-xl text-amber-200 text-xs">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-[11px] font-bold">Simulasi QRIS Aktif (Mock Mode) — Siap Validasi Checkout</span>
+                      </div>
+                      <button
+                        type="button"
+                        data-testid="mock-complete-payment-btn"
+                        onClick={() => {
+                          setOrderStatus('PAID');
+                          setOrderFulfillment({
+                            access_url:
+                              product?.link_digital ||
+                              product?.download_url ||
+                              product?.fulfillment_metadata?.access_url ||
+                              'https://onlineboost.id/onboarding',
+                            instructions: 'Selamat! Simulasi checkout Batch 1 berhasil (Mock Mode). Akses program inkubasi siap digunakan.',
+                          });
+                        }}
+                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Simulasi Pembayaran Berhasil (Mock Test)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-300 text-xs">
+                      <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                      <span className="text-[11px] font-medium">Menunggu pembayaran... Terverifikasi otomatis dalam detik saat lunas</span>
+                    </div>
+                  )}
 
                   {/* Alternatif Transfer Manual jika tersedia */}
                   {bankAccounts.length > 0 && (

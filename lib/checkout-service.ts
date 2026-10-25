@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
-import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl } from "@/lib/product-catalog";
+import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 import { generateUniqueCodeForTenant } from "@/lib/unique-code-generator";
 import { normalizePhoneToE164, isValidIndonesianPhone } from "@/lib/phone";
@@ -98,6 +98,16 @@ export interface CreateOrderPayload {
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
+  // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
+  if (isBatch1MockCheckout({
+    id: payload.productId,
+    sku: payload.productId,
+    title: payload.productTitle,
+    metadata: payload.fulfillmentMetadata,
+  }, payload.tenantSlug)) {
+    return getBatch1MockCheckoutResult();
+  }
+
   // Normalisasi nomor HP customer ke format baku E.164 (628xxxxxxxxxx)
   if (payload.customerPhone) {
     payload.customerPhone = normalizePhoneToE164(payload.customerPhone);

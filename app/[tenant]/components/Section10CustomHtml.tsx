@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
+import { resolveCustomHtmlTenantAssets } from '@/lib/product-catalog';
+import { isSection10TakeoverEligible } from '@/lib/product-catalog';
 
 export interface Section10Config {
   is_enabled?: boolean;
@@ -32,6 +34,15 @@ export default function Section10CustomHtml({
 }: Section10CustomHtmlProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const routeParams = useParams();
+  const pathname = usePathname();
+
+  // STRICT GUARDRAIL (Anti-Leakage / Visual QA PR #78):
+  // Wajibkan pathname mengandung segmen /p/ (contoh: /\/p\/[^/]+/.test(pathname || '')).
+  // Jika pathname tidak mengandung /p/, Section10CustomHtml WAJIB return null secepatnya.
+  const isProductRoute = Boolean(pathname && /\/p\/[^/]+/.test(pathname || ''));
+  if (!isProductRoute) {
+    return null;
+  }
 
   // 1. Dynamic resolution across theme_config, storefront_sections, sections, and root metadata
   const sec =
@@ -52,15 +63,35 @@ export default function Section10CustomHtml({
     metadata?.tenant_slug ||
     sectionConfig?.tenant_slug ||
     '';
+
   const assetBase = effectiveSlug ? `/tenants/${encodeURIComponent(effectiveSlug)}/` : '';
 
-  // Dynamically resolve relative asset references (CSS, JS, images) to tenant directory
-  let rawHtml = rawSourceHtml;
+  // Dynamically resolve relative asset references (CSS, JS, images, lightboxes) to tenant directory
+  let rawHtml = resolveCustomHtmlTenantAssets(rawSourceHtml, effectiveSlug);
   if (rawHtml && assetBase) {
     rawHtml = rawHtml.replace(
       /(href|src)=["'](?!https?:\/\/|\/|#|data:)([^"']+)["']/gi,
       (_match: string, attr: string, val: string) => `${attr}="${assetBase}${val}"`
     );
+  }
+
+  // STRICT GUARDRAIL (CTO Mandate - Issue #77):
+  // Section 10 Takeover HANYA boleh dievaluasi dan dirender pada rute detail produk dinamis (/[tenant]/p/[slug] atau /[tenant]/p/[sku]).
+  // Di halaman root storefront (/[tenant]), Section 10 DILARANG KERAS dievaluasi atau dirender.
+  // Halaman root storefront wajib selalu merender frontpage standar toko.
+  // This component may be mounted by shared storefront templates, so metadata/config
+  // must never be treated as proof that the current URL is a product-detail route.
+  // The canonical Next.js route is /[tenant]/p/[slug]; require its actual URL slug.
+  const routeSlug = (routeParams?.slug as string) || '';
+  const routeSku = (routeParams?.sku as string) || '';
+
+  const isTakeoverAllowed = Boolean(
+    routeSlug &&
+    isSection10TakeoverEligible(effectiveSlug, routeSku, routeSlug)
+  );
+
+  if (!isTakeoverAllowed) {
+    return null;
   }
 
   // 3. Fail-closed: Zero vertical placeholder leakage if disabled or empty

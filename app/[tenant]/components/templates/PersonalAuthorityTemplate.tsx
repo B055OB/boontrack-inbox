@@ -690,30 +690,29 @@ export function FeaturedCatalogSection({
               <div className="flex items-center gap-2">
                 {(() => {
                   const hasDedicatedPage =
-                    (mainProduct?.slug && mainProduct.slug === 'ctwa-mastery-7day') ||
                     Boolean(mainProduct?.single_page_config) ||
                     Boolean((mainProduct as any)?.single_page_enabled);
-                  const dedicatedPageUrl = hasDedicatedPage && mainProduct.slug
+                  const dedicatedPageUrl = hasDedicatedPage && mainProduct?.slug
                     ? getProductPageUrl(tenantSlug, mainProduct.slug, customDomain)
                     : null;
 
-                  const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(mainProduct) : null;
-                  const isExternal = Boolean(extUrl);
-                  const ctaLabel = mainProduct.slug === 'ctwa-mastery-7day'
-                    ? (mainProduct.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
-                    : resolveProductCtaLabel(mainProduct, isExternal);
-
-                  if (dedicatedPageUrl) {
-                    return (
-                      <a
-                        href={dedicatedPageUrl}
-                        className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
-                      >
-                        <span>{ctaLabel}</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </a>
-                    );
-                  }
+                  const extCandidate =
+                    resolveProductExternalUrl(mainProduct) ||
+                    mainProduct?.external_url ||
+                    (mainProduct as any)?.direct_url ||
+                    (mainProduct as any)?.affiliate_url ||
+                    (mainProduct as any)?.affiliate_link ||
+                    mainProduct?.metadata?.external_url ||
+                    (mainProduct?.metadata as any)?.direct_url ||
+                    mainProduct?.metadata?.affiliate_url;
+                  const extUrl = (extCandidate && typeof extCandidate === 'string') ? extCandidate.trim() : null;
+                  const isExternal = Boolean(
+                    (mainProduct?.checkout_type === 'external' || (mainProduct?.metadata as any)?.checkout_type === 'external' || Boolean(extUrl)) &&
+                    extUrl &&
+                    (extUrl.startsWith('http://') || extUrl.startsWith('https://')) &&
+                    mainProduct?.checkout_type !== 'internal'
+                  );
+                  const ctaLabel = mainProduct?.cta_label || resolveProductCtaLabel(mainProduct, isExternal);
 
                   if (isExternal && extUrl) {
                     return (
@@ -727,19 +726,31 @@ export function FeaturedCatalogSection({
                             try {
                               (window as any).fbq("track", "InitiateCheckout", {
                                 content_name: (mainProduct as any)?.title || mainProduct?.name || 'Produk',
-                                content_ids: [mainProduct.id || (mainProduct as any).slug],
+                                content_ids: [mainProduct?.id || (mainProduct as any)?.slug],
                                 content_type: "product",
-                                value: Number(mainProduct.price) || 0,
+                                value: Number(mainProduct?.price) || 0,
                                 currency: "IDR"
                               });
                             } catch (_) {}
                           }
                           onOutboundClick?.(extUrl, ctaLabel);
                         }}
-                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center no-underline"
                       >
                         <span>{ctaLabel}</span>
                         <ExternalLink className="w-4 h-4" />
+                      </a>
+                    );
+                  }
+
+                  if (dedicatedPageUrl) {
+                    return (
+                      <a
+                        href={dedicatedPageUrl}
+                        className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                      >
+                        <span>{ctaLabel}</span>
+                        <ArrowRight className="w-4 h-4" />
                       </a>
                     );
                   }
@@ -839,30 +850,29 @@ export function FeaturedCatalogSection({
 
                       {(() => {
                         const hasDedicatedPage =
-                          (item?.slug && item.slug === 'ctwa-mastery-7day') ||
                           Boolean(item?.single_page_config) ||
                           Boolean((item as any)?.single_page_enabled);
-                        const dedicatedPageUrl = hasDedicatedPage && item.slug
+                        const dedicatedPageUrl = hasDedicatedPage && item?.slug
                           ? getProductPageUrl(tenantSlug, item.slug, customDomain)
                           : null;
 
-                        const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(item) : null;
-                        const isExternal = Boolean(extUrl);
-                        const ctaLabel = item.slug === 'ctwa-mastery-7day'
-                          ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
-                          : resolveProductCtaLabel(item, isExternal);
-
-                        if (dedicatedPageUrl) {
-                          return (
-                            <a
-                              href={dedicatedPageUrl}
-                              className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <span>{ctaLabel}</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </a>
-                          );
-                        }
+                        const extCandidate =
+                          resolveProductExternalUrl(item) ||
+                          item?.external_url ||
+                          (item as any)?.direct_url ||
+                          (item as any)?.affiliate_url ||
+                          (item as any)?.affiliate_link ||
+                          item?.metadata?.external_url ||
+                          (item?.metadata as any)?.direct_url ||
+                          item?.metadata?.affiliate_url;
+                        const extUrl = (extCandidate && typeof extCandidate === 'string') ? extCandidate.trim() : null;
+                        const isExternal = Boolean(
+                          (item?.checkout_type === 'external' || (item?.metadata as any)?.checkout_type === 'external' || Boolean(extUrl)) &&
+                          extUrl &&
+                          (extUrl.startsWith('http://') || extUrl.startsWith('https://')) &&
+                          item?.checkout_type !== 'internal'
+                        );
+                        const ctaLabel = item?.cta_label || resolveProductCtaLabel(item, isExternal);
 
                         if (isExternal && extUrl) {
                           return (
@@ -876,19 +886,31 @@ export function FeaturedCatalogSection({
                                   try {
                                     (window as any).fbq("track", "InitiateCheckout", {
                                       content_name: (item as any)?.title || item?.name || 'Produk',
-                                      content_ids: [item.id || (item as any).slug],
+                                      content_ids: [item?.id || (item as any)?.slug],
                                       content_type: "product",
-                                      value: Number(item.price) || 0,
+                                      value: Number(item?.price) || 0,
                                       currency: "IDR"
                                     });
                                   } catch (_) {}
                                 }
                                 onOutboundClick?.(extUrl, ctaLabel);
                               }}
-                              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer no-underline"
                             >
                               <span>{ctaLabel}</span>
                               <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          );
+                        }
+
+                        if (dedicatedPageUrl) {
+                          return (
+                            <a
+                              href={dedicatedPageUrl}
+                              className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>{ctaLabel}</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
                             </a>
                           );
                         }
@@ -1616,6 +1638,12 @@ export default function PersonalAuthorityTemplate({
         const isEnabled = Boolean(sec10?.is_enabled ?? sec10?.is_active);
         const html = sec10?.html_content || sec10?.custom_html || sec10?.html;
         if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
+          return null;
+        }
+        // STRICT GUARDRAIL (Issue #77): Section 10 takeover DILARANG aktif di root storefront.
+        // Halaman root storefront wajib selalu merender frontpage standar katalog toko.
+        const isProductDetailRoute = false;
+        if (!isProductDetailRoute) {
           return null;
         }
         return (

@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ShoppingBag, Plus, Minus, X, QrCode } from 'lucide-react';
+import { ShoppingBag, Plus, Minus, X, QrCode, ExternalLink } from 'lucide-react';
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
 import type { Product } from '@/app/[tenant]/types';
 import dynamic from 'next/dynamic';
 import { resolveStorefrontSections, resolveStorefrontCopy } from '@/lib/resolvers/tenant-runtime-resolver';
+import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 
 const InstagramVisualGrid = dynamic(() => import('./InstagramVisualGrid'), { ssr: false });
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
@@ -355,6 +356,12 @@ export function StorefrontTemplate({
         if (!isEnabled || !html || typeof html !== 'string' || !html.trim()) {
           return null;
         }
+        // STRICT GUARDRAIL (Issue #77): Section 10 takeover DILARANG aktif di root storefront.
+        // Halaman root storefront wajib selalu merender frontpage standar katalog toko.
+        const isProductDetailRoute = false;
+        if (!isProductDetailRoute) {
+          return null;
+        }
         return (
           <div className="max-w-7xl mx-auto px-4 w-full">
             <Section10CustomHtml metadata={tenantMetadata} tenantSlug={tenantSlug} />
@@ -376,6 +383,50 @@ export function StorefrontTemplate({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {activeProducts.map((item: any, idx: number) => {
+                const extCandidate =
+                  resolveProductExternalUrl(item) ||
+                  item.external_url ||
+                  item.direct_url ||
+                  item.affiliate_url ||
+                  item.affiliate_link ||
+                  item.metadata?.external_url ||
+                  item.metadata?.direct_url ||
+                  item.metadata?.affiliate_url;
+                const extUrl = (extCandidate && typeof extCandidate === 'string') ? extCandidate.trim() : null;
+                const isExternal = Boolean(
+                  (item.checkout_type === 'external' || item.metadata?.checkout_type === 'external' || Boolean(extUrl)) &&
+                  extUrl &&
+                  (extUrl.startsWith('http://') || extUrl.startsWith('https://')) &&
+                  item.checkout_type !== 'internal'
+                );
+                const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
+
+                const handleExternalClick = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (!extUrl) return;
+
+                  if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                    try {
+                      (window as any).fbq("track", "InitiateCheckout", {
+                        content_name: item.name || item.title,
+                        content_ids: [String(item.id || idx)],
+                        content_type: "product",
+                        value: Number(item.price || 0),
+                        currency: "IDR"
+                      });
+                    } catch (_) {}
+                  }
+
+                  try {
+                    props.onOutboundClick?.(extUrl, ctaLabel);
+                  } catch (_) {}
+
+                  const targetTag = (e.currentTarget?.tagName || '').toUpperCase();
+                  if (targetTag !== 'A') {
+                    window.open(extUrl, "_blank", "noopener,noreferrer");
+                  }
+                };
+
                 const handleCheckout = (e?: React.MouseEvent) => {
                   if (e) e.stopPropagation();
                   if (onInitiateCheckout) {
@@ -413,34 +464,85 @@ export function StorefrontTemplate({
                   addToCart(item, e);
                 };
 
+                const handleCardClick = (e: React.MouseEvent) => {
+                  if (isExternal && extUrl) {
+                    handleExternalClick(e);
+                  } else {
+                    handleCheckout(e);
+                  }
+                };
+
                 return (
                   <div
                     key={item.id || idx}
-                    onClick={() => handleCheckout()}
+                    onClick={handleCardClick}
                     className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                   >
                     <div>
-                      <div className="relative rounded-2xl overflow-hidden mb-3.5 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.name || item.title}
-                            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-400">
-                            <ShoppingBag className="w-8 h-8" />
+                      {isExternal && extUrl ? (
+                        <a
+                          href={extUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={handleExternalClick}
+                          className="block"
+                        >
+                          <div className="relative rounded-2xl overflow-hidden mb-3.5 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5 cursor-pointer">
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.name || item.title}
+                                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                <ShoppingBag className="w-8 h-8" />
+                              </div>
+                            )}
+                            {item.badge && (
+                              <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                                {item.badge}
+                              </span>
+                            )}
                           </div>
-                        )}
-                        {item.badge && (
-                          <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                            {item.badge}
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="font-bold text-base text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
-                        {item.name || item.title}
-                      </h3>
+                        </a>
+                      ) : (
+                        <div className="relative rounded-2xl overflow-hidden mb-3.5 bg-slate-50 border border-slate-100 aspect-[4/3] sm:aspect-video w-full flex items-center justify-center p-1.5">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name || item.title}
+                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400">
+                              <ShoppingBag className="w-8 h-8" />
+                            </div>
+                          )}
+                          {item.badge && (
+                            <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {isExternal && extUrl ? (
+                        <a
+                          href={extUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={handleExternalClick}
+                          className="block"
+                        >
+                          <h3 className="font-bold text-base text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
+                            {item.name || item.title}
+                          </h3>
+                        </a>
+                      ) : (
+                        <h3 className="font-bold text-base text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
+                          {item.name || item.title}
+                        </h3>
+                      )}
                       {item.description ? (
                         <p className="text-xs text-slate-500 mt-2 line-clamp-3 leading-relaxed">
                           {item.description}
@@ -460,24 +562,37 @@ export function StorefrontTemplate({
                         ) : null}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCart}
-                          className="py-2.5 px-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-xs"
+                      {isExternal && extUrl ? (
+                        <a
+                          href={extUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={handleExternalClick}
+                          className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-md no-underline"
                         >
-                          <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>+ Keranjang</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCheckout}
-                          className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-md shadow-blue-500/20"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>Pesan Langsung</span>
-                        </button>
-                      </div>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>{ctaLabel}</span>
+                        </a>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCart}
+                            className="py-2.5 px-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-xs"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>+ Keranjang</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCheckout}
+                            className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer whitespace-nowrap shadow-md shadow-blue-500/20"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Pesan Langsung</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
