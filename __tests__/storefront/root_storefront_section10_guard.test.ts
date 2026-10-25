@@ -56,21 +56,43 @@ describe('Root Storefront Section 10 Anti-Leakage Guardrail (app/[tenant]/page.t
     });
 
     it('verifies git diff against baseline confirms ZERO modified lines in app/[tenant]/page.tsx', () => {
-      let diff = '';
+      const targetBranch = process.env.GITHUB_BASE_REF || 'main';
+      const baseRef = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
+
+      // Pastikan runner melakukan fetch ref jika belum ada di lingkungan CI
       try {
-        // 1. Coba bandingkan dengan commit referensi PR jika ada di env CI
-        const baseRef = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
-        diff = execSync(`git diff ${baseRef}...HEAD -- app/[tenant]/page.tsx`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        execSync(`git rev-parse --verify ${baseRef}`, { stdio: 'ignore' });
       } catch {
         try {
-          // 2. Fallback: bandingkan perubahan uncommitted di working tree lokal
-          diff = execSync('git diff HEAD -- app/[tenant]/page.tsx', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+          execSync(`git fetch origin ${targetBranch}:refs/remotes/origin/${targetBranch} --depth=10`, { stdio: 'ignore' });
         } catch {
-          // 3. Fallback jika shallow checkout tidak memiliki riwayat komparasi commit: verifikasi bahwa file tidak berada di status modified uncommitted
-          const status = execSync('git status --porcelain app/[tenant]/page.tsx', { encoding: 'utf-8' }).trim();
-          diff = status;
+          try {
+            execSync(`git fetch origin ${targetBranch} --depth=10`, { stdio: 'ignore' });
+          } catch (_) {}
         }
       }
+
+      let diff = '';
+      try {
+        diff = execSync(`git diff ${baseRef}...HEAD -- app/[tenant]/page.tsx`, {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+      } catch (err: any) {
+        try {
+          // Direct commit tree comparison jika shallow clone tidak memiliki common merge-base
+          diff = execSync(`git diff ${baseRef} HEAD -- app/[tenant]/page.tsx`, {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+          }).trim();
+        } catch (innerErr: any) {
+          throw new Error(
+            `[FAIL-LOUD] Strict isolation check failed: cannot access git baseline '${baseRef}'. ` +
+            `Error: ${innerErr?.message || err?.message}`
+          );
+        }
+      }
+
       expect(diff).toBe('');
     });
   });
