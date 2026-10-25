@@ -86,7 +86,8 @@ import {
   normalizeBriefingUrl,
   resolveCategoryLabels,
   resolveProductExternalUrl,
-  resolveCustomHtmlTenantAssets
+  resolveCustomHtmlTenantAssets,
+  isSection10TakeoverEligible
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -250,23 +251,6 @@ export function buildWabaStorefrontConsultationUrl(params: {
 }
 
 export const buildStorefrontWaUrl = buildWabaStorefrontConsultationUrl;
-
-/**
- * Pure helper to verify if a tenant and product are eligible for Section 10 Takeover.
- * Takeover is strictly locked to tenant 'onlineboost' AND (SKU 'OB-BATCH1-249K' or slug 'ob-batch1-249k').
- */
-export function isSection10TakeoverEligible(
-  tenant?: string | null,
-  sku?: string | null,
-  slug?: string | null
-): boolean {
-  const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
-  const isObBatch1Target = Boolean(
-    (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
-    (slug || '').toLowerCase() === 'ob-batch1-249k'
-  );
-  return Boolean(isOnlineBoostTenant && isObBatch1Target);
-}
 
 function ClientLogosSection({ logos }: { logos: ClientLogoItem[] }) {
   if (!logos || logos.length === 0) return null;
