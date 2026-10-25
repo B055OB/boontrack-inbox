@@ -165,6 +165,8 @@ export function getBatch1MockCheckoutResult(orderId?: string) {
     invoiceUrl: `/checkout/${finalOrderId}?mock=true`,
     isMock: true,
     is_mock: true,
+    isMockOnly: true,
+    is_mock_only: true,
     status: 'MOCK_SIMULATED',
     isPaid: false,
     is_paid: false,
@@ -172,7 +174,7 @@ export function getBatch1MockCheckoutResult(orderId?: string) {
     is_simulated: true,
     fulfillment: null,
     fulfillment_data: null,
-    success: true,
+    success: false,
   };
 }
 

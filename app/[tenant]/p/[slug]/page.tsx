@@ -2620,6 +2620,15 @@ function SingleProductContent() {
         throw new Error('Gagal membuat pesanan. Silakan periksa kembali data Anda dan coba beberapa saat lagi.');
       }
 
+      // Explicitly handle mock simulation mode: hold live checkout, suppress redirect and purchase tracking
+      if (result.status === 'MOCK_SIMULATED' || (result as any).isSimulated || (result as any).isMockOnly || result.success === false) {
+        setLoading(false);
+        setIsPaid(false);
+        setVerifiedFulfillment(null);
+        setErrorMessage('SIMULASI / PREVIEW MODE — Pembayaran Live Belum Diaktifkan, Akses Produk Ditahan');
+        return;
+      }
+
       if (result?.orderId) {
         trackLeadFormSubmission(totalAmount);
         // HANYA memicu event Purchase bila order gratis (Rp 0) yang otomatis langsung terkonfirmasi lunas

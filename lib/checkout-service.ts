@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
-import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult } from "@/lib/product-catalog";
+import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult, DEFAULT_PRODUCTS } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 import { generateUniqueCodeForTenant } from "@/lib/unique-code-generator";
 import { normalizePhoneToE164, isValidIndonesianPhone } from "@/lib/phone";
@@ -99,18 +99,32 @@ export interface CreateOrderPayload {
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-  // Evaluasi harga untuk Batch 1 mengacu pada harga server-side otoritatif (Rp 249.000),
-  // dan langsung menahan (mock/hold) bila harga tidak valid, kosong, atau dimanipulasi.
+  // Evaluasi harga untuk Batch 1 mengacu pada harga server-side otoritatif (Rp 249.000)
+  // dari katalog resmi (DEFAULT_PRODUCTS.find), dan langsung menahan (mock/hold) bila harga tidak valid, kosong, atau dimanipulasi.
   const isObTenant = String(payload.tenantSlug || '').trim().toLowerCase() === 'onlineboost';
   const normProductId = String(payload.productId || '').toUpperCase().trim();
   const normTitle = String(payload.productTitle || '').toLowerCase().trim();
+
+  // Authoritative server-side catalog lookup (Zero hardcoding bypass, isolated to onlineboost tenant)
+  const authoritativeBatch1 = isObTenant
+    ? DEFAULT_PRODUCTS.find((p) => (p.sku || '').toUpperCase() === 'OB-BATCH1-249K' || (p.slug || '').toLowerCase() === 'ob-batch1-249k')
+    : null;
+
   const isBatch1Product = isObTenant && (
     normProductId === 'OB-BATCH1-249K' ||
+    (authoritativeBatch1 && (String(authoritativeBatch1.id) === normProductId || String(authoritativeBatch1.sku).toUpperCase() === normProductId)) ||
     normTitle.includes('inkubasi onlineboost batch 1') ||
     (normTitle.includes('onlineboost') && normTitle.includes('batch 1'))
   );
 
-  if (isBatch1Product && (payload.amount === undefined || payload.amount === null || isNaN(Number(payload.amount)) || Number(payload.amount) !== 249000)) {
+  const authoritativePrice = authoritativeBatch1?.price ?? 249000;
+
+  if (isBatch1Product && (
+    payload.amount === undefined ||
+    payload.amount === null ||
+    isNaN(Number(payload.amount)) ||
+    Number(payload.amount) !== authoritativePrice
+  )) {
     return getBatch1MockCheckoutResult();
   }
 
@@ -122,6 +136,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     amount: payload.amount,
     metadata: payload.fulfillmentMetadata,
     fulfillment_metadata: payload.fulfillmentMetadata,
+    single_page_config: authoritativeBatch1?.single_page_config,
+    is_mock_only: authoritativeBatch1?.single_page_config?.is_mock_only ?? true,
+    strict_hold: authoritativeBatch1?.single_page_config?.strict_hold ?? true,
   }, payload.tenantSlug)) {
     return getBatch1MockCheckoutResult();
   }
@@ -146,6 +163,24 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         });
 
         const resJson = await response.json().catch(() => null);
+
+        // Jika endpoint mengembalikan hasil simulasi/mock hold, tangani secara eksplisit tanpa melempar error
+        if (resJson?.isSimulated || resJson?.isMock || resJson?.status === 'MOCK_SIMULATED') {
+          return {
+            ...resJson,
+            orderId: resJson.orderId || resJson.order_id || resJson.id,
+            status: 'MOCK_SIMULATED',
+            isPaid: false,
+            is_paid: false,
+            isSimulated: true,
+            is_simulated: true,
+            isMockOnly: true,
+            is_mock_only: true,
+            fulfillment: null,
+            fulfillment_data: null,
+            success: false,
+          };
+        }
 
         if (response.ok && (resJson?.success !== false)) {
           return {

@@ -62,6 +62,8 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
     it('returns valid simulation QRIS and mock orderId structure without leaking real fulfillment', () => {
       const mockResult = getBatch1MockCheckoutResult();
       expect(mockResult.isMock).toBe(true);
+      expect(mockResult.isMockOnly).toBe(true);
+      expect(mockResult.success).toBe(false);
       expect(mockResult.orderId).toMatch(/^ORD-MOCK-OB-BATCH1-\d+$/);
       expect(mockResult.qrString).toBe(BATCH1_MOCK_QRIS_STRING);
       expect(mockResult.qrString.startsWith('000201010212')).toBe(true);
@@ -249,6 +251,7 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       });
 
       expect(result).toBeDefined();
+      expect(result.success).toBe(false);
       expect(result.isMock).toBe(true);
       expect(result.orderId).toContain('ORD-MOCK-OB-BATCH1');
       expect(result.qrString).toBe(BATCH1_MOCK_QRIS_STRING);
@@ -272,9 +275,33 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
       });
 
       expect(manipulatedResult.isMock).toBe(true);
+      expect(manipulatedResult.success).toBe(false);
       expect(manipulatedResult.status).toBe('MOCK_SIMULATED');
       expect(manipulatedResult.isPaid).toBe(false);
       expect(manipulatedResult.fulfillment).toBeNull();
+    });
+
+    it('prevents API consumers checking result.success from misinterpreting mock simulation as a completed live order', async () => {
+      const mockResult = getBatch1MockCheckoutResult();
+      expect(mockResult.success).toBe(false);
+      expect(mockResult.status).toBe('MOCK_SIMULATED');
+      expect(mockResult.isPaid).toBe(false);
+      expect(mockResult.fulfillment).toBeNull();
+
+      const orderResult = await createOrderAndInvoice({
+        tenantSlug: 'onlineboost',
+        productId: 'OB-BATCH1-249K',
+        productTitle: 'Tiket Inkubasi OnlineBoost Batch 1',
+        amount: 249000,
+        customerName: 'Audit Consumer Test',
+        customerPhone: '081234567890',
+      });
+
+      expect(orderResult.success).toBe(false);
+      expect(orderResult.status).toBe('MOCK_SIMULATED');
+      expect(orderResult.isPaid).toBe(false);
+      expect(orderResult.isSimulated).toBe(true);
+      expect(orderResult.fulfillment).toBeNull();
     });
   });
 
@@ -302,6 +329,7 @@ describe('CTO DIRECTIVE: Strict Mock-Only Guard & Fail-Closed Remediation for Ch
         expect.anything()
       );
       expect(mockResult.isMock).toBe(true);
+      expect(mockResult.success).toBe(false);
       expect(mockResult.isPaid).toBe(false);
       expect(mockResult.status).toBe('MOCK_SIMULATED');
       expect(mockResult.fulfillment).toBeNull();
