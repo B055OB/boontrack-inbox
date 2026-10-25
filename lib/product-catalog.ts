@@ -31,47 +31,122 @@ export function isBatch1MockCheckout(
     slug?: string;
     title?: string;
     name?: string;
+    price?: number;
+    amount?: number;
+    promo_price?: number;
     metadata?: any;
     fulfillment_metadata?: any;
     single_page_config?: any;
     is_mock_only?: boolean;
     strict_hold?: boolean;
+    _is_db_verified?: boolean;
+    is_db_verified?: boolean;
+    tenant?: string;
+    tenant_slug?: string;
+    [key: string]: any;
   } | null,
   tenantSlug?: string | null
 ): boolean {
-  if (!product) return false;
+  // Authoritative tenant identity verification
+  const effectiveTenant = (
+    tenantSlug ||
+    product?.tenant_slug ||
+    product?.tenant ||
+    product?.metadata?.tenant_slug ||
+    ''
+  ).trim().toLowerCase();
+  const isObTenant = effectiveTenant === 'onlineboost';
 
-  // 1. Controlled Release Override: If mock guard is explicitly disabled/released, allow live gateway checkout
+  // 1. Intercept if explicitly configured as mock only or strict hold on any level
   if (
-    product.is_mock_only === false ||
-    product.strict_hold === false ||
-    product.single_page_config?.is_mock_only === false ||
-    product.single_page_config?.strict_hold === false ||
-    product.metadata?.is_mock_only === false ||
-    product.metadata?.strict_hold === false
+    Boolean(
+      product?.is_mock_only ||
+      product?.strict_hold ||
+      product?.metadata?.is_mock_only ||
+      product?.metadata?.strict_hold ||
+      product?.single_page_config?.is_mock_only ||
+      product?.single_page_config?.strict_hold ||
+      product?.fulfillment_metadata?.is_mock_only ||
+      product?.fulfillment_metadata?.strict_hold
+    )
+  ) {
+    return true;
+  }
+
+  // 2. Cross-tenant isolation: If tenant is not authoritatively OnlineBoost,
+  // this guard does NOT intercept (zero cross-tenant leakage/collateral).
+  if (!isObTenant) {
+    return false;
+  }
+
+  // FAIL-CLOSED: If product object is null/undefined under OnlineBoost tenant,
+  // hold in mock guard to prevent accidental live checkout invocation.
+  if (!product) {
+    return true;
+  }
+
+  // 3. Resolve target product identity
+  const sku = (product.sku || product.metadata?.sku || product.fulfillment_metadata?.sku || '').toUpperCase().trim();
+  const slug = (product.slug || product.metadata?.slug || product.single_page_config?.slug || '').toLowerCase().trim();
+  const title = (product.title || product.name || '').toLowerCase().trim();
+
+  const isObBatch1Target = Boolean(
+    sku === 'OB-BATCH1-249K' ||
+    slug === 'ob-batch1-249k' ||
+    title.includes('inkubasi onlineboost batch 1') ||
+    (title.includes('onlineboost') && title.includes('batch 1'))
+  );
+
+  // If not targeting OnlineBoost Batch 1, allow normal product checkout
+  if (!isObBatch1Target) {
+    return false;
+  }
+
+  // 4. FAIL-CLOSED REGRESSION CHECKS FOR OB-BATCH1-249K:
+  // Validasi Integritas Harga Server-Side: Harga patokan resmi server adalah Rp 249.000.
+  // Input amount/price dari client hanya parameter pembanding, bukan sumber kebenaran harga.
+  // Setiap manipulasi nominal otomatis memicu fail-closed (return true).
+  const SERVER_LOCKED_PRICE = 249000;
+  const clientPriceCandidate = product.price ?? product.amount ?? product.promo_price;
+  if (clientPriceCandidate !== undefined && clientPriceCandidate !== null) {
+    const numPrice = Number(clientPriceCandidate);
+    if (isNaN(numPrice) || numPrice !== SERVER_LOCKED_PRICE) {
+      return true; // FAIL-CLOSED on price manipulation
+    }
+  }
+
+  // Config fail-closed check:
+  // If single_page_config is null, undefined, or missing payment enablement, hold in mock guard.
+  const spc = product.single_page_config;
+  if (!spc || typeof spc !== 'object') {
+    return true; // FAIL-CLOSED: null or missing single_page_config
+  }
+
+  if (spc.enable_payment !== true || spc.enable_qris !== true) {
+    return true; // FAIL-CLOSED: payment configuration not valid or disabled
+  }
+
+  // Never allow static DEFAULT_PRODUCTS fallback to unilaterally release mock status.
+  // Audit Keamanan CTO: isDbVerified murni berasal dari verifikasi database server-side yang sah
+  // (properti langsung _is_db_verified === true), BUKAN dari payload metadata/fulfillment_metadata client.
+  const isDbVerified = product._is_db_verified === true;
+
+  if (!isDbVerified) {
+    // Unverified fallback remains strictly held
+    return true;
+  }
+
+  // Controlled release override: Only if explicitly verified from database with mock disabled
+  if (
+    spc.is_mock_only === false &&
+    spc.strict_hold === false &&
+    product.is_mock_only === false &&
+    product.strict_hold === false
   ) {
     return false;
   }
 
-  // 2. Intercept if explicitly configured as mock only or strict hold
-  if (Boolean(product.is_mock_only || product.metadata?.is_mock_only || product.single_page_config?.is_mock_only || product.fulfillment_metadata?.is_mock_only)) {
-    return true;
-  }
-  if (Boolean(product.strict_hold || product.metadata?.strict_hold || product.single_page_config?.strict_hold)) {
-    return true;
-  }
-
-  // 3. Check catalog definition in DEFAULT_PRODUCTS for released status
-  const sku = (product.sku || product.metadata?.sku || product.fulfillment_metadata?.sku || '').toUpperCase();
-  const slug = (product.slug || product.metadata?.slug || product.single_page_config?.slug || '').toLowerCase();
-  const catalogProd = DEFAULT_PRODUCTS.find(p => p.sku === sku || p.slug === slug);
-  if (catalogProd) {
-    if (catalogProd.single_page_config?.is_mock_only === false || catalogProd.single_page_config?.strict_hold === false) {
-      return false;
-    }
-  }
-
-  return false;
+  return true;
 }
 
 export const BATCH1_MOCK_QRIS_STRING = '00020101021226660014ID.LINKAJA.WWW01189360001100000000000215MOCKONLINEBOOST52045812530336054062490005802ID5920ONLINEBOOST SIMULASI6007JAKARTA61051234062210117MOCK-BATCH1-SIMUL6304C701';
@@ -1138,20 +1213,20 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       enable_testimonials: false,
       enable_offer: false,
       enable_faq: false,
-      enable_payment: true,
+      enable_payment: false,
       enable_custom_html: true,
       is_custom_html_enabled: true,
       use_custom_html: true,
       active_section: "custom_html",
       sections_override: false,
       checkout_mode: "modal",
-      enable_qris: true,
+      enable_qris: false,
       enable_manual_transfer: false,
       discount_coupon: "",
       affiliate_commission_rate: 0,
       checkout_action_mode: "DIRECT",
-      is_mock_only: false,
-      strict_hold: false,
+      is_mock_only: true,
+      strict_hold: true,
       whatsapp_custom_message: "",
       section_order: ["custom_html", "payment_voucher"],
     },

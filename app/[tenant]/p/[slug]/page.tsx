@@ -2540,13 +2540,14 @@ function SingleProductContent() {
       ? 'Ambil Sendiri di Toko (Self-Pickup)'
       : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
 
-    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-    if (isBatch1MockCheckout(product, tenant)) {
+    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE - FAIL-CLOSED)
+    const isObBatch1Candidate = Boolean(isOnlineBoostTenant && isObBatch1Target);
+    if (isObBatch1Candidate || isBatch1MockCheckout(product, tenant)) {
       setLoading(false);
       setIsPaid(true);
-      setVerifiedFulfillment(product.fulfillment_metadata || {
+      setVerifiedFulfillment(product?.fulfillment_metadata || {
         delivery_type: 'DOWNLOAD_LINK',
-        access_url: product.link_digital || 'https://onlineboost.id/onboarding',
+        access_url: product?.link_digital || 'https://onlineboost.id/onboarding',
         instructions: 'Selamat! Akses program inkubasi 30 hari telah aktif (Mock Mode).',
       });
       return;

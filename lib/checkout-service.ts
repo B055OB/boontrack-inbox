@@ -103,7 +103,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     id: payload.productId,
     sku: payload.productId,
     title: payload.productTitle,
+    price: payload.amount,
+    amount: payload.amount,
     metadata: payload.fulfillmentMetadata,
+    fulfillment_metadata: payload.fulfillmentMetadata,
   }, payload.tenantSlug)) {
     return getBatch1MockCheckoutResult();
   }
