@@ -6,7 +6,7 @@ import {
   DEFAULT_ONLINEBOOST_PRODUCTS,
   DEFAULT_PRODUCTS
 } from '@/lib/product-catalog';
-import { isSection10TakeoverEligible } from '@/app/[tenant]/p/[slug]/page';
+import { isSection10TakeoverEligible } from '@/lib/product-catalog';
 
 describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
   const tenantSlug = 'onlineboost';
