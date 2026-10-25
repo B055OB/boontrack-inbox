@@ -251,6 +251,23 @@ export function buildWabaStorefrontConsultationUrl(params: {
 
 export const buildStorefrontWaUrl = buildWabaStorefrontConsultationUrl;
 
+/**
+ * Pure helper to verify if a tenant and product are eligible for Section 10 Takeover.
+ * Takeover is strictly locked to tenant 'onlineboost' AND (SKU 'OB-BATCH1-249K' or slug 'ob-batch1-249k').
+ */
+export function isSection10TakeoverEligible(
+  tenant?: string | null,
+  sku?: string | null,
+  slug?: string | null
+): boolean {
+  const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
+  const isObBatch1Target = Boolean(
+    (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
+    (slug || '').toLowerCase() === 'ob-batch1-249k'
+  );
+  return Boolean(isOnlineBoostTenant && isObBatch1Target);
+}
+
 function ClientLogosSection({ logos }: { logos: ClientLogoItem[] }) {
   if (!logos || logos.length === 0) return null;
 
@@ -590,17 +607,20 @@ function SingleProductContent() {
               (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
               match?.slug === 'ob-batch1-249k'
             );
+            const isEligibleForSec10 = isSection10TakeoverEligible(
+              params?.tenant as string,
+              match?.sku,
+              (params?.slug as string) || match?.slug
+            );
 
             const isMatchForSec10 = Boolean(
-              isOnlineBoostTenant &&
-              isObBatch1Target &&
+              isEligibleForSec10 &&
               isTenantSec10Active &&
               tenantSec10Html
             );
 
             const isCustomHtmlActive = Boolean(
-              isOnlineBoostTenant &&
-              isObBatch1Target &&
+              isEligibleForSec10 &&
               isMatchForSec10 &&
               tenantSec10Html?.trim()
             );
@@ -816,10 +836,14 @@ function SingleProductContent() {
     (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
     product?.slug === 'ob-batch1-249k'
   );
+  const isEligibleForSec10 = isSection10TakeoverEligible(
+    params?.tenant as string,
+    product?.sku,
+    (params?.slug as string) || product?.slug
+  );
 
   const isCustomHtmlActivePage = Boolean(
-    isOnlineBoostTenant &&
-    isObBatch1Target &&
+    isEligibleForSec10 &&
     (config.enable_custom_html || (config as any).is_custom_html_enabled || (config as any).use_custom_html) &&
     config.custom_html
   );

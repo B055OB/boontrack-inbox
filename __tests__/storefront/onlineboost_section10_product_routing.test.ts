@@ -6,6 +6,7 @@ import {
   DEFAULT_ONLINEBOOST_PRODUCTS,
   DEFAULT_PRODUCTS
 } from '@/lib/product-catalog';
+import { isSection10TakeoverEligible } from '@/app/[tenant]/p/[slug]/page';
 
 describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
   const tenantSlug = 'onlineboost';
@@ -205,46 +206,53 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
     const pageSource = fs.readFileSync(pageFilePath, 'utf-8');
 
     it('ensures non-onlineboost tenant (e.g. happyeating) does NOT trigger Section 10 takeover even if flag is active', () => {
-      // 1. Structural architectural check in page.tsx
+      // 1. Direct invocation of exported pure helper isSection10TakeoverEligible
+      expect(isSection10TakeoverEligible('happyeating', 'OB-BATCH1-249K', 'ob-batch1-249k')).toBe(false);
+      expect(isSection10TakeoverEligible('lala', 'OB-BATCH1-249K', 'ob-batch1-249k')).toBe(false);
+      expect(isSection10TakeoverEligible('boon', 'OB-BATCH1-249K', 'ob-batch1-249k')).toBe(false);
+      expect(isSection10TakeoverEligible('', 'OB-BATCH1-249K', 'ob-batch1-249k')).toBe(false);
+
+      // 2. Structural architectural check in page.tsx
+      expect(pageSource).toContain('isSection10TakeoverEligible');
       expect(pageSource).toContain("isOnlineBoostTenant = (params?.tenant as string)?.toLowerCase() === 'onlineboost'");
-      
-      // 2. Logic simulation simulating happyeating tenant context with custom HTML metadata
+
+      // 3. Logic simulation simulating happyeating tenant context with custom HTML metadata
       const mockParams = { tenant: 'happyeating', slug: 'ob-batch1-249k' };
       const mockProduct = { sku: 'OB-BATCH1-249K', slug: 'ob-batch1-249k' };
       const mockConfig = { enable_custom_html: true, custom_html: '<section id="custom-html-section">Active</section>' };
 
-      const isOnlineBoostTenant = (mockParams.tenant as string)?.toLowerCase() === 'onlineboost';
-      const isObBatch1Target = Boolean(
-        mockProduct.sku === 'OB-BATCH1-249K' ||
-        mockParams.slug?.toLowerCase() === 'ob-batch1-249k'
-      );
-
+      const isEligible = isSection10TakeoverEligible(mockParams.tenant, mockProduct.sku, mockParams.slug);
       const isCustomHtmlActivePage = Boolean(
-        isOnlineBoostTenant &&
-        isObBatch1Target &&
+        isEligible &&
         mockConfig.enable_custom_html &&
         mockConfig.custom_html
       );
 
       // Takeover MUST be false for non-onlineboost tenant
-      expect(isOnlineBoostTenant).toBe(false);
+      expect(isEligible).toBe(false);
       expect(isCustomHtmlActivePage).toBe(false);
     });
 
     it('ensures onlineboost product non-batch1 (SKU other than OB-BATCH1-249K) renders regular template with store header and cart', () => {
-      // 1. Resolve a non-batch1 product from onlineboost catalog (e.g. modul-praktis-cpm-24-jam with SKU OB-CPM-24H)
+      // 1. Direct invocation of exported pure helper isSection10TakeoverEligible for non-batch1 products
+      expect(isSection10TakeoverEligible('onlineboost', 'OB-CPM-24H', 'modul-praktis-cpm-24-jam')).toBe(false);
+      expect(isSection10TakeoverEligible('onlineboost', 'OB-YTAI-01', 'youtube-ai-automation')).toBe(false);
+      expect(isSection10TakeoverEligible('onlineboost', 'REGULAR-SKU-100', 'other-product')).toBe(false);
+
+      // Verify that OB-BATCH1-249K is eligible
+      expect(isSection10TakeoverEligible('onlineboost', 'OB-BATCH1-249K', 'ob-batch1-249k')).toBe(true);
+      expect(isSection10TakeoverEligible('onlineboost', undefined, 'ob-batch1-249k')).toBe(true);
+      expect(isSection10TakeoverEligible('onlineboost', 'OB-BATCH1-249K', undefined)).toBe(true);
+
+      // 2. Resolve a non-batch1 product from onlineboost catalog (e.g. modul-praktis-cpm-24-jam with SKU OB-CPM-24H)
       const nonBatch1 = resolveSinglePageProduct(tenantSlug, 'modul-praktis-cpm-24-jam');
       expect(nonBatch1.product).toBeDefined();
       expect(nonBatch1.product.sku).not.toBe('OB-BATCH1-249K');
       expect(nonBatch1.config.enable_custom_html).toBeFalsy();
 
-      // 2. Logic simulation for non-batch1 product on onlineboost tenant even if flags are forcefully injected
+      // 3. Logic simulation for non-batch1 product on onlineboost tenant even if flags are forcefully injected
       const mockParams = { tenant: 'onlineboost', slug: nonBatch1.product.slug };
-      const isOnlineBoostTenant = (mockParams.tenant as string)?.toLowerCase() === 'onlineboost';
-      const isObBatch1Target = Boolean(
-        nonBatch1.product.sku === 'OB-BATCH1-249K' ||
-        mockParams.slug?.toLowerCase() === 'ob-batch1-249k'
-      );
+      const isEligible = isSection10TakeoverEligible(mockParams.tenant, nonBatch1.product.sku, mockParams.slug);
 
       const mockConfigWithForcedFlag = {
         enable_custom_html: true,
@@ -252,18 +260,16 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
       };
 
       const isCustomHtmlActivePage = Boolean(
-        isOnlineBoostTenant &&
-        isObBatch1Target &&
+        isEligible &&
         mockConfigWithForcedFlag.enable_custom_html &&
         mockConfigWithForcedFlag.custom_html
       );
 
       // Non-batch1 product MUST NOT trigger takeover
-      expect(isOnlineBoostTenant).toBe(true);
-      expect(isObBatch1Target).toBe(false);
+      expect(isEligible).toBe(false);
       expect(isCustomHtmlActivePage).toBe(false);
 
-      // 3. Page layout verification: regular template preserves store header and cart
+      // 4. Page layout verification: regular template preserves store header and cart
       // When isCustomHtmlActivePage is false:
       // - Store header renders: {!isCustomHtmlActivePage && (
       expect(pageSource).toContain('!isCustomHtmlActivePage && (');
