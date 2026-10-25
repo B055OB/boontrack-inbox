@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { resolveCustomHtmlTenantAssets } from '@/lib/product-catalog';
-import { isSection10TakeoverEligible } from '@/app/[tenant]/p/[slug]/page';
+import { isSection10TakeoverEligible } from '@/lib/product-catalog';
 
 export interface Section10Config {
   is_enabled?: boolean;
@@ -70,11 +70,14 @@ export default function Section10CustomHtml({
   // Section 10 Takeover HANYA boleh dievaluasi dan dirender pada rute detail produk dinamis (/[tenant]/p/[slug] atau /[tenant]/p/[sku]).
   // Di halaman root storefront (/[tenant]), Section 10 DILARANG KERAS dievaluasi atau dirender.
   // Halaman root storefront wajib selalu merender frontpage standar toko.
+  // This component may be mounted by shared storefront templates, so metadata/config
+  // must never be treated as proof that the current URL is a product-detail route.
+  // The canonical Next.js route is /[tenant]/p/[slug]; require its actual URL slug.
   const routeSlug = (routeParams?.slug as string) || '';
-  const routeSku = (routeParams?.sku as string) || sectionConfig?.sku || '';
+  const routeSku = (routeParams?.sku as string) || '';
 
   const isTakeoverAllowed = Boolean(
-    (routeSlug || routeSku) &&
+    routeSlug &&
     isSection10TakeoverEligible(effectiveSlug, routeSku, routeSlug)
   );
 
