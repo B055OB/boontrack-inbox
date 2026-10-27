@@ -11,15 +11,13 @@ const IS_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  */
 async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null): Promise<string | null> {
   if (!tenantIdentifier) {
-    const { data: fallbackTenant } = await supabase
-      .from('tenants')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-    return fallbackTenant?.id || null;
+    return null;
   }
 
   const cleanIdentifier = tenantIdentifier.trim().toLowerCase();
+  if (cleanIdentifier === 'creator' || cleanIdentifier === 'sandbox') {
+    return null;
+  }
 
   // If already a valid UUID format
   if (IS_UUID_REGEX.test(cleanIdentifier)) {
@@ -39,16 +37,7 @@ async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null
     .eq('slug', cleanIdentifier)
     .maybeSingle();
 
-  if (tenantBySlug?.id) return tenantBySlug.id;
-
-  // Fallback to first tenant if in standalone/dev environment
-  const { data: fallbackTenant } = await supabase
-    .from('tenants')
-    .select('id')
-    .limit(1)
-    .maybeSingle();
-
-  return fallbackTenant?.id || null;
+  return tenantBySlug?.id || null;
 }
 
 /**
@@ -155,20 +144,32 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const tenantParam = searchParams.get('tenant_id') || searchParams.get('slug');
+    if (!tenantParam || !tenantParam.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_REQUIRED', message: 'Parameter tenant_id atau slug wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
 
     const supabase = getSupabaseAdmin();
     const resolvedTenantId = await resolveTenantUuid(supabase, tenantParam);
 
-    let query = supabase
+    if (!resolvedTenantId) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        count: 0,
+      });
+    }
+
+    const query = supabase
       .from('studio_scripts')
       .select('*')
+      .eq('tenant_id', resolvedTenantId)
       .order('created_at', { ascending: false })
       .limit(limit);
-
-    if (resolvedTenantId) {
-      query = query.eq('tenant_id', resolvedTenantId);
-    }
 
     const { data: scripts, error: selectError } = await query;
 

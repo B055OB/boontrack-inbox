@@ -57,6 +57,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (rawSlug === 'creator' || rawSlug === 'sandbox') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SANDBOX_PROHIBITED',
+          message: 'Mode Sandbox: Akun eksplorasi tidak dapat melakukan transaksi pembayaran live.',
+        },
+        { status: 403 }
+      );
+    }
+
     // 3. Verifikasi Tenant di Supabase
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
@@ -82,6 +93,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const tenantMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
+    if (tenantMeta.is_sandbox === true || String(tenant.tier || '').toUpperCase() === 'SANDBOX') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SANDBOX_PROHIBITED',
+          message: 'Mode Sandbox: Akun eksplorasi tidak dapat melakukan transaksi pembayaran live.',
+        },
+        { status: 403 }
+      );
+    }
+
     // 4. Resolusi Paket Harga dari SSOT berdasarkan status Member Toko (Two-Tier Pricing)
     const isShopMember = isTenantShopMember(tenant);
     const pkg = getStudioTokenPackage(packageId, isShopMember);
@@ -94,8 +117,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    const tenantMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
 
     // 4. Resolusi Affiliate Referral Code (Cross-domain cookie / metadata)
     const referralCookie = req.cookies.get('bt_ref')?.value || req.cookies.get('boontrack_referral')?.value;

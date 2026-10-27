@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStudioRegistrationStatus, activateStudioRegistrationByToken } from '@/lib/studio/auth';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 /**
  * GET /api/studio/auth/registration-status?token={TOKEN}
@@ -19,10 +20,48 @@ export async function GET(req: Request) {
 
     const result = await getStudioRegistrationStatus(token);
 
-    return NextResponse.json({
+    const isSuccess = result.status === 'SUCCESS' && result.session?.slug;
+    let signedToken: string | undefined = undefined;
+
+    if (isSuccess && result.session) {
+      signedToken = signMerchantSessionToken({
+        tenantSlug: result.session.slug,
+        tenantId: result.session.tenant_id,
+        role: 'OWNER',
+        name: result.session.name,
+        phone: result.session.whatsapp,
+      });
+    }
+
+    const res = NextResponse.json({
       success: true,
       ...result,
+      token: signedToken,
     });
+
+    if (isSuccess && signedToken && result.session) {
+      const isProd = process.env.NODE_ENV === 'production' && !process.env.VERCEL_DEV_MODE;
+      const cookieDomain = isProd ? '.boontrack.com' : undefined;
+      const slug = result.session.slug;
+
+      // 1. Mandatory Signed Session Cookie
+      res.cookies.set('bt_merchant_token', signedToken, {
+        path: '/',
+        maxAge: 2592000,
+        sameSite: 'lax',
+        httpOnly: true,
+        secure: isProd,
+        domain: cookieDomain,
+      });
+
+      // 2. Set cross-subdomain compatible routing cookies (.boontrack.com)
+      res.cookies.set('studio_session', slug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+      res.cookies.set('merchant_store', slug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+      res.cookies.set('merchant_session', slug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+      res.cookies.set('bt_tenant', slug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+    }
+
+    return res;
   } catch (err: any) {
     console.error('[Studio Registration Status API] Error:', err);
     return NextResponse.json(
