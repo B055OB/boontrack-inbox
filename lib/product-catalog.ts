@@ -14,7 +14,9 @@ export function isSection10TakeoverEligible(
   const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
   const isObBatch1Target = Boolean(
     (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
-    (slug || '').toLowerCase() === 'ob-batch1-249k'
+    (sku || '').toUpperCase() === 'ACADEMY_CTWA_BATCH1_SCALE' ||
+    (slug || '').toLowerCase() === 'ob-batch1-249k' ||
+    (slug || '').toLowerCase() === 'kelas-inkubasi-ctwa-batch-1-scale'
   );
   return Boolean(isOnlineBoostTenant && isObBatch1Target);
 }

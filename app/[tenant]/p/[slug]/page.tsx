@@ -248,7 +248,12 @@ export function buildWabaStorefrontConsultationUrl(params: {
     return { text, url: '', number: '' };
   }
 
-  const url = `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
+  let encodedQuery = encodeURIComponent(text);
+  if (encodedQuery.includes('%5Br%3D') || encodedQuery.includes('%5BR%3D')) {
+    encodedQuery = encodedQuery.replace(/%5Br%3D/gi, '[r=').replace(/%5D/g, ']');
+  }
+
+  const url = `https://wa.me/${num}?text=${encodedQuery}`;
   return { text, url, number: num };
 }
 
@@ -594,8 +599,11 @@ function SingleProductContent() {
             const isObBatch1Target = Boolean(
               match?.sku === 'OB-BATCH1-249K' ||
               (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
-              match?.slug === 'ob-batch1-249k'
+              match?.slug === 'ob-batch1-249k' ||
+              (params?.slug as string)?.toLowerCase() === 'kelas-inkubasi-ctwa-batch-1-scale' ||
+              match?.slug === 'kelas-inkubasi-ctwa-batch-1-scale'
             );
+            const isOnlineBoostBatch1 = Boolean(isOnlineBoostTenant && isObBatch1Target);
             const isEligibleForSec10 = isSection10TakeoverEligible(
               params?.tenant as string,
               match?.sku,
@@ -634,6 +642,140 @@ function SingleProductContent() {
 
             let resolvedCustomHtml = resolveCustomHtmlTenantAssets(rawCustomHtml, tenant);
             if (isEligibleForSec10 && resolvedCustomHtml) {
+              // Ensure legacy destination 6288229098088 cannot be served in custom HTML
+              resolvedCustomHtml = resolvedCustomHtml.replace(/6288229098088/g, '6288226098088');
+
+              // Ensure comparison section in custom HTML has id="tools" for anchor navigation
+              if (!resolvedCustomHtml.includes('id="tools"')) {
+                resolvedCustomHtml = resolvedCustomHtml.replace(
+                  /(<section[^>]*class=["'][^"']*comparison-section[^"']*["'])/i,
+                  '$1 id="tools"'
+                );
+              }
+
+              if (isOnlineBoostBatch1) {
+                // Resolusi referral code untuk tautan CTA awal
+                // Presedensi: ?r= > ?reseller= > ?reseller_id= > ?ref= > ?aff= > saved reseller code
+                let initialReseller: string | undefined = undefined;
+                try {
+                  const qR =
+                    searchParams?.get('r') ||
+                    searchParams?.get('reseller') ||
+                    searchParams?.get('reseller_id') ||
+                    searchParams?.get('ref') ||
+                    searchParams?.get('aff');
+                  if (qR && /^[a-zA-Z0-9_-]+$/.test(qR.trim())) {
+                    initialReseller = qR.trim();
+                  } else if (typeof window !== 'undefined') {
+                    const saved = getActiveResellerCode(tenant);
+                    if (saved && /^[a-zA-Z0-9_-]+$/.test(saved.trim())) {
+                      initialReseller = saved.trim();
+                    }
+                  }
+                } catch (_) {}
+
+                const batch1Msg = initialReseller
+                  ? `Saya tertarik ikut kelas nya Kang [r=${initialReseller}]`
+                  : 'Saya tertarik ikut kelas nya Kang';
+                const batch1WaUrl = `https://wa.me/6288226098088?text=${encodeURIComponent(batch1Msg).replace(/%5Br%3D/gi, '[r=').replace(/%5D/g, ']')}`;
+
+                // 1. Pembersihan Copy Publik:
+                // Hapus label "[Draft Usulan Batch Berikutnya]"
+                resolvedCustomHtml = resolvedCustomHtml.replace(/\[Draft Usulan Batch Berikutnya\]/g, '');
+                // Hapus tulisan "Disclaimer Prototype"
+                resolvedCustomHtml = resolvedCustomHtml.replace(/<div[^>]*>\s*Disclaimer Prototype:[\s\S]*?<\/div>/gi, '');
+                resolvedCustomHtml = resolvedCustomHtml.replace(/Disclaimer Prototype:[^\n<]*/gi, '');
+                // Selaraskan kode produk/SKU menjadi "OB-BATCH1-249K"
+                resolvedCustomHtml = resolvedCustomHtml.replace(/LP-CTWA-BOT-01/g, 'OB-BATCH1-249K');
+                // Hapus tulisan "(Prototype)" pada tag title
+                resolvedCustomHtml = resolvedCustomHtml.replace(/\s*\(Prototype\)/gi, '');
+
+                // 1b. Pembersihan Elemen Coretan Harga Batch 2 (Founder/CTO Decision):
+                // Sembunyikan/hapus elemen <div class="price-proposal-strike">...</div> agar menampilkan harga bersih resmi Rp 249.000
+                resolvedCustomHtml = resolvedCustomHtml.replace(/<div[^>]*class=["'][^"']*price-proposal-strike[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+
+                // 1c. Legal Copy & Compliance Phrasing (CTO Mandate):
+                // Integrasi QRIS melalui penyedia berlisensi (bukan klaim BoonTrack memproses dana sendiri)
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/bayar lewat QRIS resmi/gi, 'mengintegrasikan QRIS melalui penyedia berlisensi')
+                  .replace(/Dynamic QRIS resmi langsung ke rekening pribadi/gi, 'Integrasi Dynamic QRIS melalui penyedia berlisensi langsung ke rekening Anda')
+                  .replace(/Dynamic QRIS \(dana langsung\)/gi, 'Integrasi Dynamic QRIS melalui penyedia berlisensi');
+
+                // Klaim Meta Provider: Terverifikasi sebagai Meta Tech Provider (tanpa klaim 'resmi')
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/Official Meta Tech Provider/gi, 'Terverifikasi sebagai Meta Tech Provider')
+                  .replace(/resmi sebagai Meta Tech Provider/gi, 'Terverifikasi sebagai Meta Tech Provider')
+                  .replace(/Partner Resmi Meta/gi, 'Terverifikasi sebagai Meta Tech Provider')
+                  .replace(/Mitra Resmi Meta/gi, 'Terverifikasi sebagai Meta Tech Provider')
+                  .replace(/Official Meta Partner/gi, 'Terverifikasi sebagai Meta Tech Provider');
+
+                // Brand & Whitelabel Compliance (Dilarang keras memunculkan kata "BoonTrack" di UI publik OnlineBoost)
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/Akses BoonTrack Shop/gi, 'Akses OnlineBoost Shop')
+                  .replace(/Kredit BoonTrack Studio/gi, 'Kredit OnlineBoost Studio')
+                  .replace(/BoonTrack/gi, 'OnlineBoost');
+
+                // Klaim Risiko WhatsApp: Membantu mematuhi kebijakan Meta dan mitigasi risiko (tanpa garansi anti-banned)
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/proteksi pemblokiran sepihak/gi, 'membantu mematuhi kebijakan Meta dan mitigasi risiko operasional')
+                  .replace(/anti[- ]banned/gi, 'membantu mematuhi kebijakan Meta dan mitigasi risiko');
+
+                // Nomenklatur Mesin Akuisisi: Self-Funding Acquisition Engine (larang akuisisi negatif)
+                resolvedCustomHtml = resolvedCustomHtml.replace(/\bnegative\s*cac\b/gi, 'Self-Funding Acquisition Engine');
+
+                // 1d. Transparansi Hak Akses & Inklusi CFO:
+                // 1 bulan akses OnlineBoost Shop, 200 bot LLM actions (1.000 token in / 500 token out), 25 kredit Studio Starter (~8 video 1080p @ 3 kredit)
+                const cfoInclusionsHtml = `
+              <li>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span><strong>Akses OnlineBoost Shop:</strong> 1 bulan akses platform etalase &amp; alur pemesanan digital</span>
+              </li>
+              <li>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span><strong>Kapasitas Bot AI WhatsApp:</strong> 200 bot LLM actions (hingga 1.000 input &amp; 500 output token per aksi)</span>
+              </li>
+              <li>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span><strong>Kredit OnlineBoost Studio Starter:</strong> 25 kredit pembuatan video AI (estimasi ~8 video 1080p @ 3 kredit/video)</span>
+              </li>`;
+
+                if (!resolvedCustomHtml.includes('Kapasitas Bot AI WhatsApp')) {
+                  resolvedCustomHtml = resolvedCustomHtml.replace(
+                    /(<ul[^>]*class=["'][^"']*price-features-list[^"']*["'][^>]*>)/i,
+                    `$1${cfoInclusionsHtml}`
+                  );
+                }
+
+                // Catatan transparansi batasan program (bukan langganan software tak terbatas atau biaya iklan mandiri)
+                const cfoTransparencyNote = `
+            <div style="margin-top: 0.65rem; font-size: 0.72rem; color: #a1a1aa; line-height: 1.45; border-top: 1px dashed rgba(255,255,255,0.12); padding-top: 0.5rem;">
+              <em>Catatan Transparansi:</em> Ketersediaan produk dan platform tunduk pada ketentuan program terverifikasi. Tidak mencakup langganan software tak terbatas di luar paket maupun anggaran belanja iklan pihak ketiga (Meta/TikTok).
+            </div>`;
+
+                if (!resolvedCustomHtml.includes('Catatan Transparansi:')) {
+                  resolvedCustomHtml = resolvedCustomHtml.replace(
+                    /(<\/ul>\s*<div[^>]*class=["'][^"']*price-action-wrap|<\/ul>)/i,
+                    `$1${cfoTransparencyNote}`
+                  );
+                }
+
+                // 2. Alihkan seluruh 4 tombol pendaftaran ke link WhatsApp dinamis
+                // (Header, Hero atas, Tabel harga, dan Floating/sticky mobile bar)
+                resolvedCustomHtml = resolvedCustomHtml.replace(
+                  /<a\b([^>]*?)href=["']#checkout["']([^>]*?)>/gi,
+                  (_m, before, after) => {
+                    const cleanAttrs = (before + ' ' + after)
+                      .replace(/\bdata-bt-checkout\b/g, '')
+                      .replace(/\bdata-bt-sku=["'][^"']*["']/g, 'data-bt-sku="OB-BATCH1-249K"')
+                      .replace(/\s+/g, ' ')
+                      .trim();
+                    return `<a href="${batch1WaUrl}" target="_blank" rel="noopener noreferrer" ${cleanAttrs}>`;
+                  }
+                );
+                // Pastikan tidak ada atribut data-bt-checkout tersisa pada tag <a>
+                resolvedCustomHtml = resolvedCustomHtml.replace(/(<a\b[^>]*)\bdata-bt-checkout\b([^>]*>)/gi, '$1$2');
+              }
+
               resolvedCustomHtml = resolvedCustomHtml
                 .replace(/\bbg-white\b/g, 'bg-[#0a0a0a]')
                 .replace(/\bbg-zinc-50\b/g, 'bg-zinc-950')
@@ -654,6 +796,10 @@ function SingleProductContent() {
   .ob-sec10-wrap {
     background-color: #0a0a0a !important;
     color: #f4f4f5 !important;
+  }
+  #tools,
+  .comparison-section {
+    scroll-margin-top: 100px !important;
   }
   .site-header {
     background: rgba(10, 10, 10, 0.92) !important;
@@ -943,8 +1089,11 @@ function SingleProductContent() {
   const isObBatch1Target = Boolean(
     product?.sku === 'OB-BATCH1-249K' ||
     (params?.slug as string)?.toLowerCase() === 'ob-batch1-249k' ||
-    product?.slug === 'ob-batch1-249k'
+    product?.slug === 'ob-batch1-249k' ||
+    (params?.slug as string)?.toLowerCase() === 'kelas-inkubasi-ctwa-batch-1-scale' ||
+    product?.slug === 'kelas-inkubasi-ctwa-batch-1-scale'
   );
+  const isOnlineBoostBatch1 = Boolean(isOnlineBoostTenant && isObBatch1Target);
   const isEligibleForSec10 = isSection10TakeoverEligible(
     params?.tenant as string,
     product?.sku,
@@ -2110,18 +2259,39 @@ function SingleProductContent() {
     (product as any)?.metadata?.whatsapp_number ||
     '';
 
+  const targetWhatsAppNumber = isOnlineBoostBatch1
+    ? '6288226098088'
+    : rawStoreWhatsApp;
+
+  // Resolusi referral code untuk OnlineBoost Batch 1
+  // Presedensi: resellerCode (?r=, ?reseller=, ?reseller_id=) didahulukan dari affiliateCode (?ref=, ?aff=)
+  const candidateReseller = resellerCode && /^[a-zA-Z0-9_-]+$/.test(resellerCode.trim())
+    ? resellerCode.trim()
+    : undefined;
+  const candidateAffiliate = affiliateCode && /^[a-zA-Z0-9_-]+$/.test(affiliateCode.trim())
+    ? affiliateCode.trim()
+    : undefined;
+  const validResellerCode = candidateReseller || candidateAffiliate;
+
+  const targetCustomMessage = isOnlineBoostBatch1
+    ? (validResellerCode
+        ? `Saya tertarik ikut kelas nya Kang [r=${validResellerCode}]`
+        : 'Saya tertarik ikut kelas nya Kang')
+    : config.whatsapp_custom_message;
+
   const { text: wabaPrefilledMessage, url: wabaConsultationUrl, number: tenantWhatsAppNumber } = buildWabaStorefrontConsultationUrl({
     productName: product.name,
     storeName,
     tenantSlug: tenant,
     productSlug: product.slug || slug,
-    tenantWhatsApp: rawStoreWhatsApp,
-    customMessage: config.whatsapp_custom_message,
-    activeRef: affiliateCode || resellerCode || '-',
+    tenantWhatsApp: targetWhatsAppNumber,
+    customMessage: targetCustomMessage,
+    activeRef: affiliateCode || validResellerCode || '-',
   });
 
-  const actionMode: 'DIRECT' | 'WHATSAPP' | 'HYBRID' =
-    config.checkout_action_mode || (rawStoreWhatsApp ? 'HYBRID' : 'DIRECT');
+  const actionMode: 'DIRECT' | 'WHATSAPP' | 'HYBRID' = isOnlineBoostBatch1
+    ? 'WHATSAPP'
+    : (config.checkout_action_mode || (rawStoreWhatsApp ? 'HYBRID' : 'DIRECT'));
 
   const handleWhatsAppConsultation = () => {
     if (!wabaConsultationUrl) return;
@@ -2273,6 +2443,10 @@ function SingleProductContent() {
       e.preventDefault();
       e.stopPropagation();
     }
+    if (isOnlineBoostBatch1) {
+      handleWhatsAppConsultation();
+      return;
+    }
     if (isCustomLinkMode) {
       handleCustomCtaClick(e);
       return;
@@ -2342,11 +2516,28 @@ function SingleProductContent() {
   // Universal Headless Checkout Trigger ([data-bt-checkout], [href="#checkout"], and window 'open-checkout' event)
   useEffect(() => {
     const handleGlobalCheckoutClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement)?.closest('[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn') as HTMLElement | null;
+      const selector = isOnlineBoostBatch1
+        ? '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn, a[href*="wa.me"], a[href*="whatsapp.com"]'
+        : '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn';
+      const target = (e.target as HTMLElement)?.closest(selector) as HTMLElement | null;
       if (!target) return;
+
+      if (
+        target.id === 'hero-see-method-btn' ||
+        target.getAttribute('href') === '#journey' ||
+        target.getAttribute('href') === '#tools'
+      ) {
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      if (isOnlineBoostBatch1) {
+        handleWhatsAppConsultation();
+        return;
+      }
 
       // Read optional overrides from attributes
       const variantAttr = target.getAttribute('data-variant');
@@ -2384,6 +2575,10 @@ function SingleProductContent() {
     };
 
     const handleCustomOpenCheckout = () => {
+      if (isOnlineBoostBatch1) {
+        handleWhatsAppConsultation();
+        return;
+      }
       if (!hasTrackedAddToCart) {
         trackAddToCart({
           id: slug,
@@ -2409,7 +2604,7 @@ function SingleProductContent() {
       document.removeEventListener('click', handleGlobalCheckoutClick, { capture: true });
       window.removeEventListener('open-checkout', handleCustomOpenCheckout);
     };
-  }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout]);
+  }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout, isOnlineBoostBatch1, wabaConsultationUrl]);
 
   // Re-hydrate & execute scripts inside Custom HTML (HTML5 spec prevents innerHTML/dangerouslySetInnerHTML from running script tags)
   useEffect(() => {
@@ -2437,8 +2632,65 @@ function SingleProductContent() {
     return () => clearTimeout(timer);
   }, [config.custom_html]);
 
+  // Deep-link anchor scroll support for #tools or other section hashes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const scrollToTarget = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+      const targetId = hash.replace(/^#/, '');
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    scrollToTarget();
+    const timer = setTimeout(scrollToTarget, 200);
+    window.addEventListener('hashchange', scrollToTarget);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('hashchange', scrollToTarget);
+    };
+  }, [config.custom_html]);
+
+  // Dynamic Wireup: Alihkan 4 titik tombol registrasi ke WhatsApp dan jaga internal scroll silabus (#journey)
+  useEffect(() => {
+    if (!isOnlineBoostBatch1 || typeof document === 'undefined') return;
+    const waUrl = wabaConsultationUrl;
+    if (!waUrl) return;
+
+    const wireRegistrationCtas = () => {
+      // 4 Titik tombol: Header, Hero atas, Tabel harga, dan Floating/sticky mobile bar
+      const candidates = document.querySelectorAll<HTMLAnchorElement>(
+        'a[href="#checkout"], a[data-bt-checkout], .hero-sub-checkout-trigger, .btn-cta-onlineboost'
+      );
+      candidates.forEach((btn) => {
+        // JAGA SILABUS & ANCHOR: Tombol navigasi silabus ("Lihat Apa yang Akan Lo Pelajari") atau anchor #tools tetap scroll internal
+        if (btn.id === 'hero-see-method-btn' || btn.getAttribute('href') === '#journey') {
+          return;
+        }
+        if (btn.getAttribute('href') === '#tools') {
+          return;
+        }
+        btn.setAttribute('href', waUrl);
+        btn.removeAttribute('data-bt-checkout');
+        btn.setAttribute('target', '_blank');
+        btn.setAttribute('rel', 'noopener noreferrer');
+      });
+    };
+
+    wireRegistrationCtas();
+    const timer = setTimeout(wireRegistrationCtas, 100);
+    return () => clearTimeout(timer);
+  }, [isOnlineBoostBatch1, wabaConsultationUrl, config.custom_html]);
+
+
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOnlineBoostBatch1) {
+      handleWhatsAppConsultation();
+      return;
+    }
     if (loading) return;
 
     // Helper untuk memfokuskan dan menggulir ke field yang belum lengkap
@@ -2661,6 +2913,10 @@ function SingleProductContent() {
 
   const handleWhatsAppOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOnlineBoostBatch1) {
+      handleWhatsAppConsultation();
+      return;
+    }
     if (loading) return;
 
     if (!buyerName.trim()) {
@@ -5110,7 +5366,9 @@ function SingleProductContent() {
                             className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
                           >
                             <span>
-                              {basePrice === 0
+                              {isOnlineBoostBatch1
+                                ? 'Daftar via WhatsApp'
+                                : basePrice === 0
                                 ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
                                 : dynamicCtaPrefix.toLowerCase().includes('rp')
                                 ? dynamicCtaPrefix
@@ -5256,7 +5514,11 @@ function SingleProductContent() {
 
               case 'comparison':
                 return (!isDirectCheckoutOnly && config.enable_us_vs_them !== false && Boolean(config.comparison_rows && config.comparison_rows.length > 0)) ? (
-                  <section key="section-comparison" className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+                  <section
+                    key="section-comparison"
+                    id="tools"
+                    className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 scroll-mt-24 sm:scroll-mt-28"
+                  >
                     <div>
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
                         {categoryLabels.comparisonTitle}
@@ -5582,7 +5844,9 @@ function SingleProductContent() {
           addToCartLabel={categoryLabels.addToCartLabel}
           dynamicCtaPrefix={dynamicCtaPrefix}
           ctaText={
-            isCustomLinkMode
+            isOnlineBoostBatch1
+              ? 'Daftar via WhatsApp'
+              : isCustomLinkMode
               ? ctaCustomLabel
               : actionMode === 'WHATSAPP'
               ? (config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order via WhatsApp'))
@@ -5596,7 +5860,7 @@ function SingleProductContent() {
           targetFormId="checkout-form"
           onOpenCheckout={handleOpenCheckout}
           onExternalClick={handleExternalProductClick}
-          isWhatsAppMode={actionMode === 'WHATSAPP'}
+          isWhatsAppMode={isOnlineBoostBatch1 || actionMode === 'WHATSAPP'}
           whatsAppUrl={wabaConsultationUrl}
           onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}

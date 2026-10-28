@@ -496,11 +496,6 @@ export function trackWhatsAppConsultation(product: { name: string; price: number
       value: product.price,
       currency: "IDR"
     });
-    win.fbq("track", "Lead", {
-      content_name: product.name,
-      value: product.price,
-      currency: "IDR"
-    });
   }
 
   if (win.ttq) {
