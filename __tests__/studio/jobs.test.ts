@@ -10,6 +10,8 @@
 
 import { GET } from '@/app/api/studio/jobs/route';
 import * as supabaseClientModule from '@/lib/supabaseClient';
+import { NextRequest } from 'next/server';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 describe('Studio Render Jobs & Telemetry API Suite', () => {
   afterEach(() => {
@@ -85,10 +87,12 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
       order: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
       then: (resolve: any) => resolve({ data: jobsData, error: null }),
     };
 
     return {
+      rpc: jest.fn().mockResolvedValue({ data: { success: true }, error: null }),
       auth: {
         getUser: jest.fn().mockResolvedValue({
           data: {
@@ -128,7 +132,7 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     const mockSupabase = createMockSupabase(mockJobs);
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
+    const req = new NextRequest('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
       headers: { authorization: 'Bearer valid-test-token' },
     });
     const res = await GET(req);
@@ -151,7 +155,7 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     const mockSupabase = createMockSupabase(onlyCompletedJobs);
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
+    const req = new NextRequest('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
       headers: { authorization: 'Bearer valid-test-token' },
     });
     const res = await GET(req);
@@ -167,7 +171,7 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(null as any);
     jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(null as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs', {
+    const req = new NextRequest('http://localhost:3000/api/studio/jobs', {
       headers: { authorization: 'Bearer valid-test-token' },
     });
     const res = await GET(req);
@@ -214,7 +218,7 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
 
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
 
-    const req = new Request('http://localhost:3000/api/studio/jobs?tenant_id=tenant-123&status=COMPLETED', {
+    const req = new NextRequest('http://localhost:3000/api/studio/jobs?tenant_id=tenant-123&status=COMPLETED', {
       headers: { authorization: 'Bearer valid-test-token' },
     });
     const res = await GET(req);
@@ -224,5 +228,28 @@ describe('Studio Render Jobs & Telemetry API Suite', () => {
     expect(eqMock).toHaveBeenCalledWith('status', 'COMPLETED');
     expect(json.jobs[0].status).toBe('COMPLETED');
     expect(json.jobs[0].output_url).toBe('https://cdn.boontrack.com/videos/job-1.mp4');
+  });
+
+  it('authenticates successfully using signed bt_merchant_token session cookie', async () => {
+    const validToken = signMerchantSessionToken({
+      tenantSlug: 'demo-store',
+      tenantId: 'tenant-123',
+      role: 'OWNER',
+    });
+    const mockSupabase = createMockSupabase(mockJobs);
+    jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockSupabase as any);
+
+    const req = new NextRequest('http://localhost:3000/api/studio/jobs?tenant_id=demo-store', {
+      headers: {
+        cookie: `bt_merchant_token=${validToken}`,
+      },
+    });
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.count).toBe(4);
+    expect(json.telemetry.total).toBe(4);
   });
 });

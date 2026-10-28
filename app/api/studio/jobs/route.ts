@@ -149,7 +149,16 @@ export async function GET(req: Request) {
 
     // 1. Authenticate session: check cryptographically signed bt_merchant_token FIRST, then Supabase Auth
     let merchantAuthPayload: any = null;
-    const candidateMerchantToken = extractMerchantSessionToken(req as any);
+    let candidateMerchantToken = '';
+    try {
+      candidateMerchantToken = extractMerchantSessionToken(req as any);
+    } catch {
+      const rawCookie = req.headers.get('cookie') || '';
+      const match = rawCookie.match(/(?:^|;\s*)bt_merchant_token=([^;]+)/);
+      if (match && match[1]) {
+        candidateMerchantToken = decodeURIComponent(match[1].trim());
+      }
+    }
     if (candidateMerchantToken) {
       const verified = verifyMerchantSessionToken(candidateMerchantToken);
       if (verified.valid && verified.payload) {
