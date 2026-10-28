@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
     let resolvedName = customerName;
     let resolvedAmount = amount;
     let resolvedCity = body.city || body.customerCity;
+    let resolvedDbOrder: any = null;
 
     if (orderId) {
       try {
@@ -183,6 +184,8 @@ export async function POST(req: NextRequest) {
           .select('*')
           .eq('id', orderId)
           .maybeSingle();
+
+        resolvedDbOrder = dbOrder;
 
         if (dbOrder) {
           let tContext = dbOrder.metadata?.tracking_context || {};
@@ -249,6 +252,21 @@ export async function POST(req: NextRequest) {
       body.sourceUrl ||
       req.headers.get('referer') ||
       (orderId ? `https://shop.boontrack.com/${cleanSlug}/order/${orderId}` : `https://shop.boontrack.com/${cleanSlug}`);
+
+    // P0-B: FALSE PURCHASE SIGNAL SUPPRESSION
+    // Zero-price free registration must never fire a Purchase event on Meta CAPI
+    if (
+      resolvedEventName === 'Purchase' &&
+      (Number(resolvedAmount || 0) <= 0 ||
+        Boolean(resolvedDbOrder?.metadata?.is_free) ||
+        resolvedDbOrder?.metadata?.payment_method === 'free')
+    ) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'Zero-price order (Rp0): Purchase event suppressed to prevent false ad conversion attribution',
+      });
+    }
 
     // 3. Dispatch Event via CAPI Service
     const capiResult = await dispatchMetaCAPIEvent(metaPixelId, metaAccessToken, {
