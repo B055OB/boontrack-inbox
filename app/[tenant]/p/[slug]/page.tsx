@@ -2540,15 +2540,13 @@ function SingleProductContent() {
       ? 'Ambil Sendiri di Toko (Self-Pickup)'
       : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
 
-    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE)
-    if (isBatch1MockCheckout(product, tenant)) {
+    // STRICT MOCK GUARD (HOLD PENDING LIVE GATE RELEASE - FAIL-CLOSED)
+    const isObBatch1Candidate = Boolean(isOnlineBoostTenant && isObBatch1Target);
+    if (isObBatch1Candidate || isBatch1MockCheckout(product, tenant)) {
       setLoading(false);
-      setIsPaid(true);
-      setVerifiedFulfillment(product.fulfillment_metadata || {
-        delivery_type: 'DOWNLOAD_LINK',
-        access_url: product.link_digital || 'https://onlineboost.id/onboarding',
-        instructions: 'Selamat! Akses program inkubasi 30 hari telah aktif (Mock Mode).',
-      });
+      setIsPaid(false);
+      setVerifiedFulfillment(null);
+      setErrorMessage('SIMULASI / PREVIEW MODE — Pembayaran Live Belum Diaktifkan, Akses Produk Ditahan');
       return;
     }
 
@@ -2620,6 +2618,15 @@ function SingleProductContent() {
 
       if (!result || !result.orderId) {
         throw new Error('Gagal membuat pesanan. Silakan periksa kembali data Anda dan coba beberapa saat lagi.');
+      }
+
+      // Explicitly handle mock simulation mode: hold live checkout, suppress redirect and purchase tracking
+      if (result.status === 'MOCK_SIMULATED' || (result as any).isSimulated || (result as any).isMockOnly || result.success === false) {
+        setLoading(false);
+        setIsPaid(false);
+        setVerifiedFulfillment(null);
+        setErrorMessage('SIMULASI / PREVIEW MODE — Pembayaran Live Belum Diaktifkan, Akses Produk Ditahan');
+        return;
       }
 
       if (result?.orderId) {
