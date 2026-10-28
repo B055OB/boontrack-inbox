@@ -8,7 +8,7 @@ import { getActiveAffiliateCode, getActiveResellerCode, getTrackingData, getClie
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
-import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult } from "@/lib/product-catalog";
+import { normalizeBriefingUrl, resolveCategoryLabels, resolveProductExternalUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult, isDigitalProduct } from "@/lib/product-catalog";
 import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
 import { normalizePhoneToE164, sanitizePhoneInputForPrefix } from "@/lib/phone";
 
@@ -131,17 +131,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     (product as any)?.is_external
   );
 
-  useEffect(() => {
-    if (isLimitSingleItem && quantity !== 1) {
-      setQuantity(1);
-    }
-  }, [isLimitSingleItem, quantity]);
-
-  const handleQuantityChange = (newQty: number) => {
-    const clamped = Math.max(1, Math.min(newQty, maxQuantity));
-    setQuantity(clamped);
-  };
-
   const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
   const [selfPickupConfig, setSelfPickupConfig] = useState<{
     isEnabled: boolean;
@@ -172,7 +161,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     qrString?: string;
     qrCodeUrl?: string;
     qr_code_url?: string;
-    paymentMethod?: 'qris' | 'manual_transfer';
+    paymentMethod?: 'qris' | 'manual_transfer' | 'free';
     isMock?: boolean;
   } | null>(null);
   const qrData = paymentData;
@@ -258,6 +247,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     rawCategory.includes('kuliner'));
   const isPhysical =
     !isBookingOrService &&
+    !isDigitalProduct(product as any) &&
     (rawProductType === 'physical' ||
     rawProductType === 'fisik' ||
     rawProductType === 'food' ||
@@ -265,7 +255,19 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     isFood ||
     Boolean((product as any)?.requires_shipping) ||
     Boolean((product as any)?.requiresShipping));
-  const isDigital = !isPhysical && !isBookingOrService;
+  const isDigital = isDigitalProduct(product as any) || (!isPhysical && !isBookingOrService);
+
+  useEffect(() => {
+    if ((isLimitSingleItem || isDigital) && quantity !== 1) {
+      setQuantity(1);
+    }
+  }, [isLimitSingleItem, isDigital, quantity]);
+
+  const handleQuantityChange = (newQty: number) => {
+    if (isDigital) return;
+    const clamped = Math.max(1, Math.min(newQty, maxQuantity));
+    setQuantity(clamped);
+  };
 
   const singlePageConfig = (product as any)?.metadata?.single_page_config || (product as any)?.single_page_config || checkoutContext?.single_page_config;
   const categoryLabels = resolveCategoryLabels(
@@ -286,7 +288,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const isMultiItem = Array.isArray(resolvedItems) && resolvedItems.length > 1;
   const packageTotalWeight = checkoutContext?.totalWeightGrams || (product as any)?.weight_grams || 1000;
   const unitPrice = isMultiItem ? (checkoutContext?.subtotal || product?.price || 0) : (product?.price || 0);
-  const productSubtotal = isMultiItem ? unitPrice : (unitPrice * quantity);
+  const productSubtotal = isDigital ? unitPrice : (isMultiItem ? unitPrice : (unitPrice * quantity));
   const basePrice = productSubtotal;
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
@@ -304,11 +306,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     (tenantData?.metadata?.payment_settings?.provider === 'xendit') ||
     (tenantData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY');
 
-  const currentUniqueCode = isGatewayOrQris ? 0 : uniqueCode;
   const currentShippingCost = isFood
     ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
     : (isPhysical && !isPickup ? shippingCost : 0);
-  const totalAmount = isGatewayOrQris
+  const isZeroPrice = (basePrice === 0 && currentShippingCost === 0);
+  const currentUniqueCode = (isGatewayOrQris || isZeroPrice) ? 0 : uniqueCode;
+  const totalAmount = isZeroPrice
+    ? 0
+    : isGatewayOrQris
     ? (basePrice + adminFee + currentShippingCost)
     : (basePrice + adminFee + currentUniqueCode + currentShippingCost);
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
@@ -866,10 +871,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         productTitle: isMultiItem
           ? resolvedItems.map((i: any) => `${i.productTitle || i.title || i.name} (${i.quantity || 1}x)`).join(', ')
           : product.title,
-        amount: totalAmount,
+        amount: isZeroPrice ? 0 : totalAmount,
         basePrice: productSubtotal,
         unitPrice,
-        quantity: isMultiItem
+        quantity: isDigital
+          ? 1
+          : isMultiItem
           ? resolvedItems.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
           : quantity,
         cartId: checkoutContext?.cartId || (product as any)?.cartId || null,
@@ -878,16 +885,16 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               productId: String(it.productId || it.product_id || it.id),
               productTitle: it.productTitle || it.title || it.name,
               unitPrice: Number(it.unitPrice || it.price || 0),
-              quantity: Number(it.quantity || 1),
+              quantity: isDigital ? 1 : Number(it.quantity || 1),
               weightGrams: Number(it.weightGrams || it.weight_grams || 0),
               variantId: it.variantId || it.variant_id || null,
               variantName: it.variantName || null,
               selectedModifiers: it.selectedModifiers || it.selected_modifiers || [],
             }))
           : undefined,
-        adminFee,
-        uniqueCode: currentUniqueCode,
-        paymentMethod,
+        adminFee: isZeroPrice ? 0 : adminFee,
+        uniqueCode: isZeroPrice ? 0 : currentUniqueCode,
+        paymentMethod: isZeroPrice ? 'free' : paymentMethod,
         tenantStaticQris: tenantStaticQris || undefined,
         affiliateCommission: 0,
         customerName,
@@ -1029,17 +1036,32 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }
       }
 
-      setPaymentData({
-        orderId: result.orderId,
-        invoiceUrl: result.invoiceUrl,
-        qr_string: (result as any).qr_string || result.qrString,
-        qrString: result.qrString || (result as any).qr_string,
-        qrCodeUrl: result.qrCodeUrl,
-        paymentMethod: paymentMethod,
-      });
-      setOrderStatus('PENDING');
-      if (resolvedAccessUrl) {
-        setOrderFulfillment({ access_url: resolvedAccessUrl });
+      if (isZeroPrice) {
+        setPaymentData({
+          orderId: result.orderId,
+          invoiceUrl: result.invoiceUrl,
+          qr_string: '',
+          qrString: '',
+          qrCodeUrl: '',
+          paymentMethod: 'free',
+        });
+        setOrderStatus('PAID');
+        if (resolvedAccessUrl) {
+          setOrderFulfillment({ access_url: resolvedAccessUrl });
+        }
+      } else {
+        setPaymentData({
+          orderId: result.orderId,
+          invoiceUrl: result.invoiceUrl,
+          qr_string: (result as any).qr_string || result.qrString,
+          qrString: result.qrString || (result as any).qr_string,
+          qrCodeUrl: result.qrCodeUrl,
+          paymentMethod: paymentMethod,
+        });
+        setOrderStatus('PENDING');
+        if (resolvedAccessUrl) {
+          setOrderFulfillment({ access_url: resolvedAccessUrl });
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || "Gagal memproses pesanan.");
@@ -1150,10 +1172,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               </div>
               <div>
                 <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold rounded-full mb-1">
-                  Pembayaran Terverifikasi (Lunas)
+                  {isZeroPrice ? 'Pendaftaran Berhasil (Gratis)' : 'Pembayaran Terverifikasi (Lunas)'}
                 </span>
                 <h4 className="font-black text-white text-base">
-                  {isBookingOrService
+                  {isZeroPrice
+                    ? 'Pendaftaran Berhasil Diterima!'
+                    : isBookingOrService
                     ? 'Sesi Konsultasi Berhasil Terjadwal!'
                     : isFood
                     ? 'Pesanan Menu Berhasil Diterima!'
@@ -1792,7 +1816,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 </div>
 
                 {/* Kontrol Pemilihan Kuantitas / Stepper (- [ Qty ] +) */}
-                {!isLimitSingleItem && (
+                {!isLimitSingleItem && !isDigital && (
                   <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                     <div>
                       <span className="text-[11px] font-bold text-slate-300 block">Kuantitas:</span>
@@ -2273,68 +2297,70 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               )}
             </div>
 
-            {/* Opsi Metode Pembayaran */}
-            <div className="space-y-2 pt-1">
-              <label className="text-slate-300 font-bold block">Pilih Cara Bayar</label>
-              
-              <label
-                onClick={() => setPaymentMethod('qris')}
-                className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition ${
-                  paymentMethod === 'qris'
-                    ? 'border-emerald-500 bg-emerald-950/30'
-                    : 'border-slate-800 bg-slate-950/60 hover:bg-slate-950'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="modal_payment_method"
-                  checked={paymentMethod === 'qris'}
-                  onChange={() => setPaymentMethod('qris')}
-                  className="mt-1 text-emerald-500"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-1 flex-wrap">
-                    <span className="font-bold text-white flex items-center gap-1">
-                      <QrCode className="w-3.5 h-3.5 text-emerald-400" /> QRIS Instan
-                    </span>
-                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                      Bebas Biaya Admin / Paling Cepat
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Biaya admin Rp 0. Akses produk langsung aktif.</p>
-                </div>
-              </label>
+            {/* Opsi Metode Pembayaran (Disembunyikan jika total Rp0) */}
+            {!isZeroPrice && (
+              <div className="space-y-2 pt-1">
+                <label className="text-slate-300 font-bold block">Pilih Cara Bayar</label>
 
-              {bankAccounts.length > 0 && (
                 <label
-                  onClick={() => setPaymentMethod('manual_transfer')}
+                  onClick={() => setPaymentMethod('qris')}
                   className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition ${
-                    paymentMethod === 'manual_transfer'
-                      ? 'border-blue-500 bg-blue-950/30'
+                    paymentMethod === 'qris'
+                      ? 'border-emerald-500 bg-emerald-950/30'
                       : 'border-slate-800 bg-slate-950/60 hover:bg-slate-950'
                   }`}
                 >
                   <input
                     type="radio"
                     name="modal_payment_method"
-                    checked={paymentMethod === 'manual_transfer'}
-                    onChange={() => setPaymentMethod('manual_transfer')}
-                    className="mt-1 text-blue-500"
+                    checked={paymentMethod === 'qris'}
+                    onChange={() => setPaymentMethod('qris')}
+                    className="mt-1 text-emerald-500"
                   />
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-1 flex-wrap">
                       <span className="font-bold text-white flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5 text-blue-400" /> Transfer Manual
+                        <QrCode className="w-3.5 h-3.5 text-emerald-400" /> QRIS Instan
                       </span>
-                      <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                        Bebas Biaya Admin + Kode Unik
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                        Bebas Biaya Admin / Paling Cepat
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Transfer langsung ke rekening bank seller tanpa biaya admin dengan 3 digit kode verifikasi.</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Biaya admin Rp 0. Akses produk langsung aktif.</p>
                   </div>
                 </label>
-              )}
-            </div>
+
+                {bankAccounts.length > 0 && (
+                  <label
+                    onClick={() => setPaymentMethod('manual_transfer')}
+                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition ${
+                      paymentMethod === 'manual_transfer'
+                        ? 'border-blue-500 bg-blue-950/30'
+                        : 'border-slate-800 bg-slate-950/60 hover:bg-slate-950'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="modal_payment_method"
+                      checked={paymentMethod === 'manual_transfer'}
+                      onChange={() => setPaymentMethod('manual_transfer')}
+                      className="mt-1 text-blue-500"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <span className="font-bold text-white flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5 text-blue-400" /> Transfer Manual
+                        </span>
+                        <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                          Bebas Biaya Admin + Kode Unik
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Transfer langsung ke rekening bank seller tanpa biaya admin dengan 3 digit kode verifikasi.</p>
+                    </div>
+                  </label>
+                )}
+              </div>
+            )}
 
             {/* Rincian Total */}
             <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-1.5 text-slate-300">
@@ -2366,18 +2392,20 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                   </div>
                 )
               )}
-              <div className="flex justify-between">
-                <span>Biaya Layanan & Admin</span>
-                <span className="text-emerald-400 font-semibold">
-                  Rp 0 (Bebas Biaya Admin)
-                </span>
-              </div>
-              {paymentMethod === 'qris' && currentUniqueCode > 0 ? (
+              {!isZeroPrice && (
+                <div className="flex justify-between">
+                  <span>Biaya Layanan & Admin</span>
+                  <span className="text-emerald-400 font-semibold">
+                    Rp 0 (Bebas Biaya Admin)
+                  </span>
+                </div>
+              )}
+              {!isZeroPrice && paymentMethod === 'qris' && currentUniqueCode > 0 ? (
                 <div className="flex justify-between text-emerald-400 font-medium">
                   <span>Potongan Kode Unik</span>
                   <span className="font-mono text-emerald-400 font-bold">-Rp {currentUniqueCode.toLocaleString("id-ID")}</span>
                 </div>
-              ) : paymentMethod === 'manual_transfer' ? (
+              ) : !isZeroPrice && paymentMethod === 'manual_transfer' ? (
                 <div className="flex justify-between">
                   <span>Kode Unik Verifikasi</span>
                   <span className="font-mono text-blue-400">+{currentUniqueCode}</span>
@@ -2385,7 +2413,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               ) : null}
               <div className="border-t border-slate-800 pt-1.5 flex justify-between font-bold text-white">
                 <span>{categoryLabels.checkoutTotalLabel}</span>
-                <span className="text-emerald-400 text-sm">Rp {totalAmount.toLocaleString("id-ID")}</span>
+                <span className="text-emerald-400 text-sm">
+                  {isZeroPrice ? 'Rp 0 (Gratis)' : `Rp ${totalAmount.toLocaleString("id-ID")}`}
+                </span>
               </div>
             </div>
 
@@ -2402,7 +2432,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               ) : (
                 <>
                   <span>
-                    {isFood
+                    {isZeroPrice
+                      ? (categoryLabels.freeCtaLabel || 'Daftar Sekarang (Gratis)')
+                      : isFood
                       ? `Pesan Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`
                       : isPhysical
                       ? `Konfirmasi & Pesan Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`
