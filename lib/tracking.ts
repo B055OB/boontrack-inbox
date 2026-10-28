@@ -496,11 +496,6 @@ export function trackWhatsAppConsultation(product: { name: string; price: number
       value: product.price,
       currency: "IDR"
     });
-    win.fbq("track", "Lead", {
-      content_name: product.name,
-      value: product.price,
-      currency: "IDR"
-    });
   }
 
   if (win.ttq) {
@@ -571,6 +566,13 @@ export function trackInitiateCheckout(
 
 export function trackClientPurchase(orderId: string, amount: number, productTitle?: string): void {
   if (typeof window === "undefined" || !orderId) return;
+
+  // P0-B Safety Guard: Do NOT emit Purchase or CompletePayment event when amount <= 0
+  if (amount <= 0) {
+    trackClientRegistration(orderId, productTitle);
+    return;
+  }
+
   const cleanOrderId = String(orderId).trim();
   const dedupKey = `tracked_purchase_${cleanOrderId}`;
 
@@ -599,6 +601,43 @@ export function trackClientPurchase(orderId: string, amount: number, productTitl
     win.ttq.track("CompletePayment", {
       content_name: productTitle || "Order Checkout",
       value: amount,
+      currency: "IDR"
+    }, { event_id: eventId });
+  }
+}
+
+export function trackClientRegistration(orderId: string, productTitle?: string): void {
+  if (typeof window === "undefined" || !orderId) return;
+  const cleanOrderId = String(orderId).trim();
+  const dedupKey = `tracked_registration_${cleanOrderId}`;
+
+  // Deduplication guard berbasis order_id: mencegah refresh halaman memicu sinyal ganda
+  try {
+    if (sessionStorage.getItem(dedupKey) || localStorage.getItem(dedupKey)) {
+      console.log(`[Tracking] Registration event for order ${cleanOrderId} already tracked. Skipping duplicate.`);
+      return;
+    }
+    sessionStorage.setItem(dedupKey, "1");
+    localStorage.setItem(dedupKey, "1");
+  } catch {}
+
+  const win = window as unknown as Record<string, any>;
+  const eventId = `REG_${cleanOrderId}`;
+
+  if (win.fbq) {
+    win.fbq("track", "CompleteRegistration", {
+      content_name: productTitle || "Free Registration",
+      status: true,
+      value: 0,
+      currency: "IDR"
+    }, { eventID: eventId });
+  }
+
+  if (win.ttq) {
+    win.ttq.track("CompleteRegistration", {
+      content_name: productTitle || "Free Registration",
+      status: true,
+      value: 0,
       currency: "IDR"
     }, { event_id: eventId });
   }

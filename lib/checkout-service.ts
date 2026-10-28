@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
-import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult, DEFAULT_PRODUCTS } from "@/lib/product-catalog";
+import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl, isBatch1MockCheckout, getBatch1MockCheckoutResult, DEFAULT_PRODUCTS, isDigitalProduct } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 import { generateUniqueCodeForTenant } from "@/lib/unique-code-generator";
 import { normalizePhoneToE164, isValidIndonesianPhone } from "@/lib/phone";
@@ -20,7 +20,7 @@ export interface CreateOrderPayload {
   basePrice?: number;
   adminFee?: number;
   uniqueCode?: number;
-  paymentMethod?: 'qris' | 'manual_transfer';
+  paymentMethod?: 'qris' | 'manual_transfer' | 'free';
   isGateway?: boolean;
   isXendit?: boolean;
   affiliateCommission?: number;
@@ -341,9 +341,23 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   }
 
   const paymentMethod = payload.paymentMethod || 'qris';
-  const orderQuantity = payload.quantity && payload.quantity > 0 ? payload.quantity : 1;
-  const unitPrice = payload.unitPrice ?? payload.basePrice ?? payload.amount;
-  const basePrice = payload.basePrice ?? (unitPrice * orderQuantity);
+  const normType = (payload.productType || (matchedProd?.product_type || matchedProd?.type || '')).toUpperCase().trim();
+  const isDigital = isDigitalProduct(matchedProd) || normType === 'DIGITAL' || normType === 'ECOURSE';
+  const orderQuantity = isDigital ? 1 : (payload.quantity && payload.quantity > 0 ? payload.quantity : 1);
+
+  // Authoritative Backend Price Snapshot (Zero Client Financial Authority):
+  // Jika matchedProd ditemukan dari database/metadata tenant resmi, prioritaskan harga resmi dari DB!
+  let authoritativeUnitPrice: number | null = null;
+  if (matchedProd) {
+    if (matchedProd.promo_price !== undefined && matchedProd.promo_price !== null && matchedProd.promo_price >= 0 && (matchedProd.price === undefined || matchedProd.promo_price < matchedProd.price)) {
+      authoritativeUnitPrice = Number(matchedProd.promo_price);
+    } else if (matchedProd.price !== undefined && matchedProd.price !== null) {
+      authoritativeUnitPrice = Number(matchedProd.price);
+    }
+  }
+
+  const unitPrice = authoritativeUnitPrice !== null ? authoritativeUnitPrice : (payload.unitPrice ?? payload.basePrice ?? payload.amount);
+  const basePrice = authoritativeUnitPrice !== null ? (unitPrice * orderQuantity) : (payload.basePrice ?? (unitPrice * orderQuantity));
 
   // Validasi Voucher Snapshot (Server-Side)
   let verifiedProductDiscount = payload.productDiscount ?? 0;
@@ -372,7 +386,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const netProductPrice = Math.max(0, basePrice - productDiscount) + orderBumpsTotal;
 
   // Kunci pengamanan: vertikal non-shipping (jasa, digital, dsb.) dipaksa 0 ongkir & tanpa kurir
-  const normType = (payload.productType || '').toUpperCase().trim();
   const isNonShipping = [
     'FIELD_SERVICE',
     'LOCAL_SERVICE',
@@ -417,7 +430,31 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     tenantRowData?.metadata?.payment_settings?.mode === 'PAYMENT_GATEWAY' ||
     !isManualTransfer;
 
-  const uniqueCode = isGatewayOrQris
+  // P0-A: Authoritative Zero-Price Verification Guard
+  // Suatu order HANYA berhak menjadi gratis (Rp0) jika:
+  // 1. Client mengajukan klaim gratis (payload.amount === 0 atau paymentMethod === 'free')
+  // 2. matchedProd terverifikasi ada dalam database katalog tenant yang bersangkutan (Anti-Cross-Tenant)
+  // 3. Harga resmi di backend memang Rp0 (authoritativeUnitPrice === 0) ATAU netProductPrice === 0 berkat voucher resmi yang valid
+  // 4. Biaya ongkir bersih (netShippingCost) bernilai Rp0
+  const isClaimingZeroPrice = Boolean(payload.amount === 0 || payload.paymentMethod === 'free');
+
+  if (isClaimingZeroPrice && !matchedProd) {
+    throw new Error('Produk tidak ditemukan dalam katalog resmi tenant atau tidak valid untuk pendaftaran gratis.');
+  }
+
+  const isZeroPriceOrder = Boolean(
+    isClaimingZeroPrice &&
+    matchedProd &&
+    (authoritativeUnitPrice === 0 || (authoritativeUnitPrice !== null && netProductPrice === 0)) &&
+    netShippingCost === 0
+  );
+
+  // Jika client mencoba mengeklaim gratis padahal produk memiliki harga positif dan tidak ter-cover diskon valid:
+  if (isClaimingZeroPrice && !isZeroPriceOrder) {
+    throw new Error('Ketidaksesuaian harga: Produk ini berbayar dan tidak memenuhi syarat untuk pendaftaran gratis.');
+  }
+
+  const uniqueCode = (isGatewayOrQris || isZeroPriceOrder)
     ? 0
     : (payload.uniqueCode !== undefined && payload.uniqueCode !== null
       ? payload.uniqueCode
@@ -429,7 +466,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }));
 
   let grossAmount = payload.amount;
-  if (isGatewayOrQris) {
+  if (isZeroPriceOrder) {
+    grossAmount = 0;
+  } else if (isGatewayOrQris) {
     grossAmount = netProductPrice + netShippingCost;
   } else if (!grossAmount || verifiedOrderBumps.length > 0 || grossAmount === (netProductPrice + netShippingCost)) {
     grossAmount = netProductPrice + netShippingCost + uniqueCode;
@@ -465,9 +504,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     product_type: payload.productType || null,
     fulfillment_metadata: orderFulfillmentMeta,
     order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
-    admin_fee: adminFee,
-    unique_code: uniqueCode,
-    payment_method: paymentMethod,
+    admin_fee: isZeroPriceOrder ? 0 : adminFee,
+    unique_code: isZeroPriceOrder ? 0 : uniqueCode,
+    payment_method: isZeroPriceOrder ? 'free' : paymentMethod,
     affiliate_commission: affiliateCommission,
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
@@ -485,7 +524,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
     ctwa_clid: payload.ctwa_clid || payload.tracking?.ctwa_clid || null,
-    status: "WAITING_PAYMENT",
+    status: isZeroPriceOrder ? "PAID" : "WAITING_PAYMENT",
+    payment_status: isZeroPriceOrder ? "PAID" : "PENDING",
+    order_status: isZeroPriceOrder ? "COMPLETED" : "PENDING",
+    paid_at: isZeroPriceOrder ? new Date().toISOString() : null,
     created_at: new Date().toISOString()
   };
 
@@ -574,8 +616,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     product_id: resolvedProductId,
     product_title: payload.productTitle,
     quantity: orderQuantity,
-    unit_price: unitPrice,
     gross_amount: grossAmount,
+    total_amount: grossAmount,
+    admin_fee: isZeroPriceOrder ? 0 : adminFee,
+    unique_code: isZeroPriceOrder ? 0 : uniqueCode,
+    payment_method: isZeroPriceOrder ? 'free' : paymentMethod,
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
     customer_email: payload.customerEmail || null,
@@ -597,9 +642,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     ttclid: payload.tracking?.ttclid || null,
     briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
     customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
-    status: "PENDING",
-    payment_status: "PENDING",
-    order_status: "PENDING",
+    status: isZeroPriceOrder ? "PAID" : "PENDING",
+    payment_status: isZeroPriceOrder ? "PAID" : "PENDING",
+    order_status: isZeroPriceOrder ? "COMPLETED" : "PENDING",
+    paid_at: isZeroPriceOrder ? new Date().toISOString() : null,
     fulfillment_type: payload.fulfillmentType || 'DELIVERY',
     fulfillment_metadata: orderFulfillmentMeta,
     metadata: {
@@ -610,6 +656,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       reference_token: payload.reference_token || null,
       fulfillment_type: payload.fulfillmentType || 'DELIVERY',
       pickup_info: payload.pickupInfo || null,
+      payment_method: isZeroPriceOrder ? 'free' : paymentMethod,
+      is_free: isZeroPriceOrder,
+      unique_code: isZeroPriceOrder ? 0 : uniqueCode,
+      admin_fee: isZeroPriceOrder ? 0 : adminFee,
       quantity: orderQuantity,
       unit_price: unitPrice,
       product_subtotal: unitPrice * orderQuantity,
@@ -654,11 +704,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       reseller_commission_amount: finalResellerCommissionAmount,
       attribution_type: finalAttributionType,
       quantity: orderQuantity,
-      payment_status: "PENDING",
-      order_status: "PENDING",
+      payment_status: isZeroPriceOrder ? "PAID" : "PENDING",
+      order_status: isZeroPriceOrder ? "COMPLETED" : "PENDING",
+      paid_at: isZeroPriceOrder ? new Date().toISOString() : null,
       briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
       customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
-      status: "PENDING",
+      status: isZeroPriceOrder ? "PAID" : "PENDING",
       metadata: {
         tracking_context: resolvedTrackingContext,
         city: resolvedCity,
@@ -764,7 +815,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let qrCodeUrl = "";
   let invoiceUrl = `/checkout/${orderId}`;
 
-  if (paymentMethod === 'qris') {
+  if (paymentMethod === 'qris' && !isZeroPriceOrder) {
     const pcfg = tenantRowData?.metadata?.payment_config;
     let tenantStaticQris =
       payload.tenantStaticQris ||
@@ -986,11 +1037,16 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     qrString,
     qr_string: qrString,
     qrCodeUrl,
-    invoiceUrl,
+    invoiceUrl: isZeroPriceOrder ? `/checkout/${orderId}?free=true` : invoiceUrl,
     referenceToken: payload.reference_token || null,
-    uniqueCode,
-    unique_code: uniqueCode,
-    grossAmount,
-    gross_amount: grossAmount,
+    uniqueCode: isZeroPriceOrder ? 0 : uniqueCode,
+    unique_code: isZeroPriceOrder ? 0 : uniqueCode,
+    grossAmount: isZeroPriceOrder ? 0 : grossAmount,
+    gross_amount: isZeroPriceOrder ? 0 : grossAmount,
+    isFree: isZeroPriceOrder,
+    is_free: isZeroPriceOrder,
+    status: isZeroPriceOrder ? "PAID" : "PENDING",
+    payment_status: isZeroPriceOrder ? "PAID" : "PENDING",
+    success: true,
   };
 }

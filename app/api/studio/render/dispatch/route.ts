@@ -9,21 +9,21 @@ const IS_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
   if (!tenantIdentifier) {
-    const { data } = await supabase.from('tenants').select('id, slug, metadata').limit(1).maybeSingle();
-    return data || null;
+    return null;
   }
 
   const clean = tenantIdentifier.trim().toLowerCase();
+  if (clean === 'creator' || clean === 'sandbox') {
+    return null;
+  }
+
   if (IS_UUID_REGEX.test(clean)) {
-    const { data } = await supabase.from('tenants').select('id, slug, metadata').eq('id', clean).maybeSingle();
+    const { data } = await supabase.from('tenants').select('id, slug, metadata, tier').eq('id', clean).maybeSingle();
     if (data) return data;
   }
 
-  const { data } = await supabase.from('tenants').select('id, slug, metadata').eq('slug', clean).maybeSingle();
-  if (data) return data;
-
-  const { data: fallback } = await supabase.from('tenants').select('id, slug, metadata').limit(1).maybeSingle();
-  return fallback || null;
+  const { data } = await supabase.from('tenants').select('id, slug, metadata, tier').eq('slug', clean).maybeSingle();
+  return data || null;
 }
 
 /**
@@ -36,6 +36,18 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { tenant_id, product_name, scenes, assets } = body;
 
+    const rawTenant = String(tenant_id || '').trim().toLowerCase();
+    if (rawTenant === 'creator' || rawTenant === 'sandbox') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SANDBOX_PROHIBITED',
+          message: 'Sesi eksplorasi/sandbox tidak diizinkan untuk mengirim job render final. Silakan aktifkan workspace resmi.',
+        },
+        { status: 403 }
+      );
+    }
+
     if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
       return NextResponse.json(
         { success: false, message: 'Daftar adegan (scenes) tidak boleh kosong.' },
@@ -47,8 +59,20 @@ export async function POST(req: Request) {
     const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
     if (!tenant) {
       return NextResponse.json(
-        { success: false, message: 'Tenant workspace tidak ditemukan.' },
+        { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant workspace tidak ditemukan.' },
         { status: 404 }
+      );
+    }
+
+    const tenantMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
+    if (tenantMeta.is_sandbox === true || String(tenant.tier || '').toUpperCase() === 'SANDBOX') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SANDBOX_PROHIBITED',
+          message: 'Tenant sandbox tidak diizinkan untuk mengirim job render final produksi.',
+        },
+        { status: 403 }
       );
     }
 

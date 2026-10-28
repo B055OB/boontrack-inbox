@@ -55,6 +55,12 @@ export class StudioCreditService {
     const clean = (tenantIdOrSlug || '').trim();
     if (!clean) return null;
 
+    // Explicit Sandbox Guard: 'creator' or 'sandbox' must never resolve as a real tenant
+    const lowerClean = clean.toLowerCase();
+    if (lowerClean === 'creator' || lowerClean === 'sandbox') {
+      return null;
+    }
+
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) return null;
 
@@ -62,7 +68,7 @@ export class StudioCreditService {
     if (isValidUuid(clean)) {
       query = query.eq('id', clean);
     } else {
-      query = query.eq('slug', clean.toLowerCase());
+      query = query.eq('slug', lowerClean);
     }
 
     const { data } = await query.maybeSingle();
@@ -165,9 +171,29 @@ export class StudioCreditService {
     description: string = 'Studio render job',
     jobId?: string
   ): Promise<CreditReserveResult> {
+    const cleanId = (tenantIdOrSlug || '').trim().toLowerCase();
+    if (cleanId === 'creator' || cleanId === 'sandbox') {
+      return {
+        success: false,
+        statusCode: 403,
+        status_code: 'SANDBOX_PROHIBITED',
+        message: 'Sesi sandbox/eksplorasi tidak dapat mereservasi atau memotong kredit produksi.',
+      };
+    }
+
     const tenant = await this.resolveTenant(tenantIdOrSlug);
     if (!tenant) {
       return { success: false, statusCode: 404, message: 'Tenant tidak ditemukan.' };
+    }
+
+    const tenantMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
+    if (tenantMeta.is_sandbox === true || String(tenant.tier || '').toUpperCase() === 'SANDBOX') {
+      return {
+        success: false,
+        statusCode: 403,
+        status_code: 'SANDBOX_PROHIBITED',
+        message: 'Tenant sandbox tidak diizinkan untuk mereservasi kredit produksi.',
+      };
     }
 
     const supabase = getSupabaseAdmin();

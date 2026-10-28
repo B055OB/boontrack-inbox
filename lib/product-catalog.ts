@@ -14,7 +14,9 @@ export function isSection10TakeoverEligible(
   const isOnlineBoostTenant = (tenant || '').toLowerCase() === 'onlineboost';
   const isObBatch1Target = Boolean(
     (sku || '').toUpperCase() === 'OB-BATCH1-249K' ||
-    (slug || '').toLowerCase() === 'ob-batch1-249k'
+    (sku || '').toUpperCase() === 'ACADEMY_CTWA_BATCH1_SCALE' ||
+    (slug || '').toLowerCase() === 'ob-batch1-249k' ||
+    (slug || '').toLowerCase() === 'kelas-inkubasi-ctwa-batch-1-scale'
   );
   return Boolean(isOnlineBoostTenant && isObBatch1Target);
 }
@@ -656,6 +658,49 @@ export function mapToDbProductType(rawProductType?: string, category?: string): 
     return 'URL_LINK';
   }
   return 'DIGITAL_FILE';
+}
+
+/**
+ * Resolves whether a product is a Digital product vs Physical (default).
+ * Prioritizes product metadata per Directive Step 2.
+ * Falls back to physical behavior (false) for legacy products without metadata (backward compatible).
+ */
+export function isDigitalProduct(product?: Partial<ProductItem> | null): boolean {
+  if (!product) return false;
+  const meta = product.metadata || {};
+
+  // 1. Prioritas metadata produk eksplisit (Source of Truth per Directive Step 2)
+  if (meta.product_type) {
+    const mpt = String(meta.product_type).toUpperCase().trim();
+    if (mpt === 'DIGITAL' || mpt === 'DIGITAL_FILE') return true;
+    if (mpt === 'PHYSICAL') return false;
+  }
+  if (meta.type) {
+    const mt = String(meta.type).toLowerCase().trim();
+    if (mt === 'digital') return true;
+    if (mt === 'physical') return false;
+  }
+  if (meta.is_digital !== undefined && meta.is_digital !== null) {
+    return Boolean(meta.is_digital);
+  }
+
+  // 2. Atribut level atas jika ada spesifikasi eksplisit
+  if (product.is_digital !== undefined && product.is_digital !== null) {
+    return Boolean(product.is_digital);
+  }
+  if (product.product_type) {
+    const pt = String(product.product_type).toUpperCase().trim();
+    if (pt === 'DIGITAL' || pt === 'DIGITAL_FILE') return true;
+    if (pt === 'PHYSICAL') return false;
+  }
+  if (product.type) {
+    const t = String(product.type).toLowerCase().trim();
+    if (t === 'digital') return true;
+    if (t === 'physical') return false;
+  }
+
+  // 3. Fallback backward compatibility: Default ke Fisik (false) per Directive Step 2.3
+  return false;
 }
 
 export interface ProductItem {

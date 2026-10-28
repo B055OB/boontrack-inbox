@@ -30,7 +30,7 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
-import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
+import { trackClientPurchase, trackClientRegistration, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 import { generateDynamicQRIS, validateAndExtractQr, extractRawQrString } from '@/lib/qris-dynamic';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -71,9 +71,17 @@ export default function CheckoutPage({ params }: Props) {
 
     try {
       const grossVal = Number(orderData.total_amount ?? orderData.gross_amount ?? orderData.amount ?? 0);
+      const isFree = orderData.payment_method === 'free' || grossVal === 0 || Boolean(orderData.metadata?.is_free);
       const prodName = orderData.product_title || 'Produk';
       const prodId = String(orderData.product_id || orderData.id || '');
       const rawOrderId = String(orderData.id || orderId || '').trim();
+
+      // P0-B Safety: Zero-price registration must never emit a false payment Purchase or CompletePayment event
+      if (isFree) {
+        trackClientRegistration(rawOrderId, prodName);
+        return;
+      }
+
       const eventId = `PURCHASE_${rawOrderId}`;
 
       // Panggil helper trackClientPurchase dengan deduplikasi storage & eventId standar
@@ -571,7 +579,17 @@ export default function CheckoutPage({ params }: Props) {
       return;
     }
 
-    if (currentOrder.payment_method === 'manual_transfer') {
+    const isFreeOrder =
+      currentOrder.payment_method === 'free' ||
+      Number(currentOrder.gross_amount ?? currentOrder.total_amount ?? currentOrder.amount ?? 0) === 0;
+
+    const isOrderAlreadyPaid =
+      currentOrder.status === 'PAID' ||
+      currentOrder.payment_status === 'PAID' ||
+      currentOrder.order_status === 'PAID' ||
+      currentOrder.status === 'COMPLETED';
+
+    if (currentOrder.payment_method === 'manual_transfer' || isFreeOrder || isOrderAlreadyPaid) {
       setIsGeneratingQris(false);
       return;
     }
@@ -680,10 +698,12 @@ export default function CheckoutPage({ params }: Props) {
   }, [order, orderId, isGeneratingQris, bankAccounts, tenant]);
 
   useEffect(() => {
-    if (order && !order.qr_code_url && !order.qr_string && order.payment_method !== 'manual_transfer') {
+    const isFree = order?.payment_method === 'free' || Number(order?.gross_amount ?? order?.total_amount ?? order?.amount ?? 0) === 0;
+    const isPaid = order?.status === 'PAID' || order?.payment_status === 'PAID' || order?.order_status === 'PAID' || order?.status === 'COMPLETED';
+    if (order && !order.qr_code_url && !order.qr_string && order.payment_method !== 'manual_transfer' && !isFree && !isPaid) {
       ensureDynamicQris();
     }
-  }, [order?.id, order?.payment_method, order?.qr_code_url, order?.qr_string, ensureDynamicQris]);
+  }, [order?.id, order?.payment_method, order?.qr_code_url, order?.qr_string, order?.gross_amount, order?.total_amount, order?.status, order?.payment_status, ensureDynamicQris]);
 
   // Inisialisasi Meta Pixel & TikTok Pixel serta trigger Purchase HANYA jika order berstatus PAID
   useEffect(() => {
@@ -1104,7 +1124,11 @@ export default function CheckoutPage({ params }: Props) {
           {isPaidOrder ? (
             <span className="text-xs uppercase tracking-wider font-bold text-emerald-400 bg-emerald-950/80 px-3.5 py-1 rounded-full border border-emerald-800/60 inline-flex items-center gap-1.5 shadow-sm">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Pembayaran Telah Terverifikasi (LUNAS)</span>
+              <span>
+                {grossAmount === 0 || order?.payment_method === 'free'
+                  ? 'Pendaftaran Berhasil (GRATIS)'
+                  : 'Pembayaran Telah Terverifikasi (LUNAS)'}
+              </span>
             </span>
           ) : isWaitingConfirmation ? (
             <span className="text-xs uppercase tracking-wider font-bold text-amber-400 bg-amber-950/80 px-3.5 py-1 rounded-full border border-amber-800/60 inline-flex items-center gap-1.5 shadow-sm">

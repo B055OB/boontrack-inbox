@@ -77,10 +77,37 @@ const NAV_ITEMS = [
 ];
 
 const TENANTS = [
-  { id: 'atmosfitnes', name: 'Atmosfitnes Hub (Main)', status: 'ACTIVE', branch: 'Pusat' },
-  { id: 'atmosfitnes-south', name: 'Atmosfitnes Studio', status: 'ACTIVE', branch: 'Cabang Selatan' },
+  { id: 'acme-fitness', name: 'Acme Fitness Hub (Main)', status: 'ACTIVE', branch: 'Pusat' },
+  { id: 'acme-fitness-south', name: 'Acme Fitness Studio', status: 'ACTIVE', branch: 'Cabang Selatan' },
   { id: 'powerfit-demo', name: 'PowerFit Gym (Tenant Demo)', status: 'DEV', branch: 'Development' },
 ];
+
+function BoonTrackLogoIcon({ className = 'w-8 h-8 rounded-lg' }: { className?: string }) {
+  const [imgError, setImgError] = useState(false);
+
+  if (imgError) {
+    return (
+      <div
+        className={`${className} bg-gradient-to-tr from-[#7C3AED] to-[#2563EB] flex items-center justify-center shadow-md shadow-purple-500/20 ring-1 ring-blue-500/30 shrink-0`}
+      >
+        <span className="font-black text-white text-sm select-none">B</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${className} bg-white/95 p-1 flex items-center justify-center shadow-md shadow-blue-500/20 ring-1 ring-blue-500/30 shrink-0 overflow-hidden`}
+    >
+      <img
+        src="/boontrack-logo.png"
+        alt="BoonTrack"
+        className="w-full h-full object-contain rounded-md"
+        onError={() => setImgError(true)}
+      />
+    </div>
+  );
+}
 
 export default function GymLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -117,17 +144,15 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Dumbbell className="w-5 h-5 text-slate-950 stroke-[2.5]" />
-          </div>
+          <BoonTrackLogoIcon className="w-8 h-8 rounded-lg" />
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm text-white tracking-tight">Atmosfitnes</span>
+              <span className="font-bold text-sm text-white tracking-tight">BoonTrack</span>
               <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 Gym Admin
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">BoonTrack Vertical</p>
+            <p className="text-[11px] text-slate-400">IoT Commerce OS</p>
           </div>
         </div>
 
@@ -150,18 +175,17 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
           {/* Brand Header */}
           <div className="p-5 border-b border-slate-800/80">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 flex items-center justify-center shadow-xl shadow-emerald-500/25 ring-2 ring-emerald-500/20">
-                <Dumbbell className="w-5 h-5 text-slate-950 stroke-[2.5]" />
-              </div>
+              <BoonTrackLogoIcon className="w-8 h-8 rounded-lg" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="font-extrabold text-base tracking-tight text-white truncate">
-                    ATMOS<span className="text-emerald-400">FITNES</span>
+                  <h1 className="font-bold text-base tracking-tight text-white truncate">
+                    BoonTrack
                   </h1>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <p className="text-xs text-slate-400 font-medium truncate">Gate System Online</p>
+                  <p className="text-xs text-slate-400 font-medium truncate">
+                    IoT Commerce OS
+                  </p>
                 </div>
               </div>
             </div>
@@ -271,7 +295,7 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
                   <Zap className="w-3.5 h-3.5 text-amber-400" />
                   Tenant ID
                 </span>
-                <span className="font-mono text-emerald-400 font-semibold">atmosfitnes</span>
+                <span className="font-mono text-emerald-400 font-semibold">acme-fitness-hub</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400 flex items-center gap-1.5">
@@ -319,17 +343,20 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto max-h-[100dvh]">
         {/* Top Header Bar */}
         <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/60 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3.5">
+            <BoonTrackLogoIcon className="w-9 h-9 rounded-lg" />
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white tracking-tight">Atmosfitnes Gym Control Hub</h2>
+                <h2 className="text-lg font-bold text-white tracking-tight">
+                  BoonTrack IoT &bull; Acme Fitness Hub Control Center
+                </h2>
                 <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   GATE & POS LIVE
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Tenant: <span className="text-slate-200 font-medium">atmosfitnes</span> &bull; RFID Gate &bull; Zumba Lt 2 &bull; POS Cafe &bull; Billing
+                Tenant: <span className="text-slate-200 font-medium">acme-fitness-hub</span> &bull; RFID Gate &bull; Studio &bull; POS Cafe &bull; Billing
               </p>
             </div>
           </div>

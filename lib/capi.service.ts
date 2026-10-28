@@ -487,6 +487,22 @@ export async function dispatchMetaCAPIPurchaseForOrder(
       order.total_amount ?? order.gross_amount ?? order.amount ?? passedAmount ?? 0
     );
 
+    // P0-B: FALSE PURCHASE SIGNAL SUPPRESSION
+    // Zero-price free registration must never fire a Purchase event on Meta CAPI
+    const isFreeOrder =
+      Boolean(order.metadata?.is_free) ||
+      order.payment_method === 'free' ||
+      order.metadata?.payment_method === 'free' ||
+      grossAmount <= 0;
+
+    if (isFreeOrder) {
+      return {
+        success: true,
+        skipped: true,
+        reason: 'Zero-price order (Rp0): Purchase event suppressed to prevent false ad conversion attribution',
+      };
+    }
+
     const eventId = `PURCHASE_${order.id}`;
 
     // 7. Dispatch Event Purchase

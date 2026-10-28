@@ -281,10 +281,11 @@ export default function StudioDeskPage() {
     const creatorSlug = 'creator';
     const creatorSession = {
       slug: creatorSlug,
-      name: 'Creator Workspace',
+      name: 'Creator Workspace (Sandbox)',
       tier: 'FREE',
       render_credits: 1,
       is_fallback: true,
+      is_sandbox: true,
     };
     persistStudioSession(creatorSlug, creatorSession);
     setTenantSlug(creatorSlug);
@@ -309,6 +310,7 @@ export default function StudioDeskPage() {
       document.cookie = `bt_tenant=; path=/${domainStr}; max-age=0`;
       document.cookie = `merchant_session=; path=/${domainStr}; max-age=0`;
       document.cookie = `merchant_store=; path=/${domainStr}; max-age=0`;
+      document.cookie = `bt_merchant_token=; path=/${domainStr}; max-age=0`;
 
       setHasValidSession(false);
       setSessionData(null);

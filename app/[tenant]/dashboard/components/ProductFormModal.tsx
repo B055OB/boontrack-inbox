@@ -17,6 +17,7 @@ import {
   sanitizeProductPayload,
   safeJsonStringify,
   isDomOrReactFiber,
+  isDigitalProduct,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { getProductPageUrl } from '@/lib/utils/storefrontUrl';
@@ -245,6 +246,32 @@ export default function ProductFormModal({
         enable_cart: enabled,
       },
     }));
+  };
+
+  const isDigital = isDigitalProduct(safeForm);
+
+  const handleSelectProductType = (kind: 'physical' | 'digital') => {
+    const isDig = kind === 'digital';
+    setProductForm((prev) => {
+      const safeP = prev || ({} as ProductItem);
+      const prevMeta = safeP.metadata || {};
+      return {
+        ...safeP,
+        product_type: isDig ? 'DIGITAL' : 'PHYSICAL',
+        type: isDig ? 'digital' : 'physical',
+        is_digital: isDig,
+        requires_shipping: !isDig,
+        weight_grams: isDig ? 0 : (safeP.weight_grams ?? 1000),
+        stock: isDig ? 999999 : (safeP.stock ?? 100),
+        is_unlimited: isDig ? true : (safeP.is_unlimited ?? false),
+        metadata: {
+          ...prevMeta,
+          product_type: isDig ? 'DIGITAL' : 'PHYSICAL',
+          type: isDig ? 'digital' : 'physical',
+          is_digital: isDig,
+        },
+      };
+    });
   };
 
   const isServiceCluster = currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' || currentVerticalKey === 'creator_agency' || activeVerticalMeta.backendType === 'service';
@@ -931,6 +958,69 @@ export default function ProductFormModal({
               <span className="text-[10px] text-slate-400">
                 Vertikal toko: <span className="text-slate-600 font-semibold">{activeVerticalMeta.label}</span>
               </span>
+            </div>
+          </div>
+
+          {/* 2b. Pilihan Tipe Produk: Fisik (Default) vs Digital */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-blue-600" />
+                <span>Tipe Produk</span>
+              </label>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                isDigital
+                  ? 'bg-purple-100 text-purple-700 border-purple-200'
+                  : 'bg-blue-100 text-blue-700 border-blue-200'
+              }`}>
+                {isDigital ? '⚡ Produk Digital' : '📦 Produk Fisik (Default)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleSelectProductType('physical')}
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                  !isDigital
+                    ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 text-blue-950 shadow-xs'
+                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5">
+                    📦 Produk Fisik (Default)
+                  </span>
+                  {!isDigital && (
+                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                  Barang ritel fisik yang memerlukan alamat pengiriman kurir/ekspedisi &amp; kalkulasi ongkir.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectProductType('digital')}
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                  isDigital
+                    ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 shadow-xs'
+                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5">
+                    ⚡ Produk Digital
+                  </span>
+                  {isDigital && (
+                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                  E-course, file, webinar, tiket event, atau pendaftaran gratis/berbayar tanpa kurir fisik.
+                </p>
+              </button>
             </div>
           </div>
 

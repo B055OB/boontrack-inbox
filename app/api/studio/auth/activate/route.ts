@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { activateStudioRegistrationByToken, normalizeStudioPhone } from '@/lib/studio/auth';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 /**
  * POST /api/studio/auth/activate
@@ -47,19 +48,41 @@ export async function POST(req: Request) {
       render_credits: activatedTenant.metadata?.studio_workspace?.render_credits ?? 1,
     };
 
+    const signedToken = signMerchantSessionToken({
+      tenantSlug,
+      tenantId: activatedTenant.id,
+      role: 'OWNER',
+      name: tenantName,
+      phone: cleanPhone,
+    });
+
+    const isProd = process.env.NODE_ENV === 'production' && !process.env.VERCEL_DEV_MODE;
+    const cookieDomain = isProd ? '.boontrack.com' : undefined;
+
     const res = NextResponse.json({
       success: true,
       message: `Selamat! Workspace Studio "${tenantName}" berhasil diaktifkan dengan 1 Kredit Render Gratis.`,
       slug: tenantSlug,
+      token: signedToken,
       session: sessionData,
       redirect: '/desk',
     });
 
-    // Set cross-subdomain compatible cookies (.boontrack.com)
-    res.cookies.set('studio_session', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    res.cookies.set('merchant_store', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    res.cookies.set('merchant_session', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
-    res.cookies.set('bt_tenant', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax' });
+    // 1. Mandatory Cryptographically Signed Session Cookie (Enforced by Middleware & Edge Guards)
+    res.cookies.set('bt_merchant_token', signedToken, {
+      path: '/',
+      maxAge: 2592000,
+      sameSite: 'lax',
+      httpOnly: true,
+      secure: isProd,
+      domain: cookieDomain,
+    });
+
+    // 2. Set cross-subdomain compatible routing cookies (.boontrack.com)
+    res.cookies.set('studio_session', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+    res.cookies.set('merchant_store', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+    res.cookies.set('merchant_session', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
+    res.cookies.set('bt_tenant', tenantSlug, { path: '/', maxAge: 2592000, sameSite: 'lax', domain: cookieDomain });
 
     return res;
   } catch (err: any) {

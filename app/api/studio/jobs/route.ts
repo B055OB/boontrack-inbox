@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { extractMerchantSessionToken, verifyMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 export const runtime = 'nodejs';
 
@@ -146,26 +147,50 @@ export async function GET(req: Request) {
       );
     }
 
-    // 1. Authenticate user session via Supabase Auth server-side
-    const token = await extractTokenFromRequest(req);
-    if (!token) {
-      return NextResponse.json(
-        { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.' },
-        { status: 401 }
-      );
+    // 1. Authenticate session: check cryptographically signed bt_merchant_token FIRST, then Supabase Auth
+    let merchantAuthPayload: any = null;
+    let candidateMerchantToken = '';
+    try {
+      candidateMerchantToken = extractMerchantSessionToken(req as any);
+    } catch {
+      const rawCookie = req.headers.get('cookie') || '';
+      const match = rawCookie.match(/(?:^|;\s*)bt_merchant_token=([^;]+)/);
+      if (match && match[1]) {
+        candidateMerchantToken = decodeURIComponent(match[1].trim());
+      }
+    }
+    if (candidateMerchantToken) {
+      const verified = verifyMerchantSessionToken(candidateMerchantToken);
+      if (verified.valid && verified.payload) {
+        merchantAuthPayload = verified.payload;
+      }
     }
 
-    const { data: authData, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !authData?.user) {
-      return NextResponse.json(
-        { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.' },
-        { status: 401 }
-      );
-    }
+    let user: any = null;
+    let userId = '';
+    let userEmail = '';
 
-    const user = authData.user;
-    const userId = user.id;
-    const userEmail = (user.email || '').trim().toLowerCase();
+    if (!merchantAuthPayload) {
+      const token = await extractTokenFromRequest(req);
+      if (!token) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.' },
+          { status: 401 }
+        );
+      }
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !authData?.user) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.' },
+          { status: 401 }
+        );
+      }
+
+      user = authData.user;
+      userId = user.id;
+      userEmail = (user.email || '').trim().toLowerCase();
+    }
 
     // 2. Resolve target tenant
     const { searchParams } = new URL(req.url);
@@ -175,14 +200,15 @@ export async function GET(req: Request) {
 
     let resolvedTenant: any = null;
 
-    if (tenantParam) {
-      const cleanParam = tenantParam.trim().toLowerCase();
-      const isUuid = IS_UUID_REGEX.test(cleanParam);
+    if (merchantAuthPayload) {
+      // 2a. Resolve & enforce strict tenant binding for verified merchant token
+      const targetParam = (tenantParam || merchantAuthPayload.tenantSlug).trim().toLowerCase();
+      const isUuid = IS_UUID_REGEX.test(targetParam);
       let tQuery = supabase.from('tenants').select('id, slug, metadata');
       if (isUuid) {
-        tQuery = tQuery.eq('id', cleanParam);
+        tQuery = tQuery.eq('id', targetParam);
       } else {
-        tQuery = tQuery.eq('slug', cleanParam);
+        tQuery = tQuery.eq('slug', targetParam);
       }
       const { data: tData, error: tErr } = await tQuery.maybeSingle();
       if (tErr || !tData) {
@@ -191,78 +217,108 @@ export async function GET(req: Request) {
           { status: 403 }
         );
       }
-      resolvedTenant = tData;
-    } else {
-      // Auto-resolve active workspace tenant for this user
-      let tuQuery = supabase
-        .from('tenant_users')
-        .select('tenant_id')
-        .eq('is_active', true);
-      if (userEmail) {
-        tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
-      } else {
-        tuQuery = tuQuery.eq('user_id', userId);
-      }
-      const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
-      if (memberRow?.tenant_id) {
-        const { data: memberTenant } = await supabase
-          .from('tenants')
-          .select('id, slug, metadata')
-          .eq('id', memberRow.tenant_id)
-          .maybeSingle();
-        resolvedTenant = memberTenant;
-      }
 
-      if (!resolvedTenant) {
+      const tokenSlug = (merchantAuthPayload.tenantSlug || '').toLowerCase();
+      const tokenId = (merchantAuthPayload.tenantId || '').toLowerCase();
+      if (tokenSlug !== tData.slug.toLowerCase() && (!tokenId || tokenId !== tData.id.toLowerCase())) {
         return NextResponse.json(
-          { success: false, message: 'Forbidden: Parameter tenant_id diperlukan atau context workspace tidak ditemukan.' },
+          { success: false, message: 'Forbidden: Token sesi tidak cocok dengan tenant yang diminta.' },
           { status: 403 }
         );
       }
-    }
 
-    // 3. Verify user is owner or active member of the resolved tenant
-    const appRole = String(user.app_metadata?.role || user.app_metadata?.user_role || '').trim().toUpperCase();
-    const isSuperAdmin = appRole === 'SUPERADMIN';
-
-    const isOwner =
-      (resolvedTenant.user_id && resolvedTenant.user_id === userId) ||
-      (resolvedTenant.owner_id && resolvedTenant.owner_id === userId) ||
-      (resolvedTenant.metadata?.user_id && resolvedTenant.metadata.user_id === userId) ||
-      (resolvedTenant.metadata?.owner_id && resolvedTenant.metadata.owner_id === userId) ||
-      (userEmail && (
-        (resolvedTenant.email && resolvedTenant.email.toLowerCase().trim() === userEmail) ||
-        (resolvedTenant.owner_email && resolvedTenant.owner_email.toLowerCase().trim() === userEmail) ||
-        (resolvedTenant.metadata?.email && resolvedTenant.metadata.email.toLowerCase().trim() === userEmail) ||
-        (resolvedTenant.metadata?.owner_email && resolvedTenant.metadata.owner_email.toLowerCase().trim() === userEmail)
-      ));
-
-    let isMember = false;
-    if (!isSuperAdmin && !isOwner) {
-      try {
-        let memberQuery = supabase
-          .from('tenant_users')
-          .select('id, role, is_active')
-          .or(`tenant_id.eq.${resolvedTenant.id},tenant_slug.eq.${resolvedTenant.slug}`)
-          .eq('is_active', true);
-
-        if (userEmail) {
-          memberQuery = memberQuery.eq('email', userEmail);
-          const { data: memberRecords } = await memberQuery;
-          if (Array.isArray(memberRecords) && memberRecords.length > 0) {
-            isMember = true;
-          }
+      resolvedTenant = tData;
+    } else {
+      // 2b. Resolve target tenant for Supabase Auth user
+      if (tenantParam) {
+        const cleanParam = tenantParam.trim().toLowerCase();
+        const isUuid = IS_UUID_REGEX.test(cleanParam);
+        let tQuery = supabase.from('tenants').select('id, slug, metadata');
+        if (isUuid) {
+          tQuery = tQuery.eq('id', cleanParam);
+        } else {
+          tQuery = tQuery.eq('slug', cleanParam);
         }
-      } catch (tuErr) {
-        console.warn('[Studio Jobs API] Error checking tenant_users membership:', tuErr);
-      }
-    }
+        const { data: tData, error: tErr } = await tQuery.maybeSingle();
+        if (tErr || !tData) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Tenant tidak valid atau tidak ditemukan.' },
+            { status: 403 }
+          );
+        }
+        resolvedTenant = tData;
+      } else {
+        // Auto-resolve active workspace tenant for this user
+        let tuQuery = supabase
+          .from('tenant_users')
+          .select('tenant_id')
+          .eq('is_active', true);
+        if (userEmail) {
+          tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
+        } else {
+          tuQuery = tuQuery.eq('user_id', userId);
+        }
+        const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
+        if (memberRow?.tenant_id) {
+          const { data: memberTenant } = await supabase
+            .from('tenants')
+            .select('id, slug, metadata')
+            .eq('id', memberRow.tenant_id)
+            .maybeSingle();
+          resolvedTenant = memberTenant;
+        }
 
-    if (!isSuperAdmin && !isOwner && !isMember) {
-      return NextResponse.json(
-        { success: false, message: 'Forbidden: Anda tidak memiliki hak akses ke data tenant ini.' },
-        { status: 403 }
-      );
+        if (!resolvedTenant) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Parameter tenant_id diperlukan atau context workspace tidak ditemukan.' },
+            { status: 403 }
+          );
+        }
+      }
+
+      // 3. Verify Supabase Auth user is owner or active member of the resolved tenant
+      const appRole = String(user.app_metadata?.role || user.app_metadata?.user_role || '').trim().toUpperCase();
+      const isSuperAdmin = appRole === 'SUPERADMIN';
+
+      const isOwner =
+        (resolvedTenant.user_id && resolvedTenant.user_id === userId) ||
+        (resolvedTenant.owner_id && resolvedTenant.owner_id === userId) ||
+        (resolvedTenant.metadata?.user_id && resolvedTenant.metadata.user_id === userId) ||
+        (resolvedTenant.metadata?.owner_id && resolvedTenant.metadata.owner_id === userId) ||
+        (userEmail && (
+          (resolvedTenant.email && resolvedTenant.email.toLowerCase().trim() === userEmail) ||
+          (resolvedTenant.owner_email && resolvedTenant.owner_email.toLowerCase().trim() === userEmail) ||
+          (resolvedTenant.metadata?.email && resolvedTenant.metadata.email.toLowerCase().trim() === userEmail) ||
+          (resolvedTenant.metadata?.owner_email && resolvedTenant.metadata.owner_email.toLowerCase().trim() === userEmail)
+        ));
+
+      let isMember = false;
+      if (!isSuperAdmin && !isOwner) {
+        try {
+          let memberQuery = supabase
+            .from('tenant_users')
+            .select('id, role, is_active')
+            .or(`tenant_id.eq.${resolvedTenant.id},tenant_slug.eq.${resolvedTenant.slug}`)
+            .eq('is_active', true);
+
+          if (userEmail) {
+            memberQuery = memberQuery.eq('email', userEmail);
+            const { data: memberRecords } = await memberQuery;
+            if (Array.isArray(memberRecords) && memberRecords.length > 0) {
+              isMember = true;
+            }
+          }
+        } catch (tuErr) {
+          console.warn('[Studio Jobs API] Error checking tenant_users membership:', tuErr);
+        }
+      }
+
+      if (!isSuperAdmin && !isOwner && !isMember) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Anda tidak memiliki hak akses ke data tenant ini.' },
+          { status: 403 }
+        );
+      }
     }
 
     // 4. Query studio_jobs with mandatory tenant isolation filter
