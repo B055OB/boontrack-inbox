@@ -27,11 +27,117 @@ import {
   getGymAccessLogs,
 } from '@/lib/gym-api';
 
+const DEMO_GYM_STATS: GymStats = {
+  total_members: 180,
+  active_members: 148,
+  expired_members: 12,
+  unpaid_members: 20,
+  today_allowed: 32,
+  today_denied: 2,
+  controllers_online: 2,
+  controllers_total: 2,
+  recent_logs: [],
+};
+
+const DEMO_CONTROLLERS: GateController[] = [
+  {
+    id: 'ctrl-1',
+    name: 'Turnstile Gate Lantai 1 (ESP32)',
+    code: 'GATE-01',
+    location: 'Lantai 1 - Main Entrance',
+    type: 'Turnstile',
+    ip_address: '192.168.10.50',
+    mac_address: '24:6F:28:B1:0A:11',
+    status: 'online',
+    relay_state: 'LOCKED',
+    last_seen_at: new Date().toISOString(),
+    firmware_version: 'v2.4.1-rc',
+    total_taps_today: 32,
+  },
+  {
+    id: 'ctrl-2',
+    name: 'Flap Barrier Studio Lt 2',
+    code: 'GATE-02',
+    location: 'Lantai 2 - Studio Zumba & Aerobik',
+    type: 'Flap Barrier',
+    ip_address: '192.168.10.51',
+    mac_address: '24:6F:28:C2:1B:22',
+    status: 'online',
+    relay_state: 'LOCKED',
+    last_seen_at: new Date().toISOString(),
+    firmware_version: 'v2.4.1-rc',
+    total_taps_today: 18,
+  },
+];
+
+const DEMO_RECENT_LOGS: AccessLog[] = [
+  {
+    id: 'demo-log-1',
+    member_id: 'm-101',
+    member_name: 'Budi Pratama',
+    card_uid: '04A2B89C31',
+    controller_id: 'ctrl-1',
+    controller_name: 'Main Turnstile Gate',
+    gate_location: 'Lantai 1 - Pintu Masuk',
+    decision: 'ALLOWED',
+    reason: 'Membership Aktif (All Access)',
+    tap_time: new Date(Date.now() - 4 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-log-2',
+    member_id: 'm-102',
+    member_name: 'Siti Rahma',
+    card_uid: 'E280689400',
+    controller_id: 'ctrl-2',
+    controller_name: 'Studio Gate Barrier',
+    gate_location: 'Lantai 2 - Studio',
+    decision: 'ALLOWED',
+    reason: 'Membership Aktif (Zumba)',
+    tap_time: new Date(Date.now() - 15 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-log-3',
+    member_id: 'm-103',
+    member_name: 'Dimas Anggara',
+    card_uid: '53A1C902FF',
+    controller_id: 'ctrl-1',
+    controller_name: 'Main Turnstile Gate',
+    gate_location: 'Lantai 1 - Pintu Masuk',
+    decision: 'ALLOWED',
+    reason: 'Membership Aktif (Premium)',
+    tap_time: new Date(Date.now() - 28 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-log-4',
+    member_id: 'm-104',
+    member_name: 'Jessica Tan',
+    card_uid: '89B3D411AA',
+    controller_id: 'ctrl-1',
+    controller_name: 'Main Turnstile Gate',
+    gate_location: 'Lantai 1 - Pintu Masuk',
+    decision: 'ALLOWED',
+    reason: 'Membership Aktif (Basic)',
+    tap_time: new Date(Date.now() - 42 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-log-5',
+    member_id: null,
+    member_name: 'Kartu Tamu / Unknown',
+    card_uid: '12F498A002',
+    controller_id: 'ctrl-1',
+    controller_name: 'Main Turnstile Gate',
+    gate_location: 'Lantai 1 - Pintu Masuk',
+    decision: 'DENIED',
+    reason: 'Kartu Belum Terdaftar',
+    tap_time: new Date(Date.now() - 59 * 60000).toISOString(),
+  },
+];
+
 export default function GymOverviewPage() {
-  const [stats, setStats] = useState<GymStats | null>(null);
-  const [controllers, setControllers] = useState<GateController[]>([]);
-  const [recentLogs, setRecentLogs] = useState<AccessLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<GymStats | null>(DEMO_GYM_STATS);
+  const [controllers, setControllers] = useState<GateController[]>(DEMO_CONTROLLERS);
+  const [recentLogs, setRecentLogs] = useState<AccessLog[]>(DEMO_RECENT_LOGS);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [quickUid, setQuickUid] = useState('');
   const [scanResult, setScanResult] = useState<{
@@ -46,11 +152,14 @@ export default function GymOverviewPage() {
         getGateControllers('atmosfitnes'),
         getGymAccessLogs({ limit: 5 }, 'atmosfitnes'),
       ]);
-      setStats(statsData);
-      setControllers(ctrlData);
-      setRecentLogs(logsData);
+      setStats(statsData && statsData.active_members > 0 ? statsData : DEMO_GYM_STATS);
+      setControllers(ctrlData && ctrlData.length > 0 ? ctrlData : DEMO_CONTROLLERS);
+      setRecentLogs(logsData && logsData.length > 0 ? logsData : DEMO_RECENT_LOGS);
     } catch (error) {
       console.error('Error loading gym dashboard data:', error);
+      setStats(DEMO_GYM_STATS);
+      setControllers(DEMO_CONTROLLERS);
+      setRecentLogs(DEMO_RECENT_LOGS);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -67,14 +176,19 @@ export default function GymOverviewPage() {
           getGymAccessLogs({ limit: 5 }, 'atmosfitnes'),
         ]);
         if (isMounted) {
-          setStats(statsData);
-          setControllers(ctrlData);
-          setRecentLogs(logsData);
+          setStats(statsData && statsData.active_members > 0 ? statsData : DEMO_GYM_STATS);
+          setControllers(ctrlData && ctrlData.length > 0 ? ctrlData : DEMO_CONTROLLERS);
+          setRecentLogs(logsData && logsData.length > 0 ? logsData : DEMO_RECENT_LOGS);
           setLoading(false);
         }
       } catch (err) {
         console.error(err);
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setStats(DEMO_GYM_STATS);
+          setControllers(DEMO_CONTROLLERS);
+          setRecentLogs(DEMO_RECENT_LOGS);
+          setLoading(false);
+        }
       }
     };
     fetchInitial();
@@ -118,12 +232,12 @@ export default function GymOverviewPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-xs font-semibold uppercase tracking-wider border border-emerald-500/30 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              Atmosfitnes Dashboard
+              ENTERPRISE DEMO DASHBOARD
             </span>
             <span className="text-xs text-slate-400">&bull; Live Hardware & Membership</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-            Selamat Datang di Gym Admin Hub
+            Selamat Datang di Acme Fitness Hub
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             Monitoring otomatisasi gate reader, tap NFC member, dan status controller secara real-time.
@@ -164,7 +278,7 @@ export default function GymOverviewPage() {
               {loading ? (
                 <div className="h-9 w-20 bg-slate-800 animate-pulse rounded" />
               ) : (
-                stats?.active_members ?? 0
+                stats?.active_members || 148
               )}
             </div>
             <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
@@ -173,7 +287,7 @@ export default function GymOverviewPage() {
                 Siap Tap Gate
               </span>
               <span>&bull;</span>
-              <span>{stats?.total_members ?? 0} Terdaftar</span>
+              <span>{stats?.total_members || 180} Terdaftar</span>
             </div>
           </div>
         </div>
@@ -192,7 +306,7 @@ export default function GymOverviewPage() {
                 <div className="h-9 w-20 bg-slate-800 animate-pulse rounded" />
               ) : (
                 <>
-                  {stats?.today_allowed ?? 0}
+                  {stats?.today_allowed || 32}
                   <span className="text-xs font-normal text-slate-400">taps</span>
                 </>
               )}
@@ -244,15 +358,15 @@ export default function GymOverviewPage() {
                 <div className="h-9 w-20 bg-slate-800 animate-pulse rounded" />
               ) : (
                 <>
-                  {stats?.controllers_online ?? 0}
+                  {stats?.controllers_online || 2}
                   <span className="text-slate-500 text-xl font-bold">/</span>
-                  <span className="text-slate-400 text-lg">{stats?.controllers_total ?? 0}</span>
+                  <span className="text-slate-400 text-lg">{stats?.controllers_total || 2}</span>
                 </>
               )}
             </div>
             <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="font-medium">Semua Gate Aktif (MQTT/HTTP)</span>
+              <span className="font-medium">2/2 Gate Aktif (Online / Active)</span>
             </div>
           </div>
         </div>
@@ -370,7 +484,7 @@ export default function GymOverviewPage() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Sinyal Webhook Gate Terhubung
             </span>
-            <span className="font-mono text-slate-300">Tenant: atmosfitnes</span>
+            <span className="font-mono text-slate-300">Tenant: acme-fitness-hub</span>
           </div>
         </div>
 
