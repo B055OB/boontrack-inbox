@@ -52,6 +52,7 @@ import {
   trackAddPaymentInfo,
   trackWhatsAppConsultation,
   trackClientPurchase,
+  trackClientRegistration,
   getActiveAffiliateCode,
   getTrackingData,
   trackLeadFormSubmission,
@@ -89,7 +90,8 @@ import {
   resolveCustomHtmlTenantAssets,
   isSection10TakeoverEligible,
   isBatch1MockCheckout,
-  getBatch1MockCheckoutResult
+  getBatch1MockCheckoutResult,
+  isDigitalProduct
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
@@ -1844,25 +1846,32 @@ function SingleProductContent() {
 
   const [selectedVariant, setSelectedVariant] = useState<string>('');
 
+  const isDigital = useMemo(() => isDigitalProduct(product), [product]);
+
   // ── FITUR QUANTITY SELECTOR / STEPPER ──
   const maxQuantity = useMemo(() => {
+    if (isDigital) return 1;
     if (product.is_unlimited || (product as any).is_unlimited_stock) return 99;
     const stock = Number(product.stock ?? (product as any).stock_quantity ?? 99);
     return stock > 0 ? Math.min(stock, 99) : 99;
-  }, [product]);
+  }, [product, isDigital]);
 
   const [quantity, setQuantity] = useState<number>(1);
 
   const handleQuantityChange = (newQty: number) => {
+    if (isDigital) {
+      setQuantity(1);
+      return;
+    }
     const clamped = Math.max(1, Math.min(newQty, maxQuantity));
     setQuantity(clamped);
   };
 
   useEffect(() => {
-    if (config?.limit_single_item && quantity !== 1) {
+    if ((config?.limit_single_item || isDigital) && quantity !== 1) {
       setQuantity(1);
     }
-  }, [config?.limit_single_item, quantity]);
+  }, [config?.limit_single_item, isDigital, quantity]);
 
   useEffect(() => {
     if (variantList.length === 1) {
@@ -2121,13 +2130,16 @@ function SingleProductContent() {
 
   // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
   // Official Payment Gateway (Xendit Dynamic QRIS): kode unik = 0, nominal bulat pas (nett).
-  // Kode unik hanya aktif jika metode pembayaran adalah transfer rekening bank manual.
+  // Kode unik hanya aktif jika metode pembayaran adalah transfer rekening bank manual dan total > 0.
+  const isZeroPrice = (netProductPrice + effectiveShippingCost) === 0;
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
-  const currentUniqueCode = (isAffiliateProduct || isQris) ? 0 : uniqueCode;
+  const currentUniqueCode = (isAffiliateProduct || isQris || isZeroPrice) ? 0 : uniqueCode;
 
-  // 4. Total Bayar Presisi (QRIS/Gateway/Affiliate: Bulat pas nett; Manual Transfer: Tambahan kode unik)
-  const totalAmount = (isAffiliateProduct || isQris)
+  // 4. Total Bayar Presisi (QRIS/Gateway/Affiliate: Bulat pas nett; Manual Transfer: Tambahan kode unik; Zero Price: Tepat Rp 0)
+  const totalAmount = isZeroPrice
+    ? 0
+    : (isAffiliateProduct || isQris)
     ? (netProductPrice + effectiveShippingCost)
     : (netProductPrice + effectiveShippingCost + currentUniqueCode);
 
@@ -2810,7 +2822,7 @@ function SingleProductContent() {
         amount: totalAmount,
         basePrice: productSubtotal,
         unitPrice,
-        quantity,
+        quantity: isDigital ? 1 : quantity,
         productDiscount,
         netProductPrice,
         fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
@@ -2849,8 +2861,8 @@ function SingleProductContent() {
         })),
         voucherCode: appliedVoucher?.code || undefined,
         adminFee: 0,
-        uniqueCode: currentUniqueCode,
-        paymentMethod,
+        uniqueCode: (isZeroPrice || totalAmount === 0) ? 0 : currentUniqueCode,
+        paymentMethod: (isZeroPrice || totalAmount === 0) ? 'free' : paymentMethod,
         affiliateCommission: 0,
         customerName: cleanName,
         customerPhone: cleanPhoneE164,
@@ -2883,9 +2895,9 @@ function SingleProductContent() {
 
       if (result?.orderId) {
         trackLeadFormSubmission(totalAmount);
-        // HANYA memicu event Purchase bila order gratis (Rp 0) yang otomatis langsung terkonfirmasi lunas
+        // P0-B Guard: Registrasi gratis memicu CompleteRegistration (bukan Purchase)
         if (totalAmount === 0) {
-          trackClientPurchase(result.orderId, 0, product.name);
+          trackClientRegistration(result.orderId, product.name);
         }
       }
 
@@ -3820,7 +3832,7 @@ function SingleProductContent() {
         ) : null}
 
         {/* Kontrol Pemilihan Kuantitas / Stepper (- [ Qty ] +) */}
-        {!config?.limit_single_item && (
+        {!config?.limit_single_item && !isDigital && (
           <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-700 block">{categoryLabels.quantityLabel}</span>
@@ -3989,7 +4001,8 @@ function SingleProductContent() {
       </div>
 
       {/* Opsi Metode Pembayaran (Disesuaikan dari Konfigurasi Toko) */}
-      <div className="space-y-2 pt-2">
+      {!isZeroPrice && (
+        <div className="space-y-2 pt-2">
         <label className="font-bold text-slate-700 block">Pilih Metode Pembayaran</label>
         
         {/* QRIS Option (Jika Diaktifkan) */}
@@ -4148,6 +4161,7 @@ function SingleProductContent() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── METODE PENGANTARAN / PENYAJIAN MAKANAN (PRESET FOOD) ── */}
       {isFoodPreset && (
@@ -4951,19 +4965,21 @@ function SingleProductContent() {
           )
         )}
 
-        <div className="flex justify-between text-slate-600">
-          <span>Biaya Layanan & Admin</span>
-          <span className="font-semibold text-emerald-600">
-            Rp 0 (Bebas Biaya Admin)
-          </span>
-        </div>
+        {!isZeroPrice && (
+          <div className="flex justify-between text-slate-600">
+            <span>Biaya Layanan & Admin</span>
+            <span className="font-semibold text-emerald-600">
+              Rp 0 (Bebas Biaya Admin)
+            </span>
+          </div>
+        )}
 
-        {paymentMethod === 'qris' && currentUniqueCode > 0 ? (
+        {!isZeroPrice && paymentMethod === 'qris' && currentUniqueCode > 0 ? (
           <div className="flex justify-between text-emerald-600 font-medium">
             <span>Potongan Kode Unik</span>
             <span className="font-mono font-semibold text-emerald-600">-Rp {currentUniqueCode.toLocaleString('id-ID')}</span>
           </div>
-        ) : paymentMethod === 'manual_transfer' ? (
+        ) : !isZeroPrice && paymentMethod === 'manual_transfer' && currentUniqueCode > 0 ? (
           <div className="flex justify-between text-slate-600">
             <span>Kode Unik Verifikasi</span>
             <span className="font-mono font-semibold text-blue-600">+{currentUniqueCode}</span>
@@ -5028,8 +5044,8 @@ function SingleProductContent() {
             <>
               <Lock className="w-4 h-4" />
               <span>
-                {totalAmount === 0
-                  ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Akses Gratis Sekarang'))
+                {totalAmount === 0 || isZeroPrice
+                  ? (config?.labels?.free_cta_label || product.metadata?.cta_text || categoryLabels.freeCtaLabel || (isFoodPreset ? 'Tambah ke Pesanan' : 'Daftar Sekarang (Gratis)'))
                   : dynamicCtaPrefix.toLowerCase().includes('rp')
                   ? dynamicCtaPrefix
                   : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
@@ -5850,8 +5866,8 @@ function SingleProductContent() {
               ? ctaCustomLabel
               : actionMode === 'WHATSAPP'
               ? (config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order via WhatsApp'))
-              : totalAmount === 0
-              ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : categoryLabels.freeCtaLabel))
+              : totalAmount === 0 || isZeroPrice
+              ? (config?.labels?.free_cta_label || product.metadata?.cta_text || categoryLabels.freeCtaLabel || (isFoodPreset ? 'Tambah ke Pesanan' : 'Daftar Sekarang (Gratis)'))
               : undefined
           }
           isAffiliateProduct={isAffiliateProduct}

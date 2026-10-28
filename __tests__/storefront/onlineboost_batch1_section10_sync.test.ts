@@ -147,7 +147,8 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
       // 1. Verify destination runtime carousel SHA-256 matches approved lifecycle patch
       const carouselPath = path.join(targetAssetDir, 'experience-carousel.js');
       expect(fs.existsSync(carouselPath)).toBe(true);
-      const carouselHash = crypto.createHash('sha256').update(fs.readFileSync(carouselPath)).digest('hex');
+      const carouselNormalized = fs.readFileSync(carouselPath, 'utf-8').replace(/\r\n/g, '\n');
+      const carouselHash = crypto.createHash('sha256').update(carouselNormalized).digest('hex');
       expect(carouselHash).toBe(APPROVED_PATCHED_CAROUSEL_SHA256);
 
       // 2. If manifest exists locally, verify all 37 active assets match source hashes
@@ -194,7 +195,8 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
         const p = path.join(targetAssetDir, f);
         expect(fs.existsSync(p)).toBe(true);
 
-        const destHash = crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+        const destNormalized = fs.readFileSync(p, 'utf-8').replace(/\r\n/g, '\n');
+        const destHash = crypto.createHash('sha256').update(destNormalized).digest('hex');
         if (f === 'experience-carousel.js') {
           expect(destHash).toBe(APPROVED_PATCHED_CAROUSEL_SHA256);
         }
@@ -202,7 +204,8 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
         if (hasLocalHolding) {
           const srcP = path.join(sourceDir, f);
           expect(fs.existsSync(srcP)).toBe(true);
-          const srcHash = crypto.createHash('sha256').update(fs.readFileSync(srcP)).digest('hex');
+          const srcNormalized = fs.readFileSync(srcP, 'utf-8').replace(/\r\n/g, '\n');
+          const srcHash = crypto.createHash('sha256').update(srcNormalized).digest('hex');
 
           if (f === 'experience-carousel.js') {
             // 1. Original holding source remains unchanged

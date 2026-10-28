@@ -17,6 +17,7 @@ import {
   mapToDbProductType,
   sanitizeProductPayload,
   safeJsonStringify,
+  isDigitalProduct,
 } from '@/lib/product-catalog';
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
 import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
@@ -1653,9 +1654,10 @@ export function useTenantDashboard() {
     const finalSlug = (safeForm.slug?.trim() || slugify(safeForm.name) || 'produk').toLowerCase();
     const cleanImage = sanitizeImageUrl(safeForm.image);
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
-    const currentPt = (safeForm.product_type || defaultProductType || '').toUpperCase();
-    const isPhysicalProduct = currentPt === 'PHYSICAL';
-    const isServiceOrDigital = currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE' || currentPt === 'AGENCY';
+    const isDigital = isDigitalProduct(safeForm);
+    const currentPt = isDigital ? 'DIGITAL' : (safeForm.product_type || defaultProductType || '').toUpperCase();
+    const isPhysicalProduct = !isDigital && currentPt === 'PHYSICAL';
+    const isServiceOrDigital = isDigital || currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE' || currentPt === 'AGENCY';
     const isPhysicalStock = isPhysicalProduct || (!isServiceOrDigital && (storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD'));
     const isExternalCheckout = safeForm.checkout_type === 'external' || Boolean(safeForm.external_url?.trim());
     const isRequiresShipping = isPhysicalProduct && !isExternalCheckout;
@@ -1665,14 +1667,18 @@ export function useTenantDashboard() {
       ? Boolean(safeForm.metadata.enable_cart)
       : ((safeForm as any)?.enable_cart !== undefined ? Boolean((safeForm as any)?.enable_cart) : isPhysicalProduct);
 
-    const resolvedProductType: ProductType = (safeForm.product_type || (isPhysicalProduct ? 'PHYSICAL' : isServiceOrDigital ? (currentPt as ProductType) : defaultProductType)) as ProductType;
+    const resolvedProductType: ProductType = isDigital
+      ? 'DIGITAL'
+      : ((safeForm.product_type || (isPhysicalProduct ? 'PHYSICAL' : isServiceOrDigital ? (currentPt as ProductType) : defaultProductType)) as ProductType);
 
     const updatedProductItem: ProductItem = sanitizeProductPayload({
       ...safeForm,
       product_type: resolvedProductType,
+      type: isDigital ? 'digital' : 'physical',
+      is_digital: isDigital,
       price: typeof safeForm.price === 'number' ? safeForm.price : (Number(safeForm.price) || 0),
-      is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (safeForm.is_unlimited ?? false)),
-      stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (safeForm.stock ?? 100)),
+      is_unlimited: isDigital || isExternalCheckout ? true : (!isPhysicalStock ? true : (safeForm.is_unlimited ?? false)),
+      stock: isDigital || isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (safeForm.stock ?? 100)),
       weight_grams: isPhysicalProduct && !isExternalCheckout ? Number(safeForm.weight_grams || 1000) : 0,
       requires_shipping: isRequiresShipping,
       enable_cart: isCartEnabled,
@@ -1684,6 +1690,9 @@ export function useTenantDashboard() {
       cta_label: cleanCtaLabel || undefined,
       metadata: {
         ...(safeForm.metadata || {}),
+        product_type: isDigital ? 'DIGITAL' : 'PHYSICAL',
+        type: isDigital ? 'digital' : 'physical',
+        is_digital: isDigital,
         checkout_type: isExternalCheckout ? 'external' : 'internal',
         external_url: isExternalCheckout ? cleanExternalUrl : undefined,
         cta_label: cleanCtaLabel || undefined,
