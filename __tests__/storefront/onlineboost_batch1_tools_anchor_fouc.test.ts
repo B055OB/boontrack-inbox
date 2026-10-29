@@ -53,9 +53,9 @@ describe('TASK: OnlineBoost Batch 1 #tools Anchor & Dark Theme Rehydration Guard
       expect(res.url).toBe('https://wa.me/6288226098088?text=Saya%20tertarik%20ikut%20kelas%20nya%20Kang');
     });
 
-    it('intercepts .btn-cta-onlineboost clicks and routes them to WhatsApp consultation', () => {
+    it('wires .btn-cta-onlineboost directly to WhatsApp destination and bypasses handleOpenCheckout', () => {
       expect(pageContent).toContain('.btn-cta-onlineboost');
-      expect(pageContent).toContain('handleOpenCheckout();');
+      expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n                        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp without invoking handleOpenCheckout\n                        return;\n                      }');
     });
 
     it('eliminates FOUC by injecting early dark theme style in TenantStoreLayout for onlineboost tenant', () => {
