@@ -225,10 +225,12 @@ export default async function TenantStoreLayout({
 }) {
   let fbPixelId: string | null = null;
   let ttPixelId: string | null = null;
+  let isOnlineBoost = false;
 
   try {
     const { tenant } = await params;
     const cleanTenant = (tenant || '').toLowerCase().trim();
+    isOnlineBoost = cleanTenant === 'onlineboost';
     const { store, settings } = await getTenantStoreData(cleanTenant);
 
     const tenantMetaTracking = (store?.metadata as Record<string, any>)?.tracking;
@@ -251,6 +253,19 @@ export default async function TenantStoreLayout({
 
   return (
     <>
+      {isOnlineBoost && (
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+              html, body {
+                background-color: #0a0a0a !important;
+                color: #f4f4f5 !important;
+                color-scheme: dark !important;
+              }
+            `,
+          }}
+        />
+      )}
       <Script
         id="tracking-debug-log"
         strategy="lazyOnload"

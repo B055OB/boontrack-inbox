@@ -654,6 +654,8 @@ function SingleProductContent() {
                   '$1 id="tools"'
                 );
               }
+              // Ensure smooth scroll is preserved across anchor navigation
+              resolvedCustomHtml = resolvedCustomHtml.replace(/behavior:\s*['"]instant['"]/gi, "behavior: 'smooth'");
 
               if (isOnlineBoostBatch1) {
                 // Resolusi referral code untuk tautan CTA awal
@@ -793,6 +795,13 @@ function SingleProductContent() {
 
               const darkStyleOverride = `
 <style id="ob-batch1-dark-theme-override">
+  html,
+  body {
+    background-color: #0a0a0a !important;
+    color: #f4f4f5 !important;
+    color-scheme: dark !important;
+    scroll-behavior: smooth !important;
+  }
   #custom-html-section,
   #onlineboost-landing-root,
   .ob-sec10-wrap {
@@ -801,6 +810,10 @@ function SingleProductContent() {
   }
   #tools,
   .comparison-section {
+    scroll-margin-top: 100px !important;
+  }
+  .comparison-panel,
+  .comparison-table-wrap {
     scroll-margin-top: 100px !important;
   }
   .site-header {
@@ -2658,9 +2671,13 @@ function SingleProductContent() {
     };
     scrollToTarget();
     const timer = setTimeout(scrollToTarget, 200);
+    const retryTimer1 = setTimeout(scrollToTarget, 500);
+    const retryTimer2 = setTimeout(scrollToTarget, 1000);
     window.addEventListener('hashchange', scrollToTarget);
     return () => {
       clearTimeout(timer);
+      clearTimeout(retryTimer1);
+      clearTimeout(retryTimer2);
       window.removeEventListener('hashchange', scrollToTarget);
     };
   }, [config.custom_html]);
@@ -5836,7 +5853,7 @@ function SingleProductContent() {
                     className="w-full min-h-screen p-0 m-0"
                     dangerouslySetInnerHTML={{ __html: config.custom_html }}
                     onClick={(e) => {
-                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger');
+                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .btn-cta-onlineboost');
                       if (target) {
                         e.preventDefault();
                         handleOpenCheckout();
@@ -6002,7 +6019,7 @@ function SingleProductContent() {
 
 export default function SingleProductPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Memuat penawaran eksklusif...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] text-zinc-400 p-8 text-center text-xs font-mono">Memuat penawaran eksklusif...</div>}>
       <SingleProductContent />
     </Suspense>
   );
