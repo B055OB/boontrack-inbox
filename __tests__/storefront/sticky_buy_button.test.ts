@@ -69,7 +69,7 @@ describe('TASK P1: Mobile Storefront Sticky Buy Button & Scroll Jump Prevention'
     it('should wire StickyBuyButton in storefront page with dynamic props', () => {
       expect(pageCode).toContain('<StickyBuyButton');
       expect(pageCode).toContain('targetFormId="checkout-form"');
-      expect(pageCode).toContain('onOpenCheckout={handleOpenCheckout}');
+      expect(pageCode).toContain('onOpenCheckout={isOnlineBoostBatch1 ? undefined : handleOpenCheckout}');
     });
   });
 

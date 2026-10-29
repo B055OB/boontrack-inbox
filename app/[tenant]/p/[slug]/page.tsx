@@ -654,6 +654,8 @@ function SingleProductContent() {
                   '$1 id="tools"'
                 );
               }
+              // Ensure smooth scroll is preserved across anchor navigation
+              resolvedCustomHtml = resolvedCustomHtml.replace(/behavior:\s*['"]instant['"]/gi, "behavior: 'smooth'");
 
               if (isOnlineBoostBatch1) {
                 // Resolusi referral code untuk tautan CTA awal
@@ -793,6 +795,13 @@ function SingleProductContent() {
 
               const darkStyleOverride = `
 <style id="ob-batch1-dark-theme-override">
+  html,
+  body {
+    background-color: #0a0a0a !important;
+    color: #f4f4f5 !important;
+    color-scheme: dark !important;
+    scroll-behavior: smooth !important;
+  }
   #custom-html-section,
   #onlineboost-landing-root,
   .ob-sec10-wrap {
@@ -801,6 +810,10 @@ function SingleProductContent() {
   }
   #tools,
   .comparison-section {
+    scroll-margin-top: 100px !important;
+  }
+  .comparison-panel,
+  .comparison-table-wrap {
     scroll-margin-top: 100px !important;
   }
   .site-header {
@@ -2305,14 +2318,16 @@ function SingleProductContent() {
     ? 'WHATSAPP'
     : (config.checkout_action_mode || (rawStoreWhatsApp ? 'HYBRID' : 'DIRECT'));
 
-  const handleWhatsAppConsultation = () => {
+  const handleWhatsAppConsultation = (e?: React.MouseEvent) => {
     if (!wabaConsultationUrl) return;
     trackWhatsAppConsultation({
       name: product.name,
       price: basePrice
     });
     trackContactEvent('WhatsApp Consultation');
-    if (typeof window !== 'undefined') {
+    const targetEl = e?.currentTarget as HTMLElement | null;
+    const hasNativeHref = targetEl?.tagName === 'A' && Boolean(targetEl.getAttribute('href'));
+    if (!hasNativeHref && typeof window !== 'undefined') {
       window.open(wabaConsultationUrl, '_blank', 'noopener,noreferrer');
     }
   };
@@ -2456,7 +2471,8 @@ function SingleProductContent() {
       e.stopPropagation();
     }
     if (isOnlineBoostBatch1) {
-      handleWhatsAppConsultation();
+      // Fail closed: OnlineBoost Batch 1 CTAs navigate directly to WhatsApp
+      // without invoking handleOpenCheckout, creating an order, or calling a payment endpoint.
       return;
     }
     if (isCustomLinkMode) {
@@ -2528,9 +2544,12 @@ function SingleProductContent() {
   // Universal Headless Checkout Trigger ([data-bt-checkout], [href="#checkout"], and window 'open-checkout' event)
   useEffect(() => {
     const handleGlobalCheckoutClick = (e: MouseEvent) => {
-      const selector = isOnlineBoostBatch1
-        ? '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn, a[href*="wa.me"], a[href*="whatsapp.com"]'
-        : '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn';
+      if (isOnlineBoostBatch1) {
+        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp natively;
+        // do not intercept, hijack, or invoke checkout for Batch 1.
+        return;
+      }
+      const selector = '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn';
       const target = (e.target as HTMLElement)?.closest(selector) as HTMLElement | null;
       if (!target) return;
 
@@ -2545,11 +2564,6 @@ function SingleProductContent() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-
-      if (isOnlineBoostBatch1) {
-        handleWhatsAppConsultation();
-        return;
-      }
 
       // Read optional overrides from attributes
       const variantAttr = target.getAttribute('data-variant');
@@ -2588,7 +2602,6 @@ function SingleProductContent() {
 
     const handleCustomOpenCheckout = () => {
       if (isOnlineBoostBatch1) {
-        handleWhatsAppConsultation();
         return;
       }
       if (!hasTrackedAddToCart) {
@@ -2658,9 +2671,13 @@ function SingleProductContent() {
     };
     scrollToTarget();
     const timer = setTimeout(scrollToTarget, 200);
+    const retryTimer1 = setTimeout(scrollToTarget, 500);
+    const retryTimer2 = setTimeout(scrollToTarget, 1000);
     window.addEventListener('hashchange', scrollToTarget);
     return () => {
       clearTimeout(timer);
+      clearTimeout(retryTimer1);
+      clearTimeout(retryTimer2);
       window.removeEventListener('hashchange', scrollToTarget);
     };
   }, [config.custom_html]);
@@ -5375,6 +5392,19 @@ function SingleProductContent() {
                             <span>{ctaCustomLabel}</span>
                             <ArrowRight className="w-4 h-4" />
                           </button>
+                        ) : isOnlineBoostBatch1 ? (
+                          <a
+                            href={wabaConsultationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => handleWhatsAppConsultation(e)}
+                            id="hero-whatsapp-cta-button"
+                            data-testid="hero-whatsapp-cta-button"
+                            className="w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer text-sm no-underline"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                            <span>Daftar via WhatsApp</span>
+                          </a>
                         ) : (
                           <button
                             type="button"
@@ -5382,9 +5412,7 @@ function SingleProductContent() {
                             className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
                           >
                             <span>
-                              {isOnlineBoostBatch1
-                                ? 'Daftar via WhatsApp'
-                                : basePrice === 0
+                              {basePrice === 0
                                 ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
                                 : dynamicCtaPrefix.toLowerCase().includes('rp')
                                 ? dynamicCtaPrefix
@@ -5836,7 +5864,11 @@ function SingleProductContent() {
                     className="w-full min-h-screen p-0 m-0"
                     dangerouslySetInnerHTML={{ __html: config.custom_html }}
                     onClick={(e) => {
-                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger');
+                      if (isOnlineBoostBatch1) {
+                        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp without invoking handleOpenCheckout
+                        return;
+                      }
+                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .btn-cta-onlineboost');
                       if (target) {
                         e.preventDefault();
                         handleOpenCheckout();
@@ -5874,7 +5906,7 @@ function SingleProductContent() {
           externalAffiliateUrl={externalAffiliateUrl}
           affiliateCtaLabel={affiliateCtaLabel}
           targetFormId="checkout-form"
-          onOpenCheckout={handleOpenCheckout}
+          onOpenCheckout={isOnlineBoostBatch1 ? undefined : handleOpenCheckout}
           onExternalClick={handleExternalProductClick}
           isWhatsAppMode={isOnlineBoostBatch1 || actionMode === 'WHATSAPP'}
           whatsAppUrl={wabaConsultationUrl}
@@ -6002,7 +6034,7 @@ function SingleProductContent() {
 
 export default function SingleProductPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Memuat penawaran eksklusif...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] text-zinc-400 p-8 text-center text-xs font-mono">Memuat penawaran eksklusif...</div>}>
       <SingleProductContent />
     </Suspense>
   );
