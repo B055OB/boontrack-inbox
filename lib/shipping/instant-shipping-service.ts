@@ -59,15 +59,32 @@ export function calculateHaversineDistanceKm(
 }
 
 /**
- * Computes Instant Courier Rates (GoSend & GrabExpress) based on distance.
- * Standard Indonesian instant delivery model (max 30 km radius for two-wheelers).
+ * Computes Instant Courier Rates (GoSend, GrabExpress, and Internal Armada Lalamove) based on distance.
+ * Standard Indonesian instant delivery model (max 30-35 km radius for two-wheelers/fleet).
  */
-export function computeInstantCourierRates(distanceKm: number): {
+export function computeInstantCourierRates(
+  distanceKm: number,
+  shippingConfig?: any
+): {
   isEligible: boolean;
   rates: InstantCourierRate[];
   maxRadiusKm: number;
 } {
-  const maxRadiusKm = 30;
+  // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
+  const rawRadius =
+    shippingConfig?.fnb_settings?.max_radius_km ??
+    shippingConfig?.max_radius_km ??
+    shippingConfig?.internal_courier?.max_radius_km ??
+    shippingConfig?.lalamove_internal?.max_radius_km;
+
+  let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
+  if (isNaN(parsedRadius) || !isFinite(parsedRadius) || parsedRadius <= 0) {
+    parsedRadius = 40;
+  }
+
+  // Fallback 30 KM strictly when shippingConfig is omitted or null (legacy generic 2-wheeler fallback)
+  const maxRadiusKm = (shippingConfig === undefined || shippingConfig === null) ? 30 : parsedRadius;
+
   if (distanceKm > maxRadiusKm) {
     return {
       isEligible: false,
@@ -77,6 +94,68 @@ export function computeInstantCourierRates(distanceKm: number): {
   }
 
   const extraKm = Math.max(0, distanceKm - 4);
+
+  // 1. Prioritas Armada Toko / Kurir Internal jika dikonfigurasi pada shipping_config
+  const internalCourier =
+    shippingConfig?.internal_courier ||
+    shippingConfig?.lalamove_internal;
+
+  if (internalCourier && internalCourier.is_enabled !== false) {
+    const motorBase =
+      internalCourier.rates?.motor?.base_price ??
+      internalCourier.motor_base_rate ??
+      12000;
+    const motorPerKm =
+      internalCourier.rates?.motor?.per_km_price ??
+      internalCourier.motor_per_km_rate ??
+      2800;
+    const carBase =
+      internalCourier.rates?.car?.base_price ??
+      internalCourier.car_base_rate ??
+      40000;
+    const carPerKm =
+      internalCourier.rates?.car?.per_km_price ??
+      internalCourier.car_per_km_rate ??
+      4500;
+
+    // Nama resmi: Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor) tanpa nama pihak ketiga
+    const officialCourierName = 'Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor)';
+
+    const motorPrice = Math.max(
+      motorBase,
+      Math.round((motorBase + extraKm * motorPerKm) / 500) * 500
+    );
+    const carPrice = Math.max(
+      carBase,
+      Math.round((carBase + extraKm * carPerKm) / 500) * 500
+    );
+
+    const rates: InstantCourierRate[] = [
+      {
+        id: 'armada_motor',
+        courier_name: officialCourierName,
+        service: 'Paket 2–4 Pax (Motor / Kurir Ringan)',
+        price: motorPrice,
+        etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
+        distance_km: distanceKm,
+      },
+      {
+        id: 'armada_car',
+        courier_name: officialCourierName,
+        service: 'Paket 10 Pax / Rombongan / Multi-Kompor (Mobil / MPV)',
+        price: carPrice,
+        etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
+        distance_km: distanceKm,
+      },
+    ];
+
+    return {
+      isEligible: true,
+      rates,
+      maxRadiusKm,
+    };
+  }
+
   // GoSend: Rp 20.000 for first 4 km, + Rp 2.500 per additional km
   const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
   // GrabExpress: Rp 18.000 for first 4 km, + Rp 2.500 per additional km
@@ -437,7 +516,7 @@ export async function sendInstantShippingRecommendation(params: {
     );
 
     // 6. Compute Instant Courier Rates
-    const rateResult = computeInstantCourierRates(distanceKm);
+    const rateResult = computeInstantCourierRates(distanceKm, tenantMeta.shipping_config);
 
     // 7. Format WhatsApp recommendation message
     const replyText = formatInstantCourierRecommendationReply({
