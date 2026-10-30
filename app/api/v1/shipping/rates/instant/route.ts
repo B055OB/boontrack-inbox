@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
         ? Number(body.origin_longitude)
         : null;
     let enabledCouriers: any[] = [];
+    let metaShipping: any = null;
 
     if (slug) {
       try {
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
           const biteshipCfg = settingsRes.data?.biteship_config;
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
-          const metaShipping = meta.shipping_config;
+          metaShipping = meta.shipping_config;
 
           if (biteshipCfg) {
             isShippingActive = biteshipCfg.is_enabled ?? true;
@@ -224,17 +225,29 @@ export async function POST(req: NextRequest) {
     const finalDestLat = destLat ?? -6.9175;
     const finalDestLon = destLon ?? 107.6191;
 
-    // 2. Hitung Jarak Geospasial Haversine & Validasi Radius Maksimal 30 KM
+    // 2. Hitung Jarak Geospasial Haversine & Validasi Radius Maksimal (Dinamis per Tenant / Default 30 KM)
     const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
+    const rawRadius =
+      metaShipping?.fnb_settings?.max_radius_km ??
+      metaShipping?.max_radius_km ??
+      metaShipping?.internal_courier?.max_radius_km ??
+      metaShipping?.lalamove_internal?.max_radius_km;
 
-    if (distanceKm > MAX_INSTANT_RADIUS_KM) {
+    let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
+    const effectiveMaxRadius =
+      !isNaN(parsedRadius) && isFinite(parsedRadius) && parsedRadius > 0
+        ? parsedRadius
+        : 40;
+
+    if (distanceKm > effectiveMaxRadius) {
       return NextResponse.json({
         success: true,
         coverage: false,
         is_instant_eligible: false,
         distance_km: distanceKm,
-        max_radius_km: MAX_INSTANT_RADIUS_KM,
-        message: `Alamat tujuan berada di luar radius kurir instan (jarak: ${distanceKm} km, batas maksimal: ${MAX_INSTANT_RADIUS_KM} km). Silakan gunakan kurir reguler atau kargo.`,
+        max_radius_km: effectiveMaxRadius,
+        message: `Alamat tujuan berada di luar radius kurir instan (jarak: ${distanceKm} km, batas maksimal: ${effectiveMaxRadius} km). Silakan gunakan kurir reguler atau kargo.`,
         rates: [],
         couriers: [],
       });
@@ -316,38 +329,75 @@ export async function POST(req: NextRequest) {
     // Dihitung adil berdasarkan jarak nyata km (bukan flat buta Rp 20.000)
     if (!biteshipSuccess) {
       const extraKm = Math.max(0, distanceKm - 4);
-      const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
-      const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+      const internalCourier = metaShipping?.internal_courier || metaShipping?.lalamove_internal;
 
-      const isGosendAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
-      const isGrabAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
+      if (internalCourier && internalCourier.is_enabled !== false) {
+        const motorBase = internalCourier.rates?.motor?.base_price ?? internalCourier.motor_base_rate ?? 12000;
+        const motorPerKm = internalCourier.rates?.motor?.per_km_price ?? internalCourier.motor_per_km_rate ?? 2800;
+        const carBase = internalCourier.rates?.car?.base_price ?? internalCourier.car_base_rate ?? 40000;
+        const carPerKm = internalCourier.rates?.car?.per_km_price ?? internalCourier.car_per_km_rate ?? 4500;
+        const officialCourierName = 'Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor)';
 
-      if (isGosendAllowed) {
+        const motorPrice = Math.max(motorBase, Math.round((motorBase + extraKm * motorPerKm) / 500) * 500);
+        const carPrice = Math.max(carBase, Math.round((carBase + extraKm * carPerKm) / 500) * 500);
+
         availableRates.push({
-          id: 'instant_gosend_instant',
-          courier_name: 'GOSEND (Instant)',
-          service: 'Instant',
-          price: gosendPrice,
-          etd: '1 - 2 Jam',
+          id: 'armada_motor',
+          courier_name: officialCourierName,
+          service: 'Paket 2–4 Pax (Motor / Kurir Ringan)',
+          price: motorPrice,
+          etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
           type: 'instant',
-          badge: 'Tiba Hari Ini (1-2 Jam)',
+          badge: 'Armada Internal Toko',
           distance_km: distanceKm,
-          provider: 'biteship',
+          provider: 'internal',
         });
-      }
 
-      if (isGrabAllowed) {
         availableRates.push({
-          id: 'instant_grab_instant',
-          courier_name: 'GRAB (Instant)',
-          service: 'Instant',
-          price: grabPrice,
-          etd: '1 - 2 Jam',
+          id: 'armada_car',
+          courier_name: officialCourierName,
+          service: 'Paket 10 Pax / Rombongan / Multi-Kompor (Mobil / MPV)',
+          price: carPrice,
+          etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
           type: 'instant',
-          badge: 'Tiba Hari Ini (1-2 Jam)',
+          badge: 'Armada Internal Toko',
           distance_km: distanceKm,
-          provider: 'biteship',
+          provider: 'internal',
         });
+      } else {
+        const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
+        const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+
+        const isGosendAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
+        const isGrabAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
+
+        if (isGosendAllowed) {
+          availableRates.push({
+            id: 'instant_gosend_instant',
+            courier_name: 'GOSEND (Instant)',
+            service: 'Instant',
+            price: gosendPrice,
+            etd: '1 - 2 Jam',
+            type: 'instant',
+            badge: 'Tiba Hari Ini (1-2 Jam)',
+            distance_km: distanceKm,
+            provider: 'biteship',
+          });
+        }
+
+        if (isGrabAllowed) {
+          availableRates.push({
+            id: 'instant_grab_instant',
+            courier_name: 'GRAB (Instant)',
+            service: 'Instant',
+            price: grabPrice,
+            etd: '1 - 2 Jam',
+            type: 'instant',
+            badge: 'Tiba Hari Ini (1-2 Jam)',
+            distance_km: distanceKm,
+            provider: 'biteship',
+          });
+        }
       }
     }
 
