@@ -1,5 +1,5 @@
 /**
- * __tests__/auth/google-oauth.test.ts
+ * tests/auth/google-oauth.test.ts
  * Targeted tests for lib/auth/google-oauth.ts
  * Focus: GoTrue unconditional exchange invariant after P0 early-return remediation.
  *
