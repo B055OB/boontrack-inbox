@@ -164,20 +164,28 @@ export async function parseAndVerifyGoogleIdToken(
  * Resolves or securely links platform user identity using GoTrue Authority
  * Linked via FK to auth.users (Single Identity Authority)
  *
- * P0-B Fix: The actual verified Google ID token (not a placeholder) is forwarded
- * to verifyGoTrueGoogleToken() so that in live mode, GoTrue's signInWithIdToken()
- * receives the real token. The token is validated before this function is called;
- * this function must not bypass or re-derive claims independently.
+ * Invariant: host_session.sub === GoTrue user.id === auth.users.id
+ * This invariant is enforced across ALL paths — new users, existing verified users,
+ * and already-linked Google users. No path may issue a session from a locally-cached
+ * ID without first confirming that ID with Supabase GoTrue.
+ *
+ * Identity Binding Invariants:
+ *  - If existingUser.google_sub is already present:
+ *      Must match claims.sub exactly. If different -> reject with GOOGLE_IDENTITY_MISMATCH.
+ *  - If existingUser.google_sub is absent (first-time linking):
+ *      claims.sub must NOT be linked to any other user in platformUsersVault.
+ *      If already linked elsewhere -> reject with GOOGLE_IDENTITY_ALREADY_LINKED.
+ *  - Session version is preserved from existing record.
+ *  - google_sub is written ONLY after GoTrue verification succeeds.
  *
  * @param claims  - Pre-validated claims from parseAndVerifyGoogleIdToken().
- *                  Never trusted as the sole authority — GoTrue exchange is the ground truth.
- * @param idToken - The raw, verified Google JWT received from the client. This is forwarded
- *                  as-is to GoTrue's signInWithIdToken() for authoritative verification.
- *                  Must NOT be a hardcoded mock value in production code paths.
+ *                  Used for structural checks only — GoTrue is the identity authority.
+ * @param idToken - The raw, verified Google JWT. Forwarded verbatim to GoTrue's
+ *                  signInWithIdToken() for authoritative server-side verification.
  */
 export async function resolveOrLinkGoogleUser(
   claims: GoogleIdTokenClaims,
-  idToken: string,
+  idToken: string = '',
 ): Promise<{
   success: boolean;
   user?: PlatformUserRecord;
@@ -185,28 +193,32 @@ export async function resolveOrLinkGoogleUser(
 }> {
   const cleanEmail = claims.email.trim().toLowerCase();
 
-  // 1. Search existing platform user profile
+  // 1. Check for ACCOUNT_TAKEOVER before touching GoTrue.
+  //    An unverified local account must never be linked to any external provider.
   const existingUser = platformUsersVault.get(cleanEmail);
-  if (existingUser) {
-    // ANTI-ACCOUNT TAKEOVER GUARD:
-    // If local account was never verified, do NOT automatically attach Google identity!
-    if (!existingUser.email_verified) {
-      return {
-        success: false,
-        error: 'ACCOUNT_TAKEOVER_PREVENTED',
-      };
-    }
-
-    existingUser.google_sub = claims.sub;
-    platformUsersVault.set(cleanEmail, existingUser);
-    return { success: true, user: existingUser };
+  if (existingUser && !existingUser.email_verified) {
+    return { success: false, error: 'ACCOUNT_TAKEOVER_PREVENTED' };
   }
 
-  // 2. Exchange with Authoritative GoTrue Provider
-  // idToken is the actual verified Google JWT — forwarded verbatim so GoTrue can verify
-  // signature, issuer, audience, and expiry server-side (signInWithIdToken).
+  // 2. Check Google identity binding invariants before GoTrue exchange:
+  if (existingUser?.google_sub) {
+    // If account already has a linked Google identity, it cannot be bound to a different Google sub.
+    if (existingUser.google_sub !== claims.sub) {
+      return { success: false, error: 'GOOGLE_IDENTITY_MISMATCH' };
+    }
+  } else {
+    // If account is not yet linked to Google, verify this Google sub is not already linked to another local account.
+    for (const u of platformUsersVault.values()) {
+      if (u.google_sub === claims.sub && u.email !== cleanEmail) {
+        return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
+      }
+    }
+  }
+
+  // 3. Unconditional GoTrue exchange — ALL paths (new, existing, re-login) must pass through here.
+  //    GoTrue verifies token signature, issuer, audience, expiry, and returns the real auth.users.id.
   const goTrueResult = await verifyGoTrueGoogleToken({
-    idToken,  // P0-B: Real token, not 'mock_exchange_token'
+    idToken,
     claims: {
       sub: claims.sub,
       email: cleanEmail,
@@ -215,23 +227,42 @@ export async function resolveOrLinkGoogleUser(
   });
 
   if (!goTrueResult.success || !goTrueResult.user) {
-    return {
-      success: false,
-      error: goTrueResult.error || 'LINKING_FAILED',
-    };
+    return { success: false, error: goTrueResult.error || 'LINKING_FAILED' };
   }
 
-  // 3. Map GoTrue authoritative user to platform profile
-  const newUser: PlatformUserRecord = {
-    id: goTrueResult.user.id, // REAL auth.users(id)
+  const goTrueId = goTrueResult.user.id; // Authoritative auth.users(id)
+
+  // 4. Identity collision guard: if a local record existed, its stored ID must match GoTrue's ID.
+  //    A mismatch means the local cache is stale or has been tampered with — fail closed.
+  if (existingUser && existingUser.id !== goTrueId) {
+    return { success: false, error: 'ID_COLLISION' };
+  }
+
+  // 5. Final binding check before mutation
+  if (existingUser?.google_sub && existingUser.google_sub !== claims.sub) {
+    return { success: false, error: 'GOOGLE_IDENTITY_MISMATCH' };
+  }
+  for (const u of platformUsersVault.values()) {
+    if (u.google_sub === claims.sub && u.email !== cleanEmail) {
+      return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
+    }
+  }
+
+  // 6. Determine session_version from existing record (preserves revocation version counter).
+  const sessionVersion = existingUser?.session_version ?? 1;
+
+  // 7. Upsert vault with GoTrue-confirmed identity.
+  //    google_sub is only written after successful GoTrue verification.
+  const confirmedUser: PlatformUserRecord = {
+    id: goTrueId,              // Strictly from auth.users — never from local cache alone
     email: cleanEmail,
     email_verified: true,
-    google_sub: claims.sub,
-    session_version: 1,
+    google_sub: claims.sub,    // Updated only after GoTrue confirms the token
+    session_version: sessionVersion,
   };
+  platformUsersVault.set(cleanEmail, confirmedUser);
 
-  platformUsersVault.set(cleanEmail, newUser);
-  return { success: true, user: newUser };
+  return { success: true, user: confirmedUser };
 }
 
 /**
@@ -282,13 +313,21 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
   // not trusted as a replacement for the token.
   const linkResult = await resolveOrLinkGoogleUser(verification.claims, token);
   if (!linkResult.success || !linkResult.user) {
+    let message = 'Gagal mengaitkan akun pengguna via GoTrue.';
+    if (linkResult.error === 'ACCOUNT_TAKEOVER_PREVENTED') {
+      message = 'Akun dengan email ini belum diverifikasi secara lokal. Verifikasi email Anda sebelum menghubungkan Google.';
+    } else if (linkResult.error === 'GOOGLE_IDENTITY_MISMATCH') {
+      message = 'Akun ini telah terhubung dengan identitas Google lain. Akses ditolak.';
+    } else if (linkResult.error === 'GOOGLE_IDENTITY_ALREADY_LINKED') {
+      message = 'Identitas Google ini telah terhubung ke akun lain. Akses ditolak.';
+    } else if (linkResult.error === 'ID_COLLISION') {
+      message = 'Konflik identitas pengguna terdeteksi. Akses ditolak.';
+    }
+
     return {
       success: false,
       status: linkResult.error || 'LINKING_FAILED',
-      message:
-        linkResult.error === 'ACCOUNT_TAKEOVER_PREVENTED'
-          ? 'Akun dengan email ini belum diverifikasi secara lokal. Verifikasi email Anda sebelum menghubungkan Google.'
-          : 'Gagal mengaitkan akun pengguna via GoTrue.',
+      message,
     };
   }
 
@@ -339,4 +378,11 @@ export function seedPlatformUser(user: PlatformUserRecord) {
     email_confirmed: user.email_verified,
     google_sub: user.google_sub,
   });
+}
+
+/**
+ * Look up platform user by email (for tests and verification)
+ */
+export function getPlatformUserByEmail(email: string): PlatformUserRecord | undefined {
+  return platformUsersVault.get(email.trim().toLowerCase());
 }
