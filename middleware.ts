@@ -29,6 +29,10 @@ const KNOWN_CUSTOM_DOMAINS: Record<string, { slug: string; tenantId?: string }> 
     slug: 'tumbuh-kembang-anak',
     tenantId: '692080ea-81b7-496b-87ee-bd8b9565b28c',
   },
+  'order.shabuajhi.com': {
+    slug: 'shabu-ajhi',
+    tenantId: '70c1ea8c-3557-44af-b131-faae75a8b17f',
+  },
 };
 
 // Root / Apex Domain Redirects to Official Operational Subdomains (301 Permanent Redirect)
@@ -417,7 +421,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   }
 
   // ── 0a. SENSITIVE API ENDPOINTS & ZERO-LEAK CACHE GUARD (CTO Mandate) ──
-  if (pathname.startsWith('/api/') || pathname === '/api') {
+  if ((pathname.startsWith('/api/') || pathname === '/api') && hostClean !== 'app.boontrack.com' && hostClean !== 'app.localhost') {
     const res = NextResponse.next();
     applySensitiveCacheHeaders(res);
     return res;
@@ -746,8 +750,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
-    // Deteksi sesi login aktif Studio / Merchant (Cryptographically signed token only)
-    const hasStudioAuth = await hasValidTenantSession(req);
+    // Deteksi sesi login aktif Studio / Merchant (Host-only Studio session or signed merchant token)
+    const hasStudioAuth = Boolean(
+      req.cookies.get('__Host-bt_studio_session')?.value ||
+      req.cookies.get('bt_studio_session')?.value ||
+      (await hasValidTenantSession(req))
+    );
 
     // 1. Root / ->
     //    - Jika pengguna sudah login: redirect ke /desk (Workspace Dashboard)
@@ -1192,53 +1200,94 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return res;
   }
 
-  // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
-  if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
-    const firstSegment = pathname.split('/')[1]?.toLowerCase();
+  // ── 3. KHUSUS APP.BOONTRACK.COM (Retired Legacy Hub -> Method-Aware Gateway) ──
+  if (hostClean === 'app.boontrack.com' || hostClean === 'app.localhost') {
+    const origin = req.headers.get('origin');
+    const isAuthorizedOrigin = origin && (
+      origin.endsWith('.boontrack.com') ||
+      origin === 'https://boontrack.com' ||
+      origin === 'https://order.shabuajhi.com' ||
+      origin.includes('littlebitefeeding.com') ||
+      (process.env.NODE_ENV !== 'production' && origin.includes('localhost:'))
+    );
 
-    // Favicon & Icons
-    if (pathname === '/favicon.ico') {
+    // 3a. CORS Preflight: Strict origin validation and credential policy
+    if (req.method === 'OPTIONS') {
+      if (!isAuthorizedOrigin) {
+        return new NextResponse(JSON.stringify({ error: 'CORS_ORIGIN_DENIED' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', 'Vary': 'Origin' },
+        });
+      }
+      return new NextResponse(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': origin!,
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Tenant-Slug, X-Partner-Id, Idempotency-Key',
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Max-Age': '86400',
+          'Vary': 'Origin',
+        },
+      });
+    }
+
+    // 3b. Static Assets: Local chunk delivery and branding rewrite
+    if (pathname.startsWith('/_next') || pathname.startsWith('/static')) {
+      return NextResponse.next();
+    }
+    if (pathname === '/favicon.ico' || pathname === '/icon.png' || pathname === '/apple-touch-icon.png') {
       const url = req.nextUrl.clone();
       url.pathname = '/branding/app/favicon.ico';
       return NextResponse.rewrite(url);
     }
-    if (pathname === '/apple-touch-icon.png' || pathname === '/apple-icon.png') {
+
+    // 3c. Commerce / Checkout: Redirect GET to Shop, reject non-GET mutations
+    if (pathname === '/checkout' || pathname.startsWith('/checkout/') || pathname.includes('/checkout')) {
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        const url = req.nextUrl.clone();
+        url.protocol = 'https:';
+        url.host = 'shop.boontrack.com';
+        url.port = '';
+        return NextResponse.redirect(url, 301);
+      }
+      return NextResponse.json(
+        { error: 'COMMERCE_NOT_PERMITTED', message: 'Checkout is disabled on app.boontrack.com. Use shop.boontrack.com.' },
+        { status: 410 }
+      );
+    }
+
+    // 3d. API Routing: Verified GET mappings redirect; all non-GET and unmapped APIs return 410
+    if (pathname.startsWith('/api/')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && pathname === '/api/v1/tenant/me') {
+        const url = req.nextUrl.clone();
+        url.protocol = 'https:';
+        url.host = 'dashboard.boontrack.com';
+        url.port = '';
+        return NextResponse.redirect(url, 301);
+      }
+      return NextResponse.json(
+        { error: 'API_RETIRED', message: 'app.boontrack.com APIs are retired. Use api.boontrack.com or dashboard.boontrack.com.' },
+        { status: 410 }
+      );
+    }
+
+    // 3e. Authentication Callbacks: 307 Temporary Redirect (prevents caching OAuth code)
+    if (pathname.startsWith('/auth/callback') || pathname.startsWith('/login/oauth')) {
       const url = req.nextUrl.clone();
-      url.pathname = '/branding/app/apple-icon.png';
-      return NextResponse.rewrite(url);
-    }
-    if (pathname === '/icon.png') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/branding/app/icon.png';
-      return NextResponse.rewrite(url);
+      url.protocol = 'https:';
+      url.host = 'dashboard.boontrack.com';
+      url.port = '';
+      return NextResponse.redirect(url, 307);
     }
 
-    // Root portal landing
-    if (pathname === '/' || pathname === '') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/app-portal';
-      return NextResponse.rewrite(url);
-    }
-
-    // Explicit app-portal subpaths
-    if (pathname.startsWith('/app-portal')) {
-      return NextResponse.next();
-    }
-
-    // Reserved system routes
-    const SYSTEM_APP_ROUTES = new Set([
-      'api', '_next', 'auth', 'login', 'register', 'dashboard', 'admin',
-      'terms', 'privacy', 'acceptable-use', 'refund'
-    ]);
-
-    // Dynamic Tenant Routing Boundary: Allow any tenant portal request to route directly to app/[tenant]/page.tsx
-    if (firstSegment && !SYSTEM_APP_ROUTES.has(firstSegment)) {
-      return NextResponse.next();
-    }
-
+    // 3f. Standard Browser Navigation, Legacy Portal & Unknown Paths -> 301 to Dashboard
     const url = req.nextUrl.clone();
-    url.pathname = `/app-portal${pathname}`;
-    return NextResponse.rewrite(url);
+    url.protocol = 'https:';
+    url.host = 'dashboard.boontrack.com';
+    url.pathname = pathname === '/app-portal' || pathname.startsWith('/app-portal/') ? '/' : pathname;
+    url.port = '';
+    return NextResponse.redirect(url, 301);
   }
 
 
