@@ -163,8 +163,22 @@ export async function parseAndVerifyGoogleIdToken(
 /**
  * Resolves or securely links platform user identity using GoTrue Authority
  * Linked via FK to auth.users (Single Identity Authority)
+ *
+ * P0-B Fix: The actual verified Google ID token (not a placeholder) is forwarded
+ * to verifyGoTrueGoogleToken() so that in live mode, GoTrue's signInWithIdToken()
+ * receives the real token. The token is validated before this function is called;
+ * this function must not bypass or re-derive claims independently.
+ *
+ * @param claims  - Pre-validated claims from parseAndVerifyGoogleIdToken().
+ *                  Never trusted as the sole authority — GoTrue exchange is the ground truth.
+ * @param idToken - The raw, verified Google JWT received from the client. This is forwarded
+ *                  as-is to GoTrue's signInWithIdToken() for authoritative verification.
+ *                  Must NOT be a hardcoded mock value in production code paths.
  */
-export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Promise<{
+export async function resolveOrLinkGoogleUser(
+  claims: GoogleIdTokenClaims,
+  idToken: string,
+): Promise<{
   success: boolean;
   user?: PlatformUserRecord;
   error?: string;
@@ -189,8 +203,10 @@ export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Prom
   }
 
   // 2. Exchange with Authoritative GoTrue Provider
+  // idToken is the actual verified Google JWT — forwarded verbatim so GoTrue can verify
+  // signature, issuer, audience, and expiry server-side (signInWithIdToken).
   const goTrueResult = await verifyGoTrueGoogleToken({
-    idToken: 'mock_exchange_token',
+    idToken,  // P0-B: Real token, not 'mock_exchange_token'
     claims: {
       sub: claims.sub,
       email: cleanEmail,
@@ -261,7 +277,10 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
   }
 
   // 3. Authoritative GoTrue Exchange
-  const linkResult = await resolveOrLinkGoogleUser(verification.claims);
+  // Pass the actual verified Google ID token so GoTrue can run signInWithIdToken()
+  // with the real JWT. Do not pass a placeholder — client-supplied claims are
+  // not trusted as a replacement for the token.
+  const linkResult = await resolveOrLinkGoogleUser(verification.claims, token);
   if (!linkResult.success || !linkResult.user) {
     return {
       success: false,

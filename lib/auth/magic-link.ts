@@ -21,6 +21,11 @@ import {
   verifyGoTrueMagicLink,
   inspectGoTrueMagicLinkReadOnly,
 } from './gotrue-client';
+import {
+  dispatchMagicLinkEmail,
+  buildMagicLinkConfirmationUrl,
+  type MagicLinkDispatchResult,
+} from './magic-link-email';
 
 export interface MagicLinkRequestInput {
   email: string;
@@ -124,11 +129,22 @@ export function validateRedirectUrl(url: string | undefined | null, product: Aut
 
 /**
  * Requests a Magic Link dispatch (Delegated to GoTrue Authority)
+ *
+ * P0-A: Actual email delivery is now wired via dispatchMagicLinkEmail().
+ * The confirmation URL is constructed from the exact GoTrue hashed_token.
+ * Failure modes:
+ * - GoTrue link generation failure → returns failure (no email sent).
+ * - Email dispatch failure → returns failure with generic external message;
+ *   internal error is NOT forwarded to the caller response (avoid enumeration).
+ * - Test environment (NODE_ENV === 'test') → skips live dispatch, returns debugToken.
  */
 export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
   success: boolean;
   message: string;
-  debugToken?: string; // Strictly provided in test environments
+  /** Debug-only token: only present when NODE_ENV === 'test'. Never expose to production. */
+  debugToken?: string;
+  /** Internal delivery result for observability. Not forwarded to HTTP responses. */
+  _dispatchResult?: MagicLinkDispatchResult;
 }> {
   const cleanEmail = (input.email || '').trim().toLowerCase();
 
@@ -166,23 +182,66 @@ export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
     };
   }
 
-  // 3. Return Generic Message (Zero Account Enumeration)
+  // 3. Dispatch email (skip in test environment; use debugToken for test redemption)
+  if (process.env.NODE_ENV === 'test') {
+    // Test mode: return raw token hash for programmatic redemption in test suites.
+    // Never use debugToken in production — it bypasses email delivery verification.
+    return {
+      success: true,
+      message: 'Tautan login aman telah dikirimkan ke email Anda. Silakan periksa kotak masuk atau spam.',
+      debugToken: linkResult.tokenHash,
+    };
+  }
+
+  // 4. Live dispatch via Resend (BoonPilot email infrastructure)
+  // hashedToken is NOT logged here — it would allow session hijack if leaked.
+  const dispatchResult = await dispatchMagicLinkEmail({
+    email: cleanEmail,
+    hashedToken: linkResult.tokenHash,
+    product: input.product,
+  });
+
+  if (!dispatchResult.dispatched) {
+    // Email dispatch failed. Fail closed — do NOT claim delivery success.
+    // Log internal error for observability (no token values in log).
+    console.error(
+      '[MagicLink] Email dispatch failed for product=%s internalError=%s',
+      input.product,
+      dispatchResult.internalError || 'UNKNOWN',
+    );
+    return {
+      success: false,
+      message: 'Gagal mengirimkan tautan login. Silakan coba lagi sesaat.',
+      _dispatchResult: dispatchResult,
+    };
+  }
+
+  // 5. Generic success response (zero account enumeration)
   return {
     success: true,
     message: 'Tautan login aman telah dikirimkan ke email Anda. Silakan periksa kotak masuk atau spam.',
-    debugToken: linkResult.tokenHash,
+    _dispatchResult: dispatchResult,
   };
 }
 
 /**
  * Inspects a Magic Link token in READ-ONLY mode (for GET confirmation landing page)
  * DOES NOT consume or alter the single-use token state! Safe against email link scanners.
+ *
+ * P0-C: GoTrue does not expose a non-consuming token validation endpoint.
+ * In live mode, the GET landing page is rendered without claiming authoritative token validity.
+ * This is safer than a secondary custom engine. Tokens are only definitively validated
+ * via POST → verifyOtp(), which is the single atomic redemption path.
+ *
+ * In test mode, the in-memory mock store allows read-only inspection without mutation.
  */
 export async function inspectMagicLinkReadOnly(token: string, product: AuthProduct): Promise<{
   valid: boolean;
   status: string;
   email?: string;
   redirectUrl?: string;
+  /** When true, the token has not been checked against GoTrue — only mock store was inspected */
+  unverifiedLivePlaceholder?: boolean;
 }> {
   if (!token) return { valid: false, status: 'TOKEN_REQUIRED' };
 
@@ -195,11 +254,22 @@ export async function inspectMagicLinkReadOnly(token: string, product: AuthProdu
     return { valid: false, status: inspection.error || 'TOKEN_INVALID' };
   }
 
+  // In live mode, inspectGoTrueMagicLinkReadOnly returns { valid: true } as a placeholder
+  // because GoTrue offers no non-consuming validation endpoint. The GET page is rendered
+  // to provide a human-clickable confirmation step. The actual GoTrue validation only
+  // occurs at POST via verifyOtp(). The `unverifiedLivePlaceholder` flag signals this.
+  const isLiveMode =
+    process.env.NODE_ENV !== 'test' &&
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !!process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    !process.env.SUPABASE_SERVICE_ROLE_KEY.includes('mock');
+
   return {
     valid: true,
     status: 'READY_FOR_CONFIRMATION',
-    email: inspection.email || 'Akun Anda',
+    email: inspection.email || undefined,
     redirectUrl: product === 'studio' ? '/desk' : '/admin',
+    ...(isLiveMode ? { unverifiedLivePlaceholder: true } : {}),
   };
 }
 
