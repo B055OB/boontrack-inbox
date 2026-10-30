@@ -71,6 +71,104 @@ interface CartItem {
   image?: string;
 }
 
+/**
+ * Helper: Validasi apakah sebuah menu adalah BBQ Only (tanpa kuah shabu).
+ * Prioritas utama:
+ * 1. Tag eksplisit 'bbq-only' atau 'bbq_only'
+ * 2. Tag 'shabu', 'combo', 'shabu-bbq' membatalkan bbq-only (kuah shabu wajib ada)
+ * 3. Flag boolean is_bbq_only
+ * 4. Pengecekan nama: combo shabu & bbq tidak boleh kehilangan kuah
+ */
+export function checkIsBbqOnly(item: {
+  name?: string;
+  title?: string;
+  description?: string;
+  tags?: string[] | any;
+  is_bbq_only?: boolean;
+}): boolean {
+  const rawTags = Array.isArray(item.tags)
+    ? item.tags
+    : typeof item.tags === 'string'
+    ? (item.tags as string).split(',').map((t) => t.trim())
+    : [];
+  const normalizedTags = rawTags.map((t: string) => String(t).toLowerCase().trim());
+
+  if (normalizedTags.includes('bbq-only') || normalizedTags.includes('bbq_only')) {
+    return true;
+  }
+  if (
+    normalizedTags.includes('shabu') ||
+    normalizedTags.includes('suki') ||
+    normalizedTags.includes('combo') ||
+    normalizedTags.includes('shabu-bbq')
+  ) {
+    return false;
+  }
+
+  if (item.is_bbq_only === true) return true;
+  if (item.is_bbq_only === false) return false;
+
+  const name = (item.name || item.title || '').toLowerCase();
+  if (
+    name.includes('suki') ||
+    (name.includes('shabu') && (name.includes('bbq') || name.includes('grill')))
+  ) {
+    return false;
+  }
+  if (name.includes('bbq only') || name.includes('bbq-only') || name.includes('bbq_only')) {
+    return true;
+  }
+
+  const desc = (item.description || '').toLowerCase();
+  if ((desc.includes('bbq only') || desc.includes('bbq-only')) && !desc.includes('shabu')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Helper: Pure function to construct WhatsApp booking URL and message payload.
+ */
+export function buildCateringWhatsAppUrl(params: {
+  storeName: string;
+  waNumber: string;
+  deliveryDate: string;
+  formattedDeliveryDate: string;
+  selectedTimeSlot: string;
+  locationType: string;
+  locationDetails: string;
+  cartItems: Array<{ name: string; qty: number; price: number; soupVariant?: string }>;
+  totalPrice: number;
+}): { message: string; waUrl: string; cleanWa: string } {
+  const itemsSummary = params.cartItems
+    .map((item, idx) => {
+      const soupNote = item.soupVariant ? ` (Varian: ${item.soupVariant})` : '';
+      return `${idx + 1}. ${item.name} x${item.qty}${soupNote} — Rp ${(item.price * item.qty).toLocaleString('id-ID')}`;
+    })
+    .join('\n');
+
+  const cleanLocation = params.locationDetails.trim()
+    ? `${params.locationType} (${params.locationDetails.trim()})`
+    : `${params.locationType} (Alamat detail dikonfirmasi di chat)`;
+
+  const message = `Halo ${params.storeName}, saya mau pesan Home Service Shabu & BBQ:\n\n` +
+    `📅 *Jadwal Pengantaran:*\n` +
+    `• Hari / Tanggal: ${params.formattedDeliveryDate} (${params.deliveryDate})\n` +
+    `• Slot Jam: ${params.selectedTimeSlot}\n` +
+    `• Tipe Lokasi: ${cleanLocation}\n\n` +
+    `🍲 *Rincian Pesanan:*\n` +
+    `${itemsSummary}\n\n` +
+    `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
+    `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\n\n` +
+    `Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
+
+  const cleanWa = params.waNumber.replace(/\D/g, '') || '6285861091103';
+  const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(message)}`;
+
+  return { message, waUrl, cleanWa };
+}
+
 export default function FnbCateringStorefrontView({
   effectiveName,
   effectiveSlug,
@@ -238,8 +336,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
 
   // Available soup variants
   const soupOptions: string[] = fnbCatering?.soup_variants || [
-    'Kuah Kaldu Gurih',
-    'Tom Yum Segar',
+    'Kuah Kaldu Ayam (Gurih)',
+    'Kuah Tomyum (Segar)',
+    'Kuah Miso',
+    'Kuah Mercon',
   ];
 
   // Add-ons list
@@ -283,19 +383,41 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     ];
   }, [fnbCatering]);
 
-  // Group products into Tab 1 (Paket Alat Hemat) vs Tab 2 (Paket Alat Premium)
+  // Group products into 4 categories:
+  // 1. Paket Alat Hemat (10 Pax Mabar)
+  // 2. Paket Alat Premium (2–4 Pax)
+  // 3. Paket Occasion (Spesial Momen)
+  // 4. Paket Tanpa Alat (Hemat Rp 10.000)
   const categorizedProducts = useMemo(() => {
     const hematList: Product[] = [];
     const premiumList: Product[] = [];
+    const occasionList: Product[] = [];
+    const tanpaAlatList: Product[] = [];
     const otherList: Product[] = [];
 
     products.forEach((p) => {
       const cat = (p.category || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
 
-      if (cat.includes('hemat') || name.includes('mabar')) {
+      if (cat.includes('tanpa alat') || name.includes('tanpa alat')) {
+        tanpaAlatList.push(p);
+      } else if (
+        cat.includes('occasion') ||
+        name.includes('graduation') ||
+        name.includes('bestie') ||
+        name.includes('romantic')
+      ) {
+        occasionList.push(p);
+      } else if (cat.includes('hemat') || name.includes('mabar')) {
         hematList.push(p);
-      } else if (cat.includes('premium') || name.includes('sakura') || name.includes('oishii') || name.includes('kimochi') || name.includes('ichiban') || name.includes('aishiteru')) {
+      } else if (
+        cat.includes('premium') ||
+        name.includes('sakura') ||
+        name.includes('oishi') ||
+        name.includes('kimochi') ||
+        name.includes('ichiban') ||
+        name.includes('aishiteru')
+      ) {
         premiumList.push(p);
       } else {
         otherList.push(p);
@@ -305,9 +427,27 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     return {
       hemat: hematList,
       premium: premiumList,
+      occasion: occasionList,
+      tanpaAlat: tanpaAlatList,
       other: otherList,
     };
   }, [products]);
+
+  const displayedProducts = useMemo(() => {
+    switch (activeTabKey) {
+      case 'Paket Alat Premium':
+        return categorizedProducts.premium;
+      case 'Paket Occasion':
+        return categorizedProducts.occasion;
+      case 'Paket Tanpa Alat':
+        return categorizedProducts.tanpaAlat;
+      case 'Paket Alat Hemat':
+      default:
+        return categorizedProducts.hemat.length > 0
+          ? categorizedProducts.hemat
+          : products;
+    }
+  }, [activeTabKey, categorizedProducts, products]);
 
   // Handle Soup Selection for a package
   const handleSelectSoup = (productId: string, soup: string) => {
@@ -320,12 +460,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
   // Add Product to Cart
   const handleAddProduct = (p: Product) => {
     const pId = String(p.id);
-    const chosenSoup = selectedSoups[pId] || soupOptions[0] || 'Kuah Kaldu Gurih';
-    const isShabuRelated =
-      p.name.toLowerCase().includes('shabu') ||
-      p.name.toLowerCase().includes('ichiban') ||
-      p.name.toLowerCase().includes('oishii') ||
-      p.name.toLowerCase().includes('aishiteru');
+    const chosenSoup = selectedSoups[pId] || soupOptions[0] || 'Kuah Kaldu Ayam (Gurih)';
+    const isBbqOnly = checkIsBbqOnly(p as any);
+    const isShabuRelated = !isBbqOnly;
 
     setCart((prev) => {
       const existing = prev[pId];
@@ -441,34 +578,17 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
-    const itemsSummary = Object.values(cart)
-      .map((item, idx) => {
-        const soupNote = item.soupVariant ? ` (Varian: ${item.soupVariant})` : '';
-        return `${idx + 1}. ${item.name} x${item.qty}${soupNote} — Rp ${(item.price * item.qty).toLocaleString('id-ID')}`;
-      })
-      .join('\n');
-
-    const cleanLocation = locationDetails.trim()
-      ? `${locationType} (${locationDetails.trim()})`
-      : `${locationType} (Alamat detail dikonfirmasi di chat)`;
-
-    const message = `Halo ${effectiveName}, saya mau pesan Home Service Shabu & BBQ:
-
-📅 *Jadwal Pengantaran:*
-• Hari / Tanggal: ${formattedDeliveryDate} (${deliveryDate})
-• Slot Jam: ${selectedTimeSlot}
-• Tipe Lokasi: ${cleanLocation}
-
-🍲 *Rincian Pesanan:*
-${itemsSummary}
-
-💰 *Estimasi Total: Rp ${totalPrice.toLocaleString('id-ID')}*
-✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*
-
-Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
-
-    const cleanWa = waNumber.replace(/\D/g, '');
-    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(message)}`;
+    const { waUrl } = buildCateringWhatsAppUrl({
+      storeName: effectiveName,
+      waNumber,
+      deliveryDate,
+      formattedDeliveryDate,
+      selectedTimeSlot,
+      locationType,
+      locationDetails,
+      cartItems: Object.values(cart),
+      totalPrice,
+    });
 
     if (typeof window !== 'undefined') {
       window.open(waUrl, '_blank', 'noopener,noreferrer');
@@ -855,50 +975,69 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
           </div>
 
           {/* Tab Selector Button Toggle */}
-          <div className="inline-flex p-1 bg-amber-100/70 rounded-2xl border border-amber-200 shrink-0">
+          <div className="inline-flex flex-wrap sm:flex-nowrap p-1 bg-amber-100/70 rounded-2xl border border-amber-200 gap-1 overflow-x-auto max-w-full">
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Hemat')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTabKey === 'Paket Alat Hemat'
                   ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-slate-700 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Paket Mabar 10 Pax (Rombongan)</span>
+              <span>Paket Alat Hemat (10 Pax)</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTabKey('Paket Alat Premium')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTabKey === 'Paket Alat Premium'
                   ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-slate-700 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Paket Keluarga 2–4 Pax</span>
+              <span>Paket Alat Premium (2–4 Pax)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTabKey('Paket Occasion')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                activeTabKey === 'Paket Occasion'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <Gift className="w-3.5 h-3.5" />
+              <span>Paket Occasion</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTabKey('Paket Tanpa Alat')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                activeTabKey === 'Paket Tanpa Alat'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Paket Tanpa Alat</span>
             </button>
           </div>
         </div>
 
         {/* ── GRID PRODUK BERDASARKAN TAB AKTIF ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {(activeTabKey === 'Paket Alat Hemat'
-            ? categorizedProducts.hemat
-            : categorizedProducts.premium
-          ).map((item) => {
+          {displayedProducts.map((item) => {
             const pId = String(item.id);
             const inCartItem = cart[pId];
             const currentQty = inCartItem?.qty || 0;
-            const chosenSoup = selectedSoups[pId] || soupOptions[0] || 'Kuah Kaldu Gurih';
+            const chosenSoup = selectedSoups[pId] || soupOptions[0] || 'Kuah Kaldu Ayam (Gurih)';
 
-            const isShabuRelated =
-              item.name.toLowerCase().includes('shabu') ||
-              item.name.toLowerCase().includes('ichiban') ||
-              item.name.toLowerCase().includes('oishii') ||
-              item.name.toLowerCase().includes('aishiteru');
+            const isBbqOnly = checkIsBbqOnly(item as any);
+
+            const isShabuRelated = !isBbqOnly;
 
             return (
               <div
@@ -939,7 +1078,7 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                     </p>
                   )}
 
-                  {/* ── Pemilih Varian Kuah Instan (Khusus Menu ada Shabu) ── */}
+                  {/* ── Pemilih Varian Kuah Instan (Khusus Menu Shabu) ── */}
                   {isShabuRelated && (
                     <div className="mt-4 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1.5">
                       <div className="flex items-center justify-between text-[11px]">
@@ -967,6 +1106,14 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* ── Info Box Khusus BBQ Only (Sejajar dan Proporsional) ── */}
+                  {isBbqOnly && (
+                    <div className="mt-4 p-2.5 rounded-xl bg-orange-50/70 border border-orange-200/80 text-[11px] text-orange-950 flex items-center gap-2 font-medium leading-snug">
+                      <span className="text-base shrink-0">🔥</span>
+                      <span><strong>Paket Khusus BBQ Grill (Tanpa Kuah)</strong> — Termasuk Saus Marinasi, Mentega &amp; Pendamping</span>
                     </div>
                   )}
                 </div>
@@ -1131,36 +1278,37 @@ Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS unt
               </div>
             </div>
 
-            {/* Tombol CTA WhatsApp & Direct QRIS */}
+            {/* Tombol CTA WhatsApp Kasir & Direct QRIS */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={handleDirectQrisCheckout}
                 disabled={!selectedTimeSlot}
-                className={`py-3 px-3.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
+                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
                   selectedTimeSlot
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20'
                     : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
                 }`}
-                title="Buka Faktur Pembayaran QRIS"
+                title="Buka Faktur Pembayaran QRIS Dinamis"
               >
-                <QrCode className="w-4 h-4 text-emerald-600" />
-                <span className="hidden md:inline">Faktur QRIS</span>
+                <QrCode className="w-4 h-4 text-emerald-400" />
+                <span>Bayar QRIS</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleCheckoutViaWhatsApp}
                 disabled={!selectedTimeSlot}
-                className={`flex-1 sm:flex-initial py-3 px-6 rounded-2xl text-white text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
+                className={`flex-1 sm:flex-initial py-3 px-4 sm:px-6 rounded-2xl text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
                   selectedTimeSlot
-                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
                     : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
+                title="Pesan Langsung via WhatsApp Kasir (0858-6109-1103)"
               >
                 <MessageSquare className="w-4 h-4 fill-white" />
                 <span>
-                  {selectedTimeSlot ? 'Pesan via WhatsApp (Proses 10 Detik)' : 'Pilih Slot Jam Dahulu'}
+                  {selectedTimeSlot ? 'WhatsApp Kasir / CS' : 'Pilih Slot Jam Dahulu'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </button>

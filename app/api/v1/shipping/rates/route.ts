@@ -275,6 +275,7 @@ export async function POST(req: NextRequest) {
         : null;
 
     let tenantLincah: any = null;
+    let metaShipping: any = null;
 
     if (slug) {
       try {
@@ -296,7 +297,7 @@ export async function POST(req: NextRequest) {
           const biteshipCfg = settingsRes.data?.biteship_config;
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
-          const metaShipping = meta.shipping_config;
+          metaShipping = meta.shipping_config;
           tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
 
           if (biteshipCfg) {
@@ -430,11 +431,22 @@ export async function POST(req: NextRequest) {
     const destPrefix = String(destinationPostalCode).slice(0, 2);
     const isSamePostalRegion = destPrefix.length >= 2 && originPrefix === destPrefix;
 
-    // Batas radius maksimal kurir instan: MAKSIMAL 30 KM!
-    // Jika jarak > 30 km, opsi GoSend/GrabExpress WAJIB disembunyikan dan hanya menampilkan kurir reguler
+    // Batas radius maksimal kurir instan: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined (defensive 40 KM)
+    const rawRadius =
+      metaShipping?.fnb_settings?.max_radius_km ??
+      metaShipping?.max_radius_km ??
+      metaShipping?.internal_courier?.max_radius_km ??
+      metaShipping?.lalamove_internal?.max_radius_km;
+
+    let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
+    const effectiveMaxInstantRadius =
+      !isNaN(parsedRadius) && isFinite(parsedRadius) && parsedRadius > 0
+        ? parsedRadius
+        : 40;
+
     const isInstantEligible =
       distanceKm > 0
-        ? distanceKm <= MAX_INSTANT_RADIUS_KM
+        ? distanceKm <= effectiveMaxInstantRadius
         : isSameCity || isSamePostalRegion;
 
     let availableRates: RateOption[] = [];
@@ -613,39 +625,78 @@ export async function POST(req: NextRequest) {
       // A. Jika dalam radius instan (<= 30 km), berikan opsi instan lokal berbasis jarak riil
       if (isInstantEligible) {
         const extraKm = Math.max(0, distanceKm - 4);
-        const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
-        const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+        const internalCourier = metaShipping?.internal_courier || metaShipping?.lalamove_internal;
 
-        const allowGosend = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
-        const allowGrab = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
+        if (internalCourier && internalCourier.is_enabled !== false) {
+          const motorBase = internalCourier.rates?.motor?.base_price ?? internalCourier.motor_base_rate ?? 12000;
+          const motorPerKm = internalCourier.rates?.motor?.per_km_price ?? internalCourier.motor_per_km_rate ?? 2800;
+          const carBase = internalCourier.rates?.car?.base_price ?? internalCourier.car_base_rate ?? 40000;
+          const carPerKm = internalCourier.rates?.car?.per_km_price ?? internalCourier.car_per_km_rate ?? 4500;
+          const officialCourierName = 'Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor)';
 
-        if (allowGosend) {
+          const motorPrice = Math.max(motorBase, Math.round((motorBase + extraKm * motorPerKm) / 500) * 500);
+          const carPrice = Math.max(carBase, Math.round((carBase + extraKm * carPerKm) / 500) * 500);
+
           availableRates.push({
-            id: 'instant_gosend',
-            courier_name: 'GoSend Instant',
-            service: 'Instant',
-            price: gosendPrice,
-            etd: '1 - 2 Jam',
+            id: 'armada_motor',
+            courier_name: officialCourierName,
+            service: 'Paket 2–4 Pax (Motor / Kurir Ringan)',
+            price: motorPrice,
+            etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
             type: 'instant',
-            badge: 'Tiba Hari Ini (1-2 Jam)',
+            badge: 'Armada Internal Toko',
             provider: 'platform',
             max_days: 0.1,
             is_fnb_safe: true,
           });
-        }
-        if (allowGrab) {
+
           availableRates.push({
-            id: 'instant_grab',
-            courier_name: 'GrabExpress Instant',
-            service: 'Instant',
-            price: grabPrice,
-            etd: '1 - 2 Jam',
+            id: 'armada_car',
+            courier_name: officialCourierName,
+            service: 'Paket 10 Pax / Rombongan / Multi-Kompor (Mobil / MPV)',
+            price: carPrice,
+            etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
             type: 'instant',
-            badge: 'Tiba Hari Ini (1-2 Jam)',
+            badge: 'Armada Internal Toko',
             provider: 'platform',
             max_days: 0.1,
             is_fnb_safe: true,
           });
+        } else {
+          const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
+          const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+
+          const allowGosend = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
+          const allowGrab = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
+
+          if (allowGosend) {
+            availableRates.push({
+              id: 'instant_gosend',
+              courier_name: 'GoSend Instant',
+              service: 'Instant',
+              price: gosendPrice,
+              etd: '1 - 2 Jam',
+              type: 'instant',
+              badge: 'Tiba Hari Ini (1-2 Jam)',
+              provider: 'platform',
+              max_days: 0.1,
+              is_fnb_safe: true,
+            });
+          }
+          if (allowGrab) {
+            availableRates.push({
+              id: 'instant_grab',
+              courier_name: 'GrabExpress Instant',
+              service: 'Instant',
+              price: grabPrice,
+              etd: '1 - 2 Jam',
+              type: 'instant',
+              badge: 'Tiba Hari Ini (1-2 Jam)',
+              provider: 'platform',
+              max_days: 0.1,
+              is_fnb_safe: true,
+            });
+          }
         }
       }
 
@@ -750,7 +801,7 @@ export async function POST(req: NextRequest) {
       fnb_warning: fnbWarning,
       is_fnb: isFnb,
       distance_km: distanceKm,
-      max_radius_km: MAX_INSTANT_RADIUS_KM,
+      max_radius_km: effectiveMaxInstantRadius,
       instant_eligible: isInstantEligible,
       origin: {
         address: originAddress,

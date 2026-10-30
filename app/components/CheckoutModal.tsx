@@ -1369,7 +1369,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
             {/* Konten Metode Pembayaran */}
             {(() => {
-              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281977655099');
+              const cleanWa = formatIndonesianWhatsAppNumber((product as any)?.metadata?.whatsapp_intake || (product as any)?.metadata?.booking?.whatsapp_intake || tenantPhone || '6281977655099');
               const isManual = paymentData.paymentMethod === 'manual_transfer';
               const draftConfirmMsg = `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\n` +
                 `Order ID: ${paymentData.orderId}\n` +
@@ -1744,7 +1744,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
 
                 {/* Tombol Sekunder Fallback WhatsApp */}
                 <a
-                  href={directWaUrl || `https://wa.me/${formatIndonesianWhatsAppNumber(tenantPhone || '6281977655099')}?text=${encodeURIComponent(
+                  href={directWaUrl || `https://wa.me/${formatIndonesianWhatsAppNumber((product as any)?.metadata?.whatsapp_intake || (product as any)?.metadata?.booking?.whatsapp_intake || tenantPhone || '6281977655099')}?text=${encodeURIComponent(
                     `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${paymentData.orderId}\nProduk: ${product.title}\nNama: ${customerName || '-'}\nTotal Nominal: Rp ${totalAmount.toLocaleString('id-ID')}\nMetode: ${paymentData.paymentMethod === 'manual_transfer' ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`
                   )}`}
                   target="_blank"
@@ -2080,7 +2080,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          {instantCourierName} (GoSend / Grab)
+                          {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
                         </p>
                         <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
                           <span>Ongkir:</span>
@@ -2235,7 +2235,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                               </span>
                             </div>
                             <p className="text-[10px] text-slate-400 mt-1">
-                              {instantCourierName} (GoSend / Grab)
+                              {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
                             </p>
                             <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
                               <span>Ongkir:</span>
