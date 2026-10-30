@@ -182,7 +182,7 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
       exp: Math.floor(Date.now() / 1000) + 3600,
     };
 
-    const linked = await resolveOrLinkGoogleUser(googleClaims);
+    const linked = await resolveOrLinkGoogleUser(googleClaims, 'mock_google_id_token_test');
     expect(linked.success).toBe(true);
     expect(linked.user?.id).toBe('local_usr_uuid_123');
     expect(linked.user?.google_sub).toBe('google_sub_999888');
@@ -199,7 +199,7 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
       ...googleClaims,
       sub: 'attacker_google_sub_666',
       email: 'unverified@example.com',
-    });
+    }, 'mock_google_id_token_test');
     expect(takeoverAttempt.success).toBe(false);
     expect(takeoverAttempt.error).toBe('ACCOUNT_TAKEOVER_PREVENTED');
   });
@@ -231,7 +231,7 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
       exp: Math.floor(Date.now() / 1000) + 3600,
     };
 
-    const linked = await resolveOrLinkGoogleUser(googleClaims);
+    const linked = await resolveOrLinkGoogleUser(googleClaims, 'mock_google_id_token_test');
     expect(linked.success).toBe(true);
     // Preserves identical platform user ID (zero duplicate account)
     expect(linked.user?.id).toBe(originalUserId);

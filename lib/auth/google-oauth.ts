@@ -185,13 +185,19 @@ export async function parseAndVerifyGoogleIdToken(
  */
 export async function resolveOrLinkGoogleUser(
   claims: GoogleIdTokenClaims,
-  idToken: string = '',
+  idToken: string,
 ): Promise<{
   success: boolean;
   user?: PlatformUserRecord;
   error?: string;
 }> {
   const cleanEmail = claims.email.trim().toLowerCase();
+  const cleanToken = (idToken || '').trim();
+
+  // 0. Boundary Guard: Reject missing or empty tokens before GoTrue exchange
+  if (!cleanToken) {
+    return { success: false, error: 'TOKEN_REQUIRED' };
+  }
 
   // 1. Check for ACCOUNT_TAKEOVER before touching GoTrue.
   //    An unverified local account must never be linked to any external provider.
@@ -218,7 +224,7 @@ export async function resolveOrLinkGoogleUser(
   // 3. Unconditional GoTrue exchange — ALL paths (new, existing, re-login) must pass through here.
   //    GoTrue verifies token signature, issuer, audience, expiry, and returns the real auth.users.id.
   const goTrueResult = await verifyGoTrueGoogleToken({
-    idToken,
+    idToken: cleanToken,
     claims: {
       sub: claims.sub,
       email: cleanEmail,

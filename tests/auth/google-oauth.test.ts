@@ -79,7 +79,7 @@ function makeGoTrueSuccess(id: string, email: string): GoTrueVerificationResult 
 // ── Setup / Teardown ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   resetPlatformUsersVault();
   resetGoTrueMockStore();
   resetRevokedJtiCache();
@@ -551,5 +551,198 @@ describe('Google Provider Identity Binding Invariants', () => {
     expect(result.status).toBe('GOOGLE_IDENTITY_MISMATCH');
     expect(result.sessionToken).toBeUndefined();
     expect(result.userId).toBeUndefined();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SUITE 4 — CTO P1 Token Contract & Security Invariants
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('CTO P1 Token Contract & Security Invariants', () => {
+  // Helper to build a signed mock JWT with specified claims
+  function makeValidJwt(overrides: Partial<GoogleIdTokenClaims> = {}): string {
+    const claims = makeClaims(overrides);
+    const payload = Buffer.from(JSON.stringify(claims)).toString('base64');
+    return `header.${payload}.sig`;
+  }
+
+  // ── 1. Missing ID token ──
+  it('P1-1 [MISSING ID TOKEN] rejects missing ID token at boundary with TOKEN_REQUIRED and zero GoTrue call', async () => {
+    // 1a. resolveOrLinkGoogleUser with missing token
+    const resultDirect = await resolveOrLinkGoogleUser(makeClaims(), undefined as any);
+    expect(resultDirect.success).toBe(false);
+    expect(resultDirect.error).toBe('TOKEN_REQUIRED');
+    expect(resultDirect.user).toBeUndefined();
+    expect(mockVerifyGoTrueGoogleToken).not.toHaveBeenCalled();
+
+    // 1b. handleGoogleAuth with missing token
+    const resultGateway = await handleGoogleAuth({
+      product: 'studio',
+    });
+    expect(resultGateway.success).toBe(false);
+    expect(resultGateway.status).toBe('TOKEN_REQUIRED');
+    expect(resultGateway.sessionToken).toBeUndefined();
+    expect(resultGateway.userId).toBeUndefined();
+  });
+
+  // ── 2. Empty ID token ──
+  it('P1-2 [EMPTY ID TOKEN] rejects empty string and whitespace-only ID tokens at boundary', async () => {
+    // 2a. resolveOrLinkGoogleUser with empty string
+    const resultEmpty = await resolveOrLinkGoogleUser(makeClaims(), '');
+    expect(resultEmpty.success).toBe(false);
+    expect(resultEmpty.error).toBe('TOKEN_REQUIRED');
+
+    // 2b. resolveOrLinkGoogleUser with whitespace string
+    const resultWhitespace = await resolveOrLinkGoogleUser(makeClaims(), '    ');
+    expect(resultWhitespace.success).toBe(false);
+    expect(resultWhitespace.error).toBe('TOKEN_REQUIRED');
+    expect(mockVerifyGoTrueGoogleToken).not.toHaveBeenCalled();
+
+    // 2c. handleGoogleAuth with empty string
+    const gatewayEmpty = await handleGoogleAuth({
+      idToken: '   ',
+      product: 'studio',
+    });
+    expect(gatewayEmpty.success).toBe(false);
+    expect(gatewayEmpty.status).toBe('TOKEN_REQUIRED');
+    expect(gatewayEmpty.sessionToken).toBeUndefined();
+  });
+
+  // ── 3. GoTrue is never bypassed on successful login paths ──
+  it('P1-3 [GOTRUE NEVER BYPASSED] verifies GoTrue is unconditionally invoked for new, existing, and already-linked users', async () => {
+    // Path A: Brand new user
+    mockVerifyGoTrueGoogleToken.mockResolvedValueOnce(makeGoTrueSuccess(GOTRUE_UUID_A, 'user.a@example.com'));
+    const resNew = await handleGoogleAuth({
+      idToken: makeValidJwt({ email: 'user.a@example.com', sub: 'sub_user_a' }),
+      product: 'studio',
+    });
+    expect(resNew.success).toBe(true);
+    expect(mockVerifyGoTrueGoogleToken).toHaveBeenCalledTimes(1);
+
+    // Path B: Existing verified user (first-time Google link)
+    seedPlatformUser({
+      id: GOTRUE_UUID_B,
+      email: 'user.b@example.com',
+      email_verified: true,
+      google_sub: undefined,
+      session_version: 1,
+    });
+    mockVerifyGoTrueGoogleToken.mockResolvedValueOnce(makeGoTrueSuccess(GOTRUE_UUID_B, 'user.b@example.com'));
+    const resExisting = await handleGoogleAuth({
+      idToken: makeValidJwt({ email: 'user.b@example.com', sub: 'sub_user_b' }),
+      product: 'creator',
+    });
+    expect(resExisting.success).toBe(true);
+    expect(mockVerifyGoTrueGoogleToken).toHaveBeenCalledTimes(2);
+
+    // Path C: Already-linked user (subsequent login)
+    mockVerifyGoTrueGoogleToken.mockResolvedValueOnce(makeGoTrueSuccess(GOTRUE_UUID_B, 'user.b@example.com'));
+    const resLinked = await handleGoogleAuth({
+      idToken: makeValidJwt({ email: 'user.b@example.com', sub: 'sub_user_b' }),
+      product: 'creator',
+    });
+    expect(resLinked.success).toBe(true);
+    expect(mockVerifyGoTrueGoogleToken).toHaveBeenCalledTimes(3);
+  });
+
+  // ── 4. No session is issued for invalid token input ──
+  it('P1-4 [NO SESSION ON INVALID TOKEN] strictly denies session issuance on any token defect', async () => {
+    // 4a. Malformed token structure
+    const malformedRes = await handleGoogleAuth({
+      idToken: 'not.a.valid.three.part.jwt.token',
+      product: 'studio',
+    });
+    expect(malformedRes.success).toBe(false);
+    expect(malformedRes.sessionToken).toBeUndefined();
+
+    // 4b. Audience mismatch
+    const audRes = await handleGoogleAuth({
+      idToken: makeValidJwt({ aud: 'wrong_client_id.apps.googleusercontent.com' }),
+      product: 'studio',
+    });
+    expect(audRes.success).toBe(false);
+    expect(audRes.status).toBe('AUDIENCE_MISMATCH');
+    expect(audRes.sessionToken).toBeUndefined();
+
+    // 4c. Expired token
+    const expRes = await handleGoogleAuth({
+      idToken: makeValidJwt({ exp: Math.floor(Date.now() / 1000) - 100 }),
+      product: 'studio',
+    });
+    expect(expRes.success).toBe(false);
+    expect(expRes.status).toBe('TOKEN_EXPIRED');
+    expect(expRes.sessionToken).toBeUndefined();
+
+    // 4d. GoTrue rejection
+    mockVerifyGoTrueGoogleToken.mockResolvedValueOnce({
+      success: false,
+      error: 'INVALID_GOOGLE_TOKEN',
+      statusCode: 401,
+    });
+    const goTrueFailRes = await handleGoogleAuth({
+      idToken: makeValidJwt({ email: 'gotrue.fail@example.com' }),
+      product: 'studio',
+    });
+    expect(goTrueFailRes.success).toBe(false);
+    expect(goTrueFailRes.sessionToken).toBeUndefined();
+  });
+
+  // ── 5. Existing Google identity cannot be overwritten ──
+  it('P1-5 [EXISTING IDENTITY IMMUTABLE] prevents overwriting already-linked Google identity', async () => {
+    seedPlatformUser({
+      id: GOTRUE_UUID_A,
+      email: 'protected.user@example.com',
+      email_verified: true,
+      google_sub: 'original_google_subject_999',
+      session_version: 1,
+    });
+
+    const hijackAttempt = await resolveOrLinkGoogleUser(
+      makeClaims({ email: 'protected.user@example.com', sub: 'malicious_different_sub_000' }),
+      REAL_ID_TOKEN,
+    );
+
+    expect(hijackAttempt.success).toBe(false);
+    expect(hijackAttempt.error).toBe('GOOGLE_IDENTITY_MISMATCH');
+    expect(hijackAttempt.user).toBeUndefined();
+
+    // Assert that the stored google_sub remains untouched in the vault
+    const storedUser = getPlatformUserByEmail('protected.user@example.com');
+    expect(storedUser).toBeDefined();
+    expect(storedUser!.google_sub).toBe('original_google_subject_999');
+  });
+
+  // ── 6. Google identity already linked to another account is rejected ──
+  it('P1-6 [GOOGLE IDENTITY ALREADY LINKED] rejects when google_sub is already tied to another local account', async () => {
+    // User 1 has already linked google_sub 'exclusive_google_sub_888'
+    seedPlatformUser({
+      id: GOTRUE_UUID_A,
+      email: 'first.owner@example.com',
+      email_verified: true,
+      google_sub: 'exclusive_google_sub_888',
+      session_version: 1,
+    });
+
+    // User 2 (different email) attempts to link or login with the same google_sub
+    seedPlatformUser({
+      id: GOTRUE_UUID_B,
+      email: 'second.account@example.com',
+      email_verified: true,
+      google_sub: undefined,
+      session_version: 1,
+    });
+
+    const conflictResult = await resolveOrLinkGoogleUser(
+      makeClaims({ email: 'second.account@example.com', sub: 'exclusive_google_sub_888' }),
+      REAL_ID_TOKEN,
+    );
+
+    expect(conflictResult.success).toBe(false);
+    expect(conflictResult.error).toBe('GOOGLE_IDENTITY_ALREADY_LINKED');
+    expect(conflictResult.user).toBeUndefined();
+
+    // Verify User 2's google_sub was NOT updated
+    const user2Record = getPlatformUserByEmail('second.account@example.com');
+    expect(user2Record!.google_sub).toBeUndefined();
   });
 });
