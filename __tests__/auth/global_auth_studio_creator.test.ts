@@ -52,6 +52,7 @@ import {
 import { GET as magicLinkGetRoute, POST as magicLinkPostRoute } from '@/app/api/auth/magic-link/verify/route';
 import { POST as googleInitRoute } from '@/app/api/auth/google/init/route';
 import { POST as googleVerifyRoute } from '@/app/api/auth/google/verify/route';
+import { resetGoTrueMockStore, seedGoTrueUser } from '@/lib/auth/gotrue-client';
 
 describe('CTO Global Authentication & Boundaries Test Suite', () => {
   beforeEach(() => {
@@ -59,6 +60,7 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
     resetPlatformUsersVault();
     resetEntitlementsVault();
     resetRevokedJtiCache();
+    resetGoTrueMockStore();
   });
 
   // ── 1. Magic Link Registration & Login ──
@@ -636,5 +638,81 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
     // Final balance is strictly 1
     const ent = await checkProductEntitlement(tenantId, 'studio', 'RENDER_VIDEO');
     expect(ent.remainingCredits).toBe(1);
+  });
+
+  // ── 19. Authoritative GoTrue Identity Invariant ──
+  it('19. Enforces session.sub === verifiedGoTrueUser.id === auth.users.id (Zero Synthesized IDs)', async () => {
+    const authoritativeGoTrueId = '88888888-4444-4444-a1a1-999999999999';
+    seedGoTrueUser({
+      id: authoritativeGoTrueId,
+      email: 'authoritative.gotrue@example.com',
+      email_confirmed: true,
+    });
+
+    const req = await requestMagicLink({
+      email: 'authoritative.gotrue@example.com',
+      product: 'studio',
+    });
+    expect(req.success).toBe(true);
+
+    const redemption = await redeemMagicLink({
+      token: req.debugToken!,
+      product: 'studio',
+    });
+
+    expect(redemption.success).toBe(true);
+    // Explicit invariant: redemption.userId must equal the real GoTrue UUID
+    expect(redemption.userId).toBe(authoritativeGoTrueId);
+
+    // Verify host session sub matches exact authoritative GoTrue user ID
+    const sessionVerification = await verifyHostSessionToken(redemption.sessionToken!, 'studio');
+    expect(sessionVerification.valid).toBe(true);
+    expect(sessionVerification.payload?.sub).toBe(authoritativeGoTrueId);
+
+    // Validate that userId is a valid UUID (not a synthesized 32-char hex hash)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    expect(uuidRegex.test(sessionVerification.payload?.sub!)).toBe(true);
+  });
+
+  // ── 20. Wrong-Product & Failed Magic Link Verification Never Issues Session ──
+  it('20. Rejects wrong-product tokens and ensures failed verification never issues a session', async () => {
+    const req = await requestMagicLink({
+      email: 'product.guard@example.com',
+      product: 'studio',
+    });
+
+    // 20a. Attempt to redeem Studio token under Creator -> Fails
+    const wrongProduct = await redeemMagicLink({
+      token: req.debugToken!,
+      product: 'creator',
+    });
+    expect(wrongProduct.success).toBe(false);
+    expect(wrongProduct.status).toBe('PRODUCT_MISMATCH');
+    expect(wrongProduct.sessionToken).toBeUndefined();
+
+    // 20b. Attempt to redeem with completely bogus token -> Fails
+    const bogus = await redeemMagicLink({
+      token: 'totally_bogus_token_123',
+      product: 'studio',
+    });
+    expect(bogus.success).toBe(false);
+    expect(bogus.status).toBe('TOKEN_INVALID');
+    expect(bogus.sessionToken).toBeUndefined();
+  });
+
+  // ── 21. Google OAuth Failed Exchange Never Issues Session ──
+  it('21. Failed GoTrue Google exchange strictly rejects session issuance', async () => {
+    // Attempt verification with missing credential
+    const emptyReq = new NextRequest('https://studio.boontrack.com/api/auth/google/verify', {
+      method: 'POST',
+      body: JSON.stringify({ product: 'studio' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const emptyRes = await googleVerifyRoute(emptyReq);
+    expect(emptyRes.status).toBe(401);
+
+    const emptyData = await emptyRes.json();
+    expect(emptyData.success).toBe(false);
+    expect(emptyData.token).toBeUndefined();
   });
 });

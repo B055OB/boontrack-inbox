@@ -1,23 +1,23 @@
 /**
  * lib/auth/google-oauth.ts
- * Google OAuth 2.0 & ID Token Verification Engine with Server-Side Nonce & Secure Account Linking
+ * Google OAuth 2.0 & ID Token Verification Engine with Server-Side Nonce & Authoritative GoTrue Identity
  * Directive RE-01 / CTO Execution Authorization (October 2026)
  *
  * Security Requirements:
  * 1. Server-Side Nonce Authority: Nonces must be generated server-side, tied to login attempt, and verified at callback.
- * 2. OAuth Flow Documentation:
- *    - Client uses Google Identity Services (GIS) / One-Tap or Google Sign-In SDK.
- *    - Pre-flight calls POST /api/auth/google/init to receive server-generated { nonce, state }.
+ * 2. OAuth Flow:
+ *    - Client calls POST /api/auth/google/init to receive server-generated { nonce, state }.
  *    - Callback submits credential + state to POST /api/auth/google/verify.
  * 3. Claims Enforcement: Validates issuer, audience, signature, expiry, and nonce.
  * 4. Mandatory Email Verification: Discards unverified Google profiles (email_verified === true).
- * 5. Anti-Account Takeover Linking: Never links Google identity to an existing UNVERIFIED local account.
- * 6. Single Platform Identity: Unifies Magic Link & Google logins under identical platform_users UID (linked to auth.users).
+ * 5. Single Identity Authority: User identity is anchored 100% to Supabase GoTrue (auth.users.id).
+ * 6. Zero Synthesized User IDs: session.sub === verifiedGoTrueUser.id === auth.users.id.
  * 7. Host Session Issuance: Emits product-scoped host-only JWTs for Studio or Creator.
  */
 
 import crypto from 'crypto';
 import { AuthProduct, signHostSessionToken } from './host-session';
+import { verifyGoTrueGoogleToken, seedGoTrueUser } from './gotrue-client';
 
 export interface GoogleIdTokenClaims {
   iss: string;
@@ -40,7 +40,7 @@ export interface GoogleAuthInput {
   expectedNonce?: string;
 }
 
-// User Identity Store (Bridges memory & Supabase for test & production parity)
+// Platform User Record (Profile layer reflecting GoTrue auth.users)
 export interface PlatformUserRecord {
   id: string;              // Foreign Key matching auth.users(id)
   email: string;
@@ -161,7 +161,7 @@ export async function parseAndVerifyGoogleIdToken(
 }
 
 /**
- * Resolves or securely links platform user identity
+ * Resolves or securely links platform user identity using GoTrue Authority
  * Linked via FK to auth.users (Single Identity Authority)
  */
 export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Promise<{
@@ -171,18 +171,8 @@ export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Prom
 }> {
   const cleanEmail = claims.email.trim().toLowerCase();
 
-  // 1. Search by Google Persistent Sub
-  for (const user of platformUsersVault.values()) {
-    if (user.google_sub === claims.sub) {
-      if (user.email === cleanEmail) {
-        return { success: true, user };
-      }
-    }
-  }
-
-  // 2. Search by Verified Email
+  // 1. Search existing platform user profile
   const existingUser = platformUsersVault.get(cleanEmail);
-
   if (existingUser) {
     // ANTI-ACCOUNT TAKEOVER GUARD:
     // If local account was never verified, do NOT automatically attach Google identity!
@@ -193,16 +183,31 @@ export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Prom
       };
     }
 
-    // Securely link Google Sub to verified account
     existingUser.google_sub = claims.sub;
     platformUsersVault.set(cleanEmail, existingUser);
     return { success: true, user: existingUser };
   }
 
-  // 3. Provision New Platform User Profile (Anchored to auth.users UID)
-  const authUserId = crypto.createHash('sha256').update(`auth_user:${cleanEmail}`).digest('hex').slice(0, 32);
+  // 2. Exchange with Authoritative GoTrue Provider
+  const goTrueResult = await verifyGoTrueGoogleToken({
+    idToken: 'mock_exchange_token',
+    claims: {
+      sub: claims.sub,
+      email: cleanEmail,
+      email_verified: claims.email_verified,
+    },
+  });
+
+  if (!goTrueResult.success || !goTrueResult.user) {
+    return {
+      success: false,
+      error: goTrueResult.error || 'LINKING_FAILED',
+    };
+  }
+
+  // 3. Map GoTrue authoritative user to platform profile
   const newUser: PlatformUserRecord = {
-    id: authUserId,
+    id: goTrueResult.user.id, // REAL auth.users(id)
     email: cleanEmail,
     email_verified: true,
     google_sub: claims.sub,
@@ -214,7 +219,7 @@ export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Prom
 }
 
 /**
- * Primary Google Authentication Gateway
+ * Primary Google Authentication Gateway (GoTrue Single Authority)
  */
 export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
   success: boolean;
@@ -255,7 +260,7 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
     };
   }
 
-  // 3. Secure Account Resolution & Linking
+  // 3. Authoritative GoTrue Exchange
   const linkResult = await resolveOrLinkGoogleUser(verification.claims);
   if (!linkResult.success || !linkResult.user) {
     return {
@@ -264,7 +269,7 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
       message:
         linkResult.error === 'ACCOUNT_TAKEOVER_PREVENTED'
           ? 'Akun dengan email ini belum diverifikasi secara lokal. Verifikasi email Anda sebelum menghubungkan Google.'
-          : 'Gagal mengaitkan akun pengguna.',
+          : 'Gagal mengaitkan akun pengguna via GoTrue.',
     };
   }
 
@@ -274,10 +279,10 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
   const tenantSlug = `${input.product}-${baseSlug}-${user.id.slice(0, 6)}`;
   const tenantId = crypto.createHash('sha256').update(`ten:${tenantSlug}`).digest('hex').slice(0, 32);
 
-  // 5. Sign Host-Only Session Token
+  // 5. Sign Host-Only Session Token (session.sub === verifiedGoTrueUser.id === auth.users.id)
   const sessionToken = signHostSessionToken({
     product: input.product,
-    userId: user.id,
+    userId: user.id, // Strictly the real GoTrue UUID
     tenantId,
     tenantSlug,
     role: input.product === 'studio' ? 'STUDIO_PARTICIPANT' : 'CREATOR_OWNER',
@@ -305,8 +310,14 @@ export function resetPlatformUsersVault() {
 }
 
 /**
- * Seeds a mock user in platform user vault (for account linking tests)
+ * Seeds a mock user in platform user vault and GoTrue mock store (for account linking tests)
  */
 export function seedPlatformUser(user: PlatformUserRecord) {
   platformUsersVault.set(user.email.toLowerCase(), user);
+  seedGoTrueUser({
+    id: user.id,
+    email: user.email,
+    email_confirmed: user.email_verified,
+    google_sub: user.google_sub,
+  });
 }

@@ -61,30 +61,33 @@ DECLARE
     v_user RECORD;
     v_profile public.platform_users;
 BEGIN
+    -- 1. Check if profile already exists
     SELECT * INTO v_profile FROM public.platform_users WHERE id = p_user_id;
-    IF FOUND THEN
-        RETURN v_profile;
-    END IF;
 
-    SELECT * INTO v_user FROM auth.users WHERE id = p_user_id;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'User ID % not found in auth.users', p_user_id;
+        -- 2. Profile missing: look up authoritative identity from auth.users
+        SELECT * INTO v_user FROM auth.users WHERE id = p_user_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'User ID % not found in auth.users', p_user_id;
+        END IF;
+
+        -- 3. Project profile downstream
+        INSERT INTO public.platform_users (id, email, email_verified, created_at, updated_at)
+        VALUES (
+            v_user.id,
+            LOWER(TRIM(v_user.email)),
+            COALESCE(v_user.email_confirmed_at IS NOT NULL OR v_user.confirmed_at IS NOT NULL, false),
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            email = EXCLUDED.email,
+            email_verified = EXCLUDED.email_verified,
+            updated_at = NOW()
+        RETURNING * INTO v_profile;
     END IF;
 
-    INSERT INTO public.platform_users (id, email, email_verified, created_at, updated_at)
-    VALUES (
-        v_user.id,
-        LOWER(TRIM(v_user.email)),
-        COALESCE(v_user.email_confirmed_at IS NOT NULL OR v_user.confirmed_at IS NOT NULL, false),
-        NOW(),
-        NOW()
-    )
-    ON CONFLICT (id) DO UPDATE SET
-        email = EXCLUDED.email,
-        email_verified = EXCLUDED.email_verified,
-        updated_at = NOW()
-    RETURNING * INTO v_profile;
-
+    -- 4. Mark ALL unresolved failure records resolved (even if profile already existed)
     UPDATE public.profile_sync_failures
     SET resolved_at = NOW()
     WHERE user_id = p_user_id AND resolved_at IS NULL;
@@ -114,8 +117,12 @@ BEGIN
         updated_at = NOW();
     RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
-    INSERT INTO public.profile_sync_failures (user_id, error_message)
-    VALUES (NEW.id, SQLERRM);
+    BEGIN
+        INSERT INTO public.profile_sync_failures (user_id, error_message)
+        VALUES (NEW.id, SQLERRM);
+    EXCEPTION WHEN OTHERS THEN
+        NULL; -- Defensive: Never allow audit logging failure to abort GoTrue auth.users insertion
+    END;
     RETURN NEW;
 END;
 $$;
