@@ -102,7 +102,8 @@ export async function checkProductEntitlement(
 export async function grantOnlineBoostPromotionalCredit(
   tenantId: string,
   orderId: string,
-  actorId: string
+  actorId: string,
+  authUserId?: string
 ): Promise<{ success: boolean; balance: number; idempotent: boolean }> {
   const idempotencyKey = `grant:onlineboost:${orderId}`;
 
@@ -131,9 +132,9 @@ export async function grantOnlineBoostPromotionalCredit(
   // Attempt DB RPC if Supabase is connected
   try {
     const supabase = getSupabaseAdmin();
-    if (supabase) {
+    if (supabase && authUserId) {
       await supabase.rpc('fn_grant_promotional_studio_credit', {
-        p_tenant_id: tenantId,
+        p_auth_user_id: authUserId,
         p_order_id: orderId,
         p_actor_id: actorId,
       });
