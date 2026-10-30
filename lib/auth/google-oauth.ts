@@ -13,11 +13,21 @@
  * 5. Single Identity Authority: User identity is anchored 100% to Supabase GoTrue (auth.users.id).
  * 6. Zero Synthesized User IDs: session.sub === verifiedGoTrueUser.id === auth.users.id.
  * 7. Host Session Issuance: Emits product-scoped host-only JWTs for Studio or Creator.
+ * 8. Persistent Repository Integration: Uses Supabase PostgreSQL via IPlatformUserRepository.
  */
 
 import crypto from 'crypto';
 import { AuthProduct, signHostSessionToken } from './host-session';
 import { verifyGoTrueGoogleToken, seedGoTrueUser } from './gotrue-client';
+import {
+  type PlatformUserRecord,
+  getPlatformUserRepository,
+  resetPlatformUserRepositoryStore,
+  seedRepositoryUser,
+  getMockPlatformUserByEmail,
+} from './platform-user-repository';
+
+export { type PlatformUserRecord };
 
 export interface GoogleIdTokenClaims {
   iss: string;
@@ -40,17 +50,12 @@ export interface GoogleAuthInput {
   expectedNonce?: string;
 }
 
-// Platform User Record (Profile layer reflecting GoTrue auth.users)
-export interface PlatformUserRecord {
-  id: string;              // Foreign Key matching auth.users(id)
-  email: string;
-  email_verified: boolean;
-  google_sub?: string;
-  session_version: number;
-}
-const platformUsersVault = new Map<string, PlatformUserRecord>();
+const OAUTH_STATE_SECRET =
+  process.env.SESSION_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  'boontrack_oauth_state_hmac_secret_2026';
 
-// Ephemeral Server-Side OAuth State & Nonce Vault (10-minute TTL)
+// In-memory vaults for ephemeral states and fast replay protection
 interface OAuthAttemptState {
   state: string;
   nonce: string;
@@ -58,14 +63,23 @@ interface OAuthAttemptState {
   expiresAt: number;
 }
 const oauthAttemptVault = new Map<string, OAuthAttemptState>();
+const consumedStates = new Set<string>();
 
 /**
- * Generates server-side state & nonce for an OAuth login attempt
+ * Generates server-side state & nonce for an OAuth login attempt.
+ * Emits a cryptographically signed state token that can be verified across any
+ * Node.js worker/process without requiring process-local memory.
  */
 export function generateServerOAuthState(product: AuthProduct): { state: string; nonce: string } {
-  const state = crypto.randomBytes(16).toString('hex');
+  const randomId = crypto.randomBytes(16).toString('hex');
   const nonce = crypto.randomBytes(16).toString('hex');
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  // Stateless HMAC-signed payload: id:product:expiresAt:nonce
+  const payloadStr = JSON.stringify({ id: randomId, nonce, product, exp: expiresAt });
+  const payloadB64 = Buffer.from(payloadStr).toString('base64url');
+  const sig = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(payloadB64).digest('base64url');
+  const state = `${payloadB64}.${sig}`;
 
   oauthAttemptVault.set(state, {
     state,
@@ -78,28 +92,76 @@ export function generateServerOAuthState(product: AuthProduct): { state: string;
 }
 
 /**
- * Validates and consumes a server-side state (Single-Use)
+ * Validates and consumes a server-side state (Single-Use).
+ * Supports both local memory vault and cross-process stateless HMAC-signed state tokens.
  */
-export function consumeServerOAuthState(state: string, product: AuthProduct): { valid: boolean; nonce?: string; error?: string } {
+export function consumeServerOAuthState(
+  state: string,
+  product: AuthProduct,
+): { valid: boolean; nonce?: string; error?: string } {
   if (!state) return { valid: false, error: 'STATE_REQUIRED' };
 
-  const attempt = oauthAttemptVault.get(state);
-  if (!attempt) {
+  if (consumedStates.has(state)) {
     return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
   }
 
-  // Delete immediately to enforce single-use
-  oauthAttemptVault.delete(state);
+  // 1. Try local memory vault first
+  const attempt = oauthAttemptVault.get(state);
+  if (attempt) {
+    oauthAttemptVault.delete(state);
+    consumedStates.add(state);
 
-  if (Date.now() > attempt.expiresAt) {
-    return { valid: false, error: 'STATE_EXPIRED' };
+    if (Date.now() > attempt.expiresAt) {
+      return { valid: false, error: 'STATE_EXPIRED' };
+    }
+
+    if (attempt.product !== product) {
+      return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
+    }
+
+    return { valid: true, nonce: attempt.nonce };
   }
 
-  if (attempt.product !== product) {
-    return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
+  // 2. Stateless fallback for multi-process / restart environments
+  if (state.includes('.')) {
+    const parts = state.split('.');
+    if (parts.length === 2) {
+      const [payloadB64, sig] = parts;
+      try {
+        const expectedSig = crypto
+          .createHmac('sha256', OAUTH_STATE_SECRET)
+          .update(payloadB64)
+          .digest('base64url');
+
+        // Timing-safe signature comparison
+        const sigBuf = Buffer.from(sig);
+        const expBuf = Buffer.from(expectedSig);
+        if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+          const data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+
+          if (consumedStates.has(data.id)) {
+            return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
+          }
+          consumedStates.add(data.id);
+          consumedStates.add(state);
+
+          if (Date.now() > data.exp) {
+            return { valid: false, error: 'STATE_EXPIRED' };
+          }
+
+          if (data.product !== product) {
+            return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
+          }
+
+          return { valid: true, nonce: data.nonce };
+        }
+      } catch {
+        return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
+      }
+    }
   }
 
-  return { valid: true, nonce: attempt.nonce };
+  return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
 }
 
 /**
@@ -173,10 +235,10 @@ export async function parseAndVerifyGoogleIdToken(
  *  - If existingUser.google_sub is already present:
  *      Must match claims.sub exactly. If different -> reject with GOOGLE_IDENTITY_MISMATCH.
  *  - If existingUser.google_sub is absent (first-time linking):
- *      claims.sub must NOT be linked to any other user in platformUsersVault.
+ *      claims.sub must NOT be linked to any other user.
  *      If already linked elsewhere -> reject with GOOGLE_IDENTITY_ALREADY_LINKED.
  *  - Session version is preserved from existing record.
- *  - google_sub is written ONLY after GoTrue verification succeeds.
+ *  - google_sub is written ONLY after GoTrue verification succeeds via atomic RPC.
  *
  * @param claims  - Pre-validated claims from parseAndVerifyGoogleIdToken().
  *                  Used for structural checks only — GoTrue is the identity authority.
@@ -199,9 +261,11 @@ export async function resolveOrLinkGoogleUser(
     return { success: false, error: 'TOKEN_REQUIRED' };
   }
 
+  const repo = getPlatformUserRepository();
+
   // 1. Check for ACCOUNT_TAKEOVER before touching GoTrue.
   //    An unverified local account must never be linked to any external provider.
-  const existingUser = platformUsersVault.get(cleanEmail);
+  const existingUser = await repo.findByEmail(cleanEmail);
   if (existingUser && !existingUser.email_verified) {
     return { success: false, error: 'ACCOUNT_TAKEOVER_PREVENTED' };
   }
@@ -214,10 +278,9 @@ export async function resolveOrLinkGoogleUser(
     }
   } else {
     // If account is not yet linked to Google, verify this Google sub is not already linked to another local account.
-    for (const u of platformUsersVault.values()) {
-      if (u.google_sub === claims.sub && u.email !== cleanEmail) {
-        return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
-      }
+    const userWithSub = await repo.findByGoogleSub(claims.sub);
+    if (userWithSub && userWithSub.email.toLowerCase() !== cleanEmail) {
+      return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
     }
   }
 
@@ -244,31 +307,19 @@ export async function resolveOrLinkGoogleUser(
     return { success: false, error: 'ID_COLLISION' };
   }
 
-  // 5. Final binding check before mutation
-  if (existingUser?.google_sub && existingUser.google_sub !== claims.sub) {
-    return { success: false, error: 'GOOGLE_IDENTITY_MISMATCH' };
-  }
-  for (const u of platformUsersVault.values()) {
-    if (u.google_sub === claims.sub && u.email !== cleanEmail) {
-      return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
-    }
-  }
-
-  // 6. Determine session_version from existing record (preserves revocation version counter).
-  const sessionVersion = existingUser?.session_version ?? 1;
-
-  // 7. Upsert vault with GoTrue-confirmed identity.
-  //    google_sub is only written after successful GoTrue verification.
-  const confirmedUser: PlatformUserRecord = {
-    id: goTrueId,              // Strictly from auth.users — never from local cache alone
+  // 5. Final atomic linking via the persistent repository
+  //    Enforces PostgreSQL FOR UPDATE row lock and unique constraints
+  const linkResult = await repo.linkGoogleIdentity({
+    authUserId: goTrueId,
     email: cleanEmail,
-    email_verified: true,
-    google_sub: claims.sub,    // Updated only after GoTrue confirms the token
-    session_version: sessionVersion,
-  };
-  platformUsersVault.set(cleanEmail, confirmedUser);
+    googleSub: claims.sub,
+  });
 
-  return { success: true, user: confirmedUser };
+  if (!linkResult.success) {
+    return { success: false, error: linkResult.error };
+  }
+
+  return { success: true, user: linkResult.user };
 }
 
 /**
@@ -369,15 +420,16 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
  * Resets memory vault (for unit tests)
  */
 export function resetPlatformUsersVault() {
-  platformUsersVault.clear();
+  resetPlatformUserRepositoryStore();
   oauthAttemptVault.clear();
+  consumedStates.clear();
 }
 
 /**
  * Seeds a mock user in platform user vault and GoTrue mock store (for account linking tests)
  */
 export function seedPlatformUser(user: PlatformUserRecord) {
-  platformUsersVault.set(user.email.toLowerCase(), user);
+  seedRepositoryUser(user);
   seedGoTrueUser({
     id: user.id,
     email: user.email,
@@ -390,5 +442,5 @@ export function seedPlatformUser(user: PlatformUserRecord) {
  * Look up platform user by email (for tests and verification)
  */
 export function getPlatformUserByEmail(email: string): PlatformUserRecord | undefined {
-  return platformUsersVault.get(email.trim().toLowerCase());
+  return getMockPlatformUserByEmail(email);
 }

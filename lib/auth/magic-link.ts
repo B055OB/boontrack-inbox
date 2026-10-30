@@ -26,6 +26,7 @@ import {
   buildMagicLinkConfirmationUrl,
   type MagicLinkDispatchResult,
 } from './magic-link-email';
+import { getPlatformUserRepository } from './platform-user-repository';
 
 export interface MagicLinkRequestInput {
   email: string;
@@ -333,14 +334,25 @@ export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<
   const tenantSlug = `${input.product}-${baseSlug}-${userId.slice(0, 6)}`;
   const tenantId = crypto.createHash('sha256').update(`ten:${tenantSlug}`).digest('hex').slice(0, 32);
 
-  // 4. Sign Host-Only Session Token (session.sub === verifiedGoTrueUser.id === auth.users.id)
+  // 4. Resolve session_version from persistent repository
+  const repo = getPlatformUserRepository();
+  let userProfile = await repo.findById(userId);
+  if (!userProfile) {
+    userProfile = await repo.findByEmail(email);
+  }
+  if (!userProfile) {
+    userProfile = await repo.reconcileProfile(userId);
+  }
+  const sessionVersion = userProfile?.session_version ?? 1;
+
+  // 5. Sign Host-Only Session Token (session.sub === verifiedGoTrueUser.id === auth.users.id)
   const sessionToken = signHostSessionToken({
     product: input.product,
     userId: user.id, // Strictly real GoTrue UUID
     tenantId,
     tenantSlug,
     role: input.product === 'studio' ? 'STUDIO_PARTICIPANT' : 'CREATOR_OWNER',
-    version: 1,
+    version: sessionVersion,
   });
 
   return {
