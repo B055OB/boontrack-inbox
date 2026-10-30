@@ -26,10 +26,13 @@ import {
   verifyHostSessionToken,
   revokeHostSession,
   getProductAuthConfig,
+  resetRevokedJtiCache,
 } from '@/lib/auth/host-session';
 import {
   requestMagicLink,
   redeemMagicLink,
+  inspectMagicLinkReadOnly,
+  validateRedirectUrl,
   resetRateLimitBuckets,
   hashMagicToken,
 } from '@/lib/auth/magic-link';
@@ -37,6 +40,7 @@ import {
   handleGoogleAuth,
   parseAndVerifyGoogleIdToken,
   resolveOrLinkGoogleUser,
+  generateServerOAuthState,
   resetPlatformUsersVault,
   seedPlatformUser,
 } from '@/lib/auth/google-oauth';
@@ -45,12 +49,16 @@ import {
   grantOnlineBoostPromotionalCredit,
   resetEntitlementsVault,
 } from '@/lib/auth/entitlements-guard';
+import { GET as magicLinkGetRoute, POST as magicLinkPostRoute } from '@/app/api/auth/magic-link/verify/route';
+import { POST as googleInitRoute } from '@/app/api/auth/google/init/route';
+import { POST as googleVerifyRoute } from '@/app/api/auth/google/verify/route';
 
 describe('CTO Global Authentication & Boundaries Test Suite', () => {
   beforeEach(() => {
     resetRateLimitBuckets();
     resetPlatformUsersVault();
     resetEntitlementsVault();
+    resetRevokedJtiCache();
   });
 
   // ── 1. Magic Link Registration & Login ──
@@ -400,5 +408,233 @@ describe('CTO Global Authentication & Boundaries Test Suite', () => {
     const navRes = await middleware(navReq);
     expect(navRes.status).toBe(301);
     expect(navRes.headers.get('location')).toBe('https://dashboard.boontrack.com/tokosaya');
+  });
+
+  // ── 14. Email Link Scanner Protection (GET landing vs POST redemption) ──
+  it('14. Protects against link scanners by rendering GET landing without consuming token, then redeems via POST', async () => {
+    const req = await requestMagicLink({
+      email: 'scanner.safe@example.com',
+      product: 'studio',
+    });
+    const token = req.debugToken!;
+
+    // 14a. Email security scanner / pre-fetcher sends GET request
+    const getReq1 = new NextRequest(`https://studio.boontrack.com/api/auth/magic-link/verify?token=${token}&product=studio`, {
+      method: 'GET',
+    });
+    const getRes1 = await magicLinkGetRoute(getReq1);
+    expect(getRes1.status).toBe(200);
+    const htmlBody1 = await getRes1.text();
+    expect(htmlBody1).toContain('Konfirmasi & Masuk');
+    expect(htmlBody1).toContain('scanner.safe@example.com');
+    expect(getRes1.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(getRes1.headers.get('cache-control')).toBe('no-store, private');
+
+    // Token MUST still be valid and unconsumed
+    const check1 = await inspectMagicLinkReadOnly(token, 'studio');
+    expect(check1.valid).toBe(true);
+
+    // 14b. Second scanner pass sends another GET request
+    const getReq2 = new NextRequest(`https://studio.boontrack.com/api/auth/magic-link/verify?token=${token}&product=studio`, {
+      method: 'GET',
+    });
+    const getRes2 = await magicLinkGetRoute(getReq2);
+    expect(getRes2.status).toBe(200);
+    const check2 = await inspectMagicLinkReadOnly(token, 'studio');
+    expect(check2.valid).toBe(true);
+
+    // 14c. Human user actually clicks button, sending POST request
+    const postReq = new NextRequest('https://studio.boontrack.com/api/auth/magic-link/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token, product: 'studio' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const postRes = await magicLinkPostRoute(postReq);
+    expect(postRes.status).toBe(200);
+    const postData = await postRes.json();
+    expect(postData.success).toBe(true);
+    expect(postData.token).toBeDefined();
+
+    // 14d. Token is now consumed; subsequent POST fails with 401 ALREADY_CONSUMED
+    const postReqReplay = new NextRequest('https://studio.boontrack.com/api/auth/magic-link/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token, product: 'studio' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const postResReplay = await magicLinkPostRoute(postReqReplay);
+    expect(postResReplay.status).toBe(401);
+    const replayData = await postResReplay.json();
+    expect(replayData.error).toBe('ALREADY_CONSUMED');
+  });
+
+  // ── 15. Open Redirect Protection ──
+  it('15. Strictly validates redirect URLs against internal allowlist and rejects external/phishing URLs', () => {
+    // 15a. Valid internal relative paths
+    expect(validateRedirectUrl('/desk', 'studio')).toBe('/desk');
+    expect(validateRedirectUrl('/desk/editor?tab=ugc', 'studio')).toBe('/desk/editor?tab=ugc');
+    expect(validateRedirectUrl('/admin', 'creator')).toBe('/admin');
+
+    // 15b. Protocol-relative open redirect attack
+    expect(validateRedirectUrl('//evil-phishing.com/steal', 'studio')).toBe('/desk');
+    expect(validateRedirectUrl('//google.com', 'creator')).toBe('/admin');
+
+    // 15c. External malicious origins
+    expect(validateRedirectUrl('https://evil-attacker.com/desk', 'studio')).toBe('/desk');
+    expect(validateRedirectUrl('http://phishing.site', 'creator')).toBe('/admin');
+
+    // 15d. Dangerous URI schemes (javascript / data)
+    expect(validateRedirectUrl('javascript:alert(document.cookie)', 'studio')).toBe('/desk');
+
+    // 15e. Authorized origin extracts safe pathname
+    expect(validateRedirectUrl('https://studio.boontrack.com/desk/jobs', 'studio')).toBe('/desk/jobs');
+  });
+
+  // ── 16. Server-Side OAuth Nonce & State Authority ──
+  it('16. Generates server-side nonce/state and rejects client-fabricated nonces or replayed states', async () => {
+    // 16a. Client initializes OAuth via POST /api/auth/google/init
+    const initReq = new NextRequest('https://studio.boontrack.com/api/auth/google/init', {
+      method: 'POST',
+      body: JSON.stringify({ product: 'studio' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const initRes = await googleInitRoute(initReq);
+    expect(initRes.status).toBe(200);
+    const initData = await initRes.json();
+    expect(initData.success).toBe(true);
+    expect(initData.state).toBeDefined();
+    expect(initData.nonce).toBeDefined();
+    const { state } = initData;
+
+    // 16b. Client fabricates an arbitrary nonce and attempts verify -> Rejected
+    const fakeClaims = {
+      iss: 'https://accounts.google.com',
+      aud: 'mock_google_client_id.apps.googleusercontent.com',
+      sub: 'google_uid_fake_nonce_999',
+      email: 'oauth.security@example.com',
+      email_verified: true,
+      nonce: 'client_fabricated_nonce_not_matching_server',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const fakeToken = `header.${Buffer.from(JSON.stringify(fakeClaims)).toString('base64')}.sig`;
+
+    const fakeVerifyReq = new NextRequest('https://studio.boontrack.com/api/auth/google/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        idToken: fakeToken,
+        product: 'studio',
+        state,
+        expectedNonce: 'client_fabricated_nonce_not_matching_server',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const fakeVerifyRes = await googleVerifyRoute(fakeVerifyReq);
+    expect(fakeVerifyRes.status).toBe(401);
+
+    // 16c. Client uses server-generated state & nonce -> Succeeds
+    const { state: validState, nonce: validNonce } = generateServerOAuthState('studio');
+    const legitClaims = {
+      ...fakeClaims,
+      sub: 'google_uid_legit_server_nonce_111',
+      email: 'oauth.legit@example.com',
+      nonce: validNonce,
+    };
+    const legitToken = `header.${Buffer.from(JSON.stringify(legitClaims)).toString('base64')}.sig`;
+
+    const legitVerifyReq = new NextRequest('https://studio.boontrack.com/api/auth/google/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        idToken: legitToken,
+        product: 'studio',
+        state: validState,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const legitVerifyRes = await googleVerifyRoute(legitVerifyReq);
+    expect(legitVerifyRes.status).toBe(200);
+    const legitData = await legitVerifyRes.json();
+    expect(legitData.success).toBe(true);
+
+    // 16d. Replay with the same server state fails (single-use burned)
+    const replayVerifyReq = new NextRequest('https://studio.boontrack.com/api/auth/google/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        idToken: legitToken,
+        product: 'studio',
+        state: validState,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const replayVerifyRes = await googleVerifyRoute(replayVerifyReq);
+    expect(replayVerifyRes.status).toBe(401);
+  });
+
+  // ── 17. Product-Scoped Isolated Revocation ──
+  it('17. Enforces isolated revocation: Studio logout does not invalidate Creator sessions', async () => {
+    const userId = 'usr_dual_platform_777';
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+
+    const studioToken = signHostSessionToken({
+      product: 'studio',
+      userId,
+      tenantId: 'ten_studio_777',
+      tenantSlug: 'studio-dual',
+    });
+
+    const creatorToken = signHostSessionToken({
+      product: 'creator',
+      userId,
+      tenantId: 'ten_creator_777',
+      tenantSlug: 'creator-dual',
+    });
+
+    const studioV1 = await verifyHostSessionToken(studioToken, 'studio');
+    const creatorV1 = await verifyHostSessionToken(creatorToken, 'creator');
+    expect(studioV1.valid).toBe(true);
+    expect(creatorV1.valid).toBe(true);
+
+    const studioJti = studioV1.payload!.jti;
+
+    // Revoke Studio session
+    await revokeHostSession(studioJti, exp, 'studio');
+
+    // Studio token is now revoked
+    const studioCheck = await verifyHostSessionToken(studioToken, 'studio');
+    expect(studioCheck.valid).toBe(false);
+    expect(studioCheck.error).toBe('TOKEN_REVOKED');
+
+    // Creator token remains completely VALID (Zero cross-product revocation leakage)
+    const creatorCheck = await verifyHostSessionToken(creatorToken, 'creator');
+    expect(creatorCheck.valid).toBe(true);
+    expect(creatorCheck.payload?.sub).toBe(userId);
+  });
+
+  // ── 18. Concurrency Idempotency for Promotional Credit Grant ──
+  it('18. Grants exactly 1 promotional credit under high-concurrency race condition', async () => {
+    const tenantId = 'ten_concurrent_student_55';
+    const orderId = 'ORD-ONLINEBOOST-BATCH1-CONCURRENT';
+
+    // Fire 5 concurrent requests simultaneously
+    const results = await Promise.all([
+      grantOnlineBoostPromotionalCredit(tenantId, orderId, 'actor_1'),
+      grantOnlineBoostPromotionalCredit(tenantId, orderId, 'actor_2'),
+      grantOnlineBoostPromotionalCredit(tenantId, orderId, 'actor_3'),
+      grantOnlineBoostPromotionalCredit(tenantId, orderId, 'actor_4'),
+      grantOnlineBoostPromotionalCredit(tenantId, orderId, 'actor_5'),
+    ]);
+
+    // All return success
+    expect(results.every((r) => r.success)).toBe(true);
+
+    // Exactly one executed the grant, the other 4 were recognized as idempotent
+    const initialGrants = results.filter((r) => !r.idempotent);
+    const idempotentHits = results.filter((r) => r.idempotent);
+
+    expect(initialGrants.length).toBe(1);
+    expect(idempotentHits.length).toBe(4);
+
+    // Final balance is strictly 1
+    const ent = await checkProductEntitlement(tenantId, 'studio', 'RENDER_VIDEO');
+    expect(ent.remainingCredits).toBe(1);
   });
 });

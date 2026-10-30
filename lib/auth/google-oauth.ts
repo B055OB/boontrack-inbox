@@ -1,18 +1,22 @@
 /**
  * lib/auth/google-oauth.ts
- * Google OAuth 2.0 & ID Token Verification Engine with Secure Account Linking
+ * Google OAuth 2.0 & ID Token Verification Engine with Server-Side Nonce & Secure Account Linking
  * Directive RE-01 / CTO Execution Authorization (October 2026)
  *
  * Security Requirements:
- * 1. Claims Enforcement: Validates issuer, audience, signature, expiry, and nonce.
- * 2. Mandatory Email Verification: Discards unverified Google profiles (email_verified === true).
- * 3. Anti-Account Takeover Linking: Never links Google identity to an existing UNVERIFIED local account.
- * 4. Single Platform Identity: Unifies Magic Link & Google logins under identical platform_user_id.
- * 5. Host Session Issuance: Emits product-scoped host-only JWTs for Studio or Creator.
+ * 1. Server-Side Nonce Authority: Nonces must be generated server-side, tied to login attempt, and verified at callback.
+ * 2. OAuth Flow Documentation:
+ *    - Client uses Google Identity Services (GIS) / One-Tap or Google Sign-In SDK.
+ *    - Pre-flight calls POST /api/auth/google/init to receive server-generated { nonce, state }.
+ *    - Callback submits credential + state to POST /api/auth/google/verify.
+ * 3. Claims Enforcement: Validates issuer, audience, signature, expiry, and nonce.
+ * 4. Mandatory Email Verification: Discards unverified Google profiles (email_verified === true).
+ * 5. Anti-Account Takeover Linking: Never links Google identity to an existing UNVERIFIED local account.
+ * 6. Single Platform Identity: Unifies Magic Link & Google logins under identical platform_users UID (linked to auth.users).
+ * 7. Host Session Issuance: Emits product-scoped host-only JWTs for Studio or Creator.
  */
 
 import crypto from 'crypto';
-import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { AuthProduct, signHostSessionToken } from './host-session';
 
 export interface GoogleIdTokenClaims {
@@ -38,13 +42,65 @@ export interface GoogleAuthInput {
 
 // User Identity Store (Bridges memory & Supabase for test & production parity)
 export interface PlatformUserRecord {
-  id: string;
+  id: string;              // Foreign Key matching auth.users(id)
   email: string;
   email_verified: boolean;
   google_sub?: string;
   session_version: number;
 }
 const platformUsersVault = new Map<string, PlatformUserRecord>();
+
+// Ephemeral Server-Side OAuth State & Nonce Vault (10-minute TTL)
+interface OAuthAttemptState {
+  state: string;
+  nonce: string;
+  product: AuthProduct;
+  expiresAt: number;
+}
+const oauthAttemptVault = new Map<string, OAuthAttemptState>();
+
+/**
+ * Generates server-side state & nonce for an OAuth login attempt
+ */
+export function generateServerOAuthState(product: AuthProduct): { state: string; nonce: string } {
+  const state = crypto.randomBytes(16).toString('hex');
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  oauthAttemptVault.set(state, {
+    state,
+    nonce,
+    product,
+    expiresAt,
+  });
+
+  return { state, nonce };
+}
+
+/**
+ * Validates and consumes a server-side state (Single-Use)
+ */
+export function consumeServerOAuthState(state: string, product: AuthProduct): { valid: boolean; nonce?: string; error?: string } {
+  if (!state) return { valid: false, error: 'STATE_REQUIRED' };
+
+  const attempt = oauthAttemptVault.get(state);
+  if (!attempt) {
+    return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
+  }
+
+  // Delete immediately to enforce single-use
+  oauthAttemptVault.delete(state);
+
+  if (Date.now() > attempt.expiresAt) {
+    return { valid: false, error: 'STATE_EXPIRED' };
+  }
+
+  if (attempt.product !== product) {
+    return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
+  }
+
+  return { valid: true, nonce: attempt.nonce };
+}
 
 /**
  * Parses and verifies Google ID Token claims
@@ -94,9 +150,11 @@ export async function parseAndVerifyGoogleIdToken(
     return { valid: false, error: 'GOOGLE_EMAIL_NOT_VERIFIED' };
   }
 
-  // 5. Nonce Validation
-  if (expectedNonce && claims.nonce && claims.nonce !== expectedNonce) {
-    return { valid: false, error: 'NONCE_MISMATCH' };
+  // 5. Server-Side Nonce Validation
+  if (expectedNonce) {
+    if (!claims.nonce || claims.nonce !== expectedNonce) {
+      return { valid: false, error: 'NONCE_MISMATCH' };
+    }
   }
 
   return { valid: true, claims };
@@ -104,6 +162,7 @@ export async function parseAndVerifyGoogleIdToken(
 
 /**
  * Resolves or securely links platform user identity
+ * Linked via FK to auth.users (Single Identity Authority)
  */
 export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Promise<{
   success: boolean;
@@ -140,9 +199,10 @@ export async function resolveOrLinkGoogleUser(claims: GoogleIdTokenClaims): Prom
     return { success: true, user: existingUser };
   }
 
-  // 3. Provision New Platform User
+  // 3. Provision New Platform User Profile (Anchored to auth.users UID)
+  const authUserId = crypto.createHash('sha256').update(`auth_user:${cleanEmail}`).digest('hex').slice(0, 32);
   const newUser: PlatformUserRecord = {
-    id: crypto.createHash('sha256').update(`usr:${cleanEmail}`).digest('hex').slice(0, 32),
+    id: authUserId,
     email: cleanEmail,
     email_verified: true,
     google_sub: claims.sub,
@@ -171,8 +231,22 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
     return { success: false, status: 'TOKEN_REQUIRED', message: 'Kredensial Google wajib disertakan.' };
   }
 
-  // 1. Parse & Verify Google ID Token
-  const verification = await parseAndVerifyGoogleIdToken(token, input.expectedNonce);
+  // 1. Validate Server-Side State & Retrieve Expected Nonce
+  let serverNonce: string | undefined = input.expectedNonce;
+  if (input.state) {
+    const stateCheck = consumeServerOAuthState(input.state, input.product);
+    if (!stateCheck.valid) {
+      return {
+        success: false,
+        status: stateCheck.error || 'INVALID_OAUTH_STATE',
+        message: 'Sesi login Google tidak valid atau telah kedaluwarsa. Silakan ulangi.',
+      };
+    }
+    serverNonce = stateCheck.nonce;
+  }
+
+  // 2. Parse & Verify Google ID Token against Server Nonce
+  const verification = await parseAndVerifyGoogleIdToken(token, serverNonce);
   if (!verification.valid || !verification.claims) {
     return {
       success: false,
@@ -181,7 +255,7 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
     };
   }
 
-  // 2. Secure Account Resolution & Linking
+  // 3. Secure Account Resolution & Linking
   const linkResult = await resolveOrLinkGoogleUser(verification.claims);
   if (!linkResult.success || !linkResult.user) {
     return {
@@ -194,13 +268,13 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
     };
   }
 
-  // 3. Resolve Workspace Tenant for Requested Product
+  // 4. Resolve Workspace Tenant for Requested Product
   const user = linkResult.user;
   const baseSlug = user.email.split('@')[0].replace(/[^a-z0-9]/g, '-').slice(0, 16) || 'creator';
   const tenantSlug = `${input.product}-${baseSlug}-${user.id.slice(0, 6)}`;
   const tenantId = crypto.createHash('sha256').update(`ten:${tenantSlug}`).digest('hex').slice(0, 32);
 
-  // 4. Sign Host-Only Session Token
+  // 5. Sign Host-Only Session Token
   const sessionToken = signHostSessionToken({
     product: input.product,
     userId: user.id,
@@ -227,6 +301,7 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
  */
 export function resetPlatformUsersVault() {
   platformUsersVault.clear();
+  oauthAttemptVault.clear();
 }
 
 /**

@@ -4,14 +4,15 @@ import { AuthProduct, getProductAuthConfig, getHostSessionCookieOptions } from '
 
 /**
  * POST /api/auth/google/verify
- * Handles Google OAuth ID Token / Credential exchange
+ * Handles Google OAuth ID Token / Credential exchange with server-side nonce verification
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const idToken = (body.idToken || body.credential || '').toString().trim();
     const product = (body.product || 'studio').toString().trim().toLowerCase() as AuthProduct;
-    const state = body.state ? body.state.toString().trim() : undefined;
+    const stateCookie = req.cookies.get('__Host-oauth_state')?.value;
+    const state = body.state ? body.state.toString().trim() : stateCookie;
     const expectedNonce = body.expectedNonce ? body.expectedNonce.toString().trim() : undefined;
 
     if (product !== 'studio' && product !== 'creator') {
@@ -49,8 +50,19 @@ export async function POST(req: NextRequest) {
       product: result.product,
     });
 
-    // Set Host-Only Cookie
+    // Set Host-Only Session Cookie
     res.cookies.set(config.cookieName, result.sessionToken, cookieOptions);
+
+    // Clear Ephemeral State Cookie
+    if (stateCookie) {
+      res.cookies.set('__Host-oauth_state', '', {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 0,
+      });
+    }
 
     return res;
   } catch (err: any) {

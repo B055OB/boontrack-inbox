@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/auth/session (Logout & Revocation)
+ * POST /api/auth/session (Isolated Logout & Revocation)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -62,14 +62,15 @@ export async function POST(req: NextRequest) {
     if (token) {
       const verification = await verifyHostSessionToken(token, product);
       if (verification.valid && verification.payload) {
-        await revokeHostSession(verification.payload.jti, verification.payload.exp);
+        // Product-scoped revocation
+        await revokeHostSession(verification.payload.jti, verification.payload.exp, product);
       }
     }
 
     const cookieOptions = getHostSessionCookieOptions(product, req.nextUrl.protocol === 'https:');
     const res = NextResponse.json({ success: true, message: 'Sesi berhasil diakhiri.' });
 
-    // Clear Host Cookie
+    // Clear Host Cookie for this product only
     res.cookies.set(config.cookieName, '', {
       ...cookieOptions,
       maxAge: 0,

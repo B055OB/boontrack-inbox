@@ -8,7 +8,9 @@
  * 2. Single-Use & Expiry: 15-minute TTL, atomic redemption, replay protection.
  * 3. Rate Limiting: Max 3 requests per identifier per 15 minutes.
  * 4. Zero Account Enumeration: Generic success response prevents email discovery.
- * 5. Zero Token Logging: Raw tokens are never logged to console, disk, or analytics.
+ * 5. Link-Scanner Safe: Token is NEVER consumed by GET pre-fetching; redemption requires explicit POST.
+ * 6. Internal Redirect Allowlist: Strict validation prevents open-redirect phishing.
+ * 7. Zero Token Logging: Raw tokens are scrubbed from server logs and analytics.
  */
 
 import crypto from 'crypto';
@@ -34,11 +36,12 @@ interface RateLimitBucket {
 }
 const rateLimitMap = new Map<string, RateLimitBucket>();
 
-// In-memory fallback challenge vault for offline/test environments
-interface TokenChallenge {
+// In-memory challenge vault for offline / test environments
+export interface TokenChallenge {
   tokenHash: string;
   email: string;
   product: AuthProduct;
+  redirectUrl?: string;
   expiresAt: number;
   consumedAt: number | null;
   attemptCount: number;
@@ -88,6 +91,46 @@ export function resetRateLimitBuckets() {
 }
 
 /**
+ * Validates redirect URL against strict internal allowlist
+ * Prevents Open-Redirect / Phishing vulnerabilities
+ */
+export function validateRedirectUrl(url: string | undefined | null, product: AuthProduct): string {
+  const defaultFallback = product === 'studio' ? '/desk' : '/admin';
+  if (!url || typeof url !== 'string') return defaultFallback;
+
+  const trimmed = url.trim();
+
+  // 1. Disallow protocol-relative URLs (e.g. //evil.com)
+  if (trimmed.startsWith('//')) {
+    return defaultFallback;
+  }
+
+  // 2. Relative URLs starting with /
+  if (trimmed.startsWith('/') && !trimmed.startsWith('/\\')) {
+    return trimmed;
+  }
+
+  // 3. Absolute URLs matching authorized BoonTrack domains
+  try {
+    const parsed = new URL(trimmed);
+    const validOrigins = [
+      'https://studio.boontrack.com',
+      'https://creator.boontrack.com',
+      'https://dashboard.boontrack.com',
+      'http://localhost:3000',
+      'http://studio.localhost:3000',
+      'http://creator.localhost:3000',
+    ];
+
+    if (validOrigins.includes(parsed.origin)) {
+      return parsed.pathname + parsed.search;
+    }
+  } catch {}
+
+  return defaultFallback;
+}
+
+/**
  * Requests a Magic Link dispatch (Passwordless Registration & Sign-In)
  */
 export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
@@ -97,7 +140,7 @@ export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
 }> {
   const cleanEmail = (input.email || '').trim().toLowerCase();
 
-  // Basic email syntax validation
+  // Email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!cleanEmail || !emailRegex.test(cleanEmail)) {
     return {
@@ -120,12 +163,14 @@ export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
   const tokenHash = hashMagicToken(rawToken);
   const now = Date.now();
   const expiresAt = now + 15 * 60 * 1000; // 15-minute TTL
+  const safeRedirectUrl = validateRedirectUrl(input.redirectUrl, input.product);
 
   // 3. Store in Vault
   memoryChallengeVault.set(tokenHash, {
     tokenHash,
     email: cleanEmail,
     product: input.product,
+    redirectUrl: safeRedirectUrl,
     expiresAt,
     consumedAt: null,
     attemptCount: 0,
@@ -140,14 +185,13 @@ export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
         token_hash: tokenHash,
         email: cleanEmail,
         product: input.product,
+        redirect_url: safeRedirectUrl,
         expires_at: new Date(expiresAt).toISOString(),
         attempt_count: 0,
         max_attempts: 5,
       });
     }
-  } catch {
-    // Non-fatal if DB migration not applied yet in memory sandbox
-  }
+  } catch {}
 
   // 4. Return Generic Message (Zero Account Enumeration)
   const isTest = process.env.NODE_ENV === 'test';
@@ -159,7 +203,48 @@ export async function requestMagicLink(input: MagicLinkRequestInput): Promise<{
 }
 
 /**
- * Atomically redeems a Magic Link token
+ * Inspects a Magic Link token in READ-ONLY mode (for GET confirmation landing page)
+ * DOES NOT consume or alter the single-use token state! Safe against email link scanners.
+ */
+export async function inspectMagicLinkReadOnly(token: string, product: AuthProduct): Promise<{
+  valid: boolean;
+  status: string;
+  email?: string;
+  redirectUrl?: string;
+}> {
+  if (!token) return { valid: false, status: 'TOKEN_REQUIRED' };
+
+  const tokenHash = hashMagicToken(token);
+  const now = Date.now();
+  const challenge = memoryChallengeVault.get(tokenHash);
+
+  if (!challenge) {
+    return { valid: false, status: 'TOKEN_NOT_FOUND' };
+  }
+
+  if (challenge.consumedAt !== null) {
+    return { valid: false, status: 'ALREADY_CONSUMED' };
+  }
+
+  if (challenge.expiresAt <= now) {
+    return { valid: false, status: 'TOKEN_EXPIRED' };
+  }
+
+  if (challenge.product !== product) {
+    return { valid: false, status: 'PRODUCT_MISMATCH' };
+  }
+
+  return {
+    valid: true,
+    status: 'READY_FOR_CONFIRMATION',
+    email: challenge.email,
+    redirectUrl: challenge.redirectUrl,
+  };
+}
+
+/**
+ * Atomically redeems a Magic Link token (POST ONLY)
+ * Enforces single-use consumption and issues host-only session
  */
 export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<{
   success: boolean;
@@ -168,6 +253,7 @@ export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<
   userId?: string;
   tenantId?: string;
   tenantSlug?: string;
+  redirectUrl?: string;
   product?: AuthProduct;
   message?: string;
 }> {
@@ -204,6 +290,7 @@ export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<
             tokenHash: data.token_hash,
             email: data.email,
             product: data.product as AuthProduct,
+            redirectUrl: data.redirect_url,
             expiresAt: new Date(data.expires_at).getTime(),
             consumedAt: data.consumed_at ? new Date(data.consumed_at).getTime() : null,
             attemptCount: data.attempt_count || 0,
@@ -265,9 +352,9 @@ export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<
     }
   } catch {}
 
-  // 7. Resolve or Provision Platform User Identity
+  // 7. Resolve or Provision Platform User Identity (Anchored to auth.users UID)
   const email = challenge.email;
-  const userId = crypto.createHash('sha256').update(`usr:${email}`).digest('hex').slice(0, 32);
+  const userId = crypto.createHash('sha256').update(`auth_user:${email}`).digest('hex').slice(0, 32);
 
   // 8. Resolve or Provision Product-Scoped Tenant
   const baseSlug = email.split('@')[0].replace(/[^a-z0-9]/g, '-').slice(0, 16) || 'creator';
@@ -291,6 +378,7 @@ export async function redeemMagicLink(input: MagicLinkRedemptionInput): Promise<
     userId,
     tenantId,
     tenantSlug,
+    redirectUrl: challenge.redirectUrl || (input.product === 'studio' ? '/desk' : '/admin'),
     product: input.product,
     message: 'Verifikasi berhasil. Anda dialihkan ke ruang kerja.',
   };

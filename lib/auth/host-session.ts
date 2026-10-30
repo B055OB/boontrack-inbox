@@ -8,6 +8,7 @@
  * 2. Zero PII in Claims: No email, phone number, or names stored in token claims.
  * 3. Cryptographic Verification: Explicit HS256 algorithm, signature, issuer, audience, and exp checks.
  * 4. Product Isolation: Studio and Creator use independent session secrets, issuers, audiences, and cookies.
+ * 5. Isolated Revocation: Logout on Studio does NOT invalidate Creator sessions, and vice versa.
  */
 
 import crypto from 'crypto';
@@ -28,7 +29,7 @@ export interface HostSessionPayload {
   ver: number;            // Session version for bulk revocation
 }
 
-// In-memory blacklist fallback for test / fast-path checks
+// In-memory product-scoped blacklist cache
 const revokedJtiCache = new Map<string, number>();
 
 /**
@@ -229,8 +230,9 @@ export async function verifyHostSessionToken(
     return { valid: false, error: 'SESSION_VERSION_SUPERSEDED' };
   }
 
-  // 4. Revocation List Check
-  if (payload.jti && revokedJtiCache.has(payload.jti)) {
+  // 4. Product-Scoped Revocation List Check
+  const revocationKey = `${product}:${payload.jti}`;
+  if (payload.jti && (revokedJtiCache.has(revocationKey) || revokedJtiCache.has(payload.jti))) {
     return { valid: false, error: 'TOKEN_REVOKED' };
   }
 
@@ -255,8 +257,20 @@ export function getHostSessionCookieOptions(product: AuthProduct, isSecure?: boo
 }
 
 /**
- * Records a session JTI as revoked
+ * Records a session JTI as revoked (Product-Scoped)
  */
-export async function revokeHostSession(jti: string, expSeconds: number) {
-  revokedJtiCache.set(jti, expSeconds);
+export async function revokeHostSession(jti: string, expSeconds: number, product?: AuthProduct) {
+  if (product) {
+    revokedJtiCache.set(`${product}:${jti}`, expSeconds);
+  } else {
+    revokedJtiCache.set(jti, expSeconds);
+  }
 }
+
+/**
+ * Resets the revoked JTI cache (used for test teardown)
+ */
+export function resetRevokedJtiCache() {
+  revokedJtiCache.clear();
+}
+
