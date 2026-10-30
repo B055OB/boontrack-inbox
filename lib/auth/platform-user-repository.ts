@@ -1,15 +1,16 @@
 /**
  * lib/auth/platform-user-repository.ts
  * Unified Persistent Repository for Platform User Identity & Profile Layer
- * Backed by Supabase PostgreSQL (public.platform_users)
+ * Backed by Supabase PostgreSQL (public.platform_users, public.oauth_consumed_states)
  * CTO Directive — Global Auth Persistence Readiness (October 2026)
  *
  * Core Invariants:
  * 1. Authoritative Identity: auth.users.id is the single root of trust.
- * 2. Uniqueness: PostgreSQL enforces unique constraints on email and google_sub.
+ * 2. Uniqueness: PostgreSQL enforces unique constraints on email, google_sub, and oauth state_hash.
  * 3. Atomic Binding: fn_link_google_identity RPC guarantees FOR UPDATE row-level lock concurrency.
- * 4. Anti-Takeover: Unverified accounts can never bind an external OAuth provider.
- * 5. Multi-Process Resilience: Zero dependency on ephemeral process-local heap memory in live environments.
+ * 4. Replay Protection: fn_consume_oauth_state RPC guarantees shared cross-worker atomic state consumption.
+ * 5. Anti-Takeover: Unverified accounts can never bind an external OAuth provider.
+ * 6. Production Fail-Fast: Production strictly forbids silent fallback to in-memory mocks.
  */
 
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
@@ -36,6 +37,16 @@ export type LinkGoogleIdentityResult =
   | { success: true; user: PlatformUserRecord; status: string }
   | { success: false; error: string; message?: string };
 
+export interface ConsumeOAuthStateParams {
+  stateHash: string;
+  product: string;
+  expiresAt: Date;
+}
+
+export type ConsumeOAuthStateResult =
+  | { success: true; status: 'CONSUMED_SUCCESS' }
+  | { success: false; error: 'STATE_REQUIRED' | 'STATE_EXPIRED' | 'STATE_ALREADY_CONSUMED' | 'DATABASE_ERROR'; message?: string };
+
 export interface IPlatformUserRepository {
   findByEmail(email: string): Promise<PlatformUserRecord | null>;
   findById(userId: string): Promise<PlatformUserRecord | null>;
@@ -44,6 +55,7 @@ export interface IPlatformUserRepository {
   reconcileProfile(authUserId: string): Promise<PlatformUserRecord | null>;
   incrementSessionVersion(userId: string): Promise<number>;
   save(user: PlatformUserRecord): Promise<PlatformUserRecord>;
+  consumeOAuthState(params: ConsumeOAuthStateParams): Promise<ConsumeOAuthStateResult>;
 }
 
 // ── 1. Live Supabase PostgreSQL Implementation ──────────────────────────────
@@ -98,6 +110,10 @@ export class SupabasePlatformUserRepository implements IPlatformUserRepository {
 
     if (error) {
       console.error('[SupabasePlatformUserRepository] linkGoogleIdentity error:', error);
+      // Map PostgreSQL unique violation on uq_platform_users_google_sub if caught at driver level
+      if (error.code === '23505' && (error.message?.includes('google_sub') || error.details?.includes('google_sub'))) {
+        return { success: false, error: 'GOOGLE_IDENTITY_ALREADY_LINKED' };
+      }
       return { success: false, error: 'DATABASE_ERROR', message: error.message };
     }
 
@@ -179,6 +195,30 @@ export class SupabasePlatformUserRepository implements IPlatformUserRepository {
     return this.mapRow(data);
   }
 
+  async consumeOAuthState(params: ConsumeOAuthStateParams): Promise<ConsumeOAuthStateResult> {
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin.rpc('fn_consume_oauth_state', {
+      p_state_hash: params.stateHash,
+      p_product: params.product.trim().toLowerCase(),
+      p_expires_at: params.expiresAt.toISOString(),
+    });
+
+    if (error) {
+      console.error('[SupabasePlatformUserRepository] consumeOAuthState error:', error);
+      return { success: false, error: 'DATABASE_ERROR', message: error.message };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || !row.success) {
+      const code = row?.status_code;
+      if (code === 'STATE_EXPIRED') return { success: false, error: 'STATE_EXPIRED' };
+      if (code === 'STATE_REQUIRED') return { success: false, error: 'STATE_REQUIRED' };
+      return { success: false, error: 'STATE_ALREADY_CONSUMED' };
+    }
+
+    return { success: true, status: 'CONSUMED_SUCCESS' };
+  }
+
   private mapRow(row: any): PlatformUserRecord {
     const record: PlatformUserRecord = {
       id: row.id,
@@ -204,23 +244,34 @@ export class SupabasePlatformUserRepository implements IPlatformUserRepository {
 export class MockPlatformUserRepository implements IPlatformUserRepository {
   private usersByEmail = new Map<string, PlatformUserRecord>();
   private usersById = new Map<string, PlatformUserRecord>();
+  private consumedOAuthStates = new Map<string, { product: string; expiresAt: number }>();
+  private simulateDatabaseFailure: boolean = false;
+
+  setDatabaseFailure(fail: boolean) {
+    this.simulateDatabaseFailure = fail;
+  }
 
   clear(): void {
     this.usersByEmail.clear();
     this.usersById.clear();
+    this.consumedOAuthStates.clear();
+    this.simulateDatabaseFailure = false;
   }
 
   async findByEmail(email: string): Promise<PlatformUserRecord | null> {
+    if (this.simulateDatabaseFailure) throw new Error('Simulated database unreachable');
     const user = this.usersByEmail.get(email.trim().toLowerCase());
     return user ? { ...user } : null;
   }
 
   async findById(userId: string): Promise<PlatformUserRecord | null> {
+    if (this.simulateDatabaseFailure) throw new Error('Simulated database unreachable');
     const user = this.usersById.get(userId);
     return user ? { ...user } : null;
   }
 
   async findByGoogleSub(googleSub: string): Promise<PlatformUserRecord | null> {
+    if (this.simulateDatabaseFailure) throw new Error('Simulated database unreachable');
     const cleanSub = googleSub.trim();
     if (!cleanSub) return null;
     for (const u of this.usersByEmail.values()) {
@@ -232,6 +283,10 @@ export class MockPlatformUserRepository implements IPlatformUserRepository {
   }
 
   async linkGoogleIdentity(params: LinkGoogleIdentityParams): Promise<LinkGoogleIdentityResult> {
+    if (this.simulateDatabaseFailure) {
+      return { success: false, error: 'DATABASE_ERROR', message: 'Simulated database unreachable' };
+    }
+
     const cleanEmail = params.email.trim().toLowerCase();
     const cleanSub = params.googleSub.trim();
 
@@ -294,12 +349,14 @@ export class MockPlatformUserRepository implements IPlatformUserRepository {
   }
 
   async reconcileProfile(authUserId: string): Promise<PlatformUserRecord | null> {
+    if (this.simulateDatabaseFailure) return null;
     const user = this.usersById.get(authUserId);
     if (user) return { ...user };
     return null;
   }
 
   async incrementSessionVersion(userId: string): Promise<number> {
+    if (this.simulateDatabaseFailure) throw new Error('Simulated database unreachable');
     const user = this.usersById.get(userId);
     if (!user) throw new Error(`User ${userId} not found`);
     user.session_version = (user.session_version || 1) + 1;
@@ -308,7 +365,34 @@ export class MockPlatformUserRepository implements IPlatformUserRepository {
   }
 
   async save(user: PlatformUserRecord): Promise<PlatformUserRecord> {
+    if (this.simulateDatabaseFailure) throw new Error('Simulated database unreachable');
     return this.saveSync(user);
+  }
+
+  async consumeOAuthState(params: ConsumeOAuthStateParams): Promise<ConsumeOAuthStateResult> {
+    if (this.simulateDatabaseFailure) {
+      return { success: false, error: 'DATABASE_ERROR', message: 'Simulated database unreachable' };
+    }
+
+    if (!params.stateHash) {
+      return { success: false, error: 'STATE_REQUIRED' };
+    }
+
+    if (Date.now() > params.expiresAt.getTime()) {
+      return { success: false, error: 'STATE_EXPIRED' };
+    }
+
+    // Atomic uniqueness check (simulates PostgreSQL PRIMARY KEY on state_hash)
+    if (this.consumedOAuthStates.has(params.stateHash)) {
+      return { success: false, error: 'STATE_ALREADY_CONSUMED' };
+    }
+
+    this.consumedOAuthStates.set(params.stateHash, {
+      product: params.product.trim().toLowerCase(),
+      expiresAt: params.expiresAt.getTime(),
+    });
+
+    return { success: true, status: 'CONSUMED_SUCCESS' };
   }
 
   saveSync(user: PlatformUserRecord): PlatformUserRecord {
@@ -329,6 +413,10 @@ export class MockPlatformUserRepository implements IPlatformUserRepository {
     const user = this.usersByEmail.get(email.trim().toLowerCase());
     return user ? { ...user } : undefined;
   }
+
+  isStateConsumedSync(stateHash: string): boolean {
+    return this.consumedOAuthStates.has(stateHash);
+  }
 }
 
 // ── 3. Universal Factory & Global Repository Instance ─────────────────────────
@@ -336,10 +424,7 @@ export class MockPlatformUserRepository implements IPlatformUserRepository {
 let _repositoryInstance: IPlatformUserRepository | null = null;
 const _mockInstance = new MockPlatformUserRepository();
 
-function isLiveDatabaseAvailable(): boolean {
-  if (process.env.NODE_ENV === 'test') {
-    return false; // Force deterministic isolated testing in Jest test suites
-  }
+export function isLiveDatabaseAvailable(): boolean {
   return !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.SUPABASE_SERVICE_ROLE_KEY &&
@@ -348,13 +433,43 @@ function isLiveDatabaseAvailable(): boolean {
 }
 
 export function getPlatformUserRepository(): IPlatformUserRepository {
-  if (!isLiveDatabaseAvailable()) {
+  const isTest = process.env.NODE_ENV === 'test';
+  const isProd = process.env.NODE_ENV === 'production';
+  const hasLiveDb = isLiveDatabaseAvailable();
+
+  // 1. Production Mode: Strictly require live database; NEVER fall back to in-memory mock!
+  if (isProd) {
+    if (!hasLiveDb) {
+      throw new Error(
+        '[FATAL] Production misconfiguration: Supabase PostgreSQL credentials ' +
+        '(NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) are missing or invalid. ' +
+        'Silent fallback to in-memory mock repository is strictly prohibited in production.'
+      );
+    }
+    if (!_repositoryInstance) {
+      _repositoryInstance = new SupabasePlatformUserRepository();
+    }
+    return _repositoryInstance;
+  }
+
+  // 2. Test Mode: Explicitly select isolated mock instance for deterministic test execution
+  if (isTest) {
     return _mockInstance;
   }
-  if (!_repositoryInstance) {
-    _repositoryInstance = new SupabasePlatformUserRepository();
+
+  // 3. Development Mode: Use live database if configured; otherwise use mock with warning
+  if (hasLiveDb) {
+    if (!_repositoryInstance) {
+      _repositoryInstance = new SupabasePlatformUserRepository();
+    }
+    return _repositoryInstance;
   }
-  return _repositoryInstance;
+
+  console.warn(
+    '[PlatformUserRepository] Running in development mode without live Supabase credentials. ' +
+    'Using ephemeral MockPlatformUserRepository.'
+  );
+  return _mockInstance;
 }
 
 /**
@@ -376,4 +491,11 @@ export function seedRepositoryUser(user: PlatformUserRecord): PlatformUserRecord
  */
 export function getMockPlatformUserByEmail(email: string): PlatformUserRecord | undefined {
   return _mockInstance.getByEmailSync(email);
+}
+
+/**
+ * Direct access to mock repository (for tests only)
+ */
+export function getMockRepository(): MockPlatformUserRepository {
+  return _mockInstance;
 }

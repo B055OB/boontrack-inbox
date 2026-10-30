@@ -13,7 +13,8 @@
  * 5. Single Identity Authority: User identity is anchored 100% to Supabase GoTrue (auth.users.id).
  * 6. Zero Synthesized User IDs: session.sub === verifiedGoTrueUser.id === auth.users.id.
  * 7. Host Session Issuance: Emits product-scoped host-only JWTs for Studio or Creator.
- * 8. Persistent Repository Integration: Uses Supabase PostgreSQL via IPlatformUserRepository.
+ * 8. Shared Atomic Replay Protection: OAuth state consumption is tracked atomically in PostgreSQL.
+ * 9. Persistent Repository Integration: Uses Supabase PostgreSQL via IPlatformUserRepository.
  */
 
 import crypto from 'crypto';
@@ -55,16 +56,6 @@ const OAUTH_STATE_SECRET =
   process.env.NEXTAUTH_SECRET ||
   'boontrack_oauth_state_hmac_secret_2026';
 
-// In-memory vaults for ephemeral states and fast replay protection
-interface OAuthAttemptState {
-  state: string;
-  nonce: string;
-  product: AuthProduct;
-  expiresAt: number;
-}
-const oauthAttemptVault = new Map<string, OAuthAttemptState>();
-const consumedStates = new Set<string>();
-
 /**
  * Generates server-side state & nonce for an OAuth login attempt.
  * Emits a cryptographically signed state token that can be verified across any
@@ -81,87 +72,87 @@ export function generateServerOAuthState(product: AuthProduct): { state: string;
   const sig = crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(payloadB64).digest('base64url');
   const state = `${payloadB64}.${sig}`;
 
-  oauthAttemptVault.set(state, {
-    state,
-    nonce,
-    product,
-    expiresAt,
-  });
-
   return { state, nonce };
 }
 
 /**
- * Validates and consumes a server-side state (Single-Use).
- * Supports both local memory vault and cross-process stateless HMAC-signed state tokens.
+ * Validates and atomically consumes a server-side state (Single-Use Replay Protection).
+ *
+ * Requirements:
+ * 1. Cryptographic HMAC validation and expiry check before touching persistence.
+ * 2. Scope binding (product match).
+ * 3. Atomic shared database consumption via IPlatformUserRepository.consumeOAuthState().
+ * 4. State identifier is hashed with SHA-256 before storage — raw token is NEVER persisted.
+ * 5. Database failure fails closed (returns DATABASE_ERROR).
  */
-export function consumeServerOAuthState(
+export async function consumeServerOAuthState(
   state: string,
   product: AuthProduct,
-): { valid: boolean; nonce?: string; error?: string } {
-  if (!state) return { valid: false, error: 'STATE_REQUIRED' };
+): Promise<{ valid: boolean; nonce?: string; error?: string }> {
+  if (!state || typeof state !== 'string') return { valid: false, error: 'STATE_REQUIRED' };
 
-  if (consumedStates.has(state)) {
+  // 1. Structural and cryptographic verification BEFORE touching database
+  if (!state.includes('.')) {
     return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
   }
 
-  // 1. Try local memory vault first
-  const attempt = oauthAttemptVault.get(state);
-  if (attempt) {
-    oauthAttemptVault.delete(state);
-    consumedStates.add(state);
-
-    if (Date.now() > attempt.expiresAt) {
-      return { valid: false, error: 'STATE_EXPIRED' };
-    }
-
-    if (attempt.product !== product) {
-      return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
-    }
-
-    return { valid: true, nonce: attempt.nonce };
+  const parts = state.split('.');
+  if (parts.length !== 2) {
+    return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
   }
 
-  // 2. Stateless fallback for multi-process / restart environments
-  if (state.includes('.')) {
-    const parts = state.split('.');
-    if (parts.length === 2) {
-      const [payloadB64, sig] = parts;
-      try {
-        const expectedSig = crypto
-          .createHmac('sha256', OAUTH_STATE_SECRET)
-          .update(payloadB64)
-          .digest('base64url');
+  const [payloadB64, sig] = parts;
+  let data: { id: string; nonce: string; product: string; exp: number };
 
-        // Timing-safe signature comparison
-        const sigBuf = Buffer.from(sig);
-        const expBuf = Buffer.from(expectedSig);
-        if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
-          const data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  try {
+    const expectedSig = crypto
+      .createHmac('sha256', OAUTH_STATE_SECRET)
+      .update(payloadB64)
+      .digest('base64url');
 
-          if (consumedStates.has(data.id)) {
-            return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
-          }
-          consumedStates.add(data.id);
-          consumedStates.add(state);
-
-          if (Date.now() > data.exp) {
-            return { valid: false, error: 'STATE_EXPIRED' };
-          }
-
-          if (data.product !== product) {
-            return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
-          }
-
-          return { valid: true, nonce: data.nonce };
-        }
-      } catch {
-        return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
-      }
+    const sigBuf = Buffer.from(sig);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
     }
+
+    data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  } catch {
+    return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
   }
 
-  return { valid: false, error: 'STATE_INVALID_OR_EXPIRED' };
+  // 2. Validate expiration timestamp against server clock
+  if (Date.now() > data.exp) {
+    return { valid: false, error: 'STATE_EXPIRED' };
+  }
+
+  // 3. Validate product binding
+  if (data.product !== product) {
+    return { valid: false, error: 'STATE_PRODUCT_MISMATCH' };
+  }
+
+  // 4. Compute state identifier hash (never store raw state token in database)
+  const stateHash = crypto.createHash('sha256').update(data.id).digest('hex');
+
+  // 5. Atomic shared database consumption (first caller succeeds, all subsequent/concurrent fail)
+  const repo = getPlatformUserRepository();
+  let consumeResult;
+  try {
+    consumeResult = await repo.consumeOAuthState({
+      stateHash,
+      product,
+      expiresAt: new Date(data.exp),
+    });
+  } catch (err) {
+    console.error('[consumeServerOAuthState] Database failure during state consumption:', err);
+    return { valid: false, error: 'DATABASE_ERROR' };
+  }
+
+  if (!consumeResult.success) {
+    return { valid: false, error: consumeResult.error };
+  }
+
+  return { valid: true, nonce: data.nonce };
 }
 
 /**
@@ -343,12 +334,16 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
   // 1. Validate Server-Side State & Retrieve Expected Nonce
   let serverNonce: string | undefined = input.expectedNonce;
   if (input.state) {
-    const stateCheck = consumeServerOAuthState(input.state, input.product);
+    const stateCheck = await consumeServerOAuthState(input.state, input.product);
     if (!stateCheck.valid) {
+      let message = 'Sesi login Google tidak valid atau telah kedaluwarsa. Silakan ulangi.';
+      if (stateCheck.error === 'DATABASE_ERROR') {
+        message = 'Layanan autentikasi database sedang tidak tersedia. Silakan coba sesaat lagi.';
+      }
       return {
         success: false,
         status: stateCheck.error || 'INVALID_OAUTH_STATE',
-        message: 'Sesi login Google tidak valid atau telah kedaluwarsa. Silakan ulangi.',
+        message,
       };
     }
     serverNonce = stateCheck.nonce;
@@ -379,6 +374,8 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
       message = 'Identitas Google ini telah terhubung ke akun lain. Akses ditolak.';
     } else if (linkResult.error === 'ID_COLLISION') {
       message = 'Konflik identitas pengguna terdeteksi. Akses ditolak.';
+    } else if (linkResult.error === 'DATABASE_ERROR') {
+      message = 'Terjadi kesalahan sistem database. Silakan coba lagi.';
     }
 
     return {
@@ -421,8 +418,6 @@ export async function handleGoogleAuth(input: GoogleAuthInput): Promise<{
  */
 export function resetPlatformUsersVault() {
   resetPlatformUserRepositoryStore();
-  oauthAttemptVault.clear();
-  consumedStates.clear();
 }
 
 /**

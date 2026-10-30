@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- Migration: Atomic Google Identity Linking & Unique Constraint Hardening
 -- File: supabase/migrations/20261030_atomic_google_identity_linking.sql
--- Status: Architecture Proposal Approved by CTO (Directive RE-01)
+-- Status: CTO Authorized Remediation (Directive RE-02, October 2026)
 --
 -- Invariants:
 -- 1. Unconditional GoTrue Authority: auth.users.id is the authoritative root.
@@ -10,6 +10,8 @@
 -- 4. Anti-Takeover: Unverified email profiles cannot be linked to Google sub.
 -- 5. Immutability: An already-bound google_sub cannot be overwritten with a different sub.
 -- 6. Session Version: Preserves session_version across logins.
+-- 7. Concurrency Exception Mapping: Catches SQLSTATE 23505 and maps to GOOGLE_IDENTITY_ALREADY_LINKED.
+-- 8. Privilege Hardening: REVOKE from PUBLIC/anon/authenticated; GRANT only to service_role.
 -- ==============================================================================
 
 BEGIN;
@@ -41,6 +43,7 @@ DECLARE
     v_clean_email TEXT := LOWER(TRIM(p_email));
     v_profile public.platform_users;
     v_existing_sub_user public.platform_users;
+    v_constraint TEXT;
 BEGIN
     -- 1. Input Validation
     IF p_google_sub IS NULL OR TRIM(p_google_sub) = '' THEN
@@ -94,16 +97,31 @@ BEGIN
     END IF;
 
     -- 8. Atomic Binding Mutation (preserves existing session_version)
-    UPDATE public.platform_users
-    SET google_sub = p_google_sub,
-        email_verified = true,
-        updated_at = NOW()
-    WHERE id = p_auth_user_id
-    RETURNING * INTO v_profile;
+    -- Wrapped in EXCEPTION block to map concurrent unique violations to GOOGLE_IDENTITY_ALREADY_LINKED
+    BEGIN
+        UPDATE public.platform_users
+        SET google_sub = p_google_sub,
+            email_verified = true,
+            updated_at = NOW()
+        WHERE id = p_auth_user_id
+        RETURNING * INTO v_profile;
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+        IF v_constraint = 'uq_platform_users_google_sub' OR v_constraint LIKE '%google_sub%' THEN
+            RETURN QUERY SELECT false, 'GOOGLE_IDENTITY_ALREADY_LINKED'::TEXT, v_profile.id, v_profile.email, NULL::TEXT, v_profile.session_version;
+            RETURN;
+        ELSE
+            -- Unrelated unique violation: re-raise to fail closed
+            RAISE;
+        END IF;
+    END;
 
     RETURN QUERY SELECT true, 'LINKED_SUCCESS'::TEXT, v_profile.id, v_profile.email, v_profile.google_sub, v_profile.session_version;
 END;
 $$;
 
-COMMIT;
+-- 3. Explicit RPC Privilege Hardening
+REVOKE ALL ON FUNCTION public.fn_link_google_identity(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_link_google_identity(UUID, TEXT, TEXT) TO service_role;
 
+COMMIT;
