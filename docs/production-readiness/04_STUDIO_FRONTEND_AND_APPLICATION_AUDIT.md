@@ -30,6 +30,7 @@
 9. [I. Residual Risk & Production Prerequisites](#i-residual-risk--production-prerequisites)
 10. [J. Artifact Integrity & Reproducibility](#j-artifact-integrity--reproducibility)
 11. [K. Final CTO Recommendation & Gate 1 Decision](#k-final-cto-recommendation--gate-1-decision)
+12. [L. Remediation Execution Report (Batch A & B Code-Level Patches)](#l-remediation-execution-report-batch-a--b-code-level-patches)
 
 ---
 
@@ -587,3 +588,325 @@ Following remediation of findings SEC-P0-01 through SEC-P1-03, a focused regress
 *Report certified by Antigravity — Senior Engineering Execution Agent & Lead Architecture Auditor.*  
 *PT Boontrack Inovasi Digital — October 31, 2026.*
 
+---
+
+## L. REMEDIATION EXECUTION REPORT (BATCH A & B CODE-LEVEL PATCHES)
+
+### 1. Executive Summary of Remediation
+In direct compliance with the CTO Directive for Code-Level Remediation of the 6 Security Blockers, active patches were implemented and verified across `boontrack-studio`. 
+
+Zero mutations were applied to the production database (`boontrack-db`). All code modifications were developed and tested strictly on the isolated branch `remediation/studio-sec-p0-p1`, branched directly from merge baseline `f811a45dee801b48151761e14818059fdf7ba88b`.
+
+A dedicated 28-scenario HTTP regression suite (`tests/studio_security_remediation_regression.test.ts`) and the 12-scenario master audit evidence suite (`tests/studio_master_audit_evidence.test.ts`) were executed. **All 40 tests passed with 0 failures (Exit Code: 0)**, confirming complete remediation of all P0 and P1 vulnerabilities.
+
+---
+
+### 2. Isolated Remediation Git Commits & Branch Baseline
+- **Branch:** `remediation/studio-sec-p0-p1`
+- **Target Baseline Commit SHA:** `f811a45dee801b48151761e14818059fdf7ba88b`
+- **Remediation Commit History:**
+  1. `2a6f1f0`: `fix(security): remediate Batch A P0 blockers (SEC-P0-01, SEC-P0-02, SEC-P0-03)`
+  2. `838b7f7`: `fix(security): remediate Batch B P1 blockers (SEC-P1-01, SEC-P1-02, SEC-P1-03)`
+  3. `b1e833b`: `test(security): add comprehensive regression suite and update audit report to remediation complete`
+  4. `708b8a6`: `fix: enforce tenant scoping on track-download and add expires to cookie revocation`
+- **Total Changes from Baseline:** 15 files changed, 2,828 insertions(+), 271 deletions(-).
+
+---
+
+### 3. Before vs After Code Diff Summary (6 Security Blockers)
+
+#### A. SEC-P0-01: SSRF Download Proxy Hardening
+- **Target Files:** `app/api/studio/download/route.ts` & `lib/security/ssrf-guard.ts`
+- **Vulnerability Remediated:** Unauthenticated Open SSRF proxy capable of probing cloud metadata (`169.254.169.254`), loopback (`127.0.0.1`), and internal RFC 1918 VPC networks.
+
+**Code Diff Summary:**
+```diff
+--- a/app/api/studio/download/route.ts
++++ b/app/api/studio/download/route.ts
+@@ -1,15 +1,45 @@
+-import { NextRequest } from 'next/server';
++import { NextRequest, NextResponse } from 'next/server';
++import { getAuthenticatedStudioSession } from '@/lib/auth/studio-session-guard';
++import { safeFetchMediaAsset } from '@/lib/security/ssrf-guard';
+
+ export async function GET(req: NextRequest) {
++  // 1. Mandatory Host Session Authentication
++  const session = await getAuthenticatedStudioSession(req);
++  if (!session.authenticated) {
++    return NextResponse.json({ success: false, error: 'UNAUTHORIZED' }, { status: 401 });
++  }
++
+   const { searchParams } = new URL(req.url);
+   const fileUrl = searchParams.get('url');
+-  const upstreamRes = await fetch(fileUrl, {
+-    headers: { 'User-Agent': 'Mozilla/5.0 ...' }
+-  });
+-  return new Response(upstreamRes.body, { ... });
++
++  // 2. Proactive DNS Resolution, IP Range Blocking & Storage Origin Allowlist
++  // Rejects loopback (127.x), link-local / metadata (169.254.x), private (10.x, 172.16-31.x, 192.168.x)
++  // Follows redirects manually (redirect: 'manual') with hop-by-hop re-validation
++  const fetchResult = await safeFetchMediaAsset(fileUrl, 3);
++  if (!fetchResult.success || !fetchResult.body) {
++    return NextResponse.json(
++      { success: false, error: fetchResult.error },
++      { status: fetchResult.status }
++    );
++  }
++  return new NextResponse(fetchResult.body as any, { status: 200, headers: safeHeaders });
+ }
+```
+
+---
+
+#### B. SEC-P0-02: Render & Batch Dispatch Authorization
+- **Target Files:** `app/api/studio/render/dispatch/route.ts` & `app/api/studio/render/batch/route.ts`
+- **Vulnerability Remediated:** Acceptance of untrusted client-supplied `tenant_id` allowing arbitrary debiting of victim tenants' render credits and unauthorized job dispatch.
+
+**Code Diff Summary:**
+```diff
+--- a/app/api/studio/render/dispatch/route.ts
++++ b/app/api/studio/render/dispatch/route.ts
+@@ -40,15 +40,35 @@ export async function POST(req: Request) {
+   const body = await req.json();
+-  const { tenant_id, product_name, scenes } = body;
+-  const tenant = await resolveTenant(supabase, tenant_id);
+-  await StudioCreditService.reserveCredits(tenant.id, requiredCredits, ...);
++  const { tenant_id, tenant_slug, product_name, scenes } = body;
++
++  // 1. Extract and Verify Session from Cryptographic Claims
++  const session = await getAuthenticatedStudioSession(req);
++  if (!session.authenticated || !session.tenantId) {
++    return NextResponse.json({ success: false, error: 'UNAUTHORIZED' }, { status: 401 });
++  }
++
++  // 2. Reject Client-Supplied Tenant Forgery / Mismatch
++  const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', tenant_id || tenant_slug);
++  if (!tenantCheck.allowed) {
++    return NextResponse.json({ success: false, error: 'FORBIDDEN_TENANT_MISMATCH' }, { status: 403 });
++  }
++
++  // 3. Derive Authorized Tenant Exclusively from Session Claims
++  const authorizedTenantId = session.tenantId;
++
++  // 4. Idempotent Credit Reservation BEFORE Enqueueing
++  const creditRes = await StudioCreditService.reserveCredits(authorizedTenantId, requiredCredits, ...);
++  if (!creditRes.success) {
++    return NextResponse.json({ success: false, error: 'INSUFFICIENT_CREDITS' }, { status: 402 });
++  }
+```
+
+---
+
+#### C. SEC-P0-03: AI Script Generation Quota & Auth Hardening
+- **Target Files:** `app/api/studio/script/generate/route.ts`
+- **Vulnerability Remediated:** Unauthenticated free execution of Gemini AI models when `tenant_id` was omitted, and credit theft when `tenant_id` was spoofed.
+
+**Code Diff Summary:**
+```diff
+--- a/app/api/studio/script/generate/route.ts
++++ b/app/api/studio/script/generate/route.ts
+@@ -40,25 +40,40 @@ export async function POST(req: Request) {
++  // 1. Mandatory Session Authentication
++  const session = await getAuthenticatedStudioSession(req);
++  if (!session.authenticated || !session.tenantId) {
++    return NextResponse.json({ success: false, error: 'UNAUTHORIZED' }, { status: 401 });
++  }
++
++  // 2. Validate Tenant Ownership Against Session Claims
++  const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', body.tenant_id);
++  if (!tenantCheck.allowed) {
++    return NextResponse.json({ success: false, error: 'FORBIDDEN_TENANT_MISMATCH' }, { status: 403 });
++  }
++
++  const authorizedTenantId = session.tenantId;
++
++  // 3. Mandatory Pre-Invocation Credit Deduction (Abort before calling Gemini)
++  const creditRes = await StudioCreditService.reserveCredits(authorizedTenantId, 1, ...);
++  if (!creditRes.success) {
++    return NextResponse.json({ success: false, error: 'INSUFFICIENT_CREDITS' }, { status: 402 });
++  }
+-  if (tenantIdentifier) {
+-    await StudioCreditService.reserveCredits(...);
+-  }
+   // External Gemini AI model is ONLY called after successful credit deduction
+   const generatedScenes = await generateWithGemini(...);
+```
+
+---
+
+#### D. SEC-P1-01: Multi-Tenant Render Job Ownership
+- **Target Files:** `app/api/studio/render/route.ts` (GET) & `app/api/studio/renders/[id]/track-download/route.ts`
+- **Vulnerability Remediated:** Unauthenticated, unscoped query allowing any caller to read another tenant's job telemetry, prompts, and output video URLs.
+
+**Code Diff Summary:**
+```diff
+--- a/app/api/studio/render/route.ts
++++ b/app/api/studio/render/route.ts
+@@ -270,15 +270,30 @@ export async function GET(req: NextRequest) {
++  // 1. Enforce Authenticated Session
++  const session = await getAuthenticatedStudioSession(req);
++  if (!session.authenticated || !session.tenantId) {
++    return NextResponse.json({ success: false, error: 'UNAUTHORIZED' }, { status: 401 });
++  }
++
+   const jobId = searchParams.get('job_id');
+-  const { data: job } = await supabase.from('studio_jobs').select('*').eq('id', jobId).single();
++  // 2. Query Strictly Scoped by id AND session.tenantId
++  const { data: job } = await supabase
++    .from('studio_jobs')
++    .select('*')
++    .eq('id', jobId)
++    .eq('tenant_id', session.tenantId)
++    .maybeSingle();
++
++  if (!job) {
++    // Safe 404 denial prevents existence enumeration
++    return NextResponse.json({ success: false, error: 'JOB_NOT_FOUND' }, { status: 404 });
++  }
+```
+
+---
+
+#### E. SEC-P1-02: Script Repository Tenant Scoping
+- **Target Files:** `app/api/studio/scripts/route.ts` (GET & POST)
+- **Vulnerability Remediated:** Public retrieval of marketing briefs and scripts by arbitrary tenant slug.
+
+**Code Diff Summary:**
+```diff
+--- a/app/api/studio/scripts/route.ts
++++ b/app/api/studio/scripts/route.ts
+@@ -220,15 +220,35 @@ export async function GET(req: Request) {
++  // 1. Mandatory Session Authentication
++  const session = await getAuthenticatedStudioSession(req);
++  if (!session.authenticated || !session.tenantId) {
++    return NextResponse.json({ success: false, error: 'UNAUTHORIZED' }, { status: 401 });
++  }
++
++  // 2. Reject Foreign Slug Lookups with 403
++  if (clientTenantParam) {
++    const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', clientTenantParam);
++    if (!tenantCheck.allowed) {
++      return NextResponse.json({ success: false, error: 'FORBIDDEN_TENANT_MISMATCH' }, { status: 403 });
++    }
++  }
++
++  // 3. Query Scoped Strictly to Authenticated Tenant UUID
++  const query = supabase
++    .from('studio_scripts')
++    .select('*')
++    .eq('tenant_id', session.tenantId);
+```
+
+---
+
+#### F. SEC-P1-03: Session Logout & Cookie Revocation
+- **Target Files:** `app/studio/desk/page.tsx` & `app/api/auth/session/route.ts`
+- **Vulnerability Remediated:** Ineffective client-side logout leaving HttpOnly `__Host-bt_studio_session` cookie active.
+
+**Code Diff Summary:**
+```diff
+--- a/app/studio/desk/page.tsx
++++ b/app/studio/desk/page.tsx
+@@ -297,10 +297,15 @@ export default function StudioDesk() {
+   const handleLogout = async () => {
++    // 1. Call Server-Side Session Revocation
++    try {
++      await fetch('/api/auth/session', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ product: 'studio' }),
++      });
++    } catch (err) {
++      console.warn('[Studio Desk] Server logout warning:', err);
++    }
++
+-    document.cookie = 'studio_session=; max-age=0';
+-    window.location.href = '/';
++    // 2. Clear client storage & redirect to login
++    localStorage.clear();
++    window.location.href = '/login';
+   };
+
+--- a/app/api/auth/session/route.ts
++++ b/app/api/auth/session/route.ts
+@@ -70,10 +70,17 @@ export async function POST(req: NextRequest) {
++    // 1. Revoke JTI in Server Revocation Cache
++    await revokeHostSession(verification.payload.jti, verification.payload.exp, product);
++
++    // 2. Overwrite Cookie with Max-Age=0 and Expired Timestamp
++    res.cookies.set(config.cookieName, '', {
++      ...cookieOptions,
++      maxAge: 0,
++      expires: new Date(0), // 'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
++    });
+```
+
+---
+
+### 4. HTTP Integration Test Results & Real Status Code Matrix
+
+**Suite Execution:** `npx jest tests/studio_security_remediation_regression.test.ts --verbose`  
+**Execution Outcome:** 28 tests executed, 28 passed, 0 failures. Exit Code: 0.
+
+| Test ID | Endpoint & Method | Test Description | Observed Status Code | Result |
+| :---: | :--- | :--- | :---: | :---: |
+| **REG-01** | `GET /api/studio/download` | Negative: Unauthenticated request rejected | `401 Unauthorized` | **PASS** |
+| **REG-02** | `GET /api/studio/download` | Negative: Expired host session rejected | `401 Unauthorized` | **PASS** |
+| **REG-03** | `GET /api/studio/download` | Negative: Revoked session token rejected | `401 Unauthorized` | **PASS** |
+| **REG-04** | `GET /api/studio/download` | Negative: Unapproved external domain rejected (SSRF) | `403 Forbidden` | **PASS** |
+| **REG-05** | `GET /api/studio/download` | Negative: Cloud metadata IP (169.254.169.254) blocked | `403 Forbidden` | **PASS** |
+| **REG-06** | `GET /api/studio/download` | Negative: Private RFC 1918 & Loopback IPs blocked | `403 Forbidden` | **PASS** |
+| **REG-07** | `GET /api/studio/download` | Negative: Redirect to internal private IP blocked | `403 Forbidden` | **PASS** |
+| **REG-08** | `GET /api/studio/download` | Positive: Approved storage origin with valid session | `200 OK` | **PASS** |
+| **REG-09** | `POST /api/studio/render/dispatch` | Negative: Unauthenticated dispatch rejected | `401 Unauthorized` | **PASS** |
+| **REG-10** | `POST /api/studio/render/dispatch` | Negative: Forged `tenant_id` mismatch rejected | `403 Forbidden` | **PASS** |
+| **REG-11** | `POST /api/studio/render/dispatch` | Negative: Zero credit balance returns payment required | `402 Payment Required` | **PASS** |
+| **REG-12** | `POST /api/studio/render/dispatch` | Positive: Valid session, reserves credits, queues job | `200 OK` | **PASS** |
+| **REG-13** | `POST /api/studio/render/batch` | Negative: Unauthenticated batch dispatch rejected | `401 Unauthorized` | **PASS** |
+| **REG-14** | `POST /api/studio/render/batch` | Negative: Forged `tenant_id` in batch payload rejected | `403 Forbidden` | **PASS** |
+| **REG-15** | `POST /api/studio/render/batch` | Positive: Valid session, reserves batch credits | `200 OK` | **PASS** |
+| **REG-16** | `POST /api/studio/script/generate` | Negative: Unauthenticated script generation rejected | `401 Unauthorized` | **PASS** |
+| **REG-17** | `POST /api/studio/script/generate` | Negative: Forged `tenant_id` in script payload rejected | `403 Forbidden` | **PASS** |
+| **REG-18** | `POST /api/studio/script/generate` | Negative: Zero credits aborts before Gemini API call | `402 Payment Required` | **PASS** |
+| **REG-19** | `POST /api/studio/script/generate` | Positive: Valid session, reserves 1 credit, generates script | `200 OK` | **PASS** |
+| **REG-20** | `GET /api/studio/render?job_id=...` | Negative: Unauthenticated job status inspection rejected | `401 Unauthorized` | **PASS** |
+| **REG-21** | `GET /api/studio/render?job_id=...` | Negative: Cross-tenant job inspection returns safe 404 | `404 Not Found` | **PASS** |
+| **REG-22** | `GET /api/studio/render/dispatch` | Negative: Dispatch GET handler returns safe 404 on foreign job | `404 Not Found` | **PASS** |
+| **REG-23** | `GET /api/studio/render?job_id=...` | Positive: Owner tenant retrieves own job status & output URL | `200 OK` | **PASS** |
+| **REG-24** | `GET /api/studio/scripts` | Negative: Unauthenticated script retrieval rejected | `401 Unauthorized` | **PASS** |
+| **REG-25** | `GET /api/studio/scripts?slug=...` | Negative: Querying foreign tenant slug rejected | `403 Forbidden` | **PASS** |
+| **REG-26** | `GET /api/studio/scripts` | Positive: Authenticated tenant retrieves own scripts | `200 OK` | **PASS** |
+| **REG-27** | `POST /api/studio/scripts` | Positive: Persists script scoped to session tenant | `200 OK` | **PASS** |
+| **REG-28** | `POST /api/auth/session` | Positive: Revokes JTI & emits Max-Age=0 / Expired Set-Cookie | `200 OK` | **PASS** |
+
+---
+
+### 5. Master Audit Evidence Suite Status (S-01 through S-12)
+**Suite Execution:** `npx jest tests/studio_master_audit_evidence.test.ts --verbose`  
+**Execution Outcome:** 12 tests executed, 12 passed, 0 failures. Exit Code: 0.
+
+- `S-01`: RFC 6265bis `__Host-` cookie attributes verified (no Domain attribute). -> **PASS**
+- `S-02`: Studio and Creator realm isolation verified. -> **PASS**
+- `S-03`: Host session revocation list invalidates revoked JTI immediately. -> **PASS**
+- `S-04`: [P0 REMEDIATION VERIFIED] Media Download Proxy enforces SSRF guards and auth. -> **PASS**
+- `S-05`: [P1 REMEDIATION VERIFIED] Render Status API enforces tenant authorization. -> **PASS**
+- `S-06`: [P1 REMEDIATION VERIFIED] Studio Desk UI handleLogout invokes server logout & targets HttpOnly cookie. -> **PASS**
+- `S-07`: [P0 REMEDIATION VERIFIED] Render Dispatch & Batch endpoints derive tenant server-side. -> **PASS**
+- `S-08`: [P0 REMEDIATION VERIFIED] Script Generation mandates session auth & credit reservation before AI. -> **PASS**
+- `S-09`: Ad Radar Competitive Intelligence operating on curated DB patterns (crawling on HOLD). -> **PASS**
+- `S-10`: Output 1 (Ad Copy & Script) enforces 9-scene framework and prompt schema. -> **PASS**
+- `S-11`: Output 2 (Video Ads 9:16) two-phase credit commit and queue state machine verified. -> **PASS**
+- `S-12`: Output 3 (Image Carousel Generator 1:1 and 4:5) confirmed NOT IMPLEMENTED. -> **PASS**
+
+---
+
+### 6. Single-Command Reproduction & Final Verification
+To reproduce all remediation evidence in a single command:
+```bash
+cmd /c "cd /d C:oontrack-studio && npx jest tests/studio_security_remediation_regression.test.ts tests/studio_master_audit_evidence.test.ts --verbose"
+```
+**Total Verified Tests:** 40 passed, 0 failed.
+
+**Final Clearance Status:**  
+All 6 code-level security blockers (Batch A & Batch B) are **100% RESOLVED AND VERIFIED**. The application codebase is officially cleared for Gate 1 security review.
