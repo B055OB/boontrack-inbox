@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
+import StudioCreativeFunnel from '@/components/studio/StudioCreativeFunnel';
 
 function persistStudioSession(slug: string, sessionObj?: any) {
   if (typeof window === 'undefined') return;
@@ -780,7 +781,24 @@ export default function StudioDeskPage() {
           </div>
         </section>
 
-        {/* ── 4. HERO CARD UTAMA: ALUR KERJA TERARAH (NO-TIMELINE) ── */}
+        {/* ── 4. STUDIO CREATIVE FUNNEL (UNIFIED 4-STEP PIPELINE) ── */}
+        <section id="creative-funnel" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-fuchsia-400" />
+              <span>Studio Creative Pipeline (Ad Copy • UGC Video • Carousel)</span>
+            </h2>
+            <span className="text-[11px] text-zinc-500 font-mono">Alur Kerja 4 Tahap Terpadu</span>
+          </div>
+          <StudioCreativeFunnel
+            currentCredits={renderCredits}
+            tenantSlug={tenantSlug}
+            onRequireTopup={() => setIsPaywallOpen(true)}
+            onCreditsUpdated={(newBal) => setRenderCredits(newBal)}
+          />
+        </section>
+
+        {/* ── 5. HERO CARD UTAMA: ALUR KERJA TERARAH (NO-TIMELINE) ── */}
         <section className="relative rounded-3xl p-7 sm:p-9 bg-gradient-to-br from-[#12162B] via-[#0E1322] to-[#0A0D18] border border-indigo-500/30 hover:border-indigo-500/50 shadow-2xl shadow-indigo-950/40 transition-all overflow-hidden group">
           <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none group-hover:bg-indigo-600/25 transition-all duration-700" />
           <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-fuchsia-600/10 rounded-full blur-3xl pointer-events-none" />
