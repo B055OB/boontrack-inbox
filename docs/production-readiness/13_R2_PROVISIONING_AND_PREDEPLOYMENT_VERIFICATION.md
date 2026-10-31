@@ -5,10 +5,10 @@
 **Development Branch:** `feat/studio-ui-creative-pipeline`  
 **Security Baseline:** `remediation/studio-sec-p0-p1` (Preserved at commit `29292711580c6c22bff425aac8a6d5cf85f68715`)  
 **Target Staging Project:** Supabase `xkhqirhurnjqglmajghn` (`boontrack-staging-db`, Singapore `ap-southeast-1`)  
-**Target Storage Bucket:** Cloudflare R2 `boontrack-staging-renders` (Account `56303bb1...8550`)  
+**Target Storage Bucket:** Cloudflare R2 `boontrack-staging-renders` (Location: Asia-Pacific / APAC)  
 **Production Database:** `boontrack-db` (`mpluzajlzpregmjwpjqr`) — STRICTLY LOCKED / UNTOUCHED  
 **Date:** October 31, 2026  
-**Final Status:** **R2 STATE UNVERIFIED — PRE-DEPLOYMENT REVIEW COMPLETE — NOT DEPLOYED**
+**Final Status:** **R2 BUCKET CONFIRMED — CONFIGURATION VERIFICATION PENDING — NOT DEPLOYED**
 
 ---
 
@@ -30,66 +30,90 @@
 
 ## 2. PRE-DEPLOYMENT EVIDENCE CLASSIFICATION MATRIX
 
-In strict compliance with the **CTO REVIEW ORDER — R2 EVIDENCE RECONCILIATION**, all evaluation criteria are classified across four rigorous audit states: **PASS**, **FAIL**, **BLOCKED**, or **NOT VERIFIED**:
+In strict compliance with the **CTO DIRECTIVE — R2 FINAL CONFIGURATION VERIFICATION**, evidence is formally classified by factual source across five distinct tiers:
+1. **Screenshot-Confirmed Facts** (Cloudflare Dashboard)
+2. **Dashboard Configuration-Confirmed Facts** (Pending read-only evidence)
+3. **Code-Reviewed Facts** (Repository source audit)
+4. **Automated Test Results** (Empirical test suite execution)
+5. **Still-Unverified / Pending Items** (Post-deploy or dashboard audit gaps)
 
-| Verification Domain | Evaluation Invariant | Audit Status | Audit Evidence & Technical Classification |
-| :--- | :--- | :---: | :--- |
-| **R2 Bucket Existence** | `boontrack-staging-renders` created in Cloudflare | **NOT VERIFIED** | Cloudflare control plane is unauthenticated in local sandbox; live bucket query requires `CLOUDFLARE_API_TOKEN` (Section 3.1) |
-| **Account Ownership** | Cloudflare Account `56303bb1...8550` ownership | **NOT VERIFIED** | Account ID bound in env template, but live control-plane ownership unconfirmed via API (Section 3.1) |
-| **Storage Class & Region** | Standard storage class, global jurisdiction | **NOT VERIFIED** | Live control-plane inspection blocked by absent control-plane token (Section 3.1) |
-| **Public Access & r2.dev** | Public access & `r2.dev` subdomain disabled | **NOT VERIFIED** | Live control-plane inspection blocked by absent control-plane token (Section 3.1) |
-| **Custom Domain Exposure** | Zero public custom domains attached | **NOT VERIFIED** | Live control-plane inspection blocked by absent control-plane token (Section 3.1) |
-| **CORS Restriction** | CORS restricted strictly to staging origin | **NOT VERIFIED** | Specification ready; live bucket CORS state unconfirmed via Cloudflare API (Section 3.2) |
-| **Lifecycle Configuration** | Ephemeral 7-day auto-purge on `renders/staging/` | **NOT VERIFIED** | Specification ready; live bucket lifecycle state unconfirmed via Cloudflare API (Section 3.3) |
-| **Token Permission Scope** | Staging token scoped; zero `boontrack-media` access | **NOT VERIFIED** | Live IAM token inspection requires authenticated Cloudflare dashboard confirmation (Section 3.4) |
-| **Storage Compatibility** | Upload actor, CORS methods, key prefixes, signed URLs | **PASS** | Code trace proves server-side upload, GET/HEAD CORS, key prefix matching, and credential isolation (Section 4) |
-| **Cost Model Correction** | Class B formula, account-level sharing, no fake caps | **PASS** | Corrected Class B math, articulated shared quota, and removed claims of guaranteed max caps (Section 5) |
-| **SSRF Call-Site Inventory** | Outbound requests strictly confined to pinned proxy | **PASS** | Trace proves `safeFetchMediaAsset` is the sole call-site in `/api/studio/download`; zero raw fetch (Section 6) |
-| **DNS Socket Pinning** | Pre-validated IP socket binding & TOCTOU defense | **PASS** | Verified via 21 unit & integration tests in `studio_ssrf_socket_pinning.test.ts` (Section 6) |
-| **IPv4, IPv6 & Metadata** | Private IP, link-local, loopback, CGNAT rejection | **PASS** | 7 tests passing covering IPv4 ranges, IPv6 loopback/unspecified/unique local, and mapped IPv6 (Section 6) |
-| **SNI TLS Verification** | Server certificate verification matching hostname | **PASS** | Enforced via `servername: targetUrl.hostname` in `https.request` options (Section 6) |
-| **Callback Reconciliation** | Removal of `/desk`; allowlist strictly 2 URLs | **PASS** | `/desk` removed from allowlist; minimal least-privilege scope ratified (Section 7) |
-| **Vercel Preview Isolation** | Preview scope only; fail-closed `SEC-PROD-GUARD` | **PASS** | Preflight script verified: aborts with exit code 1 if production ref detected in preview (Section 8) |
-| **Test Portfolio Health** | 208 disjoint tests, exit code 0, 100% pass | **PASS** | All 15 independent test suites pass with zero failures (Section 9) |
-| **Stop Conditions** | Zero deployment, zero DB mutations, worktrees clean | **PASS** | Working tree clean, zero deployment dispatched, protected worktrees untouched (Section 10) |
+| Verification Domain | Evaluation Invariant | Evidence Source Tier | Audit Status | Audit Evidence & Technical Classification |
+| :--- | :--- | :---: | :---: | :--- |
+| **R2 Bucket Existence** | `boontrack-staging-renders` created in Cloudflare | Screenshot-Confirmed | **PASS** | Confirmed via Cloudflare Dashboard screenshot showing bucket actively listed (Section 3.1) |
+| **Bucket Location** | Jurisdiction / Location is Asia-Pacific (APAC) | Screenshot-Confirmed | **PASS** | Confirmed via Cloudflare Dashboard screenshot showing Asia-Pacific (APAC) placement (Section 3.1) |
+| **Custom Domain Exposure** | Zero public custom domains assigned | Screenshot-Confirmed | **PASS** | Confirmed via Cloudflare Dashboard screenshot showing 0 custom domains connected (Section 3.1) |
+| **Account Ownership** | Cloudflare Account `56303bb1...8550` ownership | Still-Unverified | **PENDING** | Account ID bound in env template; live dashboard account confirmation pending (Section 3.2) |
+| **Public Access & r2.dev** | Public Development URL (`r2.dev`) disabled | Dashboard-Confirmed (Req) | **PENDING** | Requires read-only dashboard screenshot showing `r2.dev` access is Disabled/Off (Section 3.2) |
+| **CORS Policy** | Origin `https://staging-studio.boontrack.com`, GET/HEAD | Dashboard-Confirmed (Req) | **PENDING** | Specification verified in code; live dashboard CORS configuration screenshot pending (Section 3.2) |
+| **Lifecycle Configuration** | Prefix `renders/staging/`, Expiration 7 days | Dashboard-Confirmed (Req) | **PENDING** | Specification verified in code; live dashboard Lifecycle rules screenshot pending (Section 3.2) |
+| **API Token Permission** | Object Read/Write, restricted to staging, no admin | Dashboard-Confirmed (Req) | **PENDING** | Token spec verified; live dashboard token permissions screenshot pending (Section 3.2) |
+| **Storage Compatibility** | Upload actor, CORS methods, key prefixes, signed URLs | Code-Reviewed Facts | **PASS** | Server-side upload verified; browser PUT/POST not required; key prefix matches lifecycle (Section 4) |
+| **Cost Model & Billing** | Class B rate, account-level sharing, no fake caps | Code-Reviewed Facts | **PASS** | Reconciled: $0.009120/mo total; shared free tier and lack of hard cap documented (Section 5) |
+| **SSRF Call-Site Inventory** | Outbound requests strictly confined to pinned proxy | Code-Reviewed Facts | **PASS** | Exactly 1 outbound network call site in `/api/studio/download`; zero unpinned `fetch()` (Section 6) |
+| **DNS Socket Pinning** | Pre-validated IP socket binding & TOCTOU defense | Automated Test Results | **PASS** | 21 unit & network tests passing in `studio_ssrf_socket_pinning.test.ts` (Section 6) |
+| **IPv4, IPv6 & Metadata** | Private IP, link-local, loopback, CGNAT rejection | Automated Test Results | **PASS** | 7 tests pass covering IPv4 ranges, IPv6 loopback/unspecified/unique local, mapped IPv6 (Section 6) |
+| **SNI TLS Verification** | Server certificate verification matching hostname | Automated Test Results | **PASS** | Enforced via `servername: targetUrl.hostname` in `https.request` options (Section 6) |
+| **Callback Reconciliation** | Removal of `/desk`; allowlist strictly 2 URLs | Code-Reviewed Facts | **PASS** | `/desk` removed from allowlist; minimal least-privilege scope ratified (Section 7) |
+| **Vercel Preview Isolation** | Preview scope only; fail-closed `SEC-PROD-GUARD` | Automated Test Results | **PASS** | Preflight guard aborts with exit code 1 if production ref is detected in preview (Section 8) |
+| **Test Portfolio Health** | 208 disjoint tests, exit code 0, 100% pass | Automated Test Results | **PASS** | All 15 independent test suites pass with zero failures (Section 9) |
+| **Residual SEC-RES-02** | `trackDownload` Fail-Closed Mutation Guard | Still-Unverified | **PENDING** | Local regression PASS; final verification awaits staging DB roundtrip confirmation |
+| **Residual SEC-RES-03** | Purge Tenant Isolation & Audit Logging | Still-Unverified | **PENDING** | Local regression PASS; cron disabled in prod; final verification awaits staging dry-run |
+| **Stop Conditions** | Zero deployment, zero DB mutations, worktrees clean | Code-Reviewed Facts | **PASS** | Working tree clean, zero deployment dispatched, protected worktrees untouched (Section 10) |
+
+> [!WARNING]
+> **Audit Integrity Principle:** Full R2 security readiness cannot and must not be claimed based on bucket existence alone. Bucket existence, APAC location, and absence of custom domains are verified facts; however, private access (`r2.dev` disabled), CORS, lifecycle auto-purge, and API token scoping remain pending until verified against live dashboard evidence.
 
 ---
 
-## 3. SECTION A: ACTUAL R2 RESOURCE STATE & CONTROL-PLANE INSPECTION GAP
+## 3. SECTION A & B: R2 RESOURCE STATE & REMAINING CONFIGURATION AUDIT
 
-### 3.1 Live Control-Plane Status: NOT VERIFIED
-During the execution of the verification order:
-```
-$ npx wrangler r2 bucket list
-X [ERROR] In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN 
-  environment variable for wrangler to work.
-```
-Because the local automated workspace is an isolated execution environment without interactive browser login or an injected `CLOUDFLARE_API_TOKEN`, direct programmatic queries against the Cloudflare control-plane API cannot be dispatched.
+### 3.1 Screenshot-Confirmed Facts
+Based on the Cloudflare Dashboard evidence reviewed:
+1. **Bucket Existence:** The bucket `boontrack-staging-renders` exists under the active Cloudflare R2 deployment.
+2. **Geographic Location / Jurisdiction:** Location is explicitly configured in the **Asia-Pacific (APAC)** region.
+3. **Custom Domain Status:** **Zero custom domains are assigned** to `boontrack-staging-renders`.
 
-In strict compliance with CTO instructions:
-```
-R2 PROVISIONING STATUS: NOT VERIFIED
-```
-Engineering does **NOT** label the resource as PROVISIONED. Live verification of items 1 through 8 must be performed either via:
-1. An authorized engineer executing `wrangler r2 bucket get boontrack-staging-renders` with an active `CLOUDFLARE_API_TOKEN`.
-2. Direct inspection of the Cloudflare Dashboard under Account `56303bb13200d0980da8695adcf08550`.
-
-### 3.2 Target Provisioning Specification (Ready for Dashboard / IaC Verification)
+### 3.2 Dashboard Configuration Evidence Required (Pending Submission)
+To complete security clearance for ACTION-03, read-only Cloudflare Dashboard screenshots or verified exports must be submitted for the following four settings:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│               TARGET CLOUDFLARE R2 STAGING BUCKET SPECIFICATION                 │
+│              REQUIRED CLOUDFLARE DASHBOARD READ-ONLY AUDIT EVIDENCE             │
 └─────────────────────────────────────────────────────────────────────────────────┘
-  1. Bucket Name:              boontrack-staging-renders
-  2. Account Ownership:        56303bb13200d0980da8695adcf08550 (Redacted: 56303bb1...8550)
-  3. Storage Class & Region:   Standard Storage / Jurisdiction: default (auto global)
-  4. Public Access & r2.dev:   DISABLED / BLOCKED (r2.dev subdomain disconnected)
-  5. Custom Domains:           NONE (Zero public custom domains attached)
-  6. Allowed Origins (CORS):   https://staging-studio.boontrack.com (GET, HEAD only)
-  7. Lifecycle Rule:           auto-purge-after-7-days (Expiration: 7 days, Prefix: renders/staging/)
-  8. Credential Scope:         Restricted to arn:aws:s3:::boontrack-staging-renders/*
-                               (Zero read/write access to production bucket boontrack-media)
+  1. Public Development URL (r2.dev):
+     • Location: R2 > boontrack-staging-renders > Settings > Public Access
+     • Required State: "R2.dev subdomain" toggle is DISABLED / DISCONNECTED.
+
+  2. CORS Policy:
+     • Location: R2 > boontrack-staging-renders > Settings > CORS Policy
+     • Required State:
+       [
+         {
+           "AllowedOrigins": ["https://staging-studio.boontrack.com"],
+           "AllowedMethods": ["GET", "HEAD"],
+           "AllowedHeaders": ["Range", "Authorization", "Content-Type"],
+           "ExposeHeaders": ["Content-Length", "Content-Range", "ETag"],
+           "MaxAgeSeconds": 3600
+         }
+       ]
+     • Invariant: ZERO wildcard origins ("*") permitted.
+
+  3. Lifecycle Rules:
+     • Location: R2 > boontrack-staging-renders > Settings > Lifecycle Rules
+     • Required State:
+       - Prefix: "renders/staging/"
+       - Action: "Expire objects after 7 days" (Status: Enabled)
+
+  4. API Token Permissions & Scope:
+     • Location: R2 > Manage R2 API Tokens > Token Details
+     • Required State:
+       - Permissions: "Object Read & Write" only.
+       - Bucket Scope: Explicitly restricted to "boontrack-staging-renders".
+       - Isolation: ZERO access to production bucket "boontrack-media".
+       - Account Permissions: NONE (Zero account admin / billing permissions).
 ```
+
+*Security Guardrail:* **Secret Access Keys must NEVER be requested, submitted, or stored in any report, log, or repository commit.**
 
 ---
 
@@ -98,8 +122,8 @@ Engineering does **NOT** label the resource as PROVISIONED. Live verification of
 A thorough architectural trace of the upload and download paths in [`boontrack-studio`](file:///C:/boontrack-studio) confirms:
 
 ### 4.1 Upload Actor: Server-Side Pipeline Only
-- **Verification:** Inspection of [`app/api/studio/render/dispatch/route.ts`](../../app/api/studio/render/dispatch/route.ts) and [`app/api/studio/jobs/route.ts`](../../app/api/studio/jobs/route.ts) reveals that the browser client **never executes direct file uploads to the R2 bucket**.
-- When a user initiates video generation, the client dispatches a lightweight JSON payload (`POST /api/studio/render/dispatch`). The rendering pipeline and asynchronous worker execute server-side, render the video, and write the output file directly to R2 using AWS SDK S3Client (`PutObjectCommand`) using server-side credentials.
+- **Verification:** Inspection of [`app/api/studio/render/dispatch/route.ts`](../../app/api/studio/render/dispatch/route.ts) and [`app/api/studio/jobs/route.ts`](../../app/api/studio/jobs/route.ts) confirms that the browser client **never executes direct file uploads to the R2 bucket**.
+- When a user initiates video generation, the client dispatches a lightweight JSON payload (`POST /api/studio/render/dispatch`). The rendering pipeline and asynchronous worker execute server-side, render the video, and write the output file directly to R2 using AWS SDK S3Client (`PutObjectCommand`) with server-side credentials.
 - **CORS Method Consequence:** Because uploads are performed exclusively server-to-server, **`PUT` and `POST` methods are NOT REQUIRED in the R2 CORS configuration**. Allowing `PUT` or `POST` would needlessly expand the attack surface. Restricting CORS strictly to `["GET", "HEAD"]` enforces least privilege.
 
 ### 4.2 Object Key Structure & Lifecycle Compatibility
@@ -115,28 +139,27 @@ A thorough architectural trace of the upload and download paths in [`boontrack-s
 
 ---
 
-## 5. SECTION C: CORRECTED COST MODEL & RISK ANALYSIS
+## 5. SECTION C: CORRECTED FINANCIAL CALCULATION & RISK MODEL
 
-### 5.1 Corrected Class B Calculation
-Per CTO review directive, the Class B calculation is formally reconciled:
-- Stated volume: 2,000 Class B operations during Gate 2 staging validation.
-- Calculation using CTO formula ($0.36 per 10M tier divisor):
-  $$\text{Class B Cost} = 2{,}000 \times \frac{\$0.36}{10{,}000{,}000} = \$0.000072$$
-- Standard paid rate calculation ($0.36 per 1M operations):
-  $$\text{Class B Cost (Paid Rate)} = 2{,}000 \times \frac{\$0.36}{1{,}000{,}000} = \$0.00072$$
-Both calculations demonstrate that Class B requests incur less than one-tenth of a cent.
+### 5.1 Official Cloudflare R2 Pricing Schedule
+- **Standard Storage:** $0.015 / GB-month (First 10 GB/month included in Free Tier).
+- **Class A Operations (Writes/Uploads/Lists):** $4.50 / 1,000,000 requests ($0.0000045/request; first 1M/month included in Free Tier).
+- **Class B Operations (Reads/Downloads/Head):** $0.36 / 1,000,000 requests ($0.00000036/request; first 10M/month included in Free Tier).
+- **Data Egress:** $0.00 / GB (Always Free across all tiers).
 
-### 5.2 Recalculated Staging Usage Total
+### 5.2 Corrected Financial Calculation (CTO Ratified Formula)
+Under the stated Gate 2 staging validation volume assumptions:
+- **Storage:** 100 test videos @ ~15 MB = 1.5 GB. With 7-day TTL, rolling monthly average is ~0.50 GB-month:
+  $$\text{Storage Cost} = 0.50 \text{ GB} \times \$0.015 = \mathbf{\$0.007500}$$
+- **Class A Writes:** ~200 upload/create operations:
+  $$\text{Class A Cost} = 200 \times \frac{\$4.50}{1{,}000{,}000} = \mathbf{\$0.000900}$$
+- **Class B Reads:** ~2,000 download/playback/head requests (using standard Class B request rate):
+  $$\text{Class B Cost} = 2{,}000 \times \frac{\$0.36}{1{,}000{,}000} = \mathbf{\$0.000720}$$
+- **Data Egress:** ~15 GB streamed:
+  $$\text{Egress Cost} = 15 \text{ GB} \times \$0.00 = \mathbf{\$0.000000}$$
 
-| Usage Metric | Expected Staging Volume | Unit Rate (Beyond Free Tier) | Net Cost (CTO Divisor) | Net Cost (Standard Rate) |
-| :--- | :--- | :--- | :---: | :---: |
-| **Storage** | 100 videos @ 15 MB = 1.5 GB (rolling 0.5 GB-mo with 7d TTL) | $0.015 / GB-month | $0.007500 | $0.007500 |
-| **Class A Writes** | 200 upload/create operations | $4.50 / 1,000,000 ops | $0.000900 | $0.000900 |
-| **Class B Reads** | 2,000 download/head requests | $0.36 / 1,000,000 ops | $0.000072 | $0.000720 |
-| **Data Egress** | ~15 GB streamed | $0.00 / GB (Always Free) | $0.000000 | $0.000000 |
-| **Total Net Cost** | — | — | **$0.008472 / mo** | **$0.009120 / mo** |
-
-*Conclusion:* Normal staging validation load costs less than **$0.01 / month (~$0.009)**.
+#### Total Corrected Monthly Estimate:
+$$\mathbf{\$0.007500 + \$0.000900 + \$0.000720 + \$0.000000 = \$0.009120 \text{ / month}}$$
 
 ### 5.3 Risk Clarifications & Absence of Guaranteed Caps
 
@@ -160,7 +183,7 @@ Both calculations demonstrate that Class B requests incur less than one-tenth of
 ## 6. SECTION D: SSRF DEFENSE & DNS SOCKET PINNING VERIFICATION
 
 ### 6.1 Call-Site Inventory for Studio Media Download
-An exhaustive audit of [`app/api/studio/download/route.ts`](../../app/api/studio/download/route.ts) reveals **exactly one outbound network call site**:
+An audit of [`app/api/studio/download/route.ts`](../../app/api/studio/download/route.ts) reveals **exactly one outbound network call site**:
 - **Line 65:** `const fetchResult = await safeFetchMediaAsset(fileUrl, 3);`
 - **Unpinned Paths:** **ZERO**. There are no invocations of `fetch()`, `http.get()`, `https.request()`, `axios`, or raw sockets outside `safeFetchMediaAsset()`.
 
@@ -258,7 +281,7 @@ To guarantee that no cross-repository contamination or accidental mutation occur
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                     REPOSITORY INTEGRITY & COMMIT AUDIT TRAIL                   │
 └─────────────────────────────────────────────────────────────────────────────────┘
-  • boontrack-studio Active HEAD:      44a4aa19d50c334c379e3f4c6ee0e67dd5a8c0b0 (Clean)
+  • boontrack-studio Active HEAD:      fab36f990db748833005354ee0f8fd67d41c50d4 (Clean)
   • Security Baseline Branch:          29292711580c6c22bff425aac8a6d5cf85f68715 (Untouched)
   • Protected boontrack-inbox HEAD:    9375975936eda8966ab2337e60ada0cfea885497 (Untouched)
   • Protected boontrack-core HEAD:     70a8c5186437837c846c74a1eabca3d4465286d2 (Untouched)
@@ -269,9 +292,13 @@ To guarantee that no cross-repository contamination or accidental mutation occur
 ## 11. FINAL STATUS DECLARATION
 
 ```
-R2 STATE UNVERIFIED — PRE-DEPLOYMENT REVIEW COMPLETE — NOT DEPLOYED
+R2 BUCKET CONFIRMED — CONFIGURATION VERIFICATION PENDING — NOT DEPLOYED
 ```
 
 ### Action Required for Advancement:
-1. **ACTION-03 Live Inspection:** Provide Cloudflare control-plane credentials (`CLOUDFLARE_API_TOKEN`) or attach read-only Cloudflare Dashboard verification confirming `boontrack-staging-renders` existence, private access, CORS, and lifecycle rules.
+1. **Submit Read-Only Dashboard Evidence:** Provide dashboard screenshots for:
+   - `r2.dev` Public URL toggle (Disabled/Off).
+   - CORS JSON policy (`https://staging-studio.boontrack.com`, GET/HEAD).
+   - Lifecycle rule (`renders/staging/`, 7 days expiration).
+   - API token scoping (Read/Write on `boontrack-staging-renders` only; zero access to `boontrack-media`).
 2. **ACTION-04 Decision:** Staging deployment remains **STRICTLY ON HOLD** pending explicit written CTO directive.
