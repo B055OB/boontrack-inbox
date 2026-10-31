@@ -107,7 +107,7 @@ The deployment payload is pinned to an exact immutable commit SHA:
 └─────────────────────────────────────────────────────────────────────────────────┘
   • Target Repository:         boontrack-studio (C:\boontrack-studio)
   • Target Deployment Branch:  feat/studio-ui-creative-pipeline
-  • Target Commit SHA:         (Exact commit recorded upon checklist staging)
+  • Target Commit SHA:         b44732becf8b96d2cfe865dbe59c548071cdeddb (Clean)
   • Security Baseline:         remediation/studio-sec-p0-p1 (2929271 - Untouched)
   • Working Tree State:        Clean (Zero unstaged modifications)
   • Protected Inbox HEAD:      9375975936eda8966ab2337e60ada0cfea885497 (Untouched)
