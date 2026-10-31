@@ -22,6 +22,7 @@ import { POST as scriptGeneratePost } from '@/app/api/studio/script/generate/rou
 import { GET as renderGet, POST as renderPost } from '@/app/api/studio/render/route';
 import { GET as scriptsGet, POST as scriptsPost } from '@/app/api/studio/scripts/route';
 import { POST as sessionLogoutPost } from '@/app/api/auth/session/route';
+import { POST as trackDownloadPost, GET as trackDownloadGet } from '@/app/api/studio/renders/[id]/track-download/route';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
 import * as supabaseModule from '@/lib/supabaseClient';
 
@@ -131,6 +132,21 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
               }
               return { data: list, error: null };
             }),
+            order: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            update: jest.fn((updates: any) => ({
+              eq: jest.fn(async (field: string, val: string) => {
+                if (field === 'id' && mockJobsDb.has(val)) {
+                  const existing = mockJobsDb.get(val);
+                  mockJobsDb.set(val, {
+                    ...existing,
+                    ...updates,
+                    payload: { ...(existing?.payload || {}), ...(updates?.payload || {}) },
+                  });
+                }
+                return { data: null, error: null };
+              }),
+            })),
           };
         }
 
@@ -283,9 +299,64 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(isPrivateOrBlockedIp('8.8.8.8')).toBe(false); // Public IP
     });
 
+    it('SSRF Allowlist Invariant: verifies exact match, suffix match, and lookalike domain rejection', () => {
+      // 1. Exact match hosts
+      expect(isAllowedStorageHostname('assets.boontrack.com')).toBe(true);
+      expect(isAllowedStorageHostname('media.boontrack.com')).toBe(true);
+      expect(isAllowedStorageHostname('storage.boontrack.com')).toBe(true);
+
+      // 2. Suffix matching (*.boontrack.com, *.supabase.co, *.r2.cloudflarestorage.com)
+      expect(isAllowedStorageHostname('cdn.boontrack.com')).toBe(true);
+      expect(isAllowedStorageHostname('project123.supabase.co')).toBe(true);
+      expect(isAllowedStorageHostname('account456.r2.cloudflarestorage.com')).toBe(true);
+
+      // 3. Lookalike domains: MUST BE REJECTED (Missing dot separator before suffix)
+      expect(isAllowedStorageHostname('evilboontrack.com')).toBe(false);
+      expect(isAllowedStorageHostname('notboontrack.com')).toBe(false);
+      expect(isAllowedStorageHostname('fake-supabase.co')).toBe(false);
+      expect(isAllowedStorageHostname('evilir2.cloudflarestorage.com')).toBe(false);
+
+      // 4. Apex domain without subdomain
+      expect(isAllowedStorageHostname('boontrack.com')).toBe(false);
+
+      // 5. Dangerous / loopback hostnames blocked immediately
+      expect(isAllowedStorageHostname('localhost')).toBe(false);
+      expect(isAllowedStorageHostname('app.localhost')).toBe(false);
+      expect(isAllowedStorageHostname('server.internal')).toBe(false);
+      expect(isAllowedStorageHostname('metadata.google.internal')).toBe(false);
+      expect(isAllowedStorageHostname('169.254.169.254')).toBe(false);
+    });
+
+    it('SSRF Multi-Hop Redirect Defense: re-validates storage allowlist at every hop', async () => {
+      const originalFetch = global.fetch;
+      const dnsSpy = jest.spyOn(dns.promises, 'lookup').mockResolvedValue([{ address: '104.21.50.1', family: 4 }] as any);
+      // Hop 1: 302 -> https://mock-approved-storage.test/hop2.mp4 (approved)
+      // Hop 2: 302 -> https://evilboontrack.com/malicious.mp4 (lookalike domain - unapproved!)
+      global.fetch = jest.fn()
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: new Headers({ location: 'https://mock-approved-storage.test/hop2.mp4' }),
+        })
+        .mockResolvedValueOnce({
+          status: 302,
+          headers: new Headers({ location: 'https://evilboontrack.com/malicious.mp4' }),
+        });
+
+      try {
+        const result = await safeFetchMediaAsset('https://mock-approved-storage.test/hop1.mp4');
+        expect(result.success).toBe(false);
+        expect(result.status).toBe(403);
+        expect(result.error).toContain('tidak termasuk dalam daftar domain storage resmi');
+      } finally {
+        global.fetch = originalFetch;
+        dnsSpy.mockRestore();
+      }
+    });
+
     it('Negative: blocks redirect to private IP addresses (SSRF redirect defense)', async () => {
       // Mock fetch: first response is 302 redirecting to http://169.254.169.254/latest/meta-data/
       const originalFetch = global.fetch;
+      const dnsSpy = jest.spyOn(dns.promises, 'lookup').mockResolvedValue([{ address: '104.21.50.1', family: 4 }] as any);
       global.fetch = jest.fn().mockResolvedValueOnce({
         status: 302,
         headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data/' }),
@@ -302,6 +373,7 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
 
     it('Positive: permits approved storage host with valid session', async () => {
       const originalFetch = global.fetch;
+      const dnsSpy = jest.spyOn(dns.promises, 'lookup').mockResolvedValue([{ address: '104.21.50.1', family: 4 }] as any);
       global.fetch = jest.fn().mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -634,6 +706,100 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(data.success).toBe(true);
       expect(data.status).toBe('COMPLETED');
       expect(data.output_url).toBe('https://assets.boontrack.com/renders/tenant-a-video.mp4');
+    });
+
+    // ── Track Download Authorization & Invariant Tests (SEC-P1-01 / CTO Clarification B) ──
+    it('Track-Download Negative: rejects unauthenticated POST with HTTP 401', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data.error).toBe('UNAUTHORIZED');
+    });
+
+    it('Track-Download Negative: rejects expired session with HTTP 401', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${expiredToken}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(401);
+    });
+
+    it('Track-Download Negative: rejects revoked session with HTTP 401', async () => {
+      const revokedToken = signHostSessionToken({
+        product: 'studio',
+        userId: USER_A,
+        tenantId: TENANT_A,
+        tenantSlug: TENANT_A_SLUG,
+      });
+      const payload = JSON.parse(Buffer.from(revokedToken.split('.')[1], 'base64').toString('utf8'));
+      await revokeHostSession(payload.jti, Math.floor(Date.now() / 1000) + 3600, 'studio');
+
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${revokedToken}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(401);
+    });
+
+    it('Track-Download Negative: returns safe 404 denial when foreign Tenant B targets Tenant A job', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${tokenB}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toBe('JOB_NOT_FOUND');
+      // Must not leak output_url or internal storage details
+      expect(data.output_url).toBeUndefined();
+    });
+
+    it('Track-Download Positive: permits owner Tenant A to track download and never leaks signed URLs', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.job_id).toBe(jobAId);
+      expect(data.downloaded_at).toBeDefined();
+      // Crucial security invariant: never exposes output_url or signed download links
+      expect(data.output_url).toBeUndefined();
+      expect(data.signed_url).toBeUndefined();
+    });
+
+    it('Track-Download Fallback GET: enforces identical strict session and tenant authorization', async () => {
+      // 1. Unauthenticated GET -> HTTP 401 (Proves NO anonymous fallback path exists)
+      const anonReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'GET',
+      });
+      const anonRes = await trackDownloadGet(anonReq, { params: Promise.resolve({ id: jobAId }) });
+      expect(anonRes.status).toBe(401);
+
+      // 2. Foreign Tenant GET -> HTTP 404 safe denial
+      const foreignReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'GET',
+        headers: { cookie: `__Host-bt_studio_session=${tokenB}` },
+      });
+      const foreignRes = await trackDownloadGet(foreignReq, { params: Promise.resolve({ id: jobAId }) });
+      expect(foreignRes.status).toBe(404);
+
+      // 3. Owner Tenant GET -> HTTP 200
+      const ownerReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'GET',
+        headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
+      });
+      const ownerRes = await trackDownloadGet(ownerReq, { params: Promise.resolve({ id: jobAId }) });
+      expect(ownerRes.status).toBe(200);
+      const ownerData = await ownerRes.json();
+      expect(ownerData.success).toBe(true);
     });
   });
 
