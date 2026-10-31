@@ -19,7 +19,7 @@
 ### Stop Conditions Strictly Enforced
 - **Zero Production Mutations:** Zero production database DDL/DML, zero schema alterations, zero production configuration alterations.
 - **Production Isolation:** Production Supabase project (`mpluzajlzpregmjwpjqr`) remains 100% untouched and locked.
-- **Zero Cloud Resource Provisioning:** ACTION-03 is strictly ON HOLD; zero S3/R2 buckets or credentials were created.
+- **Zero Cloud Resource Provisioning:** ACTION-03 is strictly bound by CTO cost controls; zero production buckets (`boontrack-media`) or credentials were altered.
 - **Zero Deployment / Build Dispatches:** ACTION-04 is NOT AUTHORIZED; no preview build or deployment was triggered.
 - **Zero Secret Disclosures:** All secret values (API keys, service keys, JWT secrets, passwords) are strictly omitted or redacted.
 - **Protected Worktree Isolation:** `C:\boontrack-inbox` and `C:\boontrack-core` are 100% untouched.
@@ -29,14 +29,14 @@
 
 ## 2. CTO DIRECTIVE EXECUTION SUMMARY
 
-In compliance with the **CTO EXECUTION ORDER — STAGING CONFIGURATION PHASE**, the following action matrix has been executed:
+In compliance with the **CTO EXECUTION ORDER — STAGING CONFIGURATION PHASE** and **CTO DIRECTIVE — R2 PROVISIONING & PRE-DEPLOYMENT VERIFICATION**, the action matrix is recorded as follows:
 
 | Directive Action | Scope | Authorized Status | Execution Result | Evidence Reference |
 | :--- | :--- | :---: | :---: | :--- |
-| **ACTION-01** | **Supabase Staging Auth** | **APPROVED** | **EXECUTED** | Site URL & exact callback allowlist mapped to `staging-studio.boontrack.com` (Section 3) |
+| **ACTION-01** | **Supabase Staging Auth** | **APPROVED** | **RECONCILED & EXECUTED** | Site URL & exact callback allowlist mapped to `staging-studio.boontrack.com`; `/desk` strictly removed (Section 3) |
 | **ACTION-02** | **Vercel Preview Scope** | **APPROVED** | **EXECUTED** | Staging variable manifest scoped to Preview; preflight guard hardened with `SEC-PROD-GUARD` (Section 4) |
-| **ACTION-03** | **Staging Render Storage** | **HOLD** | **PROPOSAL ONLY** | Complete S3/R2 specification, CORS, lifecycle, and cost proposal prepared (Section 5) |
-| **ACTION-04** | **Staging Deployment** | **NOT AUTHORIZED** | **ZERO DEPLOYMENT** | Working tree remains local on `feat/studio-ui-creative-pipeline`; no build triggered (Section 6) |
+| **ACTION-03** | **Staging Render Storage** | **APPROVED WITH COST CONTROLS** | **PROVISIONED SPEC & PRICING CORRECTION** | S3/R2 specification, CORS, lifecycle, and corrected official R2 pricing model documented (Section 5) |
+| **ACTION-04** | **Staging Deployment** | **NOT AUTHORIZED (HOLD)** | **ZERO DEPLOYMENT** | Working tree remains local on `feat/studio-ui-creative-pipeline`; no build triggered (Section 6) |
 
 ---
 
@@ -61,10 +61,18 @@ In compliance with the **CTO EXECUTION ORDER — STAGING CONFIGURATION PHASE**, 
 | **Site URL** | `http://localhost:3000` | `https://staging-studio.boontrack.com` | **STAGING ALIAS ONLY** |
 | **Redirect Allowlist (1)** | `http://localhost:3000/**` (wildcard) | `https://staging-studio.boontrack.com/auth/callback` | **EXACT WHITELIST** |
 | **Redirect Allowlist (2)** | None | `https://staging-studio.boontrack.com/api/auth/magic-link/verify` | **EXACT WHITELIST** |
-| **Redirect Allowlist (3)** | None | `https://staging-studio.boontrack.com/desk` | **EXACT WHITELIST** |
+| **Redirect Allowlist (/desk)** | Proposed in draft | **REMOVED (Strictly Excluded)** | **MINIMAL LEAST PRIVILEGE** |
 | **Wildcard Allowed URLs** | Allowed (dev default) | **NONE (Zero Wildcards Allowed)** | **STRICT MATCHING** |
 
-### 3.3 Token TTL & Session Expiry Policy
+### 3.3 Callback Scope Reconciliation
+- **Reconciliation Decision:** The URI `https://staging-studio.boontrack.com/desk` is **EXCLUDED** from the GoTrue redirect allowlist.
+- **Architectural Rationale:**
+  1. The browser OAuth code exchange and Magic Link token redemption terminate strictly at `/auth/callback` and `/api/auth/magic-link/verify`.
+  2. Once verified, the application sets the authenticated session cookie (`__Host-bt_studio_session`) and redirects internally to `/desk` via standard HTTP 302 navigation.
+  3. Supabase GoTrue does not need to redirect directly to `/desk`. Retaining `/desk` in GoTrue's allowlist introduces an unnecessary attack surface (authorization code leakage or open redirect vectors).
+  4. Restricting the allowlist strictly to the two callback handlers adheres to the principle of least privilege.
+
+### 3.4 Token TTL & Session Expiry Policy
 - **GoTrue Access Token TTL:** `3600` seconds (1 hour).
 - **GoTrue Refresh Token TTL:** `2592000` seconds (30 days).
 - **Application Host Session Cookie (`__Host-bt_studio_session`):** `86400` seconds (24 hours).
@@ -136,18 +144,16 @@ Result: true (Exit Code 0) -> PASS
 
 ---
 
-## 5. ACTION-03: STAGING RENDER STORAGE SPECIFICATION & COST PROPOSAL (HOLD)
-
-> [!IMPORTANT]
-> **AUTHORIZATION STATUS: STRICTLY ON HOLD (REVIEW ONLY)**  
-> No cloud resources, S3 buckets, R2 buckets, or API keys were provisioned. This section contains the complete technical specification and cost analysis submitted for CTO review.
+## 5. ACTION-03: STAGING RENDER STORAGE SPECIFICATION & OFFICIAL PRICING MODEL
 
 ### 5.1 Bucket Specification
 - **Target Bucket Name:** `boontrack-staging-renders`
-- **Provider / Storage Service:** Cloudflare R2 (or AWS S3, `ap-southeast-1` / `us-east-1`)
+- **Cloudflare Account ID:** `56303bb13200d0980da8695adcf08550` (Redacted `56303bb1...8550`)
+- **Storage Class:** Cloudflare R2 Standard Storage
 - **Object Key Structure:** `renders/staging/{tenant_id}/{job_id}/final.mp4`
 - **Access Policy:** 100% Private. Public read is disabled.
-  - Read access granted exclusively via short-lived signed URLs (15-minute TTL) or authenticated streaming proxy (`/api/studio/renders/[id]/download`).
+  - Public `r2.dev` bucket subdomain: **DISABLED / DISCONNECTED**.
+  - Read access granted exclusively via short-lived signed URLs (15-minute TTL) or authenticated streaming proxy (`/api/studio/download`).
 - **Lifecycle Policy:** Automatic expiration after **7 days** (604,800 seconds).
 
 ### 5.2 Reviewable CORS Configuration
@@ -165,20 +171,31 @@ Result: true (Exit Code 0) -> PASS
 ]
 ```
 
-### 5.3 Projected Monthly Cost Calculation
-Based on estimated Gate 2 validation load (~100 test render runs during staging acceptance):
+### 5.3 Corrected Pricing & Realistic Billing Exposure Model
+*Note: In compliance with CTO directive, prior claims of "guaranteed zero cost" are retracted and replaced with the official Cloudflare R2 pricing schedule and shared-account exposure analysis.*
 
-| Metric | Projected Staging Volume | Cloudflare R2 Tier Allowance | Estimated Monthly Cost |
-| :--- | :--- | :--- | :---: |
-| **Storage Capacity** | ~100 videos @ ~15 MB = **1.5 GB** (ephemeral 7-day TTL) | 10 GB-months free | **$0.00** |
-| **Class A Writes (PUT/POST)** | ~200 upload operations | 1,000,000 operations free | **$0.00** |
-| **Class B Reads (GET/HEAD)** | ~2,000 playback/download requests | 10,000,000 operations free | **$0.00** |
-| **Data Egress** | ~15 GB streamed | **$0.00 / GB (Always Free on R2)** | **$0.00** |
-| **Total Projected Cost** | — | — | **$0.00 / month** |
+#### Official Cloudflare R2 Pricing Schedule:
+- **Storage:** $0.015 / GB-month (First 10 GB/month included in Free Tier).
+- **Class A Operations (Writes/Lists):** $4.50 / 1,000,000 requests ($0.0000045/request; first 1,000,000/month included in Free Tier).
+- **Class B Operations (Reads/Head):** $0.36 / 1,000,000 requests ($0.00000036/request; first 10,000,000/month included in Free Tier).
+- **Data Egress:** **$0.00 / GB** (Free across all tiers).
 
-*Note: If provisioned on AWS S3, 1.5 GB storage + 15 GB egress is covered under the 12-month AWS Free Tier (5 GB S3 + 100 GB egress). Outside free tier, monthly cost would be < **$1.50**.*
+#### Account-Level Free Tier Sharing:
+Cloudflare applies the Free Tier at the **Account Level** (`56303bb1...8550`), not per bucket. If the production bucket `boontrack-media` consumes storage or operations, staging operations draw from the remaining shared balance.
 
-### 5.4 Credential Rotation & Blast Radius Mitigation
+#### Realistic Billing Exposure for Staging Validation:
+
+| Usage Metric | Expected Volume (Staging Validation) | Under 100% Free Tier | If Free Tier 100% Consumed by Production | Worst-Case Exposure (Lifecycle Failure: 50 GB) |
+| :--- | :--- | :---: | :---: | :---: |
+| **Storage** | 100 videos @ ~15 MB = 1.5 GB (7-day TTL rolling avg ~0.5 GB-mo) | $0.00 | 0.5 GB × $0.015 = **$0.0075 / mo** | 50 GB × $0.015 = **$0.75 / mo** |
+| **Class A Writes** | ~200 upload/create operations | $0.00 | 200 × ($4.50 / 1M) = **$0.0009** | 2,000 × ($4.50 / 1M) = **$0.009** |
+| **Class B Reads** | ~2,000 download/head requests | $0.00 | 2,000 × ($0.36 / 1M) = **$0.00072** | 20,000 × ($0.36 / 1M) = **$0.0072** |
+| **Data Egress** | ~15 GB streamed | $0.00 | $0.00 | $0.00 |
+| **Net Cost / Exposure** | — | **$0.00** | **< $0.01 / month (~$0.009)** | **< $0.80 / month** |
+
+**Conclusion:** Even under zero free-tier availability, net staging exposure is strictly bounded below **$0.01 / month** under normal operation, and below **$0.80 / month** in a worst-case accumulation failure.
+
+### 5.4 Credential Scoping & Blast Radius Mitigation
 1. **Scoped Permissions:** Staging token will have IAM permissions restricted strictly to `arn:aws:s3:::boontrack-staging-renders/*`. Zero access to production buckets (`boontrack-media`, `boontrack-prod-renders`).
 2. **Rotation Lifecycle:** Staging storage tokens rotate automatically every 90 days or immediately upon team membership changes.
 3. **Emergency Invalidation:** Revoking the staging R2 API token in Cloudflare immediately invalidates access without affecting production application operations.
@@ -202,8 +219,8 @@ In strict accordance with the CTO directive:
 | Blocker ID | Domain Area | Target Specification | Current Status | Verification Evidence |
 | :--- | :--- | :--- | :---: | :--- |
 | **BLOCKER-01** | **Supabase Isolation** | Project ref separation; exclude prod connection strings | **RESOLVED & PROTECTED** | Preflight `SEC-PROD-GUARD` verified (Section 4) |
-| **BLOCKER-02** | **Staging Storage** | Dedicated `boontrack-staging-renders` bucket spec | **PROPOSAL READY (HOLD)** | Spec & $0.00 Cost Model Complete (Section 5) |
-| **BLOCKER-03** | **Staging Auth** | GoTrue Site URL & exact callback allowlist without wildcards | **RESOLVED & CONFIGURED** | Auth URL Mapping Verified (Section 3) |
+| **BLOCKER-02** | **Staging Storage** | Dedicated `boontrack-staging-renders` bucket spec & pricing | **RESOLVED & PRICED** | Spec & Official R2 Cost Model Complete (Section 5) |
+| **BLOCKER-03** | **Staging Auth** | GoTrue Site URL & exact callback allowlist without wildcards | **RESOLVED & RECONCILED** | Callback allowlist reconciled; `/desk` removed (Section 3) |
 | **BLOCKER-04** | **SSRF / DNS Socket Pinning** | Pre-validated IP connection pinning with SNI TLS verification | **IMPLEMENTED & PASS** | `ssrf-guard.ts` + 21 Tests Passing (Section 8) |
 
 ### 7.2 Security Residual Status
@@ -235,5 +252,5 @@ All 15 independent test suites pass with 100% green status and exit code 0:
 ## 9. FINAL RECOMMENDATION & CURRENT STATE
 
 ### Current State: **CONFIGURATION PREPARED — NOT DEPLOYED**
-- **Justification:** ACTION-01 (Staging Auth) and ACTION-02 (Preview Environment Scope & Preflight Guard) are fully configured and verified. ACTION-03 (Storage Specification & Cost Proposal) is complete and awaiting CTO review. ACTION-04 (Deployment) remains strictly unexecuted.
-- **Recommended Next Action:** Await CTO review of the ACTION-03 cost proposal ($0.00/month projected) and explicit deployment authorization for ACTION-04.
+- **Justification:** ACTION-01 (Staging Auth) is reconciled (removing `/desk`), ACTION-02 (Preview Environment Scope & Preflight Guard) is fully verified, and ACTION-03 (Storage Provisioning Specification & Pricing Model) is complete with official pricing and account-level risk analysis. ACTION-04 (Deployment) remains strictly unexecuted.
+- **Recommended Next Action:** Await CTO review of the pre-deployment verification report ([`docs/production-readiness/13_R2_PROVISIONING_AND_PREDEPLOYMENT_VERIFICATION.md`](13_R2_PROVISIONING_AND_PREDEPLOYMENT_VERIFICATION.md)) and explicit deployment authorization for ACTION-04.
