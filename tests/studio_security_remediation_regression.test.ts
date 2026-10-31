@@ -24,6 +24,7 @@ import { GET as scriptsGet, POST as scriptsPost } from '@/app/api/studio/scripts
 import { POST as sessionLogoutPost } from '@/app/api/auth/session/route';
 import { POST as trackDownloadPost, GET as trackDownloadGet } from '@/app/api/studio/renders/[id]/track-download/route';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { StudioPurgeService } from '@/lib/services/studio-purge.service';
 import * as supabaseModule from '@/lib/supabaseClient';
 
 jest.mock('@/lib/supabaseClient', () => {
@@ -708,8 +709,9 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(data.output_url).toBe('https://assets.boontrack.com/renders/tenant-a-video.mp4');
     });
 
-    // ── Track Download Authorization & Invariant Tests (SEC-P1-01 / CTO Clarification B) ──
-    it('Track-Download Negative: rejects unauthenticated POST with HTTP 401', async () => {
+    // ── Track Download Authorization & Fail-Closed Invariant Tests (SEC-P1-01 / CTO Directive) ──
+    it('Track-Download Fail-Closed: rejects unauthenticated POST with HTTP 401 and skips trackDownload', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
       const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
         method: 'POST',
       });
@@ -717,18 +719,22 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(res.status).toBe(401);
       const data = await res.json();
       expect(data.error).toBe('UNAUTHORIZED');
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
     });
 
-    it('Track-Download Negative: rejects expired session with HTTP 401', async () => {
+    it('Track-Download Fail-Closed: rejects expired session with HTTP 401 and skips trackDownload', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
       const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
         method: 'POST',
         headers: { cookie: `__Host-bt_studio_session=${expiredToken}` },
       });
       const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
       expect(res.status).toBe(401);
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
     });
 
-    it('Track-Download Negative: rejects revoked session with HTTP 401', async () => {
+    it('Track-Download Fail-Closed: rejects revoked session with HTTP 401 and skips trackDownload', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
       const revokedToken = signHostSessionToken({
         product: 'studio',
         userId: USER_A,
@@ -744,9 +750,50 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       });
       const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
       expect(res.status).toBe(401);
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
     });
 
-    it('Track-Download Negative: returns safe 404 denial when foreign Tenant B targets Tenant A job', async () => {
+    it('Track-Download Fail-Closed: returns HTTP 503 SERVICE_UNAVAILABLE and skips trackDownload when Supabase client is null', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+      (supabaseModule.getSupabaseAdmin as jest.Mock).mockReturnValueOnce(null);
+      (supabaseModule.getSupabase as jest.Mock).mockReturnValueOnce(null);
+
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(503);
+      const data = await res.json();
+      expect(data.error).toBe('SERVICE_UNAVAILABLE');
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
+    });
+
+    it('Track-Download Fail-Closed: returns HTTP 500 DATABASE_ERROR and skips trackDownload on database query failure', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+      const errorSupabase = {
+        from: jest.fn(() => ({
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({ data: null, error: { message: 'Database query timeout' } }),
+        })),
+      };
+      (supabaseModule.getSupabaseAdmin as jest.Mock).mockReturnValueOnce(errorSupabase);
+
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: jobAId }) });
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toBe('DATABASE_ERROR');
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
+    });
+
+    it('Track-Download Fail-Closed: returns safe 404 denial and does NOT call trackDownload when foreign Tenant B targets Tenant A job', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+
       const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
         method: 'POST',
         headers: { cookie: `__Host-bt_studio_session=${tokenB}` },
@@ -755,11 +802,28 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(res.status).toBe(404);
       const data = await res.json();
       expect(data.error).toBe('JOB_NOT_FOUND');
-      // Must not leak output_url or internal storage details
       expect(data.output_url).toBeUndefined();
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
     });
 
-    it('Track-Download Positive: permits owner Tenant A to track download and never leaks signed URLs', async () => {
+    it('Track-Download Fail-Closed: returns safe 404 denial and does NOT call trackDownload when job ID does not exist', async () => {
+      const missingJobId = '00000000-0000-0000-0000-000000000000';
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+
+      const req = new NextRequest(`http://localhost:3000/api/studio/renders/${missingJobId}/track-download`, {
+        method: 'POST',
+        headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
+      });
+      const res = await trackDownloadPost(req, { params: Promise.resolve({ id: missingJobId }) });
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toBe('JOB_NOT_FOUND');
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
+    });
+
+    it('Track-Download Positive: permits owner Tenant A to track download and calls trackDownload exactly once without leaking URLs', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+
       const req = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
         method: 'POST',
         headers: { cookie: `__Host-bt_studio_session=${tokenA}` },
@@ -770,18 +834,21 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(data.success).toBe(true);
       expect(data.job_id).toBe(jobAId);
       expect(data.downloaded_at).toBeDefined();
-      // Crucial security invariant: never exposes output_url or signed download links
       expect(data.output_url).toBeUndefined();
       expect(data.signed_url).toBeUndefined();
+      expect(trackDownloadSpy).toHaveBeenCalledTimes(1);
     });
 
     it('Track-Download Fallback GET: enforces identical strict session and tenant authorization', async () => {
+      const trackDownloadSpy = jest.spyOn(StudioPurgeService, 'trackDownload');
+
       // 1. Unauthenticated GET -> HTTP 401 (Proves NO anonymous fallback path exists)
       const anonReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
         method: 'GET',
       });
       const anonRes = await trackDownloadGet(anonReq, { params: Promise.resolve({ id: jobAId }) });
       expect(anonRes.status).toBe(401);
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
 
       // 2. Foreign Tenant GET -> HTTP 404 safe denial
       const foreignReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
@@ -790,6 +857,7 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       });
       const foreignRes = await trackDownloadGet(foreignReq, { params: Promise.resolve({ id: jobAId }) });
       expect(foreignRes.status).toBe(404);
+      expect(trackDownloadSpy).not.toHaveBeenCalled();
 
       // 3. Owner Tenant GET -> HTTP 200
       const ownerReq = new NextRequest(`http://localhost:3000/api/studio/renders/${jobAId}/track-download`, {
@@ -800,6 +868,7 @@ describe('CTO REMEDIATION REGRESSION SUITE: SEC-P0-01 through SEC-P1-03', () => 
       expect(ownerRes.status).toBe(200);
       const ownerData = await ownerRes.json();
       expect(ownerData.success).toBe(true);
+      expect(trackDownloadSpy).toHaveBeenCalledTimes(1);
     });
   });
 
