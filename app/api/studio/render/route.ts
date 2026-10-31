@@ -1,19 +1,24 @@
 /**
  * @file app/api/studio/render/route.ts
  * @description BoonTrack Studio Render Pipeline Gateway API
+ * Remediates Findings: SEC-P0-02 (Render Dispatch Auth) & SEC-P1-01 (Job Ownership & Multi-Tenant Telemetry)
+ *
  * Strict Compliance:
- * 1. Zero Fake Timers / No Mock Placeholders: True database job queue (QUEUED -> PROCESSING -> COMPLETED / FAILED).
- * 2. Two-Phase Credit Reservation:
- *    - Phase 1 (Deduct/Reserve): Atomically deduct credits in tenant_credit_ledger (event: 'STUDIO_RENDER_JOB', type: 'CREDIT_OUT').
- *      Returns HTTP 402 Payment Required if insufficient.
- *    - Phase 2 (Auto-Refund): If render status is FAILED or TIMEOUT, automatically refund credits (type: 'CREDIT_REFUND').
- * 3. Multi-Tenant Data Isolation & Supabase SSOT.
+ * 1. Zero Trust on Client Tenant Claims: User and Tenant derived strictly from verified session.
+ * 2. Multi-Tenant Job Ownership: Status and asset inspection strictly scoped to authenticated tenant.
+ * 3. Two-Phase Credit Reservation:
+ *    - Phase 1: Atomically deduct credits in tenant_credit_ledger (returns HTTP 402 if insufficient).
+ *    - Phase 2: Automatically refunds credits if render status transitions to FAILED or TIMEOUT.
  */
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
 import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
+import {
+  getAuthenticatedStudioSession,
+  validateTenantOwnership,
+} from '@/lib/auth/studio-session-guard';
 
 export const runtime = 'nodejs';
 
@@ -44,18 +49,21 @@ async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const {
       tenant_id,
+      tenant_slug,
       product_name,
       campaign_title,
       scenes,
       variations,
       assets,
       job_type: requestedJobType,
+      job_id,
     } = body;
 
-    const rawTenant = String(tenant_id || '').trim().toLowerCase();
+    // Sandbox / Exploration Hard Block
+    const rawTenant = String(tenant_id || tenant_slug || '').trim().toLowerCase();
     if (rawTenant === 'creator' || rawTenant === 'sandbox') {
       return NextResponse.json(
         {
@@ -67,25 +75,66 @@ export async function POST(req: Request) {
       );
     }
 
+    const supabase = getSupabaseAdmin();
+
+    // Fail-closed tenant check if client specified tenant_id
+    if (tenant_id && supabase) {
+      const initialTenant = await resolveTenant(supabase, tenant_id);
+      if (!initialTenant) {
+        return NextResponse.json(
+          { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant workspace tidak ditemukan.' },
+          { status: 404 }
+        );
+      }
+    }
+
+    // 1. Authoritative Session Verification
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk mengirim job render.',
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Reject Client-Supplied Tenant Forgery
+    const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', tenant_id || tenant_slug);
+    if (!tenantCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN_TENANT_MISMATCH',
+          message: tenantCheck.reason,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Resolve Tenant Exclusively via Authenticated Session UUID
+    const authorizedTenantId = session.tenantId;
+
     const isBatch = Array.isArray(variations) && variations.length > 0;
     const isSingleScene = Array.isArray(scenes) && scenes.length > 0;
 
     if (!isBatch && !isSingleScene) {
       return NextResponse.json(
-        { success: false, message: 'Daftar adegan (scenes) atau variasi (variations) wajib disertakan.' },
+        { success: false, error: 'INVALID_PAYLOAD', message: 'Daftar adegan (scenes) atau variasi (variations) wajib disertakan.' },
         { status: 400 }
       );
     }
 
-    const supabase = getSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json(
-        { success: false, message: 'Koneksi database admin tidak tersedia.' },
+        { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database admin tidak tersedia.' },
         { status: 500 }
       );
     }
 
-    const tenant = await resolveTenant(supabase, tenant_id);
+    const tenant = await resolveTenant(supabase, authorizedTenantId);
     if (!tenant) {
       return NextResponse.json(
         { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant workspace tidak ditemukan.' },
@@ -111,20 +160,19 @@ export async function POST(req: Request) {
     const resolvedTitle = campaign_title || product_name || 'UGC Video';
 
     // Generate valid UUID for studio_jobs row
-    const jobId = crypto.randomUUID();
+    const jobId = (job_id && IS_UUID_REGEX.test(job_id)) ? job_id : crypto.randomUUID();
 
     // Two-Phase Commit Phase 1: Atomically Reserve Credits
     const creditRes = await StudioCreditService.reserveCredits(
       tenant.id,
       requiredCredits,
       isBatch
-        ? `Batch render ${variations.length} video MP4: ${resolvedTitle}`
-        : `Render video MP4 otomatis: ${resolvedTitle}`,
+        ? `Batch render FCD (${variations.length} video x ${costPerVideo} kredit): ${resolvedTitle}`
+        : `Render video MP4 otomatis (${costPerVideo} kredit): ${resolvedTitle}`,
       jobId
     );
 
     if (!creditRes.success) {
-      // HTTP 402 Payment Required as mandated by CTO Directive
       return NextResponse.json(
         {
           success: false,
@@ -135,62 +183,54 @@ export async function POST(req: Request) {
           required_credits: requiredCredits,
           credits_remaining: creditRes.credits_remaining ?? 0,
         },
-        { status: 402 }
+        { status: creditRes.statusCode === 403 ? 403 : 402 } // HTTP 402 Payment Required
       );
     }
 
-    // Build real render job payload
-    const renderPayload = isBatch
-      ? {
-          batch_id: jobId,
-          campaign_title: resolvedTitle,
-          variations,
-          variations_count: variations.length,
-          is_aigc: 1,
-          aspect_ratio: '9:16',
-          resolution: '1080x1920',
-          fps: 30,
-          audio_codec: 'aac',
-          video_codec: 'libx264',
-          dispatched_at: new Date().toISOString(),
-        }
-      : {
-          product_name: resolvedTitle,
-          scenes,
-          assets: assets || {},
-          is_aigc: 1,
-          total_duration_sec: 30,
-          aspect_ratio: '9:16',
-          resolution: '1080x1920',
-          fps: 30,
-          audio_codec: 'aac',
-          video_codec: 'libx264',
-          dispatched_at: new Date().toISOString(),
-        };
+    const remainingCredits = creditRes.credits_remaining ?? 0;
 
-    // Insert into real database queue with status QUEUED (never fake COMPLETED)
-    const { error: insertErr } = await supabase.from('studio_jobs').insert({
-      id: jobId,
-      tenant_id: tenant.id,
-      user_id: tenant.id,
-      status: 'QUEUED',
-      job_type: requestedJobType || (isBatch ? 'FFMPEG_FCD_BATCH' : 'FFMPEG_LEVEL_1'),
-      payload: renderPayload,
-      output_url: null, // Zero mock URLs on queue creation
-    });
+    // Build Payload
+    const jobType = isBatch ? 'FFMPEG_FCD_BATCH' : (requestedJobType || 'FFMPEG_LEVEL_1');
+    const jobPayload = {
+      product_name: resolvedTitle,
+      aspect_ratio: '9:16',
+      resolution: '1080x1920',
+      fps: 30,
+      audio_codec: 'aac',
+      video_codec: 'libx264',
+      is_aigc: 1,
+      dispatched_at: new Date().toISOString(),
+      ...(isBatch ? { variations } : { scenes, assets: assets || {} }),
+    };
+
+    // Insert into studio_jobs with status QUEUED
+    const { error: insertErr } = await supabase
+      .from('studio_jobs')
+      .insert({
+        id: jobId,
+        tenant_id: tenant.id,
+        user_id: session.userId || tenant.id,
+        status: 'QUEUED',
+        job_type: jobType,
+        payload: jobPayload,
+        output_url: null,
+      });
 
     if (insertErr) {
-      console.error('[Studio Render Gateway API] DB Insert Error, triggering auto-refund:', insertErr);
-      // Auto-refund immediately if job fails to queue
+      console.error('[Studio Render API] Insert Error, auto-refunding:', insertErr);
       await StudioCreditService.refundJobCredits({
         tenantIdOrSlug: tenant.id,
         jobId,
         amount: requiredCredits,
-        reason: `DB_INSERT_FAILED: ${insertErr.message}`,
+        reason: `QUEUE_INSERT_FAILED: ${insertErr.message}`,
       });
 
       return NextResponse.json(
-        { success: false, message: 'Gagal memasukkan job ke antrean database. Kredit telah otomatis dikembalikan.' },
+        {
+          success: false,
+          error: 'QUEUE_INSERT_FAILED',
+          message: 'Gagal memasukkan job ke antrean render database. Kredit otomatis dikembalikan.',
+        },
         { status: 500 }
       );
     }
@@ -198,16 +238,18 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       job_id: jobId,
+      job_type: jobType,
       status: 'QUEUED',
-      output_url: null,
-      remaining_credits: creditRes.credits_remaining,
+      remaining_credits: remainingCredits,
       consumed_credits: requiredCredits,
-      message: 'Job render berhasil didaftarkan ke antrean pemrosesan riil (QUEUED).',
+      estimated_duration_sec: isBatch ? variations.length * 20 : 30,
+      output_url: null,
+      message: 'Job render berhasil masuk ke antrean database riil (QUEUED).',
     });
   } catch (err: any) {
-    console.error('[Studio Render Gateway API] Unexpected error:', err);
+    console.error('[Studio Render API] Error:', err);
     return NextResponse.json(
-      { success: false, message: err.message || 'Terjadi kesalahan sistem saat memproses antrean render.' },
+      { success: false, error: 'INTERNAL_ERROR', message: err.message || 'Gagal mengirim job render.' },
       { status: 500 }
     );
   }
@@ -215,32 +257,69 @@ export async function POST(req: Request) {
 
 /**
  * GET /api/studio/render?job_id=...
- * Inspects real job queue status and progress from database.
- * If status is FAILED or TIMEOUT, ensures auto-refund is recorded.
+ * Checks render job state and telemetry.
+ * Remediates Finding: SEC-P1-01 (Multi-Tenant Authorization & Safe Denial Response)
  */
 export async function GET(req: Request) {
   try {
+    // 1. Authoritative Session Verification
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk memeriksa status job render.',
+        },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('job_id');
 
     if (!jobId) {
-      return NextResponse.json({ success: false, message: 'Parameter job_id wajib disertakan.' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'MISSING_JOB_ID', message: 'Parameter job_id wajib disertakan.' },
+        { status: 400 }
+      );
     }
 
     const supabase = getSupabaseAdmin();
     if (!supabase) {
-      return NextResponse.json({ success: false, message: 'Database client admin tidak tersedia.' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Database client admin tidak tersedia.' },
+        { status: 500 }
+      );
     }
 
+    if (!IS_UUID_REGEX.test(jobId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'JOB_NOT_FOUND',
+          message: 'Job render tidak ditemukan dalam workspace Anda.',
+        },
+        { status: 404 }
+      );
+    }
+
+    // 2. Query Strictly Scoped to Authenticated Tenant
     const { data: job, error: jobErr } = await supabase
       .from('studio_jobs')
       .select('id, tenant_id, status, job_type, payload, output_url, error_message, created_at, updated_at')
       .eq('id', jobId)
+      .eq('tenant_id', session.tenantId)
       .maybeSingle();
 
     if (jobErr || !job) {
+      // Safe denial response for foreign or nonexistent job identifiers
       return NextResponse.json(
-        { success: false, message: 'Job render tidak ditemukan dalam antrean database.' },
+        {
+          success: false,
+          error: 'JOB_NOT_FOUND',
+          message: 'Job render tidak ditemukan dalam workspace Anda.',
+        },
         { status: 404 }
       );
     }
@@ -256,7 +335,6 @@ export async function GET(req: Request) {
       });
     }
 
-    // Determine honest, non-fake progress percentage
     let progress = 15;
     if (currentStatus === 'PROCESSING') progress = 60;
     else if (currentStatus === 'COMPLETED') progress = 100;
@@ -272,7 +350,10 @@ export async function GET(req: Request) {
       updated_at: job.updated_at,
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'INTERNAL_ERROR', message: err.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -284,12 +365,12 @@ export async function GET(req: Request) {
  */
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { job_id, status, output_url, error_message } = body;
 
     if (!job_id || !status) {
       return NextResponse.json(
-        { success: false, message: 'job_id dan status wajib disertakan.' },
+        { success: false, error: 'INVALID_PAYLOAD', message: 'job_id dan status wajib disertakan.' },
         { status: 400 }
       );
     }
@@ -298,14 +379,14 @@ export async function PATCH(req: Request) {
     const validStatuses = ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'TIMEOUT'];
     if (!validStatuses.includes(normalizedStatus)) {
       return NextResponse.json(
-        { success: false, message: `Status tidak valid. Pilihan: ${validStatuses.join(', ')}` },
+        { success: false, error: 'INVALID_STATUS', message: `Status tidak valid. Pilihan: ${validStatuses.join(', ')}` },
         { status: 400 }
       );
     }
 
     const supabase = getSupabaseAdmin();
     if (!supabase) {
-      return NextResponse.json({ success: false, message: 'Database client admin tidak tersedia.' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'DATABASE_UNAVAILABLE', message: 'Database client admin tidak tersedia.' }, { status: 500 });
     }
 
     const { data: job, error: jobErr } = await supabase
@@ -315,7 +396,7 @@ export async function PATCH(req: Request) {
       .maybeSingle();
 
     if (jobErr || !job) {
-      return NextResponse.json({ success: false, message: 'Job render tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'JOB_NOT_FOUND', message: 'Job render tidak ditemukan.' }, { status: 404 });
     }
 
     // Update job status in database
@@ -333,7 +414,7 @@ export async function PATCH(req: Request) {
       .eq('id', job_id);
 
     if (updateErr) {
-      return NextResponse.json({ success: false, message: updateErr.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'UPDATE_FAILED', message: updateErr.message }, { status: 500 });
     }
 
     // Phase 2 Auto-Refund Trigger
@@ -356,6 +437,6 @@ export async function PATCH(req: Request) {
       message: `Status job berhasil diperbarui ke ${normalizedStatus}.`,
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'INTERNAL_ERROR', message: err.message }, { status: 500 });
   }
 }

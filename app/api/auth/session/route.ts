@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
     }
 
     const config = getProductAuthConfig(product);
-    const token = req.cookies.get(config.cookieName)?.value;
+    const token =
+      req.cookies.get(config.cookieName)?.value ||
+      req.cookies.get('__Host-bt_studio_session')?.value ||
+      req.cookies.get('bt_studio_session')?.value;
 
     if (!token) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
@@ -57,7 +60,10 @@ export async function POST(req: NextRequest) {
     }
 
     const config = getProductAuthConfig(product);
-    const token = req.cookies.get(config.cookieName)?.value;
+    const token =
+      req.cookies.get(config.cookieName)?.value ||
+      req.cookies.get('__Host-bt_studio_session')?.value ||
+      req.cookies.get('bt_studio_session')?.value;
 
     if (token) {
       const verification = await verifyHostSessionToken(token, product);
@@ -75,6 +81,14 @@ export async function POST(req: NextRequest) {
       ...cookieOptions,
       maxAge: 0,
     });
+
+    if (product === 'studio') {
+      res.cookies.set('__Host-bt_studio_session', '', { ...cookieOptions, maxAge: 0 });
+      res.cookies.set('bt_studio_session', '', { ...cookieOptions, maxAge: 0 });
+    } else {
+      res.cookies.set('__Host-bt_creator_session', '', { ...cookieOptions, maxAge: 0 });
+      res.cookies.set('bt_creator_session', '', { ...cookieOptions, maxAge: 0 });
+    }
 
     return res;
   } catch (err: any) {

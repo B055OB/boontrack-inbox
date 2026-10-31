@@ -294,7 +294,17 @@ export default function StudioDeskPage() {
     setHasValidSession(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: 'studio' }),
+      });
+    } catch (err) {
+      console.warn('[Studio Desk] Server logout warning:', err);
+    }
+
     if (typeof window !== 'undefined') {
       const isBoonTrack =
         window.location.hostname.endsWith('boontrack.com') ||
@@ -311,10 +321,14 @@ export default function StudioDeskPage() {
       document.cookie = `merchant_session=; path=/${domainStr}; max-age=0`;
       document.cookie = `merchant_store=; path=/${domainStr}; max-age=0`;
       document.cookie = `bt_merchant_token=; path=/${domainStr}; max-age=0`;
+      document.cookie = `__Host-bt_studio_session=; path=/; max-age=0`;
+      document.cookie = `bt_studio_session=; path=/; max-age=0`;
 
       setHasValidSession(false);
       setSessionData(null);
       setTenantSlug('');
+
+      window.location.href = '/login';
     }
   };
 
