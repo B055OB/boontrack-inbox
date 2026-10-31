@@ -8,6 +8,10 @@ import { getFreshHookPatternInsights } from '@/lib/studio/intelligence/repositor
 import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
 import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
+import {
+  getAuthenticatedStudioSession,
+  validateTenantOwnership,
+} from '@/lib/auth/studio-session-guard';
 
 export const runtime = 'nodejs';
 
@@ -25,43 +29,65 @@ interface GenerateRequest {
   selected_hook_template?: string;
 }
 
+/**
+ * POST /api/studio/script/generate
+ * Generates structured 9-scene UGC ad copy scripts.
+ * Remediates Finding: SEC-P0-03 (Mandatory Session Authorization & Pre-Invocation Credit Deduction)
+ */
 export async function POST(req: Request) {
   try {
-    // Isolated Studio Gemini Key Guard
-    const apiKey = process.env.GEMINI_API_KEY_STUDIO;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY_STUDIO belum terkonfigurasi.');
+    // 1. Authoritative Session Verification
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk membuat naskah AI.',
+        },
+        { status: 401 }
+      );
     }
 
-    const body: GenerateRequest = await req.json();
+    const body: GenerateRequest = await req.json().catch(() => ({}));
     const { product_name, pain_point, hook_angle, cta_goal, category = 'General', tone = 'Casual Gaul' } = body;
 
     if (!product_name || !pain_point) {
       return NextResponse.json(
-        { success: false, message: 'Nama produk dan pain point audiens wajib diisi.' },
+        { success: false, error: 'INVALID_PAYLOAD', message: 'Nama produk dan pain point audiens wajib diisi.' },
         { status: 400 }
       );
     }
 
-    const tenantIdentifier =
+    // 2. Reject Client-Supplied Tenant Forgery
+    const clientTenant =
       body.tenant_id ||
       body.tenant_slug ||
-      req.headers.get('x-tenant-id') ||
-      req.headers.get('x-tenant-slug');
+      (req.headers ? (typeof req.headers.get === 'function' ? req.headers.get('x-tenant-id') || req.headers.get('x-tenant-slug') : (req.headers as any)['x-tenant-id']) : undefined);
+
+    const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', clientTenant);
+    if (!tenantCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN_TENANT_MISMATCH',
+          message: tenantCheck.reason,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Derive Authorized Tenant Exclusively from Session Claims
+    const authorizedTenantId = session.tenantId;
 
     // Server-side guard: If radar is explicitly required, throw 403 FEATURE_NOT_ENTITLED if unentitled
     if (body.require_radar) {
-      await assertStudioIntelligenceEntitled(tenantIdentifier || '', 'VIRAL_TRENDS_RADAR');
+      await assertStudioIntelligenceEntitled(authorizedTenantId, 'VIRAL_TRENDS_RADAR');
     }
 
     // Evaluate entitlement for Viral Trends Radar
-    let isRadarEntitled = false;
-    if (tenantIdentifier) {
-      const check = await checkStudioIntelligenceEntitled(tenantIdentifier, 'VIRAL_TRENDS_RADAR');
-      isRadarEntitled = check.entitled;
-    } else {
-      isRadarEntitled = true;
-    }
+    const radarCheck = await checkStudioIntelligenceEntitled(authorizedTenantId, 'VIRAL_TRENDS_RADAR');
+    const isRadarEntitled = radarCheck.entitled;
 
     // Retrieve up to 3 FRESH hook pattern insights if entitled (Sesi Riset Tren: Kuota ter-bundle / 0 kredit)
     let radarInsights: NormalizedInsight[] = [];
@@ -69,37 +95,46 @@ export async function POST(req: Request) {
       radarInsights = await getFreshHookPatternInsights(category, 3);
     }
 
-    // Jalur B (Mode Panduan Naskah Asli / UGC Script): Potong tepat 1 Kredit
-    let scriptRemainingCredits: number | undefined = undefined;
-    if (tenantIdentifier) {
-      const creditRes = await StudioCreditService.reserveCredits(
-        tenantIdentifier,
-        STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI,
-        `Panduan Naskah Asli: ${product_name}`
+    // 4. Mandatory Credit Reservation BEFORE External AI Invocation
+    const requiredCredits = STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI;
+    const scriptJobId = crypto.randomUUID();
+
+    const creditRes = await StudioCreditService.reserveCredits(
+      authorizedTenantId,
+      requiredCredits,
+      `Panduan Naskah Asli: ${product_name}`,
+      scriptJobId
+    );
+
+    if (!creditRes.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'INSUFFICIENT_CREDITS',
+          message:
+            creditRes.message ||
+            `Kredit Studio Anda tidak mencukupi (Butuh ${requiredCredits} Kredit). Silakan lakukan top-up kredit.`,
+          required_credits: requiredCredits,
+          credits_remaining: creditRes.credits_remaining ?? 0,
+        },
+        { status: creditRes.statusCode === 402 ? 402 : 403 }
       );
-
-      if (!creditRes.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: creditRes.message || `Kredit Studio Anda tidak mencukupi (Butuh ${STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI} Kredit). Silakan lakukan top-up kredit.`,
-          },
-          { status: 403 }
-        );
-      }
-
-      scriptRemainingCredits = creditRes.credits_remaining;
     }
 
-    const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    const scriptRemainingCredits = creditRes.credits_remaining;
+
+    // 5. External AI Invocation (ONLY after authorization and credit reservation pass)
+    const apiKey = process.env.GEMINI_API_KEY_STUDIO;
     const modelName = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
 
-    // Attempt generation with Gemini Studio AI Engine
     let generatedScenes: any[] | null = null;
     let generatedAdsCopy: any = null;
 
-    try {
-      const prompt = `Anda adalah Creative Director iklan UGC (User Generated Content) TikTok, Shopee Video, dan Reels nomor 1 di Indonesia.
+    if (apiKey) {
+      const cleanApiKey = apiKey.trim().replace(/^["']|["']$/g, '');
+
+      try {
+        const prompt = `Anda adalah Creative Director iklan UGC (User Generated Content) TikTok, Shopee Video, dan Reels nomor 1 di Indonesia.
 Buatkan 9 adegan naskah terstruktur untuk formula video 30 detik serta salinan iklan (Meta & TikTok Ads Manager) berikut:
 - Nama Produk: ${product_name}
 - Kategori: ${category}
@@ -211,60 +246,61 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
   }
 }`;
 
-      const chosenSelectedHook = body.selected_hook || body.selected_hook_template;
-      let radarConstraintText = '';
-      if (chosenSelectedHook) {
-        radarConstraintText += `\n\nFORMULA HOOK RADAR TERPILIH (PRIORITAS UTAMA):\n` +
-          `Pengguna telah memilih secara spesifik formula hook ini: "${chosenSelectedHook}".\n` +
-          `WAJIB adaptasikan pola kalimat dan emosi hook ini ke dalam Scene 1 dan Scene 2 untuk produk ${product_name}.\n`;
-      }
-      if (radarInsights.length > 0) {
-        radarConstraintText += `\n\nBATASAN REFERENSI VIRAL TRENDS RADAR (TOP ${radarInsights.length} FRESH HOOK PATTERNS):\n` +
-          `Sistem mendeteksi pola hook berkinerja tertinggi saat ini untuk kategori ${category}.\n` +
-          `Adaptasikan dan adopsi pola hook berikut untuk menyusun Scene 1 (Visual Pattern Interrupt) dan Scene 2 (Hook Problem):\n` +
-          radarInsights.map((insight, idx) => `  ${idx + 1}. [Keyakinan ${Math.round(insight.confidence_score * 100)}%] Pola: "${insight.pattern_template}"`).join('\n') +
-          `\nCatatan: Jangan copy-paste secara mentah, melainkan terapkan pola psikologi di atas secara kontekstual untuk ${product_name}.\n`;
-      }
+        const chosenSelectedHook = body.selected_hook || body.selected_hook_template;
+        let radarConstraintText = '';
+        if (chosenSelectedHook) {
+          radarConstraintText += `\n\nFORMULA HOOK RADAR TERPILIH (PRIORITAS UTAMA):\n` +
+            `Pengguna telah memilih secara spesifik formula hook ini: "${chosenSelectedHook}".\n` +
+            `WAJIB adaptasikan pola kalimat dan emosi hook ini ke dalam Scene 1 dan Scene 2 untuk produk ${product_name}.\n`;
+        }
+        if (radarInsights.length > 0) {
+          radarConstraintText += `\n\nBATASAN REFERENSI VIRAL TRENDS RADAR (TOP ${radarInsights.length} FRESH HOOK PATTERNS):\n` +
+            `Sistem mendeteksi pola hook berkinerja tertinggi saat ini untuk kategori ${category}.\n` +
+            `Adaptasikan dan adopsi pola hook berikut untuk menyusun Scene 1 (Visual Pattern Interrupt) dan Scene 2 (Hook Problem):\n` +
+            radarInsights.map((insight, idx) => `  ${idx + 1}. [Keyakinan ${Math.round(insight.confidence_score * 100)}%] Pola: "${insight.pattern_template}"`).join('\n') +
+            `\nCatatan: Jangan copy-paste secara mentah, melainkan terapkan pola psikologi di atas secara kontekstual untuk ${product_name}.\n`;
+        }
 
-      const promptWithRadar = prompt + radarConstraintText;
+        const promptWithRadar = prompt + radarConstraintText;
 
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
-      const geminiRes = await fetch(geminiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: promptWithRadar }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          },
-        }),
-        cache: 'no-store',
-      });
+        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
+        const geminiRes = await fetch(geminiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptWithRadar }] }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2048,
+              responseMimeType: 'application/json',
+            },
+          }),
+          cache: 'no-store',
+        });
 
-      if (geminiRes.ok) {
-        const geminiData = await geminiRes.json();
-        const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) {
-          const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-          const parsed = JSON.parse(cleaned);
-          if (parsed?.scenes && Array.isArray(parsed.scenes) && parsed.scenes.length === 9) {
-            generatedScenes = parsed.scenes;
-          }
-          if (parsed?.ads_copy && typeof parsed.ads_copy === 'object') {
-            generatedAdsCopy = parsed.ads_copy;
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+            const parsed = JSON.parse(cleaned);
+            if (parsed?.scenes && Array.isArray(parsed.scenes) && parsed.scenes.length === 9) {
+              generatedScenes = parsed.scenes;
+            }
+            if (parsed?.ads_copy && typeof parsed.ads_copy === 'object') {
+              generatedAdsCopy = parsed.ads_copy;
+            }
           }
         }
+      } catch (aiErr) {
+        console.warn('[Studio AI Engine] Gemini call warning (falling back to formula):', aiErr);
       }
-    } catch (aiErr) {
-      console.warn('[Studio AI Engine] Gemini call warning (falling back to formula):', aiErr);
     }
 
-    // Dynamic 9-Scene Formula Generation Engine (Fallback & Deterministic baseline)
-    const isUnboxing = hook_angle.toLowerCase().includes('unboxing');
-    const isBeforeAfter = hook_angle.toLowerCase().includes('sebelum-sesudah') || hook_angle.toLowerCase().includes('before');
-    const isHemat = hook_angle.toLowerCase().includes('hemat') || hook_angle.toLowerCase().includes('boncos');
+    // Dynamic 9-Scene Formula Generation Engine (Deterministic baseline & fallback)
+    const isUnboxing = (hook_angle || '').toLowerCase().includes('unboxing');
+    const isBeforeAfter = (hook_angle || '').toLowerCase().includes('sebelum-sesudah') || (hook_angle || '').toLowerCase().includes('before');
+    const isHemat = (hook_angle || '').toLowerCase().includes('hemat') || (hook_angle || '').toLowerCase().includes('boncos');
 
     // Scene 1: Visual Pattern Interrupt (3s)
     let s1Visual = `Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan ${product_name}. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.`;
@@ -310,7 +346,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
 
     // Scene 9: Strong CTA (5s)
     const s9Visual = `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;
-    const s9Voiceover = cta_goal.toLowerCase().includes('bio')
+    const s9Voiceover = (cta_goal || '').toLowerCase().includes('bio')
       ? `Khusus hari ini lagi ada diskon bundling terbatas! Langsung klik tautan di Bio profil sekarang sebelum kehabisan!`
       : `Stok promo terbatas banget dan bisa habis sewaktu-waktu. Yuk tap keranjang kuning di bawah sekarang juga!`;
 
@@ -444,7 +480,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
       scenes,
       ads_copy: finalAdsCopy,
       remaining_credits: scriptRemainingCredits,
-      consumed_credits: tenantIdentifier ? STUDIO_CREDIT_COSTS.PANDUAN_NASKAH_ASLI : 0,
+      consumed_credits: requiredCredits,
     });
   } catch (err: any) {
     console.error('[Studio Script Generate API] Error:', err);
@@ -457,7 +493,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
     }
 
     return NextResponse.json(
-      { success: false, message: err.message || 'Gagal menghasilkan naskah AI.' },
+      { success: false, error: 'INTERNAL_ERROR', message: err.message || 'Gagal menghasilkan naskah AI.' },
       { status: err.statusCode || 500 }
     );
   }

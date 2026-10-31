@@ -274,3 +274,9 @@ export function resetRevokedJtiCache() {
   revokedJtiCache.clear();
 }
 
+export {
+  getAuthenticatedStudioSession,
+  extractStudioSessionToken,
+  validateTenantOwnership,
+  type AuthenticatedStudioSession,
+} from './studio-session-guard';

@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
 import { STUDIO_CREDIT_COSTS } from '@/lib/config/studio-pricing';
+import {
+  getAuthenticatedStudioSession,
+  validateTenantOwnership,
+} from '@/lib/auth/studio-session-guard';
 
 export const runtime = 'nodejs';
 
@@ -46,16 +50,19 @@ async function resolveTenant(supabase: any, tenantIdentifier?: string | null) {
 
 /**
  * POST /api/studio/render/batch
- * Dispatches FCD batch variations to FFmpeg render queue
+ * Dispatches FCD batch variations to FFmpeg render queue.
+ * Remediates Finding: SEC-P0-02 (Multi-Tenant Authorization & Atomic Batch Reservation)
+ *
  * Formats standardized MP4 naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
  * Rule Konsumsi: Jalur A (Mode Video Otomatis / Render MP4) = 3 Kredit per video
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { tenant_id, product_name, variations } = body;
+    const body = await req.json().catch(() => ({}));
+    const { tenant_id, tenant_slug, product_name, variations, batch_id } = body;
 
-    const rawTenant = String(tenant_id || '').trim().toLowerCase();
+    // Sandbox / Exploration Hard Block
+    const rawTenant = String(tenant_id || tenant_slug || '').trim().toLowerCase();
     if (rawTenant === 'creator' || rawTenant === 'sandbox') {
       return NextResponse.json(
         {
@@ -67,16 +74,45 @@ export async function POST(req: Request) {
       );
     }
 
+    // 1. Authoritative Session Verification
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk mengirim batch render.',
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Reject Client-Supplied Tenant Forgery
+    const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', tenant_id || tenant_slug);
+    if (!tenantCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN_TENANT_MISMATCH',
+          message: tenantCheck.reason,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Resolve Tenant Exclusively via Authenticated Session UUID
+    const authorizedTenantId = session.tenantId;
+
     if (!variations || !Array.isArray(variations) || variations.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Daftar variasi kreatif tidak boleh kosong.' },
+        { success: false, error: 'INVALID_PAYLOAD', message: 'Daftar variasi kreatif tidak boleh kosong.' },
         { status: 400 }
       );
     }
 
     const requiredCredits = variations.length * STUDIO_CREDIT_COSTS.VIDEO_OTOMATIS_MP4;
     const supabase = getSupabaseAdmin();
-    const tenant = supabase ? await resolveTenant(supabase, tenant_id) : null;
+    const tenant = supabase ? await resolveTenant(supabase, authorizedTenantId) : null;
 
     if (!tenant) {
       return NextResponse.json(
@@ -97,9 +133,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let remainingCredits = 1;
-
-    // Standardized file naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
+    // 4. Standardized file naming: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
     const productSlug = slugify(product_name || 'fcd-campaign');
     const formattedVariations = variations.map((v: any, i: number) => {
       const idx = v.id || i + 1;
@@ -117,8 +151,9 @@ export async function POST(req: Request) {
       };
     });
 
-    const batchId = crypto.randomUUID();
+    const batchId = (batch_id && IS_UUID_REGEX.test(batch_id)) ? batch_id : crypto.randomUUID();
 
+    // 5. Idempotent Credit Reservation Before Batch Enqueue
     const creditRes = await StudioCreditService.reserveCredits(
       tenant.id,
       requiredCredits,
@@ -137,18 +172,18 @@ export async function POST(req: Request) {
           required_credits: requiredCredits,
           available_credits: creditRes.credits_remaining,
         },
-        { status: 402 } // HTTP 402 Payment Required
+        { status: creditRes.statusCode === 403 ? 403 : 402 } // HTTP 402 Payment Required
       );
     }
 
-    remainingCredits = creditRes.credits_remaining ?? 0;
+    const remainingCredits = creditRes.credits_remaining ?? 0;
 
-    // Insert each variation into studio_jobs with status QUEUED (true database queue)
+    // 6. Insert Variations into True Database Queue Scoped to Authenticated Tenant
     if (supabase) {
       const jobInserts = formattedVariations.map(v => ({
         id: crypto.randomUUID(),
         tenant_id: tenant.id,
-        user_id: tenant.id,
+        user_id: session.userId || tenant.id,
         status: 'QUEUED',
         job_type: 'FFMPEG_FCD_BATCH',
         output_url: null,
@@ -159,7 +194,7 @@ export async function POST(req: Request) {
           model_name: process.env.AI_MODEL_NAME || 'gemini-3.8-flash',
           variation_index: v.index,
           variation_title: v.title || `Variasi #${v.index}`,
-          filename: v.filename, // Standardized format: {product_slug}_VAR{index}_{hook_angle}_{cta_angle}.mp4
+          filename: v.filename,
           hook: v.hook,
           body: v.body,
           cta: v.cta,
@@ -185,7 +220,11 @@ export async function POST(req: Request) {
         });
 
         return NextResponse.json(
-          { success: false, message: 'Gagal memasukkan variasi ke antrean render database. Kredit otomatis dikembalikan.' },
+          {
+            success: false,
+            error: 'BATCH_INSERT_FAILED',
+            message: 'Gagal memasukkan variasi ke antrean render database. Kredit otomatis dikembalikan.',
+          },
           { status: 500 }
         );
       }
@@ -217,7 +256,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error('[Studio FCD Batch API] Error:', err);
     return NextResponse.json(
-      { success: false, message: err.message || 'Gagal memproses batch render.' },
+      { success: false, error: 'INTERNAL_ERROR', message: err.message || 'Gagal memproses batch render.' },
       { status: 500 }
     );
   }
