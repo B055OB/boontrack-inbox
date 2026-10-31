@@ -4,10 +4,10 @@
 **Document Reference:** `docs/production-readiness/08_GATE_1_CONFIGURATION_EVIDENCE.md`  
 **Application Target:** `studio.boontrack.com`  
 **Repository / Workspace:** `boontrack-studio` (`C:\boontrack-studio`)  
-**Security Baseline Branch:** `remediation/studio-sec-p0-p1` (Preserved at commit `703d3f3`)  
-**Isolated Development Branch:** `feat/studio-ui-creative-pipeline` (Branched from `703d3f3`)  
+**Security Baseline Branch:** `remediation/studio-sec-p0-p1` (Preserved at commit `2929271`)  
+**Isolated Development Branch:** `feat/studio-ui-creative-pipeline` (Active working branch)  
 **CTO Decision:** APPROVED WITH CONDITIONS — GATE 1 REVIEW BASELINE  
-**Production Clearance Status:** **NOT PRODUCTION AUTHORIZED / STAGING ONLY**  
+**Production Clearance Status:** **NOT PRODUCTION AUTHORIZED / STAGING & LOCAL DEV ONLY**  
 **Production Database:** `boontrack-db` — **STRICTLY LOCKED / READ-ONLY**  
 **Audit Date:** 2026-10-31  
 
@@ -22,53 +22,115 @@ Pursuant to the CTO Decision Memorandum:
 
 ---
 
-## 2. REQUIRED CONFIGURATION EVIDENCE
+## 2. FOUR OUTSTANDING CLARIFICATIONS & EVIDENCE CLASSIFICATION
 
-### A. Supabase Auth Configuration (`mpluzajlzpregmjwpjqr`)
+### A. Magic Link Expiry Architecture & Policy Distinction
 
-| Configuration Parameter | Target Requirement | Observed Setting / Architecture | Verification Status | Evidence Classification |
-| :--- | :--- | :--- | :---: | :--- |
-| **Site URL** | `https://boontrack.com` | Root platform origin `https://boontrack.com` | Verified | `[PRODUCTION READ-ONLY OBSERVATION] PASS` |
-| **Allowed Redirect URLs** | Exact endpoints (no wildcards):<br>1. `https://studio.boontrack.com/auth/callback`<br>2. `https://creator.boontrack.com/auth/callback` | Configured in Supabase URL Configuration. Application rejects open redirects via `validateRedirectUrl()`. | Pending Admin Dashboard Verification | `[CONFIGURATION METADATA] PARTIALLY VERIFIED` |
-| **Explicit Magic Link Verification Endpoint** | `https://studio.boontrack.com/api/auth/magic-link/verify` | Handled by `app/api/auth/magic-link/verify/route.ts`. GET is link-scanner safe (read-only metadata); POST executes atomic single-use redemption via `fn_redeem_magic_link()`. | Verified in Staging Tests | `[STAGING INTEGRATION TEST] VERIFIED` |
-| **Callback Endpoint** | `https://studio.boontrack.com/auth/callback` | Handled by `app/auth/callback/page.tsx`. Validates state, exchanges auth code with GoTrue, issues `__Host-bt_studio_session` cookie. | Verified in Staging Tests | `[STAGING INTEGRATION TEST] VERIFIED` |
-| **Magic Link Expiry & Verification Behavior** | 3600s TTL (1 hour); strict single-use; defense-in-depth rate limit | GoTrue enforces 1-hour token expiry. Application enforces 3 requests / 15 minutes per IP/email (`checkRateLimit()`). Expired or consumed tokens return HTTP 401 `INVALID_OR_EXPIRED_TOKEN`. | Verified in Code & Tests | `[STATIC REVIEW & TEST] VERIFIED` |
+To resolve the discrepancy between the Gate 1 target (5–10 minutes) and the observed GoTrue default (3600 seconds), three distinct expiration layers are formally documented:
 
-### B. Vercel Production Environment & Credential Isolation
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                      EXPIRATION & LIFECYCLE ARCHITECTURE                        │
+└─────────────────────────────────────────────────────────────────────────────────┘
+  1. Magic Link GoTrue Token:
+     - Observed Production Default: 3600s (1 hour)
+     - Target Gate 1 Policy: 600s (10 minutes)
+     - Status: Intended policy ratified; production config change deferred to Gate 1 rollout.
 
-| Variable Name | Environment Scope | Secret Type | Fail-Closed Runtime Behavior | Isolation Verification |
+  2. Application Verification Expiry:
+     - Rate-Limit Window: 15 minutes (3 requests / 15 mins per IP/email)
+     - Database Token Record (magic_link_tokens): expires_at strictly checked in fn_redeem_magic_link()
+     - Single-Use Invalidation: consumed_at recorded atomically; replay returns HTTP 401.
+
+  3. Authenticated Host Session Cookie (__Host-bt_studio_session):
+     - Session Cookie TTL: 7 days (604,800 seconds) for workspace desktop persistence
+     - Immediate Invalidation: Server-side JTI blacklist in studio_revoked_tokens
+     - Browser Invalidation: Set-Cookie with Max-Age=0 and Expires=1970 upon logout.
+```
+
+- **Policy Reconciliation:**  
+  Production Supabase GoTrue currently defaults to `3600s`. The ratified Gate 1 policy is **600 seconds (10 minutes)**. Under strict stop conditions, **no production administrative mutation was executed**. The update (`mailer_otp_exp = 600`) is scheduled for the formal Gate 1 configuration release batch.
+- **Evidence Classification:** **PARTIALLY VERIFIED (STAGING PASS / PROD CHANGE PENDING)**.
+
+---
+
+### B. Supabase Redirect Allowlist & Least-Privilege Scope
+
+**Supabase Project:** `mpluzajlzpregmjwpjqr`  
+**Site URL:** `https://boontrack.com` (Root platform origin)
+
+| Endpoint | Target URL | In Gate 1 Scope? | Rationale & Least Privilege |
+| :--- | :--- | :---: | :--- |
+| **Studio OAuth Callback** | `https://studio.boontrack.com/auth/callback` | **YES** | Mandatory for Google OAuth code exchange on Studio origin. |
+| **Studio Magic Link Verify** | `https://studio.boontrack.com/api/auth/magic-link/verify` | **YES** | Mandatory for email link verification and single-use token redemption. |
+| **Creator OAuth Callback** | `https://creator.boontrack.com/auth/callback` | **NO (DEFERRED)** | **Least Privilege Enforced:** Gate 1 is Studio-only. Creator callback is excluded from Studio Gate 1 scope and deferred to Creator Gate 1 review. |
+| **Wildcard Redirects (`*`)** | `https://*.boontrack.com/*` | **STRICTLY ABSENT** | Zero wildcard redirects permitted. `validateRedirectUrl()` rejects protocol-relative URLs and non-allowlisted origins. |
+
+- **Evidence Classification:** **PARTIALLY VERIFIED (LEAST PRIVILEGE CONFIRMED / PENDING DASHBOARD SCREENSHOT)**.
+
+---
+
+### C. Vercel Environment Isolation & Secret Protection
+
+| Variable Name | Required Scope | Secret Type | Fail-Closed Runtime Verification | Redacted Value Evidence |
 | :--- | :--- | :--- | :--- | :---: |
-| **`NEXT_PUBLIC_SUPABASE_URL`** | Production, Preview, Dev | Public Origin | Fails closed on missing URL | Verified |
-| **`NEXT_PUBLIC_SUPABASE_ANON_KEY`** | Production, Preview, Dev | Public Client Key | Client GoTrue requests fail closed if missing | Verified |
-| **`SUPABASE_SERVICE_ROLE_KEY`** | Production Server-Only | Privileged Secret | `platform-user-repository.ts` throws fatal runtime error; refuses mock fallback | Verified (Server-Only) |
-| **`STUDIO_SESSION_SECRET`** | Production Server-Only | HS256 Key | Throws `[Security Guard] STUDIO_SESSION_SECRET is required in production` | Verified (Server-Only) |
-| **`CREATOR_SESSION_SECRET`** | Production Server-Only | HS256 Key | Throws `[Security Guard] CREATOR_SESSION_SECRET is required in production` | Verified (Server-Only) |
-| **`GOOGLE_CLIENT_ID`** | Production Server-Only | OAuth Audience | OAuth token verification fails closed if audience mismatch | Verified (Server-Only) |
-| **`RESEND_API_KEY`** | Production Server-Only | Delivery Secret | Returns `RESEND_API_KEY_MISSING` and refuses email delivery | Verified (Server-Only) |
+| **`NEXT_PUBLIC_SUPABASE_URL`** | Production, Preview, Dev | Public URL | Throws fatal error if empty | `https://mpluzaj...supabase.co` |
+| **`NEXT_PUBLIC_SUPABASE_ANON_KEY`** | Production, Preview, Dev | Public JWT | Client requests reject unauth | `eyJhbGciOi...` (Redacted) |
+| **`SUPABASE_SERVICE_ROLE_KEY`** | Production Server-Only | Privileged Secret | Throws fatal error; blocks mock fallback | `[REDACTED SERVER SECRET]` |
+| **`STUDIO_SESSION_SECRET`** | Production Server-Only | HS256 Key | Throws `STUDIO_SESSION_SECRET is required` | `[REDACTED SERVER SECRET]` |
+| **`CREATOR_SESSION_SECRET`** | Production Server-Only | HS256 Key | Throws `CREATOR_SESSION_SECRET is required` | `[REDACTED SERVER SECRET]` |
+| **`GOOGLE_CLIENT_ID`** | Production Server-Only | OAuth Audience | Throws audience mismatch error | `[REDACTED CLIENT ID]` |
+| **`RESEND_API_KEY`** | Production Server-Only | Delivery Key | Rejects delivery with `API_KEY_MISSING` | `[REDACTED SERVER SECRET]` |
 
-#### Vercel Environment Hardening Invariants:
-1. **Server-Only Verification:** Secrets lack the `NEXT_PUBLIC_` prefix and are strictly bundled into server-side Node.js runtime, inaccessible to client-side bundles.
-2. **Preview vs Production Isolation:** Staging and preview deployments utilize isolated staging credentials. Production credentials are not configured in preview environments.
-3. **Production Alias Protection:** The production alias `studio.boontrack.com` is locked to production release branches only. Remediation previews deploy to temporary `*.vercel.app` domains without production domain alias binding.
-4. **Zero Accidental Exposure:** No API keys, tokens, or session secrets are committed to git repositories or exposed in build logs.
+#### Isolation Verification:
+1. **Server-Only Bundling:** Secrets lack the `NEXT_PUBLIC_` prefix and are strictly absent from client-side webpack chunks (`.next/static/chunks/`).
+2. **Preview vs Production Credential Isolation:** Preview deployments run on temporary preview URLs (`*.vercel.app`) with isolated staging credentials, preventing production credential leakage into preview branches.
+3. **Production Alias Protection:** The production alias `studio.boontrack.com` is locked exclusively to production release branches.
+- **Evidence Classification:** **VERIFIED (REDACTED CONFIGURATION REVIEW)**.
 
-### C. Observability Configuration Evidence
+---
 
-| Observability Dimension | Implementation Architecture | Verification Method | Status |
-| :--- | :--- | :--- | :---: |
-| **Active Monitoring for HTTP 500 / 503** | Structured error logging in API route handlers (`[API Track Download] Database query error:`) integrated with Vercel Log Drains / monitoring collectors. | Fault injection verified in regression suite. | **VERIFIED** |
-| **Magic Link & Session Failure Visibility** | Explicit structured error codes returned: `UNAUTHORIZED`, `SERVICE_UNAVAILABLE`, `DATABASE_ERROR`, `JOB_NOT_FOUND`, `INVALID_OR_EXPIRED_TOKEN`. | Aggregated in server logs by error code without leaking internal stack traces. | **VERIFIED** |
-| **Controlled Alert Test Evidence** | Simulated database outage (`getSupabaseAdmin` returning `null`) returns HTTP 503 `SERVICE_UNAVAILABLE`. Simulated query timeout returns HTTP 500 `DATABASE_ERROR`. | Verified in automated regression test: `Track-Download Fail-Closed: returns HTTP 503 SERVICE_UNAVAILABLE`. | **VERIFIED** |
-| **Zero PII & Secret Logging** | Tokens, session cookies, passwords, and sensitive user PII are never logged in console outputs. Error logs emit only sanitized message strings and status codes. | Verified via static code review of route handlers and services. | **VERIFIED** |
+### D. Observability: Realism & Delivery Classification
+
+To maintain audit integrity, the observability stack is classified across four distinct tiers:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                       OBSERVABILITY REALITY ASSESSMENT                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+  1. Handler-Level Fault Injection:
+     - Status: VERIFIED (Automated Jest Tests)
+     - Evidence: Simulated null DB returns 503; simulated query failure returns 500.
+
+  2. Vercel Log Visibility:
+     - Status: VERIFIED (Server Console Stream)
+     - Evidence: Route handlers emit structured logs ([API Track Download], [Studio Credit])
+       captured in Vercel Log Streams. Zero PII and zero secrets are logged.
+
+  3. Active Alert Configuration:
+     - Status: PARTIALLY VERIFIED / OPEN IN BACKLOG
+     - Reality: 5xx errors appear in monitoring streams, but metric threshold rules
+       (e.g. "Trigger P1 if 500 rate > 1% in 5m") are NOT yet formally configured in Vercel.
+
+  4. Actual Alert Delivery to Operator:
+     - Status: NOT VERIFIED / NOT CONFIGURED
+     - Reality: No webhook integration (Slack/PagerDuty) is active for Studio alerts.
+       Engineering DOES NOT claim active operator delivery exists at this stage.
+```
+
+- **Evidence Classification:**  
+  - Fault Injection & Logging: **VERIFIED**.  
+  - Active Alert Rules: **PARTIALLY VERIFIED / IN BACKLOG**.  
+  - Operator Alert Delivery: **NOT VERIFIED / NOT CONFIGURED**.
 
 ---
 
 ## 3. DEVELOPMENT AUTHORIZATION MATRIX
 
 ### Permitted Actions (Authorized Under Gate 1 Baseline):
-- [x] Local development of Studio UI and workflow ergonomics.
-- [x] Simplification of user funnel (Streamlined UI flow).
-- [x] Implementation of Automatic UX Mode (one-click creation) and Advanced UX Mode (fine-tuned parameter control).
+- [x] Local development of Studio UI, workflow ergonomics, and state management.
+- [x] User funnel simplification (Streamlined creation flow).
+- [x] Implementation of Automatic UX Mode (one-click generation) and Advanced UX Mode (granular parameter tuning).
 - [x] Local implementation of creative pipelines (Ad Radar intelligence schema, Script generator, Video render worker orchestration).
 - [x] Isolated staging tests using staging-only credentials and in-memory mocks.
 
@@ -83,7 +145,7 @@ Pursuant to the CTO Decision Memorandum:
 
 ## 4. RESIDUAL SECURITY REQUIREMENTS BACKLOG
 
-The following items are officially logged in the security backlog and will remain open until separate implementation and verification are accepted:
+The following items remain open in the security backlog:
 
 | Backlog Item | Target Component | Required Implementation | Current Status |
 | :--- | :--- | :--- | :---: |
@@ -95,24 +157,15 @@ The following items are officially logged in the security backlog and will remai
 
 ## 5. REPOSITORY INTEGRITY & BRANCH DISCIPLINE
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                      BRANCH & REPOSITORY ISOLATION TOPOLOGY                     │
-└─────────────────────────────────────────────────────────────────────────────────┘
-  remediation/studio-sec-p0-p1 (HEAD: 703d3f3) ◄── PRESERVED AS SECURITY BASELINE
-       │
-       └──► feat/studio-ui-creative-pipeline ◄── CREATED FOR ISOLATED DEV WORK
-```
-
-1. **Baseline Branch Preservation:**
-   - Branch `remediation/studio-sec-p0-p1` is preserved at commit [`703d3f3`](file:///c:/boontrack-studio) containing all remediated security code and regression test suites.
-2. **Dedicated Development Branch:**
-   - Branch `feat/studio-ui-creative-pipeline` was created from `703d3f3` to isolate subsequent UI and creative engine implementation.
-3. **Protected Worktree Verification:**
-   - `C:\boontrack-inbox` (branch `release/shabu-ajhi-phase3c`): **100% UNTOUCHED**.
-   - `C:\boontrack-core` (branch `fix/onlineboost-batch1-canary-readiness`): **100% UNTOUCHED**.
-4. **Database Status:**
-   - Production database `boontrack-db` remains **LOCKED / READ-ONLY**.
+1. **Security Remediation Baseline:**  
+   Branch `remediation/studio-sec-p0-p1` is preserved at commit [`2929271`](file:///c:/boontrack-studio) containing all remediated security code, fail-closed handlers, and 39 automated regression tests.
+2. **Dedicated Development Branch:**  
+   Branch `feat/studio-ui-creative-pipeline` is active and checked out for local UI and creative engine implementation.
+3. **Protected Worktree Verification:**  
+   `C:\boontrack-inbox` (branch `release/shabu-ajhi-phase3c`): **100% UNTOUCHED**.  
+   `C:\boontrack-core` (branch `fix/onlineboost-batch1-canary-readiness`): **100% UNTOUCHED**.
+4. **Database Status:**  
+   Production database `boontrack-db` remains **STRICTLY LOCKED / READ-ONLY**.
 
 ---
 
@@ -122,7 +175,10 @@ The following items are officially logged in the security backlog and will remai
 > - **Security Baseline Integrity:** **VERIFIED** (All P0/P1 blockers remediated and fail-closed).
 > - **Handler Regression Suite:** **VERIFIED** (39/39 tests passed, Exit Code: 0).
 > - **Broader Test Portfolio:** **VERIFIED** (172/172 tests passed across Studio, Master Audit, and Global Auth suites).
-> - **Supabase Dashboard Redirect URLs:** **PARTIALLY VERIFIED** (Pending visual/admin dashboard confirmation).
+> - **Magic Link Expiry Policy:** **PARTIALLY VERIFIED** (10m policy documented; GoTrue 3600s prod change pending).
+> - **Supabase Dashboard Redirect URLs:** **PARTIALLY VERIFIED** (Studio callback scoped; zero wildcards; pending visual dashboard check).
+> - **Vercel Secret Isolation:** **VERIFIED** (Server-only secrets verified; zero secret exposure).
+> - **Active Operator Alert Delivery:** **NOT VERIFIED** (Retained honestly as NOT CONFIGURED).
 > - **DNS Socket Pinning:** **NOT VERIFIED** (Retained as NOT VERIFIED in security backlog).
 > - **Development Authorization:** **ACTIVE** (Isolated local development in `feat/studio-ui-creative-pipeline`).
 >
