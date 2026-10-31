@@ -80,14 +80,15 @@ export async function POST(req: NextRequest) {
     res.cookies.set(config.cookieName, '', {
       ...cookieOptions,
       maxAge: 0,
+      expires: new Date(0),
     });
 
     if (product === 'studio') {
-      res.cookies.set('__Host-bt_studio_session', '', { ...cookieOptions, maxAge: 0 });
-      res.cookies.set('bt_studio_session', '', { ...cookieOptions, maxAge: 0 });
+      res.cookies.set('__Host-bt_studio_session', '', { ...cookieOptions, maxAge: 0, expires: new Date(0) });
+      res.cookies.set('bt_studio_session', '', { ...cookieOptions, maxAge: 0, expires: new Date(0) });
     } else {
-      res.cookies.set('__Host-bt_creator_session', '', { ...cookieOptions, maxAge: 0 });
-      res.cookies.set('bt_creator_session', '', { ...cookieOptions, maxAge: 0 });
+      res.cookies.set('__Host-bt_creator_session', '', { ...cookieOptions, maxAge: 0, expires: new Date(0) });
+      res.cookies.set('bt_creator_session', '', { ...cookieOptions, maxAge: 0, expires: new Date(0) });
     }
 
     return res;
