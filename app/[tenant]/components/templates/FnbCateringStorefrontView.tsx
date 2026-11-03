@@ -49,6 +49,11 @@ import {
 } from '@/lib/shipping/deliveryCalculator';
 import {
   validateCateringCart,
+  PickupWindow,
+  PICKUP_WINDOW_LABELS,
+  PICKUP_MICROCOPY,
+  resolveDefaultPickupWindow,
+  calculatePickupDate,
 } from '@/lib/checkout/cateringCheckoutRouting';
 
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
@@ -156,6 +161,10 @@ export function buildCateringWhatsAppUrl(params: {
   locationDetails: string;
   cartItems: Array<{ name: string; qty: number; price: number; soupVariant?: string }>;
   totalPrice: number;
+  pickupWindow?: 'SAME_DAY' | 'NEXT_DAY_MORNING';
+  pickupPreference?: string;
+  pickupDate?: string;
+  formattedPickupDate?: string;
 }): { message: string; waUrl: string; cleanWa: string } {
   const itemsSummary = params.cartItems
     .map((item, idx) => {
@@ -168,15 +177,29 @@ export function buildCateringWhatsAppUrl(params: {
     ? `${params.locationType} (${params.locationDetails.trim()})`
     : `${params.locationType} (Alamat detail dikonfirmasi di chat)`;
 
+  const resolvedPickupLabel =
+    params.pickupPreference ||
+    (params.pickupWindow === 'NEXT_DAY_MORNING'
+      ? 'Besok Pagi (H+1)'
+      : params.pickupWindow === 'SAME_DAY'
+      ? 'Hari yang Sama (Setelah Acara)'
+      : '');
+  const resolvedPickupDateText = params.formattedPickupDate || params.pickupDate || '';
+  const pickupScheduleLine = resolvedPickupLabel
+    ? `• Penjemputan Alat: ${resolvedPickupLabel}${resolvedPickupDateText ? ` (${resolvedPickupDateText})` : ''}\n`
+    : '';
+
   const message = `Halo ${params.storeName}, saya mau pesan Home Service Shabu & BBQ:\n\n` +
     `📅 *Jadwal Pengantaran:*\n` +
     `• Hari / Tanggal: ${params.formattedDeliveryDate} (${params.deliveryDate})\n` +
     `• Slot Jam: ${params.selectedTimeSlot}\n` +
+    pickupScheduleLine +
     `• Tipe Lokasi: ${cleanLocation}\n\n` +
     `🍲 *Rincian Pesanan:*\n` +
     `${itemsSummary}\n\n` +
     `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
-    `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\n\n` +
+    `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\n` +
+    `Peralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n` +
     `Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
 
   const cleanWa = params.waNumber.replace(/\D/g, '') || '6285861091103';
@@ -209,6 +232,8 @@ export default function FnbCateringStorefrontView({
   const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(true);
   const [locationType, setLocationType] = useState<'Rumah Tinggal' | 'Villa / Glamping'>('Villa / Glamping');
   const [locationDetails, setLocationDetails] = useState<string>('');
+  // ── JADWAL PENJEMPUTAN ALAT MASAK STATE ──
+  const [pickupWindow, setPickupWindow] = useState<PickupWindow>('SAME_DAY');
 
   // ── REAKTIF FETCHING BOOKING SLOTS BERDASARKAN TANGGAL & SLUG ──
   useEffect(() => {
@@ -236,6 +261,7 @@ export default function FnbCateringStorefrontView({
 
             if (currentValid) {
               setSelectedTimeSlot(currentValid.slot_name);
+              setPickupWindow(resolveDefaultPickupWindow(currentValid.slot_name));
               return currentValid.id;
             }
 
@@ -245,6 +271,7 @@ export default function FnbCateringStorefrontView({
 
             if (firstAvailable) {
               setSelectedTimeSlot(firstAvailable.slot_name);
+              setPickupWindow(resolveDefaultPickupWindow(firstAvailable.slot_name));
               return firstAvailable.id;
             }
 
@@ -605,6 +632,26 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     }
   }, [deliveryDate]);
 
+  // Hitung tanggal penjemputan alat & format teks (H+1 jika NEXT_DAY_MORNING)
+  const pickupDate = useMemo(() => {
+    return calculatePickupDate(deliveryDate, pickupWindow);
+  }, [deliveryDate, pickupWindow]);
+
+  const formattedPickupDate = useMemo(() => {
+    if (!pickupDate) return 'Hari Ini';
+    try {
+      const dateObj = new Date(pickupDate);
+      return new Intl.DateTimeFormat('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(dateObj);
+    } catch (_) {
+      return pickupDate;
+    }
+  }, [pickupDate]);
+
   // ── 5. WHATSAPP CONVERSATIONAL FLOW BUILDER ──
   const handleCheckoutViaWhatsApp = () => {
     if (totalItems === 0) {
@@ -625,6 +672,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
         deliveryDate,
         formattedDeliveryDate,
         selectedTimeSlot,
+        pickupDate,
+        pickupWindow,
+        formattedPickupDate,
         locationAddress: `${locationType} - ${locationDetails}`,
         storeName: effectiveName,
         waNumber: SHABU_AJHI_HANDOVER_PHONE,
@@ -642,6 +692,10 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       deliveryDate,
       formattedDeliveryDate,
       selectedTimeSlot,
+      pickupWindow,
+      pickupPreference: PICKUP_WINDOW_LABELS[pickupWindow],
+      pickupDate,
+      formattedPickupDate,
       locationType,
       locationDetails,
       cartItems: Object.values(cart),
@@ -685,7 +739,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
         quantity: c.qty,
         variant: c.soupVariant,
       })),
-      notes: `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${locationDetails}`,
+      notes: `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${locationDetails}`,
       metadata: {
         booking: {
           event_date: deliveryDate,
@@ -693,6 +747,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           slot_id: selectedSlotId,
           slot_name: selectedTimeSlot,
           time_slot: selectedTimeSlot,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+          pickup_preference: PICKUP_WINDOW_LABELS[pickupWindow],
           location_type: locationType,
           location_details: locationDetails,
         },
@@ -700,6 +757,15 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           slot_id: selectedSlotId,
           slot_name: selectedTimeSlot,
           event_date: deliveryDate,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+        },
+        rental_schedule: {
+          delivery_date: deliveryDate,
+          time_slot: selectedTimeSlot,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+          pickup_preference: PICKUP_WINDOW_LABELS[pickupWindow],
         },
       },
     });
@@ -977,6 +1043,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                       onClick={() => {
                         setSelectedSlotId(slot.id);
                         setSelectedTimeSlot(slot.slot_name);
+                        setPickupWindow(resolveDefaultPickupWindow(slot.slot_name));
                       }}
                       className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
                         isFull
@@ -1018,6 +1085,79 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 })}
               </div>
             )}
+          </div>
+
+          {/* 4. Pilihan Jadwal Penjemputan Alat Masak */}
+          <div className="space-y-2 pt-3 border-t border-amber-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <HeartHandshake className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Jadwal Penjemputan Alat Masak Kotor:</span>
+              </label>
+              <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                Bebas Cuci 100%
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              {PICKUP_MICROCOPY}
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <label
+                data-testid="pickup-window-same-day"
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
+                  pickupWindow === 'SAME_DAY'
+                    ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                    : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="pickup_window"
+                    value="SAME_DAY"
+                    checked={pickupWindow === 'SAME_DAY'}
+                    onChange={() => setPickupWindow('SAME_DAY')}
+                    className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
+                  />
+                  <div>
+                    <span className="block font-black">Hari yang Sama (Setelah Acara)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      Diambil tim driver setelah selesai makan
+                    </span>
+                  </div>
+                </div>
+                {pickupWindow === 'SAME_DAY' && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+              </label>
+
+              <label
+                data-testid="pickup-window-next-day"
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
+                  pickupWindow === 'NEXT_DAY_MORNING'
+                    ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                    : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="pickup_window"
+                    value="NEXT_DAY_MORNING"
+                    checked={pickupWindow === 'NEXT_DAY_MORNING'}
+                    onChange={() => setPickupWindow('NEXT_DAY_MORNING')}
+                    className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
+                  />
+                  <div>
+                    <span className="block font-black">Besok Pagi (H+1)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      Peralatan diambil esok pagi ({formattedPickupDate})
+                    </span>
+                  </div>
+                </div>
+                {pickupWindow === 'NEXT_DAY_MORNING' && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+              </label>
+            </div>
           </div>
         </div>
       </section>

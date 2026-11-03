@@ -7,7 +7,16 @@
  * 1. Cart evaluation for package threshold (>= 5 packages requires manual fleet coordination).
  * 2. Automated checkout / Payment Gateway guard (disables online payment for large orders or out-of-range addresses).
  * 3. Warning banner and CTA button routing to Human CS WhatsApp (+62 896-1779-9878).
- * 4. Structured order payload builder with required attributes (selected_soups, distance_km, requires_pickup: true, delivery_fee, rental_schedule).
+ * 4. Structured order payload builder with required attributes:
+ *    - selected_soups
+ *    - distance_km
+ *    - requires_pickup: true
+ *    - delivery_fee
+ *    - rental_schedule (including pickup_date, pickup_window: 'SAME_DAY' | 'NEXT_DAY_MORNING')
+ * 5. Flexible cookware pickup options:
+ *    - 'Hari yang Sama (Setelah Acara)' (SAME_DAY)
+ *    - 'Besok Pagi (H+1)' (NEXT_DAY_MORNING)
+ *    - Auto-defaults to 'Besok Pagi (H+1)' if delivery is >= 16.00 WIB.
  */
 
 import {
@@ -21,11 +30,76 @@ import {
   DeliveryCalculationResult,
 } from '@/lib/shipping/deliveryCalculator';
 
+export type PickupWindow = 'SAME_DAY' | 'NEXT_DAY_MORNING';
+
+export const PICKUP_WINDOW_LABELS: Readonly<Record<PickupWindow, string>> = {
+  SAME_DAY: 'Hari yang Sama (Setelah Acara)',
+  NEXT_DAY_MORNING: 'Besok Pagi (H+1)',
+};
+
+export const PICKUP_MICROCOPY =
+  'Peralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.';
+
+/**
+ * Resolves default cookware pickup window based on delivery time slot:
+ * Defaults to 'Besok Pagi (H+1)' (NEXT_DAY_MORNING) if delivery starts at or after 16:00 WIB.
+ * Otherwise defaults to 'Hari yang Sama (Setelah Acara)' (SAME_DAY).
+ */
+export function resolveDefaultPickupWindow(timeSlot?: string): PickupWindow {
+  if (!timeSlot) return 'SAME_DAY';
+
+  const match = timeSlot.match(/(\d{1,2})[:.](\d{2})/);
+  if (match) {
+    const startHour = parseInt(match[1], 10);
+    if (startHour >= 16) {
+      return 'NEXT_DAY_MORNING';
+    }
+  }
+
+  return 'SAME_DAY';
+}
+
+/**
+ * Calculates pickup date from delivery date string (YYYY-MM-DD) and pickup window.
+ * Adds 1 calendar day if window is NEXT_DAY_MORNING.
+ */
+export function calculatePickupDate(
+  deliveryDateStr: string,
+  pickupWindow: PickupWindow = 'SAME_DAY'
+): string {
+  if (!deliveryDateStr) return '';
+  if (pickupWindow === 'SAME_DAY') return deliveryDateStr;
+
+  try {
+    const parts = deliveryDateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      d.setDate(d.getDate() + 1);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    const d = new Date(deliveryDateStr);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  } catch (_) {
+    return deliveryDateStr;
+  }
+}
+
 export interface CateringRentalSchedule {
   delivery_date: string;
   time_slot: string;
-  pickup_date?: string;
+  pickup_date: string;
+  pickup_window: PickupWindow;
+  pickup_preference?: string;
   formatted_delivery_date?: string;
+  formatted_pickup_date?: string;
 }
 
 export interface CateringCartValidationResult {
@@ -64,6 +138,9 @@ export function validateCateringCart(params: {
   deliveryDate?: string;
   formattedDeliveryDate?: string;
   selectedTimeSlot?: string;
+  pickupDate?: string;
+  pickupWindow?: PickupWindow;
+  formattedPickupDate?: string;
   locationAddress?: string;
   storeName?: string;
   waNumber?: string;
@@ -74,6 +151,9 @@ export function validateCateringCart(params: {
     deliveryDate,
     formattedDeliveryDate,
     selectedTimeSlot,
+    pickupDate,
+    pickupWindow = resolveDefaultPickupWindow(selectedTimeSlot),
+    formattedPickupDate,
     locationAddress,
     storeName = 'Shabu Ajhi',
     waNumber = SHABU_AJHI_HANDOVER_PHONE,
@@ -92,10 +172,6 @@ export function validateCateringCart(params: {
   const deliveryResult = calculateDeliveryFee(distanceKm, cartItems);
 
   // Determine online checkout eligibility
-  // Online checkout is blocked if:
-  // 1. Total packages >= 5 (requires manual coordination)
-  // 2. Distance > 26 km (out of range)
-  // 3. deliveryResult.isDeliverable === false
   const requiresManualCoordination =
     totalPackages >= 5 || deliveryResult.requiresManualCoordination;
 
@@ -111,6 +187,10 @@ export function validateCateringCart(params: {
     warningBanner = LARGE_ORDER_WARNING_MESSAGE;
   }
 
+  const resolvedPickupDate =
+    pickupDate || (deliveryDate ? calculatePickupDate(deliveryDate, pickupWindow) : '');
+  const pickupLabel = PICKUP_WINDOW_LABELS[pickupWindow];
+
   const { waUrl, message } = buildLargeOrderWhatsAppUrl({
     storeName,
     waNumber,
@@ -118,7 +198,9 @@ export function validateCateringCart(params: {
     deliveryDate,
     formattedDeliveryDate,
     selectedTimeSlot,
-    locationAddress,
+    locationAddress: `${locationAddress || ''}${
+      resolvedPickupDate ? ` | Penjemputan Alat: ${pickupLabel} (${formattedPickupDate || resolvedPickupDate})` : ''
+    }`,
     cartItems,
     totalPackages,
     totalPrice,
@@ -168,6 +250,7 @@ export function aggregateSelectedSoups(
 
 /**
  * Constructs structured order payload for backend submission or order booking.
+ * Ensures rental_schedule contains pickup_date and pickup_window ('SAME_DAY' | 'NEXT_DAY_MORNING').
  */
 export function buildCateringOrderPayload(params: {
   merchantSlug?: string;
@@ -176,7 +259,9 @@ export function buildCateringOrderPayload(params: {
   deliveryDate: string;
   timeSlot: string;
   pickupDate?: string;
+  pickupWindow?: PickupWindow;
   formattedDeliveryDate?: string;
+  formattedPickupDate?: string;
   notes?: string;
 }): CateringOrderPayload {
   const {
@@ -186,7 +271,9 @@ export function buildCateringOrderPayload(params: {
     deliveryDate,
     timeSlot,
     pickupDate,
+    pickupWindow: explicitWindow,
     formattedDeliveryDate,
+    formattedPickupDate,
     notes,
   } = params;
 
@@ -202,11 +289,19 @@ export function buildCateringOrderPayload(params: {
   const deliveryFee = deliveryResult.totalFee;
   const totalPrice = itemsPrice + deliveryFee;
 
+  // Resolve pickup window: explicit > auto-default from timeSlot (>= 16:00 -> NEXT_DAY_MORNING)
+  const pickup_window: PickupWindow = explicitWindow || resolveDefaultPickupWindow(timeSlot);
+  const pickup_date: string = pickupDate || calculatePickupDate(deliveryDate, pickup_window);
+  const pickup_preference = PICKUP_WINDOW_LABELS[pickup_window];
+
   const rental_schedule: CateringRentalSchedule = {
     delivery_date: deliveryDate,
     time_slot: timeSlot,
-    pickup_date: pickupDate || deliveryDate,
+    pickup_date,
+    pickup_window,
+    pickup_preference,
     formatted_delivery_date: formattedDeliveryDate,
+    formatted_pickup_date: formattedPickupDate,
   };
 
   return {
@@ -223,4 +318,3 @@ export function buildCateringOrderPayload(params: {
     is_large_party_order: totalPackages >= 5,
   };
 }
-
