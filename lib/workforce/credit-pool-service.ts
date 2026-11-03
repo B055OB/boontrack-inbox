@@ -1,6 +1,6 @@
 /**
  * lib/workforce/credit-pool-service.ts
- * BWM Post-E4 — Workforce Credit Pool & Atomic Ledger Engine
+ * BWM Post-E4 & Gate E5 — Workforce Credit Pool & Atomic Ledger Engine (Hardened)
  *
  * Ratified CTO & Founder Invariants:
  * 1. packages/attendance/ is decoupled (zero coupling to billing/credits).
@@ -64,7 +64,7 @@
  * 3. Payment Reference & Idempotency Constraints:
  *    ```sql
  *    CREATE UNIQUE INDEX uq_seat_credit_payment_ref_idx
- *    ON seat_credit_ledger (payment_reference, credit_index);
+ *    ON seat_credit_ledger (payment_reference, credit_id);
  *    ```
  * =========================================================================================
  */
@@ -75,10 +75,12 @@ import {
   BranchSeatState,
   SeatCreditLedgerEntry,
   PersonnelSeatLicense,
+  CreditPurchaseTransaction,
   createCreditDepositQuote,
 } from './billing-contract';
 
 export class CreditPoolService {
+  private purchaseTransactions: Map<string, CreditPurchaseTransaction> = new Map();
   private ledgerEntries: Map<string, SeatCreditLedgerEntry> = new Map();
   private licenses: Map<string, PersonnelSeatLicense> = new Map();
   private processedIdempotencyKeys: Set<string> = new Set();
@@ -115,17 +117,19 @@ export class CreditPoolService {
    * Dormant credits remain AVAILABLE indefinitely without 30-day expiry.
    *
    * Idempotency Enforcement:
-   * Strictly binds paymentReference (e.g. gateway payment id / bank ref) as authoritative key,
-   * alongside optional client idempotencyKey.
+   * Strictly binds paymentReference (e.g. gateway payment id / bank ref) to parent
+   * credit_purchase_transactions entity as authoritative source of truth.
    */
   public depositCredits(params: {
     branchId: string;
+    agencyId?: string;
     quantity: number;
     purchaseReference: string;
     paymentReference: string;
+    purchaseId?: string;
     idempotencyKey?: string;
   }): SeatCreditLedgerEntry[] {
-    const { branchId, quantity, purchaseReference, paymentReference, idempotencyKey } = params;
+    const { branchId, agencyId, quantity, purchaseReference, paymentReference, purchaseId, idempotencyKey } = params;
 
     // 1. Minimum deposit enforcement
     if (quantity < BWM_PRICING.MINIMUM_CREDIT_DEPOSIT_QUANTITY) {
@@ -148,14 +152,41 @@ export class CreditPoolService {
       );
     }
 
-    const createdEntries: SeatCreditLedgerEntry[] = [];
     const timestamp = new Date().toISOString();
+    const effectivePurchaseId = purchaseId || `purch_${branchId}_${Date.now()}`;
+    const effectiveAgencyId = agencyId || 'agency_default';
 
+    // 4. Record Parent Purchase Transaction Snapshot
+    const unitPrice = BWM_PRICING.MONTHLY_PERSONNEL_SEAT_IDR;
+    const subtotal = quantity * unitPrice;
+    const tax = Math.round(subtotal * BWM_PRICING.PPN_RATE);
+    const total = subtotal + tax;
+
+    const purchaseTx: CreditPurchaseTransaction = {
+      purchase_id: effectivePurchaseId,
+      branch_id: branchId,
+      agency_id: effectiveAgencyId,
+      payment_reference: paymentReference,
+      purchase_reference: purchaseReference,
+      quantity,
+      unit_price_idr: unitPrice,
+      subtotal_idr: subtotal,
+      tax_idr: tax,
+      total_idr: total,
+      status: 'SETTLED',
+      created_at: timestamp,
+    };
+    this.purchaseTransactions.set(effectivePurchaseId, purchaseTx);
+
+    // 5. Emit unit credit ledger entries
+    const createdEntries: SeatCreditLedgerEntry[] = [];
     for (let i = 0; i < quantity; i++) {
       const creditId = `cred_${branchId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${i + 1}`;
       const entry: SeatCreditLedgerEntry = {
         credit_id: creditId,
+        purchase_id: effectivePurchaseId,
         branch_id: branchId,
+        agency_id: effectiveAgencyId,
         purchase_reference: purchaseReference,
         payment_reference: paymentReference,
         status: 'AVAILABLE',
@@ -205,23 +236,29 @@ export class CreditPoolService {
 
   /**
    * Activates a personnel seat by atomically consuming 1 credit from branch pool.
-   * Invariants:
-   * - 1 Credit = 30 days rolling license from activation.
-   * - Atomic concurrency lock guarantees only 1 success if pool = 1.
-   * - Expired personnel can be reactivated by consuming a new credit.
+   * 7-Step Atomic Execution with Timeout Retry Guard:
+   * (1) Lock branch pool
+   * (2) Select 1 AVAILABLE credit (SKIP LOCKED equivalent)
+   * (3) Validate tenant/branch
+   * (4) Create 30-day rolling license
+   * (5) Transition credit to CONSUMED
+   * (6) Decrement available credits & increment active seats
+   * (7) Return snapshot
    */
   public async activatePersonnelSeat(params: {
     branchId: string;
     personnelId: string;
+    agencyId?: string;
     referenceTimeUtc?: string;
     idempotencyKey?: string;
+    simulateFailureStep?: number; // For atomic failure / rollback testing
   }): Promise<{ license: PersonnelSeatLicense; consumedCredit: SeatCreditLedgerEntry }> {
-    const { branchId, personnelId, idempotencyKey } = params;
+    const { branchId, personnelId, agencyId, idempotencyKey, simulateFailureStep } = params;
 
     return this.withBranchLock(branchId, async () => {
       this.reconcileExpiredLicenses(params.referenceTimeUtc);
 
-      // 1. Idempotency check
+      // STEP 1: Idempotency check
       if (idempotencyKey && this.processedIdempotencyKeys.has(idempotencyKey)) {
         const existingLic = this.licenses.get(personnelId);
         const existingCred = Array.from(this.ledgerEntries.values()).find(
@@ -232,7 +269,7 @@ export class CreditPoolService {
         }
       }
 
-      // 2. Active license check (anti-double activation)
+      // STEP 2: Active license check (anti-double activation)
       const currentLic = this.licenses.get(personnelId);
       if (currentLic && currentLic.status === 'ACTIVE') {
         throw new Error(
@@ -240,7 +277,7 @@ export class CreditPoolService {
         );
       }
 
-      // 3. Find 1 AVAILABLE credit in pool
+      // STEP 3: Find 1 AVAILABLE credit in pool
       const availableCredit = Array.from(this.ledgerEntries.values()).find(
         (c) => c.branch_id === branchId && c.status === 'AVAILABLE'
       );
@@ -251,7 +288,19 @@ export class CreditPoolService {
         );
       }
 
-      // 4. Consume credit atomically
+      // STEP 4: Tenant boundary validation (if agencyId supplied)
+      if (agencyId && availableCredit.agency_id && availableCredit.agency_id !== agencyId) {
+        throw new Error(
+          `TENANT_ISOLATION_BREACH: Caller agency '${agencyId}' does not match credit agency '${availableCredit.agency_id}'`
+        );
+      }
+
+      // Simulation point: Test rollback if failure occurs at mid-transaction
+      if (simulateFailureStep === 5) {
+        throw new Error('SIMULATED_TRANSACTION_FAILURE_AT_STEP_5');
+      }
+
+      // STEP 5: Consume credit row atomically (Immutable transition)
       const nowIso = params.referenceTimeUtc || new Date().toISOString();
       const nowMs = new Date(nowIso).getTime();
       const expiresAtMs = nowMs + BWM_PRICING.BILLING_CYCLE_DAYS * 24 * 60 * 60 * 1000;
@@ -264,7 +313,7 @@ export class CreditPoolService {
         availableCredit.idempotency_key = idempotencyKey;
       }
 
-      // 5. Issue personnel license (30 days rolling)
+      // STEP 6: Issue personnel license (30 days rolling)
       const licenseId = `lic_${branchId}_${personnelId}_${Date.now()}`;
       const newLicense: PersonnelSeatLicense = {
         licenseId,
@@ -282,6 +331,7 @@ export class CreditPoolService {
         this.processedIdempotencyKeys.add(idempotencyKey);
       }
 
+      // STEP 7: Return final snapshot
       return {
         license: newLicense,
         consumedCredit: { ...availableCredit },
@@ -371,6 +421,7 @@ export class CreditPoolService {
    * Processes a payment chargeback/dispute.
    * Invariants:
    * - Dormant (AVAILABLE) credits from that paymentReference/purchaseReference are FROZEN.
+   * - Marks parent purchase transaction as DISPUTED.
    * - Already CONSUMED credits are NOT penalized with negative balance (tidak ada piutang diam-diam).
    * - Idempotent across repeated webhooks/calls with the same paymentReference or chargebackReference.
    */
@@ -380,7 +431,7 @@ export class CreditPoolService {
     chargebackReference?: string;
     reason?: string;
   }): { frozenCount: number; affectedCredits: SeatCreditLedgerEntry[]; alreadyProcessed?: boolean } {
-    const { purchaseReference, paymentReference, chargebackReference } = params;
+    const { purchaseReference, paymentReference, chargebackReference, reason } = params;
     const cbKey = chargebackReference || paymentReference || purchaseReference || '';
 
     // Idempotency guard for replay webhooks
@@ -397,6 +448,16 @@ export class CreditPoolService {
       };
     }
 
+    // Mark parent purchase transaction as DISPUTED
+    for (const tx of this.purchaseTransactions.values()) {
+      if (
+        (paymentReference && tx.payment_reference === paymentReference) ||
+        (purchaseReference && tx.purchase_reference === purchaseReference)
+      ) {
+        tx.status = 'DISPUTED';
+      }
+    }
+
     const affectedCredits: SeatCreditLedgerEntry[] = [];
 
     for (const credit of this.ledgerEntries.values()) {
@@ -407,6 +468,7 @@ export class CreditPoolService {
         // Only freeze dormant AVAILABLE credits
         if (credit.status === 'AVAILABLE') {
           credit.status = 'FROZEN';
+          credit.audit_reason = reason || 'Payment chargeback dispute';
           affectedCredits.push({ ...credit });
         }
       }
@@ -421,6 +483,39 @@ export class CreditPoolService {
       affectedCredits,
       alreadyProcessed: false,
     };
+  }
+
+  /**
+   * Attempts a direct manual update or delete on a ledger entry.
+   * Invariant: Fails closed to simulate the database immutability trigger!
+   */
+  public mutateLedgerEntryDirectly(
+    creditId: string,
+    operation: 'UPDATE' | 'DELETE',
+    newStatus?: CreditStatus
+  ): void {
+    const entry = this.ledgerEntries.get(creditId);
+    if (!entry) {
+      throw new Error(`ENTRY_NOT_FOUND: Credit row '${creditId}' does not exist.`);
+    }
+
+    if (operation === 'DELETE') {
+      throw new Error(
+        'LEDGER_IMMUTABILITY_VIOLATION: DELETE on seat_credit_ledger is strictly prohibited. Ledger rows are append-only.'
+      );
+    }
+
+    if (operation === 'UPDATE') {
+      if (entry.status !== 'AVAILABLE') {
+        throw new Error(
+          `LEDGER_IMMUTABILITY_VIOLATION: Credit row ${creditId} with status ${entry.status} is finalized and cannot be modified directly.`
+        );
+      }
+      if (newStatus && !['CONSUMED', 'FROZEN', 'REVERSED'].includes(newStatus)) {
+        throw new Error(`LEDGER_IMMUTABILITY_VIOLATION: Invalid target status '${newStatus}' for credit transition.`);
+      }
+      entry.status = newStatus || entry.status;
+    }
   }
 
   /**
@@ -441,6 +536,24 @@ export class CreditPoolService {
     }
 
     return expiredCount;
+  }
+
+  /**
+   * Returns all parent purchase transactions.
+   */
+  public getPurchaseTransactions(branchId?: string): CreditPurchaseTransaction[] {
+    const all = Array.from(this.purchaseTransactions.values());
+    if (branchId) {
+      return all.filter((t) => t.branch_id === branchId);
+    }
+    return all;
+  }
+
+  /**
+   * Returns single purchase transaction by payment reference.
+   */
+  public getPurchaseTransactionByPaymentRef(paymentReference: string): CreditPurchaseTransaction | undefined {
+    return Array.from(this.purchaseTransactions.values()).find((t) => t.payment_reference === paymentReference);
   }
 
   /**
@@ -465,6 +578,7 @@ export class CreditPoolService {
    * Resets in-memory state (useful for test isolation).
    */
   public resetState(): void {
+    this.purchaseTransactions.clear();
     this.ledgerEntries.clear();
     this.licenses.clear();
     this.processedIdempotencyKeys.clear();

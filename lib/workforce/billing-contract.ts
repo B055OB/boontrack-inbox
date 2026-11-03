@@ -29,14 +29,33 @@ export interface BranchSeatState {
 
 export interface SeatCreditLedgerEntry {
   credit_id: string;
+  purchase_id?: string;
   branch_id: string;
+  agency_id?: string;
   purchase_reference: string;
   payment_reference: string;
   status: CreditStatus;
   consumed_by_personnel_id?: string;
   consumed_at?: string;
+  original_credit_id?: string;
+  audit_reason?: string;
   created_at: string;
   idempotency_key?: string;
+}
+
+export interface CreditPurchaseTransaction {
+  purchase_id: string;
+  branch_id: string;
+  agency_id: string;
+  payment_reference: string;
+  purchase_reference: string;
+  quantity: number;
+  unit_price_idr: number;
+  subtotal_idr: number;
+  tax_idr: number;
+  total_idr: number;
+  status: 'SETTLED' | 'DISPUTED' | 'REFUNDED';
+  created_at: string;
 }
 
 export interface CreditDepositQuote {

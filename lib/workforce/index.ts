@@ -8,4 +8,5 @@ export * from './hierarchy-contract';
 export * from './billing-contract';
 export * from './storage-contract';
 export * from './credit-pool-service';
+export * from './api-contracts';
 
