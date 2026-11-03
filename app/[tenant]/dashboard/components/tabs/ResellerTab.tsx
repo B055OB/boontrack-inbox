@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  QrCode,
   Users,
   UserPlus,
   Copy,
@@ -33,6 +34,7 @@ import {
   X
 } from 'lucide-react';
 import ResellerComplianceModal from '../ResellerComplianceModal';
+import ResellerQrDownloadModal from '@/components/reseller/ResellerQrDownloadModal';
 
 interface ResellerMember {
   id: string;
@@ -176,6 +178,8 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
 
   // ── Copy feedback state ──
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  // ── QR Code Download Modal State ──
+  const [qrModalReseller, setQrModalReseller] = useState<ResellerMember | null>(null);
 
   // ── Settle/Mark as Paid state ──
   const [settlingId, setSettlingId] = useState<string | null>(null);
@@ -941,6 +945,17 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
                               <span>{isCopied ? 'Tersalin' : 'Salin Link'}</span>
                             </button>
 
+                            {/* Barcode / QR Download Modal Trigger */}
+                            <button
+                              type="button"
+                              data-testid={`btn-open-qr-${reseller.code}`}
+                              onClick={() => setQrModalReseller(reseller)}
+                              className="p-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition cursor-pointer"
+                              title="Generate & Download QR Code Promosi (PNG)"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                            </button>
+
                             {/* Bagikan ke WA */}
                             <button
                               type="button"
@@ -1480,6 +1495,24 @@ export default function ResellerTab({ tenantSlug, tenantData }: ResellerTabProps
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Reseller QR Code Preview & Download Modal ── */}
+      {qrModalReseller && (
+        <ResellerQrDownloadModal
+          isOpen={!!qrModalReseller}
+          onClose={() => setQrModalReseller(null)}
+          resellerName={qrModalReseller.name}
+          referralCode={qrModalReseller.code}
+          referralUrl={
+            typeof window !== 'undefined'
+              ? `${window.location.origin}/${tenantSlug}?r=${encodeURIComponent(qrModalReseller.code)}`
+              : `https://shop.boontrack.com/${tenantSlug}?r=${encodeURIComponent(qrModalReseller.code)}`
+          }
+          tenantSlug={tenantSlug}
+          resellerPhone={qrModalReseller.phone}
+          storeName={tenantData?.name || tenantSlug}
+        />
       )}
     </div>
   );
