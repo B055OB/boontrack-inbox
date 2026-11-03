@@ -547,25 +547,33 @@ DECLARE
     v_frozen_count INT := 0;
     v_branch_id TEXT;
 BEGIN
-    -- 1. Mark parent purchase transaction as DISPUTED if exists
+    -- 1. Mark parent purchase transaction as DISPUTED if exists and resolve branch_id
     UPDATE credit_purchase_transactions
     SET status = 'DISPUTED'
-    WHERE payment_reference = p_payment_reference;
+    WHERE payment_reference = p_payment_reference
+    RETURNING branch_id INTO v_branch_id;
 
-    -- 2. Lock available rows
-    PERFORM id
-    FROM seat_credit_ledger
-    WHERE payment_reference = p_payment_reference AND status = 'AVAILABLE'
-    FOR UPDATE;
+    IF v_branch_id IS NULL THEN
+        SELECT branch_id INTO v_branch_id
+        FROM credit_purchase_transactions
+        WHERE payment_reference = p_payment_reference;
+    END IF;
 
-    -- 3. Get branch_id
-    SELECT branch_id INTO v_branch_id
-    FROM seat_credit_ledger
-    WHERE payment_reference = p_payment_reference AND status = 'AVAILABLE'
-    LIMIT 1;
+    IF v_branch_id IS NULL THEN
+        SELECT branch_id INTO v_branch_id
+        FROM seat_credit_ledger
+        WHERE payment_reference = p_payment_reference
+        LIMIT 1;
+    END IF;
 
-    IF FOUND THEN
-        -- 4. Update status to FROZEN
+    -- 2. Lock and freeze available credits
+    IF v_branch_id IS NOT NULL THEN
+        PERFORM id
+        FROM seat_credit_ledger
+        WHERE payment_reference = p_payment_reference AND status = 'AVAILABLE'
+        FOR UPDATE;
+
+        -- Update status to FROZEN
         UPDATE seat_credit_ledger
         SET status = 'FROZEN',
             action_type = 'FREEZE',
@@ -574,8 +582,8 @@ BEGIN
 
         GET DIAGNOSTICS v_frozen_count = ROW_COUNT;
 
-        -- 5. Deduct frozen credits from branch_credit_pools
-        IF v_frozen_count > 0 AND v_branch_id IS NOT NULL THEN
+        -- 3. Deduct frozen credits from branch_credit_pools (zero negative debt)
+        IF v_frozen_count > 0 THEN
             UPDATE branch_credit_pools
             SET available_credits = GREATEST(0, available_credits - v_frozen_count),
                 updated_at = NOW()
