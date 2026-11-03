@@ -36,6 +36,21 @@ import {
 import type { Product } from '@/app/[tenant]/types';
 import dynamic from 'next/dynamic';
 
+import {
+  SoupSlotSelector,
+  getSoupQuotaForPackage,
+  validateSoupSelection,
+  formatSoupSelection,
+} from '@/components/shabu-ajhi/SoupSlotSelector';
+import {
+  countCateringPackages,
+  LARGE_ORDER_WARNING_MESSAGE,
+  SHABU_AJHI_HANDOVER_PHONE,
+} from '@/lib/shipping/deliveryCalculator';
+import {
+  validateCateringCart,
+} from '@/lib/checkout/cateringCheckoutRouting';
+
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
 
@@ -66,6 +81,7 @@ interface CartItem {
   price: number;
   qty: number;
   soupVariant?: string;
+  selectedSoups?: Record<string, number>;
   isAddon?: boolean;
   unit?: string;
   image?: string;
@@ -257,6 +273,8 @@ export default function FnbCateringStorefrontView({
   const [activeTabKey, setActiveTabKey] = useState<string>('Paket Alat Hemat');
   // Store chosen soup variant per product id (default: Kuah Kaldu Gurih)
   const [selectedSoups, setSelectedSoups] = useState<Record<string, string>>({});
+  // Multi-slot soup allocations per product: { [productId]: { [soupVariant]: count } }
+  const [productSoupAllocations, setProductSoupAllocations] = useState<Record<string, Record<string, number>>>({});
 
   // ── 3. CART & ADDONS STATE ──
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -464,6 +482,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     const isBbqOnly = checkIsBbqOnly(p as any);
     const isShabuRelated = !isBbqOnly;
 
+    const quota = getSoupQuotaForPackage(p.name, 2);
+    const allocation = productSoupAllocations[pId] || (chosenSoup ? { [chosenSoup]: quota } : {});
+    const isSoupAllocComplete = isShabuRelated ? validateSoupSelection(allocation, quota).isComplete : true;
+
+    if (isShabuRelated && !isSoupAllocComplete) {
+      alert(`Silakan pilih kuota kuah (${quota} slot) untuk ${p.name} terlebih dahulu.`);
+      return;
+    }
+
+    const formattedSoup = isShabuRelated
+      ? (formatSoupSelection(allocation) || chosenSoup)
+      : undefined;
+
     setCart((prev) => {
       const existing = prev[pId];
       if (existing) {
@@ -482,7 +513,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           name: p.name,
           price: Number(p.price || 0),
           qty: 1,
-          soupVariant: isShabuRelated ? chosenSoup : undefined,
+          soupVariant: formattedSoup,
+          selectedSoups: isShabuRelated ? allocation : undefined,
           isAddon: false,
           image: p.image_url || p.image,
         },
@@ -550,6 +582,13 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     return { totalItems: itemsCount, totalPrice: sum };
   }, [cart]);
 
+  // Total catering packages count & large party order flag (>= 5 packages)
+  const totalCateringPackages = useMemo(() => {
+    return countCateringPackages(Object.values(cart));
+  }, [cart]);
+
+  const isLargePartyOrder = totalCateringPackages >= 5;
+
   // Format date helper (e.g. "Senin, 20 Oktober 2026")
   const formattedDeliveryDate = useMemo(() => {
     if (!deliveryDate) return 'Hari Ini';
@@ -578,6 +617,25 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
+    // Large order handoff routing (>= 5 packages)
+    if (isLargePartyOrder) {
+      const validation = validateCateringCart({
+        cartItems: Object.values(cart),
+        distanceKm: 0,
+        deliveryDate,
+        formattedDeliveryDate,
+        selectedTimeSlot,
+        locationAddress: `${locationType} - ${locationDetails}`,
+        storeName: effectiveName,
+        waNumber: SHABU_AJHI_HANDOVER_PHONE,
+      });
+
+      if (typeof window !== 'undefined') {
+        window.open(validation.whatsappHandoffUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
     const { waUrl } = buildCateringWhatsAppUrl({
       storeName: effectiveName,
       waNumber,
@@ -598,6 +656,11 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
   // Alternative: Instant QRIS Modal Trigger
   const handleDirectQrisCheckout = () => {
     if (totalItems === 0) return;
+
+    if (isLargePartyOrder) {
+      alert(LARGE_ORDER_WARNING_MESSAGE);
+      return;
+    }
 
     if (!selectedTimeSlot) {
       alert('Silakan pilih slot jam pengantaran yang masih tersedia terlebih dahulu.');
@@ -1078,34 +1141,25 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     </p>
                   )}
 
-                  {/* ── Pemilih Varian Kuah Instan (Khusus Menu Shabu) ── */}
+                  {/* ── Pemilih Varian Kuah Multi-Slot (Khusus Menu Shabu) ── */}
                   {isShabuRelated && (
-                    <div className="mt-4 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-slate-700 flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-amber-600" />
-                          <span>Pilihan Kuah:</span>
-                        </span>
-                        <span className="text-amber-800 font-mono text-[10px] font-bold">
-                          {chosenSoup}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {soupOptions.map((soup) => (
-                          <button
-                            key={soup}
-                            type="button"
-                            onClick={() => handleSelectSoup(pId, soup)}
-                            className={`py-1 px-2 rounded-lg text-[10px] font-bold transition cursor-pointer text-center truncate ${
-                              chosenSoup === soup
-                                ? 'bg-amber-400 text-amber-950 font-black shadow-xs'
-                                : 'bg-white text-slate-700 hover:text-slate-900 border border-amber-200 hover:bg-amber-50'
-                            }`}
-                          >
-                            {soup}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="mt-4">
+                      <SoupSlotSelector
+                        packageName={item.name}
+                        quotaLimit={getSoupQuotaForPackage(item.name, 2)}
+                        availableSoups={soupOptions}
+                        value={
+                          productSoupAllocations[pId] ||
+                          (chosenSoup ? { [chosenSoup]: getSoupQuotaForPackage(item.name, 2) } : undefined)
+                        }
+                        onChange={(selection) => {
+                          setProductSoupAllocations((prev) => ({
+                            ...prev,
+                            [pId]: selection,
+                          }));
+                        }}
+                        showSubmitButton={false}
+                      />
                     </div>
                   )}
 
@@ -1130,36 +1184,60 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     )}
                   </div>
 
-                  {currentQty === 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => handleAddProduct(item)}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Pilih Paket</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleDecreaseProduct(pId)}
-                        className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer"
-                      >
-                        <Minus className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="font-mono font-bold text-sm text-slate-900 w-5 text-center">
-                        {currentQty}
-                      </span>
+                  {(() => {
+                    const quota = getSoupQuotaForPackage(item.name, 2);
+                    const currentAlloc =
+                      productSoupAllocations[pId] ||
+                      (chosenSoup ? { [chosenSoup]: quota } : {});
+                    const isSoupAllocComplete = isShabuRelated
+                      ? validateSoupSelection(currentAlloc, quota).isComplete
+                      : true;
+
+                    return currentQty === 0 ? (
                       <button
                         type="button"
                         onClick={() => handleAddProduct(item)}
-                        className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+                        disabled={!isSoupAllocComplete}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                          isSoupAllocComplete
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-200'
+                        }`}
+                        title={
+                          !isSoupAllocComplete
+                            ? `Pilih ${quota} slot kuah terlebih dahulu`
+                            : 'Tambahkan ke pesanan'
+                        }
                       >
                         <Plus className="w-3.5 h-3.5" />
+                        <span>
+                          {isSoupAllocComplete
+                            ? 'Pilih Paket'
+                            : `Lengkapi Kuah (${validateSoupSelection(currentAlloc, quota).allocatedSlots}/${quota})`}
+                        </span>
                       </button>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDecreaseProduct(pId)}
+                          className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-mono font-bold text-sm text-slate-900 w-5 text-center">
+                          {currentQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddProduct(item)}
+                          className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -1256,7 +1334,15 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
 
       {/* ── 5. STICKY BOTTOM CHECKOUT BAR (WHATSAPP CONVERSATIONAL FLOW) ── */}
       {totalItems > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-amber-200/80 shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-amber-200/80 shadow-2xl animate-in slide-in-from-bottom duration-200">
+          {/* Warning Banner Pesanan Partai Besar (>= 5 Paket) */}
+          {isLargePartyOrder && (
+            <div className="w-full bg-amber-500/15 border-b border-amber-500/30 text-amber-900 text-xs font-bold py-2 px-4 flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Pesanan di atas 4 paket memerlukan armada khusus dan koordinasi jadwal pengantaran.</span>
+            </div>
+          )}
+          <div className="p-3 sm:p-4">
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             {/* Ringkasan Pesanan */}
             <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
@@ -1283,13 +1369,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
               <button
                 type="button"
                 onClick={handleDirectQrisCheckout}
-                disabled={!selectedTimeSlot}
-                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
-                  selectedTimeSlot
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20'
+                disabled={!selectedTimeSlot || isLargePartyOrder}
+                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 ${
+                  isLargePartyOrder
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                    : selectedTimeSlot
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20 cursor-pointer shadow-xs active:scale-95'
                     : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
                 }`}
-                title="Buka Faktur Pembayaran QRIS Dinamis"
+                title={
+                  isLargePartyOrder
+                    ? 'Pesanan di atas 4 paket memerlukan koordinasi armada manual'
+                    : 'Buka Faktur Pembayaran QRIS Dinamis'
+                }
               >
                 <QrCode className="w-4 h-4 text-emerald-400" />
                 <span>Bayar QRIS</span>
@@ -1301,18 +1393,29 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 disabled={!selectedTimeSlot}
                 className={`flex-1 sm:flex-initial py-3 px-4 sm:px-6 rounded-2xl text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
                   selectedTimeSlot
-                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
+                    ? isLargePartyOrder
+                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
                     : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
-                title="Pesan Langsung via WhatsApp Kasir (0858-6109-1103)"
+                title={
+                  isLargePartyOrder
+                    ? 'Hubungi Admin CS Shabu Ajhi (+62 896-1779-9878)'
+                    : 'Pesan Langsung via WhatsApp Kasir'
+                }
               >
                 <MessageSquare className="w-4 h-4 fill-white" />
                 <span>
-                  {selectedTimeSlot ? 'WhatsApp Kasir / CS' : 'Pilih Slot Jam Dahulu'}
+                  {!selectedTimeSlot
+                    ? 'Pilih Slot Jam Dahulu'
+                    : isLargePartyOrder
+                    ? 'Hubungi Admin CS Shabu Ajhi'
+                    : 'WhatsApp Kasir / CS'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}
