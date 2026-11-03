@@ -309,30 +309,71 @@ BEGIN
     WHERE branch_id = p_branch_id
     FOR UPDATE;
 
-    -- 6. Insert parent purchase transaction snapshot
-    INSERT INTO credit_purchase_transactions (
-        branch_id,
-        agency_id,
-        payment_reference,
-        purchase_reference,
-        quantity,
-        unit_price_idr,
-        subtotal_idr,
-        tax_idr,
-        total_idr,
-        status
-    ) VALUES (
-        p_branch_id,
-        p_agency_id,
-        p_payment_reference,
-        p_purchase_reference,
-        p_quantity,
-        p_unit_price_idr,
-        v_subtotal,
-        v_tax,
-        v_total,
-        'SETTLED'
-    ) RETURNING purchase_id INTO v_purchase_id;
+    -- 5b. Re-check idempotency under lock to handle concurrent race conditions cleanly
+    SELECT * INTO v_existing_tx
+    FROM credit_purchase_transactions
+    WHERE payment_reference = p_payment_reference;
+
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'idempotent', true,
+            'purchase_id', v_existing_tx.purchase_id,
+            'branch_id', p_branch_id,
+            'quantity_added', v_existing_tx.quantity,
+            'subtotal_idr', v_existing_tx.subtotal_idr,
+            'tax_idr', v_existing_tx.tax_idr,
+            'total_idr', v_existing_tx.total_idr,
+            'available_credits', v_pool.available_credits,
+            'active_seats', v_pool.active_seats,
+            'message', 'Payment reference was already processed'
+        );
+    END IF;
+
+    -- 6. Insert parent purchase transaction snapshot (guarded against concurrent unique violations)
+    BEGIN
+        INSERT INTO credit_purchase_transactions (
+            branch_id,
+            agency_id,
+            payment_reference,
+            purchase_reference,
+            quantity,
+            unit_price_idr,
+            subtotal_idr,
+            tax_idr,
+            total_idr,
+            status
+        ) VALUES (
+            p_branch_id,
+            p_agency_id,
+            p_payment_reference,
+            p_purchase_reference,
+            p_quantity,
+            p_unit_price_idr,
+            v_subtotal,
+            v_tax,
+            v_total,
+            'SETTLED'
+        ) RETURNING purchase_id INTO v_purchase_id;
+    EXCEPTION WHEN unique_violation THEN
+        SELECT * INTO v_existing_tx
+        FROM credit_purchase_transactions
+        WHERE payment_reference = p_payment_reference;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'idempotent', true,
+            'purchase_id', v_existing_tx.purchase_id,
+            'branch_id', p_branch_id,
+            'quantity_added', v_existing_tx.quantity,
+            'subtotal_idr', v_existing_tx.subtotal_idr,
+            'tax_idr', v_existing_tx.tax_idr,
+            'total_idr', v_existing_tx.total_idr,
+            'available_credits', v_pool.available_credits,
+            'active_seats', v_pool.active_seats,
+            'message', 'Payment reference was already processed'
+        );
+    END;
 
     -- 7. Insert credit rows into immutable ledger
     FOR v_i IN 1..p_quantity LOOP
