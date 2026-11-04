@@ -4,12 +4,22 @@ import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. CSRF Origin Verification Guard
+    // 1. CSRF Origin Verification Guard (Proxy & Reverse-Proxy Aware)
     const origin = req.headers.get('origin');
-    const host = req.headers.get('host');
-    if (origin && host) {
-      const originHost = origin.replace(/^https?:\/\//i, '').split('/')[0];
-      if (originHost !== host && !originHost.endsWith(host)) {
+    const forwardedHost = req.headers.get('x-forwarded-host');
+    const rawHost = req.headers.get('host');
+    const effectiveHost = (forwardedHost || rawHost || '').split(':')[0].toLowerCase();
+
+    if (origin && effectiveHost) {
+      const originHost = origin.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].toLowerCase();
+      const isAllowed =
+        originHost === effectiveHost ||
+        originHost.endsWith('.boontrack.com') ||
+        effectiveHost.endsWith('.boontrack.com') ||
+        originHost === 'localhost' ||
+        originHost === '127.0.0.1';
+
+      if (!isAllowed) {
         return NextResponse.json(
           { success: false, error: 'CSRF_ORIGIN_MISMATCH', message: 'Permintaan ditolak: Origin tidak cocok.' },
           { status: 403 }

@@ -54,3 +54,4 @@ describe('Workforce Isolated Middleware Routing Suite', () => {
     expect(manifestRes.status).toBe(200);
   });
 });
+

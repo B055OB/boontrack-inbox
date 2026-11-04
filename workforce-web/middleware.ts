@@ -3,11 +3,14 @@ import type { NextRequest } from 'next/server';
 
 /**
  * Isolated BWM Middleware (workforce-web)
+ * Strictly scoped to workforce.boontrack.com (Port 3001)
  *
- * Strict Isolation Mandates:
- * 1. ZERO external redirect to dashboard.boontrack.com or any external domain.
- * 2. Allow /login and public assets to render cleanly.
- * 3. If route "/" is accessed without a valid session token, redirect locally to "/login".
+ * Mandates:
+ * 1. ZERO EXTERNAL REDIRECT: Absolute prohibition of redirects to dashboard.boontrack.com
+ *    or any external merchant domain.
+ * 2. STANDALONE WORKFORCE ROUTING: Serves only workforce portal routes.
+ * 3. ROUTE PROTECTION: Unauthenticated requests to "/" redirect locally to "/login".
+ * 4. PROXY-SAFE REDIRECTS: Uses req.nextUrl.clone() to preserve public hostname and HTTPS protocol.
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -29,11 +32,19 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Protected route: If accessing root "/" without 'bwm_session_token', redirect locally to "/login"
+  // 3. Catch legacy /dashboard routes and redirect locally to "/"
+  if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
+    const homeUrl = req.nextUrl.clone();
+    homeUrl.pathname = '/';
+    return NextResponse.redirect(homeUrl);
+  }
+
+  // 4. Protected route: If accessing root "/" without 'bwm_session_token', redirect locally to "/login"
   if (pathname === '/' || pathname === '') {
     const sessionToken = req.cookies.get('bwm_session_token')?.value;
     if (!sessionToken) {
-      const loginUrl = new URL('/login', req.url);
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
       return NextResponse.redirect(loginUrl);
     }
   }
