@@ -81,6 +81,7 @@ describe('BWM Gate E6-D: Chargeback & Dispute Isolation Suite', () => {
     try {
       await dbClient.query('ALTER TABLE seat_credit_ledger DISABLE RULE no_delete_seat_credit_ledger;');
       await dbClient.query('ALTER TABLE seat_credit_ledger DISABLE TRIGGER trg_seat_credit_ledger_immutability;');
+      await dbClient.query("DELETE FROM seat_credit_ledger WHERE original_credit_id IS NOT NULL AND (branch_id LIKE 'test_e6d_%' OR agency_id LIKE 'test_e6d_%');");
       await dbClient.query("DELETE FROM seat_credit_ledger WHERE branch_id LIKE 'test_e6d_%' OR agency_id LIKE 'test_e6d_%';");
       await dbClient.query("DELETE FROM credit_purchase_transactions WHERE branch_id LIKE 'test_e6d_%' OR agency_id LIKE 'test_e6d_%';");
       await dbClient.query("DELETE FROM branch_credit_pools WHERE branch_id LIKE 'test_e6d_%' OR agency_id LIKE 'test_e6d_%';");

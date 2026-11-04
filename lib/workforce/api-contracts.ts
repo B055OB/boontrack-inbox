@@ -245,3 +245,119 @@ export function validateReconcileLedgerRequest(req: Partial<ReconcileLedgerReque
     errors,
   };
 }
+
+
+// =========================================================================================
+// 5. EDGE ERROR NORMALIZATION & LOG SANITIZATION
+// =========================================================================================
+
+export interface StandardWorkforceErrorResponse {
+  success: false;
+  error: string;
+  code: string;
+  message: string;
+  timestamp: string;
+}
+
+/**
+ * Normalizes internal workforce / database errors to standardized HTTP JSON responses.
+ * Prevents unhandled 500 error stack dumps from leaking internal details.
+ */
+export function normalizeWorkforceApiError(error: unknown): {
+  statusCode: number;
+  body: StandardWorkforceErrorResponse;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  const now = new Date().toISOString();
+
+  if (message.includes('INSUFFICIENT_CREDITS')) {
+    return {
+      statusCode: 402,
+      body: {
+        success: false,
+        error: 'INSUFFICIENT_CREDITS',
+        code: 'ERR_INSUFFICIENT_CREDITS',
+        message: 'Kredit kursi tidak mencukupi untuk melakukan aktivasi personel.',
+        timestamp: now,
+      },
+    };
+  }
+
+  if (
+    message.includes('SUBSCRIPTION_EXPIRED') ||
+    message.includes('PERSONNEL_LICENSE_INACTIVE') ||
+    message.includes('ACTIVATION_UNPAID')
+  ) {
+    return {
+      statusCode: 403,
+      body: {
+        success: false,
+        error: 'SUBSCRIPTION_EXPIRED',
+        code: 'ERR_SUBSCRIPTION_EXPIRED',
+        message: 'Masa berlaku lisensi atau langganan cabang telah kedaluwarsa.',
+        timestamp: now,
+      },
+    };
+  }
+
+  if (
+    message.includes('TENANT_ISOLATION_BREACH') ||
+    message.includes('SECURITY_VIOLATION') ||
+    message.includes('BRANCH_MEMBERSHIP_MISMATCH') ||
+    message.includes('PRIVILEGE_ESCALATION_BLOCKED')
+  ) {
+    return {
+      statusCode: 403,
+      body: {
+        success: false,
+        error: 'TENANT_ISOLATION_BREACH',
+        code: 'ERR_TENANT_ISOLATION_BREACH',
+        message: 'Pelanggaran isolasi tenant: Akses lintas agensi/cabang ditolak.',
+        timestamp: now,
+      },
+    };
+  }
+
+  if (message.includes('MINIMUM_DEPOSIT_NOT_MET')) {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        error: 'MINIMUM_DEPOSIT_NOT_MET',
+        code: 'ERR_MINIMUM_DEPOSIT_NOT_MET',
+        message: 'Jumlah deposit kurang dari minimum kuota yang ditentukan (5 kredit).',
+        timestamp: now,
+      },
+    };
+  }
+
+  return {
+    statusCode: 500,
+    body: {
+      success: false,
+      error: 'INTERNAL_WORKFORCE_ERROR',
+      code: 'ERR_INTERNAL_WORKFORCE_ERROR',
+      message: 'Terjadi kesalahan internal pada layanan workforce.',
+      timestamp: now,
+    },
+  };
+}
+
+/**
+ * Sanitizes log output to guarantee zero credential or token leakage in logs.
+ * Masks connection strings, bearer tokens, Supabase keys, JWTs, and payment provider keys.
+ */
+export function sanitizeWorkforceLog(input: string): string {
+  if (!input || typeof input !== 'string') return '';
+  return input
+    // Mask postgres URLs: postgresql://user:pass@host:port/db (greedy match up to last @ before host)
+    .replace(/postgres(?:ql)?:\/\/[^\s/]+@/gi, 'postgresql://[REDACTED_USER]:[REDACTED_SECRET]@')
+    // Mask Bearer tokens
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED_TOKEN]')
+    // Mask Supabase secret keys (sb_secret_... or eyJ...)
+    .replace(/sb_secret_[a-zA-Z0-9_\-]+/gi, '[REDACTED_SUPABASE_KEY]')
+    .replace(/sb_publishable_[a-zA-Z0-9_\-]+/gi, '[REDACTED_SUPABASE_KEY]')
+    .replace(/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/gi, '[REDACTED_JWT_TOKEN]')
+    // Mask Xendit / webhook keys (xnd_development_..., xnd_production_...)
+    .replace(/xnd_(development|production)_[a-zA-Z0-9]+/gi, '[REDACTED_XENDIT_KEY]');
+}
