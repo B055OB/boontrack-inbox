@@ -80,3 +80,4 @@ describe('ResellerQrDownloadModal Component Suite', () => {
     });
   });
 });
+

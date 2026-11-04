@@ -778,6 +778,12 @@ function SingleProductContent() {
                 );
                 // Pastikan tidak ada atribut data-bt-checkout tersisa pada tag <a>
                 resolvedCustomHtml = resolvedCustomHtml.replace(/(<a\b[^>]*)\bdata-bt-checkout\b([^>]*>)/gi, '$1$2');
+
+                // 3. Suppress & strip Mock Checkout Drawer and its script from DOM to prevent FOUC / visual flash
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/<div\b[^>]*\bid=["']bt-mock-backdrop["'][^>]*>(?:[\s\S]*?<\/div>)?/gi, '')
+                  .replace(/<aside\b[^>]*\bid=["']bt-mock-drawer["'][^>]*>[\s\S]*?<\/aside>/gi, '')
+                  .replace(/<script\b[^>]*\bsrc=["'][^"']*mock-checkout\.js[^"']*["'][^>]*>(?:[\s\S]*?<\/script>)?/gi, '');
               }
 
               resolvedCustomHtml = resolvedCustomHtml
@@ -807,6 +813,13 @@ function SingleProductContent() {
   .ob-sec10-wrap {
     background-color: #0a0a0a !important;
     color: #f4f4f5 !important;
+  }
+  #bt-mock-backdrop,
+  #bt-mock-drawer,
+  .bt-mock-backdrop,
+  .bt-mock-drawer {
+    display: none !important;
+    visibility: hidden !important;
   }
   #tools,
   .comparison-section {
@@ -2042,6 +2055,7 @@ function SingleProductContent() {
 
   const cartState = useCart(tenant);
   const isCartDisabled =
+    isOnlineBoostBatch1 ||
     isCustomHtmlActivePage ||
     product.metadata?.enable_cart === false ||
     (product as any).enable_cart === false ||
@@ -5954,7 +5968,7 @@ function SingleProductContent() {
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
-      {checkoutOpen && (!isCheckoutSectionDisabled || isObBatch1Target) && (
+      {!isOnlineBoostBatch1 && checkoutOpen && !isCheckoutSectionDisabled && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">

@@ -274,3 +274,4 @@ export function ResellerQrDownloadModal({
 }
 
 export default ResellerQrDownloadModal;
+

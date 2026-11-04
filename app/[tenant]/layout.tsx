@@ -262,6 +262,13 @@ export default async function TenantStoreLayout({
                 color: #f4f4f5 !important;
                 color-scheme: dark !important;
               }
+              #bt-mock-backdrop,
+              #bt-mock-drawer,
+              .bt-mock-backdrop,
+              .bt-mock-drawer {
+                display: none !important;
+                visibility: hidden !important;
+              }
             `,
           }}
         />

@@ -274,16 +274,32 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
     expect(location).toBe('https://dashboard.boontrack.com/login');
   });
 
-  it('18. [DIRECT DESK ROUTE] Allows direct desk operator route /:slug/desk without circular redirect', async () => {
+  it('18. [RETIRED MERCHANT DESK] Redirects authenticated legacy desk route /:slug/desk to canonical /:slug/dashboard', async () => {
+    const token = signMerchantSessionToken({ tenantSlug: 'margasari', role: 'OWNER' });
+    const req = new NextRequest('https://dashboard.boontrack.com/margasari/desk', {
+      headers: {
+        host: 'dashboard.boontrack.com',
+        cookie: `bt_merchant_token=${token}`,
+      },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBeDefined();
+    expect(location).toContain('/margasari/dashboard');
+  });
+
+  it('18b. [P0 SECURITY] Redirects unauthenticated direct desk operator route /:slug/desk to /login', async () => {
     const req = new NextRequest('https://dashboard.boontrack.com/margasari/desk', {
       headers: { host: 'dashboard.boontrack.com' },
     });
 
     const res = await middleware(req);
-    expect(res.status).toBe(200);
-    const rewriteHeader = res.headers.get('x-middleware-rewrite');
-    expect(rewriteHeader).toBeDefined();
-    expect(rewriteHeader).toContain('/margasari/desk');
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBeDefined();
+    expect(location).toContain('/login?redirectTo=');
   });
 });
 

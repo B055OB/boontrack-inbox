@@ -73,7 +73,7 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 | `boontrack.com` | Landing Page Korporat & Solusi | Cloudflare Worker (`patient-smoke-84ed`) | Edukasi platform & navigasi produk | `PageView` |
 | `boontrack.com/onboarding` | B2B, B2G, Custom IoT & Hardware | Cloudflare Worker (`patient-smoke-84ed`) | Form Audit & Booking Architect | `Lead` |
 | `career.boontrack.com` | AI Career Growth & Talent Pool | Cloudflare Worker (`silent-water-8c2e`) | Landing page career & intake CV | `PageView` / `Lead` |
-| `app.boontrack.com` | Pintu Masuk Portal Aplikasi | Vercel (Next.js) | Hub Utama (Onboarding redirect ke `boontrack.com/onboarding`) | - |
+| `app.boontrack.com` | Legacy Application Portal & Hub (Non-Canonical) | Vercel (Next.js) | Hub aplikasi legacy (BUKAN domain merchant dashboard aktif; merchant wajib menggunakan `dashboard.boontrack.com`) | - |
 | `shop.boontrack.com/register` | Merchant Self-Serve (UKM / Retail) | Vercel (Next.js) | Registrasi Toko Baru Langsung | `InitiateCheckout` (Trial), `Purchase` (Lunas) |
 | `shop.boontrack.com/affiliate/register` | Calon Mitra Afiliasi | Vercel (Next.js) | Registrasi Mandiri Program Afiliasi | `CompleteRegistration` |
 | `affiliate.boontrack.com` | Mitra Affiliate Aktif (role: 'affiliate') & Affiliate Manager (role: 'am' - Kang Sakti / buzzerukm) | Vercel (Next.js) | Dashboard Mandiri Mitra, serta Agregasi Metrik Jaringan Downline & Monitoring Payout khusus role AM. | - |
@@ -4205,10 +4205,10 @@ graph TD
     end
 
     subgraph Domains ["3. DOMAIN BOUNDARY GATES"]
-        D1["shop.boontrack.com<br/>(Commerce Storefronts)"]
-        D2["app.boontrack.com<br/>(Custom Apps, Civic Portals & Hub)"]
-        D3["creator.boontrack.com<br/>(Creator Profiles & UGC Studio)"]
-        D4["career.boontrack.com<br/>(Career AI & Talent Pool)"]
+        D1["shop.boontrack.com<br/>(Buyer Storefronts)"]
+        D2["dashboard.boontrack.com<br/>(Merchant Dashboard & CS Inbox)"]
+        D3["studio.boontrack.com<br/>(Creative Workspace & Production)"]
+        D4["creator.boontrack.com<br/>(Creator Showcase & Bio Link)"]
     end
 
     subgraph Templates ["4. CANONICAL TEMPLATES"]
@@ -4264,21 +4264,33 @@ Tiga aturan invarian berikut bersifat absolut dan tidak dapat diubah (*non-negot
 - Sistem wajib menetapkan template sebagai `UNKNOWN_TEMPLATE`, mengembalikan error `UnknownTemplateError` (HTTP 422), dan menampilkan komponen fallback terkendali: `ControlledProvisioningError`.
 - Hal ini mencegah kebocoran visual katalog e-commerce pada entitas non-komersial (seperti kantor kelurahan, instansi publik, atau landing page korporat).
 
-#### Invariant 2: Domain Boundary Guard
-Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middleware dan Component Resolver:
-- **`shop.boontrack.com` (Commerce Domain)**:
-  * Hanya mengizinkan tenant dengan kapabilitas komersial penuh (`SHOP_V1`).
-  * Jika tenant non-komersial (`PUBLIC_SERVICE_V1`, `CUSTOM_APP`) diakses melalui `shop.boontrack.com`, sistem **WAJIB menolak dengan HTTP 404 Not Found** (`TemplateNotCompatibleError`).
-- **`app.boontrack.com` (Application & Public Service Domain)**:
-  * Mengizinkan tenant aplikasi kustom, layanan warga digital (`PUBLIC_SERVICE_V1`), portal enterprise, dan routing portal aplikasi (`/app-portal`).
-  * Akses operator PTSP (`/[tenant]/desk`) dan autentikasi kontekstual (`/login?redirectTo=...`) diselesaikan secara otomatis tanpa circular redirect.
-- **`creator.boontrack.com` (Public Creator Experience)**:
-  * Didedikasikan khusus untuk showcase publik, link-in-bio mobile-first, transparent deep-linking Shopee/TikTok native, dan etalase produk digital/jasa bertema Clean Light (`CREATOR_V1`).
-  * Murni melayani audiens publik tanpa beban proses render media berat.
-- **`studio.boontrack.com` (Authenticated Creative Workspace)**:
-  * Ruang kerja produksi kreatif B2B bertema Electric Dark.
-  * Menampung generator naskah video 9-scene, storyboard, manajemen aset kreatif, serta pemantauan antrean render media (FFmpeg CPU).
-  * Terproteksi otentikasi secara default dengan resolusi tenant berbasis sesi (`TenantRuntimeContext`).
+#### Invariant 2: Domain Boundary Guard & 4 Canonical Product Surfaces
+Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middleware dan Component Resolver untuk **4 Pilar Permukaan Produk Kanonikal**:
+1. **`dashboard.boontrack.com/{slug}` (Merchant Dashboard & CS Inbox)**:
+   * **Route Kanonikal**: `app/[tenant]/dashboard/...`
+   * **Tanggung Jawab**: Operasional seller, administrasi toko, manajemen tim/CS, analitik pesanan, dan unified WhatsApp inbox.
+   * Diproteksi oleh `resolveVerifiedTenantContext`: sesi wajib valid, berstatus aktif, dan merupakan anggota resmi dari tenant yang diakses.
+2. **`studio.boontrack.com` (Creative Workspace)**:
+   * **Route Kanonikal**: `app/studio/page.tsx` & `app/studio/desk/page.tsx`
+   * **Tanggung Jawab**: Ruang kerja produksi kreatif video iklan 9-scene, storyboard, manajemen aset, dan antrean render media.
+   * Rute `studio.boontrack.com/desk` adalah rute aktif Studio workspace (independen dan TIDAK terdampak pensiunnya merchant desk).
+3. **`shop.boontrack.com/{slug}` (Buyer Storefront)**:
+   * **Route Kanonikal**: `app/[tenant]/...` (storefront, katalog produk, kalkulasi ongkir, checkout QRIS, status pesanan).
+   * Hanya mengizinkan tenant dengan kapabilitas komersial penuh (`SHOP_V1`).
+   * Akses tenant non-komersial via domain ini wajib ditolak dengan HTTP 404 (`TemplateNotCompatibleError`).
+4. **`creator.boontrack.com/@{handle}` (Creator Showcase)**:
+   * **Route Kanonikal**: Creator profile routes (`app/[tenant]/creator/...` / `creator.boontrack.com/@{handle}`).
+   * Showcase publik, link-in-bio mobile-first, transparent deep-linking, direct digital checkout. Murni melayani audiens publik tanpa beban render video berat.
+
+##### Permukaan Non-Kanonikal & Berstatus Pensiun (Deprecated / Retired):
+- **`app.boontrack.com` (Legacy Application Portal & Hub)**:
+  * Domain aplikasi legacy yang **BUKAN** merupakan domain merchant dashboard aktif.
+  * Seluruh operasional merchant wajib diarahkan ke `dashboard.boontrack.com`.
+- **Rute `/{tenant}/desk` (Legacy Merchant Desk — RETIRED)**:
+  * Halaman legacy merchant desk (`app/[tenant]/desk/page.tsx`) resmi dipensiunkan (RETIRED) dan digantikan oleh Server Component redirect (HTTP 307) ke `/{tenant}/dashboard`.
+  * Traffic dari edge/middleware pada `dashboard.boontrack.com/{slug}/desk` maupun `shop.boontrack.com/{slug}/desk` otomatis dialihkan ke `/{slug}/dashboard`.
+  * Parameter operasional aman (`tab`, `filter`, `status`, `q`, `date`, `orderId`) dipertahankan secara transparan.
+  * Pensiunnya `/{tenant}/desk` TIDAK mempengaruhi `studio.boontrack.com/desk` yang merupakan ruang kerja aktif Studio.
 - **`career.boontrack.com` (Career Domain)**:
   * Didedikasikan untuk intake CV, evaluasi AI ATS, dan talent pool recruitment (`CAREER_V1`).
 
@@ -4817,7 +4829,7 @@ public/branding/
 Komponen antarmuka (Next.js layout, header, footer, favicon metadata tags) dilarang melakukan hardcode string path aset secara manual. Seluruh pemetaan wajib mengonsumsi kontrak konfigurasi `BRANDING_ASSETS` dan helper `getBrandingConfig()`:
 
 ```ts
-export type BrandingPillar = 'shop' | 'studio' | 'creator' | 'app';
+export type BrandingPillar = 'shop' | 'studio' | 'creator' | 'dashboard' | 'app';
 
 export interface PillarBrandingConfig {
   name: string;
@@ -4831,8 +4843,19 @@ export interface PillarBrandingConfig {
 }
 
 export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
+  dashboard: {
+    name: 'BoonTrack Dashboard & Inbox',
+    shortName: 'Dashboard',
+    logo: '/branding/app/logo-512.png',
+    favicon: '/branding/app/favicon.ico',
+    icon: '/branding/app/icon.png',
+    appleTouchIcon: '/branding/app/apple-touch-icon.png',
+    manifest: '/branding/app/manifest.json',
+    domain: 'https://dashboard.boontrack.com',
+  },
   shop: {
     name: 'BoonTrack Shop',
+    shortName: 'Shop',
     logo: '/branding/shop/logo.png',
     favicon: '/branding/shop/favicon.ico',
     icon: '/branding/shop/icon.png',
@@ -4842,6 +4865,7 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
   },
   studio: {
     name: 'BoonTrack Studio',
+    shortName: 'Studio',
     logo: '/branding/studio/logo.png',
     favicon: '/branding/studio/favicon.ico',
     icon: '/branding/studio/icon.png',
@@ -4851,6 +4875,7 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
   },
   creator: {
     name: 'BoonTrack Creator',
+    shortName: 'Creator',
     logo: '/branding/creator/logo.png',
     favicon: '/branding/creator/favicon.ico',
     icon: '/branding/creator/icon.png',
@@ -4858,8 +4883,12 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
     manifest: '/branding/creator/manifest.json',
     domain: 'https://creator.boontrack.com',
   },
+  /**
+   * @deprecated Legacy application portal / hub domain. It is NOT an active canonical merchant dashboard domain.
+   */
   app: {
     name: 'BoonTrack App Portal',
+    shortName: 'App Portal',
     logo: '/branding/app/logo-512.png',
     favicon: '/branding/app/favicon.ico',
     icon: '/branding/app/icon.png',

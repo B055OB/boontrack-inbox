@@ -74,5 +74,30 @@ describe('TASK: OnlineBoost Batch 1 #tools Anchor & Dark Theme Rehydration Guard
       expect(pageContent).not.toContain('ONLINEBOOST_PAYMENT_STRICT_HOLD');
     });
   });
+
+  describe('3. Eliminasi Checkout Drawer Flash & DOM Suppression (Zero FOUC)', () => {
+    it('completely strips #bt-mock-backdrop, #bt-mock-drawer, and mock-checkout.js from custom HTML for Batch 1', () => {
+      expect(pageContent).toContain('bt-mock-backdrop');
+      expect(pageContent).toContain('bt-mock-drawer');
+      expect(pageContent).toContain('mock-checkout');
+      expect(pageContent).toContain('bt-mock-drawer');
+    });
+
+    it('injects immediate CSS suppression for mock drawer & backdrop in early layout and dark theme overrides', () => {
+      expect(layoutContent).toContain('#bt-mock-backdrop');
+      expect(layoutContent).toContain('#bt-mock-drawer');
+      expect(layoutContent).toContain('display: none !important;');
+      expect(layoutContent).toContain('visibility: hidden !important;');
+      expect(pageContent).toContain('#bt-mock-drawer,\n  .bt-mock-backdrop,');
+    });
+
+    it('suppresses Instant Checkout Modal Fallback strictly for OnlineBoost Batch 1', () => {
+      expect(pageContent).toContain('{!isOnlineBoostBatch1 && checkoutOpen && !isCheckoutSectionDisabled && (');
+    });
+
+    it('ensures cart and cart drawer are disabled for OnlineBoost Batch 1', () => {
+      expect(pageContent).toContain('const isCartDisabled =\n    isOnlineBoostBatch1 ||');
+    });
+  });
 });
 

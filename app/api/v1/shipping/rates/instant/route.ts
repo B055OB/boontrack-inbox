@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
-import { resolveAreaCoordinates } from '@/app/api/v1/shipping/locations/search/route';
+import { resolveAreaCoordinates, geocodeDestinationAddress } from '@/app/api/v1/shipping/locations/search/route';
+import { calculateShabuAjhiRate } from '@/lib/delivery/shabuAjhiRates';
+import { CateringItem } from '@/lib/shipping/deliveryCalculator';
 
 const BITESHIP_API_URL = 'https://api.biteship.com/v1/rates/couriers';
 
@@ -26,6 +28,18 @@ export function calculateDistanceKm(
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c * 10) / 10;
+}
+
+// Helper: Menghitung estimasi jarak rute jalan riil (Road Distance) dengan faktor kurvatur jalanan Indonesia (1.30x)
+export function calculateRoadDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const straight = calculateDistanceKm(lat1, lon1, lat2, lon2);
+  if (straight <= 0) return 0;
+  return Math.round(straight * 1.30 * 10) / 10;
 }
 
 export async function POST(req: NextRequest) {
@@ -55,10 +69,10 @@ export async function POST(req: NextRequest) {
         ? Number(body.longitude)
         : null;
 
-    // Jika koordinat belum dikirim eksplisit, selesaikan via resolver berdasarkan kota, distrik, atau kode pos
+    // Jika koordinat belum dikirim eksplisit, selesaikan via resolver berdasarkan kota, distrik, kode pos, atau alamat
     if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
-      if (destinationCity || destinationDistrict || destinationPostalCode) {
-        const resolved = resolveAreaCoordinates(destinationCity, destinationDistrict, destinationPostalCode);
+      if (destinationAddress || destinationCity || destinationDistrict || destinationPostalCode) {
+        const resolved = await geocodeDestinationAddress(destinationAddress, destinationCity, destinationDistrict, destinationPostalCode);
         destLat = resolved.latitude;
         destLon = resolved.longitude;
       }
@@ -107,6 +121,7 @@ export async function POST(req: NextRequest) {
         : null;
     let enabledCouriers: any[] = [];
     let metaShipping: any = null;
+    let tenantMeta: any = null;
 
     if (slug) {
       try {
@@ -128,6 +143,7 @@ export async function POST(req: NextRequest) {
           const biteshipCfg = settingsRes.data?.biteship_config;
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
+          tenantMeta = meta;
           metaShipping = meta.shipping_config;
 
           if (biteshipCfg) {
@@ -226,7 +242,10 @@ export async function POST(req: NextRequest) {
     const finalDestLon = destLon ?? 107.6191;
 
     // 2. Hitung Jarak Geospasial Haversine & Validasi Radius Maksimal (Dinamis per Tenant / Default 30 KM)
-    const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    const straightDistanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    const roadDistanceKm = calculateRoadDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    const distanceKm = roadDistanceKm > 0 ? roadDistanceKm : straightDistanceKm;
+
     // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
     const rawRadius =
       metaShipping?.fnb_settings?.max_radius_km ??
@@ -257,6 +276,52 @@ export async function POST(req: NextRequest) {
     const biteshipKey = process.env.BITESHIP_API_KEY;
     const availableRates: any[] = [];
     let biteshipSuccess = false;
+
+    // Deteksi apakah tenant mengaktifkan skema FnB Catering / Home Service (13-Tier + Jemput Alat Masak Kotor)
+    const isCateringTenant = Boolean(
+      metaShipping?.tier_mode === 'CATERING_13_TIER' ||
+      metaShipping?.tier_mode === '13_TIER' ||
+      tenantMeta?.fnb_catering?.is_enabled ||
+      tenantMeta?.fnb_catering?.is_fnb_home_service ||
+      metaShipping?.internal_courier?.label?.includes('Alat Masak Kotor')
+    );
+
+    if (isCateringTenant) {
+      const cateringItems: CateringItem[] = Array.isArray(body.items)
+        ? body.items.map((it: any) => ({
+            name: it.productTitle || it.title || it.name || '',
+            qty: Number(it.quantity || it.qty || 1),
+            price: Number(it.unitPrice || it.price || 0),
+            isAddon: Boolean(it.isAddon || it.is_addon),
+            is_addon: Boolean(it.isAddon || it.is_addon),
+            soupVariant: it.soupVariant || it.variant,
+            selectedSoups: it.selectedSoups,
+          }))
+        : [];
+
+      const cateringResult = calculateShabuAjhiRate(distanceKm, {
+        hasInternalDriver: true,
+        items: cateringItems.length > 0 ? cateringItems : undefined,
+      });
+
+      const officialCourierName = metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)';
+
+      availableRates.push({
+        id: 'catering_armada_internal',
+        courier_name: officialCourierName,
+        service: cateringResult.fleetDescription || 'Antar & Jemput Alat Masak Kotor H+1',
+        price: cateringResult.totalFee,
+        etd: 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
+        type: 'instant',
+        badge: cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP',
+        distance_km: distanceKm,
+        provider: 'internal',
+        requires_pickup: true,
+        notes: cateringResult.notes,
+      });
+
+      biteshipSuccess = true;
+    }
 
     if (biteshipKey) {
       try {

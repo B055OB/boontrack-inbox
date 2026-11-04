@@ -324,15 +324,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
       setShippingCost(0);
       return;
     }
-    const hasCity = shippingCity.trim().length >= 3;
+    const hasDestination = shippingCity.trim().length >= 3 || shippingAddress.trim().length >= 3;
     if (courierServiceType === 'instant') {
-      setShippingCost(hasCity ? instantRate : 0);
+      setShippingCost(hasDestination ? instantRate : 0);
       setShippingCourier(instantCourierName);
     } else {
-      setShippingCost(hasCity ? regularRate : 0);
+      setShippingCost(hasDestination ? regularRate : 0);
       setShippingCourier(regularCourierName);
     }
-  }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity]);
+  }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity, shippingAddress]);
 
   // Resolusi Scarcity / Kuota Badge Dedikasi dari Metadata Produk
   const scarcityBadge = React.useMemo(() => {
@@ -383,7 +383,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     }
 
     const trimmedDest = shippingCity.trim();
-    if (trimmedDest.length < 3) {
+    const trimmedAddress = shippingAddress.trim();
+    if (trimmedDest.length < 3 && trimmedAddress.length < 3) {
       setShippingCost(0);
       return;
     }
@@ -395,10 +396,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            destination_city: trimmedDest,
+            destination_city: trimmedDest || trimmedAddress,
+            destination_address: trimmedAddress,
+            is_fnb: isFood,
             tenant_slug: tenantSlug,
             weight_grams: packageTotalWeight,
-            items: isMultiItem ? resolvedItems : undefined,
+            items: isMultiItem ? resolvedItems : (product ? [{ name: product.title, quantity: 1, price: product.price }] : undefined),
           }),
         });
 
@@ -413,11 +416,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               String(r.service || '').toLowerCase().includes('instant') ||
               String(r.courier_name || '').toLowerCase().includes('instan') ||
               String(r.courier_name || '').toLowerCase().includes('gosend') ||
-              String(r.courier_name || '').toLowerCase().includes('grab')
+              String(r.courier_name || '').toLowerCase().includes('grab') ||
+              String(r.courier_name || '').toLowerCase().includes('armada')
             );
             if (instOpt) {
-              setInstantRate(instOpt.price || 20000);
-              setInstantCourierName(instOpt.courier_name || 'Kurir Dapur Instan (GoSend / GrabExpress)');
+              setInstantRate(instOpt.price);
+              setInstantCourierName(instOpt.courier_name || 'Kurir Dapur Instan');
               foundInstant = true;
             }
 
@@ -437,8 +441,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }
 
         if (!foundInstant) {
-          setInstantRate(isFood ? 18000 : 25000);
-          setInstantCourierName('Kurir Dapur Instan (GoSend / GrabExpress)');
+          setInstantRate(isFood ? 25000 : 25000);
+          setInstantCourierName('Kurir Dapur Instan');
         }
         if (!foundRegular) {
           setRegularRate(15000);
@@ -446,7 +450,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }
       } catch (err) {
         console.warn('[CheckoutModal] Lazy shipping rate note:', err);
-        setInstantRate(isFood ? 18000 : 25000);
+        setInstantRate(isFood ? 25000 : 25000);
         setRegularRate(15000);
       } finally {
         setIsLoadingShipping(false);
@@ -454,7 +458,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPhysical, shippingCity, tenantSlug, isFood]);
+  }, [isOpen, isPhysical, shippingCity, shippingAddress, tenantSlug, isFood, packageTotalWeight, isMultiItem]);
 
   // Load tenant metadata, bank accounts, and default pixel IDs
   useEffect(() => {
@@ -1487,8 +1491,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               const isMockOrder = isBatch1MockCheckout(product, tenantSlug) || Boolean((paymentData as any)?.isMock);
               const isDynamicQrisFromGateway =
                 isMockOrder ||
-                candidateQris.startsWith('000201010212') ||
-                Boolean(paymentData.qr_string || paymentData.qrString);
+                candidateQris.startsWith('000201010212');
 
               const finalQrValue = isDynamicQrisFromGateway
                 ? candidateQris
@@ -1666,7 +1669,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               );
             })()}
 
-            {/* Upload Bukti Transfer Box & WhatsApp Fallback */}
+            {/* Upload Bukti Transfer Box & WhatsApp Fallback: Golden Flow khusus manual transfer */}
+            {paymentData.paymentMethod === 'manual_transfer' && (
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 text-left text-xs shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -1756,6 +1760,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 </a>
               </div>
             </div>
+            )}
 
             {paymentData.invoiceUrl && (
               <a
@@ -2089,8 +2094,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                               <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                             ) : instantRate > 0 ? (
                               `Rp ${instantRate.toLocaleString("id-ID")}`
-                            ) : shippingCity.trim().length >= 3 ? (
-                              "Rp 20.000"
                             ) : (
                               "-"
                             )}
@@ -2244,8 +2247,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                                   <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                                 ) : instantRate > 0 ? (
                                   `Rp ${instantRate.toLocaleString("id-ID")}`
-                                ) : shippingCity.trim().length >= 3 ? (
-                                  "Rp 20.000"
                                 ) : (
                                   "-"
                                 )}
