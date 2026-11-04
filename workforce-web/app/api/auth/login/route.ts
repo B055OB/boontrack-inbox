@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!nik || typeof nik !== 'string' || nik.trim().length < 6) {
+    if (!nik || typeof nik !== 'string' || nik.trim().length < 4) {
       return NextResponse.json(
-        { success: false, error: 'INVALID_NIK', message: 'NIK harus valid (minimal 6 karakter).' },
+        { success: false, error: 'INVALID_NIK', message: 'NIP / NIK / Email harus valid (minimal 4 karakter).' },
         { status: 400 }
       );
     }
@@ -52,20 +52,97 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Resolve Role & Session Payload
+    // 3. Resolve Account Profile & Role
     const cleanSlug = slug.trim().toLowerCase();
-    const cleanNik = nik.trim();
-    const isSupervisor = pin.startsWith('9') || cleanNik.toLowerCase().includes('admin');
-    const role = isSupervisor ? 'BRANCH_SUPERVISOR' : 'FIELD_PERSONNEL';
+    const cleanIdentifier = nik.trim();
+    const cleanPin = pin.trim();
+
+    interface UserProfile {
+      agency_slug: string;
+      nik: string;
+      name: string;
+      role: 'field_personnel' | 'supervisor' | 'master_reseller';
+      site?: string;
+      branch?: string;
+      agency_name?: string;
+    }
+
+    let userProfile: UserProfile | null = null;
+
+    // A. Akun 1: Personel Lapangan (Cindy Aurini)
+    if (
+      cleanIdentifier === '248.0112.28' ||
+      cleanIdentifier === '3171012345678901' ||
+      cleanIdentifier.toLowerCase().includes('cindy') ||
+      cleanPin === '123456'
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'satya',
+        nik: '248.0112.28',
+        name: 'Cindy Aurini',
+        role: 'field_personnel',
+        site: 'Gudang Wuling Soreang',
+        agency_name: 'PT Satya Garda Perkasa',
+      };
+    }
+    // B. Akun 2: Supervisor / Branch Desk (Bambang Prakoso)
+    else if (
+      cleanIdentifier === '248.0101.05' ||
+      cleanIdentifier.toLowerCase().includes('bambang') ||
+      cleanPin === '901105' ||
+      (cleanPin.startsWith('9') && !cleanPin.startsWith('9988'))
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'satya',
+        nik: '248.0101.05',
+        name: 'Bambang Prakoso',
+        role: 'supervisor',
+        branch: 'Bandung Raya',
+        site: 'Gudang Wuling Soreang',
+        agency_name: 'PT Satya Garda Perkasa',
+      };
+    }
+    // C. Akun 3: Master Reseller / BUJP Partner (Hendra Ops)
+    else if (
+      cleanIdentifier.toLowerCase() === 'hendra.ops@satya.id' ||
+      cleanIdentifier.toLowerCase().includes('hendra') ||
+      cleanPin === '998877'
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'satya',
+        nik: 'hendra.ops@satya.id',
+        name: 'Hendra Ops',
+        role: 'master_reseller',
+        agency_name: 'PT Satya Garda Perkasa',
+        branch: 'Kantor Pusat Bandung',
+      };
+    }
+    // D. Fallback Dinamis untuk Test Suite & Kredensial Khusus
+    else {
+      const isSupervisor = cleanPin.startsWith('9') || cleanIdentifier.toLowerCase().includes('admin');
+      userProfile = {
+        agency_slug: cleanSlug,
+        nik: cleanIdentifier,
+        name: isSupervisor ? 'Supervisor Lapangan' : 'Personel Lapangan',
+        role: isSupervisor ? 'supervisor' : 'field_personnel',
+        site: 'Site Operasional',
+        branch: 'Cabang Satya',
+        agency_name: 'PT Satya Garda Perkasa',
+      };
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const maxAgeSeconds = 60 * 60 * 24; // 1 Hari (86400 detik)
     const expiresAt = new Date((now + maxAgeSeconds) * 1000).toISOString();
 
     const sessionPayload = {
-      agency_slug: cleanSlug,
-      nik: cleanNik,
-      role,
+      agency_slug: userProfile.agency_slug,
+      nik: userProfile.nik,
+      name: userProfile.name,
+      role: userProfile.role,
+      site: userProfile.site,
+      branch: userProfile.branch,
+      agency_name: userProfile.agency_name,
       authenticated_at: new Date().toISOString(),
       expires_at: expiresAt,
       nonce: crypto.randomBytes(16).toString('hex'),
@@ -79,9 +156,13 @@ export async function POST(req: NextRequest) {
       success: true,
       message: 'Autentikasi sesi BWM berhasil.',
       session: {
-        agency_slug: cleanSlug,
-        nik: cleanNik,
-        role,
+        agency_slug: userProfile.agency_slug,
+        nik: userProfile.nik,
+        name: userProfile.name,
+        role: userProfile.role,
+        site: userProfile.site,
+        branch: userProfile.branch,
+        agency_name: userProfile.agency_name,
         expires_at: expiresAt,
       },
     });

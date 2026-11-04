@@ -96,10 +96,21 @@ export default function SatyaWorkforcePortal() {
   // -------------------------------------------------------------
   // ROLE 1: FIELD PERSONNEL STATE (Cindy Aurini)
   // -------------------------------------------------------------
-  const [userName] = useState('Cindy Aurini');
-  const [userNip] = useState('268.0112.25');
-  const [contractStatus] = useState('Kontrak PKWT (Aktif)');
-  const [mitraPlacement] = useState('Gudang Wuling Soreang / Hotel Horison Bandung');
+  const [userName, setUserName] = useState('Cindy Aurini');
+  const [userNip, setUserNip] = useState('248.0112.28');
+  const [contractStatus, setContractStatus] = useState('Kontrak PKWT (Aktif)');
+  const [mitraPlacement, setMitraPlacement] = useState('Gudang Wuling Soreang');
+
+  // ROLE 2: SUPERVISOR STATE (Bambang Prakoso)
+  const [supervisorName, setSupervisorName] = useState('Bambang Prakoso');
+  const [supervisorNip, setSupervisorNip] = useState('248.0101.05');
+  const [supervisorBranch, setSupervisorBranch] = useState('Bandung Raya');
+  const [supervisorSite, setSupervisorSite] = useState('Gudang Wuling Soreang');
+
+  // ROLE 3: MASTER RESELLER STATE (Hendra Ops)
+  const [resellerName, setResellerName] = useState('Hendra Ops');
+  const [resellerEmail, setResellerEmail] = useState('hendra.ops@satya.id');
+  const [resellerAgency, setResellerAgency] = useState('PT Satya Garda Perkasa');
 
   const [onDuty, setOnDuty] = useState(true);
   const [clockInTime, setClockInTime] = useState('07:42 WIB');
@@ -299,13 +310,36 @@ export default function SatyaWorkforcePortal() {
     return () => clearInterval(timer);
   }, []);
 
-  // Enforce authentication on root "/"
+  // Enforce authentication on root "/" and hydrate user profile per account
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => res.json())
       .then((data) => {
         if (!data || !data.authenticated) {
           window.location.href = '/login';
+          return;
+        }
+
+        const sess = data.session;
+        if (sess) {
+          const roleRaw = (sess.role || '').toLowerCase();
+          if (roleRaw === 'supervisor' || roleRaw === 'branch_supervisor') {
+            setCurrentRole('supervisor');
+            if (sess.name) setSupervisorName(sess.name);
+            if (sess.nik) setSupervisorNip(sess.nik);
+            if (sess.branch) setSupervisorBranch(sess.branch);
+            if (sess.site) setSupervisorSite(sess.site);
+          } else if (roleRaw === 'master_reseller' || roleRaw === 'reseller') {
+            setCurrentRole('reseller');
+            if (sess.name) setResellerName(sess.name);
+            if (sess.nik) setResellerEmail(sess.nik);
+            if (sess.agency_name) setResellerAgency(sess.agency_name);
+          } else {
+            setCurrentRole('field');
+            if (sess.name) setUserName(sess.name);
+            if (sess.nik) setUserNip(sess.nik);
+            if (sess.site) setMitraPlacement(sess.site);
+          }
         }
       })
       .catch(() => {
@@ -1018,10 +1052,10 @@ export default function SatyaWorkforcePortal() {
                   </span>
                 </div>
                 <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">
-                  SATYA COMMAND DESK — Site: Gudang Wuling Soreang
+                  SATYA COMMAND DESK — Site: {supervisorSite} ({supervisorBranch})
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Monitoring realtime shift, presensi pos jaga, koordinasi WhatsApp grup, dan eskalasi temuan lapangan.
+                  Supervisor Bertugas: <span className="text-white font-bold">{supervisorName}</span> &bull; NIP: <span className="font-mono text-slate-300">{supervisorNip}</span>
                 </p>
               </div>
 
@@ -1411,10 +1445,10 @@ export default function SatyaWorkforcePortal() {
                   </span>
                 </div>
                 <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">
-                  SATYA PARTNER PORTAL — PT Satya Garda Perkasa
+                  SATYA PARTNER PORTAL — {resellerAgency}
                 </h1>
                 <p className="text-xs text-slate-300 mt-1">
-                  Manajemen kuota lisensi BWM, administrasi multi-site klien mitra, pengawasan operasional, dan audit kepatuhan SLA.
+                  Administrator BUJP: <span className="text-white font-bold">{resellerName}</span> ({resellerEmail}) &bull; Manajemen kuota lisensi BWM & administrasi multi-site klien mitra.
                 </p>
               </div>
 

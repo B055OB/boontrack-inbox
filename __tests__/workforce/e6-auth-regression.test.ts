@@ -3,13 +3,14 @@
  * BWM Gate E6: End-to-End Auth Flow & Tenant Resolution Regression Suite
  *
  * Verifies:
- * 1. Login flow & hardened HttpOnly cookies (bwm_session_token, bwm_csrf_token).
- * 2. Dynamic multi-tenant resolution (zero hardcoding).
- * 3. Session query via /api/auth/me.
- * 4. Session refresh via /api/auth/refresh.
- * 5. Standalone callback via /api/auth/callback without dashboard redirect.
- * 6. Logout cookie invalidation via /api/auth/logout.
- * 7. Zero cross-domain redirect leakage to dashboard.boontrack.com.
+ * 1. 3 Independent Demo Accounts (Cindy/Personel, Bambang/Supervisor, Hendra/Reseller).
+ * 2. Hardened HttpOnly cookies (bwm_session_token, bwm_csrf_token).
+ * 3. Dynamic multi-tenant resolution (zero hardcoding).
+ * 4. Session query via /api/auth/me.
+ * 5. Session refresh via /api/auth/refresh.
+ * 6. Standalone callback via /api/auth/callback without dashboard redirect.
+ * 7. Logout cookie invalidation via /api/auth/logout.
+ * 8. Zero cross-domain redirect leakage to dashboard.boontrack.com.
  */
 
 import { NextRequest } from 'next/server';
@@ -21,15 +22,11 @@ import { GET as callbackHandler } from '../../workforce-web/app/api/auth/callbac
 import { middleware } from '../../workforce-web/middleware';
 
 describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
-  const TEST_TENANT_A = 'satya';
-  const TEST_TENANT_B = 'garda-nusantara';
-  const TEST_NIK = '3171012345678901';
-  const TEST_SUPERVISOR_PIN = '987654';
-  const TEST_FIELD_PIN = '123456';
+  const TENANT_SLUG = 'satya';
 
-  // ─── 1. Login & Hardened Cookie Verification ──────────────────────────────
-  describe('1. Login & Role Resolution', () => {
-    it('successfully authenticates field personnel with supervisor pin', async () => {
+  // ─── 1. Three Independent Demo Accounts ──────────────────────────────────
+  describe('1. Three Independent Demo Accounts Resolution', () => {
+    it('authenticates Demo Personel (Cindy Aurini) with exact profile', async () => {
       const req = new NextRequest('https://workforce.boontrack.com/api/auth/login', {
         method: 'POST',
         headers: {
@@ -38,9 +35,9 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
           'Host': 'workforce.boontrack.com',
         },
         body: JSON.stringify({
-          slug: TEST_TENANT_A,
-          nik: TEST_NIK,
-          pin: TEST_SUPERVISOR_PIN,
+          slug: TENANT_SLUG,
+          nik: '248.0112.28',
+          pin: '123456',
         }),
       });
 
@@ -49,9 +46,10 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
 
       const data = await res.json();
       expect(data.success).toBe(true);
-      expect(data.session.agency_slug).toBe(TEST_TENANT_A);
-      expect(data.session.nik).toBe(TEST_NIK);
-      expect(data.session.role).toBe('BRANCH_SUPERVISOR');
+      expect(data.session.role).toBe('field_personnel');
+      expect(data.session.name).toBe('Cindy Aurini');
+      expect(data.session.nik).toBe('248.0112.28');
+      expect(data.session.site).toBe('Gudang Wuling Soreang');
 
       // Verify cookies
       const cookieHeader = res.headers.get('set-cookie');
@@ -61,7 +59,7 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
       expect(cookieHeader).toContain('bwm_csrf_token=');
     });
 
-    it('successfully resolves field personnel role when pin does not start with 9', async () => {
+    it('authenticates Demo Supervisor (Bambang Prakoso) with exact profile', async () => {
       const req = new NextRequest('https://workforce.boontrack.com/api/auth/login', {
         method: 'POST',
         headers: {
@@ -70,9 +68,9 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
           'Host': 'workforce.boontrack.com',
         },
         body: JSON.stringify({
-          slug: TEST_TENANT_B,
-          nik: '3204123456780001',
-          pin: TEST_FIELD_PIN,
+          slug: TENANT_SLUG,
+          nik: '248.0101.05',
+          pin: '901105',
         }),
       });
 
@@ -81,8 +79,36 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
 
       const data = await res.json();
       expect(data.success).toBe(true);
-      expect(data.session.agency_slug).toBe(TEST_TENANT_B);
-      expect(data.session.role).toBe('FIELD_PERSONNEL');
+      expect(data.session.role).toBe('supervisor');
+      expect(data.session.name).toBe('Bambang Prakoso');
+      expect(data.session.nik).toBe('248.0101.05');
+      expect(data.session.branch).toBe('Bandung Raya');
+    });
+
+    it('authenticates Demo Master Reseller (Hendra Ops) with exact profile', async () => {
+      const req = new NextRequest('https://workforce.boontrack.com/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Origin': 'https://workforce.boontrack.com',
+          'Host': 'workforce.boontrack.com',
+        },
+        body: JSON.stringify({
+          slug: TENANT_SLUG,
+          nik: 'hendra.ops@satya.id',
+          pin: '998877',
+        }),
+      });
+
+      const res = await loginHandler(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.session.role).toBe('master_reseller');
+      expect(data.session.name).toBe('Hendra Ops');
+      expect(data.session.nik).toBe('hendra.ops@satya.id');
+      expect(data.session.agency_name).toBe('PT Satya Garda Perkasa');
     });
 
     it('rejects invalid credentials fail-closed', async () => {
@@ -95,7 +121,7 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
         },
         body: JSON.stringify({
           slug: '',
-          nik: '123',
+          nik: '12',
           pin: '1',
         }),
       });
@@ -110,7 +136,7 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
   // ─── 2. Multi-Tenant Resolution & Session Inspection (/api/auth/me) ──────
   describe('2. Multi-Tenant Isolation & Session Resolution', () => {
     it('resolves tenant session correctly from session cookie', async () => {
-      // First log in to obtain real session cookie
+      // First log in as supervisor
       const loginReq = new NextRequest('https://workforce.boontrack.com/api/auth/login', {
         method: 'POST',
         headers: {
@@ -119,9 +145,9 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
           'Host': 'workforce.boontrack.com',
         },
         body: JSON.stringify({
-          slug: TEST_TENANT_A,
-          nik: TEST_NIK,
-          pin: TEST_SUPERVISOR_PIN,
+          slug: 'garda-nusantara',
+          nik: '248.0101.05',
+          pin: '901105',
         }),
       });
 
@@ -141,8 +167,9 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
 
       const meData = await meRes.json();
       expect(meData.authenticated).toBe(true);
-      expect(meData.session.agency_slug).toBe(TEST_TENANT_A);
-      expect(meData.session.nik).toBe(TEST_NIK);
+      expect(meData.session.agency_slug).toBe('garda-nusantara');
+      expect(meData.session.name).toBe('Bambang Prakoso');
+      expect(meData.session.role).toBe('supervisor');
     });
 
     it('returns unauthenticated when cookie is missing', async () => {
@@ -166,9 +193,9 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
           'Host': 'workforce.boontrack.com',
         },
         body: JSON.stringify({
-          slug: TEST_TENANT_A,
-          nik: TEST_NIK,
-          pin: TEST_SUPERVISOR_PIN,
+          slug: TENANT_SLUG,
+          nik: 'hendra.ops@satya.id',
+          pin: '998877',
         }),
       });
       const loginRes = await loginHandler(loginReq);
@@ -187,7 +214,8 @@ describe('BWM Gate E6: Auth Flow & Tenant Resolution Regression Suite', () => {
 
       const refreshData = await refreshRes.json();
       expect(refreshData.success).toBe(true);
-      expect(refreshData.session.agency_slug).toBe(TEST_TENANT_A);
+      expect(refreshData.session.agency_slug).toBe(TENANT_SLUG);
+      expect(refreshData.session.role).toBe('master_reseller');
 
       const newCookie = refreshRes.cookies.get('bwm_session_token')?.value;
       expect(newCookie).toBeDefined();
