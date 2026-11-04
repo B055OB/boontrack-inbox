@@ -48,6 +48,14 @@ import {
   SHABU_AJHI_HANDOVER_PHONE,
 } from '@/lib/shipping/deliveryCalculator';
 import {
+  EquipmentReturnPicker,
+  buildEquipmentReturnMetadata,
+  EQUIPMENT_RETURN_GUARANTEE,
+  EQUIPMENT_RETURN_LABELS,
+} from '@/components/shabu-ajhi/EquipmentReturnPicker';
+import {
+  LIVE_COOKING_INTERCEPT_BANNER,
+  LIVE_COOKING_CTA_TEXT,
   validateCateringCart,
   PickupWindow,
   PICKUP_WINDOW_LABELS,
@@ -206,6 +214,60 @@ export function buildCateringWhatsAppUrl(params: {
   const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(message)}`;
 
   return { message, waUrl, cleanWa };
+}
+
+export function buildLiveCookingWhatsAppUrl(params: {
+  storeName?: string;
+  waNumber?: string;
+  deliveryDate?: string;
+  formattedDeliveryDate?: string;
+  selectedTimeSlot?: string;
+  locationAddress?: string;
+  cartItems?: Array<{ name: string; qty: number; price?: number; soupVariant?: string; selectedSoups?: Record<string, number> }>;
+  totalPackages?: number;
+  totalPrice?: number;
+}): { waUrl: string; message: string; targetPhone: string } {
+  const targetPhone = (params.waNumber || '6289617799878').replace(/\D/g, '') || '6289617799878';
+  const storeName = params.storeName || 'Shabu Ajhi';
+  const dateStr = params.formattedDeliveryDate || params.deliveryDate || 'Segera';
+  const slotStr = params.selectedTimeSlot || 'Fleksibel / Sesuai Jadwal';
+  const address = params.locationAddress?.trim() || 'Alamat detail dikonfirmasi di chat';
+
+  let itemsSummary = '';
+  if (params.cartItems && params.cartItems.length > 0) {
+    itemsSummary = params.cartItems
+      .map((item, idx) => {
+        let soupNote = '';
+        if (item.selectedSoups && Object.keys(item.selectedSoups).length > 0) {
+          const soups = Object.entries(item.selectedSoups)
+            .filter(([_, qty]) => qty > 0)
+            .map(([v, q]) => `${v}: ${q}`)
+            .join(', ');
+          if (soups) soupNote = ` (Kuah: ${soups})`;
+        } else if (item.soupVariant) {
+          soupNote = ` (Varian: ${item.soupVariant})`;
+        }
+        const itemPrice = item.price ? ` — Rp ${(item.price * item.qty).toLocaleString('id-ID')}` : '';
+        return `${idx + 1}. ${item.name} x${item.qty}${soupNote}${itemPrice}`;
+      })
+      .join('\n');
+  } else {
+    itemsSummary = `Pesanan Partai Besar (${params.totalPackages || 5}+ paket)`;
+  }
+
+  const message =
+    `Halo ${storeName}, saya ingin berkonsultasi pemesanan catering partai besar (5+ paket / ~50+ porsi) untuk layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi:\n\n` +
+    `📦 *Jumlah Paket:* ${params.totalPackages || '>= 5'} paket (~50+ porsi)\n` +
+    `📅 *Perkiraan Tanggal:* ${dateStr}\n` +
+    `⏰ *Slot Jam:* ${slotStr}\n` +
+    `📍 *Lokasi Acara:* ${address}\n\n` +
+    `🍲 *Rincian Paket:*\n` +
+    `${itemsSummary}\n\n` +
+    (params.totalPrice ? `💰 *Estimasi Total Menu:* Rp ${params.totalPrice.toLocaleString('id-ID')}\n\n` : '') +
+    `Mohon info ketersediaan tim chef & jadwal live cooking untuk acara kami. Terima kasih!`;
+
+  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`;
+  return { waUrl, message, targetPhone };
 }
 
 export default function FnbCateringStorefrontView({
@@ -664,24 +726,22 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
-    // Large order handoff routing (>= 5 packages)
+        // Large order handoff routing (>= 5 packages -> Live Cooking & Event Catering)
     if (isLargePartyOrder) {
-      const validation = validateCateringCart({
-        cartItems: Object.values(cart),
-        distanceKm: 0,
+      const { waUrl } = buildLiveCookingWhatsAppUrl({
+        storeName: effectiveName,
+        waNumber: '6289617799878',
         deliveryDate,
         formattedDeliveryDate,
         selectedTimeSlot,
-        pickupDate,
-        pickupWindow,
-        formattedPickupDate,
         locationAddress: `${locationType} - ${locationDetails}`,
-        storeName: effectiveName,
-        waNumber: SHABU_AJHI_HANDOVER_PHONE,
+        cartItems: Object.values(cart),
+        totalPackages: totalCateringPackages,
+        totalPrice,
       });
 
       if (typeof window !== 'undefined') {
-        window.open(validation.whatsappHandoffUrl, '_blank', 'noopener,noreferrer');
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
       }
       return;
     }
@@ -1100,7 +1160,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              {PICKUP_MICROCOPY}
+              {EQUIPMENT_RETURN_GUARANTEE}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
@@ -1122,9 +1182,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
                   />
                   <div>
-                    <span className="block font-black">Hari yang Sama (Setelah Acara)</span>
+                    <span className="block font-black">Same Day (Malam)</span>
                     <span className="block text-[10px] text-slate-500 font-normal">
-                      Diambil tim driver setelah selesai makan
+                      Untuk pengantaran siang yang ingin langsung diambil malam hari
                     </span>
                   </div>
                 </div>
@@ -1149,9 +1209,9 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
                   />
                   <div>
-                    <span className="block font-black">Besok Pagi (H+1)</span>
+                    <span className="block font-black">Next Day Morning (H+1 Pagi)</span>
                     <span className="block text-[10px] text-slate-500 font-normal">
-                      Peralatan diambil esok pagi ({formattedPickupDate})
+                      Penjemputan keesokan harinya pukul 08.00 – 11.00 WIB ({formattedPickupDate})
                     </span>
                   </div>
                 </div>
@@ -1479,7 +1539,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           {isLargePartyOrder && (
             <div className="w-full bg-amber-500/15 border-b border-amber-500/30 text-amber-900 text-xs font-bold py-2 px-4 flex items-center justify-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Pesanan di atas 4 paket memerlukan armada khusus dan koordinasi jadwal pengantaran.</span>
+              <span>Pesanan 5 paket atau lebih (~50+ porsi) dialihkan ke layanan Live Cooking &amp; Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi.</span>
             </div>
           )}
           <div className="p-3 sm:p-4">
@@ -1540,7 +1600,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 }`}
                 title={
                   isLargePartyOrder
-                    ? 'Hubungi Admin CS Shabu Ajhi (+62 896-1779-9878)'
+                    ? 'Konsultasi Tim Live Cooking via WhatsApp (+62 896-1779-9878)'
                     : 'Pesan Langsung via WhatsApp Kasir'
                 }
               >
@@ -1549,7 +1609,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                   {!selectedTimeSlot
                     ? 'Pilih Slot Jam Dahulu'
                     : isLargePartyOrder
-                    ? 'Hubungi Admin CS Shabu Ajhi'
+                    ? 'Konsultasi Tim Live Cooking via WhatsApp'
                     : 'WhatsApp Kasir / CS'}
                 </span>
                 <ArrowRight className="w-4 h-4" />

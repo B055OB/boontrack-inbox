@@ -29,6 +29,19 @@ import {
   CateringItem,
   DeliveryCalculationResult,
 } from '@/lib/shipping/deliveryCalculator';
+import {
+  EquipmentReturnMetadata,
+  buildEquipmentReturnMetadata,
+  EQUIPMENT_RETURN_GUARANTEE,
+  EQUIPMENT_RETURN_LABELS,
+} from '@/components/shabu-ajhi/EquipmentReturnPicker';
+
+export const LIVE_COOKING_INTERCEPT_BANNER =
+  'Pesanan 5 paket atau lebih (~50+ porsi) dialihkan ke layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi.';
+
+export const LIVE_COOKING_CTA_TEXT = 'Konsultasi Tim Live Cooking via WhatsApp';
+
+export const EQUIPMENT_RETURN_CLEANING_GUARANTEE = EQUIPMENT_RETURN_GUARANTEE;
 
 export type PickupWindow = 'SAME_DAY' | 'NEXT_DAY_MORNING';
 
@@ -109,10 +122,14 @@ export interface CateringCartValidationResult {
   requiresManualCoordination: boolean;
   canCheckoutOnline: boolean;
   warningBanner: string | null;
+  liveCookingBanner?: string | null;
+  liveCookingIntercept?: boolean;
+  liveCookingCtaText?: string;
   deliveryResult: DeliveryCalculationResult;
   ctaButtonText: string;
   whatsappHandoffUrl: string;
   whatsappMessage: string;
+  equipmentReturn?: EquipmentReturnMetadata;
 }
 
 export interface CateringOrderPayload {
@@ -125,6 +142,7 @@ export interface CateringOrderPayload {
   delivery_fee: number;
   total_price: number;
   rental_schedule: CateringRentalSchedule;
+  equipment_return?: EquipmentReturnMetadata;
   notes?: string;
   is_large_party_order: boolean;
 }
@@ -144,6 +162,7 @@ export function validateCateringCart(params: {
   locationAddress?: string;
   storeName?: string;
   waNumber?: string;
+  useLiveCookingCta?: boolean;
 }): CateringCartValidationResult {
   const {
     cartItems,
@@ -157,6 +176,7 @@ export function validateCateringCart(params: {
     locationAddress,
     storeName = 'Shabu Ajhi',
     waNumber = SHABU_AJHI_HANDOVER_PHONE,
+    useLiveCookingCta = false,
   } = params;
 
   const totalPackages = countCateringPackages(cartItems);
@@ -172,8 +192,9 @@ export function validateCateringCart(params: {
   const deliveryResult = calculateDeliveryFee(distanceKm, cartItems);
 
   // Determine online checkout eligibility
+  const isLargePartyOrder = totalPackages >= 5;
   const requiresManualCoordination =
-    totalPackages >= 5 || deliveryResult.requiresManualCoordination;
+    isLargePartyOrder || deliveryResult.requiresManualCoordination;
 
   const canCheckoutOnline =
     !requiresManualCoordination &&
@@ -181,15 +202,22 @@ export function validateCateringCart(params: {
     !deliveryResult.outOfRange;
 
   let warningBanner: string | null = null;
+  let liveCookingBanner: string | null = null;
+
   if (deliveryResult.outOfRange) {
     warningBanner = OUT_OF_RANGE_ERROR_MESSAGE;
   } else if (requiresManualCoordination) {
     warningBanner = LARGE_ORDER_WARNING_MESSAGE;
   }
 
+  if (isLargePartyOrder) {
+    liveCookingBanner = LIVE_COOKING_INTERCEPT_BANNER;
+  }
+
   const resolvedPickupDate =
     pickupDate || (deliveryDate ? calculatePickupDate(deliveryDate, pickupWindow) : '');
   const pickupLabel = PICKUP_WINDOW_LABELS[pickupWindow];
+  const equipmentReturn = buildEquipmentReturnMetadata(pickupWindow, deliveryDate, selectedTimeSlot);
 
   const { waUrl, message } = buildLargeOrderWhatsAppUrl({
     storeName,
@@ -206,7 +234,9 @@ export function validateCateringCart(params: {
     totalPrice,
   });
 
-  const ctaButtonText = requiresManualCoordination
+  const ctaButtonText = useLiveCookingCta && isLargePartyOrder
+    ? LIVE_COOKING_CTA_TEXT
+    : requiresManualCoordination
     ? 'Hubungi Admin CS Shabu Ajhi'
     : 'WhatsApp Kasir / CS';
 
@@ -217,10 +247,14 @@ export function validateCateringCart(params: {
     requiresManualCoordination,
     canCheckoutOnline,
     warningBanner,
+    liveCookingBanner,
+    liveCookingIntercept: isLargePartyOrder,
+    liveCookingCtaText: LIVE_COOKING_CTA_TEXT,
     deliveryResult,
     ctaButtonText,
     whatsappHandoffUrl: waUrl,
     whatsappMessage: message,
+    equipmentReturn,
   };
 }
 
@@ -304,6 +338,8 @@ export function buildCateringOrderPayload(params: {
     formatted_pickup_date: formattedPickupDate,
   };
 
+  const equipment_return = buildEquipmentReturnMetadata(pickup_window, deliveryDate, timeSlot);
+
   return {
     merchant_slug: merchantSlug,
     total_packages: totalPackages,
@@ -314,6 +350,7 @@ export function buildCateringOrderPayload(params: {
     delivery_fee: deliveryFee,
     total_price: totalPrice,
     rental_schedule,
+    equipment_return,
     notes,
     is_large_party_order: totalPackages >= 5,
   };

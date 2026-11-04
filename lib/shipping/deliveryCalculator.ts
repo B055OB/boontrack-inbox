@@ -15,6 +15,8 @@
  * 5. Direct WhatsApp handoff URL builder for large party orders (>= 5 packages).
  */
 
+import { evaluateFleetRules } from '@/lib/cart/fleetRules';
+
 export interface DeliveryRateTier {
   minKm: number;
   maxKm: number;
@@ -71,6 +73,7 @@ export interface DeliveryCalculationParams {
   distanceKm: number;
   items?: CateringItem[];
   totalPackages?: number;
+  hasInternalDriver?: boolean;
 }
 
 export interface DeliveryCalculationResult {
@@ -86,7 +89,11 @@ export interface DeliveryCalculationResult {
   fleetType: 'motor' | 'car' | 'custom' | 'none';
   fleetDescription: string;
   error?: string;
+  notes?: string;
   handoverContact: string;
+  provider?: 'INTERNAL_DRIVER' | 'LALAMOVE_MANUAL';
+  surchargeFee?: number;
+  excessKm?: number;
 }
 
 /**
@@ -181,52 +188,19 @@ export function countCateringPackages(
  * - 4 packages   : 2.5x (Armada Mobil / Trip Ganda)
  * - >= 5 packages: requiresManualCoordination: true
  */
-export function getFleetMultiplier(totalPackages: number): FleetMultiplierResult {
-  const count = Math.max(0, Math.floor(totalPackages));
-
-  if (count === 0) {
-    return {
-      multiplier: 1.0,
-      fleetType: 'motor',
-      fleetDescription: '1 Motor Armada Reguler',
-      requiresManualCoordination: false,
-    };
-  }
-
-  if (count <= 2) {
-    return {
-      multiplier: 1.0,
-      fleetType: 'motor',
-      fleetDescription: '1 Motor Armada Reguler',
-      requiresManualCoordination: false,
-    };
-  }
-
-  if (count === 3) {
-    return {
-      multiplier: 2.0,
-      fleetType: 'motor',
-      fleetDescription: '2 Motor Armada Reguler',
-      requiresManualCoordination: false,
-    };
-  }
-
-  if (count === 4) {
-    return {
-      multiplier: 2.5,
-      fleetType: 'car',
-      fleetDescription: 'Armada Mobil / Trip Ganda',
-      requiresManualCoordination: false,
-    };
-  }
-
-  // 5 or more packages
-  return {
-    multiplier: 0,
-    fleetType: 'custom',
-    fleetDescription: 'Armada Khusus (Koordinasi Jadwal & Unit CS)',
-    requiresManualCoordination: true,
-  };
+/**
+ * Resolves fleet multiplier based on total catering package quantity and package combinations:
+ * - Specific combination: Oishi + Mabar A -> 2.0x (2 motor / 2 boks terpisah)
+ * - <= 2 packages: 1.0x (1 Motor Armada Reguler)
+ * - 3 packages   : 2.0x (2 Motor Armada Reguler)
+ * - 4 packages   : 2.5x (Armada Mobil / Trip Ganda)
+ * - >= 5 packages: requiresManualCoordination: true (Handover to Human CS / Live Cooking)
+ */
+export function getFleetMultiplier(
+  totalPackages: number,
+  items?: CateringItem[]
+): FleetMultiplierResult {
+  return evaluateFleetRules(totalPackages, items);
 }
 
 /**
@@ -234,7 +208,7 @@ export function getFleetMultiplier(totalPackages: number): FleetMultiplierResult
  *
  * Supports both function overloads:
  * - calculateDeliveryFee(distanceKm, itemsOrCount)
- * - calculateDeliveryFee({ distanceKm, items, totalPackages })
+ * - calculateDeliveryFee({ distanceKm, items, totalPackages, hasInternalDriver })
  */
 export function calculateDeliveryFee(
   paramsOrDistance: DeliveryCalculationParams | number,
@@ -242,12 +216,21 @@ export function calculateDeliveryFee(
 ): DeliveryCalculationResult {
   let distanceKm: number;
   let totalPackages: number;
+  let items: CateringItem[] | undefined;
+  let hasInternalDriver: boolean | undefined;
 
   if (typeof paramsOrDistance === 'number') {
     distanceKm = paramsOrDistance;
-    totalPackages = countCateringPackages(optionalItemsOrCount);
+    if (Array.isArray(optionalItemsOrCount)) {
+      items = optionalItemsOrCount;
+      totalPackages = countCateringPackages(optionalItemsOrCount);
+    } else {
+      totalPackages = countCateringPackages(optionalItemsOrCount);
+    }
   } else {
     distanceKm = paramsOrDistance.distanceKm;
+    items = paramsOrDistance.items;
+    hasInternalDriver = paramsOrDistance.hasInternalDriver;
     if (typeof paramsOrDistance.totalPackages === 'number') {
       totalPackages = Math.max(0, Math.floor(paramsOrDistance.totalPackages));
     } else {
@@ -255,7 +238,7 @@ export function calculateDeliveryFee(
     }
   }
 
-  // 1. Boundary & Radius Rejection Check (> 26.0 KM)
+  // 1. Boundary & Radius Rejection Check
   if (typeof distanceKm !== 'number' || isNaN(distanceKm) || distanceKm < 0) {
     return {
       isDeliverable: false,
@@ -274,7 +257,56 @@ export function calculateDeliveryFee(
     };
   }
 
+  // Extreme distance surcharge (> 26.0 KM) when internal driver is available
   if (distanceKm > MAX_REGULAR_DISTANCE_KM) {
+    if (hasInternalDriver === true) {
+      const excessKm = Math.ceil(distanceKm - MAX_REGULAR_DISTANCE_KM);
+      const surchargeFee = excessKm * 7000;
+      const baseFee = 115000;
+      const fleet = getFleetMultiplier(totalPackages, items);
+
+      if (fleet.requiresManualCoordination) {
+        return {
+          isDeliverable: true,
+          outOfRange: false,
+          distanceKm,
+          baseFee,
+          multiplier: 0,
+          totalFee: 0,
+          totalPackages,
+          requiresManualCoordination: true,
+          requires_pickup: true,
+          fleetType: fleet.fleetType,
+          fleetDescription: fleet.fleetDescription,
+          error: LARGE_ORDER_WARNING_MESSAGE,
+          handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+          provider: 'INTERNAL_DRIVER',
+          surchargeFee,
+          excessKm,
+        };
+      }
+
+      const totalFee = Math.round((baseFee + surchargeFee) * fleet.multiplier);
+      return {
+        isDeliverable: true,
+        outOfRange: false,
+        distanceKm,
+        baseFee,
+        multiplier: fleet.multiplier,
+        totalFee,
+        totalPackages,
+        requiresManualCoordination: false,
+        requires_pickup: true,
+        fleetType: fleet.fleetType,
+        fleetDescription: fleet.fleetDescription,
+        handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+        provider: 'INTERNAL_DRIVER',
+        surchargeFee,
+        excessKm,
+        notes: `Jarak ${distanceKm.toFixed(1)} km (> 26 km) dikenakan surcharge jarak ekstrem Rp 7.000/km (+${excessKm} km = Rp ${surchargeFee.toLocaleString('id-ID')}).`,
+      };
+    }
+
     return {
       isDeliverable: false,
       outOfRange: true,
@@ -296,8 +328,8 @@ export function calculateDeliveryFee(
   const baseRate = getBaseRate(distanceKm);
   const baseFee = baseRate ?? 0;
 
-  // 3. Fleet Multiplier & Capacity Calculation
-  const fleet = getFleetMultiplier(totalPackages);
+  // 3. Fleet Multiplier & Capacity Calculation (incorporating package combinations)
+  const fleet = getFleetMultiplier(totalPackages, items);
 
   if (fleet.requiresManualCoordination) {
     return {
