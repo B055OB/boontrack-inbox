@@ -299,6 +299,20 @@ export default function SatyaWorkforcePortal() {
     return () => clearInterval(timer);
   }, []);
 
+  // Enforce authentication on root "/"
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data || !data.authenticated) {
+          window.location.href = '/login';
+        }
+      })
+      .catch(() => {
+        // Fallback / offline mode
+      });
+  }, []);
+
   const completedCount = checkpoints.filter((c) => c.status === 'COMPLETED').length;
   const totalCount = checkpoints.length;
 
