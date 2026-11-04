@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "BoonTrack Workforce",
+  "short_name": "SATYA",
+  "description": "BoonTrack Workforce Management (SATYA)",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#991b1b",
+  "icons": [
+    {
+      "src": "/icons/workforce-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/workforce-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/workforce-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
+
