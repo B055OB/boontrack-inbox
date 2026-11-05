@@ -12,5 +12,6 @@ export * from './ledger/financial-ledger';
 export * from './inbox/webhook-inbox';
 export * from './credit/atomic-credit-ledger';
 export * from './credit/postgres-atomic-credit-ledger';
+export * from './branding/domain-registry';
 export * from './reconciliation/reconciliation-engine';
 

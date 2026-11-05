@@ -256,3 +256,33 @@ BEGIN
     RETURN NEXT;
 END;
 $$;
+
+-- -----------------------------------------------------------------------------------------
+-- 7. TABEL: verified_domain_registry (RFC-BWM-014)
+-- Authoritative domain registry for multi-tenant dynamic branding & edge resolution
+-- -----------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS verified_domain_registry (
+    domain_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id VARCHAR(64) NOT NULL,
+    hostname VARCHAR(255) UNIQUE NOT NULL,
+    brand_name VARCHAR(128) NOT NULL,
+    logo_url TEXT,
+    primary_color VARCHAR(32) NOT NULL DEFAULT '#059669',
+    accent_color VARCHAR(32) NOT NULL DEFAULT '#0d9488',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_verified_domain_registry_hostname ON verified_domain_registry(hostname, is_active);
+
+-- Seed default demo tenants
+INSERT INTO verified_domain_registry (tenant_id, hostname, brand_name, logo_url, primary_color, accent_color, is_active)
+VALUES 
+  ('tenant_satya_001', 'workforce.boontrack.com', 'SATYA Workforce', '/icons/workforce-192.png', '#059669', '#0d9488', TRUE),
+  ('tenant_satya_001', 'satya.workforce.boontrack.com', 'SATYA Garda Perkasa', '/icons/workforce-192.png', '#059669', '#0d9488', TRUE),
+  ('tenant_beta_adversary', 'beta.workforce.boontrack.com', 'Beta Security Ops', '/icons/workforce-192.png', '#dc2626', '#b91c1c', TRUE)
+ON CONFLICT (hostname) DO UPDATE 
+SET brand_name = EXCLUDED.brand_name,
+    primary_color = EXCLUDED.primary_color,
+    accent_color = EXCLUDED.accent_color,
+    is_active = EXCLUDED.is_active;

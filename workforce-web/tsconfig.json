@@ -39,6 +39,7 @@
     ".next/types/**/*.ts",
     "../lib/workforce/**/*",
     "../packages/attendance/**/*",
+    "../packages/workforce-billing/**/*",
     "../apps/workforce/**/*",
     ".next/dev/types/**/*.ts"
   ],
