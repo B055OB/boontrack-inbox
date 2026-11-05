@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { ContactService } from '@/lib/crm/contact.service';
 import { toE164 } from '@/lib/crm/phone-utils';
+import { resolveVerifiedTenantContext } from '@/lib/auth/tenant-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,33 +20,21 @@ function cleanCredential(val?: string | null): string {
   }
 }
 
-function verifyTenantAuth(req: NextRequest, tenantSlug: string, tenantUuid: string): boolean {
-  const cookieStore =
-    cleanCredential(req.cookies.get('merchant_store')?.value) ||
-    cleanCredential(req.cookies.get('merchant_session')?.value) ||
-    cleanCredential(req.cookies.get('bt_tenant')?.value);
-
-  const headerTenant = cleanCredential(
-    req.headers.get('x-tenant-slug') || req.headers.get('x-tenant-id')
-  );
-
-  const authHeader = req.headers.get('authorization')?.trim();
-  const internalSecret = req.headers.get('x-internal-secret')?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+async function verifyTenantAuth(req: NextRequest, tenantSlug: string, tenantUuid: string): Promise<boolean> {
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '';
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim() || '';
 
   const isInternalAuth =
-    (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
-    (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`);
+    (envAdminSecret && envAdminSecret.length >= 16 && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
+    (serviceRoleKey && serviceRoleKey.length >= 16 && authHeader === `Bearer ${serviceRoleKey}`);
 
-  const normalizedSlug = tenantSlug.toLowerCase().trim();
-  const normalizedUuid = tenantUuid.toLowerCase().trim();
+  if (isInternalAuth) return true;
 
-  return Boolean(
-    isInternalAuth ||
-    (cookieStore && (cookieStore === normalizedSlug || cookieStore === normalizedUuid)) ||
-    (headerTenant && (headerTenant === normalizedSlug || headerTenant === normalizedUuid))
-  );
+  // Authoritative Team B Contract: Cryptographically signed token bound to canonical tenant
+  const authResult = await resolveVerifiedTenantContext(req, tenantSlug || tenantUuid);
+  return authResult.success;
 }
 
 export interface CrmContactDto {
@@ -125,7 +114,7 @@ export async function GET(req: NextRequest) {
     const resolvedTenantSlug = String(tenantRow.slug || '');
 
     // Auth Guard & Tenant Isolation (§47.3 Invariant 3: Zero Query Parameter Authority)
-    const isAuthorized = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
+    const isAuthorized = await verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
     if (!isAuthorized) {
       return NextResponse.json(
         {

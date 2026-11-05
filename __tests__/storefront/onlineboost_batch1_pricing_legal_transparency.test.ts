@@ -62,7 +62,10 @@ describe('CTO Directive — OnlineBoost Pricing UI, WhatsApp CTA & Legal Copy', 
       expect(decodeURIComponent(res.url)).toContain('Saya tertarik ikut kelas nya Kang [r=VIP_PROMO]');
     });
 
-    it('guards handleDirectCheckout and handleOpenCheckout so clicking CTA never creates QRIS or orders', () => {
+    it('guards handleOpenCheckout and order submission so clicking CTA never creates QRIS or orders', () => {
+      expect(pageContent).toContain(
+        'if (isOnlineBoostBatch1) {\n      // Fail closed: OnlineBoost Batch 1 CTAs navigate directly to WhatsApp\n      // without invoking handleOpenCheckout, creating an order, or calling a payment endpoint.\n      return;\n    }'
+      );
       expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n      handleWhatsAppConsultation();\n      return;\n    }');
     });
 

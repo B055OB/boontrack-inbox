@@ -44,12 +44,14 @@
 
 ## 2. Frontend & Modular Navigation (Next.js App Router â€” Dual Domain)
 
-### Pemisahan Domain Buyer vs Seller (ADR 2026-09-27)
+### Pemisahan Domain Buyer vs Seller & Ekosistem Subdomain (ADR Kanonikal)
 
-| Peran | Domain | Deskripsi |
+| Domain | Target Pengguna & Peran | Deskripsi Fungsional |
 | :--- | :--- | :--- |
-| **Buyer (Pembeli)** | `shop.boontrack.com/{slug}` | Storefront publik, katalog produk, checkout, halaman sukses |
-| **Seller (Merchant)** | `dashboard.boontrack.com/{slug}` | Dashboard manajemen toko, pesanan, produk, pengaturan |
+| `shop.boontrack.com/{slug}` | **Buyer (Pembeli)** | Storefront tenant, katalog retail, dan alur checkout pembeli |
+| `dashboard.boontrack.com/{slug}` | **Seller (Merchant / CS)** | Pusat kontrol manajemen tenant, analitik bisnis, dan ruang kerja operasional CS Inbox (menggantikan asumsi penamaan `app` dan `desk` sebelumnya) |
+| `studio.boontrack.com` | **Creative / Producer** | Ruang kerja produksi kreatif video iklan 9-scene, storyboard, dan antrean render media |
+| `creator.boontrack.com` | **Creator / Influencer** | Public creator showcase & bio link |
 
 Seluruh trafik dari `dashboard.boontrack.com` diproses oleh `middleware.ts` yang melakukan **internal rewrite** (bukan redirect publik) ke route `app/[tenant]/dashboard/...` di Next.js App Router. URL di browser merchant tetap berada di `dashboard.boontrack.com`.
 
@@ -71,14 +73,15 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 | `boontrack.com` | Landing Page Korporat & Solusi | Cloudflare Worker (`patient-smoke-84ed`) | Edukasi platform & navigasi produk | `PageView` |
 | `boontrack.com/onboarding` | B2B, B2G, Custom IoT & Hardware | Cloudflare Worker (`patient-smoke-84ed`) | Form Audit & Booking Architect | `Lead` |
 | `career.boontrack.com` | AI Career Growth & Talent Pool | Cloudflare Worker (`silent-water-8c2e`) | Landing page career & intake CV | `PageView` / `Lead` |
-| `app.boontrack.com` | Pintu Masuk Portal Aplikasi | Vercel (Next.js) | Hub Utama (Onboarding redirect ke `boontrack.com/onboarding`) | - |
+| `app.boontrack.com` | Legacy Application Portal & Hub (Non-Canonical) | Vercel (Next.js) | Hub aplikasi legacy (BUKAN domain merchant dashboard aktif; merchant wajib menggunakan `dashboard.boontrack.com`) | - |
 | `shop.boontrack.com/register` | Merchant Self-Serve (UKM / Retail) | Vercel (Next.js) | Registrasi Toko Baru Langsung | `InitiateCheckout` (Trial), `Purchase` (Lunas) |
 | `shop.boontrack.com/affiliate/register` | Calon Mitra Afiliasi | Vercel (Next.js) | Registrasi Mandiri Program Afiliasi | `CompleteRegistration` |
 | `affiliate.boontrack.com` | Mitra Affiliate Aktif (role: 'affiliate') & Affiliate Manager (role: 'am' - Kang Sakti / buzzerukm) | Vercel (Next.js) | Dashboard Mandiri Mitra, serta Agregasi Metrik Jaringan Downline & Monitoring Payout khusus role AM. | - |
-| `dashboard.boontrack.com` | Merchant (Seller) â€” semua tier | Vercel (Next.js) via internal rewrite middleware | Login & Dashboard manajemen toko. Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
+| `shop.boontrack.com/{slug}` | Pembeli (Buyer) Ritel & Digital | Vercel (Next.js) | Storefront tenant, katalog retail, dan alur checkout pembeli | `PageView`, `ViewContent`, `InitiateCheckout`, `Purchase` |
+| `dashboard.boontrack.com` | Merchant (Seller) & CS Inbox — semua tier | Vercel (Next.js) via internal rewrite middleware | Pusat kontrol manajemen tenant, analitik bisnis, dan ruang kerja operasional CS Inbox (menggantikan asumsi penamaan `app` dan `desk` sebelumnya). Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
 | `bossob.boontrack.com/admin` | Super Admin Internal | Vercel (Next.js) | Control Plane, Leads Pipeline & Tenant Registry | - |
-| `creator.boontrack.com` | Solo Creator, Affiliate Marketer, Public Audience | Vercel (Next.js) | Public Showcase, Link-in-Bio, Transparent Deep-link E-commerce & Direct QRIS Checkout | `PageView`, `ViewContent` |
-| `studio.boontrack.com` | Brand Owner, Merchant, In-House Creative, Agensi | Vercel (Next.js) | Production Control Room, UGC Script Studio, Storyboard, Asset Library & Render Queue | - |
+| `creator.boontrack.com` | Solo Creator, Affiliate Marketer, Public Audience | Vercel (Next.js) | Public creator showcase & bio link (Transparent Deep-link E-commerce & Direct QRIS Checkout) | `PageView`, `ViewContent` |
+| `studio.boontrack.com` | Brand Owner, Merchant, In-House Creative, Agensi | Vercel (Next.js) | Ruang kerja produksi kreatif video iklan 9-scene, storyboard, dan antrean render media | - |
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
 
@@ -4202,10 +4205,10 @@ graph TD
     end
 
     subgraph Domains ["3. DOMAIN BOUNDARY GATES"]
-        D1["shop.boontrack.com<br/>(Commerce Storefronts)"]
-        D2["app.boontrack.com<br/>(Custom Apps, Civic Portals & Hub)"]
-        D3["creator.boontrack.com<br/>(Creator Profiles & UGC Studio)"]
-        D4["career.boontrack.com<br/>(Career AI & Talent Pool)"]
+        D1["shop.boontrack.com<br/>(Buyer Storefronts)"]
+        D2["dashboard.boontrack.com<br/>(Merchant Dashboard & CS Inbox)"]
+        D3["studio.boontrack.com<br/>(Creative Workspace & Production)"]
+        D4["creator.boontrack.com<br/>(Creator Showcase & Bio Link)"]
     end
 
     subgraph Templates ["4. CANONICAL TEMPLATES"]
@@ -4261,21 +4264,33 @@ Tiga aturan invarian berikut bersifat absolut dan tidak dapat diubah (*non-negot
 - Sistem wajib menetapkan template sebagai `UNKNOWN_TEMPLATE`, mengembalikan error `UnknownTemplateError` (HTTP 422), dan menampilkan komponen fallback terkendali: `ControlledProvisioningError`.
 - Hal ini mencegah kebocoran visual katalog e-commerce pada entitas non-komersial (seperti kantor kelurahan, instansi publik, atau landing page korporat).
 
-#### Invariant 2: Domain Boundary Guard
-Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middleware dan Component Resolver:
-- **`shop.boontrack.com` (Commerce Domain)**:
-  * Hanya mengizinkan tenant dengan kapabilitas komersial penuh (`SHOP_V1`).
-  * Jika tenant non-komersial (`PUBLIC_SERVICE_V1`, `CUSTOM_APP`) diakses melalui `shop.boontrack.com`, sistem **WAJIB menolak dengan HTTP 404 Not Found** (`TemplateNotCompatibleError`).
-- **`app.boontrack.com` (Application & Public Service Domain)**:
-  * Mengizinkan tenant aplikasi kustom, layanan warga digital (`PUBLIC_SERVICE_V1`), portal enterprise, dan routing portal aplikasi (`/app-portal`).
-  * Akses operator PTSP (`/[tenant]/desk`) dan autentikasi kontekstual (`/login?redirectTo=...`) diselesaikan secara otomatis tanpa circular redirect.
-- **`creator.boontrack.com` (Public Creator Experience)**:
-  * Didedikasikan khusus untuk showcase publik, link-in-bio mobile-first, transparent deep-linking Shopee/TikTok native, dan etalase produk digital/jasa bertema Clean Light (`CREATOR_V1`).
-  * Murni melayani audiens publik tanpa beban proses render media berat.
-- **`studio.boontrack.com` (Authenticated Creative Workspace)**:
-  * Ruang kerja produksi kreatif B2B bertema Electric Dark.
-  * Menampung generator naskah video 9-scene, storyboard, manajemen aset kreatif, serta pemantauan antrean render media (FFmpeg CPU).
-  * Terproteksi otentikasi secara default dengan resolusi tenant berbasis sesi (`TenantRuntimeContext`).
+#### Invariant 2: Domain Boundary Guard & 4 Canonical Product Surfaces
+Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middleware dan Component Resolver untuk **4 Pilar Permukaan Produk Kanonikal**:
+1. **`dashboard.boontrack.com/{slug}` (Merchant Dashboard & CS Inbox)**:
+   * **Route Kanonikal**: `app/[tenant]/dashboard/...`
+   * **Tanggung Jawab**: Operasional seller, administrasi toko, manajemen tim/CS, analitik pesanan, dan unified WhatsApp inbox.
+   * Diproteksi oleh `resolveVerifiedTenantContext`: sesi wajib valid, berstatus aktif, dan merupakan anggota resmi dari tenant yang diakses.
+2. **`studio.boontrack.com` (Creative Workspace)**:
+   * **Route Kanonikal**: `app/studio/page.tsx` & `app/studio/desk/page.tsx`
+   * **Tanggung Jawab**: Ruang kerja produksi kreatif video iklan 9-scene, storyboard, manajemen aset, dan antrean render media.
+   * Rute `studio.boontrack.com/desk` adalah rute aktif Studio workspace (independen dan TIDAK terdampak pensiunnya merchant desk).
+3. **`shop.boontrack.com/{slug}` (Buyer Storefront)**:
+   * **Route Kanonikal**: `app/[tenant]/...` (storefront, katalog produk, kalkulasi ongkir, checkout QRIS, status pesanan).
+   * Hanya mengizinkan tenant dengan kapabilitas komersial penuh (`SHOP_V1`).
+   * Akses tenant non-komersial via domain ini wajib ditolak dengan HTTP 404 (`TemplateNotCompatibleError`).
+4. **`creator.boontrack.com/@{handle}` (Creator Showcase)**:
+   * **Route Kanonikal**: Creator profile routes (`app/[tenant]/creator/...` / `creator.boontrack.com/@{handle}`).
+   * Showcase publik, link-in-bio mobile-first, transparent deep-linking, direct digital checkout. Murni melayani audiens publik tanpa beban render video berat.
+
+##### Permukaan Non-Kanonikal & Berstatus Pensiun (Deprecated / Retired):
+- **`app.boontrack.com` (Legacy Application Portal & Hub)**:
+  * Domain aplikasi legacy yang **BUKAN** merupakan domain merchant dashboard aktif.
+  * Seluruh operasional merchant wajib diarahkan ke `dashboard.boontrack.com`.
+- **Rute `/{tenant}/desk` (Legacy Merchant Desk — RETIRED)**:
+  * Halaman legacy merchant desk (`app/[tenant]/desk/page.tsx`) resmi dipensiunkan (RETIRED) dan digantikan oleh Server Component redirect (HTTP 307) ke `/{tenant}/dashboard`.
+  * Traffic dari edge/middleware pada `dashboard.boontrack.com/{slug}/desk` maupun `shop.boontrack.com/{slug}/desk` otomatis dialihkan ke `/{slug}/dashboard`.
+  * Parameter operasional aman (`tab`, `filter`, `status`, `q`, `date`, `orderId`) dipertahankan secara transparan.
+  * Pensiunnya `/{tenant}/desk` TIDAK mempengaruhi `studio.boontrack.com/desk` yang merupakan ruang kerja aktif Studio.
 - **`career.boontrack.com` (Career Domain)**:
   * Didedikasikan untuk intake CV, evaluasi AI ATS, dan talent pool recruitment (`CAREER_V1`).
 
@@ -4814,7 +4829,7 @@ public/branding/
 Komponen antarmuka (Next.js layout, header, footer, favicon metadata tags) dilarang melakukan hardcode string path aset secara manual. Seluruh pemetaan wajib mengonsumsi kontrak konfigurasi `BRANDING_ASSETS` dan helper `getBrandingConfig()`:
 
 ```ts
-export type BrandingPillar = 'shop' | 'studio' | 'creator' | 'app';
+export type BrandingPillar = 'shop' | 'studio' | 'creator' | 'dashboard' | 'app';
 
 export interface PillarBrandingConfig {
   name: string;
@@ -4828,8 +4843,19 @@ export interface PillarBrandingConfig {
 }
 
 export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
+  dashboard: {
+    name: 'BoonTrack Dashboard & Inbox',
+    shortName: 'Dashboard',
+    logo: '/branding/app/logo-512.png',
+    favicon: '/branding/app/favicon.ico',
+    icon: '/branding/app/icon.png',
+    appleTouchIcon: '/branding/app/apple-touch-icon.png',
+    manifest: '/branding/app/manifest.json',
+    domain: 'https://dashboard.boontrack.com',
+  },
   shop: {
     name: 'BoonTrack Shop',
+    shortName: 'Shop',
     logo: '/branding/shop/logo.png',
     favicon: '/branding/shop/favicon.ico',
     icon: '/branding/shop/icon.png',
@@ -4839,6 +4865,7 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
   },
   studio: {
     name: 'BoonTrack Studio',
+    shortName: 'Studio',
     logo: '/branding/studio/logo.png',
     favicon: '/branding/studio/favicon.ico',
     icon: '/branding/studio/icon.png',
@@ -4848,6 +4875,7 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
   },
   creator: {
     name: 'BoonTrack Creator',
+    shortName: 'Creator',
     logo: '/branding/creator/logo.png',
     favicon: '/branding/creator/favicon.ico',
     icon: '/branding/creator/icon.png',
@@ -4855,8 +4883,12 @@ export const BRANDING_ASSETS: Record<BrandingPillar, PillarBrandingConfig> = {
     manifest: '/branding/creator/manifest.json',
     domain: 'https://creator.boontrack.com',
   },
+  /**
+   * @deprecated Legacy application portal / hub domain. It is NOT an active canonical merchant dashboard domain.
+   */
   app: {
     name: 'BoonTrack App Portal',
+    shortName: 'App Portal',
     logo: '/branding/app/logo-512.png',
     favicon: '/branding/app/favicon.ico',
     icon: '/branding/app/icon.png',
@@ -5123,6 +5155,9 @@ Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
 1. **FORCE ROW LEVEL SECURITY (18 Tabel Utama)**: Seluruh tabel transaksional dipaksa `FORCE RLS` dengan evaluasi predikat anti-NULL deterministik (`IS DISTINCT FROM` & `COALESCE`). Meniadakan celah wildcard `USING (true)`.
 2. **Security Invoker Views**: Seluruh dynamic view diwajibkan memiliki opsi `security_invoker = true`.
 3. **Fail-Closed Isolation & SET LOCAL Scope**: Transaksi backend wajib dibungkus blok `BEGIN ... SET LOCAL app.current_tenant_id = '<uuid>' ... COMMIT`. Kueri tanpa konteks penyewa valid otomatis ditolak kernel database (Error 42501).
+4. **Eliminasi Total Kebijakan Permisif (DIR-04 s/d DIR-07)**: Menghapus seluruh policy permisif `USING (true)` atau `WITH CHECK (true)` pada tabel sensitif (`affiliates`, `affiliate_commissions`, `cart_items`, `orders`, `conversations`).
+5. **Dual-Resolution Helper & Parameterized Context (DIR-08 s/d DIR-11)**: Isolasi tenant ditegakkan melalui helper resolusi ganda UUID dan slug yang membaca konteks `current_setting('app.current_tenant_id', true)` secara aman tanpa celah type-casting error.
+6. **Zero Cross-Tenant Leakage & Audited Fail-Closed (DIR-12 s/d DIR-15)**: Menjamin integritas multi-tenant lintas role database (`public`, `authenticated`, `service_role`). Kueri tanpa token atau identitas yang valid langsung gagal secara tertutup (403/404) tanpa fallback ke penyewa lain.
 
 ### 62.2 Directive P1 Smart Chatbox & Bot State Machine (TASK-101 s/d TASK-105)
 1. **Ingress Webhook & Echo Filter Guard (TASK-101)**: Filter gerbang depan memvalidasi `key.fromMe == true` dan mendrop pesan echo dari nomor instance bot sendiri sebelum masuk ke event loop, intent parser, atau trigger pause.
@@ -5130,6 +5165,10 @@ Pada saat akun Studio diverifikasi (`activateStudioRegistrationByToken`):
 3. **Unified Bot State Machine (TASK-103)**: Perintah kontrol teks (`#on`, `#off`, `#pause`, `#resume`) dan tombol toggle UI CS memanggil RPC/mutasi database yang identik; Single Source of Truth berada di tabel `conversations`.
 4. **Dynamic Resume & Timeout Policy (TASK-104)**: Evaluasi status bot berlangsung dinamis. Jika `now() > paused_until`, sistem otomatis mengaktifkan bot kembali (*fail-open for timeout*).
 5. **Automated Test Certification (TASK-105)**: 200/200 test case lulus di 19 test suite WhatsApp & Security; status HOLD dari CTO Office resmi dicabut 100%.
+
+### 62.3 Penutupan Ratifikasi & Sertifikasi Directive P1
+- **Status Sertifikasi**: 100% lulus pada 200 test cases di 19 test suite WhatsApp & Database Security.
+- **Pencabutan HOLD**: Status operasional HOLD dari CTO Office resmi dicabut penuh (Commit `6118290`) dan seluruh kebijakan keamanan kernel dinyatakan aktif mengikat (*enforced*) di lingkungan staging maupun production.
 
 ---
 
@@ -5310,27 +5349,29 @@ ightarrow$ `[Minta Pencairan ke Tenant B]`
 > **Architectural Status**: 🔒 **ACTIVE & ENFORCED IN PRODUCTION**  
 > **Core Principle**: *"dashboard.boontrack.com is the exclusive home for merchant control plane. app.boontrack.com is reserved strictly for custom corporate B2B/B2G applications."*
 
-### 63.1 Pemetaan Resmi Subdomain Ekosistem BoonTrack
+### 63.1 Pemetaan Resmi Subdomain Ekosistem BoonTrack (Konsistensi ADR Kanonikal)
 
-Seluruh generator URL, laporan onboarding tenant, middleware routing, CORS runner, dan asisten AI WAJIB mematuhi pemetaan berikut:
+Seluruh generator URL, laporan onboarding tenant, middleware routing, CORS runner, dan asisten AI WAJIB mematuhi pemetaan kanonikal berikut:
 
-1. **`dashboard.boontrack.com` (MERCHANT DASHBOARD & LOGIN)**
-   - **Tampilan Root (`/`)**: Otomatis internal rewrite ke form login bawaan (Input Slug Toko + Password/PIN). URL di browser tetap bersih: `https://dashboard.boontrack.com`.
-   - **Rute Toko**: `https://dashboard.boontrack.com/[tenant-slug]` (contoh: `/elinor-jewelry`, `/onlineboost`).
-   - ❌ **DILARANG KERAS** menggunakan `app.boontrack.com` atau `desk.boontrack.com` untuk akses login/onboarding toko merchant standar!
-
-2. **`shop.boontrack.com` (STOREFRONT PEMBELI)**
+1. **`shop.boontrack.com` (STOREFRONT TENANT & CHECKOUT PEMBELI)**
+   - Storefront tenant, katalog retail, dan alur checkout pembeli.
    - Katalog Toko: `https://shop.boontrack.com/[tenant-slug]`
    - Fast Invoice: `https://shop.boontrack.com/[tenant-slug]/pay/[token]`
 
-3. **`app.boontrack.com` (CUSTOM APP ENTERPRISE B2B & B2G)**
+2. **`dashboard.boontrack.com` (PUSAT KONTROL MANAJEMEN TENANT & CS INBOX)**
+   - Pusat kontrol manajemen tenant, analitik bisnis, dan ruang kerja operasional CS Inbox (menggantikan asumsi penamaan `app` dan `desk` sebelumnya).
+   - **Tampilan Root (`/`)**: Otomatis internal rewrite ke form login bawaan (Input Slug Toko + Password/PIN). URL di browser tetap bersih: `https://dashboard.boontrack.com`.
+   - **Rute Toko & CS Inbox**: `https://dashboard.boontrack.com/[tenant-slug]` (contoh: `/elinor-jewelry`, `/onlineboost`). Seluruh operasional obrolan multi-agen bertempat di tab Inbox (`TeamChatTab.tsx`).
+   - ❌ **DILARANG KERAS** menggunakan `app.boontrack.com` atau `desk.boontrack.com` untuk akses login/onboarding toko merchant standar atau ruang kerja CS!
+
+3. **`studio.boontrack.com` (CREATIVE PRODUCTION & RENDER QUEUE)**
+   - Ruang kerja produksi kreatif video iklan 9-scene, storyboard, dan antrean render media.
+
+4. **`creator.boontrack.com` (PUBLIC CREATOR SHOWCASE & BIO LINK)**
+   - Public creator showcase & bio link (`creator.boontrack.com/@handle`).
+
+5. **`app.boontrack.com` (CUSTOM APP ENTERPRISE B2B & B2G)**
    - Didedikasikan HANYA untuk modul aplikasi vertikal kustom non-toko: IoT Gym (`app.boontrack.com/gym`), Portal Kelurahan Margasari (`app.boontrack.com/margasari`), dsb.
-
-4. **`desk.boontrack.com` (CS INBOX HUB)**
-   - Workspace operator chat WhatsApp multi-agent terpusat.
-
-5. **`creator.boontrack.com` & `studio.boontrack.com`**
-   - Khusus portal publik kreator (`/@handle`) dan studio produksi naskah UGC/render queue.
 
 6. **`deck.boontrack.com`**
    - Khusus slide pitch deck interaktif (`deck.boontrack.com/jennakaia`).
@@ -5447,4 +5488,90 @@ Backend di Railway bertindak sebagai **Single Source of Truth & Sole Financial A
    - Mengarahkan webhook Xendit ke Next.js (`/api/webhooks/xendit`, `/api/webhooks/xendit/paid`, atau `/api/webhook/payment`) di lingkungan produksi merupakan **PELANGGARAN ARSITEKTUR TINGKAT TINGGI (High Severity Anti-Pattern)**.
    - Konfigurasi ganda memicu risiko *split-brain*, di mana Next.js dan Railway saling berebut memutasi status order, memicu duplikasi notifikasi WhatsApp atau ketidaksinkronan buku besar finansial.
    - Folder rute webhook lokal di Next.js (`app/api/webhooks/xendit/*`, `app/api/webhook/payment/*`) dilabeli peringatan keras arsitektur dan dinonaktifkan dari jalur produksi publik.
+
+---
+
+## § 63. G4-C RELEASE-GATE, CTWA FUNNEL & META TECH PROVIDER INVARIANTS (ADR 2026-10-29)
+
+> **Architectural Status**: 🛡️ **LOCAL REMEDIATION ONLY — CANARY DEPLOYMENT PENDING CTO RELEASE APPROVAL (STRICT HOLD ACTIVE)**  
+> **Ratification Date**: Kamis, 29 Oktober 2026  
+> **Core Principle**: *"Meta Tech Provider compliance, authoritative single-price Rp249.000 OnlineBoost Batch 1, fail-closed release gates, and zero-FOUC presentation layer polish."*
+
+### 63.1 Meta Tech Provider Status & Ecosystem Compliance
+1. **Status Kemitraan Resmi (Meta Tech Provider)**:
+   - PT Boontrack Inovasi Digital beroperasi secara resmi sebagai **Meta Tech Provider** (Meta Business Partner).
+   - Seluruh integrasi WhatsApp Cloud API (WABA) beroperasi langsung melalui Meta Graph API v21.0 (`https://graph.facebook.com/v21.0`), infrastruktur Business Solution Provider (BSP), dan System User Access Tokens terotentikasi.
+   - Peniadaan perantara tidak resmi: seluruh komunikasi Click-to-WhatsApp (CTWA) dan server-side Conversions API (CAPI) terikat langsung ke aset Meta Business Manager terverifikasi.
+2. **Kepatuhan Meta Messaging & Anti-Spam Terms**:
+   - **Opt-Out & Durable Phone Suppression**: Penegakan privasi dan standar Meta. Kontak yang mengirimkan kata kunci `STOP`, `BERHENTI`, atau `UNSUBSCRIBE` dicatat persisten di tabel supresi `phone_suppressions`; bot WhatsApp dilarang keras mengirimkan pesan keluar apa pun (0 outbound dispatch).
+   - **Template Approval Enforcement**: Seluruh pesan outbound inisiasi bisnis di luar jendela layanan 24 jam (24-hour service window) wajib menggunakan template pesan Meta yang telah disetujui (*pre-approved message templates*).
+   - **CAPI Server-Side Deduplication**: Setiap event konversi transaksi (`Purchase`, `CompleteRegistration`) memancarkan parameter atribusi `event_id`, `fbp`, `fbc`, dan `ctwa_clid` yang terdeduplikasi dengan pixel browser secara presisi.
+
+### 63.2 CTWA Funnel & Pricing Contract Rp249.000 OnlineBoost Batch 1
+1. **Invarian Harga Tunggal Rp249.000 (Single Price Contract)**:
+   - Investasi program Kelas Inkubasi CTWA Batch 1 OnlineBoost dikunci secara absolut pada **Rp249.000** (sekali bayar tanpa biaya bulanan / no recurring fees).
+   - **DILARANG KERAS** memunculkan angka lama (seperti Rp1.499.000, Rp1.796.000, atau Rp999.000) pada respons bot konsultasi, naskah closing, sales script, maupun katalog toko publik.
+   - **Paket Fasilitas Resmi**:
+     * Bimbingan 10 langkah intensif (live mentoring + rekaman seumur hidup).
+     * Setup bot WhatsApp AI sales rep natural multi-agent.
+     * Kasir checkout otomatis Dynamic QRIS 0% MDR fee.
+     * Integrasi Meta CAPI & server-side event tracking.
+2. **Price Anchoring & Komparasi Fasilitas (Situation F)**:
+   - Calon peserta yang menanyakan perbandingan fasilitas atau komparasi dengan paket lain dilayani dengan skrip Situation F resmi:
+     * Menyertakan referensi resmi `https://boontrack.com/pricing` secara kontekstual dan transparan.
+     * Menegaskan nilai investasi Rp249.000 sekali bayar untuk program Batch 1.
+     * Meniadakan klaim diskon fiktif atau coret harga palsu.
+3. **Consultation-Led Fast Registration (Simple Line Parser)**:
+   - Penangkapan identitas calon peserta dilakukan melalui format teks ringkas tanpa kurung siku atau kalimat berbelit-belit:
+     ```text
+     Nama : [Nama Lengkap]
+     Email : [Alamat Email Aktif]
+     ```
+   - Adapter parser (`WabaProviderAdapter` & `AcademyBotStateMachine`) mengekstrak baris `Nama :` dan `Email :` secara deterministik dan langsung mengaitkan data ke sesi kontak tanpa memicu loop konsultasi berulang.
+
+### 63.3 Release-Gate G4-B / G4-C Protocols & Operational Safety
+1. **Canonical SKU: `OB-BATCH1-249K`**:
+   - Seluruh pesanan, registrasi, invoice, dan pencatatan ledger OnlineBoost Batch 1 wajib menggunakan canonical SKU tunggal:
+     ```text
+     OB-BATCH1-249K
+     ```
+   - Penggunaan legacy SKU (`SKU-BTA-ALUMNI-249K`) berstatus *deprecated* dan hanya diterima sebagai jembatan kompatibilitas mundur pada intent parser.
+2. **Fail-Closed Runtime Gate (`ONLINEBOOST_PAYMENT_STRICT_HOLD="true"`)**:
+   - Selama fase canary dan audit rilis (Gate G4-B dan G4-C), environment variable `ONLINEBOOST_PAYMENT_STRICT_HOLD` berstatus aktif default `true`.
+   - **Zero Live Xendit Call Invariant (P0-01)**: Sistem menolak keras pemanggilan API live payment gateway Xendit (counter panggilan wajib tepat 0). Tidak ada invoice atau dynamic QRIS live yang diterbitkan ke publik sebelum otorisasi resmi CTO.
+   - **Graceful Strict Hold State**: Peserta yang mengirimkan data pendaftaran saat strict hold aktif ditransisikan secara elegan ke status aman `PAYMENT_STRICT_HOLD` / `GATEKEEPER_STRICT_HOLD` dengan tanda antrean (`hold_queued=true`), mengamankan slot tanpa risiko pembayaran prematur.
+3. **Protokol Perlindungan P0 Release-Gate**:
+   - **P0-01 (Zero External Payment Gateway Calls)**: Telemetri aktif mengawasi antrean; setiap percobaan panggilan payment gateway saat strict hold memicu critical security alert.
+   - **P0-03 (Circuit Breaker & Tenant Boundary Guard)**: Request WhatsApp yang tidak terikat secara valid ke tenant `onlineboost` langsung di-abort dengan HTTP 403 Forbidden untuk menjamin isolasi multi-tenant tanpa kebocoran data (*zero data leak*).
+   - **P0-04 (Opt-Out & Durable Suppression)**: Integrasi tabel database `phone_suppressions` memastikan penolakan total interaksi bot bagi pengguna yang telah menyatakan berhenti berlangganan.
+
+### 63.4 Presentation Layer Storefront Polish (Anti-FOUC & Deep-Link Anchor)
+1. **Anti-FOUC (Flash of Unstyled Content) Dark Theme Guard**:
+   - Storefront tenant `onlineboost` menerapkan tema gelap pekat `#0a0a0a` dengan teks `#f4f4f5` (`color-scheme: dark !important`).
+   - Injeksi CSS inline kritis di tingkat Server-Side Rendering (`TenantStoreLayout` pada `app/[tenant]/layout.tsx`) dan Suspense fallback (`SingleProductPage`) menjamin halaman langsung berlatar belakang gelap sejak byte pertama tiba di browser pengguna, mengeliminasi kedipan putih (white flash) saat rehidrasi React.
+2. **Deep-Link Anchor `#tools` Navigation**:
+   - Kontainer tabel komparasi biaya dan kalkulator peralatan disematkan ID kanonikal `id="tools"`.
+   - Aturan CSS `scroll-margin-top: 100px` dan `scroll-behavior: smooth` diterapkan pada `.comparison-section`, `.comparison-panel`, dan `.comparison-table-wrap` untuk mencegah konten tertutup header sticky.
+   - Script client-side mengimplementasikan staggered retry timers (`200ms`, `500ms`, `1000ms`) dan listener `hashchange` guna memastikan navigasi tautan dalam (deep link) dari iklan atau chat mendarat presisi di viewport.
+3. **WhatsApp CTA Direct Routing**:
+   - Tombol `.btn-cta-onlineboost` dan sticky CTA pada custom landing page OnlineBoost Batch 1 menavigasi langsung ke nomor WhatsApp resmi `6288226098088` dengan prefilled text `"Saya tertarik ikut kelas nya Kang"`.
+   - CTA tidak memanggil `handleOpenCheckout`, tidak membuat order, dan tidak memicu endpoint pembayaran.
+
+### 63.5 Boontrack Academy 5 Add-on Modules (Kurikulum & Capability Engine)
+Ekosistem pembelajaran inkubasi CTWA Batch 1 didukung oleh 5 Modul Add-on Spesialisasi Tingkat Lanjut yang dikonfigurasi secara deklaratif melalui database metadata:
+1. **Modul 1: Organik & Viral Content Engineering**:
+   - Arsitektur distribusi konten tanpa biaya iklan berbayar (Zero-Adspend Traffic).
+   - Blueprint hook 3 detik berbasis psikologi visual, algoritma feed Reels/TikTok/Shorts, dan corong konversi penonton video pendek ke sesi chat WhatsApp.
+2. **Modul 2: Google Tag Manager (GTM) & Meta Conversions API (CAPI)**:
+   - Standarisasi pelacakan server-side modern untuk mengatasi pemblokiran cookie pihak ketiga (iOS 14.5+ & Safari ITP).
+   - Konfigurasi Webhook CAPI, parameter identitas First-Party (`client_ip_address`, `client_user_agent`, `fbp`, `fbc`), deduplikasi event, dan pencapaian Event Quality Match Score 8.5+.
+3. **Modul 3: TikTok Ads for High-Converting Direct Commerce**:
+   - Strategi periklanan video vertikal pendek berorientasi konversi langsung (GMV Max & Spark Ads).
+   - Penggunaan materi kreatif kreator UGC, taktik bidding rendah, dan re-engagement audiens penonton video ke WhatsApp bot.
+4. **Modul 4: CPM Arbitrage & Budget Scaling**:
+   - Metodologi efisiensi belanja iklan melalui arbitrase CPM (Cost Per Mille) pada platform Meta & TikTok.
+   - Manajemen adset horizontal scaling, penargetan audiens bernilai tinggi (*high net-worth*), serta penguncian margin keuntungan bersih produk ritel.
+5. **Modul 5: Cost Per Acquisition (CPA) Masterclass & Conversion Rate Optimization (CRO)**:
+   - Audit mendalam metrik CPA dan eliminasi friksi checkout pembeli.
+   - Penyusunan sales page dengan rasio konversi tinggi, integrasi pembayaran instan Dynamic QRIS tanpa biaya admin memberatkan, dan peningkatan Customer Lifetime Value (LTV) melalui automated broadcast CRM.
 

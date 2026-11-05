@@ -11,23 +11,58 @@ export interface LocationArea {
   longitude: number;
 }
 
-// Helper: Menentukan titik koordinat presisi berdasarkan kota, kecamatan, atau kode pos
+// Helper: Menentukan titik koordinat presisi berdasarkan kota, kecamatan, kode pos, atau alamat
 export function resolveAreaCoordinates(
   city: string,
-  district: string,
-  postalCode: string
+  district: string = '',
+  postalCode: string = '',
+  address: string = ''
 ): { latitude: number; longitude: number } {
   const c = (city || '').toLowerCase();
   const d = (district || '').toLowerCase();
   const p = String(postalCode || '').trim();
-  const text = `${c} ${d}`;
+  const a = (address || '').toLowerCase();
+  const text = `${c} ${d} ${a}`;
 
-  // 1. Bandung & Sekitarnya
+  // 1. Bandung & Sekitarnya (Prioritas titik spesifik Bandung Raya & Sub-urban sebelum generic)
+  if (text.includes('istana bunga') || text.includes('parongpong') || text.includes('cihanjuang') || text.includes('karyawangi') || p === '40559') {
+    return { latitude: -6.7967, longitude: 107.5817 }; // Parongpong / Villa Istana Bunga
+  }
+  if (text.includes('lembang') || text.includes('maribaya') || text.includes('jayagiri') || p === '40391') {
+    return { latitude: -6.8168, longitude: 107.6178 }; // Lembang
+  }
+  if (text.includes('cisarua') || text.includes('jambudipa') || p === '40551') {
+    return { latitude: -6.7950, longitude: 107.5480 }; // Cisarua KBB
+  }
+  if (text.includes('ciater') || text.includes('tangkuban')) {
+    return { latitude: -6.7380, longitude: 107.6550 }; // Ciater
+  }
+  if (text.includes('ciwidey') || text.includes('rancabali') || p === '40972') {
+    return { latitude: -7.0930, longitude: 107.4580 }; // Ciwidey
+  }
+  if (text.includes('pangalengan') || p === '40378') {
+    return { latitude: -7.1720, longitude: 107.5620 }; // Pangalengan
+  }
+  if (text.includes('soreang') || text.includes('katapang') || p === '40911') {
+    return { latitude: -7.0260, longitude: 107.5180 }; // Soreang
+  }
+  if (text.includes('padalarang') || text.includes('ngamprah') || p === '40553') {
+    return { latitude: -6.8370, longitude: 107.4780 }; // Padalarang
+  }
+  if (text.includes('bojongsoang') || text.includes('cikoneng') || text.includes('dadali') || p === '40287') {
+    return { latitude: -6.9813, longitude: 107.6357 }; // Bojongsoang (Base Kitchen)
+  }
+  if (text.includes('dayeuhkolot') || text.includes('baleendah') || p === '40257') {
+    return { latitude: -6.9920, longitude: 107.6250 }; // Dayeuhkolot / Baleendah
+  }
+  if (text.includes('jatinangor') || text.includes('cileunyi') || p === '45363') {
+    return { latitude: -6.9320, longitude: 107.7730 }; // Jatinangor / Cileunyi
+  }
   if (text.includes('buahbatu') || text.includes('margacinta') || p === '40286') return { latitude: -6.9538, longitude: 107.6757 };
   if (text.includes('coblong') || text.includes('dago') || p === '40132') return { latitude: -6.8850, longitude: 107.6139 };
   if (text.includes('sumur bandung') || p === '40111') return { latitude: -6.9178, longitude: 107.6150 };
   if (text.includes('sukajadi') || p === '40161') return { latitude: -6.8821, longitude: 107.5954 };
-  if (text.includes('rancasari') || p === '40287') return { latitude: -6.9542, longitude: 107.6749 };
+  if (text.includes('rancasari')) return { latitude: -6.9542, longitude: 107.6749 };
   if (text.includes('bojongloa') || p === '40235') return { latitude: -6.9351, longitude: 107.5878 };
   if (text.includes('cimahi') || p.startsWith('405')) return { latitude: -6.8723, longitude: 107.5420 };
   if (c.includes('bandung') || p.startsWith('40')) return { latitude: -6.9175, longitude: 107.6191 };
@@ -68,6 +103,50 @@ export function resolveAreaCoordinates(
 
   // Default Indonesia Center
   return { latitude: -6.9175, longitude: 107.6191 };
+}
+
+/**
+ * Geocodes destination address with high-precision local fallback and Nominatim web resolver.
+ */
+export async function geocodeDestinationAddress(
+  address: string = '',
+  city: string = '',
+  district: string = '',
+  postalCode: string = ''
+): Promise<{ latitude: number; longitude: number }> {
+  // 1. Cek resolusi lokal presisi tinggi terlebih dahulu
+  const localCoord = resolveAreaCoordinates(city, district, postalCode, address);
+  if (localCoord.latitude !== -6.9175 || localCoord.longitude !== 107.6191) {
+    return localCoord;
+  }
+
+  // 2. Jika resolusi lokal jatuh ke default center, panggil OpenStreetMap Nominatim dengan timeout pendek
+  const query = [address, district, city, postalCode, 'Indonesia'].filter(Boolean).join(', ');
+  if (query.trim().length >= 5) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=id&q=${encodeURIComponent(query)}`,
+        {
+          headers: { 'User-Agent': 'BoonTrack-Logistics/1.0' },
+          signal: AbortSignal.timeout(2000),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            return { latitude: lat, longitude: lon };
+          }
+        }
+      }
+    } catch (_) {
+      // Abaikan error timeout/koneksi dan gunakan fallback lokal
+    }
+  }
+
+  return localCoord;
 }
 
 // Fallback data lokal kota & kecamatan populer di Indonesia untuk keandalan maksimal

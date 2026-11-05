@@ -71,19 +71,18 @@ describe('CTO DIRECTIVE PHASE 3B: OnlineBoost Batch 1 WhatsApp-First CTA Verific
 
     it('bypasses checkout submission and payment creation in handleOpenCheckout', () => {
       expect(pageContent).toContain(
-        "if (isOnlineBoostBatch1) {\n      handleWhatsAppConsultation();\n      return;\n    }"
+        "if (isOnlineBoostBatch1) {\n      // Fail closed: OnlineBoost Batch 1 CTAs navigate directly to WhatsApp\n      // without invoking handleOpenCheckout, creating an order, or calling a payment endpoint.\n      return;\n    }"
       );
     });
 
-    it('intercepts global click triggers and redirects Batch 1 directly to WhatsApp', () => {
-      expect(pageContent).toContain('e.stopImmediatePropagation();');
+    it('bypasses global click intercepts so Batch 1 CTAs navigate directly to WhatsApp without invoking checkout', () => {
       expect(pageContent).toContain(
-        "if (isOnlineBoostBatch1) {\n        handleWhatsAppConsultation();\n        return;\n      }"
+        "if (isOnlineBoostBatch1) {\n        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp natively;\n        // do not intercept, hijack, or invoke checkout for Batch 1.\n        return;\n      }"
       );
     });
 
-    it('wires StickyBuyButton to WhatsApp consultation handler for OnlineBoost Batch 1', () => {
-      expect(pageContent).toContain('onOpenCheckout={handleOpenCheckout}');
+    it('wires StickyBuyButton to WhatsApp URL and omits onOpenCheckout for OnlineBoost Batch 1', () => {
+      expect(pageContent).toContain('onOpenCheckout={isOnlineBoostBatch1 ? undefined : handleOpenCheckout}');
       expect(pageContent).toContain(
         'isWhatsAppMode={isOnlineBoostBatch1 || actionMode === \'WHATSAPP\'}'
       );
@@ -210,9 +209,9 @@ describe('CTO DIRECTIVE PHASE 3B: OnlineBoost Batch 1 WhatsApp-First CTA Verific
       expect(pageContent).toContain("resolvedCustomHtml.replace(/6288229098088/g, '6288226098088')");
     });
 
-    it('intercepts wa.me and whatsapp.com links in Custom HTML for OnlineBoost Batch 1', () => {
+    it('bypasses click interception in Custom HTML for OnlineBoost Batch 1', () => {
       expect(pageContent).toContain(
-        "isOnlineBoostBatch1\n        ? '[data-bt-checkout], a[href=\"#checkout\"], [href*=\"#checkout\"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn, a[href*=\"wa.me\"], a[href*=\"whatsapp.com\"]'"
+        "if (isOnlineBoostBatch1) {\n                        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp without invoking handleOpenCheckout\n                        return;\n                      }"
       );
     });
   });
@@ -400,12 +399,14 @@ describe('CTO DIRECTIVE PHASE 3B: OnlineBoost Batch 1 WhatsApp-First CTA Verific
     });
 
     it('verifies CTA completely bypasses checkout submission, order creation, and payment initiation', () => {
-      // In handleOpenCheckout: Batch 1 immediately redirects to WhatsApp without opening modal or submitting
-      expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n      handleWhatsAppConsultation();\n      return;\n    }');
+      // In handleOpenCheckout: Batch 1 fails closed without opening modal or submitting
+      expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n      // Fail closed: OnlineBoost Batch 1 CTAs navigate directly to WhatsApp\n      // without invoking handleOpenCheckout, creating an order, or calling a payment endpoint.\n      return;\n    }');
       // In handleDirectCheckout: Batch 1 is intercepted before any order form submission or mutation
       expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n      handleWhatsAppConsultation();\n      return;\n    }');
       // In handleCustomOpenCheckout event listener:
-      expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n        handleWhatsAppConsultation();\n        return;\n      }');
+      expect(pageContent).toContain('if (isOnlineBoostBatch1) {\n        return;\n      }');
+      // In StickyBuyButton: onOpenCheckout is undefined for Batch 1
+      expect(pageContent).toContain('onOpenCheckout={isOnlineBoostBatch1 ? undefined : handleOpenCheckout}');
     });
 
     it('confirms Inbox delegates WhatsApp Flow parsing and invoice orchestration to boontrack-core', () => {
