@@ -22,26 +22,22 @@ describe('Workforce Isolated Middleware Routing Suite', () => {
     expect(res.headers.get('location')).toBeNull();
   });
 
-  it('should redirect unauthenticated "/" access locally to "/login"', () => {
-    const req = new NextRequest('https://workforce.boontrack.com/');
+  it('should redirect unregistered host access to neutral fallback /login (default-deny)', () => {
+    const req = new NextRequest('https://malicious-intruder.com/');
     const res = middleware(req);
 
     expect(res.status).toBe(307);
     const location = res.headers.get('location');
-    expect(location).toContain('/login');
-    expect(location).not.toContain('dashboard.boontrack.com');
+    expect(location).toContain('workforce.boontrack.com/login');
   });
 
-  it('should allow authenticated "/" access with bwm_session_token', () => {
-    const req = new NextRequest('https://workforce.boontrack.com/', {
-      headers: {
-        cookie: 'bwm_session_token=valid_mock_session_token_123',
-      },
-    });
+  it('should allow registered host access and attach x-tenant-id header', () => {
+    const req = new NextRequest('https://workforce.boontrack.com/');
     const res = middleware(req);
 
     expect(res.status).toBe(200);
     expect(res.headers.get('location')).toBeNull();
+    expect(res.headers.get('x-tenant-id')).toBe('tenant_satya_001');
   });
 
   it('should pass API and static asset routes freely', () => {

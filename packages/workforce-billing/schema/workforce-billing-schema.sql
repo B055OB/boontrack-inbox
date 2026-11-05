@@ -258,9 +258,24 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------------------
--- 7. TABEL: verified_domain_registry (RFC-BWM-014)
+-- 7. TABEL: workforce_verified_domain_registry (RFC-BWM-014)
 -- Authoritative domain registry for multi-tenant dynamic branding & edge resolution
 -- -----------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workforce_verified_domain_registry (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL,
+    hostname TEXT UNIQUE NOT NULL,
+    brand_name TEXT NOT NULL,
+    logo_url TEXT NOT NULL,
+    primary_color TEXT NOT NULL DEFAULT '#06b6d4',
+    accent_color TEXT NOT NULL DEFAULT '#4f46e5',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workforce_verified_domain_hostname ON workforce_verified_domain_registry(hostname);
+
+-- Legacy compatibility table alias
 CREATE TABLE IF NOT EXISTS verified_domain_registry (
     domain_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id VARCHAR(64) NOT NULL,
@@ -275,7 +290,21 @@ CREATE TABLE IF NOT EXISTS verified_domain_registry (
 
 CREATE INDEX IF NOT EXISTS idx_verified_domain_registry_hostname ON verified_domain_registry(hostname, is_active);
 
--- Seed default demo tenants
+-- Seed default demo tenants into workforce_verified_domain_registry
+INSERT INTO workforce_verified_domain_registry (tenant_id, hostname, brand_name, logo_url, primary_color, accent_color, is_active)
+VALUES 
+  ('tenant_satya_001', 'workforce.boontrack.com', 'SATYA Workforce', '/icons/workforce-192.png', '#059669', '#0d9488', TRUE),
+  ('tenant_satya_staging', 'satya.workforce.boontrack.com', 'SATYA Security Ops', '/icons/satya-logo.png', '#06b6d4', '#4f46e5', TRUE),
+  ('tenant_beta_adversary', 'beta.workforce.boontrack.com', 'Beta Security Ops', '/icons/beta-logo.png', '#dc2626', '#b91c1c', TRUE)
+ON CONFLICT (hostname) DO UPDATE 
+SET tenant_id = EXCLUDED.tenant_id,
+    brand_name = EXCLUDED.brand_name,
+    logo_url = EXCLUDED.logo_url,
+    primary_color = EXCLUDED.primary_color,
+    accent_color = EXCLUDED.accent_color,
+    is_active = EXCLUDED.is_active;
+
+-- Seed default demo tenants into verified_domain_registry
 INSERT INTO verified_domain_registry (tenant_id, hostname, brand_name, logo_url, primary_color, accent_color, is_active)
 VALUES 
   ('tenant_satya_001', 'workforce.boontrack.com', 'SATYA Workforce', '/icons/workforce-192.png', '#059669', '#0d9488', TRUE),

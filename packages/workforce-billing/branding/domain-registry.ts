@@ -48,12 +48,12 @@ export class DomainRegistryService {
         isActive: true,
       },
       {
-        tenantId: 'tenant_satya_001',
+        tenantId: 'tenant_satya_staging',
         hostname: 'satya.workforce.boontrack.com',
-        brandName: 'SATYA Garda Perkasa',
-        logoUrl: '/icons/workforce-192.png',
-        primaryColor: '#059669',
-        accentColor: '#0d9488',
+        brandName: 'SATYA Security Ops',
+        logoUrl: '/icons/satya-logo.png',
+        primaryColor: '#06b6d4',
+        accentColor: '#4f46e5',
         isActive: true,
       },
       {
@@ -160,3 +160,4 @@ export class DomainRegistryService {
 
 // Global singleton instance for middleware and route handlers
 export const globalDomainRegistry = new DomainRegistryService();
+

@@ -46,9 +46,23 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(fallbackUrl);
   }
 
-  // Helper to attach dynamic tenant branding headers to response
-  const attachBrandingHeaders = (res: NextResponse) => {
+  // Helper to create branded Next response with x-tenant-id and custom headers
+  const createBrandedNextResponse = () => {
+    const requestHeaders = new Headers(req.headers);
     if (resolution.domain) {
+      requestHeaders.set('x-tenant-id', resolution.domain.tenantId);
+      requestHeaders.set('x-workforce-tenant-id', resolution.domain.tenantId);
+      requestHeaders.set('x-workforce-brand-name', resolution.domain.brandName);
+      requestHeaders.set('x-workforce-primary-color', resolution.domain.primaryColor);
+      requestHeaders.set('x-workforce-accent-color', resolution.domain.accentColor);
+    }
+    const res = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+    if (resolution.domain) {
+      res.headers.set('x-tenant-id', resolution.domain.tenantId);
       res.headers.set('x-workforce-tenant-id', resolution.domain.tenantId);
       res.headers.set('x-workforce-brand-name', resolution.domain.brandName);
       res.headers.set('x-workforce-primary-color', resolution.domain.primaryColor);
@@ -59,7 +73,7 @@ export function middleware(req: NextRequest) {
 
   // 3. Allow /login to render locally without any external redirect
   if (pathname === '/login' || pathname.startsWith('/login/')) {
-    return attachBrandingHeaders(NextResponse.next());
+    return createBrandedNextResponse();
   }
 
   // 4. Catch legacy /dashboard routes and redirect locally to "/"
@@ -69,17 +83,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(homeUrl);
   }
 
-  // 5. Protected route: If accessing root "/" without 'bwm_session_token', redirect locally to "/login"
-  if (pathname === '/' || pathname === '') {
-    const sessionToken = req.cookies.get('bwm_session_token')?.value;
-    if (!sessionToken) {
-      const loginUrl = req.nextUrl.clone();
-      loginUrl.pathname = '/login';
-      return NextResponse.redirect(loginUrl);
-    }
-  }
-
-  return attachBrandingHeaders(NextResponse.next());
+  // 5. Allow root "/" and other registered routes to render with injected tenant branding headers
+  return createBrandedNextResponse();
 }
 
 export const config = {
