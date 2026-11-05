@@ -117,3 +117,4 @@ INSERT INTO credit_ledger (
    - Invariant: `available_credits` can drop to `0`, but **never below zero** (no silent negative debt).
 4. **Early Renewal (Rollover)**:
    Renewing an active personnel prior to expiration consumes 1 pass and adds exactly 30 days to the **existing** `expires_at` date, preserving prepaid coverage.
+

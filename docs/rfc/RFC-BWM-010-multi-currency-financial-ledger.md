@@ -77,3 +77,4 @@ Operational revenue must never be commingled with tax collected on behalf of sov
    No automatic FX conversion in ledger entries. Conversion between ledgers requires an explicit Treasury FX Remittance transaction with audited exchange rate metadata.
 3. **Immutability**:
    All ledger tables are append-only. No `UPDATE` or `DELETE` operations are permitted on posted ledger records. Corrections must be booked as reverse journal adjustments.
+

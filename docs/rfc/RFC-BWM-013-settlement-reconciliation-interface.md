@@ -102,3 +102,4 @@ export interface ReconciliationEngine {
 2. **Discrepancy Resolution Protocol**:
    - Automated nightly cron reconciles provider payout disbursements against internal ledger totals.
    - Variances $> 0$ trigger immediate freeze on auto-renewals for disputed accounts until reviewed.
+

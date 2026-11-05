@@ -56,3 +56,4 @@ export interface PaymentProviderAdapter {
   verifySignature(rawBody: string, headers: Record<string, string>): boolean;
   parseWebhook(rawBody: string, headers: Record<string, string>): NormalizedWebhookEvent;
 }
+

@@ -119,3 +119,4 @@ export interface PaymentProviderAdapter {
 ## 5. Security & Sandbox Boundary
 - **STRICT PROHIBITION**: Production API keys and endpoints for Xendit and Dodo Payments are forbidden in this environment.
 - Only sandbox endpoints (`https://api.xendit.co/v2/...` sandbox mode, `https://test.dodopayments.com/...`) and mock harness adapters are permitted.
+

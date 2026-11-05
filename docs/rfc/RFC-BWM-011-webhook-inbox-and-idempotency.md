@@ -116,3 +116,4 @@ CREATE TABLE webhook_dead_letter_queue (
    - The secondary thread awaits the transaction lock or returns a 200 OK retry acknowledge.
 3. **Replay Protection**:
    Webhooks bearing a timestamp older than 300 seconds or attempting to re-post an already finalized settlement are rejected and logged in security audit logs.
+
