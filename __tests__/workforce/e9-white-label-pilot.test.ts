@@ -156,7 +156,7 @@ describe('BWM Gate E9: White-Label Pilot Scenario & Sandbox Proof Suite', () => 
 
   afterAll(async () => {
     if (client) {
-      await client.end().catch(() => {});
+      await client.end().catch(() => { });
     }
   });
 
