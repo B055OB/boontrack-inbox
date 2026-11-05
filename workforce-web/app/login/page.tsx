@@ -164,7 +164,7 @@ export default function WorkforceLoginPage() {
                 </span>
               </button>
 
-              {/* Preset 3: Master Reseller */}
+              {/* Preset 3: Enterprise Main Agent */}
               <button
                 type="button"
                 onClick={() => handleQuickFill('apex')}
@@ -180,7 +180,7 @@ export default function WorkforceLoginPage() {
                     Apex Security Services Ltd
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    partner@apexsecurity.com &bull; Master Account
+                    Main Agent: partner@apexsecurity.com (Apex Security Services Ltd)
                   </div>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold">

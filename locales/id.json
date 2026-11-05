@@ -120,5 +120,45 @@
     "payNow": "Bayar Sekarang",
     "invoice": "Faktur Pembayaran",
     "orderSuccess": "Pesanan Berhasil Dibuat!"
+  },
+  "workforce": {
+    "common": {
+      "liveTelemetry": "Telemetri Langsung Aktif",
+      "signOut": "Keluar",
+      "installApp": "Pasang Aplikasi Mobile",
+      "enableAlerts": "Aktifkan Notifikasi",
+      "alertsActive": "Notifikasi Aktif",
+      "pwaActiveBanner": "Portal Lapangan Mobile BWM (PWA Aktif)",
+      "pwaSub": "Verifikasi GPS & Liveness Biometrik Aktif"
+    },
+    "field": {
+      "badge": "No. Lencana",
+      "site": "Lokasi Penugasan",
+      "statusOnDuty": "Aktif Bertugas",
+      "clockIn": "Absen Masuk",
+      "clockInSub": "Verifikasi Wajah & Geofence",
+      "clockOut": "Absen Pulang",
+      "clockOutSub": "Serah Terima Tugas Shift",
+      "patrol": "Titik Titik Patroli",
+      "patrolSub": "Pemindai QR Dinamis Terenkripsi",
+      "incident": "Lapor Temuan Insiden",
+      "incidentSub": "Peringatan Otomatis Dual-Dispatch",
+      "timeOff": "Pengajuan Tukar Shift & Cuti"
+    },
+    "supervisor": {
+      "deskTitle": "Meja Komando Operasional Cabang",
+      "rosterTitle": "Daftar Penugasan Personel Langsung",
+      "incidentTitle": "Eskalasi Insiden Lapangan Terkini"
+    },
+    "mainAgent": {
+      "consoleTitle": "Konsol Agen Utama Enterprise",
+      "portalSubtitle": "Agen Utama Resmi: {agency} | Alokasi Personel & Lisensi Teritorial",
+      "activePersonnel": "Personel Aktif Bertugas",
+      "availablePasses": "Pass Agen Tersedia",
+      "totalPool": "Kapasitas Pool Total Armada",
+      "requisitionButton": "+ Ajukan Tambahan Pass BWM",
+      "clientPortfolio": "Portofolio Fasilitas Klien",
+      "downloadAudit": "Unduh Laporan Audit Kepatuhan SLA"
+    }
   }
 }

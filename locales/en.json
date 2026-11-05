@@ -120,5 +120,45 @@
     "payNow": "Pay Now",
     "invoice": "Invoice",
     "orderSuccess": "Order Placed Successfully!"
+  },
+  "workforce": {
+    "common": {
+      "liveTelemetry": "Live Telemetry Active",
+      "signOut": "Sign Out",
+      "installApp": "Install Mobile App",
+      "enableAlerts": "Enable Push Alerts",
+      "alertsActive": "Alerts Active",
+      "pwaActiveBanner": "BWM Mobile Field Portal (PWA Active)",
+      "pwaSub": "Verified GPS & Biometric Liveness Enabled"
+    },
+    "field": {
+      "badge": "Badge",
+      "site": "Deployment Site",
+      "statusOnDuty": "Active On-Duty",
+      "clockIn": "Clock In",
+      "clockInSub": "Verified Face Liveness & Geofence",
+      "clockOut": "Clock Out",
+      "clockOutSub": "Scheduled Shift Handover",
+      "patrol": "Patrol Checkpoints",
+      "patrolSub": "Dynamic Cryptographic QR Scanner",
+      "incident": "Report Field Incident",
+      "incidentSub": "Automated Dual-Dispatch Alert",
+      "timeOff": "Shift Exchange & Leave Application"
+    },
+    "supervisor": {
+      "deskTitle": "Branch Operations Command Desk",
+      "rosterTitle": "Live Personnel Deployment Roster",
+      "incidentTitle": "Recent Field Incident Escalations"
+    },
+    "mainAgent": {
+      "consoleTitle": "Enterprise Main Agent Console",
+      "portalSubtitle": "Authorized Main Agent: {agency} | Multi-Site Fleet & Quota Allocation",
+      "activePersonnel": "Active Deployed Personnel",
+      "availablePasses": "Available Agent Passes",
+      "totalPool": "Total Fleet Pool Capacity",
+      "requisitionButton": "+ Requisition BWM Credit Passes",
+      "clientPortfolio": "Multi-Facility Client Portfolio",
+      "downloadAudit": "Download SLA Compliance Audit Report"
+    }
   }
 }

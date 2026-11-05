@@ -38,6 +38,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "../lib/workforce/**/*",
+    "../lib/i18n/**/*",
+    "../locales/**/*",
     "../packages/attendance/**/*",
     "../packages/workforce-billing/**/*",
     "../apps/workforce/**/*",

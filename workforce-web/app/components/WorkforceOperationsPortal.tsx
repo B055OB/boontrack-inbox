@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useTenantBranding } from '../config/tenant-branding';
+import { useTranslation } from '@/lib/i18n';
 import {
   Bell,
   LogIn,
@@ -81,6 +82,17 @@ export interface WorkforceOperationsPortalProps {
 
 export default function WorkforceOperationsPortal({ initialRole = 'field', tenantSlug }: WorkforceOperationsPortalProps) {
   const branding = useTenantBranding(tenantSlug);
+  const { locale, setLocale, t } = useTranslation();
+
+  // CTO RFC-018: Default workforce operations portal to English
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('bt_locale') : null;
+      if (!stored && locale !== 'en') {
+        setLocale('en');
+      }
+    } catch {}
+  }, [locale, setLocale]);
   // Lock the operational view strictly to the route context (Zero role switcher)
   const currentRole = initialRole;
 
@@ -545,7 +557,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <div className="flex items-center space-x-2">
                 <span className="font-extrabold text-sm tracking-tight text-white">{branding.portalTitle}</span>
                 <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
-                  {currentRole === 'field' ? 'Field Mobile' : currentRole === 'supervisor' ? 'Command Desk' : 'Enterprise Reseller'}
+                  {currentRole === 'field' ? 'Field Mobile' : currentRole === 'supervisor' ? 'Command Desk' : 'Main Agent'}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400">
@@ -554,11 +566,39 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* Right: Telemetry Status, Profile Badge, Sign Out */}
+          {/* Right: Language Switcher, Telemetry Status, Profile Badge, Sign Out */}
           <div className="flex items-center space-x-3">
+            {/* Language Switcher [ EN | ID ] */}
+            <div className="flex items-center bg-slate-800/80 rounded-xl p-0.5 border border-slate-700/80 text-xs">
+              <button
+                type="button"
+                onClick={() => setLocale('en')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  locale === 'en'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                aria-label="Switch to English"
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocale('id')}
+                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
+                  locale === 'id'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                aria-label="Switch to Indonesian"
+              >
+                ID
+              </button>
+            </div>
+
             <span className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/20">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>Live Telemetry Active</span>
+              <span>{t('workforce.common.liveTelemetry')}</span>
             </span>
 
             <div className="hidden sm:block text-right text-xs">
@@ -575,7 +615,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 text-xs font-semibold border border-slate-700 hover:border-rose-500/40 transition flex items-center space-x-1.5 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
+              <span className="hidden sm:inline">{t('workforce.common.signOut')}</span>
             </button>
           </div>
         </div>
@@ -593,8 +633,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">{branding.pwaAppName}</h2>
-                <p className="text-xs text-blue-200 mt-0.5">Verified GPS &amp; Biometric Liveness Enabled</p>
+                <h2 className="text-sm font-bold text-white">{t('workforce.common.pwaActiveBanner')}</h2>
+                <p className="text-xs text-blue-200 mt-0.5">{t('workforce.common.pwaSub')}</p>
               </div>
             </div>
 
@@ -603,7 +643,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 onClick={() => alert(`${branding.pwaAppName} installed to device home screen.`)}
                 className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm cursor-pointer"
               >
-                {branding.installButtonLabel}
+                {t('workforce.common.installApp')}
               </button>
             </div>
           </div>
@@ -627,7 +667,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
               <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/30">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Active On-Duty</span>
+                <span>{t('workforce.field.statusOnDuty')}</span>
               </span>
             </div>
 
@@ -659,8 +699,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
                 <ChevronRight className="w-5 h-5 text-white/60 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h4 className="text-base font-bold">Patrol Checkpoints</h4>
-              <p className="text-xs text-blue-100 mt-1">Dynamic Cryptographic QR Scanner</p>
+              <h4 className="text-base font-bold">{t('workforce.field.patrol')}</h4>
+              <p className="text-xs text-blue-100 mt-1">{t('workforce.field.patrolSub')}</p>
             </button>
 
             {/* Action 2: Report Field Incident */}
@@ -674,8 +714,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
                 <ChevronRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h4 className="text-base font-bold text-white">Report Field Incident</h4>
-              <p className="text-xs text-slate-400 mt-1">Automated Dual-Dispatch Alert</p>
+              <h4 className="text-base font-bold text-white">{t('workforce.field.incident')}</h4>
+              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.incidentSub')}</p>
             </button>
 
             {/* Action 3: Clock In */}
@@ -687,10 +727,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   <LogIn className="w-6 h-6" />
                 </div>
-                <span className="text-xs font-bold text-emerald-400">Recorded</span>
+                <span className="text-xs font-bold text-emerald-400">Verified</span>
               </div>
-              <h4 className="text-base font-bold text-white">Clock In</h4>
-              <p className="text-xs text-slate-400 mt-1">Verified Face Liveness &amp; Geofence</p>
+              <h4 className="text-base font-bold text-white">{t('workforce.field.clockIn')}</h4>
+              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.clockInSub')}</p>
             </button>
 
             {/* Action 4: Clock Out */}
@@ -704,8 +744,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
                 <span className="text-xs font-bold text-slate-400">Scheduled</span>
               </div>
-              <h4 className="text-base font-bold text-white">Clock Out</h4>
-              <p className="text-xs text-slate-400 mt-1">Scheduled Shift Handover</p>
+              <h4 className="text-base font-bold text-white">{t('workforce.field.clockOut')}</h4>
+              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.clockOutSub')}</p>
             </button>
 
             {/* Action 5: Shift Exchange & Leave Request */}
@@ -719,7 +759,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
                 <ChevronRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h4 className="text-base font-bold text-white">Shift Exchange &amp; Leave Application</h4>
+              <h4 className="text-base font-bold text-white">{t('workforce.field.timeOff')}</h4>
               <p className="text-xs text-slate-400 mt-1">Submit roster relief or scheduled leave to branch supervisor</p>
             </button>
           </div>
@@ -792,7 +832,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <span className="text-xs text-slate-400">Metro Financial Tower Hub</span>
               </div>
               <h2 className="text-2xl font-black text-white mt-1.5">
-                Branch Operations Command Desk &mdash; Metro Financial Tower Hub
+                {t('workforce.supervisor.deskTitle')} &mdash; Metro Financial Tower Hub
               </h2>
               <p className="text-xs text-slate-400 mt-1">
                 Supervisor On-Duty: <span className="text-white font-bold">{supervisorName}</span> &bull; Badge: <span className="font-mono text-slate-300">{supervisorNip}</span> &bull; Real-time perimeter tracking &amp; dual-dispatch incident escalation.
@@ -852,7 +892,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-white">Live Field Personnel Stream</h3>
+                <h3 className="text-base font-bold text-white">{t('workforce.supervisor.rosterTitle')}</h3>
                 <p className="text-xs text-slate-400">GPS geofence telemetry, battery status, and active rounds.</p>
               </div>
               <span className="text-xs text-emerald-400 font-semibold">&bull; Updated Sub-Second</span>
@@ -911,7 +951,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-white">Recent Field Incident Escalations</h3>
+                <h3 className="text-base font-bold text-white">{t('workforce.supervisor.incidentTitle')}</h3>
                 <p className="text-xs text-slate-400">Automated dual-dispatch alerts logged to database and dispatched to operations desks.</p>
               </div>
               <button
@@ -964,17 +1004,17 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             <div>
               <div className="flex items-center space-x-2 mb-1.5">
                 <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-extrabold text-[10px] tracking-wider uppercase">
-                  Enterprise Reseller Console
+                  ENTERPRISE MAIN AGENT CONSOLE
                 </span>
                 <span className="text-xs font-bold text-blue-400">
                   Multi-Branch Quota Management
                 </span>
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight">
-                Apex Security Services Ltd &mdash; Enterprise Reseller Console
+                {t('workforce.mainAgent.consoleTitle')}
               </h2>
               <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-                Agency Partner: <span className="text-white font-bold">{resellerAgency}</span> &bull; Account: <span className="font-mono text-blue-300">{resellerEmail}</span> &bull; Multi-Branch License &amp; Quota Allocation.
+                {t('workforce.mainAgent.portalSubtitle', { agency: resellerAgency })} &bull; Account: <span className="font-mono text-blue-300">{resellerEmail}</span>
               </p>
             </div>
 
@@ -984,7 +1024,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Top Up BWM Credit Passes</span>
+                <span>{t('workforce.mainAgent.requisitionButton')}</span>
               </button>
             </div>
           </div>
@@ -993,7 +1033,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">Active Personnel</span>
+                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.activePersonnel')}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold">On-Duty</span>
               </div>
               <div className="text-3xl font-black text-white">{allocatedPasses} Officers</div>
@@ -1004,7 +1044,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">Available Passes</span>
+                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.availablePasses')}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Standby Pool</span>
               </div>
               <div className="text-3xl font-black text-emerald-400">{availablePasses} Passes</div>
@@ -1015,7 +1055,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
             <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">Total Pool Capacity</span>
+                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.totalPool')}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-bold">Full Pool</span>
               </div>
               <div className="text-3xl font-black text-purple-400">{totalPasses} Passes</div>
@@ -1052,7 +1092,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-black text-white">Multi-Facility Client Portfolio</h3>
+                <h3 className="text-lg font-black text-white">{t('workforce.mainAgent.clientPortfolio')}</h3>
                 <p className="text-xs text-slate-400">Operational deployment and SLA compliance tracking per client facility.</p>
               </div>
               <button
@@ -1060,7 +1100,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <Download className="w-4 h-4" />
-                <span>Download SLA Compliance Audit Report</span>
+                <span>{t('workforce.mainAgent.downloadAudit')}</span>
               </button>
             </div>
 
