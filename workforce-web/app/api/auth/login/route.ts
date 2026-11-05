@@ -69,8 +69,52 @@ export async function POST(req: NextRequest) {
 
     let userProfile: UserProfile | null = null;
 
-    // A. Akun 1: Personel Lapangan (Cindy Aurini)
+    // A1. B2B Enterprise: Field Officer (Officer Sarah Jenkins)
     if (
+      cleanIdentifier === 'OP-4821' ||
+      cleanIdentifier.toLowerCase().includes('sarah')
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'apex',
+        nik: 'OP-4821',
+        name: 'Officer Sarah Jenkins',
+        role: 'field_personnel',
+        site: 'Metro Financial Tower Hub',
+        branch: 'Metro Financial Tower Hub',
+        agency_name: 'Apex Security Services Ltd',
+      };
+    }
+    // A2. B2B Enterprise: Branch Supervisor (Marcus Sterling)
+    else if (
+      cleanIdentifier === 'SUP-1092' ||
+      cleanIdentifier.toLowerCase().includes('marcus')
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'apex',
+        nik: 'SUP-1092',
+        name: 'Marcus Sterling',
+        role: 'supervisor',
+        branch: 'Metro Financial Tower Hub',
+        site: 'Metro Financial Tower Hub',
+        agency_name: 'Apex Security Services Ltd',
+      };
+    }
+    // A3. B2B Enterprise: Master Reseller (Apex Security Services Ltd)
+    else if (
+      cleanIdentifier.toLowerCase() === 'partner@apexsecurity.com' ||
+      cleanIdentifier.toLowerCase().includes('apexsecurity')
+    ) {
+      userProfile = {
+        agency_slug: cleanSlug || 'apex',
+        nik: 'partner@apexsecurity.com',
+        name: 'Apex Security Operations',
+        role: 'master_reseller',
+        agency_name: 'Apex Security Services Ltd',
+        branch: 'Metro Financial Tower Hub',
+      };
+    }
+    // B1. Akun Personel Lapangan (Cindy Aurini)
+    else if (
       cleanIdentifier === '248.0112.28' ||
       cleanIdentifier === '3171012345678901' ||
       cleanIdentifier.toLowerCase().includes('cindy') ||
@@ -85,7 +129,7 @@ export async function POST(req: NextRequest) {
         agency_name: 'PT Satya Garda Perkasa',
       };
     }
-    // B. Akun 2: Supervisor / Branch Desk (Bambang Prakoso)
+    // B2. Akun Supervisor / Branch Desk (Bambang Prakoso)
     else if (
       cleanIdentifier === '248.0101.05' ||
       cleanIdentifier.toLowerCase().includes('bambang') ||
@@ -102,7 +146,7 @@ export async function POST(req: NextRequest) {
         agency_name: 'PT Satya Garda Perkasa',
       };
     }
-    // C. Akun 3: Master Reseller / BUJP Partner (Hendra Ops)
+    // B3. Akun Master Reseller / BUJP Partner (Hendra Ops)
     else if (
       cleanIdentifier.toLowerCase() === 'hendra.ops@satya.id' ||
       cleanIdentifier.toLowerCase().includes('hendra') ||
