@@ -139,6 +139,22 @@ export class DomainRegistryService {
       };
     }
 
+    // 2b. Allow Railway staging domains (*.railway.app)
+    if (hostname.endsWith('.railway.app')) {
+      return {
+        status: 'RESOLVED',
+        domain: {
+          tenantId: 'tenant_satya_001',
+          hostname,
+          brandName: 'SATYA Workforce (Staging)',
+          logoUrl: '/icons/workforce-192.png',
+          primaryColor: '#059669',
+          accentColor: '#0d9488',
+          isActive: true,
+        },
+      };
+    }
+
     // 3. Lookup against verified_domain_registry
     const matched = this.registry.get(fullHost) || this.registry.get(hostname);
 

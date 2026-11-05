@@ -31,13 +31,37 @@ describe('Workforce Isolated Middleware Routing Suite', () => {
     expect(location).toContain('workforce.boontrack.com/login');
   });
 
-  it('should allow registered host access and attach x-tenant-id header', () => {
+  it('should allow root "/" as PUBLIC ROUTE and attach x-tenant-id header without redirect', () => {
     const req = new NextRequest('https://workforce.boontrack.com/');
+    const res = middleware(req);
+
+    // Root is a public route: returns 200, no redirect to /login
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.headers.get('x-tenant-id')).toBe('tenant_satya_001');
+  });
+
+  it('should redirect unauthenticated access to internal/dashboard routes to /login', () => {
+    const req = new NextRequest('https://workforce.boontrack.com/dashboard');
+    const res = middleware(req);
+
+    // Protected route without token redirects to /login
+    expect(res.status).toBe(307);
+    const location = res.headers.get('location');
+    expect(location).toContain('/login');
+    expect(location).not.toContain('dashboard.boontrack.com');
+  });
+
+  it('should allow authenticated access to internal routes with bwm_session_token', () => {
+    const req = new NextRequest('https://workforce.boontrack.com/portal', {
+      headers: {
+        cookie: 'bwm_session_token=valid_session_token_123',
+      },
+    });
     const res = middleware(req);
 
     expect(res.status).toBe(200);
     expect(res.headers.get('location')).toBeNull();
-    expect(res.headers.get('x-tenant-id')).toBe('tenant_satya_001');
   });
 
   it('should pass API and static asset routes freely', () => {

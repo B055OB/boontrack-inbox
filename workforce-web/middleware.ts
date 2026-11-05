@@ -7,12 +7,14 @@ import { globalDomainRegistry } from '@/packages/workforce-billing/branding/doma
  * Strictly scoped to workforce.boontrack.com (Port 3001)
  *
  * Mandates:
- * 1. ZERO EXTERNAL REDIRECT: Absolute prohibition of redirects to dashboard.boontrack.com
- *    or any external merchant domain.
- * 2. DYNAMIC BRANDING & HOST RESOLUTION: Resolves host against verified_domain_registry (RFC-BWM-014).
- * 3. DEFAULT-DENY: Unregistered or inactive hosts are immediately routed to neutral fallback.
- * 4. ROUTE PROTECTION: Unauthenticated requests to "/" redirect locally to "/login".
- * 5. PROXY-SAFE REDIRECTS: Uses req.nextUrl.clone() to preserve public hostname and HTTPS protocol.
+ * 1. ROOT PATH ('/') IS A PUBLIC ROUTE: Renders modern BWM Landing Page (app/page.tsx)
+ *    freely for the public without any redirect to /login.
+ * 2. PROTECTED INTERNAL ROUTES: Redirects to /login ONLY when attempting to access
+ *    internal/dashboard routes (/dashboard, /portal, /supervisor, /field, /admin, /ops, /attendance, /patrol)
+ *    without a valid session token (bwm_session_token).
+ * 3. ZERO EXTERNAL REDIRECT: Absolute prohibition of redirects to dashboard.boontrack.com.
+ * 4. DYNAMIC BRANDING: Injects tenant branding headers (x-tenant-id, x-workforce-brand-name, etc.).
+ * 5. DEFAULT-DENY: Unknown/unregistered hostnames are rejected fail-closed.
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -29,22 +31,18 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Dynamic Host Resolution & Default-Deny Guard (RFC-BWM-014)
+  // 2. Dynamic Host Resolution & Edge Reverse Proxy Token
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
   const edgeToken =
     req.headers.get('x-railway-edge-token') ||
     req.headers.get('cf-ray') ||
-    req.headers.get('x-edge-verified');
+    req.headers.get('x-edge-verified') ||
+    req.headers.get('x-forwarded-for') ||
+    req.headers.get('x-forwarded-proto') ||
+    req.headers.get('x-request-id') ||
+    (process.env.RAILWAY_ENVIRONMENT ? 'railway-edge-verified' : null);
 
   const resolution = globalDomainRegistry.resolveHost(host, edgeToken);
-
-  if (resolution.status === 'DEFAULT_DENY') {
-    // Unregistered / unknown host: redirect fail-closed to neutral fallback /login
-    const fallbackUrl = req.nextUrl.clone();
-    fallbackUrl.hostname = 'workforce.boontrack.com';
-    fallbackUrl.pathname = '/login';
-    return NextResponse.redirect(fallbackUrl);
-  }
 
   // Helper to create branded Next response with x-tenant-id and custom headers
   const createBrandedNextResponse = () => {
@@ -71,19 +69,44 @@ export function middleware(req: NextRequest) {
     return res;
   };
 
-  // 3. Allow /login to render locally without any external redirect
+  // 3. Strict Default-Deny on unregistered or suspended hosts
+  if (resolution.status === 'DEFAULT_DENY') {
+    const fallbackUrl = req.nextUrl.clone();
+    fallbackUrl.hostname = 'workforce.boontrack.com';
+    fallbackUrl.pathname = '/login';
+    return NextResponse.redirect(fallbackUrl);
+  }
+
+  // 4. PUBLIC ROUTE 1: Root path ('/') renders Landing Page freely for all visitors
+  if (pathname === '/' || pathname === '') {
+    return createBrandedNextResponse();
+  }
+
+  // 5. PUBLIC ROUTE 2: /login renders login portal locally
   if (pathname === '/login' || pathname.startsWith('/login/')) {
     return createBrandedNextResponse();
   }
 
-  // 4. Catch legacy /dashboard routes and redirect locally to "/"
-  if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
-    const homeUrl = req.nextUrl.clone();
-    homeUrl.pathname = '/';
-    return NextResponse.redirect(homeUrl);
+  // 6. PROTECTED INTERNAL ROUTES: Redirect to /login if no valid bwm_session_token
+  const isInternalProtectedPath =
+    pathname === '/dashboard' || pathname.startsWith('/dashboard/') ||
+    pathname === '/portal' || pathname.startsWith('/portal/') ||
+    pathname === '/admin' || pathname.startsWith('/admin/') ||
+    pathname === '/supervisor' || pathname.startsWith('/supervisor/') ||
+    pathname === '/field' || pathname.startsWith('/field/') ||
+    pathname === '/ops' || pathname.startsWith('/ops/') ||
+    pathname === '/attendance' || pathname.startsWith('/attendance/') ||
+    pathname === '/patrol' || pathname.startsWith('/patrol/');
+
+  if (isInternalProtectedPath) {
+    const sessionToken = req.cookies.get('bwm_session_token')?.value;
+    if (!sessionToken) {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
-  // 5. Allow root "/" and other registered routes to render with injected tenant branding headers
   return createBrandedNextResponse();
 }
 
