@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useTenantBranding } from '../config/tenant-branding';
 import {
   Bell,
   LogIn,
@@ -75,9 +76,11 @@ interface IncidentRecord {
 
 export interface WorkforceOperationsPortalProps {
   initialRole?: 'field' | 'supervisor' | 'reseller';
+  tenantSlug?: string;
 }
 
-export default function WorkforceOperationsPortal({ initialRole = 'field' }: WorkforceOperationsPortalProps) {
+export default function WorkforceOperationsPortal({ initialRole = 'field', tenantSlug }: WorkforceOperationsPortalProps) {
+  const branding = useTenantBranding(tenantSlug);
   // Lock the operational view strictly to the route context (Zero role switcher)
   const currentRole = initialRole;
 
@@ -536,11 +539,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
           {/* Left: Brand Identity */}
           <div className="flex items-center space-x-3">
             <div className="h-8 w-8 rounded-xl bg-blue-600 flex items-center justify-center p-1 shadow-sm">
-              <Image src="/logo.png" alt="BWM Logo" width={32} height={32} className="object-contain" priority />
+              <Image src={branding.logoLightUrl} alt={`${branding.brandName} Logo`} width={32} height={32} className="object-contain" priority />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-sm tracking-tight text-white">BWM Operations Portal</span>
+                <span className="font-extrabold text-sm tracking-tight text-white">{branding.portalTitle}</span>
                 <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
                   {currentRole === 'field' ? 'Field Mobile' : currentRole === 'supervisor' ? 'Command Desk' : 'Enterprise Reseller'}
                 </span>
@@ -590,17 +593,17 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">BWM Mobile Field Portal</h2>
+                <h2 className="text-sm font-bold text-white">{branding.pwaAppName}</h2>
                 <p className="text-xs text-blue-200 mt-0.5">Verified GPS &amp; Biometric Liveness Enabled</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => alert('Field PWA installed to device home screen.')}
+                onClick={() => alert(`${branding.pwaAppName} installed to device home screen.`)}
                 className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm cursor-pointer"
               >
-                Install Field Web App
+                {branding.installButtonLabel}
               </button>
             </div>
           </div>
@@ -1788,7 +1791,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
       )}
 
       {/* Pwa Install Prompt Helper */}
-      <PwaInstallPrompt />
+      <PwaInstallPrompt branding={branding} />
     </div>
   );
 }

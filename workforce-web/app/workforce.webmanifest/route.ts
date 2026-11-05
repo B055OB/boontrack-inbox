@@ -2,24 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { globalDomainRegistry } from '@/packages/workforce-billing/branding/domain-registry';
 
 /**
- * Dynamic Web App Manifest Route Handler (RFC-BWM-014)
+ * Dynamic Web App Manifest Route Handler (RFC-BWM-014 / RFC-018)
  * apps/workforce-web/app/workforce.webmanifest/route.ts
- *
- * Implements:
- * 1. Reads tenant headers (x-tenant-id, x-workforce-tenant-id) or resolved hostname
- * 2. Returns dynamic JSON PWA manifest:
- *    - name: brand_name tenant
- *    - short_name: brand_name tenant
- *    - theme_color: primary_color tenant
- *    - icons: logo_url tenant
  */
 export async function GET(req: NextRequest) {
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
   const resolution = globalDomainRegistry.resolveHost(host);
 
   const domain = resolution.domain || {
-    tenantId: 'tenant_satya_001',
-    brandName: 'SATYA Workforce',
+    tenantId: 'bwm_canonical',
+    brandName: 'BWM Workforce',
     primaryColor: '#059669',
     accentColor: '#0d9488',
     logoUrl: '/icons/workforce-192.png',
@@ -58,4 +50,3 @@ export async function GET(req: NextRequest) {
     },
   });
 }
-

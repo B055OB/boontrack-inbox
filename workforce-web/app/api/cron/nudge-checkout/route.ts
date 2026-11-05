@@ -112,8 +112,8 @@ function getServerTimeWIB(): string {
 // Evolution API helper for sending individual WA reminder
 async function sendEvolutionWhatsAppText(phone: string, text: string): Promise<boolean> {
   const apiUrl = process.env.EVOLUTION_API_URL || 'https://gateway.boontrack.com';
-  const apiKey = process.env.EVOLUTION_API_KEY || 'satya_enterprise_secret_token';
-  const instance = process.env.EVOLUTION_INSTANCE || 'satya-ops';
+  const apiKey = process.env.EVOLUTION_API_KEY || 'bwm_enterprise_secret_token';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bwm-ops';
 
   const cleanPhone = phone.replace(/\D/g, '').replace(/^0/, '62');
   const targetJid = `${cleanPhone}@s.whatsapp.net`;
@@ -221,7 +221,7 @@ function runNudgeScheduler() {
       shift.status = 'GRACE_PERIOD';
 
       if (!isAlreadySent) {
-        const warningMsg = `⚠️ PERINGATAN: Rekan ${shift.officer_name}, Anda belum melakukan absen pulang di site ${shift.site_name}. Segera verifikasi via aplikasi SATYA sebelum status shift dialihkan ke koreksi supervisor.`;
+        const warningMsg = `⚠️ PERINGATAN: Rekan ${shift.officer_name}, Anda belum melakukan absen pulang di site ${shift.site_name}. Segera verifikasi via aplikasi BWM sebelum status shift dialihkan ke koreksi supervisor.`;
 
         const outboxEntry: OutboxEntry = {
           id: `OUT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -267,7 +267,7 @@ function runNudgeScheduler() {
       );
 
       if (!isAlreadySent) {
-        const reminderMsg = `Halo Rekan ${shift.officer_name}, 15 menit lagi shift Anda di ${shift.site_name} selesai. Siapkan serah terima pos dan lakukan verifikasi absen pulang via aplikasi SATYA.`;
+        const reminderMsg = `Halo Rekan ${shift.officer_name}, 15 menit lagi shift Anda di ${shift.site_name} selesai. Siapkan serah terima pos dan lakukan verifikasi absen pulang via aplikasi BWM.`;
 
         const outboxEntry: OutboxEntry = {
           id: `OUT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

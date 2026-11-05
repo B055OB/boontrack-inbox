@@ -66,7 +66,7 @@ function getServerTimeWIB(): string {
 function formatWaIncidentCaption(data: IncidentRecord): string {
   const urgencyIcon = data.urgency === 'Darurat' ? '🚨 [DARURAT]' : '⚠️ [PERHATIAN]';
   return (
-    `*${urgencyIcon} LAPORAN TEMUAN INSIDEN — SATYA OPS*\n\n` +
+    `*${urgencyIcon} LAPORAN TEMUAN INSIDEN — BWM OPS*\n\n` +
     `*Site:* ${data.site_name}\n` +
     `*Titik:* ${data.location_point}\n` +
     `*Pelapor:* ${data.reporter_name} (NIP: ${data.reporter_nip})\n` +
@@ -81,8 +81,8 @@ function formatWaIncidentCaption(data: IncidentRecord): string {
 // Non-blocking asynchronous WhatsApp dispatch via Evolution API
 async function dispatchToEvolutionApi(incident: IncidentRecord, caption: string): Promise<boolean> {
   const apiUrl = process.env.EVOLUTION_API_URL || 'https://gateway.boontrack.com';
-  const apiKey = process.env.EVOLUTION_API_KEY || 'satya_enterprise_secret_token';
-  const instance = process.env.EVOLUTION_INSTANCE || 'satya-ops';
+  const apiKey = process.env.EVOLUTION_API_KEY || 'bwm_enterprise_secret_token';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bwm-ops';
   const supervisorJid = process.env.WA_INTERNAL_SUPERVISOR_JID || '120363024829102938@g.us';
 
   const controller = new AbortController();
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
 
     const site_name = body.site_name || 'Gudang Wuling Soreang';
     const location_point = body.location_point || 'Pos Jaga';
-    const reporter_name = body.reporter_name || 'Petugas SATYA';
+    const reporter_name = body.reporter_name || 'BWM Field Officer';
     const reporter_nip = body.reporter_nip || '-';
     const urgency = body.urgency === 'Darurat' ? 'Darurat' : 'Perlu Tindak Lanjut';
     const description = body.description || '-';

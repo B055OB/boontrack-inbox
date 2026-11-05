@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { globalDomainRegistry } from '@/packages/workforce-billing/branding/domain-registry';
 
 /**
- * Dynamic PWA Web App Manifest Route Handler (RFC-BWM-014)
+ * Dynamic PWA Web App Manifest Route Handler (RFC-BWM-014 / RFC-018)
  * Generates tenant-specific manifest based on host resolution.
  */
 export async function GET(req: NextRequest) {
@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   const resolution = globalDomainRegistry.resolveHost(host);
 
   const domain = resolution.domain || {
-    tenantId: 'tenant_satya_001',
-    brandName: 'SATYA Workforce',
+    tenantId: 'bwm_canonical',
+    brandName: 'BWM Workforce',
     primaryColor: '#059669',
     accentColor: '#0d9488',
     logoUrl: '/icons/workforce-192.png',
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const manifest = {
     name: `${domain.brandName} — Field Ops`,
     short_name: domain.brandName,
-    description: `Aplikasi Operasional Lapangan Ergonomis Satuan Pengamanan & Facility Services — ${domain.brandName}`,
+    description: `Operational Field App for Security Personnel & Facility Services — ${domain.brandName}`,
     start_url: '/',
     display: 'standalone',
     orientation: 'portrait',
@@ -49,4 +49,3 @@ export async function GET(req: NextRequest) {
     },
   });
 }
-

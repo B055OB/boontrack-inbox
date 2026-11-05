@@ -109,7 +109,7 @@ describe('BWM PWA Pipeline & Web Push RFC Specification', () => {
       const content = fs.readFileSync(pwaComponentPath, 'utf-8');
       expect(content).toContain('beforeinstallprompt');
       expect(content).toContain('prompt()');
-      expect(content).toContain('Pasang Aplikasi SATYA');
+      expect(content).toContain('Install Mobile App');
       expect(content).toContain('Panduan Pasang di iPhone');
       expect(content).toContain('Tambahkan ke Layar Utama');
       expect(content).toContain('Notification.requestPermission()');
