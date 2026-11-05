@@ -195,10 +195,18 @@ export async function POST(req: NextRequest) {
     const sessionToken = Buffer.from(JSON.stringify(sessionPayload)).toString('base64url');
     const csrfToken = crypto.randomBytes(24).toString('hex');
 
+    const redirectUrl =
+      userProfile.role === 'master_reseller'
+        ? '/dashboard'
+        : userProfile.role === 'supervisor'
+        ? '/ops'
+        : '/portal';
+
     // 4. Build Response with Hardened Server-Side Cookies
     const res = NextResponse.json({
       success: true,
       message: 'Autentikasi sesi BWM berhasil.',
+      redirect_url: redirectUrl,
       session: {
         agency_slug: userProfile.agency_slug,
         nik: userProfile.nik,
@@ -208,6 +216,7 @@ export async function POST(req: NextRequest) {
         branch: userProfile.branch,
         agency_name: userProfile.agency_name,
         expires_at: expiresAt,
+        redirect_url: redirectUrl,
       },
     });
 

@@ -72,9 +72,18 @@ export default function WorkforceLoginPage() {
           ? 'Supervisor'
           : 'Field Personnel';
 
-      setSuccess(`Authenticated successfully as ${roleName}! Redirecting to dashboard...`);
+      const role = data.session?.role;
+      const targetUrl =
+        data.redirect_url ||
+        (role === 'master_reseller'
+          ? '/dashboard'
+          : role === 'supervisor'
+          ? '/ops'
+          : '/portal');
+
+      setSuccess(`Authenticated successfully as ${roleName}! Redirecting to ${targetUrl}...`);
       setTimeout(() => {
-        window.location.href = '/';
+        window.location.href = targetUrl;
       }, 600);
     } catch {
       setError('Failed to reach BWM authentication server.');
