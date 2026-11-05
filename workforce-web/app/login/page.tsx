@@ -6,7 +6,7 @@ import Image from 'next/image';
 
 export default function WorkforceLoginPage() {
   const [slug, setSlug] = useState('apex');
-  const [nik, setNik] = useState('OP-4821');
+  const [nik, setNik] = useState('sarah.jenkins@apexsecurity.com');
   const [pin, setPin] = useState('123456');
   const [activePreset, setActivePreset] = useState<'sarah' | 'marcus' | 'apex'>('sarah');
   const [loading, setLoading] = useState(false);
@@ -19,10 +19,10 @@ export default function WorkforceLoginPage() {
     setSlug('apex');
 
     if (preset === 'sarah') {
-      setNik('OP-4821');
+      setNik('sarah.jenkins@apexsecurity.com');
       setPin('123456');
     } else if (preset === 'marcus') {
-      setNik('SUP-1092');
+      setNik('marcus.sterling@apexsecurity.com');
       setPin('901105');
     } else if (preset === 'apex') {
       setNik('partner@apexsecurity.com');
@@ -85,7 +85,7 @@ export default function WorkforceLoginPage() {
       setSuccess(`Authenticated successfully as ${roleName}! Redirecting to ${targetUrl}...`);
       setTimeout(() => {
         window.location.href = targetUrl;
-      }, 600);
+      }, 500);
     } catch {
       setError('Failed to reach BWM authentication server.');
       setLoading(false);
@@ -110,7 +110,7 @@ export default function WorkforceLoginPage() {
           <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
             <div className="flex items-center justify-between px-1">
               <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                Quick Fill Demo Accounts:
+                Quick-Fill Demo Accounts:
               </span>
               <span className="text-[10px] text-blue-600 font-medium">1-Click Auto-Fill</span>
             </div>
@@ -132,11 +132,11 @@ export default function WorkforceLoginPage() {
                     Officer Sarah Jenkins
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Badge: OP-4821 &bull; Metro Financial Tower Hub
+                    sarah.jenkins@apexsecurity.com &bull; Badge #OP-4821
                   </div>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold">
-                  Field Ops
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                  /portal
                 </span>
               </button>
 
@@ -153,14 +153,14 @@ export default function WorkforceLoginPage() {
                 <div>
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    Metro Financial Tower Hub
+                    Marcus Sterling (Supervisor)
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Supervisor: Marcus Sterling &bull; Badge: SUP-1092
+                    marcus.sterling@apexsecurity.com &bull; Badge #SUP-1092
                   </div>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-bold">
-                  Branch Desk
+                  /ops
                 </span>
               </button>
 
@@ -180,11 +180,11 @@ export default function WorkforceLoginPage() {
                     Apex Security Services Ltd
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Partner Account: partner@apexsecurity.com
+                    partner@apexsecurity.com &bull; Master Account
                   </div>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold">
-                  Master Reseller
+                  /dashboard
                 </span>
               </button>
             </div>
@@ -227,7 +227,7 @@ export default function WorkforceLoginPage() {
                 type="text"
                 value={nik}
                 onChange={(e) => setNik(e.target.value)}
-                placeholder="e.g. OP-4821 or partner@apexsecurity.com"
+                placeholder="e.g. sarah.jenkins@apexsecurity.com or partner@apexsecurity.com"
                 disabled={loading}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition disabled:opacity-50 font-mono"
               />

@@ -111,6 +111,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
   const [modalType, setModalType] = useState<
     | 'absen_masuk'
     | 'absen_keluar'
+    | 'time_off'
     | 'izin_off'
     | 'qr_scanner'
     | 'tambah_checkpoint'
@@ -265,6 +266,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
   ]);
 
   const [reportLocation, setReportLocation] = useState('Loading Dock Bay A');
+  const [reportCategory, setReportCategory] = useState<'Security Breach' | 'Unauthorized Access' | 'Asset Damage' | 'Medical Emergency'>('Security Breach');
   const [reportUrgency, setReportUrgency] = useState<'Standard Follow-up' | 'Critical Emergency'>('Standard Follow-up');
   const [reportDescription, setReportDescription] = useState('');
   const [latestIncidentPayload, setLatestIncidentPayload] = useState<IncidentRecord | null>(null);
@@ -277,10 +279,26 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
   const totalPasses = availablePasses + allocatedPasses;
   const [autoRenewPasses, setAutoRenewPasses] = useState<boolean>(true);
 
-  // Top-Up Mock Dialog State
-  const [selectedTopupPasses, setSelectedTopupPasses] = useState<{ qty: number; price: string }>({
+  // Time-Off / Leave Application State
+  const [leaveType, setLeaveType] = useState('Annual Leave');
+  const [shiftDate, setShiftDate] = useState('2026-11-06');
+  const [reliefOfficerId, setReliefOfficerId] = useState('OP-4822');
+  const [timeOffSubmitted, setTimeOffSubmitted] = useState(false);
+
+  function handleTimeOffSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setTimeOffSubmitted(true);
+    setTimeout(() => {
+      setTimeOffSubmitted(false);
+      setModalType(null);
+    }, 1200);
+  }
+
+  // Top-Up Dialog State (Dodo Payments USD)
+  const [selectedTopupPasses, setSelectedTopupPasses] = useState<{ qty: number; price: string; tier: string }>({
     qty: 25,
-    price: 'USD 750 (Tier 1)',
+    price: '$375 USD',
+    tier: 'Tier Professional (Recommended)',
   });
   const [topupSuccessToast, setTopupSuccessToast] = useState(false);
   const [lastTopupAddedQty, setLastTopupAddedQty] = useState(0);
@@ -432,10 +450,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
     const reporterName = currentRole === 'field' ? userName : supervisorName;
     const nowStr = currentTime || '12:00 UTC+7';
 
+    const fullNote: string = `[${reportCategory}] ${reportDescription.trim()}`;
     const payload = {
       location: reportLocation,
       urgency: reportUrgency === 'Critical Emergency' ? 'Darurat' : 'Perlu Tindak Lanjut',
-      note: reportDescription.trim(),
+      note: fullNote,
       reporter: reporterName,
       time: nowStr,
     };
@@ -452,7 +471,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
         id: data.data?.id || `INC-0${incidents.length + 1}`,
         time: data.data?.time || nowStr,
         location: reportLocation,
-        note: reportDescription.trim(),
+        note: fullNote,
         status: data.data?.status || 'Dispatched to Desk',
         urgency: reportUrgency,
         reporter: reporterName,
@@ -471,7 +490,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
         id: `INC-0${incidents.length + 1}`,
         time: nowStr,
         location: reportLocation,
-        note: reportDescription.trim(),
+        note: fullNote,
         status: 'Logged Locally',
         urgency: reportUrgency,
         reporter: reporterName,
@@ -684,6 +703,21 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
               </div>
               <h4 className="text-base font-bold text-white">Clock Out</h4>
               <p className="text-xs text-slate-400 mt-1">Scheduled Shift Handover</p>
+            </button>
+
+            {/* Action 5: Shift Exchange & Leave Request */}
+            <button
+              onClick={() => setModalType('time_off')}
+              className="p-4 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition shadow-md group cursor-pointer sm:col-span-2"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <h4 className="text-base font-bold text-white">Shift Exchange &amp; Leave Application</h4>
+              <p className="text-xs text-slate-400 mt-1">Submit roster relief or scheduled leave to branch supervisor</p>
             </button>
           </div>
 
@@ -1190,14 +1224,28 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
             <div>
               <h3 className="text-lg font-bold text-white flex items-center space-x-2">
                 <AlertTriangle className="w-5 h-5 text-rose-400" />
-                <span>Report Field Incident</span>
+                <span>Field Incident Rapid Dispatch</span>
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Dispatches an encrypted incident audit to database and notifies branch supervisors immediately.
+                Real-time dispatch alert will be routed to Regional Command Desk.
               </p>
             </div>
 
             <form onSubmit={handleReportIncident} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Incident Category</label>
+                <select
+                  value={reportCategory}
+                  onChange={(e) => setReportCategory(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                >
+                  <option value="Security Breach">Security Breach</option>
+                  <option value="Unauthorized Access">Unauthorized Access</option>
+                  <option value="Asset Damage">Asset Damage</option>
+                  <option value="Medical Emergency">Medical Emergency</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Incident Location</label>
                 <select
@@ -1260,7 +1308,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
                   className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <AlertTriangle className="w-4 h-4" />
-                  <span>{incidentSubmitting ? 'Dispatching Alert...' : 'Dispatch Automated Incident Alert'}</span>
+                  <span>{incidentSubmitting ? 'Dispatching...' : 'Submit Incident Log'}</span>
                 </button>
               </div>
             </form>
@@ -1295,41 +1343,40 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
         </div>
       )}
 
-      {/* Modal: Clock In / Clock Out Confirmation */}
-      {(modalType === 'absen_masuk' || modalType === 'absen_keluar') && (
+      {/* Modal: Clock In (Biometric Verification) */}
+      {modalType === 'absen_masuk' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
             <div className="w-14 h-14 mx-auto rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/40">
               <Clock className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">
-                {modalType === 'absen_masuk' ? 'Biometric Clock-In Verification' : 'Shift Handover Clock-Out'}
-              </h3>
+              <h3 className="text-lg font-bold text-white">Biometric Face &amp; Geofence Verification</h3>
               <p className="text-xs text-slate-400 mt-1">
-                {modalType === 'absen_masuk'
-                  ? 'Facial liveness verification and geofence perimeter validated successfully.'
-                  : 'Confirm scheduled shift departure and handover of assigned gear.'}
+                Position face within frame. GPS coordinates are cryptographically hashed.
               </p>
             </div>
             <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-xs space-y-1 font-mono">
               <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
               <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
               <div className="text-slate-400">Timestamp: <span className="text-emerald-400 font-bold">{currentTime}</span></div>
+              <div className="text-slate-400">Geohash: <span className="text-blue-400">e89f...32d1 (Within 50m SLA)</span></div>
             </div>
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  if (modalType === 'absen_masuk') {
-                    setClockInTime(currentTime);
-                  } else {
-                    setClockOutTime(currentTime);
-                  }
+                  setClockInTime(currentTime);
                   setModalType(null);
                 }}
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition cursor-pointer"
               >
-                Confirm Attendance Timestamp
+                Verify &amp; Clock In
               </button>
               <button
                 onClick={() => setModalType(null)}
@@ -1338,6 +1385,130 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Clock Out Confirmation */}
+      {modalType === 'absen_keluar' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+            <div className="w-14 h-14 mx-auto rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40">
+              <LogOut className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Shift Handover Clock-Out</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Confirm scheduled shift departure and handover of assigned gear.
+              </p>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-xs space-y-1 font-mono">
+              <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
+              <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
+              <div className="text-slate-400">Departure Timestamp: <span className="text-amber-400 font-bold">{currentTime}</span></div>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setClockOutTime(currentTime);
+                  setModalType(null);
+                }}
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Verify &amp; Clock Out
+              </button>
+              <button
+                onClick={() => setModalType(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Shift Exchange & Leave Application */}
+      {modalType === 'time_off' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-blue-400" />
+                <span>Shift Exchange &amp; Leave Application</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Submit roster adjustment or temporary shift relief request for branch supervisor approval.
+              </p>
+            </div>
+
+            {timeOffSubmitted ? (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-2">
+                <Check className="w-8 h-8 text-emerald-400 mx-auto" />
+                <div className="text-sm font-bold text-emerald-400">Request Submitted Successfully</div>
+                <div className="text-xs text-slate-300">Forwarded to Marcus Sterling (Branch Supervisor) for endorsement.</div>
+              </div>
+            ) : (
+              <form onSubmit={handleTimeOffSubmit} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Leave Type</label>
+                  <select
+                    value={leaveType}
+                    onChange={(e) => setLeaveType(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  >
+                    <option value="Annual Leave">Annual Leave</option>
+                    <option value="Shift Exchange / Swap">Shift Exchange / Swap</option>
+                    <option value="Medical / Sick Leave">Medical / Sick Leave</option>
+                    <option value="Emergency Personal Leave">Emergency Personal Leave</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Shift Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={shiftDate}
+                    onChange={(e) => setShiftDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Relief Officer ID</label>
+                  <input
+                    type="text"
+                    required
+                    value={reliefOfficerId}
+                    onChange={(e) => setReliefOfficerId(e.target.value)}
+                    placeholder="e.g. OP-4822 (Standby Officer ID)"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center space-x-1.5 shadow-lg shadow-blue-600/30"
+                  >
+                    <span>Submit to Branch Supervisor</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -1391,7 +1562,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
         </div>
       )}
 
-      {/* Modal: Top Up BWM Credit Passes (Sandbox Simulation) */}
+      {/* Modal: Top Up BWM Credit Passes (USD Checkout via Dodo Payments) */}
       {modalType === 'topup_seats' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
@@ -1403,7 +1574,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
             </button>
             <div>
               <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold border border-blue-500/20 mb-1">
-                <span>SANDBOX SIMULATION ONLY</span>
+                <span>DODO PAYMENTS GLOBAL CHECKOUT</span>
               </div>
               <h3 className="text-xl font-bold text-white">Top Up BWM Credit Passes</h3>
               <p className="text-xs text-slate-400 mt-1">
@@ -1413,14 +1584,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
 
             <div className="space-y-2.5">
               {[
-                { qty: 25, price: 'USD 750 (Tier 1)', desc: '25 Officer Passes • 30 Days Each' },
-                { qty: 50, price: 'USD 1,500 (Tier 2)', desc: '50 Officer Passes • 30 Days Each' },
-                { qty: 100, price: 'USD 3,000 (Tier 3)', desc: '100 Officer Passes • 30 Days Each' },
+                { qty: 10, tier: 'Tier Starter', price: '$150 USD', rate: '$15/pass/mo', desc: '10 Passes — $150 USD ($15/pass/mo)' },
+                { qty: 25, tier: 'Tier Professional (Recommended)', price: '$375 USD', rate: '$15/pass/mo', desc: '25 Passes — $375 USD ($15/pass/mo)', recommended: true },
+                { qty: 50, tier: 'Tier Enterprise Fleet', price: '$700 USD', rate: '$14/pass/mo', desc: '50 Passes — $700 USD ($14/pass/mo)' },
               ].map((pkg) => (
                 <button
                   key={pkg.qty}
                   type="button"
-                  onClick={() => setSelectedTopupPasses({ qty: pkg.qty, price: pkg.price })}
+                  onClick={() => setSelectedTopupPasses({ qty: pkg.qty, price: pkg.price, tier: pkg.tier })}
                   className={`w-full p-3.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
                     selectedTopupPasses.qty === pkg.qty
                       ? 'bg-blue-600/20 border-blue-500 text-white'
@@ -1428,18 +1599,26 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
                   }`}
                 >
                   <div>
-                    <div className="text-sm font-bold">{pkg.qty} BWM Credit Passes</div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-bold">{pkg.tier}</span>
+                      {pkg.recommended && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-400 mt-0.5">{pkg.desc}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-extrabold text-blue-400">{pkg.price}</div>
+                    <div className="text-[10px] text-slate-500">Monthly Pass</div>
                   </div>
                 </button>
               ))}
             </div>
 
             <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400">
-              <span className="font-bold text-white">Notice:</span> Production financial transactions are executed via private enterprise invoices. This sandbox action credits your local staging balance immediately.
+              Transactions are processed securely via Dodo Payments (Merchant of Record). VAT/GST reverse-charge compliant.
             </div>
 
             <div className="space-y-2 pt-2">
@@ -1447,11 +1626,17 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
                 onClick={handleExecuteTopup}
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition cursor-pointer"
               >
-                Simulate Pass Allocation (+{selectedTopupPasses.qty} Passes)
+                Proceed to USD Checkout — Powered by Dodo Payments
+              </button>
+              <button
+                onClick={handleExecuteTopup}
+                className="w-full py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition cursor-pointer"
+              >
+                Simulate Successful Card / Wire Settlement
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>

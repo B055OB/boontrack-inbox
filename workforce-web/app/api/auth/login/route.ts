@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
       if (!isAllowed) {
         return NextResponse.json(
-          { success: false, error: 'CSRF_ORIGIN_MISMATCH', message: 'Permintaan ditolak: Origin tidak cocok.' },
+          { success: false, error: 'CSRF_ORIGIN_MISMATCH', message: 'Request rejected: Origin mismatch.' },
           { status: 403 }
         );
       }
@@ -33,21 +33,21 @@ export async function POST(req: NextRequest) {
 
     if (!slug || typeof slug !== 'string' || slug.trim() === '') {
       return NextResponse.json(
-        { success: false, error: 'INVALID_SLUG', message: 'Agency / Org Slug wajib diisi.' },
+        { success: false, error: 'INVALID_SLUG', message: 'Agency / Organization Slug is required.' },
         { status: 400 }
       );
     }
 
     if (!nik || typeof nik !== 'string' || nik.trim().length < 4) {
       return NextResponse.json(
-        { success: false, error: 'INVALID_NIK', message: 'NIP / NIK / Email harus valid (minimal 4 karakter).' },
+        { success: false, error: 'INVALID_NIK', message: 'Officer ID / Email must be valid (at least 4 characters).' },
         { status: 400 }
       );
     }
 
     if (!pin || typeof pin !== 'string' || pin.trim().length < 4) {
       return NextResponse.json(
-        { success: false, error: 'INVALID_PIN', message: 'PIN minimal 4 digit.' },
+        { success: false, error: 'INVALID_PIN', message: 'PIN must be at least 4 digits.' },
         { status: 400 }
       );
     }
@@ -69,14 +69,15 @@ export async function POST(req: NextRequest) {
 
     let userProfile: UserProfile | null = null;
 
-    // A1. B2B Enterprise: Field Officer (Officer Sarah Jenkins)
+    // A1. B2B Enterprise: Field Officer (Officer Sarah Jenkins) -> /portal
     if (
       cleanIdentifier === 'OP-4821' ||
+      cleanIdentifier.toLowerCase() === 'sarah.jenkins@apexsecurity.com' ||
       cleanIdentifier.toLowerCase().includes('sarah')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'apex',
-        nik: 'OP-4821',
+        nik: 'sarah.jenkins@apexsecurity.com',
         name: 'Officer Sarah Jenkins',
         role: 'field_personnel',
         site: 'Metro Financial Tower Hub',
@@ -84,14 +85,15 @@ export async function POST(req: NextRequest) {
         agency_name: 'Apex Security Services Ltd',
       };
     }
-    // A2. B2B Enterprise: Branch Supervisor (Marcus Sterling)
+    // A2. B2B Enterprise: Branch Supervisor (Marcus Sterling) -> /ops
     else if (
       cleanIdentifier === 'SUP-1092' ||
+      cleanIdentifier.toLowerCase() === 'marcus.sterling@apexsecurity.com' ||
       cleanIdentifier.toLowerCase().includes('marcus')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'apex',
-        nik: 'SUP-1092',
+        nik: 'marcus.sterling@apexsecurity.com',
         name: 'Marcus Sterling',
         role: 'supervisor',
         branch: 'Metro Financial Tower Hub',
@@ -99,7 +101,7 @@ export async function POST(req: NextRequest) {
         agency_name: 'Apex Security Services Ltd',
       };
     }
-    // A3. B2B Enterprise: Master Reseller (Apex Security Services Ltd)
+    // A3. B2B Enterprise: Master Reseller (Apex Security Services Ltd) -> /dashboard
     else if (
       cleanIdentifier.toLowerCase() === 'partner@apexsecurity.com' ||
       cleanIdentifier.toLowerCase().includes('apexsecurity')
@@ -113,12 +115,11 @@ export async function POST(req: NextRequest) {
         branch: 'Metro Financial Tower Hub',
       };
     }
-    // B1. Akun Personel Lapangan (Cindy Aurini)
+    // B1. Regression Suite Compatibility: Demo Personel (Cindy Aurini)
     else if (
       cleanIdentifier === '248.0112.28' ||
       cleanIdentifier === '3171012345678901' ||
-      cleanIdentifier.toLowerCase().includes('cindy') ||
-      cleanPin === '123456'
+      cleanIdentifier.toLowerCase().includes('cindy')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'satya',
@@ -129,12 +130,10 @@ export async function POST(req: NextRequest) {
         agency_name: 'PT Satya Garda Perkasa',
       };
     }
-    // B2. Akun Supervisor / Branch Desk (Bambang Prakoso)
+    // B2. Regression Suite Compatibility: Demo Supervisor (Bambang Prakoso)
     else if (
       cleanIdentifier === '248.0101.05' ||
-      cleanIdentifier.toLowerCase().includes('bambang') ||
-      cleanPin === '901105' ||
-      (cleanPin.startsWith('9') && !cleanPin.startsWith('9988'))
+      cleanIdentifier.toLowerCase().includes('bambang')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'satya',
@@ -146,11 +145,10 @@ export async function POST(req: NextRequest) {
         agency_name: 'PT Satya Garda Perkasa',
       };
     }
-    // B3. Akun Master Reseller / BUJP Partner (Hendra Ops)
+    // B3. Regression Suite Compatibility: Demo Master Reseller (Hendra Ops)
     else if (
       cleanIdentifier.toLowerCase() === 'hendra.ops@satya.id' ||
-      cleanIdentifier.toLowerCase().includes('hendra') ||
-      cleanPin === '998877'
+      cleanIdentifier.toLowerCase().includes('hendra')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'satya',
@@ -161,22 +159,22 @@ export async function POST(req: NextRequest) {
         branch: 'Kantor Pusat Bandung',
       };
     }
-    // D. Fallback Dinamis untuk Test Suite & Kredensial Khusus
+    // D. Dynamic Fallback for Test Harnesses & Generic Accounts
     else {
       const isSupervisor = cleanPin.startsWith('9') || cleanIdentifier.toLowerCase().includes('admin');
       userProfile = {
         agency_slug: cleanSlug,
         nik: cleanIdentifier,
-        name: isSupervisor ? 'Supervisor Lapangan' : 'Personel Lapangan',
+        name: isSupervisor ? 'Operations Supervisor' : 'Field Personnel',
         role: isSupervisor ? 'supervisor' : 'field_personnel',
-        site: 'Site Operasional',
-        branch: 'Cabang Satya',
-        agency_name: 'PT Satya Garda Perkasa',
+        site: 'Primary Operations Site',
+        branch: 'Regional Command',
+        agency_name: 'Enterprise Security Fleet',
       };
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const maxAgeSeconds = 60 * 60 * 24; // 1 Hari (86400 detik)
+    const maxAgeSeconds = 60 * 60 * 24; // 1 Day (86400 seconds)
     const expiresAt = new Date((now + maxAgeSeconds) * 1000).toISOString();
 
     const sessionPayload = {
@@ -205,7 +203,7 @@ export async function POST(req: NextRequest) {
     // 4. Build Response with Hardened Server-Side Cookies
     const res = NextResponse.json({
       success: true,
-      message: 'Autentikasi sesi BWM berhasil.',
+      message: 'BWM session authenticated successfully.',
       redirect_url: redirectUrl,
       session: {
         agency_slug: userProfile.agency_slug,
@@ -246,10 +244,9 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         error: 'INTERNAL_AUTH_ERROR',
-        message: 'Terjadi kegagalan internal saat memproses autentikasi sesi.',
+        message: 'Internal failure while processing session authentication.',
       },
       { status: 500 }
     );
   }
 }
-
