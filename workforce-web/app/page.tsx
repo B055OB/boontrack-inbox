@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function BwmModernLandingPage() {
   // Live Operations Monitor Interactive Mock State
@@ -107,15 +108,8 @@ export default function BwmModernLandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
           {/* Brand Logo & Subtext */}
           <Link href="/" className="flex items-center space-x-3 group">
-            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm group-hover:bg-blue-700 transition">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.2}
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center p-1.5 shadow-xs group-hover:border-blue-300 transition">
+              <Image src="/logo.png" alt="BWM Logo" width={36} height={36} className="object-contain" priority />
             </div>
             <div>
               <div className="flex items-center space-x-2">
@@ -754,6 +748,7 @@ export default function BwmModernLandingPage() {
       <footer className="bg-white border-t border-slate-200 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center space-x-2">
+            <Image src="/logo.png" alt="BWM Logo" width={22} height={22} className="object-contain" />
             <span className="font-bold text-slate-700">BWM</span>
             <span>&bull;</span>
             <span>Workforce Management OS</span>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import {
   Bell,
   LogIn,
@@ -571,18 +572,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field' }: Wor
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5">
           {/* Logo & Identity */}
           <div className="flex items-center gap-2.5 self-start sm:self-auto">
-            <div className="h-7 w-7 rounded-lg bg-red-600 flex items-center justify-center font-black text-xs tracking-wider shadow-md">
-              S
+            <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center p-0.5 shadow-sm">
+              <Image src="/logo.png" alt="BWM Logo" width={32} height={32} className="object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-xs tracking-wider text-white">SATYA WORKFORCE</span>
-                <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono font-semibold border border-emerald-500/30">
-                  Staging Preview
+                <span className="font-extrabold text-xs tracking-wider text-white">BWM Operations Portal</span>
+                <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono font-semibold border border-blue-500/30">
+                  Enterprise Platform
                 </span>
               </div>
               <div className="text-[10px] text-slate-400">
-                Port 3001 &bull; Jam Operasional: <span className="font-mono text-slate-300 font-semibold">{currentTime}</span>
+                Live Telemetry &bull; Jam Operasional: <span className="font-mono text-slate-300 font-semibold">{currentTime}</span>
               </div>
             </div>
           </div>

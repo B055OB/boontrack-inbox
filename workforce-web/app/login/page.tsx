@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function WorkforceLoginPage() {
   const [slug, setSlug] = useState('apex');
@@ -96,15 +97,8 @@ export default function WorkforceLoginPage() {
       <div className="max-w-md w-full mx-auto space-y-6">
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-xl space-y-6">
           <div className="text-center">
-            <div className="h-14 w-14 mx-auto rounded-2xl bg-blue-600 text-white flex items-center justify-center font-extrabold text-2xl mb-3 shadow-sm">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.2}
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
+            <div className="h-16 w-16 mx-auto rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center p-2 mb-3 shadow-xs">
+              <Image src="/logo.png" alt="BWM Logo" width={56} height={56} className="object-contain" priority />
             </div>
             <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Workforce Operations Portal</h2>
             <p className="text-xs text-slate-500 mt-1 font-medium">
