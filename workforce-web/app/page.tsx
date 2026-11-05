@@ -292,10 +292,20 @@ export default function SatyaWorkforcePortal() {
   const [latestIncidentPayload, setLatestIncidentPayload] = useState<IncidentRecord | null>(null);
 
   // -------------------------------------------------------------
-  // ROLE 3: MASTER RESELLER STATE (Sanitized Capacity Management)
+  // ROLE 3: MASTER RESELLER STATE (BWM Credit Pass Model)
   // -------------------------------------------------------------
-  const [topupSeatsCount, setTopupSeatsCount] = useState<number>(10);
+  const [availablePasses, setAvailablePasses] = useState<number>(11);
+  const [allocatedPasses, setAllocatedPasses] = useState<number>(14);
+  const totalPasses = availablePasses + allocatedPasses;
+  const [autoRenewPasses, setAutoRenewPasses] = useState<boolean>(true);
+  const [selectedTopupPasses, setSelectedTopupPasses] = useState<{ qty: number; price: string; perPass: string; popular?: boolean }>({
+    qty: 25,
+    price: 'Rp750.000',
+    perPass: 'Rp30.000 / pass',
+    popular: false,
+  });
   const [topupSuccessToast, setTopupSuccessToast] = useState(false);
+  const [lastTopupAddedQty, setLastTopupAddedQty] = useState<number>(25);
 
   // Live Clock effect
   useEffect(() => {
@@ -389,9 +399,11 @@ export default function SatyaWorkforcePortal() {
   }
 
   function handleExecuteTopup() {
+    setAvailablePasses((prev) => prev + selectedTopupPasses.qty);
+    setLastTopupAddedQty(selectedTopupPasses.qty);
     setModalType(null);
     setTopupSuccessToast(true);
-    setTimeout(() => setTopupSuccessToast(false), 4000);
+    setTimeout(() => setTopupSuccessToast(false), 4500);
   }
 
   const [incidentSubmitting, setIncidentSubmitting] = useState(false);
@@ -1458,7 +1470,7 @@ export default function SatyaWorkforcePortal() {
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Ajukan Penambahan Kuota Kursi</span>
+                  <span>+ Top Up BWM Credit Pass</span>
                 </button>
               </div>
             </div>
@@ -1468,49 +1480,108 @@ export default function SatyaWorkforcePortal() {
             {topupSuccessToast && (
               <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-emerald-600" />
-                  <span>Penambahan kuota kursi operasional berhasil diproses dan dialokasikan ke site aktif.</span>
+                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>
+                    Simulasi Pembayaran Berhasil: Berhasil menambahkan <strong>+{lastTopupAddedQty} BWM Credit Pass</strong>. Saldo saat ini: <strong>{availablePasses} Available Passes</strong> (siap dialokasikan ke personnel).
+                  </span>
                 </div>
-                <button onClick={() => setTopupSuccessToast(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setTopupSuccessToast(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
 
-            {/* 1. ALOKASI KUOTA & STATUS LISENSI OPERASIONAL (SANITIZED) */}
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Alokasi Kuota & Status Lisensi Operasional
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Kartu 1: Total Kapasitas Kursi */}
+            {/* 1. SALDO & ALOKASI BWM CREDIT PASS (SANITIZED) */}
+            <section className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Saldo & Alokasi BWM Credit Pass
+                </h2>
+
+                {/* Toggle Otomatisasi: Auto-Renew with Available Pass */}
+                <div className="flex items-center gap-3 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-start sm:self-auto">
+                  <span className="text-xs font-bold text-slate-700">
+                    Auto-Renew with Available Pass
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoRenewPasses}
+                    onClick={() => setAutoRenewPasses(!autoRenewPasses)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      autoRenewPasses ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        autoRenewPasses ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-[11px] font-bold ${autoRenewPasses ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {autoRenewPasses ? 'Aktif' : 'Nonaktif'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Guidance Note Banner */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl px-4 py-2.5 flex items-center gap-2.5 text-xs text-emerald-950 font-medium">
+                <span className="p-1 rounded-md bg-emerald-600 text-white shrink-0">
+                  <Zap className="w-3.5 h-3.5" />
+                </span>
+                <span>
+                  <strong>Panduan Kuota:</strong> 1 BWM Credit Pass = 30 hari akses aktif per 1 personnel (berlaku untuk penugasan personnel baru maupun perpanjangan tugas).
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Kartu 1: Active Personnel */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-xs font-semibold text-slate-500">Total Kapasitas Kursi</div>
-                  <div className="text-2xl font-black text-slate-900 mt-1">50 Kursi</div>
-                  <div className="text-[11px] text-slate-500 mt-1 font-medium">Paket Lisensi Mitra Enterprise</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-500">Active Personnel</div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                      Sedang Bertugas
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-slate-900 mt-2">
+                    {allocatedPasses} Personnel
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                    Sedang aktif bertugas di 2 site operasional
+                  </div>
                 </div>
 
-                {/* Kartu 2: Kursi Terpakai (Aktif) */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-xs font-semibold text-slate-500">Kursi Terpakai (Aktif)</div>
-                  <div className="text-2xl font-black text-slate-900 mt-1">35 / 50 Kursi</div>
-                  <div className="text-[11px] text-emerald-600 mt-1 font-bold">70% Kapasitas Terpakai</div>
+                {/* Kartu 2: Available Passes */}
+                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-500">Available Passes</div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                      Siap Dialokasikan
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-600 mt-2">
+                    {availablePasses} Passes
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                    Saldo kredit standby untuk penugasan personnel baru atau rollover
+                  </div>
                 </div>
 
-                {/* Kartu 3: Sisa Kuota Standby */}
+                {/* Kartu 3: Total Pool */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-xs font-semibold text-slate-500">Sisa Kuota Standby</div>
-                  <div className="text-2xl font-black text-blue-600 mt-1">15 Kursi</div>
-                  <div className="text-[11px] text-slate-500 mt-1 font-medium">Siap Deploy ke Site Baru</div>
-                </div>
-
-                {/* Kartu 4: Status Kemitraan Tenant */}
-                <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-4 rounded-2xl shadow-md">
-                  <div className="text-xs font-bold text-emerald-100">Status Kemitraan Tenant</div>
-                  <div className="text-2xl font-black text-white mt-1">TERVERIFIKASI</div>
-                  <div className="text-[11px] text-emerald-100 mt-1 font-medium">
-                    Tier: SATYA Enterprise Partner
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-500">Total Pool</div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700">
+                      Kapasitas Total
+                    </span>
+                  </div>
+                  <div className="text-2xl font-black text-slate-900 mt-2">
+                    {totalPasses} Passes
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                    Total pool lisensi BUJP ({allocatedPasses} aktif + {availablePasses} standby)
                   </div>
                 </div>
               </div>
@@ -1551,8 +1622,8 @@ export default function SatyaWorkforcePortal() {
 
                   <div className="text-xs space-y-1.5 pt-2 border-t border-slate-200 text-slate-600">
                     <div className="flex justify-between">
-                      <span>Alokasi Kursi:</span>
-                      <span className="font-bold font-mono text-slate-900">15 Kursi</span>
+                      <span>Alokasi Personnel:</span>
+                      <span className="font-bold font-mono text-slate-900">8 Personnel</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Kepatuhan SLA:</span>
@@ -1583,8 +1654,8 @@ export default function SatyaWorkforcePortal() {
 
                   <div className="text-xs space-y-1.5 pt-2 border-t border-slate-200 text-slate-600">
                     <div className="flex justify-between">
-                      <span>Alokasi Kursi:</span>
-                      <span className="font-bold font-mono text-slate-900">20 Kursi</span>
+                      <span>Alokasi Personnel:</span>
+                      <span className="font-bold font-mono text-slate-900">6 Personnel</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Kepatuhan SLA:</span>
@@ -1616,7 +1687,7 @@ export default function SatyaWorkforcePortal() {
                   <div className="text-xs space-y-1.5 pt-2 border-t border-slate-200 text-slate-600">
                     <div className="flex justify-between">
                       <span>Alokasi Target:</span>
-                      <span className="font-bold font-mono text-slate-900">15 Kursi</span>
+                      <span className="font-bold font-mono text-slate-900">11 Personnel</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Status Aktivasi:</span>
@@ -2454,69 +2525,119 @@ export default function SatyaWorkforcePortal() {
         </div>
       )}
 
-      {/* MODAL: TOP-UP / PENAMBAHAN ALOKASI KUOTA KURSI (SANITIZED) */}
+      {/* MODAL: TOP-UP BWM CREDIT PASS (MOCK SIMULATION - ZERO XENDIT / GATEWAY) */}
       {modalType === 'topup_seats' && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
-                  <ShieldCheck className="w-5 h-5" />
+                  <CreditCard className="w-5 h-5" />
                 </span>
-                <h3 className="font-bold text-sm text-slate-900">Penambahan Alokasi Kuota Kursi</h3>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Top Up BWM Credit Pass</h3>
+                  <p className="text-[10px] text-slate-500 font-medium">Simulasi Sandbox Demo Mitra BUJP</p>
+                </div>
               </div>
-              <button onClick={() => setModalType(null)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setModalType(null)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3.5 text-xs">
-              <p className="text-slate-600">
-                Ajukan penambahan kapasitas kursi lisensi operasional untuk seluruh site di bawah naungan BUJP Anda.
-              </p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Mode Simulasi Terisolasi (Zero Live Gateway)</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Top-up ini berjalan secara lokal di browser state untuk demonstrasi alokasi kuota tanpa transaksi riil Xendit maupun perubahan skema database.
+                </p>
+              </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Pilihan Penambahan Alokasi Kursi
+                <label className="block font-bold text-slate-800 mb-2">
+                  Pilihan Paket BWM Credit Pass
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[10, 25, 50].map((qty) => (
-                    <button
-                      key={qty}
-                      type="button"
-                      onClick={() => setTopupSeatsCount(qty)}
-                      className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        topupSeatsCount === qty
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      +{qty} Kursi
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  {[
+                    { qty: 25, price: 'Rp750.000', perPass: 'Rp30.000 / pass', popular: false },
+                    { qty: 50, price: 'Rp1.500.000', perPass: 'Rp30.000 / pass', popular: true },
+                    { qty: 100, price: 'Rp3.000.000', perPass: 'Rp30.000 / pass', popular: false },
+                  ].map((pkg) => {
+                    const isSelected = selectedTopupPasses.qty === pkg.qty;
+                    return (
+                      <button
+                        key={pkg.qty}
+                        type="button"
+                        onClick={() => setSelectedTopupPasses(pkg)}
+                        className={`w-full p-3 rounded-2xl border text-left transition flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-600/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                              isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                            }`}
+                          >
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-sm">
+                                {pkg.qty} Passes
+                              </span>
+                              {pkg.popular && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider">
+                                  Rekomendasi
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {pkg.perPass} &bull; Masa aktif 30 hari/personnel
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-black text-slate-900 text-sm">{pkg.price}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                 <div className="flex justify-between text-slate-600">
-                  <span>Paket Penambahan:</span>
-                  <span className="font-mono font-bold text-slate-900">+{topupSeatsCount} Kursi Operasional</span>
+                  <span>Paket yang dipilih:</span>
+                  <span className="font-bold text-slate-900">+{selectedTopupPasses.qty} BWM Credit Passes</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Kapasitas Lisensi Baru:</span>
-                  <span className="font-mono font-bold text-emerald-700">{50 + topupSeatsCount} Kursi Total</span>
+                  <span>Total Biaya Simulasi:</span>
+                  <span className="font-bold text-emerald-700">{selectedTopupPasses.price}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Saldo Sebelum Top-Up:</span>
+                  <span className="font-mono text-slate-700">{availablePasses} Available Passes</span>
                 </div>
                 <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-xs">
-                  <span>Status Alokasi:</span>
-                  <span className="text-emerald-600">Langsung Aktif Terdistribusi ke Multi-Site</span>
+                  <span>Estimasi Saldo Baru:</span>
+                  <span className="text-emerald-600 font-mono font-black">
+                    {availablePasses + selectedTopupPasses.qty} Available Passes
+                  </span>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={handleExecuteTopup}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/30 transition cursor-pointer"
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/30 transition cursor-pointer flex items-center justify-center gap-2"
               >
-                Konfirmasi Penambahan Alokasi Kursi
+                <CheckCircle className="w-4 h-4" />
+                <span>Simulasikan Pembayaran Berhasil</span>
               </button>
             </div>
           </div>
