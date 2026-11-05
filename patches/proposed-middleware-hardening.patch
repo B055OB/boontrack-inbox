@@ -1,0 +1,70 @@
+--- a/middleware.ts
++++ b/middleware.ts
+@@ -523,12 +523,16 @@ async function handleRouting(req: NextRequest, hostClean: string) {
+   const pathname = req.nextUrl.pathname;
+   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+ 
+-  // ── CACHE FLUSH TRIGGER (Flush All Shared Memory Caches on Demand) ──
++  // ── CACHE FLUSH TRIGGER (Authorized Shared Memory Cache Purge) ──
++  const purgeSecret = process.env.INTERNAL_PURGE_SECRET || process.env.CRON_SECRET || '';
++  const providedPurgeSecret = req.headers.get('x-purge-secret') || req.nextUrl.searchParams.get('purge_secret');
+   if (
+-    req.headers.get('x-purge-cache') === '1' ||
+-    req.nextUrl.searchParams.get('purge_cache') === '1' ||
+-    pathname === '/api/v1/cache/purge'
++    (req.headers.get('x-purge-cache') === '1' ||
++     req.nextUrl.searchParams.get('purge_cache') === '1' ||
++     pathname === '/api/v1/cache/purge') &&
++    purgeSecret &&
++    providedPurgeSecret === purgeSecret
+   ) {
+     domainCache.clear();
+     tenantSlugToIdCache.clear();
+     tenantStorefrontCache.clear();
+     affiliateSubdomainCache.clear();
+   }
+@@ -714,6 +718,16 @@ async function handleRouting(req: NextRequest, hostClean: string) {
+         return NextResponse.redirect(targetUrl, 307);
+       }
+ 
++      // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
++      // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
++      if (!(await hasValidTenantSession(req, tenantSlug))) {
++        const loginUrl = req.nextUrl.clone();
++        loginUrl.pathname = '/login';
++        const redirectTarget = pathname + (req.nextUrl.search || '');
++        loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
++        return NextResponse.redirect(loginUrl, 302);
++      }
++
+       // ── DIRECT DESK ROUTE: Direct operator access once session is verified ──
+       if (segments[1] === 'desk') {
+         const url = req.nextUrl.clone();
+         url.pathname = `/${tenantSlug}/desk`;
+         return NextResponse.rewrite(url);
+       }
+-
+-      // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
+-      // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
+-      if (!(await hasValidTenantSession(req, tenantSlug))) {
+-        const loginUrl = req.nextUrl.clone();
+-        loginUrl.pathname = '/login';
+-        const redirectTarget = pathname + (req.nextUrl.search || '');
+-        loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
+-        return NextResponse.redirect(loginUrl, 302);
+-      }
+ 
+       const url = req.nextUrl.clone();
+@@ -920,6 +934,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
+ 
+     // 2. /desk -> rewrite ke /studio/desk (Wajib Sesi Login Aktif)
+     if (pathname === '/desk' || pathname.startsWith('/desk/')) {
++      if (!hasStudioAuth) {
++        url.pathname = '/login';
++        url.search = `?redirectTo=${encodeURIComponent(pathname + (req.nextUrl.search || ''))}`;
++        return NextResponse.redirect(url, 302);
++      }
+       const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
+       url.pathname = `/studio/desk${deskSubpath}`;
+       return NextResponse.rewrite(url);
+

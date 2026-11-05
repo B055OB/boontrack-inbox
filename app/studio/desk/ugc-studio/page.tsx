@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -26,7 +26,8 @@ import {
   Layers,
   ShieldCheck,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 
@@ -54,13 +55,14 @@ interface ScriptResult {
 export default function UGCStudioPage() {
   // Session & Workspace Context
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
-  const [renderCredits, setRenderCredits] = useState<number>(1);
+  const [renderCredits, setRenderCredits] = useState<number | null>(null);
+  const [creditsStatus, setCreditsStatus] = useState<'LOADING' | 'FRESH' | 'STALE' | 'ERROR'>('LOADING');
   const [hasValidSession, setHasValidSession] = useState<boolean>(true);
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
   // Panel 1: Brief Form State
-  const [productName, setProductName] = useState('Serum Brightening Niacinamide');
-  const [painPoint, setPainPoint] = useState('Kulit kusam, flek hitam bekas jerawat, dan pori-pori besar yang susah hilang meski sudah coba berbagai skincare mahal.');
+  const [productName, setProductName] = useState('');
+  const [painPoint, setPainPoint] = useState('');
   const [hookAngle, setHookAngle] = useState('Unboxing Viral (POV ASMR Unboxing)');
   const [ctaGoal, setCtaGoal] = useState('Bio Link Creator (creator.boontrack.com/@handle)');
   const [generating, setGenerating] = useState(false);
@@ -73,81 +75,81 @@ export default function UGCStudioPage() {
       stage_name: 'Visual Pattern Interrupt',
       duration_sec: 3,
       time_range: '0-3s',
-      voiceover: 'Stop scroll dulu! Sumpah kalau kamu masih mikir kulit kusam gak ada solusinya, kamu wajib tahu ini!',
-      visual_direction: 'Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan produk. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.',
-      on_screen_text: 'JANGAN BELI SEBELUM TAHU INI! 😱',
+      voiceover: 'Stop scroll dulu! Sumpah kalau kamu masih bingung cari solusi yang beneran works, kamu wajib tonton ini sampai habis!',
+      visual_direction: 'Kamera handheld selfie POV, ekspresi antusias menatap lensa menghentikan scroll dengan sound effect whoosh dinamis.',
+      on_screen_text: 'JANGAN SKIP KALAU BUTUH SOLUSI INI! ⚡',
     },
     {
       scene_number: 2,
       stage_name: 'Hook Problem',
       duration_sec: 3,
       time_range: '3-6s',
-      voiceover: 'Pasti capek banget kan tiap hari insecure gara-gara flek hitam dan pori besar yang gak kelar-kelar?',
-      visual_direction: 'Kreator menatap cermin dengan ekspresi lelah. Tangan menunjuk pipi/dahi memperlihatkan tekstur kulit secara natural tanpa filter berlebih.',
-      on_screen_text: 'Pernah ngerasain hal yang sama? ✋',
+      voiceover: 'Pasti capek banget kan tiap hari ngalamin kendala ini dan buang waktu tanpa hasil yang jelas?',
+      visual_direction: 'Kreator memperagakan ekspresi frustrasi terhadap masalah harian secara natural.',
+      on_screen_text: 'Pernah ngerasain masalah yang sama? ✋',
     },
     {
       scene_number: 3,
       stage_name: 'Agitation / Relatability',
       duration_sec: 3,
       time_range: '6-9s',
-      voiceover: 'Udah coba macam-macam serum viral lain tapi hasilnya zonk dan cuma bikin kantong boncos.',
-      visual_direction: 'B-roll footage cepat: Menyingkirkan botol-botol produk lama yang tidak efektif ke meja, gestur menghela napas geleng kepala.',
-      on_screen_text: 'Udah coba ini itu tapi zonk... 💸',
+      voiceover: 'Udah coba berbagai alternatif lain tapi hasilnya zonk dan cuma bikin boncos tanpa kejelasan.',
+      visual_direction: 'Menunjukkan kekecewaan terhadap metode lama yang rumit dan tidak efisien.',
+      on_screen_text: 'Udah coba macam-macam tapi nihil... 💸',
     },
     {
       scene_number: 4,
       stage_name: 'Introduction Solution',
       duration_sec: 3,
       time_range: '9-12s',
-      voiceover: 'Sampai akhirnya aku nemu penyelamat baru: Serum Brightening Niacinamide. Ini game changer banget!',
-      visual_direction: 'Hero shot sinematik! Produk diangkat sejajar mata dengan pencahayaan hangat dan efek lens flare/glint. Botol diputar perlahan.',
-      on_screen_text: 'Solusi Baru: Serum Brightening ✨',
+      voiceover: 'Sampai akhirnya nemu solusi paling efisien dan terbukti: langsung mengubah cara kerja jadi jauh lebih simpel.',
+      visual_direction: 'Hero shot sinematik! Memperkenalkan solusi dengan pencahayaan bersih dan percaya diri.',
+      on_screen_text: 'Solusi Praktis & Efisien ✨',
     },
     {
       scene_number: 5,
       stage_name: 'Product In-Action Demo',
       duration_sec: 4,
       time_range: '12-16s',
-      voiceover: 'Lihat pas dipakai, teksturnya ringan banget, gak lengket sama sekali dan langsung meresap dalam hitungan detik.',
-      visual_direction: 'Macro zoom tekstur produk saat diaplikasikan: tetesan pipet kental lembut meresap seketika ke kulit tangan/pipi.',
-      on_screen_text: 'Tekstur ringan, cepat meresap & gak lengket! 💧',
+      voiceover: 'Lihat pas dipakai langsung, prosesnya cepet banget, praktis, dan hasilnya langsung kelihatan seketika.',
+      visual_direction: 'Close-up peragaan fitur utama produk atau alur kerja nyata tanpa rekayasa.',
+      on_screen_text: 'Praktis, Cepat & Hasil Terbukti Nyata 🚀',
     },
     {
       scene_number: 6,
       stage_name: 'Key Benefit 1',
       duration_sec: 3,
       time_range: '16-19s',
-      voiceover: 'Pemakaian rutin bikin warna kulit jauh lebih rata dan cerah alami tanpa efek pengelupasan perih.',
-      visual_direction: 'Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.',
-      on_screen_text: 'Flek memudar & glowing alami 🔥',
+      voiceover: 'Gak perlu repot dan buang tenaga lagi, semuanya bisa diselesaikan dalam hitungan menit.',
+      visual_direction: 'Kreator tersenyum puas menunjukkan kemudahan penggunaan di layar.',
+      on_screen_text: 'Efisiensi Maksimal Tanpa Ribet 🔥',
     },
     {
       scene_number: 7,
       stage_name: 'Key Benefit 2',
       duration_sec: 3,
       time_range: '19-22s',
-      voiceover: 'Plus formulanya aman banget buat all skin types, non-comedogenic dan nyaman dipakai pagi & malam.',
-      visual_direction: 'Kreator mengusap wajah dengan lembut, menunjukkan rasa nyaman dan sensasi dingin menenangkan.',
-      on_screen_text: 'Aman untuk kulit sensitif 🌟',
+      voiceover: 'Kualitasnya terjamin, aman, dan dirancang khusus agar siapapun bisa langsung pakai dengan mudah.',
+      visual_direction: 'Visual detail fitur pendukung dan keandalan sistem / produk.',
+      on_screen_text: 'Kualitas Teruji & Terpercaya 🌟',
     },
     {
       scene_number: 8,
       stage_name: 'Social Proof / Reassurance',
       duration_sec: 3,
       time_range: '22-25s',
-      voiceover: 'Gak heran ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. BPOM resmi ya!',
-      visual_direction: 'Menampilkan badge sertifikat BPOM resmi, rating bintang 4.9 dari marketplace, dan screenshot testimoni pelanggan puas.',
-      on_screen_text: '⭐⭐⭐⭐⭐ 4.9/5 (BPOM Resmi & Teruji)',
+      voiceover: 'Gak heran ratingnya tembus 4.9/5 dan sudah banyak pengguna yang puas dengan hasilnya.',
+      visual_direction: 'Tampilan grafis rating kepuasan pelanggan dan bukti kepuasan nyata.',
+      on_screen_text: '⭐⭐⭐⭐⭐ 4.9/5 Kepuasan Pengguna',
     },
     {
       scene_number: 9,
       stage_name: 'Strong CTA (Klaim Promo / Cek Link Bio)',
       duration_sec: 5,
       time_range: '25-30s',
-      voiceover: 'Khusus hari ini lagi ada diskon bundling terbatas! Langsung klik tautan di Bio profil sekarang sebelum kehabisan!',
-      visual_direction: 'Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (link bio) dengan grafis panah animasi.',
-      on_screen_text: '👉 Klik Link di Bio Sekarang! 🛒',
+      voiceover: 'Khusus hari ini ada penawaran spesial terbatas! Langsung klik tautan di profil sekarang sebelum kuota habis!',
+      visual_direction: 'Kreator tersenyum menunjuk ke arah tombol aksi / link profil.',
+      on_screen_text: '👉 Klik Tautan Sekarang & Klaim Promo! 📲',
     },
   ]);
 
@@ -162,6 +164,32 @@ export default function UGCStudioPage() {
   // File upload input references
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
+  // Real-time Entitlement Sync from Database
+  const refreshEntitlements = useCallback(async (slug: string) => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/tenants/${encodeURIComponent(slug)}/entitlements`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const ent = json.data;
+          setRenderCredits(ent.credits_remaining ?? 0);
+          setCreditsStatus('FRESH');
+          return;
+        }
+      }
+      setCreditsStatus(prev => prev === 'STALE' ? 'STALE' : 'ERROR');
+    } catch (e) {
+      console.warn('[UGCStudio] Failed to fetch entitlements:', e);
+      setCreditsStatus(prev => prev === 'STALE' ? 'STALE' : 'ERROR');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tenantSlug) {
+      refreshEntitlements(tenantSlug);
+    }
+  }, [tenantSlug, refreshEntitlements]);
   // 1. Resolve Session Context
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -186,6 +214,7 @@ export default function UGCStudioPage() {
           const parsed = JSON.parse(storedSession);
           if (parsed.render_credits !== undefined) {
             setRenderCredits(parsed.render_credits);
+            setCreditsStatus('STALE');
           }
         } catch {}
       }
@@ -202,7 +231,7 @@ export default function UGCStudioPage() {
       return;
     }
 
-    if (renderCredits < 1) {
+    if ((renderCredits ?? 0) < 1) {
       setIsPaywallOpen(true);
       return;
     }
@@ -271,7 +300,7 @@ export default function UGCStudioPage() {
 
   // Dispatch to Render Queue (Jalur A: Mode Video Otomatis / Render MP4 = 3 Kredit)
   const handleDispatchRender = async () => {
-    if (renderCredits < 3) {
+    if ((renderCredits ?? 0) < 3) {
       setIsPaywallOpen(true);
       return;
     }
@@ -413,9 +442,29 @@ export default function UGCStudioPage() {
             </div>
 
             {/* Credit Pill & Top Up */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
-              <Zap className="w-3.5 h-3.5 text-violet-400" />
-              <span>{renderCredits} Credit{renderCredits === 1 ? ' (Trial)' : 's'}</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${
+              creditsStatus === 'LOADING'
+                ? 'bg-zinc-800/60 border border-zinc-700/50 text-zinc-400'
+                : (renderCredits ?? 0) <= 0
+                ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                : 'bg-violet-500/10 border border-violet-500/30 text-violet-300'
+            }`}>
+              {creditsStatus === 'LOADING' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
+              ) : (
+                <Zap className={`w-3.5 h-3.5 ${(renderCredits ?? 0) <= 0 ? 'text-rose-400' : 'text-violet-400'}`} />
+              )}
+              <span className="font-mono">
+                {creditsStatus === 'LOADING'
+                  ? 'Memuat...'
+                  : creditsStatus === 'STALE'
+                  ? `${renderCredits ?? 0} Credits (Sync)`
+                  : creditsStatus === 'ERROR'
+                  ? `${renderCredits ?? 0} Credits (Offline)`
+                  : (renderCredits ?? 0) === 0
+                  ? '0 Credits (Habis)'
+                  : `${renderCredits} Credit${renderCredits === 1 ? ' (Trial)' : 's'}`}
+              </span>
             </div>
 
             <button
@@ -481,7 +530,7 @@ export default function UGCStudioPage() {
                   type="text"
                   value={productName}
                   onChange={e => setProductName(e.target.value)}
-                  placeholder="Contoh: Serum Brightening Niacinamide"
+                  placeholder="Contoh: Software Kasir POS / Paket Katering Hemat / Sepatu Kulit"
                   className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 transition"
                 />
               </div>
@@ -798,7 +847,7 @@ export default function UGCStudioPage() {
                 <button
                   type="button"
                   onClick={handleDispatchRender}
-                  disabled={dispatching || renderCredits < 1}
+                  disabled={dispatching || (renderCredits ?? 0) < 1}
                   className="w-full sm:flex-1 py-4 px-6 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-purple-600 hover:from-fuchsia-600 hover:via-pink-600 hover:to-purple-700 text-white font-black text-sm shadow-xl shadow-fuchsia-500/25 flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50 cursor-pointer"
                 >
                   {dispatching ? (
@@ -831,7 +880,7 @@ export default function UGCStudioPage() {
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
         tenantSlug={tenantSlug}
-        currentCredits={renderCredits}
+        currentCredits={renderCredits ?? 0}
       />
 
       {/* ── FOOTER ────────────────────────────────────────────── */}

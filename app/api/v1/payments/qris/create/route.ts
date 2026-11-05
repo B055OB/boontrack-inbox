@@ -219,9 +219,14 @@ export async function POST(req: NextRequest) {
     // 4. KODE UNIK & LEDGER DETERMINISTIK
     // Hitung kode unik dan total transaksi murni di server.
     // Client DILARANG mendikte nominal atau menyuntikkan kode unik buatan client!
-    const hasAuthoritativePrice = (authoritativeProduct.promo_price !== undefined && authoritativeProduct.promo_price !== null) ||
-                                  (authoritativeProduct.price !== undefined && authoritativeProduct.price !== null);
-    let productBasePrice = Number(authoritativeProduct.promo_price ?? authoritativeProduct.price ?? 0);
+    const hasAuthoritativePrice =
+      (typeof authoritativeProduct.promo_price === 'number' && authoritativeProduct.promo_price > 0) ||
+      (typeof authoritativeProduct.price === 'number' && authoritativeProduct.price > 0);
+    let productBasePrice = Number(
+      (typeof authoritativeProduct.promo_price === 'number' && authoritativeProduct.promo_price > 0)
+        ? authoritativeProduct.promo_price
+        : (authoritativeProduct.price ?? 0)
+    );
 
     const matchQty = (body.product_name || body.productTitle || '').match(/\((\d+)x\)/i);
     const detectedQty = matchQty ? parseInt(matchQty[1], 10) : 1;

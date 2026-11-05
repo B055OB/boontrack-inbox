@@ -130,92 +130,50 @@ export default function StudioDeskPage() {
     }
   }, []);
 
-  // Dynamic session resolution (Zero Hardcoding - Supabase SSOT with Creator Fallback)
+  // Dynamic authoritative session resolution (Zero Hardcoding - Supabase SSOT)
+  // P0 Security Invariant: Query parameter 'slug' or plaintext cookies are NEVER accepted as proof of auth.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const paramSlug = (urlParams.get('slug') || urlParams.get('tenant') || '').trim().toLowerCase();
-    const isDevQuery =
-      urlParams.get('dev') === 'true' ||
-      urlParams.get('demo') === 'true' ||
-      urlParams.get('creator') === 'true';
-
-    // 1. Cookies check
-    const cookieMatch = document.cookie.match(/(?:merchant_store|merchant_session|bt_tenant|studio_session)=([^;]+)/);
-    const cookieVal = cookieMatch ? decodeURIComponent(cookieMatch[1]).replace(/^["']|["']$/g, '').trim().toLowerCase() : '';
-
-    // 2. LocalStorage check
-    const localVal = (
-      localStorage.getItem('merchant_store') ||
-      localStorage.getItem('merchant_session') ||
-      localStorage.getItem('bt_tenant') ||
-      ''
-    ).replace(/^["']|["']$/g, '').trim().toLowerCase();
-
-    // 3. Stored session object
-    const storedSession = localStorage.getItem('studio_session');
-    let parsedSession: any = null;
-    if (storedSession) {
+    let isMounted = true;
+    async function resolveAuthoritativeSession() {
+      setIsCheckingAuth(true);
       try {
-        parsedSession = JSON.parse(storedSession);
-      } catch {}
-    }
+        const res = await fetch('/api/tenants/studio/entitlements', {
+          headers: { 'Cache-Control': 'no-cache' },
+        });
 
-    const resolvedSlug = (
-      paramSlug ||
-      parsedSession?.slug ||
-      localVal ||
-      cookieVal ||
-      ''
-    ).toLowerCase();
-
-    const isDevEnv =
-      process.env.NODE_ENV !== 'development' ? isDevQuery : true;
-
-    // Check if a recognized active session exists
-    const hasExistingSession = Boolean(
-      resolvedSlug &&
-      resolvedSlug !== 'null' &&
-      resolvedSlug !== 'undefined'
-    );
-
-    if (hasExistingSession) {
-      const activeSession = parsedSession || { slug: resolvedSlug, tier: 'FREE', render_credits: 1 };
-      setTenantSlug(resolvedSlug);
-      setSessionData(activeSession);
-      if (typeof activeSession.render_credits === 'number') {
-        setRenderCredits(activeSession.render_credits);
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json.success && json.data) {
+            const verified = json.data;
+            const verifiedSlug = verified.tenant_slug || verified.tenant_id;
+            setTenantSlug(verifiedSlug);
+            setRenderCredits(verified.credits_remaining ?? 1);
+            setIsUnlimited(Boolean(verified.is_unlimited || verified.tier === 'FOUNDER'));
+            setTenantTier(verified.tier || 'FREE');
+            setIsShopMember(Boolean(verified.is_shop_member));
+            setHasValidSession(true);
+            setIsCheckingAuth(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[StudioDesk] Server session verification error:', err);
       }
-      setHasValidSession(true);
-      setIsCheckingAuth(false);
-      // Synchronize cookies across subdomains with .boontrack.com
-      persistStudioSession(resolvedSlug, activeSession);
-      return;
+
+      if (isMounted) {
+        // Unauthenticated or cross-tenant rejection: display Studio Activation & Gateway card
+        setHasValidSession(false);
+        setIsCheckingAuth(false);
+        setIsLoadingStats(false);
+      }
     }
 
-    // In local dev environment: auto-initialize creator fallback session
-    if (isDevEnv) {
-      const fallbackSlug = 'creator';
-      const fallbackSession = {
-        slug: fallbackSlug,
-        name: 'Creator Studio (Dev)',
-        tier: 'PRO',
-        render_credits: 3,
-        is_fallback: true,
-      };
-      persistStudioSession(fallbackSlug, fallbackSession);
-      setTenantSlug(fallbackSlug);
-      setSessionData(fallbackSession);
-      setRenderCredits(3);
-      setHasValidSession(true);
-      setIsCheckingAuth(false);
-      return;
-    }
-
-    // In production without active session: display Studio Activation & Gateway card without kicking back to '/'
-    setHasValidSession(false);
-    setIsCheckingAuth(false);
+    resolveAuthoritativeSession();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Fetch data real-time entitlements & antrean video (graceful 401/403 handling)

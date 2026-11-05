@@ -174,7 +174,7 @@ export async function GET(req: Request) {
       const token = await extractTokenFromRequest(req);
       if (!token) {
         return NextResponse.json(
-          { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.' },
+          { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.', code: 'UNAUTHORIZED' },
           { status: 401 }
         );
       }
@@ -182,7 +182,7 @@ export async function GET(req: Request) {
       const { data: authData, error: authErr } = await supabase.auth.getUser(token);
       if (authErr || !authData?.user) {
         return NextResponse.json(
-          { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.' },
+          { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.', code: 'UNAUTHORIZED' },
           { status: 401 }
         );
       }
@@ -202,7 +202,7 @@ export async function GET(req: Request) {
 
     if (merchantAuthPayload) {
       // 2a. Resolve & enforce strict tenant binding for verified merchant token
-      const targetParam = (tenantParam || merchantAuthPayload.tenantSlug).trim().toLowerCase();
+      const targetParam = (tenantParam || merchantAuthPayload.tenantSlug || merchantAuthPayload.slug || '').trim().toLowerCase();
       const isUuid = IS_UUID_REGEX.test(targetParam);
       let tQuery = supabase.from('tenants').select('id, slug, metadata');
       if (isUuid) {
@@ -220,9 +220,11 @@ export async function GET(req: Request) {
 
       const tokenSlug = (merchantAuthPayload.tenantSlug || '').toLowerCase();
       const tokenId = (merchantAuthPayload.tenantId || '').toLowerCase();
-      if (tokenSlug !== tData.slug.toLowerCase() && (!tokenId || tokenId !== tData.id.toLowerCase())) {
+      const tSlug = (tData.slug || '').toLowerCase();
+      const tId = (tData.id || '').toLowerCase();
+      if (tokenSlug !== tSlug && (!tokenId || tokenId !== tId)) {
         return NextResponse.json(
-          { success: false, message: 'Forbidden: Token sesi tidak cocok dengan tenant yang diminta.' },
+          { success: false, message: 'Forbidden: Token sesi tidak cocok dengan tenant yang diminta.', code: 'FORBIDDEN' },
           { status: 403 }
         );
       }
@@ -323,6 +325,49 @@ export async function GET(req: Request) {
 
     // 4. Query studio_jobs with mandatory tenant isolation filter
     const verifiedTenantId = resolvedTenant.id;
+    const singleJobId = searchParams.get('id') || searchParams.get('job_id');
+
+    if (singleJobId) {
+      // 4a. Single job polling with strict 404 / 403 handling
+      const { data: jobRaw, error: jobRawErr } = await supabase
+        .from('studio_jobs')
+        .select('id, tenant_id, user_id, status, job_type, payload, output_url, error_message, attempt, created_at, updated_at')
+        .eq('id', singleJobId)
+        .maybeSingle();
+
+      if (jobRawErr || !jobRaw) {
+        return NextResponse.json(
+          { success: false, message: 'Job tidak ditemukan.' },
+          { status: 404 }
+        );
+      }
+
+      const jobTenantClean = String(jobRaw.tenant_id || '').toLowerCase();
+      const verifiedIdClean = String(verifiedTenantId || '').toLowerCase();
+      const verifiedSlugClean = String(resolvedTenant.slug || '').toLowerCase();
+
+      if (jobTenantClean !== verifiedIdClean && jobTenantClean !== verifiedSlugClean) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Anda tidak memiliki akses ke job ini.', code: 'FORBIDDEN' },
+          { status: 403 }
+        );
+      }
+
+      if (jobRaw.status === 'FAILED' || jobRaw.status === 'TIMEOUT') {
+        try {
+          await StudioCreditService.refundJobCredits({
+            tenantIdOrSlug: jobRaw.tenant_id,
+            jobId: jobRaw.id,
+            reason: jobRaw.error_message || `Job ended in status ${jobRaw.status}`,
+          });
+        } catch {}
+      }
+
+      return NextResponse.json({
+        success: true,
+        job: jobRaw,
+      });
+    }
 
     let query = supabase
       .from('studio_jobs')
@@ -520,5 +565,302 @@ export async function PATCH(req: Request) {
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  }
+}
+
+
+/**
+ * POST /api/studio/jobs
+ * Creates a render job for Video Ads, AI Carousel/Story, UGC Desk, etc.
+ * Enforces:
+ * 1. Session authentication (401 if unauthenticated)
+ * 2. Tenant isolation and ownership (403 if unauthorized or cross-tenant)
+ * 3. Atomic credit deduction / entitlement validation (402/403 if insufficient)
+ * 4. DB job insertion with status QUEUED
+ */
+export async function POST(req: Request) {
+  try {
+    let supabase: any;
+    try {
+      supabase = getSupabaseAdmin() || getSupabase();
+    } catch {
+      supabase = getSupabase();
+    }
+
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, message: 'Database client tidak tersedia.' },
+        { status: 500 }
+      );
+    }
+
+    // 1. Authenticate session
+    let merchantAuthPayload: any = null;
+    let candidateMerchantToken = '';
+    try {
+      candidateMerchantToken = extractMerchantSessionToken(req as any);
+    } catch {
+      const rawCookie = req.headers.get('cookie') || '';
+      const match = rawCookie.match(/(?:^|;\s*)bt_merchant_token=([^;]+)/);
+      if (match && match[1]) {
+        candidateMerchantToken = decodeURIComponent(match[1].trim());
+      }
+    }
+    if (candidateMerchantToken) {
+      const verified = verifyMerchantSessionToken(candidateMerchantToken);
+      if (verified.valid && verified.payload) {
+        merchantAuthPayload = verified.payload;
+      }
+    }
+
+    let user: any = null;
+    let userId = '';
+    let userEmail = '';
+
+    if (!merchantAuthPayload) {
+      const token = await extractTokenFromRequest(req);
+      if (!token) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized: Sesi autentikasi diperlukan.', code: 'UNAUTHORIZED' },
+          { status: 401 }
+        );
+      }
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !authData?.user) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized: Sesi autentikasi tidak valid atau telah kedaluwarsa.', code: 'UNAUTHORIZED' },
+          { status: 401 }
+        );
+      }
+
+      user = authData.user;
+      userId = user.id;
+      userEmail = (user.email || '').trim().toLowerCase();
+    }
+
+    // 2. Parse body
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, message: 'Format body JSON tidak valid.' },
+        { status: 400 }
+      );
+    }
+
+    const tenantParam = body.tenant_id || body.tenant || req.headers.get('x-tenant-id');
+    let resolvedTenant: any = null;
+
+    if (merchantAuthPayload) {
+      const targetParam = (tenantParam || merchantAuthPayload.tenantSlug || merchantAuthPayload.slug || '').trim().toLowerCase();
+      const isUuid = IS_UUID_REGEX.test(targetParam);
+      let tQuery = supabase.from('tenants').select('id, slug, tier, metadata');
+      if (isUuid) {
+        tQuery = tQuery.eq('id', targetParam);
+      } else {
+        tQuery = tQuery.eq('slug', targetParam);
+      }
+      const { data: tData, error: tErr } = await tQuery.maybeSingle();
+      if (tErr || !tData) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Tenant tidak valid atau tidak ditemukan.' },
+          { status: 403 }
+        );
+      }
+
+      const tokenSlug = (merchantAuthPayload.tenantSlug || '').toLowerCase();
+      const tokenId = (merchantAuthPayload.tenantId || '').toLowerCase();
+      const tSlug = (tData.slug || '').toLowerCase();
+      const tId = (tData.id || '').toLowerCase();
+      if (tokenSlug !== tSlug && (!tokenId || tokenId !== tId)) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Token sesi tidak cocok dengan tenant yang diminta.', code: 'FORBIDDEN' },
+          { status: 403 }
+        );
+      }
+      resolvedTenant = tData;
+    } else {
+      if (tenantParam) {
+        const cleanParam = String(tenantParam).trim().toLowerCase();
+        const isUuid = IS_UUID_REGEX.test(cleanParam);
+        let tQuery = supabase.from('tenants').select('id, slug, tier, metadata');
+        if (isUuid) {
+          tQuery = tQuery.eq('id', cleanParam);
+        } else {
+          tQuery = tQuery.eq('slug', cleanParam);
+        }
+        const { data: tData, error: tErr } = await tQuery.maybeSingle();
+        if (tErr || !tData) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Tenant tidak valid atau tidak ditemukan.' },
+            { status: 403 }
+          );
+        }
+        resolvedTenant = tData;
+      } else {
+        let tuQuery = supabase
+          .from('tenant_users')
+          .select('tenant_id')
+          .eq('is_active', true);
+        if (userEmail) {
+          tuQuery = tuQuery.or(`user_id.eq.${userId},email.eq.${userEmail}`);
+        } else {
+          tuQuery = tuQuery.eq('user_id', userId);
+        }
+        const { data: memberRow } = await tuQuery.limit(1).maybeSingle();
+        if (memberRow?.tenant_id) {
+          const { data: memberTenant } = await supabase
+            .from('tenants')
+            .select('id, slug, tier, metadata')
+            .eq('id', memberRow.tenant_id)
+            .maybeSingle();
+          resolvedTenant = memberTenant;
+        }
+
+        if (!resolvedTenant) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Parameter tenant_id diperlukan atau context workspace tidak ditemukan.' },
+            { status: 403 }
+          );
+        }
+      }
+
+      const appRole = String(user.app_metadata?.role || user.app_metadata?.user_role || '').trim().toUpperCase();
+      const isSuperAdmin = appRole === 'SUPERADMIN';
+      const isOwner =
+        (resolvedTenant.user_id && resolvedTenant.user_id === userId) ||
+        (resolvedTenant.owner_id && resolvedTenant.owner_id === userId) ||
+        (resolvedTenant.metadata?.user_id && resolvedTenant.metadata.user_id === userId) ||
+        (resolvedTenant.metadata?.owner_id && resolvedTenant.metadata.owner_id === userId);
+
+      let isMember = false;
+      if (!isSuperAdmin && !isOwner) {
+        try {
+          const { data: memberRecords } = await supabase
+            .from('tenant_users')
+            .select('id')
+            .or(`tenant_id.eq.${resolvedTenant.id},tenant_slug.eq.${resolvedTenant.slug}`)
+            .eq('is_active', true)
+            .eq('email', userEmail);
+          if (Array.isArray(memberRecords) && memberRecords.length > 0) {
+            isMember = true;
+          }
+        } catch {}
+      }
+
+      if (!isSuperAdmin && !isOwner && !isMember) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Anda tidak memiliki hak akses ke data tenant ini.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const {
+      product_name,
+      campaign_title,
+      job_type: rawJobType,
+      scenes,
+      variations,
+      assets,
+      payload: customPayload,
+    } = body;
+
+    const job_type = rawJobType || 'VIDEO_ADS';
+    const resolvedTitle = product_name || campaign_title || 'Creative Video Ad';
+    const isBatch = Array.isArray(variations) && variations.length > 0;
+    const isSingle = Array.isArray(scenes) && scenes.length > 0;
+
+    if (!isBatch && !isSingle && !customPayload) {
+      return NextResponse.json(
+        { success: false, message: 'Daftar adegan (scenes), variasi (variations), atau payload wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+
+    const requiredCredits = isBatch ? variations.length * 3 : 3;
+    const jobId = body.job_id || body.id || `job_${Date.now()}`;
+
+    const creditRes = await StudioCreditService.reserveCredits(
+      resolvedTenant.id,
+      requiredCredits,
+      `Studio Job (${job_type}): ${resolvedTitle}`,
+      jobId
+    );
+
+    if (!creditRes.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'INSUFFICIENT_CREDITS',
+          error: 'INSUFFICIENT_CREDITS',
+          message: creditRes.message || `Kredit Studio tidak mencukupi (Butuh ${requiredCredits} Kredit).`,
+          required_credits: requiredCredits,
+          credits_remaining: creditRes.credits_remaining ?? 0,
+        },
+        { status: 402 }
+      );
+    }
+
+    const jobPayload = customPayload || {
+      product_name: resolvedTitle,
+      campaign_title: resolvedTitle,
+      job_type,
+      scenes: scenes || [],
+      variations: variations || [],
+      assets: assets || {},
+      created_at: new Date().toISOString(),
+    };
+
+    const { error: insErr } = await supabase.from('studio_jobs').insert({
+      id: jobId,
+      tenant_id: resolvedTenant.id,
+      user_id: userId || resolvedTenant.id,
+      status: 'QUEUED',
+      job_type,
+      payload: jobPayload,
+      output_url: null,
+      attempt: 1,
+    });
+
+    if (insErr) {
+      console.error('[Studio Jobs POST] Insert error, refunding:', insErr);
+      await StudioCreditService.refundJobCredits({
+        tenantIdOrSlug: resolvedTenant.id,
+        jobId,
+        amount: requiredCredits,
+        reason: `DB_INSERT_FAILED: ${insErr.message}`,
+      });
+      return NextResponse.json(
+        { success: false, message: 'Gagal membuat job render di basis data.' },
+        { status: 500 }
+      );
+    }
+
+    const createdJob = {
+      id: jobId,
+      tenant_id: resolvedTenant.id,
+      job_type,
+      status: 'QUEUED',
+      payload: customPayload || { scenes, variations },
+    };
+    return NextResponse.json({
+      success: true,
+      job_id: jobId,
+      job: createdJob,
+      status: 'QUEUED',
+      job_type,
+      credits_remaining: creditRes.credits_remaining,
+      consumed_credits: requiredCredits,
+      message: 'Job berhasil didaftarkan ke antrean studio.',
+    }, { status: 201 });
+  } catch (err: any) {
+    console.error('[Studio Jobs POST] Fatal error:', err);
+    return NextResponse.json(
+      { success: false, message: err.message || 'Terjadi kesalahan sistem.' },
+      { status: 500 }
+    );
   }
 }

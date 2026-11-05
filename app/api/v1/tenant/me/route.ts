@@ -2,52 +2,36 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { resolveVerifiedTenantContext } from '@/lib/auth/tenant-context';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/v1/tenant/me?slug=[tenant_slug]
  * 
- * Mengembalikan profil tenant lengkap beserta status langganan & sisa hari trial:
- * - slug, name, category, tier
- * - trial_ends_at: ISO timestamp
- * - days_left: integer (0 jika expired)
- * - is_expired: boolean
+ * Mengembalikan profil tenant lengkap beserta status langganan & sisa hari trial.
+ * Authoritative P0 Security Contract:
+ * - Menggunakan resolveVerifiedTenantContext(req, slug).
+ * - Menolak 100% plaintext cookies (merchant_store, bt_tenant, dll).
+ * - Menolak cross-tenant session dengan HTTP 403 Forbidden.
+ * - Menolak unauthenticated request dengan HTTP 401 Unauthorized.
  */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const querySlug = searchParams.get('slug');
-    const cleanCookie = (val?: string) => {
-      if (!val) return '';
-      try {
-        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
-      } catch {
-        return val.toLowerCase().trim();
-      }
-    };
 
-    const cookieStore =
-      cleanCookie(req.cookies.get('merchant_store')?.value) ||
-      cleanCookie(req.cookies.get('merchant_session')?.value) ||
-      cleanCookie(req.cookies.get('bt_tenant')?.value);
-
-    const rawSlug = querySlug || cookieStore || '';
-    const slug = normalizeTenantSlug(rawSlug);
-
-    if (!slug) {
+    // 1. Authoritative Server-Side Tenant Context Resolution
+    const authResult = await resolveVerifiedTenantContext(req, querySlug);
+    if (!authResult.success) {
       return NextResponse.json(
-        { success: false, error: 'Parameter slug tenant wajib disertakan.' },
-        { status: 400 }
+        { success: false, error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
 
-    if (!cookieStore || cookieStore !== slug.toLowerCase().trim()) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk melihat profil toko.' },
-        { status: 401 }
-      );
-    }
+    const { context } = authResult;
+    const slug = context.tenantSlug;
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -60,7 +44,7 @@ export async function GET(req: NextRequest) {
     const { data: tenant, error: dbErr } = await supabase
       .from('tenants')
       .select('*')
-      .eq('slug', slug)
+      .eq('id', context.tenantId)
       .maybeSingle();
 
     if (dbErr) {
@@ -77,10 +61,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rawTier = String(tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL');
+    const rawTier = String(tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || context.tier || 'SOLO_TRIAL');
     const isTrial = Boolean(rawTier.toLowerCase().includes('trial') || rawTier.toUpperCase() === 'SOLO_TRIAL');
 
-    // Kolom resmi di database Supabase adalah subscription_ends_at (dan trial_ends_at)
     const effectiveEndDateRaw =
       tenant.trial_ends_at ||
       tenant.subscription_ends_at ||
@@ -110,6 +93,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      role: context.role,
+      membership_valid: context.membershipValid,
       tenant: {
         id: tenant.id,
         slug: tenant.slug,

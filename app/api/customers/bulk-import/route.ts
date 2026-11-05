@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CustomerBulkImportService } from '@/lib/services/customer-bulk-import.service';
+import { resolveVerifiedTenantContext } from '@/lib/auth/tenant-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,22 +56,15 @@ export async function POST(req: NextRequest) {
       payloadData = body.customers || body.rows || body.data || [];
     }
 
-    // Resolusi fallback tenantSlug dari cookies jika tidak disertakan di body
-    if (!tenantSlug) {
-      tenantSlug = String(
-        req.cookies.get('bt_tenant')?.value ||
-        req.cookies.get('merchant_store')?.value ||
-        req.cookies.get('merchant_session')?.value ||
-        ''
-      ).replace(/^["']|["']$/g, '').trim().toLowerCase();
-    }
-
-    if (!tenantSlug) {
+    // Authoritative Server-Side Tenant Context Resolution (P0 Security)
+    const authResult = await resolveVerifiedTenantContext(req, tenantSlug || undefined);
+    if (!authResult.success) {
       return NextResponse.json(
-        { success: false, error: 'Parameter tenantSlug wajib disertakan.' },
-        { status: 400 }
+        { success: false, error: authResult.error, code: authResult.code },
+        { status: authResult.status }
       );
     }
+    tenantSlug = authResult.context.tenantSlug;
 
     const result = await CustomerBulkImportService.processBulkImport(payloadData, {
       tenantSlug,

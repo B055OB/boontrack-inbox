@@ -1,0 +1,44 @@
+-- Migration: 20261105_update_shabu_ajhi_shipping_and_qris.sql
+-- Target Tenant: 70c1ea8c-3557-44af-b131-faae75a8b17f (Shabu Ajhi)
+-- Description:
+-- 1. Injects decoded EMVCo static QRIS string into Shabu Ajhi tenant metadata for Tag 54 dynamic nominal generation.
+-- 2. Sets shipping_config.tier_mode to 'CATERING_13_TIER' and fnb_catering.is_fnb_home_service to true for round-trip cookware logistics.
+
+UPDATE tenants
+SET
+  metadata = jsonb_set(
+    jsonb_set(
+      jsonb_set(
+        jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  metadata,
+                  '{qris_payload}',
+                  '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+                ),
+                '{qris_static_string}',
+                '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+              ),
+              '{static_qris_payload}',
+              '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+            ),
+            '{payment_settings,qris_raw}',
+            '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+          ),
+          '{payment_config,static_qris_payload}',
+          '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+        ),
+        '{payment_config,qris_payload}',
+        '"00020101021126650013ID.CO.BCA.WWW011893600014000427700202150008850042770020303UKE51440014ID.CO.QRIS.WWW0215ID10254619805140303UKE5204581453033605802ID5910Shabu Ajhi6007BANDUNG61054028862070703A016304BCA7"'
+      ),
+      '{shipping_config,tier_mode}',
+      '"CATERING_13_TIER"'
+    ),
+    '{fnb_catering,is_fnb_home_service}',
+    'true'
+  ),
+  updated_at = NOW()
+WHERE id = '70c1ea8c-3557-44af-b131-faae75a8b17f';
+
