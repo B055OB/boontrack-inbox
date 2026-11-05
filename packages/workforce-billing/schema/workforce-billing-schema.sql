@@ -5,8 +5,8 @@
 -- Directives:
 -- 1. Persistent Webhook Inbox with Idempotency Key constraints
 -- 2. Append-Only Multi-Currency Financial Ledger & Segregated Tax Sub-Ledger
--- 3. FIFO Credit Lots & Personnel Allocations
--- 4. Atomic Row-Level Locking (SELECT ... FOR UPDATE) for Multi-Admin Concurrency
+-- 3. FIFO Credit Lots & Personnel Allocations (Strict Tenant Commercial Ownership)
+-- 4. Atomic Row-Level Locking (SELECT ... FOR UPDATE) with Explicit Tenant Isolation
 -- =========================================================================================
 
 CREATE SCHEMA IF NOT EXISTS workforce_staging;
@@ -82,12 +82,13 @@ CREATE INDEX IF NOT EXISTS idx_workforce_tax_ledger_jurisdiction ON workforce_ta
 
 -- -----------------------------------------------------------------------------------------
 -- 4. TABEL: workforce_credit_lots
--- Prepaid credit lots dengan status dan kuota terpisah
+-- Prepaid credit lots: tenant_id sebagai pemilik komersial, branch_id sebagai target operasional
 -- -----------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS workforce_credit_lots (
     lot_id TEXT PRIMARY KEY,
     purchase_ref TEXT UNIQUE NOT NULL,
     provider_txn_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
     branch_id TEXT NOT NULL,
     agency_id TEXT NOT NULL,
     currency VARCHAR(10) NOT NULL,
@@ -102,16 +103,22 @@ CREATE TABLE IF NOT EXISTS workforce_credit_lots (
     CONSTRAINT chk_workforce_credit_lot_balance CHECK (available_credits + consumed_credits + frozen_credits = total_purchased)
 );
 
+-- Ensure tenant_id column exists if table was previously created without it
+ALTER TABLE workforce_credit_lots ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+UPDATE workforce_credit_lots SET tenant_id = agency_id WHERE tenant_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workforce_credit_lots_tenant ON workforce_credit_lots(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_workforce_credit_lots_branch ON workforce_credit_lots(branch_id);
 CREATE INDEX IF NOT EXISTS idx_workforce_credit_lots_status ON workforce_credit_lots(status);
 
 -- -----------------------------------------------------------------------------------------
 -- 5. TABEL: workforce_credit_allocations
--- Penugasan kredit ke personel aktif (30-day window)
+-- Penugasan kredit ke personel aktif (30-day window) terikat pada tenant_id & branch_id
 -- -----------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS workforce_credit_allocations (
     allocation_id TEXT PRIMARY KEY,
     lot_id TEXT NOT NULL REFERENCES workforce_credit_lots(lot_id) ON DELETE RESTRICT,
+    tenant_id TEXT NOT NULL,
     branch_id TEXT NOT NULL,
     personnel_id TEXT NOT NULL,
     personnel_name TEXT NOT NULL,
@@ -120,13 +127,18 @@ CREATE TABLE IF NOT EXISTS workforce_credit_allocations (
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'EXPIRED', 'TERMINATED'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_workforce_allocations_branch_personnel ON workforce_credit_allocations(branch_id, personnel_id);
+-- Ensure tenant_id column exists if table was previously created without it
+ALTER TABLE workforce_credit_allocations ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+UPDATE workforce_credit_allocations SET tenant_id = 'tenant_satya_001' WHERE tenant_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workforce_allocations_tenant_branch ON workforce_credit_allocations(tenant_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_workforce_allocations_personnel ON workforce_credit_allocations(personnel_id);
 
 -- -----------------------------------------------------------------------------------------
--- 6. STORED PROCEDURE: fn_workforce_allocate_credit_fifo (ROW-LEVEL LOCKING)
--- Menjamin alokasi FIFO secara atomik dengan row-level lock pada PostgreSQL
+-- 6. STORED PROCEDURE: fn_workforce_allocate_credit_fifo (STRICT TENANT ISOLATION & ROW-LEVEL LOCKING)
 -- -----------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_workforce_allocate_credit_fifo(
+    p_tenant_id TEXT,
     p_branch_id TEXT,
     p_personnel_id TEXT,
     p_personnel_name TEXT
@@ -150,21 +162,45 @@ DECLARE
     v_allocation_id TEXT;
     v_now TIMESTAMPTZ := NOW();
     v_expires_at TIMESTAMPTZ;
+    v_conflicting_tenant TEXT;
 BEGIN
-    -- Step 1: Lock the oldest active lot for the branch with available credits (FIFO)
+    -- Guard 1: Tenant ID must be present
+    IF p_tenant_id IS NULL OR TRIM(p_tenant_id) = '' THEN
+        RAISE EXCEPTION 'ERR_CROSS_TENANT_VIOLATION: Empty or null tenant_id provided'
+            USING ERRCODE = '28000';
+    END IF;
+
+    -- Guard 2: Cross-Tenant Breach Check
+    -- If branch_id already has active/settled lots owned by a different tenant, reject fail-closed!
+    SELECT id_lot.tenant_id INTO v_conflicting_tenant
+    FROM workforce_credit_lots id_lot
+    WHERE id_lot.branch_id = p_branch_id
+      AND id_lot.tenant_id <> p_tenant_id
+    LIMIT 1;
+
+    IF v_conflicting_tenant IS NOT NULL THEN
+        RAISE EXCEPTION 'ERR_CROSS_TENANT_VIOLATION: Branch % is registered to tenant %, unauthorized access by %',
+            p_branch_id, v_conflicting_tenant, p_tenant_id
+            USING ERRCODE = '28000';
+    END IF;
+
+    -- Step 1: Lock oldest active lot belonging STRICTLY to p_tenant_id and p_branch_id (FIFO)
     SELECT id_lot.lot_id, id_lot.available_credits, id_lot.consumed_credits, id_lot.status
     INTO v_lot
     FROM workforce_credit_lots id_lot
-    WHERE id_lot.branch_id = p_branch_id
+    WHERE id_lot.tenant_id = p_tenant_id
+      AND id_lot.branch_id = p_branch_id
       AND id_lot.status = 'ACTIVE'
       AND id_lot.available_credits > 0
     ORDER BY id_lot.created_at ASC
     LIMIT 1
     FOR UPDATE;
 
-    -- Invariant: If no lot has available credits, fail-closed immediately
+    -- Invariant: If no lot has available credits under p_tenant_id, fail-closed immediately
     IF v_lot.lot_id IS NULL THEN
-        RAISE EXCEPTION 'ERR_INSUFFICIENT_CREDITS: Branch % available balance is 0', p_branch_id;
+        RAISE EXCEPTION 'ERR_INSUFFICIENT_CREDITS: Branch % available balance is 0 for tenant %',
+            p_branch_id, p_tenant_id
+            USING ERRCODE = '55000';
     END IF;
 
     -- Step 2: Atomic decrement
@@ -180,16 +216,18 @@ BEGIN
         consumed_credits = v_lot.consumed_credits + 1,
         status = v_new_status,
         updated_at = v_now
-    WHERE workforce_credit_lots.lot_id = v_lot.lot_id;
+    WHERE workforce_credit_lots.lot_id = v_lot.lot_id
+      AND workforce_credit_lots.tenant_id = p_tenant_id;
 
     -- Step 3: Compute 30-day active window
     v_expires_at := v_now + INTERVAL '30 days';
     v_allocation_id := 'ALC-' || TO_CHAR(v_now, 'YYYYMMDDHH24MISSMS') || '-' || SUBSTRING(MD5(RANDOM()::TEXT), 1, 6);
 
-    -- Step 4: Record allocation
+    -- Step 4: Record allocation with tenant_id scoping
     INSERT INTO workforce_credit_allocations (
         allocation_id,
         lot_id,
+        tenant_id,
         branch_id,
         personnel_id,
         personnel_name,
@@ -199,6 +237,7 @@ BEGIN
     ) VALUES (
         v_allocation_id,
         v_lot.lot_id,
+        p_tenant_id,
         p_branch_id,
         p_personnel_id,
         p_personnel_name,
@@ -207,7 +246,7 @@ BEGIN
         'ACTIVE'
     );
 
-    -- Return values
+    -- Return output tuple
     out_allocation_id := v_allocation_id;
     out_lot_id := v_lot.lot_id;
     out_personnel_id := p_personnel_id;

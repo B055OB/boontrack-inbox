@@ -56,6 +56,7 @@ export const CURRENCY_CONFIGS: Record<SupportedCurrency, CurrencyConfig> = {
 // INITIATION & PAYMENT RECORDS
 // -------------------------------------------------------------
 export interface PaymentIntentRequest {
+  tenantId?: string;
   branchId: string;
   agencyId: string;
   quantity: number;
@@ -85,6 +86,7 @@ export interface NormalizedPaymentRecord {
   internalPaymentRef: string;
   provider: PaymentProvider;
   providerTxnId: string;
+  tenantId?: string;
   branchId: string;
   agencyId: string;
   currency: SupportedCurrency;
@@ -137,7 +139,8 @@ export interface CreditLot {
   lotId: string;
   purchaseRef: string;
   providerTxnId: string;
-  branchId: string;
+  tenantId: string; // Commercial owner of the credit lot
+  branchId: string; // Operational deployment target
   agencyId: string;
   currency: SupportedCurrency;
   totalPurchased: number;
@@ -153,6 +156,7 @@ export interface CreditLot {
 export interface CreditAllocation {
   allocationId: string;
   lotId: string;
+  tenantId: string; // Scoped to commercial tenant
   branchId: string;
   personnelId: string;
   personnelName: string;

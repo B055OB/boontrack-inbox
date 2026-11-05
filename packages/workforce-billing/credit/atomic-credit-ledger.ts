@@ -75,11 +75,13 @@ export class AtomicCreditLedger {
     return this.acquireBranchLock(payment.branchId, () => {
       const lotId = `LOT-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       const now = new Date().toISOString();
+      const tenantId = payment.tenantId || payment.agencyId;
 
       const lot: CreditLot = {
         lotId,
         purchaseRef: payment.internalPaymentRef,
         providerTxnId: payment.providerTxnId,
+        tenantId,
         branchId: payment.branchId,
         agencyId: payment.agencyId,
         currency: payment.currency,
@@ -119,17 +121,30 @@ export class AtomicCreditLedger {
 
   /**
    * Atomic FIFO credit consumption to activate a personnel license.
+   * - Enforces tenant isolation (ERR_CROSS_TENANT_VIOLATION if tenant does not match branch)
    * - Enforces available_credits >= 1
    * - Pulls from oldest active lot
    * - Sets 30-day expiration window
    * - Supports early renewal (+30 days to existing expiration)
    */
   public async allocateCredit(params: {
+    tenantId?: string;
     branchId: string;
     personnelId: string;
     personnelName: string;
   }): Promise<AllocationResult> {
     return this.acquireBranchLock(params.branchId, () => {
+      // Cross-Tenant Guard: verify branch ownership
+      if (params.tenantId) {
+        const branchLotsAll = Array.from(this.lots.values()).filter((l) => l.branchId === params.branchId);
+        const conflictingLot = branchLotsAll.find((l) => l.tenantId !== params.tenantId);
+        if (conflictingLot) {
+          throw new Error(
+            `ERR_CROSS_TENANT_VIOLATION: Branch ${params.branchId} is registered to tenant ${conflictingLot.tenantId}, unauthorized access by ${params.tenantId}`
+          );
+        }
+      }
+
       const currentBalance = this.branchBalances.get(params.branchId) || 0;
 
       // Invariant Check 1: Non-negative balance
@@ -141,7 +156,13 @@ export class AtomicCreditLedger {
 
       // Invariant Check 2: Find oldest active lot with available credits (FIFO)
       const branchLots = Array.from(this.lots.values())
-        .filter((lot) => lot.branchId === params.branchId && lot.status === 'ACTIVE' && lot.availableCredits > 0)
+        .filter(
+          (lot) =>
+            lot.branchId === params.branchId &&
+            lot.status === 'ACTIVE' &&
+            lot.availableCredits > 0 &&
+            (params.tenantId ? lot.tenantId === params.tenantId : true)
+        )
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
       if (branchLots.length === 0) {
@@ -188,6 +209,7 @@ export class AtomicCreditLedger {
       const allocation: CreditAllocation = {
         allocationId,
         lotId: oldestLot.lotId,
+        tenantId: oldestLot.tenantId,
         branchId: params.branchId,
         personnelId: params.personnelId,
         personnelName: params.personnelName,

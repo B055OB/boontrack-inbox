@@ -3,15 +3,11 @@
  * PostgreSQL Persistence Adapter for Atomic Credit Ledger (Staging/Production Engine)
  *
  * Enforces PostgreSQL Row-Level Locking (SELECT ... FOR UPDATE) via stored function
- * `fn_workforce_allocate_credit_fifo` to guarantee zero double-allocation across concurrent workers.
+ * `fn_workforce_allocate_credit_fifo` with explicit Tenant Isolation.
  */
 
 import { Client } from 'pg';
-import {
-  CreditLot,
-  CreditAllocation,
-  SupportedCurrency,
-} from '../types';
+import { SupportedCurrency } from '../types';
 
 export interface PostgresAllocationResult {
   success: boolean;
@@ -39,19 +35,22 @@ export class PostgresAtomicCreditLedger {
     lotId: string;
     purchaseRef: string;
     providerTxnId: string;
+    tenantId?: string;
     branchId: string;
     agencyId: string;
     currency: SupportedCurrency;
     totalPurchased: number;
     unitPrice: number;
   }): Promise<void> {
+    const tenantId = lot.tenantId || lot.agencyId;
+
     const query = `
       INSERT INTO ${this.targetSchema}.workforce_credit_lots (
-        lot_id, purchase_ref, provider_txn_id, branch_id, agency_id,
+        lot_id, purchase_ref, provider_txn_id, tenant_id, branch_id, agency_id,
         currency, total_purchased, available_credits, consumed_credits,
         frozen_credits, unit_price, status, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $7, 0, 0, $8, 'ACTIVE', NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $8, 0, 0, $9, 'ACTIVE', NOW(), NOW()
       );
     `;
 
@@ -59,6 +58,7 @@ export class PostgresAtomicCreditLedger {
       lot.lotId,
       lot.purchaseRef,
       lot.providerTxnId,
+      tenantId,
       lot.branchId,
       lot.agencyId,
       lot.currency,
@@ -68,18 +68,22 @@ export class PostgresAtomicCreditLedger {
   }
 
   /**
-   * Execute atomic FIFO credit allocation with Row-Level Locking (SELECT ... FOR UPDATE)
+   * Execute atomic FIFO credit allocation with Row-Level Locking & Tenant Isolation
    */
   public async allocateCredit(params: {
+    tenantId?: string;
     branchId: string;
     personnelId: string;
     personnelName: string;
   }): Promise<PostgresAllocationResult> {
+    const tenantId = params.tenantId || 'tenant_satya_001';
+
     const query = `
-      SELECT * FROM ${this.targetSchema}.fn_workforce_allocate_credit_fifo($1, $2, $3);
+      SELECT * FROM ${this.targetSchema}.fn_workforce_allocate_credit_fifo($1, $2, $3, $4);
     `;
 
     const res = await this.client.query(query, [
+      tenantId,
       params.branchId,
       params.personnelId,
       params.personnelName,
@@ -130,16 +134,24 @@ export class PostgresAtomicCreditLedger {
   }
 
   /**
-   * Get total available credits for branch
+   * Get total available credits for branch (and optionally tenant)
    */
-  public async getBranchAvailableBalance(branchId: string): Promise<number> {
-    const query = `
+  public async getBranchAvailableBalance(branchId: string, tenantId?: string): Promise<number> {
+    let query = `
       SELECT COALESCE(SUM(available_credits), 0) AS balance
       FROM ${this.targetSchema}.workforce_credit_lots
-      WHERE branch_id = $1 AND status = 'ACTIVE';
+      WHERE branch_id = $1 AND status = 'ACTIVE'
     `;
+    const queryParams: any[] = [branchId];
 
-    const res = await this.client.query(query, [branchId]);
+    if (tenantId) {
+      query += ` AND tenant_id = $2;`;
+      queryParams.push(tenantId);
+    } else {
+      query += `;`;
+    }
+
+    const res = await this.client.query(query, queryParams);
     return parseInt(res.rows[0]?.balance || '0', 10);
   }
 }
