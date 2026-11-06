@@ -995,7 +995,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       )}
 
       {/* ============================================================= */}
-      {/* SECTION 3: MASTER RESELLER CONSOLE (/dashboard, /admin)        */}
+      {/* SECTION 3: ENTERPRISE MAIN AGENT CONSOLE (/dashboard, /admin) */}
       {/* ============================================================= */}
       {currentRole === 'reseller' && (
         <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">

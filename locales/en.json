@@ -152,7 +152,7 @@
     },
     "mainAgent": {
       "consoleTitle": "Enterprise Main Agent Console",
-      "portalSubtitle": "Authorized Main Agent: {agency} | Multi-Site Fleet & Quota Allocation",
+      "portalSubtitle": "Authorized Main Agent: {agency} | Territory Fleet & Quota Allocation",
       "activePersonnel": "Active Deployed Personnel",
       "availablePasses": "Available Agent Passes",
       "totalPool": "Total Fleet Pool Capacity",

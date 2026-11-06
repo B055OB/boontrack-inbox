@@ -68,7 +68,7 @@ export default function WorkforceLoginPage() {
 
       const roleName =
         data.session?.role === 'master_reseller'
-          ? 'Master Reseller'
+          ? 'Main Agent'
           : data.session?.role === 'supervisor'
           ? 'Supervisor'
           : 'Field Personnel';

@@ -1,0 +1,411 @@
+/**
+ * __tests__/workforce/marginal-pricing-and-ledger.test.ts
+ * Master Sprint Suite: Dynamic Branding, Native i18n, & Financial Accuracy Engine
+ *
+ * Scope & Verification:
+ * 1. Bagian 1: Native i18n & Main Agent Elevation (RFC-018 Addendum)
+ * 2. Bagian 2: Marginal Progressive Pricing Engine (Deterministic 8 Test Quantities in Integer Cents)
+ * 3. Bagian 3: Mock Invoice & Immutable Snapshot Model (Tax Isolation & Policy Lockdown)
+ * 4. Bagian 4: Tenant Pass Ledger Atomicity, Strict FIFO, 10x Webhook Replay & Concurrency Safety
+ */
+
+import fs from 'fs';
+import path from 'path';
+import {
+  calculateMarginalProgressivePrice,
+  RFC_BWM_014_V1_TIERS,
+  createMockInvoice,
+  PRECONFIGURED_TAX_REGIMES,
+  TenantPassLedger,
+} from '@/packages/workforce-billing';
+
+describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy Engine', () => {
+  // =========================================================================
+  // BAGIAN 1: LOKALISASI NATIVE i18n & ELEVASI MAIN AGENT (RFC-018 ADDENDUM)
+  // =========================================================================
+  describe('Bagian 1: Native i18n Dictionaries & Main Agent Terminology', () => {
+    test('en.json and id.json contain complete "workforce" namespace without third-party dependencies', () => {
+      const enRaw = fs.readFileSync(path.resolve(process.cwd(), 'locales/en.json'), 'utf-8');
+      const idRaw = fs.readFileSync(path.resolve(process.cwd(), 'locales/id.json'), 'utf-8');
+
+      const en = JSON.parse(enRaw);
+      const id = JSON.parse(idRaw);
+
+      expect(en.workforce).toBeDefined();
+      expect(id.workforce).toBeDefined();
+
+      // Common module
+      expect(en.workforce.common.liveTelemetry).toBe('Live Telemetry Active');
+      expect(id.workforce.common.liveTelemetry).toBe('Telemetri Langsung Aktif');
+      expect(en.workforce.common.signOut).toBe('Sign Out');
+      expect(id.workforce.common.signOut).toBe('Keluar');
+      expect(en.workforce.common.installApp).toBe('Install Mobile App');
+      expect(en.workforce.common.enableAlerts).toBe('Enable Push Alerts');
+
+      // Field module
+      expect(en.workforce.field.statusOnDuty).toBe('Active On-Duty');
+      expect(id.workforce.field.statusOnDuty).toBe('Aktif Bertugas');
+      expect(en.workforce.field.clockIn).toBe('Clock In');
+      expect(en.workforce.field.patrol).toBe('Patrol Checkpoints');
+      expect(en.workforce.field.incident).toBe('Report Field Incident');
+
+      // Supervisor module
+      expect(en.workforce.supervisor.deskTitle).toBe('Branch Operations Command Desk');
+      expect(id.workforce.supervisor.deskTitle).toBe('Meja Komando Operasional Cabang');
+
+      // Main Agent module
+      expect(en.workforce.mainAgent.consoleTitle).toBe('Enterprise Main Agent Console');
+      expect(id.workforce.mainAgent.consoleTitle).toBe('Konsol Agen Utama Enterprise');
+      expect(en.workforce.mainAgent.portalSubtitle).toBe(
+        'Authorized Main Agent: {agency} | Territory Fleet & Quota Allocation'
+      );
+      expect(en.workforce.mainAgent.requisitionButton).toBe('+ Requisition BWM Credit Passes');
+    });
+
+    test('Zero "Reseller" terminology leaks in public login quick-fill and portal labels', () => {
+      const loginRaw = fs.readFileSync(
+        path.resolve(process.cwd(), 'workforce-web/app/login/page.tsx'),
+        'utf-8'
+      );
+      expect(loginRaw).toContain('Main Agent: partner@apexsecurity.com (Apex Security Services Ltd)');
+      expect(loginRaw).toContain("? 'Main Agent'");
+
+      const pageRaw = fs.readFileSync(
+        path.resolve(process.cwd(), 'workforce-web/app/page.tsx'),
+        'utf-8'
+      );
+      expect(pageRaw).toContain('Built for Security Contractors &amp; Main Agents');
+      expect(pageRaw).not.toContain('Master Resellers');
+    });
+  });
+
+  // =========================================================================
+  // BAGIAN 2: MARGINAL PROGRESSIVE PRICING ENGINE (INTEGER CENTS)
+  // =========================================================================
+  describe('Bagian 2: Marginal Progressive Pricing Engine (Integer Cents Arithmetic)', () => {
+    test('Tier configuration defines RFC-BWM-014-V1 exact marginal boundaries', () => {
+      expect(RFC_BWM_014_V1_TIERS).toHaveLength(3);
+      expect(RFC_BWM_014_V1_TIERS[0]).toMatchObject({
+        tier: 1,
+        fromQuantity: 1,
+        toQuantity: 49,
+        unitPriceCents: 450, // $4.50
+      });
+      expect(RFC_BWM_014_V1_TIERS[1]).toMatchObject({
+        tier: 2,
+        fromQuantity: 50,
+        toQuantity: 199,
+        unitPriceCents: 380, // $3.80
+      });
+      expect(RFC_BWM_014_V1_TIERS[2]).toMatchObject({
+        tier: 3,
+        fromQuantity: 200,
+        toQuantity: Infinity,
+        unitPriceCents: 320, // $3.20
+      });
+    });
+
+    // 8 Mandatory Deterministic Test Quantities
+    const testMatrix = [
+      { quantity: 10, expectedCents: 4500, expectedUsd: '$45.00', desc: 'Tier 1 partial: 10 * 450' },
+      { quantity: 49, expectedCents: 22050, expectedUsd: '$220.50', desc: 'Tier 1 boundary: 49 * 450' },
+      { quantity: 50, expectedCents: 22430, expectedUsd: '$224.30', desc: 'Tier 2 entry: 22,050 + 380' },
+      { quantity: 60, expectedCents: 26230, expectedUsd: '$262.30', desc: 'Tier 2 mid: 22,050 + (11 * 380)' },
+      { quantity: 100, expectedCents: 41430, expectedUsd: '$414.30', desc: 'Tier 2 mid: 22,050 + (51 * 380)' },
+      { quantity: 199, expectedCents: 79050, expectedUsd: '$790.50', desc: 'Tier 2 boundary: 22,050 + (150 * 380)' },
+      { quantity: 200, expectedCents: 79370, expectedUsd: '$793.70', desc: 'Tier 3 entry: 79,050 + 320' },
+      { quantity: 250, expectedCents: 95370, expectedUsd: '$953.70', desc: 'Tier 3 scale: 79,050 + (51 * 320)' },
+    ];
+
+    test.each(testMatrix)(
+      'Deterministic Pricing for $quantity passes -> $expectedCents cents ($expectedUsd) [$desc]',
+      ({ quantity, expectedCents, expectedUsd }) => {
+        const result = calculateMarginalProgressivePrice(quantity);
+
+        expect(result.subtotalCents).toBe(expectedCents);
+        expect(result.subtotalUsd).toBe(expectedUsd);
+        expect(Number.isInteger(result.subtotalCents)).toBe(true);
+        expect(result.policyVersion).toBe('RFC-BWM-014-V1');
+      }
+    );
+
+    test('Throws error on non-integer or zero/negative quantity', () => {
+      expect(() => calculateMarginalProgressivePrice(0)).toThrow('INVALID_QUANTITY');
+      expect(() => calculateMarginalProgressivePrice(-5)).toThrow('INVALID_QUANTITY');
+      expect(() => calculateMarginalProgressivePrice(12.5)).toThrow('INVALID_QUANTITY');
+    });
+  });
+
+  // =========================================================================
+  // BAGIAN 3: MOCK INVOICE & IMMUTABLE SNAPSHOT MODEL
+  // =========================================================================
+  describe('Bagian 3: Mock Invoice & Immutable Snapshot Model', () => {
+    test('Generates mock invoice with isolated tax regime and locked pricing snapshot', () => {
+      // 1. Zero-tax Regime (B2B Cross-border Export)
+      const exportInvoice = createMockInvoice({
+        tenantId: 'tenant_apex_global_01',
+        agencyId: 'agency_apex_hq',
+        customerEmail: 'finance@apexsecurity.com',
+        customerName: 'Apex Security Services Ltd',
+        quantity: 100,
+        taxRegime: 'ZERO_TAX',
+      });
+
+      expect(exportInvoice.subtotalCents).toBe(41430); // $414.30
+      expect(exportInvoice.taxCents).toBe(0);
+      expect(exportInvoice.totalCents).toBe(41430);
+      expect(exportInvoice.taxConfig.regime).toBe('ZERO_TAX');
+      expect(exportInvoice.pricingSnapshot.policyVersion).toBe('RFC-BWM-014-V1');
+      expect(exportInvoice.pricingSnapshot.appliedTiers).toHaveLength(2); // Tier 1 and Tier 2
+
+      // 2. Standard GST (8%) Regime
+      const gstInvoice = createMockInvoice({
+        tenantId: 'tenant_apex_my_01',
+        agencyId: 'agency_apex_my',
+        customerEmail: 'finance@apex.my',
+        customerName: 'Apex Security Malaysia Sdn Bhd',
+        quantity: 50,
+        taxRegime: 'STANDARD_GST',
+      });
+
+      expect(gstInvoice.subtotalCents).toBe(22430); // $224.30
+      // 22430 * 800 / 10000 = 1794.4 cents -> Math.round = 1794 cents ($17.94)
+      expect(gstInvoice.taxCents).toBe(1794);
+      expect(gstInvoice.totalCents).toBe(22430 + 1794); // 24224 cents ($242.24)
+      expect(gstInvoice.formattedTotalUsd).toBe('$242.24');
+      expect(gstInvoice.taxConfig.rateBasisPoints).toBe(800);
+
+      // 3. Reverse Charge VAT (0% with statutory note)
+      const vatInvoice = createMockInvoice({
+        tenantId: 'tenant_apex_uk_01',
+        agencyId: 'agency_apex_uk',
+        customerEmail: 'accounts@apex.co.uk',
+        customerName: 'Apex Security UK Ltd',
+        quantity: 250,
+        taxRegime: 'REVERSE_CHARGE_VAT',
+      });
+
+      expect(vatInvoice.subtotalCents).toBe(95370);
+      expect(vatInvoice.taxCents).toBe(0);
+      expect(vatInvoice.totalCents).toBe(95370);
+      expect(vatInvoice.taxConfig.reverseChargeNote).toBeDefined();
+    });
+
+    test('Invoice payload and pricingSnapshot are strictly immutable (Deep Frozen)', () => {
+      const invoice = createMockInvoice({
+        tenantId: 'tenant_lockdown_01',
+        agencyId: 'agency_apex_01',
+        customerEmail: 'partner@apexsecurity.com',
+        customerName: 'Apex Security Services Ltd',
+        quantity: 60,
+      });
+
+      expect(Object.isFrozen(invoice)).toBe(true);
+      expect(Object.isFrozen(invoice.pricingSnapshot)).toBe(true);
+      expect(Object.isFrozen(invoice.pricingSnapshot.appliedTiers)).toBe(true);
+
+      // Attempting mutation should fail/throw in strict mode
+      expect(() => {
+        (invoice as any).totalCents = 100;
+      }).toThrow();
+
+      expect(() => {
+        (invoice.pricingSnapshot as any).policyVersion = 'RFC-MUTATED';
+      }).toThrow();
+    });
+  });
+
+  // =========================================================================
+  // BAGIAN 4: LEDGER ATOMICITY, FIFO & WEBHOOK IDEMPOTENCY
+  // =========================================================================
+  describe('Bagian 4: Tenant Pass Ledger Atomicity, FIFO, & Webhook Idempotency', () => {
+    let ledger: TenantPassLedger;
+    const tenantA = 'tenant_apex_sprint_test';
+
+    beforeEach(() => {
+      ledger = new TenantPassLedger();
+    });
+
+    test('Non-Negative Balance Constraint: Rejects deduction exceeding balance', async () => {
+      // Balance is initially 0
+      expect(ledger.getBalance(tenantA)).toBe(0);
+
+      await expect(
+        ledger.allocatePassesAtomic({
+          tenantId: tenantA,
+          personnelRequests: [{ personnelId: 'PERS_01', personnelName: 'Sarah Jenkins' }],
+          idempotencyKey: 'alloc_fail_01',
+        })
+      ).rejects.toThrow('INSUFFICIENT_CREDITS');
+
+      // Balance remains strictly 0, never negative
+      expect(ledger.getBalance(tenantA)).toBe(0);
+    });
+
+    test('FIFO Pass Allocation: Deducts from oldest batch before newer batch', async () => {
+      // 1. First batch: 10 passes created at T1
+      await ledger.processPaymentWebhook({
+        eventId: 'evt_batch_01',
+        idempotencyKey: 'idemp_batch_01',
+        tenantId: tenantA,
+        passes: 10,
+        unitPriceCents: 450,
+      });
+
+      // 2. Second batch: 20 passes created at T2
+      await ledger.processPaymentWebhook({
+        eventId: 'evt_batch_02',
+        idempotencyKey: 'idemp_batch_02',
+        tenantId: tenantA,
+        passes: 20,
+        unitPriceCents: 380,
+      });
+
+      expect(ledger.getBalance(tenantA)).toBe(30);
+
+      const batchesBefore = ledger.getBatches(tenantA);
+      expect(batchesBefore[0].availablePasses).toBe(10);
+      expect(batchesBefore[1].availablePasses).toBe(20);
+
+      // 3. Allocate 12 passes (should consume 10 from Batch 1, and 2 from Batch 2)
+      const requests = Array.from({ length: 12 }, (_, i) => ({
+        personnelId: `GUARD_${i + 1}`,
+        personnelName: `Officer ${i + 1}`,
+      }));
+
+      const allocResult = await ledger.allocatePassesAtomic({
+        tenantId: tenantA,
+        personnelRequests: requests,
+        idempotencyKey: 'alloc_fifo_test_12',
+      });
+
+      expect(allocResult.success).toBe(true);
+      expect(allocResult.allocatedCount).toBe(12);
+      expect(allocResult.remainingBalance).toBe(18);
+
+      const batchesAfter = ledger.getBatches(tenantA);
+      // Batch 1 must be depleted (0 available, status DEPLETED)
+      expect(batchesAfter[0].availablePasses).toBe(0);
+      expect(batchesAfter[0].status).toBe('DEPLETED');
+
+      // Batch 2 must have 18 remaining (20 - 2)
+      expect(batchesAfter[1].availablePasses).toBe(18);
+      expect(batchesAfter[1].status).toBe('ACTIVE');
+    });
+
+    test('Transactional Rollback: Mid-transaction failure rolls back all deductions', async () => {
+      // Provision 5 passes
+      await ledger.processPaymentWebhook({
+        eventId: 'evt_batch_rollback',
+        idempotencyKey: 'idemp_batch_rollback',
+        tenantId: tenantA,
+        passes: 5,
+        unitPriceCents: 450,
+      });
+
+      expect(ledger.getBalance(tenantA)).toBe(5);
+
+      // Attempt to allocate 8 passes (exceeds balance of 5)
+      const requests = Array.from({ length: 8 }, (_, i) => ({
+        personnelId: `GUARD_${i + 1}`,
+        personnelName: `Officer ${i + 1}`,
+      }));
+
+      await expect(
+        ledger.allocatePassesAtomic({
+          tenantId: tenantA,
+          personnelRequests: requests,
+          idempotencyKey: 'alloc_exceed_01',
+        })
+      ).rejects.toThrow('INSUFFICIENT_CREDITS');
+
+      // Post-rollback state verification
+      expect(ledger.getBalance(tenantA)).toBe(5);
+      const batches = ledger.getBatches(tenantA);
+      expect(batches[0].availablePasses).toBe(5);
+      expect(batches[0].consumedPasses).toBe(0);
+      expect(ledger.getAllocations(tenantA)).toHaveLength(0);
+    });
+
+    test('Webhook Replay 10x: 10 identical webhook calls mutate ledger exactly ONCE', async () => {
+      const webhookPayload = {
+        eventId: 'dodo_evt_replay_9999',
+        idempotencyKey: 'idemp_dodo_replay_9999',
+        tenantId: tenantA,
+        passes: 25,
+        unitPriceCents: 380,
+      };
+
+      const results = [];
+
+      // Send 10 consecutive webhook requests with identical eventId & idempotencyKey
+      for (let i = 1; i <= 10; i++) {
+        const res = await ledger.processPaymentWebhook(webhookPayload);
+        results.push(res);
+      }
+
+      // 1. First delivery must be accepted and mutated
+      expect(results[0].accepted).toBe(true);
+      expect(results[0].isDuplicate).toBe(false);
+      expect(results[0].replayCount).toBe(1);
+      expect(results[0].balance).toBe(25);
+
+      // 2. Deliveries 2 through 10 must be recognized as duplicate replays
+      for (let i = 1; i < 10; i++) {
+        expect(results[i].accepted).toBe(true);
+        expect(results[i].isDuplicate).toBe(true);
+        expect(results[i].balance).toBe(25); // Zero extra passes added
+        expect(results[i].replayCount).toBe(i + 1);
+      }
+
+      // 3. Verification of ledger and batches: exactly 1 batch, exactly 1 ledger entry
+      expect(ledger.getBalance(tenantA)).toBe(25);
+      expect(ledger.getBatches(tenantA)).toHaveLength(1);
+      expect(ledger.getLedgerEntries(tenantA)).toHaveLength(1);
+    });
+
+    test('Concurrent Renewal Safety: Parallel renewal workers execute without race conditions or double deduction', async () => {
+      // Provision exactly 10 passes
+      await ledger.processPaymentWebhook({
+        eventId: 'evt_concurrent_seed',
+        idempotencyKey: 'idemp_concurrent_seed',
+        tenantId: tenantA,
+        passes: 10,
+        unitPriceCents: 450,
+      });
+
+      expect(ledger.getBalance(tenantA)).toBe(10);
+
+      // 10 concurrent workers renewing 10 distinct officers simultaneously
+      const workerPromises = Array.from({ length: 10 }, (_, i) =>
+        ledger.renewPersonnelCoverage({
+          tenantId: tenantA,
+          personnelId: `WORKER_OFFICER_${i + 1}`,
+          personnelName: `Officer ${i + 1}`,
+          idempotencyKey: `idemp_renew_worker_${i + 1}`,
+        })
+      );
+
+      const workerResults = await Promise.all(workerPromises);
+
+      // All 10 succeeded
+      expect(workerResults).toHaveLength(10);
+      workerResults.forEach((r) => expect(r.success).toBe(true));
+
+      // Balance cleanly depleted from 10 to exactly 0
+      expect(ledger.getBalance(tenantA)).toBe(0);
+
+      // 11th concurrent worker must be rejected cleanly
+      await expect(
+        ledger.renewPersonnelCoverage({
+          tenantId: tenantA,
+          personnelId: 'WORKER_OFFICER_11',
+          personnelName: 'Officer 11',
+          idempotencyKey: 'idemp_renew_worker_11',
+        })
+      ).rejects.toThrow('INSUFFICIENT_CREDITS');
+
+      expect(ledger.getBalance(tenantA)).toBe(0);
+    });
+  });
+});

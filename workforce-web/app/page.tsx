@@ -661,14 +661,14 @@ export default function BwmModernLandingPage() {
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* 6. GLOBAL WHITE-LABEL & RESELLER SECTION                      */}
+      {/* 6. GLOBAL WHITE-LABEL & MAIN AGENT SECTION                    */}
       {/* ------------------------------------------------------------- */}
       <section id="white-label" className="py-20 sm:py-28 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto space-y-4">
             <h2 className="text-xs font-bold text-blue-600 tracking-wider uppercase">Built for Contractors</h2>
             <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-              Built for Security Contractors &amp; Master Resellers
+              Built for Security Contractors &amp; Main Agents
             </h3>
             <p className="text-base text-slate-600 leading-relaxed font-normal">
               Deliver premium patrol monitoring directly under your own brand identity.
