@@ -11,6 +11,13 @@
 
 import { Client, PoolClient } from 'pg';
 
+export class SecurityInvariantViolation extends Error {
+  constructor(message: string) {
+    super(`SecurityInvariantViolation: ${message}`);
+    this.name = 'SecurityInvariantViolation';
+  }
+}
+
 export interface PostgresLedgerMutationParams {
   tenantId: string;
   batchId: string;
@@ -66,19 +73,24 @@ export class PostgresTenantPassLedger {
       // 1. Transactional Advisory Lock on Tenant: Guarantees serialization even for cold-start (0 rows)
       await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);
 
-      // 2. Enforce Idempotency Key Uniqueness at Database Level
+      // 2. Enforce Idempotency Key Uniqueness at Database Level with Tenant Isolation
       const existingRes = await this.client.query(
-        `SELECT entry_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
+        `SELECT entry_id, tenant_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
         [idempotencyKey]
       );
 
       if (existingRes.rows.length > 0) {
+        if (existingRes.rows[0].tenant_id !== tenantId) {
+          throw new SecurityInvariantViolation(
+            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Ledger idempotency key ${idempotencyKey} belongs to tenant ${existingRes.rows[0].tenant_id}, attempted access by tenant ${tenantId}`
+          );
+        }
         await this.client.query('COMMIT');
         return {
           isDuplicate: true,
           entryId: existingRes.rows[0].entry_id,
           tenantId,
-          balanceAfter: existingRes.rows[0].balance_after,
+          balanceAfter: Number(existingRes.rows[0].balance_after),
         };
       }
 
@@ -210,24 +222,45 @@ export class PostgresTenantPassLedger {
       // 1. Transactional Advisory Lock on Tenant: Guarantees serialization across multi-connection pools
       await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);
 
-      // 2. Lock & Inspect Webhook Inbox Entry FOR UPDATE
+      // 2. Lock & Inspect Webhook Inbox Entry FOR UPDATE by idempotency_key or (provider, event_id)
       const inboxRes = await this.client.query(
-        `SELECT id, status, retry_count FROM ${this.targetSchema}.workforce_webhook_inbox WHERE idempotency_key = $1 FOR UPDATE`,
-        [idempotencyKey]
+        `SELECT id, provider, event_id, idempotency_key, raw_payload, status, retry_count
+         FROM ${this.targetSchema}.workforce_webhook_inbox
+         WHERE idempotency_key = $1 OR (provider = $2 AND event_id = $3)
+         FOR UPDATE`,
+        [idempotencyKey, provider, eventId]
       );
 
       let inboxId: string;
       if (inboxRes.rows.length > 0) {
         const row = inboxRes.rows[0];
         inboxId = row.id;
+
+        // Security Invariant: Verify provider and event_id match
+        if (row.provider !== provider || row.event_id !== eventId) {
+          throw new SecurityInvariantViolation(
+            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Webhook inbox entry mismatch (expected provider: ${provider}, event: ${eventId}; found provider: ${row.provider}, event: ${row.event_id})`
+          );
+        }
+
+        // Security Invariant: Verify tenant_id isolation in raw_payload
+        const storedPayload = typeof row.raw_payload === 'string' ? JSON.parse(row.raw_payload) : (row.raw_payload || {});
+        const storedTenantId = storedPayload.tenant_id || storedPayload.tenantId;
+        if (storedTenantId && storedTenantId !== tenantId) {
+          throw new SecurityInvariantViolation(
+            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Webhook inbox entry with event ${eventId} is owned by tenant ${storedTenantId}, attempted access by tenant ${tenantId}`
+          );
+        }
+
         if (row.status === 'PROCESSED') {
           // Already successfully processed: increment retry_count, commit and return without mutating ledger
           await this.client.query(
             `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET retry_count = retry_count + 1 WHERE id = $1`,
             [inboxId]
           );
+          // Strict tenant-scoped balance query
           const balRes = await this.client.query(
-            `SELECT balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            `SELECT balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC, balance_after DESC LIMIT 1`,
             [tenantId]
           );
           const currentBal = balRes.rows.length > 0 ? Number(balRes.rows[0].balance_after) : 0;
@@ -246,7 +279,11 @@ export class PostgresTenantPassLedger {
           );
         }
       } else {
-        // Initial ingestion directly with status 'PROCESSING'
+        // Initial ingestion directly with status 'PROCESSING' and embedded tenant_id for cross-tenant isolation
+        const payloadToStore = typeof rawPayload === 'object' && rawPayload !== null
+          ? { ...rawPayload, tenant_id: rawPayload.tenant_id || rawPayload.tenantId || tenantId }
+          : { payload: rawPayload, tenant_id: tenantId };
+
         const insertInboxRes = await this.client.query(
           `INSERT INTO ${this.targetSchema}.workforce_webhook_inbox (
             provider, event_id, idempotency_key, event_type, raw_payload, headers, status, retry_count, received_at
@@ -257,7 +294,7 @@ export class PostgresTenantPassLedger {
             eventId,
             idempotencyKey,
             eventType,
-            JSON.stringify(rawPayload),
+            JSON.stringify(payloadToStore),
             JSON.stringify(headers),
           ]
         );
@@ -266,7 +303,7 @@ export class PostgresTenantPassLedger {
 
       // 3. Mutate Ledger with Idempotency & Row Locking
       const existingLedger = await this.client.query(
-        `SELECT entry_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
+        `SELECT entry_id, tenant_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
         [idempotencyKey]
       );
 
@@ -274,6 +311,11 @@ export class PostgresTenantPassLedger {
       let newBalance: number;
 
       if (existingLedger.rows.length > 0) {
+        if (existingLedger.rows[0].tenant_id !== tenantId) {
+          throw new SecurityInvariantViolation(
+            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Ledger idempotency key ${idempotencyKey} belongs to tenant ${existingLedger.rows[0].tenant_id}, attempted access by tenant ${tenantId}`
+          );
+        }
         entryId = existingLedger.rows[0].entry_id;
         newBalance = Number(existingLedger.rows[0].balance_after);
       } else {

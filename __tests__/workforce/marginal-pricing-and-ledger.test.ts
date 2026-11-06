@@ -19,6 +19,7 @@ import {
   PRECONFIGURED_TAX_REGIMES,
   TenantPassLedger,
   PostgresTenantPassLedger,
+  SecurityInvariantViolation,
   WebhookInbox,
 } from '@/packages/workforce-billing';
 
@@ -650,7 +651,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       expect(executedQueries[executedQueries.length - 1]).toBe('COMMIT');
     });
 
-    test('Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant', async () => {
+    test('Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant (FAIL-CLOSED)', async () => {
       let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
       let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
 
@@ -668,7 +669,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
 
       const connStr = directUrl || poolerUrl;
       if (!connStr) {
-        return;
+        throw new Error("STAGING_DB_REQUIRED: Concurrency test must run against real PostgreSQL");
       }
 
       const pool = new Pool({
@@ -681,9 +682,9 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       try {
         const testClient = await pool.connect();
         testClient.release();
-      } catch {
+      } catch (err: any) {
         await pool.end();
-        return;
+        throw new Error(`STAGING_DB_REQUIRED: Concurrency test must run against real PostgreSQL. Connection error: ${err.message}`);
       }
 
       const coldTenantId = `tenant_gate1_cold_${Date.now()}`;
@@ -691,9 +692,14 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       const DELTA_PASSES = 5;
 
       try {
+        const pids: number[] = [];
         const mutationPromises = Array.from({ length: CLIENT_COUNT }, async (_, i) => {
           const client = await pool.connect();
           try {
+            const pidRes = await client.query('SELECT pg_backend_pid() as pid');
+            const pid = Number(pidRes.rows[0].pid);
+            pids.push(pid);
+
             const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
             return await pgLedger.mutateBalanceAtomic({
               tenantId: coldTenantId,
@@ -708,8 +714,10 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
         });
 
         const results = await Promise.all(mutationPromises);
+        console.log("Verified 10 Independent PG PIDs:", pids);
         expect(results.length).toBe(CLIENT_COUNT);
         results.forEach((r) => expect(r.isDuplicate).toBe(false));
+        expect(new Set(pids).size).toBe(CLIENT_COUNT);
 
         const verifyClient = await pool.connect();
         try {
@@ -732,6 +740,269 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
         await pool.end();
       }
     }, 25000);
+
+    describe('Gate 1: Real PostgreSQL Atomic Webhook Integration Suite', () => {
+      let pool: Pool;
+
+      beforeAll(async () => {
+        let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
+        let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
+
+        if (!directUrl || !poolerUrl) {
+          try {
+            const envFile = fs.readFileSync(path.resolve('.env.local'), 'utf8');
+            const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
+            const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
+            if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
+            if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
+          } catch {
+            // ignore
+          }
+        }
+
+        const connStr = directUrl || poolerUrl;
+        if (!connStr) {
+          throw new Error('STAGING_DB_REQUIRED: Concurrency test must run against real PostgreSQL');
+        }
+
+        pool = new Pool({
+          connectionString: connStr,
+          ssl: { rejectUnauthorized: false },
+          max: 10,
+          connectionTimeoutMillis: 10000,
+        });
+
+        try {
+          const client = await pool.connect();
+          client.release();
+        } catch (err: any) {
+          await pool.end();
+          throw new Error(`STAGING_DB_REQUIRED: Failed to connect to real PostgreSQL: ${err.message}`);
+        }
+      });
+
+      afterAll(async () => {
+        if (pool) {
+          await pool.end();
+        }
+      });
+
+      test('a. Single Event: Kirim event webhook baru -> ledger bertambah tepat 1 baris, balance +delta', async () => {
+        const tenantId = `tenant_wh_single_${Date.now()}`;
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          const res = await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId: `evt_single_${Date.now()}`,
+            idempotencyKey: `idemp_single_${Date.now()}`,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 37500, tenant_id: tenantId },
+            headers: { 'x-signature': 'sig_valid' },
+            tenantId,
+            batchId: 'BATCH_SINGLE_01',
+            deltaPasses: 25,
+          });
+
+          expect(res.isDuplicate).toBe(false);
+          expect(res.status).toBe('PROCESSED');
+          expect(res.balanceAfter).toBe(25);
+
+          const balRes = await client.query(
+            `SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          expect(balRes.rows.length).toBe(1);
+          expect(Number(balRes.rows[0].balance_after)).toBe(25);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('b. 10x Replay Idempotency: Kirim payload webhook persis sama 10 kali -> balance tetap, 0 extra mutasi, isDuplicate = true', async () => {
+        const tenantId = `tenant_wh_replay_${Date.now()}`;
+        const eventId = `evt_replay_${Date.now()}`;
+        const idempotencyKey = `idemp_replay_${Date.now()}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          const initRes = await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId,
+            idempotencyKey,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 37500, tenant_id: tenantId },
+            headers: { 'x-signature': 'sig_valid' },
+            tenantId,
+            batchId: 'BATCH_REPLAY_01',
+            deltaPasses: 20,
+          });
+          expect(initRes.isDuplicate).toBe(false);
+          expect(initRes.balanceAfter).toBe(20);
+
+          for (let i = 0; i < 10; i++) {
+            const repRes = await pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId,
+              idempotencyKey,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 37500, tenant_id: tenantId },
+              headers: { 'x-signature': 'sig_valid' },
+              tenantId,
+              batchId: 'BATCH_REPLAY_01',
+              deltaPasses: 20,
+            });
+            expect(repRes.isDuplicate).toBe(true);
+            expect(repRes.status).toBe('DUPLICATE_ACKNOWLEDGED');
+            expect(repRes.balanceAfter).toBe(20);
+          }
+
+          const countRes = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          expect(Number(countRes.rows[0].count)).toBe(1);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('c. 2 Concurrent Workers Same Event: Tembakkan 2 worker serentak -> tepat 1 berhasil mutasi, 1 terdeteksi duplikat', async () => {
+        const tenantId = `tenant_wh_race_${Date.now()}`;
+        const eventId = `evt_race_${Date.now()}`;
+        const idempotencyKey = `idemp_race_${Date.now()}`;
+
+        const [w1, w2] = await Promise.all([
+          (async () => {
+            const c = await pool.connect();
+            try {
+              const l = new PostgresTenantPassLedger(c, 'workforce_staging');
+              return await l.processWebhookAndMutateLedgerAtomic({
+                provider: 'DODO_PAYMENTS',
+                eventId,
+                idempotencyKey,
+                eventType: 'payment.succeeded',
+                rawPayload: { amount: 15000, tenant_id: tenantId },
+                headers: { 'x-signature': 'sig_valid' },
+                tenantId,
+                batchId: 'BATCH_RACE_01',
+                deltaPasses: 10,
+              });
+            } finally {
+              c.release();
+            }
+          })(),
+          (async () => {
+            const c = await pool.connect();
+            try {
+              const l = new PostgresTenantPassLedger(c, 'workforce_staging');
+              return await l.processWebhookAndMutateLedgerAtomic({
+                provider: 'DODO_PAYMENTS',
+                eventId,
+                idempotencyKey,
+                eventType: 'payment.succeeded',
+                rawPayload: { amount: 15000, tenant_id: tenantId },
+                headers: { 'x-signature': 'sig_valid' },
+                tenantId,
+                batchId: 'BATCH_RACE_01',
+                deltaPasses: 10,
+              });
+            } finally {
+              c.release();
+            }
+          })(),
+        ]);
+
+        const successes = [w1, w2].filter((w) => !w.isDuplicate);
+        const duplicates = [w1, w2].filter((w) => w.isDuplicate);
+        expect(successes.length).toBe(1);
+        expect(duplicates.length).toBe(1);
+        expect(successes[0].balanceAfter).toBe(10);
+        expect(duplicates[0].balanceAfter).toBe(10);
+      });
+
+      test('d. Rollback Verification: Simulasikan error sebelum commit -> status inbox dan ledger tidak bertambah di DB (COUNT = 0)', async () => {
+        const tenantId = `tenant_wh_rollback_${Date.now()}`;
+        const eventId = `evt_rollback_${Date.now()}`;
+        const idempotencyKey = `idemp_rollback_${Date.now()}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId,
+              idempotencyKey,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 1000, tenant_id: tenantId },
+              headers: { 'x-signature': 'sig_valid' },
+              tenantId,
+              batchId: 'BATCH_ROLLBACK_01',
+              deltaPasses: -50, // Triggers ERR_NEGATIVE_BALANCE on 0 balance
+            })
+          ).rejects.toThrow('ERR_NEGATIVE_BALANCE');
+
+          const countLedger = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          const countInbox = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.workforce_webhook_inbox WHERE idempotency_key = $1`,
+            [idempotencyKey]
+          );
+          expect(Number(countLedger.rows[0].count)).toBe(0);
+          expect(Number(countInbox.rows[0].count)).toBe(0);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('e. Cross-Tenant Tampering: Coba kirim event_id sama dengan tenant_id berbeda -> wajib throw SecurityInvariantViolation', async () => {
+        const legitTenant = `tenant_wh_legit_${Date.now()}`;
+        const adversaryTenant = `tenant_wh_adversary_${Date.now()}`;
+        const eventId = `evt_tamper_${Date.now()}`;
+        const idempotencyKey = `idemp_tamper_${Date.now()}`;
+
+        const client1 = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client1, 'workforce_staging');
+          await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId,
+            idempotencyKey,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 37500, tenant_id: legitTenant },
+            headers: { 'x-signature': 'sig_valid' },
+            tenantId: legitTenant,
+            batchId: 'BATCH_LEGIT_01',
+            deltaPasses: 25,
+          });
+        } finally {
+          client1.release();
+        }
+
+        const client2 = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client2, 'workforce_staging');
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId,
+              idempotencyKey,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 37500, tenant_id: adversaryTenant },
+              headers: { 'x-signature': 'sig_valid' },
+              tenantId: adversaryTenant,
+              batchId: 'BATCH_ADVERSARY_01',
+              deltaPasses: 25,
+            })
+          ).rejects.toThrow('CROSS_TENANT_IDEMPOTENCY_MISMATCH');
+        } finally {
+          client2.release();
+        }
+      });
+    });
   });
 });
-
