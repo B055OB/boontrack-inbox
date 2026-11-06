@@ -100,19 +100,23 @@ export default function WorkforceLoginPage() {
             <div className="h-16 w-16 mx-auto rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center p-2 mb-3 shadow-xs">
               <Image src="/logo.png" alt="BWM Logo" width={56} height={56} className="object-contain" priority />
             </div>
-            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Workforce Operations Portal</h2>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-bold mb-2">
+              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+              <span>Apex Security Services Ltd &bull; Sovereign Network</span>
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Workforce Operations Portal</h2>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              Field Personnel &amp; Agency Management Access
+              Field Personnel, Operations Supervisors &amp; Main Agent Access
             </p>
           </div>
 
           {/* Quick Fill Helper Presets */}
           <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
             <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                Quick-Fill Demo Accounts:
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider">
+                STAGING SIMULATION ACCESS
               </span>
-              <span className="text-[10px] text-blue-600 font-medium">1-Click Auto-Fill</span>
+              <span className="text-[10px] text-blue-600 font-semibold">1-Click Auto-Fill</span>
             </div>
 
             <div className="grid grid-cols-1 gap-2">

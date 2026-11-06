@@ -38,6 +38,10 @@ import {
   Zap,
 } from 'lucide-react';
 import PwaInstallPrompt from './PwaInstallPrompt';
+import SlideOverDrawer from './SlideOverDrawer';
+import EmptyState from './EmptyState';
+import { CardSkeleton, RosterCardSkeleton } from './LoadingSkeleton';
+import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw } from 'lucide-react';
 
 interface CheckpointItem {
   id: string;
@@ -98,6 +102,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
   // Shared Time & Clock
   const [currentTime, setCurrentTime] = useState('');
+
+  // Contextual Slide-Over Drawer States (CTO UX Architecture)
+  const [selectedOfficerForDrawer, setSelectedOfficerForDrawer] = useState<OfficerMonitoring | null>(null);
+  const [selectedIncidentForDrawer, setSelectedIncidentForDrawer] = useState<IncidentRecord | null>(null);
+  const [selectedFacilityForDrawer, setSelectedFacilityForDrawer] = useState<any | null>(null);
+
+  // Uniform Filter Bar States (/ops)
+  const [filterFacility, setFilterFacility] = useState<string>('all');
+  const [filterShift, setFilterShift] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   // -------------------------------------------------------------
   // ROLE 1: FIELD PERSONNEL STATE (Officer Sarah Jenkins)
@@ -542,26 +556,26 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-16">
       {/* ------------------------------------------------------------- */}
-      {/* TOP HEADER: Clean BWM Operations Bar (Zero Role Switcher)     */}
+      {/* TOP HEADER: Crisp Slate-White Enterprise Operations Bar       */}
       {/* ------------------------------------------------------------- */}
-      <header className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white px-4 sm:px-6 py-3 shadow-md">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 px-4 sm:px-6 py-3 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Left: Brand Identity */}
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-xl bg-blue-600 flex items-center justify-center p-1 shadow-sm">
+            <div className="h-8 w-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center p-1 shadow-xs">
               <Image src={branding.logoLightUrl} alt={`${branding.brandName} Logo`} width={32} height={32} className="object-contain" priority />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-sm tracking-tight text-white">{branding.portalTitle}</span>
-                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
+                <span className="font-extrabold text-sm tracking-tight text-slate-900">{branding.portalTitle}</span>
+                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
                   {currentRole === 'field' ? 'Field Mobile' : currentRole === 'supervisor' ? 'Command Desk' : 'Main Agent'}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400">
-                Facility: <span className="text-slate-200 font-medium">{currentRole === 'reseller' ? resellerAgency : currentRole === 'supervisor' ? supervisorBranch : mitraPlacement}</span> &bull; <span className="font-mono text-slate-300">{currentTime}</span>
+              <div className="text-[11px] text-slate-500">
+                Facility: <span className="text-slate-800 font-semibold">{currentRole === 'reseller' ? resellerAgency : currentRole === 'supervisor' ? supervisorBranch : mitraPlacement}</span> &bull; <span className="font-mono text-slate-600">{currentTime}</span>
               </div>
             </div>
           </div>
@@ -569,14 +583,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           {/* Right: Language Switcher, Telemetry Status, Profile Badge, Sign Out */}
           <div className="flex items-center space-x-3">
             {/* Language Switcher [ EN | ID ] */}
-            <div className="flex items-center bg-slate-800/80 rounded-xl p-0.5 border border-slate-700/80 text-xs">
+            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
               <button
                 type="button"
                 onClick={() => setLocale('en')}
                 className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
                   locale === 'en'
                     ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
                 aria-label="Switch to English"
               >
@@ -588,7 +602,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
                   locale === 'id'
                     ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
                 aria-label="Switch to Indonesian"
               >
@@ -596,23 +610,23 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
             </div>
 
-            <span className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>{t('workforce.common.liveTelemetry')}</span>
             </span>
 
             <div className="hidden sm:block text-right text-xs">
-              <div className="font-bold text-white">
+              <div className="font-bold text-slate-900">
                 {currentRole === 'field' ? userName : currentRole === 'supervisor' ? supervisorName : resellerName}
               </div>
-              <div className="text-[10px] text-slate-400 font-mono">
+              <div className="text-[10px] text-slate-500 font-mono">
                 {currentRole === 'field' ? userNip : currentRole === 'supervisor' ? supervisorNip : resellerEmail}
               </div>
             </div>
 
             <button
               onClick={() => setModalType('logout_confirm')}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 text-xs font-semibold border border-slate-700 hover:border-rose-500/40 transition flex items-center space-x-1.5 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold border border-slate-200 hover:border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{t('workforce.common.signOut')}</span>
@@ -625,23 +639,24 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       {/* SECTION 1: FIELD OFFICER PORTAL (/portal, /field)              */}
       {/* ============================================================= */}
       {currentRole === 'field' && (
-        <main className="max-w-2xl mx-auto px-4 pt-6 space-y-6">
+        <main className="max-w-md mx-auto px-4 pt-6 space-y-4">
           {/* Verified Mobile Banner */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/60 to-indigo-900/60 border border-blue-500/30 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-slate-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-xl bg-blue-600/30 border border-blue-400/40 text-blue-300">
-                <ShieldCheck className="w-6 h-6" />
+              <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-xs">
+                <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">{t('workforce.common.pwaActiveBanner')}</h2>
-                <p className="text-xs text-blue-200 mt-0.5">{t('workforce.common.pwaSub')}</p>
+                <h2 className="text-sm font-extrabold text-slate-900">{t('workforce.common.pwaActiveBanner')}</h2>
+                <p className="text-xs text-slate-600 mt-0.5">{t('workforce.common.pwaSub')}</p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
               <button
+                type="button"
                 onClick={() => alert(`${branding.pwaAppName} installed to device home screen.`)}
-                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs cursor-pointer text-center"
               >
                 {t('workforce.common.installApp')}
               </button>
@@ -649,167 +664,194 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           </div>
 
           {/* Officer Profile Card */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-extrabold text-base">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 font-black text-base shadow-xs">
                   {userName.split(' ')[1]?.[0] || 'O'}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">{userName}</h3>
-                  <div className="text-xs text-slate-400 mt-0.5 flex items-center space-x-2">
-                    <span className="font-mono text-blue-400">{userNip}</span>
+                  <h3 className="text-base font-extrabold text-slate-900">{userName}</h3>
+                  <div className="text-xs text-slate-500 mt-0.5 flex items-center space-x-2">
+                    <span className="font-mono text-blue-600 font-bold">{userNip}</span>
                     <span>&bull;</span>
-                    <span>{mitraPlacement}</span>
+                    <span className="truncate max-w-[150px]">{mitraPlacement}</span>
                   </div>
                 </div>
               </div>
 
-              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>{t('workforce.field.statusOnDuty')}</span>
               </span>
             </div>
 
-            {/* Shift Stats */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                <span className="text-[11px] text-slate-400 block">Verified Clock-In</span>
-                <span className="text-sm font-bold text-slate-200 font-mono mt-0.5 block">{clockInTime}</span>
+            {/* Real-Time Connectivity & Sync Indicator */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <span className="inline-flex items-center gap-1.5 font-bold text-emerald-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Live Telemetry Synced
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">Offline-Ready Cache Active</span>
+            </div>
+
+            {/* Shift Stats & Checkpoint Progress Bar */}
+            <div className="space-y-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Clock-In</span>
+                  <span className="text-xs font-bold text-slate-800 font-mono mt-0.5 block">{clockInTime}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Shift Roster</span>
+                  <span className="text-xs font-bold text-slate-800 mt-0.5 block">07:00 &mdash; 15:00 UTC+7</span>
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                <span className="text-[11px] text-slate-400 block">Patrol Round Progress</span>
-                <span className="text-sm font-bold text-blue-400 font-mono mt-0.5 block">
-                  {completedCount} / {totalCount} Checkpoints
-                </span>
+
+              {/* Progress Bar */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-slate-700">Patrol Tour Progress</span>
+                  <span className="text-blue-600 font-mono">{completedCount} of {totalCount} Cleared</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.round((completedCount / (totalCount || 1)) * 100)}%` }}
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Primary Field Action Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {/* Action 1: QR Patrol Scanner */}
+          {/* Primary Field Action Cards (Thumb-Friendly, High Contrast Outdoor Touch Targets) */}
+          <div className="space-y-3">
+            {/* Primary Action 1: QR Patrol Scanner */}
             <button
+              type="button"
               onClick={() => setModalType('qr_scanner')}
-              className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-left transition shadow-lg shadow-blue-600/20 group cursor-pointer"
+              className="w-full min-h-[64px] p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-left transition shadow-md flex items-center justify-between group cursor-pointer active:scale-98"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2.5 rounded-xl bg-white/10 text-white">
-                  <QrCode className="w-6 h-6" />
+              <div className="flex items-center gap-3.5">
+                <div className="p-2.5 rounded-xl bg-white/15 text-white">
+                  <QrCode className="w-7 h-7" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-white/60 group-hover:translate-x-1 transition-transform" />
+                <div>
+                  <h4 className="text-base font-extrabold">{t('workforce.field.patrol')}</h4>
+                  <p className="text-xs text-blue-100">{t('workforce.field.patrolSub')}</p>
+                </div>
               </div>
-              <h4 className="text-base font-bold">{t('workforce.field.patrol')}</h4>
-              <p className="text-xs text-blue-100 mt-1">{t('workforce.field.patrolSub')}</p>
+              <ChevronRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform" />
             </button>
 
-            {/* Action 2: Report Field Incident */}
+            {/* Primary Action 2: Report Field Incident */}
             <button
+              type="button"
               onClick={() => setModalType('lapor_insiden')}
-              className="p-4 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-rose-500/40 text-left transition shadow-md group cursor-pointer"
+              className="w-full min-h-[56px] p-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-left transition shadow-md flex items-center justify-between group cursor-pointer active:scale-98"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+              <div className="flex items-center gap-3.5">
+                <div className="p-2.5 rounded-xl bg-white/15 text-white">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
-              </div>
-              <h4 className="text-base font-bold text-white">{t('workforce.field.incident')}</h4>
-              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.incidentSub')}</p>
-            </button>
-
-            {/* Action 3: Clock In */}
-            <button
-              onClick={() => setModalType('absen_masuk')}
-              className="p-4 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition shadow-md group cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  <LogIn className="w-6 h-6" />
+                <div>
+                  <h4 className="text-sm font-extrabold">{t('workforce.field.incident')}</h4>
+                  <p className="text-xs text-rose-100">{t('workforce.field.incidentSub')}</p>
                 </div>
-                <span className="text-xs font-bold text-emerald-400">Verified</span>
               </div>
-              <h4 className="text-base font-bold text-white">{t('workforce.field.clockIn')}</h4>
-              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.clockInSub')}</p>
+              <ChevronRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform" />
             </button>
 
-            {/* Action 4: Clock Out */}
-            <button
-              onClick={() => setModalType('absen_keluar')}
-              className="p-4 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition shadow-md group cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  <LogOut className="w-6 h-6" />
+            {/* Attendance Actions: Clock In & Clock Out Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setModalType('absen_masuk')}
+                className="min-h-[56px] p-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-left transition shadow-md flex items-center justify-between cursor-pointer active:scale-98"
+              >
+                <div>
+                  <div className="text-xs font-medium text-emerald-100">Liveness Scan</div>
+                  <h4 className="text-sm font-extrabold">{t('workforce.field.clockIn')}</h4>
                 </div>
-                <span className="text-xs font-bold text-slate-400">Scheduled</span>
-              </div>
-              <h4 className="text-base font-bold text-white">{t('workforce.field.clockOut')}</h4>
-              <p className="text-xs text-slate-400 mt-1">{t('workforce.field.clockOutSub')}</p>
-            </button>
+                <div className="p-2 rounded-xl bg-white/15 text-white">
+                  <LogIn className="w-5 h-5" />
+                </div>
+              </button>
 
-            {/* Action 5: Shift Exchange & Leave Request */}
+              <button
+                type="button"
+                onClick={() => setModalType('absen_keluar')}
+                className="min-h-[56px] p-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-left transition shadow-md flex items-center justify-between cursor-pointer active:scale-98"
+              >
+                <div>
+                  <div className="text-xs font-medium text-amber-100">Handover</div>
+                  <h4 className="text-sm font-extrabold">{t('workforce.field.clockOut')}</h4>
+                </div>
+                <div className="p-2 rounded-xl bg-white/15 text-white">
+                  <LogOut className="w-5 h-5" />
+                </div>
+              </button>
+            </div>
+
+            {/* Secondary Action: Shift Exchange & Leave Request */}
             <button
+              type="button"
               onClick={() => setModalType('time_off')}
-              className="p-4 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition shadow-md group cursor-pointer sm:col-span-2"
+              className="w-full min-h-[52px] p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-left transition shadow-xs flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                  <FileText className="w-6 h-6" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-100 text-slate-700">
+                  <FileText className="w-5 h-5" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">{t('workforce.field.timeOff')}</h4>
+                  <p className="text-[11px] text-slate-500">Submit roster relief or scheduled leave</p>
+                </div>
               </div>
-              <h4 className="text-base font-bold text-white">{t('workforce.field.timeOff')}</h4>
-              <p className="text-xs text-slate-400 mt-1">Submit roster relief or scheduled leave to branch supervisor</p>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
 
-          {/* Active Checkpoint Checklist */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
+          {/* Active Checkpoint Checklist Card */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-white">Assigned Checkpoints ({checkpoints.length})</h4>
-              <span className="text-xs text-blue-400 font-semibold">{completedCount} Completed</span>
+              <h4 className="text-sm font-extrabold text-slate-900">
+                Assigned Checkpoints ({checkpoints.length})
+              </h4>
+              <span className="text-xs font-bold text-blue-600">{completedCount} Completed</span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {checkpoints.map((cp) => (
                 <div
                   key={cp.id}
-                  className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between gap-3"
+                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs"
                 >
                   <div className="flex items-center space-x-3">
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
                         cp.status === 'COMPLETED'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-slate-800 text-slate-400'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-white text-slate-500 border border-slate-200'
                       }`}
                     >
-                      {cp.status === 'COMPLETED' ? <Check className="w-4 h-4" /> : cp.id.split('-')[1]}
+                      {cp.status === 'COMPLETED' ? '✓' : cp.id.replace('CP-', '')}
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-white">{cp.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">{cp.zone}</div>
+                      <div className="font-bold text-slate-900">{cp.name}</div>
+                      <div className="text-[10px] text-slate-500">{cp.zone}</div>
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    {cp.status === 'COMPLETED' ? (
-                      <div>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                          VERIFIED
-                        </span>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{cp.scannedAt}</div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleScanCheckpoint(cp.id)}
-                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition cursor-pointer"
-                      >
-                        Scan Now
-                      </button>
-                    )}
-                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      cp.status === 'COMPLETED'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {cp.status === 'COMPLETED' ? cp.scannedAt || 'Cleared' : 'Pending'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -817,40 +859,41 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         </main>
       )}
 
-      {/* ============================================================= */}
       {/* SECTION 2: BRANCH SUPERVISOR DESK (/ops, /supervisor)          */}
       {/* ============================================================= */}
       {currentRole === 'supervisor' && (
         <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
           {/* Header Banner */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2">
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
                   Branch Command Desk
                 </span>
-                <span className="text-xs text-slate-400">Metro Financial Tower Hub</span>
+                <span className="text-xs font-semibold text-slate-500">Metro Financial Tower Hub</span>
               </div>
-              <h2 className="text-2xl font-black text-white mt-1.5">
+              <h2 className="text-2xl font-black text-slate-900 mt-1.5 tracking-tight">
                 {t('workforce.supervisor.deskTitle')} &mdash; Metro Financial Tower Hub
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Supervisor On-Duty: <span className="text-white font-bold">{supervisorName}</span> &bull; Badge: <span className="font-mono text-slate-300">{supervisorNip}</span> &bull; Real-time perimeter tracking &amp; dual-dispatch incident escalation.
+              <p className="text-xs text-slate-600 mt-1">
+                Supervisor On-Duty: <span className="text-slate-900 font-bold">{supervisorName}</span> &bull; Badge: <span className="font-mono text-blue-600 font-bold">{supervisorNip}</span> &bull; Real-time perimeter tracking &amp; dual-dispatch incident escalation.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
                 onClick={() => setModalType('tambah_checkpoint')}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Checkpoint</span>
               </button>
               <button
+                type="button"
                 onClick={handleTriggerCronNudge}
                 disabled={cronLoading}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-200 transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Clock className="w-4 h-4" />
                 <span>{cronLoading ? 'Evaluating Shifts...' : 'Run Shift Handover Evaluator'}</span>
@@ -858,86 +901,185 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* 4 Summary Metric Cards */}
+          {/* 4 Operational KPI Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
-              <div className="text-xs text-slate-400 font-medium">On-Duty Officers</div>
-              <div className="text-2xl font-extrabold text-white mt-1">14 Officers</div>
-              <div className="text-[11px] text-emerald-400 mt-1 flex items-center space-x-1">
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">On-Duty Officers</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">100% Coverage</span>
+              </div>
+              <div className="text-2xl font-black text-slate-900 mt-1">14 Officers</div>
+              <div className="text-[11px] text-emerald-600 font-semibold flex items-center space-x-1">
                 <span>&bull;</span>
-                <span>100% Station Coverage</span>
+                <span>Active Geofenced</span>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
-              <div className="text-xs text-slate-400 font-medium">Patrol Round Compliance</div>
-              <div className="text-2xl font-extrabold text-blue-400 mt-1">94.8%</div>
-              <div className="text-[11px] text-slate-400 mt-1">SLA Target &ge; 90%</div>
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Patrol Round SLA</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">&ge; 90% Target</span>
+              </div>
+              <div className="text-2xl font-black text-blue-600 mt-1">94.8%</div>
+              <div className="text-[11px] text-slate-500">Verified QR Cryptographic</div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
-              <div className="text-xs text-slate-400 font-medium">Active Incidents</div>
-              <div className="text-2xl font-extrabold text-amber-400 mt-1">{incidents.length} Logged</div>
-              <div className="text-[11px] text-slate-400 mt-1">Dual-Dispatch Dispatched</div>
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Active Incidents</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700">Dual-Dispatch</span>
+              </div>
+              <div className="text-2xl font-black text-amber-600 mt-1">{incidents.length} Logged</div>
+              <div className="text-[11px] text-slate-500">Automated Dispatch Active</div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm">
-              <div className="text-xs text-slate-400 font-medium">Readiness &amp; Grooming</div>
-              <div className="text-2xl font-extrabold text-emerald-400 mt-1">{groomingScore}% Prime</div>
-              <div className="text-[11px] text-slate-400 mt-1">Pre-shift inspection score</div>
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Readiness &amp; Grooming</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Inspection</span>
+              </div>
+              <div className="text-2xl font-black text-emerald-600 mt-1">{groomingScore}% Prime</div>
+              <div className="text-[11px] text-slate-500">Pre-shift inspection score</div>
             </div>
           </div>
 
-          {/* Officer Monitoring Table */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-white">{t('workforce.supervisor.rosterTitle')}</h3>
-                <p className="text-xs text-slate-400">GPS geofence telemetry, battery status, and active rounds.</p>
+          {/* Uniform Filter Bar */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-700 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-slate-400" /> Filter Desk:
+              </span>
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 font-medium">
+                <button
+                  type="button"
+                  onClick={() => setFilterFacility('all')}
+                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'all' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  All Facilities (3)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterFacility('metro')}
+                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'metro' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Metro Tower (14)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterFacility('north')}
+                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'north' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  North Hub (6)
+                </button>
               </div>
-              <span className="text-xs text-emerald-400 font-semibold">&bull; Updated Sub-Second</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 font-medium">
+                <button
+                  type="button"
+                  onClick={() => setFilterShift('all')}
+                  className={`px-2 py-1 rounded-md transition ${filterShift === 'all' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  All Shifts
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterShift('morning')}
+                  className={`px-2 py-1 rounded-md transition ${filterShift === 'morning' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Morning
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterShift('night')}
+                  className={`px-2 py-1 rounded-md transition ${filterShift === 'night' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Night
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Officer Monitoring Table */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-900">{t('workforce.supervisor.rosterTitle')}</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider">
+                    SIMULATED TELEMETRY (DEMO DATA)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Click any officer row to open contextual dossier in slide-over drawer.</p>
+              </div>
+              <span className="text-xs text-emerald-600 font-bold flex items-center gap-1.5 self-start sm:self-auto">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Updated Sub-Second
+              </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold">
-                    <th className="pb-3">OFFICER / BADGE</th>
-                    <th className="pb-3">ASSIGNED POST</th>
-                    <th className="pb-3">CLOCK-IN</th>
-                    <th className="pb-3">PROGRESS</th>
-                    <th className="pb-3">TELEMETRY</th>
-                    <th className="pb-3">GEOFENCE STATUS</th>
+                  <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="pb-3 px-2">OFFICER / BADGE</th>
+                    <th className="pb-3 px-2">ASSIGNED POST</th>
+                    <th className="pb-3 px-2">CLOCK-IN</th>
+                    <th className="pb-3 px-2">PROGRESS</th>
+                    <th className="pb-3 px-2">TELEMETRY</th>
+                    <th className="pb-3 px-2">GEOFENCE STATUS</th>
+                    <th className="pb-3 px-2 text-right">ACTION</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-slate-100">
                   {officers.map((off) => (
-                    <tr key={off.id} className="hover:bg-slate-850/50 transition">
-                      <td className="py-3 font-semibold text-white">
-                        <div>{off.name}</div>
+                    <tr
+                      key={off.id}
+                      onClick={() => setSelectedOfficerForDrawer(off)}
+                      className="hover:bg-blue-50/60 transition cursor-pointer group"
+                    >
+                      <td className="py-3 px-2 font-semibold text-slate-900">
+                        <div className="font-bold text-slate-900 group-hover:text-blue-600 transition">{off.name}</div>
                         <div className="font-mono text-slate-400 text-[10px]">{off.nip}</div>
                       </td>
-                      <td className="py-3 text-slate-300">{off.post}</td>
-                      <td className="py-3 font-mono text-slate-400">{off.checkInTime}</td>
-                      <td className="py-3">
-                        <span className="font-mono font-bold text-blue-400">
-                          {off.completedPoints} / {off.totalPoints}
-                        </span>
-                        <div className="w-16 bg-slate-800 rounded-full h-1 mt-1">
-                          <div
-                            className="bg-blue-500 h-1 rounded-full"
-                            style={{ width: `${(off.completedPoints / off.totalPoints) * 100}%` }}
-                          ></div>
+                      <td className="py-3 px-2 text-slate-600">{off.post}</td>
+                      <td className="py-3 px-2 font-mono text-slate-700 font-medium">{off.checkInTime}</td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-blue-600">
+                            {off.completedPoints}/{off.totalPoints}
+                          </span>
+                          <span className="text-slate-400">
+                            ({Math.round((off.completedPoints / off.totalPoints) * 100)}%)
+                          </span>
                         </div>
                       </td>
-                      <td className="py-3 font-mono text-slate-400">
-                        <div>Batt: {off.battery}%</div>
-                        <div>Dist: {off.distanceMeter}m</div>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center space-x-2 text-slate-600">
+                          <BatteryCharging className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{off.battery}%</span>
+                          <span>&bull;</span>
+                          <span>{off.distanceMeter}m</span>
+                        </div>
                       </td>
-                      <td className="py-3">
-                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
-                          <span>&check;</span>
+                      <td className="py-3 px-2">
+                        <span
+                          className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            off.status === 'NORMAL'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : off.status === 'WARNING'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
                           <span>{off.statusNote}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        <span className="text-[11px] font-bold text-blue-600 group-hover:underline">
+                          View Dossier &rarr;
                         </span>
                       </td>
                     </tr>
@@ -947,45 +1089,53 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* Active Incidents Stream */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
-            <div className="flex items-center justify-between">
+          {/* Incident Escalation Stream */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h3 className="text-base font-bold text-white">{t('workforce.supervisor.incidentTitle')}</h3>
-                <p className="text-xs text-slate-400">Automated dual-dispatch alerts logged to database and dispatched to operations desks.</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-900">{t('workforce.supervisor.incidentTitle')}</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider">
+                    SIMULATED INCIDENTS (DEMO DATA)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Click any incident to open full audit trail in slide-over drawer.</p>
               </div>
-              <button
-                onClick={() => setModalType('lapor_insiden')}
-                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Log Incident</span>
-              </button>
+              <span className="text-xs text-blue-600 font-bold">&bull; Dual-Dispatch Active</span>
             </div>
 
-            <div className="divide-y divide-slate-800">
+            <div className="space-y-3">
               {incidents.map((inc) => (
-                <div key={inc.id} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${inc.urgency === 'Critical Emergency' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
-                        {inc.urgency}
-                      </span>
-                      <span className="text-sm font-bold text-white">{inc.location}</span>
+                <div
+                  key={inc.id}
+                  onClick={() => setSelectedIncidentForDrawer(inc)}
+                  className="p-4 rounded-xl bg-slate-50 hover:bg-rose-50/40 border border-slate-200 hover:border-rose-200 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 shrink-0 mt-0.5">
+                      <AlertTriangle className="w-4 h-4" />
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">{inc.note}</p>
-                    <div className="text-[11px] text-slate-400 mt-1">
-                      Reported by <span className="font-semibold text-slate-200">{inc.reporter}</span> &bull; <span className="font-mono">{inc.time}</span>
+                    <div>
+                      <div className="font-bold text-slate-900 group-hover:text-rose-700 transition">{inc.note}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Location: <span className="text-slate-800 font-semibold">{inc.location}</span> &bull; Reporter: {inc.reporter} &bull; Time: <span className="font-mono text-slate-600">{inc.time}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      {inc.status}
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        inc.urgency === 'Critical Emergency'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {inc.urgency}
                     </span>
-                    <div className="text-[10px] text-emerald-400 mt-1 flex items-center justify-end space-x-1">
-                      <span>&check; Dual-Dispatched</span>
-                    </div>
+                    <span className="text-[11px] font-bold text-blue-600 group-hover:underline">
+                      Audit Trail &rarr;
+                    </span>
                   </div>
                 </div>
               ))}
@@ -994,34 +1144,34 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         </main>
       )}
 
-      {/* ============================================================= */}
       {/* SECTION 3: ENTERPRISE MAIN AGENT CONSOLE (/dashboard, /admin) */}
       {/* ============================================================= */}
       {currentRole === 'reseller' && (
         <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
           {/* Header Banner */}
-          <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-850 to-indigo-950 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2 mb-1.5">
                 <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-extrabold text-[10px] tracking-wider uppercase">
                   ENTERPRISE MAIN AGENT CONSOLE
                 </span>
-                <span className="text-xs font-bold text-blue-400">
-                  Multi-Branch Quota Management
+                <span className="text-xs font-bold text-slate-500">
+                  Multi-Branch Fleet &amp; Quota Allocation
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-white tracking-tight">
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
                 {t('workforce.mainAgent.consoleTitle')}
               </h2>
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-                {t('workforce.mainAgent.portalSubtitle', { agency: resellerAgency })} &bull; Account: <span className="font-mono text-blue-300">{resellerEmail}</span>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl">
+                {t('workforce.mainAgent.portalSubtitle', { agency: resellerAgency })} &bull; Account: <span className="font-mono text-blue-600 font-bold">{resellerEmail}</span>
               </p>
             </div>
 
             <div className="flex items-center space-x-3">
               <button
+                type="button"
                 onClick={() => setModalType('topup_seats')}
-                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-sm transition flex items-center space-x-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 <span>{t('workforce.mainAgent.requisitionButton')}</span>
@@ -1029,62 +1179,116 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* Allocation Metric Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
+          {/* 4 Executive KPI Metric Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.activePersonnel')}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold">On-Duty</span>
+                <span className="text-xs text-slate-500 font-medium">{t('workforce.mainAgent.activePersonnel')}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">On-Duty</span>
               </div>
-              <div className="text-3xl font-black text-white">{allocatedPasses} Officers</div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Currently deployed officers actively consuming passes across all contracted client facilities.
-              </p>
+              <div className="text-3xl font-black text-slate-900 mt-1">{allocatedPasses} Officers</div>
+              <p className="text-[11px] text-slate-500">Active deployed fleet</p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.availablePasses')}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Standby Pool</span>
+                <span className="text-xs text-slate-500 font-medium">{t('workforce.mainAgent.availablePasses')}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">Standby Pool</span>
               </div>
-              <div className="text-3xl font-black text-emerald-400">{availablePasses} Passes</div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Ready for immediate allocation to new personnel or upcoming contract expansions.
-              </p>
+              <div className="text-3xl font-black text-emerald-600 mt-1">{availablePasses} Passes</div>
+              <p className="text-[11px] text-slate-500">Ready for instant allocation</p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-2">
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-medium">{t('workforce.mainAgent.totalPool')}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-bold">Full Pool</span>
+                <span className="text-xs text-slate-500 font-medium">Contracted Hubs</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-bold">Active Sites</span>
               </div>
-              <div className="text-3xl font-black text-purple-400">{totalPasses} Passes</div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                1 BWM Credit Pass = 30 days active operational access per personnel.
-              </p>
+              <div className="text-3xl font-black text-blue-600 mt-1">3 Facilities</div>
+              <p className="text-[11px] text-slate-500">Corporate SLA contracts</p>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Pending Attention</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-bold">Action Needed</span>
+              </div>
+              <div className="text-3xl font-black text-amber-600 mt-1">2 Alerts</div>
+              <p className="text-[11px] text-slate-500">Renewal &amp; incident review</p>
             </div>
           </div>
 
-          {/* Auto-Renew Toggle */}
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                <Zap className="w-5 h-5" />
+          {/* Credit Pool Pass Utilization Bar Card */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900">
+                  Credit Pool Utilization: {allocatedPasses} of {totalPasses} allocated ({Math.round((allocatedPasses / (totalPasses || 1)) * 100)}%)
+                </h4>
+                <p className="text-xs text-slate-500">1 BWM Pass = 30-Day active license per officer &bull; Strict FIFO Batch Depletion</p>
+              </div>
+              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                FIFO Rollover: Active
+              </span>
+            </div>
+
+            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200">
+              <div
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.round((allocatedPasses / (totalPasses || 1)) * 100)}%` }}
+              ></div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1">
+              <span>{allocatedPasses} Passes Active ({Math.round((allocatedPasses / (totalPasses || 1)) * 100)}%)</span>
+              <span>{availablePasses} Passes Standby ({Math.round((availablePasses / (totalPasses || 1)) * 100)}%)</span>
+              <span>{totalPasses} Total Quota Capacity</span>
+            </div>
+          </div>
+
+          {/* Operational Attention Widget */}
+          <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-800 font-bold shrink-0">
+                <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-white">Auto-Renew with Available Passes</h4>
-                <p className="text-xs text-slate-400">Automatically extend expiring personnel shifts using available credit pool passes.</p>
+                <div className="font-bold text-slate-900">Operational Actions Pending Review</div>
+                <div className="text-slate-600 mt-0.5">
+                  2 Passes approaching 30-day renewal in &lt; 48 hours &bull; 1 open incident awaiting branch sign-off.
+                </div>
               </div>
             </div>
             <button
+              type="button"
+              onClick={() => alert('Auto-renewal queued for 2 approaching passes.')}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              Resolve Alerts
+            </button>
+          </div>
+
+          {/* Auto-Renew Toggle Card */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Auto-Renew Personnel Coverage</h4>
+                <p className="text-xs text-slate-500">Automatically allocate available standby passes when an active officer's 30-day pass expires.</p>
+              </div>
+            </div>
+            <button
+              type="button"
               onClick={() => setAutoRenewPasses(!autoRenewPasses)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
                 autoRenewPasses
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
               }`}
             >
-              {autoRenewPasses ? 'Active Enabled' : 'Disabled'}
+              {autoRenewPasses ? '✓ Auto-Renew Active' : 'Disabled'}
             </button>
           </div>
 
@@ -1092,115 +1296,87 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-black text-white">{t('workforce.mainAgent.clientPortfolio')}</h3>
-                <p className="text-xs text-slate-400">Operational deployment and SLA compliance tracking per client facility.</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900">{t('workforce.mainAgent.clientPortfolio')}</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider">
+                    SIMULATED PORTFOLIO (DEMO DATA)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Click any client facility card to inspect branch details in slide-over drawer.</p>
               </div>
               <button
+                type="button"
                 onClick={() => setModalType('audit_sla')}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-xs transition flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-4 h-4 text-slate-500" />
                 <span>{t('workforce.mainAgent.downloadAudit')}</span>
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Facility 1 */}
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-3">
+              <div
+                onClick={() => setSelectedFacilityForDrawer({ name: 'Metro Financial Tower Hub', type: 'Commercial Office High-Rise', sla: '99.2%', personnel: 8, address: 'Financial District, Fl. 1-45' })}
+                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                     Commercial Office High-Rise
                   </span>
-                  <span className="text-xs font-bold text-emerald-400">99.2% SLA</span>
+                  <span className="text-xs font-bold text-emerald-600">99.2% SLA</span>
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-white">Metro Financial Tower Hub</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">Active Deployment: 8 Personnel &bull; Annual SLA</p>
+                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">Metro Financial Tower Hub</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 8 Personnel &bull; Annual SLA</p>
                 </div>
-                <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
-                  <span>Site Manager</span>
-                  <span className="font-bold text-white">Marcus Sterling</span>
+                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                  <span>Branch: SUP-1092</span>
+                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
                 </div>
               </div>
 
               {/* Facility 2 */}
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-3">
+              <div
+                onClick={() => setSelectedFacilityForDrawer({ name: 'Logistics Terminal 4 Bay', type: 'Industrial & Cargo Logistics', sla: '98.7%', personnel: 4, address: 'West Cargo Port Sector C' })}
+                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    Industrial &amp; Cargo Port
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                    Industrial &amp; Cargo Logistics
                   </span>
-                  <span className="text-xs font-bold text-emerald-400">98.6% SLA</span>
+                  <span className="text-xs font-bold text-emerald-600">98.7% SLA</span>
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-white">Logistics Terminal 4 Bay</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">Active Deployment: 6 Personnel &bull; Multi-Year</p>
+                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">Logistics Terminal 4 Bay</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 4 Personnel &bull; Annual SLA</p>
                 </div>
-                <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
-                  <span>Site Manager</span>
-                  <span className="font-bold text-white">David Vance</span>
+                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                  <span>Branch: SUP-0842</span>
+                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
                 </div>
               </div>
 
               {/* Facility 3 */}
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-3">
+              <div
+                onClick={() => setSelectedFacilityForDrawer({ name: 'East Boundary Perimeter Hub', type: 'Critical Infrastructure', sla: '100% Prime', personnel: 2, address: 'Perimeter Boundary Sector 1' })}
+                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                    Technology Campus
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Critical Infrastructure
                   </span>
-                  <span className="text-xs font-bold text-blue-400">Onboarding</span>
+                  <span className="text-xs font-bold text-emerald-600">100% SLA</span>
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-white">West Industrial Tech Park</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">Target Allocation: 11 Personnel &bull; Q1 2027</p>
+                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">East Boundary Perimeter Hub</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 2 Personnel &bull; Annual SLA</p>
                 </div>
-                <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
-                  <span>Lead Inspector</span>
-                  <span className="font-bold text-white">Elena Rostova</span>
+                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                  <span>Branch: SUP-0914</span>
+                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Allocated Personnel Table */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-white">Active Personnel Allocation Roster</h3>
-                <p className="text-xs text-slate-400">Assigned passes and renewal timeline per officer.</p>
-              </div>
-              <span className="text-xs font-bold text-blue-400">{allocatedPersonnelList.length} Active Officers</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold">
-                    <th className="pb-3">PASS ID</th>
-                    <th className="pb-3">OFFICER / NIP</th>
-                    <th className="pb-3">DEPLOYED FACILITY</th>
-                    <th className="pb-3">PASS EXPIRATION</th>
-                    <th className="pb-3">STATUS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {allocatedPersonnelList.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-850/50 transition">
-                      <td className="py-3 font-mono font-bold text-slate-300">{p.id}</td>
-                      <td className="py-3 font-semibold text-white">
-                        <div>{p.name}</div>
-                        <div className="font-mono text-slate-400 text-[10px]">{p.nip}</div>
-                      </td>
-                      <td className="py-3 text-slate-300">{p.site}</td>
-                      <td className="py-3 font-mono text-emerald-400">{p.passExpiry}</td>
-                      <td className="py-3">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                          {p.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         </main>
@@ -1212,11 +1388,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: QR Scanner Simulation */}
       {modalType === 'qr_scanner' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
@@ -1224,11 +1400,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
                 <QrCode className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-white">Dynamic QR Checkpoint Scanner</h3>
+              <h3 className="text-lg font-bold text-slate-900">Dynamic QR Checkpoint Scanner</h3>
               <p className="text-xs text-slate-400">Position camera towards rotating cryptographic QR code at checkpoint station.</p>
             </div>
 
-            <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 text-center relative overflow-hidden">
               <div className="w-36 h-36 mx-auto border-2 border-blue-500/60 rounded-xl relative flex items-center justify-center">
                 <span className="w-full h-0.5 bg-blue-500 absolute top-1/2 -translate-y-1/2 animate-pulse"></span>
                 <span className="text-xs font-mono text-blue-300">Scanning...</span>
@@ -1245,7 +1421,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel Scan
               </button>
@@ -1256,16 +1432,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Report Incident */}
       {modalType === 'lapor_insiden' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <AlertTriangle className="w-5 h-5 text-rose-400" />
                 <span>Field Incident Rapid Dispatch</span>
               </h3>
@@ -1280,7 +1456,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <select
                   value={reportCategory}
                   onChange={(e) => setReportCategory(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="Security Breach">Security Breach</option>
                   <option value="Unauthorized Access">Unauthorized Access</option>
@@ -1294,7 +1470,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <select
                   value={reportLocation}
                   onChange={(e) => setReportLocation(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                 >
                   <option value="North Lobby Main Gate">North Lobby Main Gate</option>
                   <option value="Loading Dock Bay A">Loading Dock Bay A</option>
@@ -1340,7 +1516,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   value={reportDescription}
                   onChange={(e) => setReportDescription(e.target.value)}
                   placeholder="Describe observation, involved personnel or vehicles, and corrective actions taken..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
 
@@ -1361,18 +1537,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Dual-Dispatch Success */}
       {modalType === 'dual_dispatch_success' && latestIncidentPayload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
             <div className="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl font-bold border border-emerald-500/40">
               <Check className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Dual-Dispatch Dispatched</h3>
+              <h3 className="text-lg font-bold text-slate-900">Dual-Dispatch Dispatched</h3>
               <p className="text-xs text-slate-300 mt-1">
                 Incident record <span className="font-mono font-bold text-blue-400">{latestIncidentPayload.id}</span> was logged to the security audit ledger and sent to command desks.
               </p>
             </div>
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-xs space-y-1">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1">
               <div className="text-slate-400 font-mono text-[10px]">{latestIncidentPayload.time} &bull; {latestIncidentPayload.location}</div>
               <div className="text-white font-medium">{latestIncidentPayload.note}</div>
             </div>
@@ -1388,11 +1564,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Clock In (Biometric Verification) */}
       {modalType === 'absen_masuk' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
@@ -1400,12 +1576,12 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <Clock className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Biometric Face &amp; Geofence Verification</h3>
+              <h3 className="text-lg font-bold text-slate-900">Biometric Face &amp; Geofence Verification</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Position face within frame. GPS coordinates are cryptographically hashed.
               </p>
             </div>
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-xs space-y-1 font-mono">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 font-mono">
               <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
               <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
               <div className="text-slate-400">Timestamp: <span className="text-emerald-400 font-bold">{currentTime}</span></div>
@@ -1423,7 +1599,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1434,11 +1610,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Clock Out Confirmation */}
       {modalType === 'absen_keluar' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
@@ -1446,12 +1622,12 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <LogOut className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Shift Handover Clock-Out</h3>
+              <h3 className="text-lg font-bold text-slate-900">Shift Handover Clock-Out</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Confirm scheduled shift departure and handover of assigned gear.
               </p>
             </div>
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left text-xs space-y-1 font-mono">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 font-mono">
               <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
               <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
               <div className="text-slate-400">Departure Timestamp: <span className="text-amber-400 font-bold">{currentTime}</span></div>
@@ -1468,7 +1644,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1479,16 +1655,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Shift Exchange & Leave Application */}
       {modalType === 'time_off' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <FileText className="w-5 h-5 text-blue-400" />
                 <span>Shift Exchange &amp; Leave Application</span>
               </h3>
@@ -1510,7 +1686,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   <select
                     value={leaveType}
                     onChange={(e) => setLeaveType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                   >
                     <option value="Annual Leave">Annual Leave</option>
                     <option value="Shift Exchange / Swap">Shift Exchange / Swap</option>
@@ -1526,7 +1702,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                     required
                     value={shiftDate}
                     onChange={(e) => setShiftDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
 
@@ -1538,7 +1714,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                     value={reliefOfficerId}
                     onChange={(e) => setReliefOfficerId(e.target.value)}
                     placeholder="e.g. OP-4822 (Standby Officer ID)"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
 
@@ -1558,16 +1734,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Add Checkpoint (Supervisor) */}
       {modalType === 'tambah_checkpoint' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
             <div>
-              <h3 className="text-lg font-bold text-white">Add Facility Checkpoint</h3>
+              <h3 className="text-lg font-bold text-slate-900">Add Facility Checkpoint</h3>
               <p className="text-xs text-slate-400 mt-1">Deploy a new dynamic QR checkpoint tag within facility boundaries.</p>
             </div>
             <form onSubmit={handleAddCheckpoint} className="space-y-3">
@@ -1579,7 +1755,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   value={newCheckpointName}
                   onChange={(e) => setNewCheckpointName(e.target.value)}
                   placeholder="e.g. West Perimeter Gate 3"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
               <div>
@@ -1589,7 +1765,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   value={newCheckpointZone}
                   onChange={(e) => setNewCheckpointZone(e.target.value)}
                   placeholder="e.g. Outer Boundary Zone"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-white focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
               <div className="pt-2">
@@ -1607,11 +1783,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Top Up BWM Credit Passes (USD Checkout via Dodo Payments) */}
       {modalType === 'topup_seats' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
@@ -1637,8 +1813,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   onClick={() => setSelectedTopupPasses({ qty: pkg.qty, price: pkg.price, tier: pkg.tier })}
                   className={`w-full p-3.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
                     selectedTopupPasses.qty === pkg.qty
-                      ? 'bg-blue-600/20 border-blue-500 text-white'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
                   }`}
                 >
                   <div>
@@ -1660,7 +1836,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               ))}
             </div>
 
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-400">
               Transactions are processed securely via Dodo Payments (Merchant of Record). VAT/GST reverse-charge compliant.
             </div>
 
@@ -1679,7 +1855,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1690,16 +1866,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: SLA Compliance Audit Report */}
       {modalType === 'audit_sla' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <FileText className="w-5 h-5 text-blue-400" />
                 <span>SLA Compliance Audit Report</span>
               </h3>
@@ -1708,7 +1884,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </p>
             </div>
 
-            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-3 text-xs font-mono">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs font-mono">
               <div className="flex justify-between border-b border-slate-800 pb-2">
                 <span className="text-slate-400">Audit Scope:</span>
                 <span className="text-white font-bold">Apex Security Services Ltd (All Sites)</span>
@@ -1742,16 +1918,16 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Cron Handover Evaluator Result */}
       {modalType === 'cron_nudge_result' && cronResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
             <button
               onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
             >
               &times;
             </button>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <Clock className="w-5 h-5 text-blue-400" />
                 <span>Shift Handover Evaluator Results</span>
               </h3>
@@ -1761,19 +1937,19 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] text-blue-400 block font-semibold">T-15 Nudges</span>
                 <span className="text-lg font-black text-white font-mono mt-0.5 block">
                   {cronResult.summary?.pre_shift_nudges_sent ?? 2}
                 </span>
               </div>
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] text-amber-400 block font-semibold">Grace Warnings</span>
                 <span className="text-lg font-black text-white font-mono mt-0.5 block">
                   {cronResult.summary?.grace_warnings_sent ?? 1}
                 </span>
               </div>
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] text-rose-400 block font-semibold">Overdue Flags</span>
                 <span className="text-lg font-black text-white font-mono mt-0.5 block">
                   {cronResult.summary?.unverified_checkouts_marked ?? 0}
@@ -1793,13 +1969,13 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* Modal: Confirm Logout */}
       {modalType === 'logout_confirm' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
             <div className="w-14 h-14 mx-auto rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
               <LogOut className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Sign Out of BWM Portal?</h3>
+              <h3 className="text-lg font-bold text-slate-900">Sign Out of BWM Portal?</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Your authenticated session will be terminated and you will be redirected to the login portal.
               </p>
@@ -1813,7 +1989,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </button>
               <button
                 onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1829,6 +2005,261 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           <span>+{lastTopupAddedQty} BWM Credit Passes credited to pool successfully!</span>
         </div>
       )}
+
+      
+      {/* ============================================================= */}
+      {/* CONTEXTUAL SLIDE-OVER DRAWERS (CTO RFC-018 ARCHITECTURE)       */}
+      {/* ============================================================= */}
+
+      {/* Drawer 1: Officer Telemetry & Roster Profile */}
+      <SlideOverDrawer
+        isOpen={!!selectedOfficerForDrawer}
+        onClose={() => setSelectedOfficerForDrawer(null)}
+        title={selectedOfficerForDrawer?.name || 'Officer Profile'}
+        subtitle={`Badge: ${selectedOfficerForDrawer?.nip} • Post: ${selectedOfficerForDrawer?.post}`}
+        badge={
+          selectedOfficerForDrawer?.status === 'NORMAL'
+            ? 'ON ROUTE • NORMAL'
+            : selectedOfficerForDrawer?.status === 'WARNING'
+            ? 'ATTENTION REQUIRED'
+            : 'ALERT'
+        }
+        badgeVariant={
+          selectedOfficerForDrawer?.status === 'NORMAL'
+            ? 'emerald'
+            : selectedOfficerForDrawer?.status === 'WARNING'
+            ? 'amber'
+            : 'rose'
+        }
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-[10px] text-slate-400 font-mono tracking-wider">LIVE TELEMETRY ACTIVE</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  alert(`Direct priority dispatch radio ping transmitted to ${selectedOfficerForDrawer?.name} (${selectedOfficerForDrawer?.nip})`);
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Send Radio Ping
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOfficerForDrawer(null)}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }
+      >
+        {selectedOfficerForDrawer && (
+          <div className="space-y-6">
+            {/* Telemetry Metric Cards */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Battery Status</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <BatteryCharging className="w-4 h-4 text-emerald-600" />
+                  <span className="text-lg font-black text-slate-900">{selectedOfficerForDrawer.battery}%</span>
+                </div>
+                <span className="text-[10px] text-emerald-600 font-medium">Optimal discharge rate</span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Perimeter Distance</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <Navigation className="w-4 h-4 text-blue-600" />
+                  <span className="text-lg font-black text-slate-900">{selectedOfficerForDrawer.distanceMeter}m</span>
+                </div>
+                <span className="text-[10px] text-slate-500">From geofence center</span>
+              </div>
+            </div>
+
+            {/* Checkpoint Progress */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700">Patrol Checkpoint Progress</span>
+                <span className="text-xs font-black text-blue-600 font-mono">
+                  {selectedOfficerForDrawer.completedPoints} / {selectedOfficerForDrawer.totalPoints} Points
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.round((selectedOfficerForDrawer.completedPoints / selectedOfficerForDrawer.totalPoints) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Clocked in at <span className="font-bold text-slate-700">{selectedOfficerForDrawer.checkInTime}</span>. Route compliance verified via GPS telemetry.
+              </p>
+            </div>
+
+            {/* Status Diagnostics */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Telemetry Diagnostics</h4>
+              <div
+                className={`p-3 rounded-lg border text-xs font-medium ${
+                  selectedOfficerForDrawer.status === 'NORMAL'
+                    ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                    : selectedOfficerForDrawer.status === 'WARNING'
+                    ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+                    : 'bg-rose-50/80 border-rose-200 text-rose-900'
+                }`}
+              >
+                {selectedOfficerForDrawer.statusNote}
+              </div>
+            </div>
+
+            {/* Field Communications */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Field Channel</h4>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200 text-xs">
+                <span className="text-slate-600">WhatsApp Broadcast Line</span>
+                <span className="font-mono font-bold text-slate-900">{selectedOfficerForDrawer.whatsappNumber}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </SlideOverDrawer>
+
+      {/* Drawer 2: Incident Inspection & Escalation */}
+      <SlideOverDrawer
+        isOpen={!!selectedIncidentForDrawer}
+        onClose={() => setSelectedIncidentForDrawer(null)}
+        title={selectedIncidentForDrawer?.id || 'Incident Details'}
+        subtitle={`Reported at ${selectedIncidentForDrawer?.time} • Zone: ${selectedIncidentForDrawer?.location}`}
+        badge={selectedIncidentForDrawer?.urgency === 'Critical Emergency' ? 'CRITICAL EMERGENCY' : 'STANDARD LOG'}
+        badgeVariant={selectedIncidentForDrawer?.urgency === 'Critical Emergency' ? 'rose' : 'amber'}
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-[10px] text-slate-400 font-mono tracking-wider">ENCRYPTED AUDIT TRAIL</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  alert(`Escalation broadcasted to facility emergency desk for ${selectedIncidentForDrawer?.id}`);
+                  setSelectedIncidentForDrawer(null);
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Escalate to Client
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIncidentForDrawer(null)}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }
+      >
+        {selectedIncidentForDrawer && (
+          <div className="space-y-6">
+            <div className="p-4 rounded-xl bg-rose-50/50 border border-rose-200 text-rose-950 space-y-2">
+              <div className="flex items-center gap-2 text-rose-700 font-bold text-xs uppercase tracking-wider">
+                <ShieldAlert className="w-4 h-4" />
+                <span>Incident Summary</span>
+              </div>
+              <p className="text-sm font-medium">{selectedIncidentForDrawer.note}</p>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Responding Personnel</h4>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">{selectedIncidentForDrawer.reporter}</p>
+                  <p className="text-[11px] text-slate-500">First Responding Unit on Scene</p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  On Duty
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Dual Dispatch Synchronized State</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
+                  <span className="text-slate-600">Database Ledger Record</span>
+                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Immutable
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
+                  <span className="text-slate-600">Supervisor Command Relay</span>
+                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Synchronized
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </SlideOverDrawer>
+
+      {/* Drawer 3: Facility Portfolio & Pass Allocation */}
+      <SlideOverDrawer
+        isOpen={!!selectedFacilityForDrawer}
+        onClose={() => setSelectedFacilityForDrawer(null)}
+        title={selectedFacilityForDrawer?.name || 'Facility Overview'}
+        subtitle={`Branch Hub • SLA Health: ${selectedFacilityForDrawer?.sla || '99.8%'}`}
+        badge="ACTIVE FACILITY"
+        badgeVariant="blue"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-[10px] text-slate-400 font-mono tracking-wider">SOVEREIGN QUOTA POOL</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalType('topup_seats');
+                  setSelectedFacilityForDrawer(null);
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer"
+              >
+                Requisition Passes
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFacilityForDrawer(null)}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }
+      >
+        {selectedFacilityForDrawer && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Deployed Guards</span>
+                <div className="text-lg font-black text-slate-900 mt-1">{selectedFacilityForDrawer.personnel || 6} Active</div>
+                <span className="text-[10px] text-emerald-600 font-medium">100% Shift Coverage</span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Pass Consumption</span>
+                <div className="text-lg font-black text-slate-900 mt-1">{selectedFacilityForDrawer.personnel || 6} Passes/mo</div>
+                <span className="text-[10px] text-slate-500">Auto-renewing</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <span className="text-xs font-bold text-slate-700">Deployment Details</span>
+              <p className="text-xs text-slate-600">
+                {selectedFacilityForDrawer.address || 'Facility perimeter secured under Main Agent SLA coverage.'}
+              </p>
+            </div>
+          </div>
+        )}
+      </SlideOverDrawer>
 
       {/* Pwa Install Prompt Helper */}
       <PwaInstallPrompt branding={branding} />
