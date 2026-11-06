@@ -401,7 +401,26 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             is_fnb: isFood,
             tenant_slug: tenantSlug,
             weight_grams: packageTotalWeight,
-            items: isMultiItem ? resolvedItems : (product ? [{ name: product.title, quantity: 1, price: product.price }] : undefined),
+            items: Array.isArray(resolvedItems) && resolvedItems.length > 0
+              ? resolvedItems.map((it: any) => ({
+                  name: it.name || it.productTitle || it.title || '',
+                  quantity: Number(it.quantity || it.qty || 1),
+                  price: Number(it.price || it.unitPrice || 0),
+                  isAddon: Boolean(it.isAddon || it.is_addon),
+                  is_addon: Boolean(it.isAddon || it.is_addon),
+                  requires_equipment: it.requires_equipment !== undefined ? Boolean(it.requires_equipment) : undefined,
+                  category: it.category || it.category_name,
+                  soupVariant: it.soupVariant || it.variant,
+                  selectedSoups: it.selectedSoups,
+                }))
+              : (product ? [{
+                  name: product.title || (product as any).name || '',
+                  quantity: quantity || 1,
+                  price: product.price || 0,
+                  isAddon: Boolean((product as any).isAddon || (product as any).is_addon),
+                  requires_equipment: (product as any).requires_equipment !== undefined ? Boolean((product as any).requires_equipment) : undefined,
+                  category: (product as any).category,
+                }] : undefined),
           }),
         });
 
@@ -2078,14 +2097,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5 font-bold text-slate-200">
                             <Zap className="w-4 h-4 text-amber-400" />
-                            <span>Kurir Dapur Instan</span>
+                            <span>{instantCourierName.toLowerCase().includes('1 arah') ? 'Kurir Instan 1 Arah' : 'Kurir Dapur Instan'}</span>
                           </div>
                           <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            Hari Ini (1-2 Jam)
+                            {instantCourierName.toLowerCase().includes('1 arah') ? '1 - 2 Jam (Diantar Langsung)' : 'Hari Ini (1-2 Jam)'}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
+                          {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') || instantCourierName.toLowerCase().includes('1 arah') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
                         </p>
                         <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
                           <span>Ongkir:</span>

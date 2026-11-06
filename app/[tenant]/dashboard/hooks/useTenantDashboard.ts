@@ -905,7 +905,7 @@ export function useTenantDashboard() {
                     stock: p?.stock !== undefined ? Number(p?.stock) : 999999,
                     sku: p?.sku || `SKU-${idx + 1}`,
                     is_unlimited: p?.is_unlimited_stock ?? p?.is_unlimited ?? true,
-                    weight_grams: p?.weight_grams,
+                    weight_grams: p?.weight_grams !== undefined && p?.weight_grams !== null ? Number(p.weight_grams) : (p?.fulfillment_metadata?.weight_grams !== undefined ? Number(p.fulfillment_metadata.weight_grams) : undefined),
                     fulfillment_metadata: p?.fulfillment_metadata,
                     single_page_config: p?.fulfillment_metadata?.single_page_config || p?.single_page_config,
                   };
@@ -941,7 +941,7 @@ export function useTenantDashboard() {
                 stock: p?.stock !== undefined ? Number(p?.stock) : 999999,
                 sku: p?.sku || `SKU-${idx + 1}`,
                 is_unlimited: p?.is_unlimited !== undefined ? p.is_unlimited : true,
-                weight_grams: p?.weight_grams,
+                weight_grams: p?.weight_grams !== undefined && p?.weight_grams !== null ? Number(p.weight_grams) : (p?.fulfillment_metadata?.weight_grams !== undefined ? Number(p.fulfillment_metadata.weight_grams) : undefined),
                 fulfillment_metadata: p?.fulfillment_metadata,
                 single_page_config: p?.single_page_config || p?.fulfillment_metadata?.single_page_config || p?.metadata?.single_page_config,
               };
@@ -1533,6 +1533,9 @@ export function useTenantDashboard() {
     const safeProd = prod || ({} as ProductItem);
     const prodSlug = safeProd.slug || safeProd.single_page_config?.slug || slugify(safeProd.name || '');
     const resolvedProductType = safeProd.product_type || (safeProd.category?.toLowerCase() === 'fisik' || safeProd.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (safeProd.category?.toLowerCase() === 'jasa' || safeProd.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'));
+    const resolvedWeight = safeProd.weight_grams !== undefined && safeProd.weight_grams !== null
+      ? Number(safeProd.weight_grams)
+      : (safeProd.fulfillment_metadata?.weight_grams !== undefined ? Number(safeProd.fulfillment_metadata.weight_grams) : undefined);
     setProductForm({
       ...safeProd,
       product_type: resolvedProductType,
@@ -1543,6 +1546,7 @@ export function useTenantDashboard() {
       stock: safeProd.stock ?? 100,
       sku: safeProd.sku || `SKU-${safeProd.id}`,
       is_unlimited: safeProd.is_unlimited ?? false,
+      weight_grams: resolvedWeight,
       checkout_type: safeProd.checkout_type || (safeProd.external_url || safeProd.metadata?.external_url ? 'external' : 'internal'),
       external_url: safeProd.external_url || safeProd.metadata?.external_url || '',
       cta_label: safeProd.cta_label || safeProd.metadata?.cta_label || '',
@@ -1656,7 +1660,7 @@ export function useTenantDashboard() {
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
     const isDigital = isDigitalProduct(safeForm);
     const currentPt = isDigital ? 'DIGITAL' : (safeForm.product_type || defaultProductType || '').toUpperCase();
-    const isPhysicalProduct = !isDigital && currentPt === 'PHYSICAL';
+    const isPhysicalProduct = !isDigital && (currentPt === 'PHYSICAL' || currentPt === 'FOOD');
     const isServiceOrDigital = isDigital || currentPt === 'SERVICE' || currentPt === 'DIGITAL_FILE' || currentPt === 'DIGITAL' || currentPt === 'PROFESSIONAL_SERVICE' || currentPt === 'FIELD_SERVICE' || currentPt === 'AGENCY';
     const isPhysicalStock = isPhysicalProduct || (!isServiceOrDigital && (storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD'));
     const isExternalCheckout = safeForm.checkout_type === 'external' || Boolean(safeForm.external_url?.trim());
@@ -1669,17 +1673,21 @@ export function useTenantDashboard() {
 
     const resolvedProductType: ProductType = isDigital
       ? 'DIGITAL'
-      : ((safeForm.product_type || (isPhysicalProduct ? 'PHYSICAL' : isServiceOrDigital ? (currentPt as ProductType) : defaultProductType)) as ProductType);
+      : ((safeForm.product_type || (isPhysicalProduct ? (currentPt === 'FOOD' ? 'FOOD' : 'PHYSICAL') : isServiceOrDigital ? (currentPt as ProductType) : defaultProductType)) as ProductType);
+
+    const resolvedWeight = safeForm.weight_grams !== undefined && safeForm.weight_grams !== null
+      ? Number(safeForm.weight_grams)
+      : (safeForm.fulfillment_metadata?.weight_grams !== undefined ? Number(safeForm.fulfillment_metadata.weight_grams) : 1000);
 
     const updatedProductItem: ProductItem = sanitizeProductPayload({
       ...safeForm,
       product_type: resolvedProductType,
-      type: isDigital ? 'digital' : 'physical',
+      type: isDigital ? 'digital' : (currentPt === 'FOOD' ? 'fnb' : 'physical'),
       is_digital: isDigital,
       price: typeof safeForm.price === 'number' ? safeForm.price : (Number(safeForm.price) || 0),
       is_unlimited: isDigital || isExternalCheckout ? true : (!isPhysicalStock ? true : (safeForm.is_unlimited ?? false)),
       stock: isDigital || isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (safeForm.stock ?? 100)),
-      weight_grams: isPhysicalProduct && !isExternalCheckout ? Number(safeForm.weight_grams || 1000) : 0,
+      weight_grams: isPhysicalProduct && !isExternalCheckout ? resolvedWeight : 0,
       requires_shipping: isRequiresShipping,
       enable_cart: isCartEnabled,
       image: cleanImage,
@@ -1688,6 +1696,10 @@ export function useTenantDashboard() {
       checkout_type: isExternalCheckout ? 'external' : 'internal',
       external_url: isExternalCheckout ? cleanExternalUrl : undefined,
       cta_label: cleanCtaLabel || undefined,
+      fulfillment_metadata: {
+        ...(safeForm.fulfillment_metadata || {}),
+        ...(isPhysicalProduct && !isExternalCheckout ? { weight_grams: resolvedWeight } : {}),
+      },
       metadata: {
         ...(safeForm.metadata || {}),
         product_type: isDigital ? 'DIGITAL' : 'PHYSICAL',

@@ -294,6 +294,8 @@ export async function POST(req: NextRequest) {
             price: Number(it.unitPrice || it.price || 0),
             isAddon: Boolean(it.isAddon || it.is_addon),
             is_addon: Boolean(it.isAddon || it.is_addon),
+            requires_equipment: it.requires_equipment !== undefined ? Boolean(it.requires_equipment) : undefined,
+            category: it.category || it.category_name,
             soupVariant: it.soupVariant || it.variant,
             selectedSoups: it.selectedSoups,
           }))
@@ -304,19 +306,22 @@ export async function POST(req: NextRequest) {
         items: cateringItems.length > 0 ? cateringItems : undefined,
       });
 
-      const officialCourierName = metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)';
+      const isAlacarteOnly = !cateringResult.requires_pickup;
+      const officialCourierName = isAlacarteOnly
+        ? (metaShipping?.internal_courier?.label_oneway || 'Kurir Instan Toko (Pengantaran 1 Arah)')
+        : (metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)');
 
       availableRates.push({
-        id: 'catering_armada_internal',
+        id: isAlacarteOnly ? 'alacarte_armada_internal' : 'catering_armada_internal',
         courier_name: officialCourierName,
-        service: cateringResult.fleetDescription || 'Antar & Jemput Alat Masak Kotor H+1',
+        service: cateringResult.fleetDescription || (isAlacarteOnly ? 'Pengantaran Menu Makanan (Tanpa Pinjam Alat)' : 'Antar & Jemput Alat Masak Kotor H+1'),
         price: cateringResult.totalFee,
-        etd: 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
+        etd: isAlacarteOnly ? 'Hari Ini (1 - 2 Jam Diantar Langsung)' : 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
         type: 'instant',
-        badge: cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP',
+        badge: isAlacarteOnly ? 'Kurir 1 Arah' : (cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP'),
         distance_km: distanceKm,
         provider: 'internal',
-        requires_pickup: true,
+        requires_pickup: cateringResult.requires_pickup,
         notes: cateringResult.notes,
       });
 

@@ -346,7 +346,7 @@ export function buildCateringOrderPayload(params: {
     items: cartItems,
     selected_soups,
     distance_km: distanceKm,
-    requires_pickup: true, // Always true for catering with dirty cookware retrieval
+    requires_pickup: deliveryResult.requires_pickup,
     delivery_fee: deliveryFee,
     total_price: totalPrice,
     rental_schedule,

@@ -182,6 +182,7 @@ export default function ProductFormModal({
         const normPt = String(effectiveProductType).toUpperCase();
         const isPhysical = normPt === 'PHYSICAL';
         const isPhysicalStock = isPhysical || normPt === 'FOOD';
+        const isPhysicalOrFood = isPhysical || normPt === 'FOOD';
         const isServiceOrDigital = normPt === 'DIGITAL_FILE' || normPt === 'DIGITAL' || normPt === 'SERVICE' || normPt === 'PROFESSIONAL_SERVICE' || normPt === 'FIELD_SERVICE' || normPt === 'AGENCY';
         const defaultEnableCart = isPhysical ? true : (isServiceOrDigital ? false : isPhysical);
         const explicitEnableCart = safePrev.metadata?.enable_cart !== undefined
@@ -194,6 +195,12 @@ export default function ProductFormModal({
         const customBadge = safePrev.custom_badge?.trim();
         const resolvedBadge = customBadge || (safePrev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(safePrev.category.trim().toLowerCase()) ? safePrev.category.trim() : meta.defaultBadge);
 
+        const resolvedWeight = safePrev.weight_grams !== undefined && safePrev.weight_grams !== null && safePrev.weight_grams > 0
+          ? safePrev.weight_grams
+          : (safePrev.fulfillment_metadata?.weight_grams !== undefined && safePrev.fulfillment_metadata?.weight_grams !== null && Number(safePrev.fulfillment_metadata.weight_grams) > 0
+            ? Number(safePrev.fulfillment_metadata.weight_grams)
+            : (reqs.requiresWeight ? 1000 : 0));
+
         return {
           ...safePrev,
           image: sanitizeImageUrl(safePrev.image),
@@ -204,8 +211,8 @@ export default function ProductFormModal({
           custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
           is_unlimited: !isPhysicalStock ? true : (safePrev.is_unlimited !== undefined ? safePrev.is_unlimited : reqs.strategy === 'DIGITAL'),
           stock: !isPhysicalStock ? 999999 : (safePrev.stock ?? 100),
-          weight_grams: !isPhysical ? 0 : (safePrev.weight_grams ?? 0),
-          requires_shipping: isPhysical,
+          weight_grams: !isPhysicalOrFood ? 0 : resolvedWeight,
+          requires_shipping: isPhysicalOrFood,
           enable_cart: resolvedEnableCart,
           metadata: {
             ...(safePrev.metadata || {}),
@@ -662,6 +669,7 @@ export default function ProductFormModal({
     const safeProductForm = productForm || ({} as ProductItem);
     const currentPt = (safeProductForm?.product_type || currentType || '').toUpperCase();
     const isPhysical = currentPt === 'PHYSICAL';
+    const isPhysicalOrFood = isPhysical || currentPt === 'FOOD';
     const isAffiliate = safeProductForm?.checkout_type === 'external';
 
     // Sanitize order bump items gracefully: only keep items with non-empty name
@@ -706,16 +714,17 @@ export default function ProductFormModal({
       category: safeProductForm.category || activeVerticalMeta.defaultBadge,
       price: typeof safeProductForm.price === 'number' ? safeProductForm.price : (Number(safeProductForm.price) || 0),
       promo_price: safeProductForm.promo_price ? Number(safeProductForm.promo_price) : undefined,
-      is_unlimited: !isPhysical ? true : (safeProductForm.is_unlimited ?? false),
-      stock: !isPhysical ? 999999 : (safeProductForm.stock ?? 100),
-      weight_grams: isPhysical && !isAffiliate ? Number(safeProductForm.weight_grams || 1000) : 0,
-      requires_shipping: isPhysical && !isAffiliate,
+      is_unlimited: !isPhysicalOrFood ? true : (safeProductForm.is_unlimited ?? false),
+      stock: !isPhysicalOrFood ? 999999 : (safeProductForm.stock ?? 100),
+      weight_grams: isPhysicalOrFood && !isAffiliate ? Number(safeProductForm.weight_grams ?? safeProductForm.fulfillment_metadata?.weight_grams ?? 1000) : 0,
+      requires_shipping: isPhysicalOrFood && !isAffiliate,
       enable_cart: isCartEnabled,
       facilities: resolvedFacilities,
       features: resolvedFeatures,
       order_bumps: cleanOrderBumps,
       fulfillment_metadata: {
         ...(safeProductForm.fulfillment_metadata || {}),
+        ...(isPhysicalOrFood && !isAffiliate ? { weight_grams: Number(safeProductForm.weight_grams ?? safeProductForm.fulfillment_metadata?.weight_grams ?? 1000) } : {}),
         order_bumps: cleanOrderBumps,
         delivery_type: safeProductForm.fulfillment_metadata?.delivery_type || (isPhysical ? 'PHYSICAL' : (isServiceCluster ? 'WHATSAPP_GROUP' : 'DOWNLOAD_LINK')),
         access_url: safeProductForm.download_url || safeProductForm.fulfillment_metadata?.access_url || '',

@@ -44,6 +44,7 @@ import {
 } from '@/components/shabu-ajhi/SoupSlotSelector';
 import {
   countCateringPackages,
+  isCateringPackage,
   LARGE_ORDER_WARNING_MESSAGE,
   SHABU_AJHI_HANDOVER_PHONE,
 } from '@/lib/shipping/deliveryCalculator';
@@ -96,6 +97,8 @@ interface CartItem {
   soupVariant?: string;
   selectedSoups?: Record<string, number>;
   isAddon?: boolean;
+  requires_equipment?: boolean;
+  category?: string;
   unit?: string;
   image?: string;
 }
@@ -173,7 +176,9 @@ export function buildCateringWhatsAppUrl(params: {
   pickupPreference?: string;
   pickupDate?: string;
   formattedPickupDate?: string;
+  hasEquipment?: boolean;
 }): { message: string; waUrl: string; cleanWa: string } {
+  const hasEquipment = params.hasEquipment ?? true;
   const itemsSummary = params.cartItems
     .map((item, idx) => {
       const soupNote = item.soupVariant ? ` (Varian: ${item.soupVariant})` : '';
@@ -193,11 +198,15 @@ export function buildCateringWhatsAppUrl(params: {
       ? 'Hari yang Sama (Setelah Acara)'
       : '');
   const resolvedPickupDateText = params.formattedPickupDate || params.pickupDate || '';
-  const pickupScheduleLine = resolvedPickupLabel
+  const pickupScheduleLine = hasEquipment && resolvedPickupLabel
     ? `• Penjemputan Alat: ${resolvedPickupLabel}${resolvedPickupDateText ? ` (${resolvedPickupDateText})` : ''}\n`
     : '';
 
-  const message = `Halo ${params.storeName}, saya mau pesan Home Service Shabu & BBQ:\n\n` +
+  const equipmentGuaranteeText = hasEquipment
+    ? `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\nPeralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n`
+    : `✨ *Pengantaran Menu Makanan Langsung (Tanpa Pinjam Alat)*\nPesanan menu siap masak/santap diantar langsung oleh kurir ke lokasi Anda.\n\n`;
+
+  const message = `Halo ${params.storeName}, saya mau pesan ${hasEquipment ? 'Home Service Shabu & BBQ' : 'Menu Shabu & BBQ (Alacarte)'}:\n\n` +
     `📅 *Jadwal Pengantaran:*\n` +
     `• Hari / Tanggal: ${params.formattedDeliveryDate} (${params.deliveryDate})\n` +
     `• Slot Jam: ${params.selectedTimeSlot}\n` +
@@ -206,8 +215,7 @@ export function buildCateringWhatsAppUrl(params: {
     `🍲 *Rincian Pesanan:*\n` +
     `${itemsSummary}\n\n` +
     `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
-    `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\n` +
-    `Peralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n` +
+    equipmentGuaranteeText +
     `Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
 
   const cleanWa = params.waNumber.replace(/\D/g, '') || '6285861091103';
@@ -605,6 +613,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           soupVariant: formattedSoup,
           selectedSoups: isShabuRelated ? allocation : undefined,
           isAddon: false,
+          category: (p as any).category,
+          requires_equipment: (p as any).requires_equipment,
           image: p.image_url || p.image,
         },
       };
@@ -653,6 +663,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           price: Number(addon.price || 0),
           qty: 1,
           isAddon: true,
+          category: (addon as any).category || 'Alacarte (Additional)',
+          requires_equipment: false,
           unit: addon.unit,
           image: addon.image,
         },
@@ -746,6 +758,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
+    const hasEquipmentInCart = Object.values(cart).some((c) => isCateringPackage(c));
+
     const { waUrl } = buildCateringWhatsAppUrl({
       storeName: effectiveName,
       waNumber,
@@ -760,6 +774,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       locationDetails,
       cartItems: Object.values(cart),
       totalPrice,
+      hasEquipment: hasEquipmentInCart,
     });
 
     if (typeof window !== 'undefined') {
@@ -781,6 +796,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
+    const hasEquipmentInCart = Object.values(cart).some((c) => isCateringPackage(c));
     const combinedTitles = Object.values(cart)
       .map((c) => `${c.name} (x${c.qty}${c.soupVariant ? ` - ${c.soupVariant}` : ''})`)
       .join(', ');
@@ -795,11 +811,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       items: Object.values(cart).map((c) => ({
         productId: c.id,
         productTitle: c.name,
+        name: c.name,
         unitPrice: c.price,
+        price: c.price,
         quantity: c.qty,
         variant: c.soupVariant,
+        isAddon: Boolean(c.isAddon),
+        is_addon: Boolean(c.isAddon),
+        category: c.category,
+        requires_equipment: c.requires_equipment,
       })),
-      notes: `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${locationDetails}`,
+      notes: hasEquipmentInCart
+        ? `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${locationDetails}`
+        : `Jadwal Pengantaran: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${locationDetails} (Menu Alacarte / Tanpa Alat)`,
       metadata: {
         booking: {
           event_date: deliveryDate,
