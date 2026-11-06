@@ -224,7 +224,7 @@ export class PostgresTenantPassLedger {
 
       // 2. Lock & Inspect Webhook Inbox Entry FOR UPDATE by idempotency_key or (provider, event_id)
       const inboxRes = await this.client.query(
-        `SELECT id, provider, event_id, idempotency_key, raw_payload, status, retry_count
+        `SELECT id, provider, event_id, idempotency_key, tenant_id, raw_payload, status, retry_count
          FROM ${this.targetSchema}.workforce_webhook_inbox
          WHERE idempotency_key = $1 OR (provider = $2 AND event_id = $3)
          FOR UPDATE`,
@@ -232,28 +232,33 @@ export class PostgresTenantPassLedger {
       );
 
       let inboxId: string;
-      if (inboxRes.rows.length > 0) {
+      // Invariant 1: Reject Ambiguous Identity Lookup (Fail-Closed)
+      if (inboxRes.rows.length > 1) {
+        throw new SecurityInvariantViolation("AMBIGUOUS_WEBHOOK_IDENTITY: Query matched multiple distinct inbox records");
+      }
+
+      // Invariant 2: Single Record Found - Verify Complete Identity & Authoritative Tenant
+      if (inboxRes.rows.length === 1) {
         const row = inboxRes.rows[0];
         inboxId = row.id;
 
-        // Security Invariant: Verify provider and event_id match
-        if (row.provider !== provider || row.event_id !== eventId) {
-          throw new SecurityInvariantViolation(
-            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Webhook inbox entry mismatch (expected provider: ${provider}, event: ${eventId}; found provider: ${row.provider}, event: ${row.event_id})`
-          );
+        // Verify Identity Integrity: all identifiers must match exactly
+        if (
+          row.idempotency_key !== idempotencyKey ||
+          row.provider !== provider ||
+          row.event_id !== eventId
+        ) {
+          throw new SecurityInvariantViolation("IDENTITY_CONFLICT: Webhook record identity mismatch");
         }
 
-        // Security Invariant: Verify tenant_id isolation in raw_payload
-        const storedPayload = typeof row.raw_payload === 'string' ? JSON.parse(row.raw_payload) : (row.raw_payload || {});
-        const storedTenantId = storedPayload.tenant_id || storedPayload.tenantId;
+        // Verify Authoritative Tenant Ownership
+        const storedTenantId = row.tenant_id || (typeof row.raw_payload === 'string' ? JSON.parse(row.raw_payload) : row.raw_payload)?.tenant_id;
         if (storedTenantId && storedTenantId !== tenantId) {
-          throw new SecurityInvariantViolation(
-            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Webhook inbox entry with event ${eventId} is owned by tenant ${storedTenantId}, attempted access by tenant ${tenantId}`
-          );
+          throw new SecurityInvariantViolation("CROSS_TENANT_IDEMPOTENCY_MISMATCH");
         }
 
         if (row.status === 'PROCESSED') {
-          // Already successfully processed: increment retry_count, commit and return without mutating ledger
+          // Replay webhook cannot alter provider, event_id, tenant_id, or original transaction
           await this.client.query(
             `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET retry_count = retry_count + 1 WHERE id = $1`,
             [inboxId]
@@ -272,28 +277,29 @@ export class PostgresTenantPassLedger {
             status: 'DUPLICATE_ACKNOWLEDGED',
           };
         } else {
-          // Update status to PROCESSING
+          // Transition status to PROCESSING
           await this.client.query(
             `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET status = 'PROCESSING' WHERE id = $1`,
             [inboxId]
           );
         }
       } else {
-        // Initial ingestion directly with status 'PROCESSING' and embedded tenant_id for cross-tenant isolation
+        // Invariant 3: Initial ingestion with Authoritative tenant_id column
         const payloadToStore = typeof rawPayload === 'object' && rawPayload !== null
-          ? { ...rawPayload, tenant_id: rawPayload.tenant_id || rawPayload.tenantId || tenantId }
+          ? { ...rawPayload, tenant_id: tenantId }
           : { payload: rawPayload, tenant_id: tenantId };
 
         const insertInboxRes = await this.client.query(
           `INSERT INTO ${this.targetSchema}.workforce_webhook_inbox (
-            provider, event_id, idempotency_key, event_type, raw_payload, headers, status, retry_count, received_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'PROCESSING', 0, NOW())
+            provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'PROCESSING', 0, NOW())
           RETURNING id`,
           [
             provider,
             eventId,
             idempotencyKey,
             eventType,
+            tenantId,
             JSON.stringify(payloadToStore),
             JSON.stringify(headers),
           ]

@@ -610,7 +610,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       const mockClient: any = {
         query: jest.fn().mockImplementation((queryText: string) => {
           executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
-          if (queryText.includes('WHERE idempotency_key = $1 FOR UPDATE')) {
+          if (queryText.includes('workforce_webhook_inbox') && queryText.includes('FOR UPDATE')) {
             return Promise.resolve({ rows: [] }); // Not yet in inbox
           }
           if (queryText.includes('INSERT INTO workforce_staging.workforce_webhook_inbox')) {
@@ -1001,6 +1001,130 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
           ).rejects.toThrow('CROSS_TENANT_IDEMPOTENCY_MISMATCH');
         } finally {
           client2.release();
+        }
+      });
+
+      test('f. Conflicting Identities Test: query matching multiple distinct records must throw AMBIGUOUS_WEBHOOK_IDENTITY and rollback', async () => {
+        const ts = Date.now();
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Record A
+          const keyA = `idemp_confA_${ts}`;
+          const evtA = `evt_confA_${ts}`;
+          const tenantA = `tenant_confA_${ts}`;
+          await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId: evtA,
+            idempotencyKey: keyA,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 1000 },
+            headers: {},
+            tenantId: tenantA,
+            batchId: 'BATCH_A',
+            deltaPasses: 10,
+          });
+
+          // Record B
+          const keyB = `idemp_confB_${ts}`;
+          const evtB = `evt_confB_${ts}`;
+          const tenantB = `tenant_confB_${ts}`;
+          await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId: evtB,
+            idempotencyKey: keyB,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 1000 },
+            headers: {},
+            tenantId: tenantB,
+            batchId: 'BATCH_B',
+            deltaPasses: 10,
+          });
+
+          // Conflicting request combining keyA and evtB
+          const ambiguousTenant = `tenant_ambig_${ts}`;
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: evtB,
+              idempotencyKey: keyA,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 1000 },
+              headers: {},
+              tenantId: ambiguousTenant,
+              batchId: 'BATCH_AMBIG',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('AMBIGUOUS_WEBHOOK_IDENTITY');
+
+          // Verify clean rollback: 0 mutations for ambiguousTenant
+          const balRes = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [ambiguousTenant]
+          );
+          expect(Number(balRes.rows[0].count)).toBe(0);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('g. Cross-Tenant Replay Tampering: Replay existing payload with different claiming tenant must reject with SecurityInvariantViolation', async () => {
+        const ts = Date.now();
+        const legitTenant = `tenant_replay_legit_${ts}`;
+        const adversaryTenant = `tenant_replay_adversary_${ts}`;
+        const eventId = `evt_replay_tamper_${ts}`;
+        const idempotencyKey = `idemp_replay_tamper_${ts}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Initial legitimate purchase
+          const legitRes = await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId,
+            idempotencyKey,
+            eventType: 'payment.succeeded',
+            rawPayload: { amount: 37500 },
+            headers: { 'x-signature': 'sig_valid' },
+            tenantId: legitTenant,
+            batchId: 'BATCH_REPLAY_LEGIT',
+            deltaPasses: 25,
+          });
+          expect(legitRes.isDuplicate).toBe(false);
+          expect(legitRes.balanceAfter).toBe(25);
+
+          // Adversary attempts replay of same event claiming ownership
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId,
+              idempotencyKey,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 37500 },
+              headers: { 'x-signature': 'sig_valid' },
+              tenantId: adversaryTenant,
+              batchId: 'BATCH_REPLAY_HIJACK',
+              deltaPasses: 25,
+            })
+          ).rejects.toThrow('CROSS_TENANT_IDEMPOTENCY_MISMATCH');
+
+          // Legit tenant balance remains exactly 25
+          const balRes = await client.query(
+            `SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [legitTenant]
+          );
+          expect(Number(balRes.rows[0].balance_after)).toBe(25);
+
+          // Adversary has 0 rows in ledger
+          const advRes = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [adversaryTenant]
+          );
+          expect(Number(advRes.rows[0].count)).toBe(0);
+        } finally {
+          client.release();
         }
       });
     });
