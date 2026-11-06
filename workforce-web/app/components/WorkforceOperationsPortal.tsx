@@ -41,7 +41,7 @@ import PwaInstallPrompt from './PwaInstallPrompt';
 import SlideOverDrawer from './SlideOverDrawer';
 import EmptyState from './EmptyState';
 import { CardSkeleton, RosterCardSkeleton } from './LoadingSkeleton';
-import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw } from 'lucide-react';
+import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw, Printer } from 'lucide-react';
 
 interface CheckpointItem {
   id: string;
@@ -97,6 +97,19 @@ export interface AllocatedPersonnel {
   onTimeAttendance: string;
   checkpointScans: string;
   incidentReports: string;
+  division?: string;
+  attendanceStatus?: 'ON_DUTY' | 'LEAVE_REVIEW' | 'LATE';
+  lateMinutes?: number;
+  medicalLeave?: {
+    requestDate: string;
+    reason: string;
+    doctorName: string;
+    clinicName: string;
+    daysOff: number;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    documentNumber?: string;
+    diagnosis?: string;
+  };
 }
 
 export interface WorkforceOperationsPortalProps {
@@ -174,6 +187,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     | 'tambah_fasilitas'
     | 'tambah_personel'
     | 'detail_personel'
+    | 'review_izin'
+    | 'tambah_titik_patroli'
+    | 'cetak_qr_checkpoint'
     | null
   >(null);
 
@@ -406,6 +422,54 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   const [newOfficerPost, setNewOfficerPost] = useState('Lobby Utama');
   const [newOfficerShift, setNewOfficerShift] = useState('Pagi (07:00 - 15:00)');
   const [newOfficerPhoto, setNewOfficerPhoto] = useState<string | null>(null);
+  const [newOfficerDivision, setNewOfficerDivision] = useState<string>('🛡️ Satuan Pengamanan (BUJP / Security)');
+
+  // Filter Status Tab: [ Semua Personel ] | [ On Duty (Hadir) ] | [ Izin / Sakit (Review) ] | [ Terlambat ]
+  const [personnelStatusFilter, setPersonnelStatusFilter] = useState<'ALL' | 'ON_DUTY' | 'LEAVE_REVIEW' | 'LATE'>('ALL');
+  const [selectedPersonnelForLeave, setSelectedPersonnelForLeave] = useState<AllocatedPersonnel | null>(null);
+
+  // Branch Drill-down Sub-Tab: [ Roster Personel Cabang ] | [ Titik Patroli / Pos Jaga ]
+  const [branchSubTab, setBranchSubTab] = useState<'roster' | 'checkpoints'>('roster');
+
+  // Branch Checkpoint Management State
+  const [branchCheckpoints, setBranchCheckpoints] = useState<
+    Record<string, Array<{ id: string; name: string; frequency: string; qrCode: string; status: 'ACTIVE' | 'INACTIVE'; lastPatrol?: string }>>
+  >({
+    'Metro Financial Tower Hub': [
+      { id: 'CP-01', name: 'Pintu Darurat Lt 2 & Tangga Kebakaran', frequency: 'Tiap 1 Jam', qrCode: 'BWM-MFT-CP01-8XF9', status: 'ACTIVE', lastPatrol: '14 menit lalu' },
+      { id: 'CP-02', name: 'Ruang Server & Datacenter UPS', frequency: 'Tiap 30 Menit', qrCode: 'BWM-MFT-CP02-99Y2', status: 'ACTIVE', lastPatrol: '8 menit lalu' },
+      { id: 'CP-03', name: 'Loading Dock Bay A & Gerbang Logistik', frequency: 'Tiap 2 Jam', qrCode: 'BWM-MFT-CP03-L0D4', status: 'ACTIVE', lastPatrol: '35 menit lalu' },
+      { id: 'CP-04', name: 'Heavy Vehicle Staging Sector', frequency: 'Tiap 2 Jam', qrCode: 'BWM-MFT-CP04-HV71', status: 'ACTIVE', lastPatrol: '52 menit lalu' },
+      { id: 'CP-05', name: 'Lobby Utama & Lift Eksekutif', frequency: 'Tiap 1 Jam', qrCode: 'BWM-MFT-CP05-LBY1', status: 'ACTIVE', lastPatrol: '19 menit lalu' },
+    ],
+    'Logistics Terminal 4 Bay': [
+      { id: 'CP-01', name: 'Gerbang Kontainer Masuk (Inbound Gate)', frequency: 'Tiap 1 Jam', qrCode: 'BWM-LT4-CP01-GAT1', status: 'ACTIVE', lastPatrol: '20 menit lalu' },
+      { id: 'CP-02', name: 'Gudang Transit Kargo Berbahaya (B3)', frequency: 'Tiap 30 Menit', qrCode: 'BWM-LT4-CP02-B3DG', status: 'ACTIVE', lastPatrol: '11 menit lalu' },
+      { id: 'CP-03', name: 'Perimeter Pagar Barat & CCTV Tower', frequency: 'Tiap 2 Jam', qrCode: 'BWM-LT4-CP03-TWR8', status: 'ACTIVE', lastPatrol: '40 menit lalu' },
+    ],
+    'Sudirman Central Tower': [
+      { id: 'CP-01', name: 'Lobby Selatan & Drop-off VIP', frequency: 'Tiap 1 Jam', qrCode: 'BWM-SCT-CP01-VIP1', status: 'ACTIVE', lastPatrol: '5 menit lalu' },
+      { id: 'CP-02', name: 'Basement B3 Ruang Pompa & Trafo', frequency: 'Tiap 2 Jam', qrCode: 'BWM-SCT-CP02-PWR9', status: 'ACTIVE', lastPatrol: '25 menit lalu' },
+    ],
+    'East Boundary Perimeter Hub': [
+      { id: 'CP-01', name: 'Perimeter Outer Fence Guard Tower A', frequency: 'Tiap 1 Jam', qrCode: 'BWM-EBP-CP01-TWA1', status: 'ACTIVE', lastPatrol: '15 menit lalu' },
+      { id: 'CP-02', name: 'Fuel & Utility Vault Post', frequency: 'Tiap 2 Jam', qrCode: 'BWM-EBP-CP02-FLV2', status: 'ACTIVE', lastPatrol: '45 menit lalu' },
+    ],
+  });
+
+  const [newBranchCheckpointName, setNewBranchCheckpointName] = useState('');
+  const [newBranchCheckpointFrequency, setNewBranchCheckpointFrequency] = useState('Tiap 2 Jam');
+  const [newBranchCheckpointCode, setNewBranchCheckpointCode] = useState('');
+  const [selectedCheckpointForPrint, setSelectedCheckpointForPrint] = useState<{ id: string; name: string; frequency: string; qrCode: string; branch: string } | null>(null);
+
+  // Enterprise Dispatch Toast
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  function triggerToast(msg: string) {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 6000);
+  }
 
   // Reseller Allocated Personnel Roster with 30-Day Expiry Countdown & Performance KPIs
   const [allocatedPersonnelList, setAllocatedPersonnelList] = useState<AllocatedPersonnel[]>([
@@ -427,6 +491,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '142 / 144 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-02',
@@ -446,6 +512,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '97.5%',
       checkpointScans: '138 / 140 Scan QR',
       incidentReports: '1 Insiden Terselesaikan',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-03',
@@ -465,6 +533,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '94.0%',
       checkpointScans: '110 / 115 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '📦 Field Sales & Canvasser (FMCG / Logistik)',
+      attendanceStatus: 'LATE',
+      lateMinutes: 18,
     },
     {
       id: 'PAS-04',
@@ -484,6 +555,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '150 / 150 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🧹 Facility Care & Cleaning Service',
+      attendanceStatus: 'LEAVE_REVIEW',
+      medicalLeave: {
+        requestDate: '07 Nov 2026',
+        reason: 'Demam tinggi dan gejala ISPA setelah patroli malam hujan lebat',
+        doctorName: 'dr. Haryo Wicaksono, Sp.PD',
+        clinicName: 'Klinik Pratama Sehat Medika',
+        daysOff: 2,
+        status: 'PENDING',
+        documentNumber: 'SKD/2026/XI/0821',
+        diagnosis: 'Febris Akut & Kelelahan Fisik (Fatigue Syndrome)',
+      },
     },
     {
       id: 'PAS-05',
@@ -503,6 +586,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '99.0%',
       checkpointScans: '130 / 132 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🩺 Tenaga Kesehatan & Homecare',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-06',
@@ -522,6 +607,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '92.5%',
       checkpointScans: '98 / 102 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'LATE',
+      lateMinutes: 24,
     },
     {
       id: 'PAS-07',
@@ -541,6 +629,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '98.5%',
       checkpointScans: '140 / 142 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '📦 Field Sales & Canvasser (FMCG / Logistik)',
+      attendanceStatus: 'LEAVE_REVIEW',
+      medicalLeave: {
+        requestDate: '06 Nov 2026',
+        reason: 'Cedera pergelangan kaki saat tugas inspeksi lapangan',
+        doctorName: 'dr. Anita Rahayu, Sp.OT',
+        clinicName: 'RS Medika Sudirman',
+        daysOff: 3,
+        status: 'PENDING',
+        documentNumber: 'RSMS/MED/2026/9102',
+        diagnosis: 'Ankle Sprain Grade I',
+      },
     },
     {
       id: 'PAS-08',
@@ -560,6 +660,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '99.2%',
       checkpointScans: '125 / 126 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-09',
@@ -579,6 +681,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '160 / 160 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🧹 Facility Care & Cleaning Service',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-10',
@@ -598,6 +702,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '96.5%',
       checkpointScans: '115 / 118 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-11',
@@ -617,6 +723,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '148 / 149 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-12',
@@ -636,6 +744,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '98.0%',
       checkpointScans: '135 / 137 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-13',
@@ -655,6 +765,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '155 / 155 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🩺 Tenaga Kesehatan & Homecare',
+      attendanceStatus: 'ON_DUTY',
     },
     {
       id: 'PAS-14',
@@ -674,6 +786,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '97.0%',
       checkpointScans: '132 / 134 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     },
   ]);
 
@@ -733,7 +847,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     setAvailablePasses((prev) => prev - 1);
 
     const newId = `PAS-${String(allocatedPersonnelList.length + 1).padStart(2, '0')}`;
-    const newOfficer = {
+    const newOfficer: AllocatedPersonnel = {
       id: newId,
       name: newOfficerName,
       nip: newOfficerNip,
@@ -751,6 +865,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       onTimeAttendance: '100%',
       checkpointScans: '0 / 0 Scan QR',
       incidentReports: '0 Insiden Terbuka',
+      division: newOfficerDivision || '🛡️ Satuan Pengamanan (BUJP / Security)',
+      attendanceStatus: 'ON_DUTY',
     };
 
     setAllocatedPersonnelList((prev) => [newOfficer, ...prev]);
@@ -762,6 +878,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     setNewOfficerNip('');
     setNewOfficerWa('+62 ');
     setNewOfficerPhoto(null);
+    setNewOfficerDivision('🛡️ Satuan Pengamanan (BUJP / Security)');
 
     alert(`Petugas ${newOfficer.name} (${newOfficer.nip}) berhasil didaftarkan dan diaktifkan di ${newOfficer.site}! 1 BWM Pass telah dipotong.`);
   }
@@ -951,6 +1068,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       setIncidents([created, ...incidents]);
       setLatestIncidentPayload(created);
       setReportDescription('');
+      triggerToast('🚨 Peringatan darurat berhasil dialirkan ke Grup WhatsApp Operasional (Instance: boontrack-workforce via Railway vigilant-joy)');
       setModalType('dual_dispatch_success');
     } catch {
       // Local fallback
@@ -969,6 +1087,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       setIncidents([created, ...incidents]);
       setLatestIncidentPayload(created);
       setReportDescription('');
+      triggerToast('🚨 Peringatan darurat berhasil dialirkan ke Grup WhatsApp Operasional (Instance: boontrack-workforce via Railway vigilant-joy)');
       setModalType('dual_dispatch_success');
     } finally {
       setIncidentSubmitting(false);
@@ -1849,160 +1968,411 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               const activeBranch = facilities.find((f) => f.name === personnelBranchFilter);
               if (!activeBranch) return null;
               const branchOfficerCount = allocatedPersonnelList.filter((p) => p.site === activeBranch.name).length;
+              const branchCps = branchCheckpoints[activeBranch.name] || [];
               return (
-                <div className="p-4 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
-                        ACTIVE BRANCH DRILL-DOWN
-                      </span>
-                      <h4 className="text-sm font-bold text-slate-900">{activeBranch.name}</h4>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
-                      <span className="flex items-center space-x-1">
-                        <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                        <span>{activeBranch.address}</span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <Shield className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Supervisor: <strong>{activeBranch.supervisor}</strong></span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <Users className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>
-                          Total Petugas Bertugas: <strong>{branchOfficerCount} Personel</strong>
+                <div className="p-4 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 space-y-3">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                          ACTIVE BRANCH DRILL-DOWN
                         </span>
-                      </span>
+                        <h4 className="text-sm font-bold text-slate-900">{activeBranch.name}</h4>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                        <span className="flex items-center space-x-1">
+                          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{activeBranch.address}</span>
+                        </span>
+                        <span className="flex items-center space-x-1">
+                          <Shield className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Supervisor: <strong>{activeBranch.supervisor}</strong></span>
+                        </span>
+                        <span className="flex items-center space-x-1">
+                          <Users className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>
+                            Total Petugas Bertugas: <strong>{branchOfficerCount} Personel</strong>
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewOfficerBranch(activeBranch.name);
+                          setModalType('tambah_personel');
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Daftarkan Personel Cabang Ini</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelBranchFilter('all')}
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                      >
+                        <span>&larr; Kembali ke Tampilan Semua Cabang</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-2 shrink-0">
+                  {/* 3. Sub-Tab Drill-Down: [ Roster Personel Cabang ] & [ Titik Patroli / Pos Jaga ] */}
+                  <div className="flex items-center space-x-2 border-t border-blue-200/60 pt-3">
                     <button
                       type="button"
-                      onClick={() => {
-                        setNewOfficerBranch(activeBranch.name);
-                        setModalType('tambah_personel');
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                      onClick={() => setBranchSubTab('roster')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+                        branchSubTab === 'roster'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Daftarkan Personel Cabang Ini</span>
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Roster Personel Cabang ({branchOfficerCount})</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPersonnelBranchFilter('all')}
-                      className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                      onClick={() => setBranchSubTab('checkpoints')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+                        branchSubTab === 'checkpoints'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                      }`}
                     >
-                      <span>&larr; Kembali ke Tampilan Semua Cabang</span>
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Titik Patroli / Pos Jaga ({branchCps.length})</span>
                     </button>
                   </div>
                 </div>
               );
             })()}
 
-            {/* Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Nama Petugas &amp; ID Badge</th>
-                    <th className="py-3 px-4">Fasilitas / Cabang Penempatan</th>
-                    <th className="py-3 px-4">Tanggal Mulai Pass</th>
-                    <th className="py-3 px-4">Masa Aktif Pass</th>
-                    <th className="py-3 px-4 text-center">Auto-Renew</th>
-                    <th className="py-3 px-4 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {allocatedPersonnelList
-                    .filter((p) => personnelBranchFilter === 'all' || p.site === personnelBranchFilter)
-                    .map((officer) => (
-                      <tr
-                        key={officer.id}
+            {/* Checkpoint Configuration View (When Active Branch & Checkpoints Tab Selected) */}
+            {personnelBranchFilter !== 'all' && branchSubTab === 'checkpoints' ? (() => {
+              const activeBranch = facilities.find((f) => f.name === personnelBranchFilter);
+              const branchName = activeBranch?.name || personnelBranchFilter;
+              const branchCps = branchCheckpoints[branchName] || [];
+              return (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                        <QrCode className="w-4 h-4 text-blue-600" />
+                        <span>Titik Patroli &amp; Checkpoint Fisik — {branchName}</span>
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Konfigurasi rute barcode fisik, frekuensi kunjungan SLA patroli, dan pencetakan stiker QR geofence.
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        type="button"
                         onClick={() => {
-                          setSelectedPersonnelForDetail(officer);
-                          setModalType('detail_personel');
+                          setModalType('tambah_titik_patroli');
                         }}
-                        className="hover:bg-blue-50/50 transition cursor-pointer group"
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
                       >
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
-                              {officer.photo ? (
-                                <img src={officer.photo} alt={officer.name} className="w-full h-full object-cover" />
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Tambah Titik Patroli Baru</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (branchCps.length > 0) {
+                            setSelectedCheckpointForPrint({
+                              id: branchCps[0].id,
+                              name: branchCps[0].name,
+                              frequency: branchCps[0].frequency,
+                              qrCode: branchCps[0].qrCode,
+                              branch: branchName,
+                            });
+                            setModalType('cetak_qr_checkpoint');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Cetak Stiker QR Checkpoint</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-3 px-4">Pos / Titik Checkpoint</th>
+                          <th className="py-3 px-4">Frekuensi Kunjungan SLA</th>
+                          <th className="py-3 px-4">Kode Enkripsi QR</th>
+                          <th className="py-3 px-4">Status &amp; Kunjungan Terakhir</th>
+                          <th className="py-3 px-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {branchCps.map((cp) => (
+                          <tr key={cp.id} className="hover:bg-slate-50 transition">
+                            <td className="py-3.5 px-4">
+                              <div className="font-bold text-slate-900">{cp.name}</div>
+                              <div className="font-mono text-[11px] text-blue-600 font-bold">{cp.id} &bull; Geofence SLA ±2.5m</div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 text-[11px]">
+                                {cp.frequency}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
+                              {cp.qrCode}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 mr-2">
+                                ✓ Aktif
+                              </span>
+                              <span className="text-slate-500 text-[11px] font-mono">{cp.lastPatrol || 'Terpantau'}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCheckpointForPrint({
+                                    id: cp.id,
+                                    name: cp.name,
+                                    frequency: cp.frequency,
+                                    qrCode: cp.qrCode,
+                                    branch: branchName,
+                                  });
+                                  setModalType('cetak_qr_checkpoint');
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer inline-flex items-center space-x-1"
+                              >
+                                <Printer className="w-3 h-3 text-slate-500" />
+                                <span>Cetak QR</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })() : (
+              <>
+                {/* 2. Filter Tab Status: [ Semua Personel ] | [ On Duty (Hadir) ] | [ Izin / Sakit (Review) ] | [ Terlambat ] */}
+                {(() => {
+                  const filteredByBranch = allocatedPersonnelList.filter(
+                    (p) => personnelBranchFilter === 'all' || p.site === personnelBranchFilter
+                  );
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelStatusFilter('ALL')}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center space-x-1.5 ${
+                          personnelStatusFilter === 'ALL'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>Semua Personel</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${personnelStatusFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                          {filteredByBranch.length}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelStatusFilter('ON_DUTY')}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center space-x-1.5 ${
+                          personnelStatusFilter === 'ON_DUTY'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>On Duty (Hadir)</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${personnelStatusFilter === 'ON_DUTY' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                          {filteredByBranch.filter((p) => p.attendanceStatus === 'ON_DUTY').length}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelStatusFilter('LEAVE_REVIEW')}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center space-x-1.5 ${
+                          personnelStatusFilter === 'LEAVE_REVIEW'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                        <span>Izin / Sakit (Review)</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${personnelStatusFilter === 'LEAVE_REVIEW' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-700'}`}>
+                          {filteredByBranch.filter((p) => p.attendanceStatus === 'LEAVE_REVIEW').length}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelStatusFilter('LATE')}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center space-x-1.5 ${
+                          personnelStatusFilter === 'LATE'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                        <span>Terlambat</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${personnelStatusFilter === 'LATE' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                          {filteredByBranch.filter((p) => p.attendanceStatus === 'LATE').length}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Table */}
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Nama Petugas, Divisi &amp; ID Badge</th>
+                        <th className="py-3 px-4">Fasilitas / Cabang Penempatan</th>
+                        <th className="py-3 px-4">Status Kehadiran</th>
+                        <th className="py-3 px-4">Masa Aktif Pass</th>
+                        <th className="py-3 px-4 text-center">Auto-Renew</th>
+                        <th className="py-3 px-4 text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {allocatedPersonnelList
+                        .filter((p) => personnelBranchFilter === 'all' || p.site === personnelBranchFilter)
+                        .filter((p) => {
+                          if (personnelStatusFilter === 'ALL') return true;
+                          return p.attendanceStatus === personnelStatusFilter;
+                        })
+                        .map((officer) => (
+                          <tr
+                            key={officer.id}
+                            onClick={() => {
+                              setSelectedPersonnelForDetail(officer);
+                              setModalType('detail_personel');
+                            }}
+                            className="hover:bg-blue-50/50 transition cursor-pointer group"
+                          >
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                  {officer.photo ? (
+                                    <img src={officer.photo} alt={officer.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="font-bold text-xs text-blue-700">
+                                      {officer.name.split(' ').slice(1, 3).map((n) => n[0]).join('') || 'SEC'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="font-bold text-slate-900 group-hover:text-blue-600 transition flex items-center space-x-1.5">
+                                    <span>{officer.name}</span>
+                                    <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition" />
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono text-[11px] text-blue-600 font-bold">
+                                      {officer.nip} &bull; {officer.id}
+                                    </span>
+                                    {/* 1. Universal Vertical Badge */}
+                                    <span className="inline-flex items-center px-2 py-0.2 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                      {officer.division || '🛡️ Satuan Pengamanan (BUJP / Security)'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-700">
+                              <div className="flex items-center space-x-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                                <span>{officer.site}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                {officer.post || 'Pos Utama'} &bull; {officer.shift || 'Shift Pagi'}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {/* 2. Attendance Status Badges */}
+                              {officer.attendanceStatus === 'LATE' ? (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 font-bold border border-amber-200 text-[11px]">
+                                  ⚠️ Terlambat {officer.lateMinutes || 18} Menit
+                                </span>
+                              ) : officer.attendanceStatus === 'LEAVE_REVIEW' ? (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 font-bold border border-purple-200 text-[11px]">
+                                  🩺 Izin Sakit (Surat Dokter Siap Review)
+                                </span>
                               ) : (
-                                <span className="font-bold text-xs text-blue-700">
-                                  {officer.name.split(' ').slice(1, 3).map((n) => n[0]).join('') || 'SEC'}
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
+                                  ✓ Hadir On Duty
                                 </span>
                               )}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-900 group-hover:text-blue-600 transition flex items-center space-x-1.5">
-                                <span>{officer.name}</span>
-                                <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition" />
-                              </div>
-                              <div className="font-mono text-[11px] text-blue-600 font-bold">
-                                {officer.nip} &bull; {officer.id}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 font-medium text-slate-700">
-                          <div className="flex items-center space-x-1.5">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{officer.site}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            {officer.post || 'Pos Utama'} &bull; {officer.shift || 'Shift Pagi'}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-slate-600">
-                          {officer.startDate}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {officer.daysLeft <= 5 ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 text-[11px]">
-                              Sisa {officer.daysLeft} Hari (Perpanjangan Kritis)
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
-                              Sisa {officer.daysLeft} Hari (Aktif)
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTogglePersonnelAutoRenew(officer.id);
-                            }}
-                            className={`px-3 py-1 rounded-full font-bold text-[11px] transition cursor-pointer ${
-                              officer.autoRenew
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                            }`}
-                          >
-                            {officer.autoRenew ? '✓ On' : 'Off'}
-                          </button>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRenewPersonnelPass(officer.id, officer.name);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
-                          >
-                            Perpanjang Pass
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {officer.daysLeft <= 5 ? (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 text-[11px]">
+                                  Sisa {officer.daysLeft} Hari (Kritis)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
+                                  Sisa {officer.daysLeft} Hari
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTogglePersonnelAutoRenew(officer.id);
+                                }}
+                                className={`px-3 py-1 rounded-full font-bold text-[11px] transition cursor-pointer ${
+                                  officer.autoRenew
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                                }`}
+                              >
+                                {officer.autoRenew ? '✓ On' : 'Off'}
+                              </button>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              {officer.attendanceStatus === 'LEAVE_REVIEW' ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPersonnelForLeave(officer);
+                                    setModalType('review_izin');
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition cursor-pointer inline-flex items-center space-x-1"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span>Review Surat Dokter</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRenewPersonnelPass(officer.id, officer.name);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                                >
+                                  Perpanjang Pass
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </main>
       )}
@@ -2703,8 +3073,22 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
               </div>
 
-              {/* c. Penempatan Pos & Shift */}
+              {/* c. Penempatan Pos, Divisi & Shift */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Divisi / Sektor Penugasan (Universal Multi-Industri)</label>
+                  <select
+                    value={newOfficerDivision}
+                    onChange={(e) => setNewOfficerDivision(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-bold"
+                  >
+                    <option value="🛡️ Satuan Pengamanan (BUJP / Security)">🛡️ Satuan Pengamanan (BUJP / Security)</option>
+                    <option value="📦 Field Sales & Canvasser (FMCG / Logistik)">📦 Field Sales & Canvasser (FMCG / Logistik)</option>
+                    <option value="🧹 Facility Care & Cleaning Service">🧹 Facility Care & Cleaning Service</option>
+                    <option value="🩺 Tenaga Kesehatan & Homecare">🩺 Tenaga Kesehatan & Homecare</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Cabang / Fasilitas Penempatan</label>
                   <select
@@ -2808,6 +3192,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-bold text-slate-900 truncate">{selectedPersonnelForDetail.name}</h3>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    {selectedPersonnelForDetail.division || '🛡️ Satuan Pengamanan (BUJP / Security)'}
+                  </span>
                   {/* b. Badge Status Pass */}
                   {selectedPersonnelForDetail.daysLeft <= 5 ? (
                     <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 text-[11px]">
@@ -2887,6 +3274,30 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </div>
             </div>
 
+            {/* Indikator Over-Achievement Harian (CTO Mandate) */}
+            <div className="p-3.5 rounded-xl bg-linear-to-r from-emerald-50 to-teal-50 border border-emerald-200 flex items-start space-x-3 text-xs">
+              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs font-black text-sm">
+                ★
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-950 text-xs">Pencapaian Patroli Harian (Over-Achievement)</span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white uppercase tracking-wider">
+                    BONUS TERCAPAI
+                  </span>
+                </div>
+                <p className="text-emerald-900 font-bold text-xs">
+                  Target Harian: 10 Titik | Realisasi: 20 Titik (Bonus 200% &bull; +15 Poin Disiplin)
+                </p>
+                <div className="w-full bg-emerald-200 h-2 rounded-full overflow-hidden mt-1">
+                  <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }}></div>
+                </div>
+                <p className="text-[10px] text-emerald-700">
+                  Petugas menyelesaikan rute patroli ganda dengan validasi geofence sempurna tanpa anomali.
+                </p>
+              </div>
+            </div>
+
             {/* d. Tombol Aksi */}
             <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
               <button
@@ -2929,6 +3340,289 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   <span>Perpanjang Pass (+30 Hari)</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Inspeksi Izin Sakit & Surat Dokter (CTO Mandate) */}
+      {modalType === 'review_izin' && selectedPersonnelForLeave && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 relative shadow-2xl text-slate-900 my-8">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+
+            <div>
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-200 mb-1">
+                <span>VERIFIKASI MEDIS &amp; SURAT KETERANGAN DOKTER</span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Inspeksi Izin Sakit Personel</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Review dokumen resmi bukti sakit klinik/rumah sakit untuk validasi SLA absensi dan pengecualian denda.
+              </p>
+            </div>
+
+            {/* Detail Pengajuan */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nama Personel:</span>
+                <span className="font-bold text-slate-900">{selectedPersonnelForLeave.name} ({selectedPersonnelForLeave.nip})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Divisi &amp; Penempatan:</span>
+                <span className="font-bold text-slate-900">{selectedPersonnelForLeave.division} &bull; {selectedPersonnelForLeave.site}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tanggal Pengajuan:</span>
+                <span className="font-mono text-slate-900">{selectedPersonnelForLeave.medicalLeave?.requestDate || '07 Nov 2026'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Alasan Sakit / Izin:</span>
+                <span className="font-semibold text-slate-800 text-right max-w-xs">{selectedPersonnelForLeave.medicalLeave?.reason || 'Demam tinggi dan kelelahan fisik'}</span>
+              </div>
+            </div>
+
+            {/* Preview Surat Dokter */}
+            <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3 border border-slate-700 shadow-inner">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded-md bg-purple-500 flex items-center justify-center font-bold text-xs">
+                    🩺
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">{selectedPersonnelForLeave.medicalLeave?.clinicName || 'Klinik Pratama Sehat Medika'}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">No. Izin Faskes: 503/019/DINKES-KOTA/2023</div>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  QR VERIFIED
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs text-slate-300">
+                <div className="font-bold text-slate-100 text-center uppercase tracking-wider text-[11px]">
+                  SURAT KETERANGAN ISTIRAHAT SAKIT
+                </div>
+                <div className="text-center font-mono text-[10px] text-slate-400">
+                  No: {selectedPersonnelForLeave.medicalLeave?.documentNumber || 'SKD/2026/XI/0821'}
+                </div>
+                <div className="pt-2 text-[11px] leading-relaxed">
+                  Menerangkan bahwa pasien <strong>{selectedPersonnelForLeave.name}</strong>, umur 29 tahun, setelah pemeriksaan fisik didiagnosa: <span className="text-purple-300 font-bold">{selectedPersonnelForLeave.medicalLeave?.diagnosis || 'Febris Akut & Kelelahan Fisik (Fatigue Syndrome)'}</span>.
+                </div>
+                <div className="text-[11px] leading-relaxed">
+                  Perlu istirahat selama <strong>{selectedPersonnelForLeave.medicalLeave?.daysOff || 2} hari</strong> terhitung tanggal 07 Nov 2026 s/d 08 Nov 2026.
+                </div>
+                <div className="pt-2 flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-800">
+                  <span>Dokter Pemeriksa: <strong>{selectedPersonnelForLeave.medicalLeave?.doctorName || 'dr. Haryo Wicaksono, Sp.PD'}</strong></span>
+                  <span className="font-mono text-emerald-400">✓ Tanda Tangan Digital Terverifikasi</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Keputusan Buttons */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerToast(`⚠️ Permintaan verifikasi ulang surat dokter telah dikirimkan ke klinik ${selectedPersonnelForLeave.medicalLeave?.clinicName || 'klinik terkait'}.`);
+                  setModalType(null);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Minta Verifikasi Ulang
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAllocatedPersonnelList((prev) =>
+                    prev.map((p) =>
+                      p.id === selectedPersonnelForLeave.id
+                        ? { ...p, attendanceStatus: 'ON_DUTY', medicalLeave: p.medicalLeave ? { ...p.medicalLeave, status: 'APPROVED' } : undefined }
+                        : p
+                    )
+                  );
+                  triggerToast(`✅ Surat dokter ${selectedPersonnelForLeave.name} telah disetujui! Status absensi dan kuota pass diamankan.`);
+                  setModalType(null);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Setujui Izin Sakit</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Tambah Titik Patroli / Pos Jaga (CTO Mandate) */}
+      {modalType === 'tambah_titik_patroli' && personnelBranchFilter !== 'all' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+            <div>
+              <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200 mb-1">
+                <span>CHECKPOINT CONFIGURATION</span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Tambah Titik Patroli Baru</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Registrasi titik pos fisik di cabang <strong>{personnelBranchFilter}</strong> untuk validasi patroli petugas.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newBranchCheckpointName.trim()) return;
+                const branchName = personnelBranchFilter;
+                const code = newBranchCheckpointCode.trim() || `BWM-${branchName.slice(0, 3).toUpperCase()}-CP${Date.now().toString().slice(-4)}`;
+                const newCp = {
+                  id: `CP-0${(branchCheckpoints[branchName]?.length || 0) + 1}`,
+                  name: newBranchCheckpointName.trim(),
+                  frequency: newBranchCheckpointFrequency,
+                  qrCode: code,
+                  status: 'ACTIVE' as const,
+                  lastPatrol: 'Baru Didaftarkan',
+                };
+                setBranchCheckpoints((prev) => ({
+                  ...prev,
+                  [branchName]: [...(prev[branchName] || []), newCp],
+                }));
+                triggerToast(`📍 Titik patroli "${newBranchCheckpointName}" berhasil ditambahkan ke ${branchName}!`);
+                setNewBranchCheckpointName('');
+                setNewBranchCheckpointCode('');
+                setModalType(null);
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Titik / Pos Jaga</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Pintu Darurat Lt 2 / Ruang Server"
+                  value={newBranchCheckpointName}
+                  onChange={(e) => setNewBranchCheckpointName(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Frekuensi Kunjungan Patroli SLA</label>
+                <select
+                  value={newBranchCheckpointFrequency}
+                  onChange={(e) => setNewBranchCheckpointFrequency(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-bold"
+                >
+                  <option value="Tiap 30 Menit">Tiap 30 Menit (High Priority)</option>
+                  <option value="Tiap 1 Jam">Tiap 1 Jam (Standard Patrol)</option>
+                  <option value="Tiap 2 Jam">Tiap 2 Jam (Routine Watch)</option>
+                  <option value="Tiap 4 Jam">Tiap 4 Jam (Perimeter Check)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Kode Enkripsi QR</label>
+                <input
+                  type="text"
+                  placeholder="Otomatis di-generate bila kosong"
+                  value={newBranchCheckpointCode}
+                  onChange={(e) => setNewBranchCheckpointCode(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Kode unik cryptographic hash untuk ditempelkan pada fisik pos.</p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center space-x-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Simpan Titik Patroli</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cetak Stiker QR Checkpoint (CTO Mandate) */}
+      {modalType === 'cetak_qr_checkpoint' && selectedCheckpointForPrint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+
+            <div>
+              <span className="text-[10px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                OFFICIAL BWM STIKER QR POS
+              </span>
+              <h3 className="text-lg font-bold text-slate-900 mt-1.5">Stiker QR Checkpoint Fisik</h3>
+              <p className="text-xs text-slate-500">Tempelkan stiker ini pada lokasi pos jaga / titik rute patroli.</p>
+            </div>
+
+            {/* Badge Preview */}
+            <div className="p-5 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-300 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="text-left">
+                  <div className="text-[10px] font-mono text-slate-400">BWM WORKFORCE QR PASS</div>
+                  <div className="text-xs font-black text-slate-900">{selectedCheckpointForPrint.branch}</div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                  {selectedCheckpointForPrint.frequency}
+                </span>
+              </div>
+
+              {/* QR Graphic */}
+              <div className="w-36 h-36 mx-auto bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col items-center justify-center space-y-1">
+                <QrCode className="w-24 h-24 text-slate-900" />
+                <span className="font-mono text-[9px] font-bold text-blue-600">{selectedCheckpointForPrint.qrCode}</span>
+              </div>
+
+              <div className="text-center space-y-0.5">
+                <div className="text-xs font-bold text-slate-900">{selectedCheckpointForPrint.name}</div>
+                <div className="text-[10px] text-slate-500 font-mono">Dual-Band GPS Geofence Lock Enabled</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.print();
+                }}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>🖨️ Cetak Stiker QR Checkpoint</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalType(null)}
+                className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Tutup Pratinjau
+              </button>
             </div>
           </div>
         </div>
@@ -3330,6 +4024,26 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           </div>
         )}
       </SlideOverDrawer>
+
+      {/* Enterprise Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-slate-700 flex items-start space-x-3">
+          <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="flex-1 text-xs">
+            <p className="font-bold text-sm text-white">BWM Operations Dispatch</p>
+            <p className="text-slate-300 mt-0.5 leading-relaxed">{toastMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="text-slate-400 hover:text-white text-base font-bold cursor-pointer"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Pwa Install Prompt Helper */}
       <PwaInstallPrompt branding={branding} />
