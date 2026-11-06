@@ -20,6 +20,8 @@ import {
   getBaseRate,
   CateringItem,
   countCateringPackages,
+  hasEquipmentItems,
+  calculateShabuAjhiOneWayRate,
   SHABU_AJHI_HANDOVER_PHONE,
 } from '@/lib/shipping/deliveryCalculator';
 import { evaluateFleetRules } from '@/lib/cart/fleetRules';
@@ -90,6 +92,29 @@ export function calculateShabuAjhiRate(
       fleetType: 'none',
       fleetDescription: 'Jarak Tidak Valid',
       notes: 'Jarak pengiriman tidak valid.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+    };
+  }
+
+  // ALACARTE / NON-EQUIPMENT 1-WAY MOTORCYCLE DELIVERY CHECK
+  const hasEquipment = hasEquipmentItems(items);
+  if (items && items.length > 0 && !hasEquipment) {
+    const oneWayFee = calculateShabuAjhiOneWayRate(distanceKm);
+    return {
+      distanceKm,
+      baseFee: oneWayFee,
+      surchargeFee: 0,
+      excessKm: 0,
+      multiplier: 1.0,
+      totalFee: oneWayFee,
+      provider: 'INTERNAL_DRIVER',
+      requiresPickup: false,
+      requires_pickup: false,
+      isDeliverable: true,
+      outOfRange: false,
+      fleetType: 'motor',
+      fleetDescription: 'Kurir Instan 1 Arah (Pengantaran Menu Tanpa Alat)',
+      notes: 'Pengantaran 1 arah menu alacarte/makanan tanpa peminjaman alat masak.',
       handoverContact: SHABU_AJHI_HANDOVER_PHONE,
     };
   }

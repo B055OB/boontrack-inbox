@@ -627,7 +627,7 @@ export default function ProductsTab({
                         if (reqs.requiresWeight) {
                           return (
                             <span className="text-slate-500 font-mono text-[11px] truncate">
-                              Berat: {p.weight_grams || 1000}g
+                              Berat: {p.weight_grams ?? p.fulfillment_metadata?.weight_grams ?? 1000}g
                             </span>
                           );
                         }

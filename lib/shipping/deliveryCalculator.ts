@@ -58,6 +58,11 @@ export interface CateringItem {
   price?: number;
   isAddon?: boolean;
   is_addon?: boolean;
+  requires_equipment?: boolean;
+  requiresEquipment?: boolean;
+  category?: string;
+  category_name?: string;
+  product_type?: string;
   soupVariant?: string;
   selectedSoups?: Record<string, number>;
 }
@@ -118,46 +123,122 @@ export function getBaseRate(distanceKm: number): number | null {
 }
 
 /**
- * Checks if an item is a main catering package (e.g. Oishii, Ichiban, Mabar A, Mabar B).
- * Excludes add-ons (extra beef, extra soup, vegetables, drinks).
+ * Checks if an item is a main catering package requiring equipment (e.g. Oishii, Ichiban, Mabar A, Mabar B, Sewa Alat).
+ * Excludes add-ons (extra beef, extra soup, vegetables, drinks) and alacarte/frozen/non-equipment items.
  */
 export function isCateringPackage(item: CateringItem): boolean {
   if (item.isAddon === true || item.is_addon === true) {
+    return false;
+  }
+  if (item.requires_equipment === false || item.requiresEquipment === false) {
+    return false;
+  }
+
+  const category = (item.category || item.category_name || '').toLowerCase().trim();
+  if (
+    category.includes('alacarte') ||
+    category.includes('tanpa alat') ||
+    category.includes('bento') ||
+    category.includes('minuman') ||
+    category.includes('beverage') ||
+    category.includes('frozen') ||
+    category.includes('side dish') ||
+    category.includes('extra') ||
+    category.includes('addon')
+  ) {
     return false;
   }
 
   const normalized = (item.name || '').toLowerCase().trim();
   if (!normalized) return false;
 
-  // Exclude explicit addon keywords
+  // Exclude explicit addon keywords & non-equipment items
   if (
     normalized.startsWith('ekstra') ||
     normalized.startsWith('extra') ||
     normalized.startsWith('addon') ||
     normalized.startsWith('tambahan') ||
     normalized.includes('sayur campur') ||
-    normalized.includes('daging slice')
+    normalized.includes('daging slice') ||
+    normalized.includes('beef slice') ||
+    normalized.includes('ayam slice') ||
+    normalized.includes('marinasi') ||
+    normalized.includes('saus') ||
+    normalized.includes('sauce') ||
+    normalized.includes('kuah') ||
+    normalized.includes('sambal') ||
+    normalized.includes('kimchi') ||
+    normalized.includes('udon') ||
+    normalized.includes('fishball') ||
+    normalized.includes('baso') ||
+    normalized.includes('bakso') ||
+    normalized.includes('bento') ||
+    normalized.includes('tanpa alat') ||
+    normalized.includes('nasi') ||
+    normalized.includes('tea') ||
+    normalized.includes('teh') ||
+    normalized.includes('yakult') ||
+    normalized.includes('squash') ||
+    normalized.includes('lemonade')
   ) {
     return false;
   }
 
-  // Count recognized catering packages or anything with 'paket'
+  // Explicit equipment requirement
+  if (
+    item.requires_equipment === true ||
+    item.requiresEquipment === true ||
+    category.includes('paket alat') ||
+    category.includes('sewa alat') ||
+    category.includes('paket occasion')
+  ) {
+    return true;
+  }
+
+  // Recognized catering packages with cookware equipment
   if (
     normalized.includes('oishi') ||
     normalized.includes('oishii') ||
     normalized.includes('ichiban') ||
     normalized.includes('mabar') ||
-    normalized.includes('paket') ||
-    normalized.includes('combo') ||
-    normalized.includes('shabu') ||
-    normalized.includes('suki') ||
-    normalized.includes('bbq') ||
-    normalized.includes('grill')
+    normalized.includes('sakura') ||
+    normalized.includes('aishiteru') ||
+    normalized.includes('bestie') ||
+    normalized.includes('romantic') ||
+    normalized.includes('graduation') ||
+    normalized.includes('sewa alat') ||
+    (normalized.includes('paket') && !normalized.includes('tanpa alat'))
   ) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Checks whether any item in the order requires catering cookware equipment (kompor, grill, panci).
+ * If empty or undefined items provided, defaults to true (fail-safe catering equipment mode).
+ */
+export function hasEquipmentItems(items?: CateringItem[]): boolean {
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return true;
+  }
+  return items.some((item) => isCateringPackage(item));
+}
+
+/**
+ * Calculates 1-way motorcycle delivery rate for alacarte/non-equipment orders:
+ * - Base distance (<= 4 km): Rp 12.000
+ * - Extra distance (> 4 km): +Rp 2.800 / km
+ * - Rounded to nearest 500: Math.max(12000, Math.round((12000 + Math.max(0, distanceKm - 4) * 2800) / 500) * 500)
+ */
+export function calculateShabuAjhiOneWayRate(distanceKm: number): number {
+  if (typeof distanceKm !== 'number' || isNaN(distanceKm) || distanceKm <= 0) {
+    return 12000;
+  }
+  const extraKm = Math.max(0, distanceKm - 4);
+  const rawFee = 12000 + (extraKm * 2800);
+  return Math.max(12000, Math.round(rawFee / 500) * 500);
 }
 
 /**
@@ -254,6 +335,28 @@ export function calculateDeliveryFee(
       fleetDescription: 'Jarak Tidak Valid',
       error: 'Jarak pengiriman tidak valid.',
       handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+    };
+  }
+
+  // 1b. Alacarte / Non-Equipment 1-Way Delivery Check (No Cookware Pickup)
+  const hasEquipment = hasEquipmentItems(items);
+  if (items && items.length > 0 && !hasEquipment) {
+    const oneWayFee = calculateShabuAjhiOneWayRate(distanceKm);
+    return {
+      isDeliverable: true,
+      outOfRange: false,
+      distanceKm,
+      baseFee: oneWayFee,
+      multiplier: 1.0,
+      totalFee: oneWayFee,
+      totalPackages: 0,
+      requiresManualCoordination: false,
+      requires_pickup: false,
+      fleetType: 'motor',
+      fleetDescription: 'Kurir Instan 1 Arah (Pengantaran Menu Tanpa Alat)',
+      notes: 'Pengantaran 1 arah menu alacarte/makanan tanpa peminjaman alat masak.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+      provider: 'INTERNAL_DRIVER',
     };
   }
 
