@@ -17,6 +17,7 @@ import {
   createMockInvoice,
   PRECONFIGURED_TAX_REGIMES,
   TenantPassLedger,
+  PostgresTenantPassLedger,
 } from '@/packages/workforce-billing';
 
 describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy Engine', () => {
@@ -407,5 +408,103 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
 
       expect(ledger.getBalance(tenantA)).toBe(0);
     });
+
+    test('PostgresTenantPassLedger: Executes BEGIN ... SELECT FOR UPDATE ... COMMIT', async () => {
+      const executedQueries: string[] = [];
+      const mockClient: any = {
+        query: jest.fn().mockImplementation((queryText: string, params?: any[]) => {
+          executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
+
+          if (queryText.includes('WHERE idempotency_key = $1')) {
+            return Promise.resolve({ rows: [] }); // not duplicate
+          }
+          if (queryText.includes('FOR UPDATE')) {
+            return Promise.resolve({ rows: [{ balance_after: 50 }] }); // current balance 50
+          }
+          if (queryText.includes('INSERT INTO')) {
+            return Promise.resolve({ rows: [] });
+          }
+          return Promise.resolve({ rows: [] });
+        }),
+      };
+
+      const pgLedger = new PostgresTenantPassLedger(mockClient, 'workforce_staging');
+      const result = await pgLedger.mutateBalanceAtomic({
+        tenantId: 'tenant_pg_audit_01',
+        batchId: 'BATCH_100',
+        deltaPasses: 10,
+        reason: 'PURCHASE',
+        idempotencyKey: 'idemp_pg_test_01',
+      });
+
+      expect(result.isDuplicate).toBe(false);
+      expect(result.balanceAfter).toBe(60); // 50 + 10
+
+      // Invariants verification
+      expect(executedQueries[0]).toBe('BEGIN');
+      expect(executedQueries.some((q) => q.includes('FOR UPDATE'))).toBe(true);
+      expect(executedQueries.some((q) => q.includes('INSERT INTO workforce_staging.tenant_pass_ledger'))).toBe(true);
+      expect(executedQueries[executedQueries.length - 1]).toBe('COMMIT');
+    });
+
+    test('PostgresTenantPassLedger: Executes ROLLBACK on negative balance violation', async () => {
+      const executedQueries: string[] = [];
+      const mockClient: any = {
+        query: jest.fn().mockImplementation((queryText: string) => {
+          executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
+          if (queryText.includes('WHERE idempotency_key = $1')) {
+            return Promise.resolve({ rows: [] });
+          }
+          if (queryText.includes('FOR UPDATE')) {
+            return Promise.resolve({ rows: [{ balance_after: 5 }] }); // current balance 5
+          }
+          return Promise.resolve({ rows: [] });
+        }),
+      };
+
+      const pgLedger = new PostgresTenantPassLedger(mockClient, 'workforce_staging');
+
+      // Attempt to deduct 10 passes when balance is only 5
+      await expect(
+        pgLedger.mutateBalanceAtomic({
+          tenantId: 'tenant_pg_audit_01',
+          batchId: 'BATCH_100',
+          deltaPasses: -10,
+          reason: 'ALLOCATION',
+          idempotencyKey: 'idemp_pg_fail_01',
+        })
+      ).rejects.toThrow('ERR_NEGATIVE_BALANCE');
+
+      expect(executedQueries[0]).toBe('BEGIN');
+      expect(executedQueries[executedQueries.length - 1]).toBe('ROLLBACK');
+    });
+
+    test('PostgresTenantPassLedger: Executes ON CONFLICT UPSERT for webhook idempotency', async () => {
+      let capturedQuery = '';
+      const mockClient: any = {
+        query: jest.fn().mockImplementation((queryText: string) => {
+          capturedQuery = queryText.trim().replace(/\s+/g, ' ');
+          return Promise.resolve({
+            rows: [{ id: 'inb_test_123', status: 'RECEIVED', retry_count: 1, is_new_delivery: false }],
+          });
+        }),
+      };
+
+      const pgLedger = new PostgresTenantPassLedger(mockClient, 'workforce_staging');
+      const res = await pgLedger.ingestPersistentWebhook({
+        provider: 'DODO_PAYMENTS',
+        eventId: 'evt_pg_replay_01',
+        idempotencyKey: 'idemp_pg_replay_01',
+        eventType: 'payment.succeeded',
+        rawPayload: { amount: 15000 },
+        headers: { 'x-signature': 'abc' },
+      });
+
+      expect(capturedQuery).toContain('ON CONFLICT (idempotency_key) DO UPDATE');
+      expect(capturedQuery).toContain('SET retry_count = workforce_staging.workforce_webhook_inbox.retry_count + 1');
+      expect(res.isDuplicate).toBe(true);
+      expect(res.retryCount).toBe(1);
+    });
   });
 });
+

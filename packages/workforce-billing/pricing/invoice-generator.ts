@@ -169,3 +169,4 @@ export function createMockInvoice(params: CreateMockInvoiceParams): MockInvoice 
   // 5. Enforce Immutability via Deep Freeze
   return deepFreeze(invoice);
 }
+

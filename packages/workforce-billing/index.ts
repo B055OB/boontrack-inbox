@@ -17,4 +17,5 @@ export * from './reconciliation/reconciliation-engine';
 export * from './pricing/marginal-pricing-engine';
 export * from './pricing/invoice-generator';
 export * from './ledger/tenant-pass-ledger';
+export * from './ledger/postgres-tenant-pass-ledger';
 

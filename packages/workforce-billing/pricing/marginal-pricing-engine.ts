@@ -126,3 +126,4 @@ export function calculateMarginalProgressivePrice(
     calculatedAt: new Date().toISOString(),
   };
 }
+

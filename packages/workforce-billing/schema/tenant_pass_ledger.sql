@@ -20,3 +20,4 @@ CREATE TABLE IF NOT EXISTS workforce_staging.tenant_pass_ledger (
 
 CREATE INDEX IF NOT EXISTS idx_tenant_pass_ledger_tenant ON workforce_staging.tenant_pass_ledger(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_pass_ledger_idempotency ON workforce_staging.tenant_pass_ledger(idempotency_key);
+
