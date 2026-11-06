@@ -63,7 +63,10 @@ export class PostgresTenantPassLedger {
 
     await this.client.query('BEGIN');
     try {
-      // 1. Enforce Idempotency Key Uniqueness at Database Level
+      // 1. Transactional Advisory Lock on Tenant: Guarantees serialization even for cold-start (0 rows)
+      await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);
+
+      // 2. Enforce Idempotency Key Uniqueness at Database Level
       const existingRes = await this.client.query(
         `SELECT entry_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
         [idempotencyKey]
@@ -79,12 +82,12 @@ export class PostgresTenantPassLedger {
         };
       }
 
-      // 2. Multi-Container Concurrency Guard: Row-Level Locking via SELECT ... FOR UPDATE
+      // 3. Multi-Container Concurrency Guard: Row-Level Locking via SELECT ... FOR UPDATE
       const lockRes = await this.client.query(
         `SELECT balance_after
          FROM ${this.targetSchema}.tenant_pass_ledger
          WHERE tenant_id = $1
-         ORDER BY created_at DESC
+         ORDER BY created_at DESC, balance_after DESC
          LIMIT 1
          FOR UPDATE`,
         [tenantId]
@@ -105,7 +108,7 @@ export class PostgresTenantPassLedger {
       await this.client.query(
         `INSERT INTO ${this.targetSchema}.tenant_pass_ledger (
           entry_id, tenant_id, batch_id, delta_passes, balance_after, reason, idempotency_key, metadata, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp())`,
         [entryId, tenantId, batchId, deltaPasses, newBalance, reason, idempotencyKey, JSON.stringify(metadata)]
       );
 
@@ -158,5 +161,170 @@ export class PostgresTenantPassLedger {
       retryCount: Number(row.retry_count),
       status: row.status,
     };
+  }
+
+  /**
+   * Executes atomic binding between Webhook Inbox and Tenant Pass Ledger.
+   * Single Database Transaction (BEGIN ... COMMIT):
+   * 1. Transactional Advisory Lock on tenant (cold-start protection).
+   * 2. Lock & update webhook_inbox record from 'RECEIVED' -> 'PROCESSING' FOR UPDATE.
+   * 3. Idempotently mutate tenant pass ledger (+deltaPasses) with row-level lock & anti-negative check.
+   * 4. Update webhook_inbox record -> 'PROCESSED' with processed_at = NOW().
+   * If any step fails, entire transaction is cleanly ROLLBACKed.
+   */
+  public async processWebhookAndMutateLedgerAtomic(params: {
+    provider: string;
+    eventId: string;
+    idempotencyKey: string;
+    eventType: string;
+    rawPayload: any;
+    headers: Record<string, string>;
+    tenantId: string;
+    batchId: string;
+    deltaPasses: number;
+    reason?: 'PURCHASE' | 'ALLOCATION' | 'REVERSAL' | 'RENEWAL';
+    metadata?: Record<string, any>;
+  }): Promise<{
+    isDuplicate: boolean;
+    inboxId: string;
+    entryId?: string;
+    balanceAfter: number;
+    status: 'PROCESSED' | 'DUPLICATE_ACKNOWLEDGED';
+  }> {
+    const {
+      provider,
+      eventId,
+      idempotencyKey,
+      eventType,
+      rawPayload,
+      headers,
+      tenantId,
+      batchId,
+      deltaPasses,
+      reason = 'PURCHASE',
+      metadata = {},
+    } = params;
+
+    await this.client.query('BEGIN');
+    try {
+      // 1. Transactional Advisory Lock on Tenant: Guarantees serialization across multi-connection pools
+      await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);
+
+      // 2. Lock & Inspect Webhook Inbox Entry FOR UPDATE
+      const inboxRes = await this.client.query(
+        `SELECT id, status, retry_count FROM ${this.targetSchema}.workforce_webhook_inbox WHERE idempotency_key = $1 FOR UPDATE`,
+        [idempotencyKey]
+      );
+
+      let inboxId: string;
+      if (inboxRes.rows.length > 0) {
+        const row = inboxRes.rows[0];
+        inboxId = row.id;
+        if (row.status === 'PROCESSED') {
+          // Already successfully processed: increment retry_count, commit and return without mutating ledger
+          await this.client.query(
+            `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET retry_count = retry_count + 1 WHERE id = $1`,
+            [inboxId]
+          );
+          const balRes = await this.client.query(
+            `SELECT balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [tenantId]
+          );
+          const currentBal = balRes.rows.length > 0 ? Number(balRes.rows[0].balance_after) : 0;
+          await this.client.query('COMMIT');
+          return {
+            isDuplicate: true,
+            inboxId,
+            balanceAfter: currentBal,
+            status: 'DUPLICATE_ACKNOWLEDGED',
+          };
+        } else {
+          // Update status to PROCESSING
+          await this.client.query(
+            `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET status = 'PROCESSING' WHERE id = $1`,
+            [inboxId]
+          );
+        }
+      } else {
+        // Initial ingestion directly with status 'PROCESSING'
+        const insertInboxRes = await this.client.query(
+          `INSERT INTO ${this.targetSchema}.workforce_webhook_inbox (
+            provider, event_id, idempotency_key, event_type, raw_payload, headers, status, retry_count, received_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'PROCESSING', 0, NOW())
+          RETURNING id`,
+          [
+            provider,
+            eventId,
+            idempotencyKey,
+            eventType,
+            JSON.stringify(rawPayload),
+            JSON.stringify(headers),
+          ]
+        );
+        inboxId = insertInboxRes.rows[0].id;
+      }
+
+      // 3. Mutate Ledger with Idempotency & Row Locking
+      const existingLedger = await this.client.query(
+        `SELECT entry_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
+        [idempotencyKey]
+      );
+
+      let entryId: string;
+      let newBalance: number;
+
+      if (existingLedger.rows.length > 0) {
+        entryId = existingLedger.rows[0].entry_id;
+        newBalance = Number(existingLedger.rows[0].balance_after);
+      } else {
+        const lockRes = await this.client.query(
+          `SELECT balance_after
+           FROM ${this.targetSchema}.tenant_pass_ledger
+           WHERE tenant_id = $1
+           ORDER BY created_at DESC, balance_after DESC
+           LIMIT 1
+           FOR UPDATE`,
+          [tenantId]
+        );
+
+        const currentBalance = lockRes.rows.length > 0 ? Number(lockRes.rows[0].balance_after) : 0;
+        newBalance = currentBalance + deltaPasses;
+
+        if (newBalance < 0) {
+          throw new Error(
+            `ERR_NEGATIVE_BALANCE: Requested delta ${deltaPasses} would reduce balance below zero (Current: ${currentBalance}, Result: ${newBalance})`
+          );
+        }
+
+        entryId = `ple_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        await this.client.query(
+          `INSERT INTO ${this.targetSchema}.tenant_pass_ledger (
+            entry_id, tenant_id, batch_id, delta_passes, balance_after, reason, idempotency_key, metadata, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp())`,
+          [entryId, tenantId, batchId, deltaPasses, newBalance, reason, idempotencyKey, JSON.stringify(metadata)]
+        );
+      }
+
+      // 4. Update Webhook Inbox to PROCESSED
+      await this.client.query(
+        `UPDATE ${this.targetSchema}.workforce_webhook_inbox
+         SET status = 'PROCESSED', processed_at = NOW()
+         WHERE id = $1`,
+        [inboxId]
+      );
+
+      await this.client.query('COMMIT');
+
+      return {
+        isDuplicate: false,
+        inboxId,
+        entryId,
+        balanceAfter: newBalance,
+        status: 'PROCESSED',
+      };
+    } catch (error) {
+      await this.client.query('ROLLBACK');
+      throw error;
+    }
   }
 }

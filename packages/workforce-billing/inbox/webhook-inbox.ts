@@ -111,6 +111,17 @@ export class WebhookInbox {
   }
 
   /**
+   * Mark as PROCESSING during active transactional ledger mutation
+   */
+  public markProcessing(inboxId: string): void {
+    const record = this.inbox.get(inboxId);
+    if (!record) {
+      throw new Error(`INBOX_RECORD_NOT_FOUND: ${inboxId}`);
+    }
+    record.status = 'PROCESSING';
+  }
+
+  /**
    * Mark as PROCESSED after downstream entitlement / ledger booking
    */
   public markProcessed(inboxId: string): void {
@@ -120,6 +131,31 @@ export class WebhookInbox {
     }
     record.status = 'PROCESSED';
     record.processedAt = new Date().toISOString();
+  }
+
+  /**
+   * Mark as FAILED if transactional mutation aborts or rolls back
+   */
+  public markFailed(inboxId: string, errorMessage?: string): void {
+    const record = this.inbox.get(inboxId);
+    if (!record) {
+      throw new Error(`INBOX_RECORD_NOT_FOUND: ${inboxId}`);
+    }
+    record.status = 'FAILED';
+    if (errorMessage) {
+      record.errorMessage = errorMessage;
+    }
+  }
+
+  /**
+   * Revert status on transactional rollback
+   */
+  public revertStatus(inboxId: string, previousStatus: WebhookStatus): void {
+    const record = this.inbox.get(inboxId);
+    if (!record) {
+      throw new Error(`INBOX_RECORD_NOT_FOUND: ${inboxId}`);
+    }
+    record.status = previousStatus;
   }
 
   /**

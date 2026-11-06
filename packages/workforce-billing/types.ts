@@ -18,7 +18,7 @@ export type LotStatus = 'ACTIVE' | 'DEPLETED' | 'FROZEN' | 'DISPUTED';
 
 export type AllocationStatus = 'ACTIVE' | 'EXPIRED' | 'TERMINATED';
 
-export type WebhookStatus = 'RECEIVED' | 'PROCESSED' | 'FAILED' | 'DEAD_LETTER';
+export type WebhookStatus = 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'DEAD_LETTER';
 
 export interface CurrencyConfig {
   currency: SupportedCurrency;

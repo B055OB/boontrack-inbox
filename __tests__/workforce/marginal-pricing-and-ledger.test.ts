@@ -11,6 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { Pool } from 'pg';
 import {
   calculateMarginalProgressivePrice,
   RFC_BWM_014_V1_TIERS,
@@ -18,6 +19,7 @@ import {
   PRECONFIGURED_TAX_REGIMES,
   TenantPassLedger,
   PostgresTenantPassLedger,
+  WebhookInbox,
 } from '@/packages/workforce-billing';
 
 describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy Engine', () => {
@@ -505,6 +507,231 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       expect(res.isDuplicate).toBe(true);
       expect(res.retryCount).toBe(1);
     });
+
+    test('Gate 1 [Cold-Start Row Locking]: Acquires pg_advisory_xact_lock on tenantId at transaction start for zero-row defense', async () => {
+      const executedQueries: string[] = [];
+      const mockClient: any = {
+        query: jest.fn().mockImplementation((queryText: string) => {
+          executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
+          if (queryText.includes('WHERE idempotency_key = $1')) {
+            return Promise.resolve({ rows: [] });
+          }
+          if (queryText.includes('FOR UPDATE')) {
+            return Promise.resolve({ rows: [] }); // Cold start: zero rows in ledger!
+          }
+          return Promise.resolve({ rows: [] });
+        }),
+      };
+
+      const pgLedger = new PostgresTenantPassLedger(mockClient, 'workforce_staging');
+      const res = await pgLedger.mutateBalanceAtomic({
+        tenantId: 'tenant_zero_row_new',
+        batchId: 'BATCH_001',
+        deltaPasses: 10,
+        reason: 'PURCHASE',
+        idempotencyKey: 'idemp_cold_001',
+      });
+
+      expect(res.isDuplicate).toBe(false);
+      expect(res.balanceAfter).toBe(10);
+      expect(executedQueries[0]).toBe('BEGIN');
+      expect(executedQueries[1]).toContain('pg_advisory_xact_lock(hashtext($1))');
+      expect(executedQueries.some((q) => q.includes('FOR UPDATE'))).toBe(true);
+      expect(executedQueries[executedQueries.length - 1]).toBe('COMMIT');
+    });
+
+    test('Gate 1 [Atomic Binding Webhook Inbox -> Ledger Mutation]: In-memory progression RECEIVED -> PROCESSING -> PROCESSED and rollback to FAILED', async () => {
+      const inbox = new WebhookInbox();
+      const ledger = new TenantPassLedger();
+      const tenantId = 'tenant_atomic_inbox_01';
+
+      // 1. Successful execution
+      const result = await ledger.processWebhookAndMutateLedgerAtomic({
+        inbox,
+        provider: 'DODO_PAYMENTS',
+        eventId: 'evt_atomic_01',
+        eventType: 'payment.succeeded',
+        rawPayload: { amount: 37500 },
+        headers: { 'x-signature': 'sig_valid' },
+        tenantId,
+        passes: 25,
+        unitPriceCents: 1500,
+      });
+
+      expect(result.accepted).toBe(true);
+      expect(result.isDuplicate).toBe(false);
+      expect(result.status).toBe('PROCESSED');
+      expect(result.balance).toBe(25);
+
+      const record = inbox.getRecord(result.inboxId);
+      expect(record).toBeDefined();
+      expect(record?.status).toBe('PROCESSED');
+      expect(record?.processedAt).toBeDefined();
+
+      // 2. Replay same webhook -> duplicate acknowledged with zero extra balance mutation
+      const replay = await ledger.processWebhookAndMutateLedgerAtomic({
+        inbox,
+        provider: 'DODO_PAYMENTS',
+        eventId: 'evt_atomic_01',
+        eventType: 'payment.succeeded',
+        rawPayload: { amount: 37500 },
+        headers: { 'x-signature': 'sig_valid' },
+        tenantId,
+        passes: 25,
+        unitPriceCents: 1500,
+      });
+
+      expect(replay.isDuplicate).toBe(true);
+      expect(replay.balance).toBe(25);
+
+      // 3. Rollback on failure
+      await expect(
+        ledger.processWebhookAndMutateLedgerAtomic({
+          inbox,
+          provider: 'DODO_PAYMENTS',
+          eventId: 'evt_atomic_invalid',
+          eventType: 'payment.succeeded',
+          rawPayload: { amount: 0 },
+          headers: { 'x-signature': 'sig_valid' },
+          tenantId,
+          passes: -5, // Invalid negative passes will throw
+        })
+      ).rejects.toThrow();
+
+      const failedRecord = inbox.getAllRecords().find((r) => r.eventId === 'evt_atomic_invalid');
+      expect(failedRecord).toBeDefined();
+      expect(failedRecord?.status).toBe('FAILED');
+      expect(ledger.getBalance(tenantId)).toBe(25); // unchanged
+    });
+
+    test('Gate 1 [PostgreSQL Atomic Webhook Binding]: processWebhookAndMutateLedgerAtomic executes single transaction flow', async () => {
+      const executedQueries: string[] = [];
+      const mockClient: any = {
+        query: jest.fn().mockImplementation((queryText: string) => {
+          executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
+          if (queryText.includes('WHERE idempotency_key = $1 FOR UPDATE')) {
+            return Promise.resolve({ rows: [] }); // Not yet in inbox
+          }
+          if (queryText.includes('INSERT INTO workforce_staging.workforce_webhook_inbox')) {
+            return Promise.resolve({ rows: [{ id: 'inb_auto_uuid' }] });
+          }
+          if (queryText.includes('WHERE idempotency_key = $1')) {
+            return Promise.resolve({ rows: [] }); // Not in ledger
+          }
+          if (queryText.includes('tenant_pass_ledger') && queryText.includes('FOR UPDATE')) {
+            return Promise.resolve({ rows: [{ balance_after: 0 }] });
+          }
+          return Promise.resolve({ rows: [] });
+        }),
+      };
+
+      const pgLedger = new PostgresTenantPassLedger(mockClient, 'workforce_staging');
+      const result = await pgLedger.processWebhookAndMutateLedgerAtomic({
+        provider: 'DODO_PAYMENTS',
+        eventId: 'evt_pg_atomic_01',
+        idempotencyKey: 'idemp_pg_atomic_01',
+        eventType: 'payment.succeeded',
+        rawPayload: { amount: 37500 },
+        headers: { 'x-signature': 'sig_test' },
+        tenantId: 'tenant_pg_atomic_01',
+        batchId: 'BATCH_ATOMIC_1',
+        deltaPasses: 25,
+      });
+
+      expect(result.isDuplicate).toBe(false);
+      expect(result.status).toBe('PROCESSED');
+      expect(result.balanceAfter).toBe(25);
+
+      expect(executedQueries[0]).toBe('BEGIN');
+      expect(executedQueries[1]).toContain('pg_advisory_xact_lock(hashtext($1))');
+      expect(executedQueries.some((q) => q.includes('workforce_webhook_inbox') && q.includes('FOR UPDATE'))).toBe(true);
+      expect(executedQueries.some((q) => q.includes('INSERT INTO workforce_staging.tenant_pass_ledger'))).toBe(true);
+      expect(executedQueries.some((q) => q.includes('status = \'PROCESSED\''))).toBe(true);
+      expect(executedQueries[executedQueries.length - 1]).toBe('COMMIT');
+    });
+
+    test('Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant', async () => {
+      let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
+      let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
+
+      if (!directUrl || !poolerUrl) {
+        try {
+          const envFile = fs.readFileSync(path.resolve('.env.local'), 'utf8');
+          const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
+          const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
+          if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
+          if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
+        } catch {
+          // ignore
+        }
+      }
+
+      const connStr = directUrl || poolerUrl;
+      if (!connStr) {
+        return;
+      }
+
+      const pool = new Pool({
+        connectionString: connStr,
+        ssl: { rejectUnauthorized: false },
+        max: 10,
+        connectionTimeoutMillis: 10000,
+      });
+
+      try {
+        const testClient = await pool.connect();
+        testClient.release();
+      } catch {
+        await pool.end();
+        return;
+      }
+
+      const coldTenantId = `tenant_gate1_cold_${Date.now()}`;
+      const CLIENT_COUNT = 10;
+      const DELTA_PASSES = 5;
+
+      try {
+        const mutationPromises = Array.from({ length: CLIENT_COUNT }, async (_, i) => {
+          const client = await pool.connect();
+          try {
+            const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+            return await pgLedger.mutateBalanceAtomic({
+              tenantId: coldTenantId,
+              batchId: `BATCH_CONC_${i}`,
+              deltaPasses: DELTA_PASSES,
+              reason: 'PURCHASE',
+              idempotencyKey: `idemp_${coldTenantId}_${i}`,
+            });
+          } finally {
+            client.release();
+          }
+        });
+
+        const results = await Promise.all(mutationPromises);
+        expect(results.length).toBe(CLIENT_COUNT);
+        results.forEach((r) => expect(r.isDuplicate).toBe(false));
+
+        const verifyClient = await pool.connect();
+        try {
+          const balRes = await verifyClient.query(
+            `SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC, balance_after DESC LIMIT 1`,
+            [coldTenantId]
+          );
+          const expectedBalance = CLIENT_COUNT * DELTA_PASSES;
+          expect(Number(balRes.rows[0].balance_after)).toBe(expectedBalance);
+
+          const countRes = await verifyClient.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [coldTenantId]
+          );
+          expect(Number(countRes.rows[0].count)).toBe(CLIENT_COUNT);
+        } finally {
+          verifyClient.release();
+        }
+      } finally {
+        await pool.end();
+      }
+    }, 25000);
   });
 });
 

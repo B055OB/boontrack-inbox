@@ -11,6 +11,9 @@
  * 6. Concurrent Renewal: worker concurrency safety with zero race conditions or double deductions.
  */
 
+import { WebhookInbox } from '../inbox/webhook-inbox';
+import { PaymentProvider, WebhookStatus } from '../types';
+
 export interface TenantPassBatch {
   batchId: string;
   tenantId: string;
@@ -373,6 +376,95 @@ export class TenantPassLedger {
       remainingBalance: res.remainingBalance,
       allocation: res.allocations[0],
     };
+  }
+
+  /**
+   * Atomic Webhook Binding: Executes webhook consumption and credit pass ledger mutation
+   * in a single atomic flow with automatic rollback if either step fails.
+   * Progression:
+   * 1. Ingest/Inspect webhook_inbox: 'RECEIVED' -> 'PROCESSING'
+   * 2. Mutate credit pass ledger (+deltaPasses) with idempotency key
+   * 3. Update webhook_inbox: 'PROCESSING' -> 'PROCESSED'
+   * If ledger mutation fails, inbox state is rolled back to 'FAILED'.
+   */
+  public async processWebhookAndMutateLedgerAtomic(params: {
+    inbox: WebhookInbox;
+    provider: PaymentProvider;
+    eventId: string;
+    eventType: string;
+    rawPayload: any;
+    headers: Record<string, string>;
+    tenantId: string;
+    agencyId?: string;
+    passes: number;
+    unitPriceCents?: number;
+    metadata?: Record<string, any>;
+  }): Promise<{
+    accepted: boolean;
+    isDuplicate: boolean;
+    replayCount: number;
+    inboxId: string;
+    tenantId: string;
+    balance: number;
+    status: WebhookStatus;
+    message: string;
+  }> {
+    const { inbox, provider, eventId, eventType, rawPayload, headers, tenantId, agencyId, passes, unitPriceCents, metadata } = params;
+
+    const ingestion = inbox.ingest({
+      provider,
+      eventId,
+      eventType,
+      rawPayload,
+      headers,
+    });
+
+    if (ingestion.isDuplicate) {
+      return {
+        accepted: true,
+        isDuplicate: true,
+        replayCount: 1,
+        inboxId: ingestion.inboxId || '',
+        tenantId,
+        balance: this.getBalance(tenantId),
+        status: ingestion.status,
+        message: 'DUPLICATE_WEBHOOK_ACKNOWLEDGED_ZERO_SIDE_EFFECTS',
+      };
+    }
+
+    const inboxId = ingestion.inboxId!;
+    inbox.markProcessing(inboxId);
+
+    const idempotencyKey = inbox.generateIdempotencyKey(provider, eventId, rawPayload);
+
+    try {
+      const ledgerResult = await this.processPaymentWebhook({
+        eventId,
+        idempotencyKey,
+        tenantId,
+        agencyId,
+        passes,
+        unitPriceCents,
+        metadata,
+      });
+
+      inbox.markProcessed(inboxId);
+
+      return {
+        accepted: true,
+        isDuplicate: ledgerResult.isDuplicate,
+        replayCount: ledgerResult.replayCount,
+        inboxId,
+        tenantId,
+        balance: ledgerResult.balance,
+        status: 'PROCESSED',
+        message: ledgerResult.message,
+      };
+    } catch (err: any) {
+      // Transactional Rollback: mark inbox as FAILED
+      inbox.markFailed(inboxId, err?.message || 'LEDGER_MUTATION_FAILED');
+      throw err;
+    }
   }
 }
 
