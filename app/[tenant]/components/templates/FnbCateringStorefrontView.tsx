@@ -457,46 +457,54 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     'Kuah Mercon',
   ];
 
-  // Add-ons list
+  // Dynamic Add-ons & Alacarte list from database (Fail-Closed, zero mock fallback)
   const addonsList = useMemo(() => {
-    return fnbCatering?.addons || [
-      {
-        id: 'addon-daging-slice',
-        name: 'Ekstra Daging Slice 200g',
-        price: 45000,
-        image: 'https://assets.boontrack.com/products/1791444520662_b93965c1-050a-41e5-90ed-9f89cc94a56c.webp',
-        unit: '200 gram (US Beef Slice)',
-      },
-      {
-        id: 'addon-sayur-campur',
-        name: 'Sayur Campur Segar',
-        price: 25000,
-        image: 'https://assets.boontrack.com/products/1791444095486_a2b76f37-e1b1-4f1b-85c2-4999beb4d9c1.webp',
-        unit: 'Pakcoy, Sawi & Aneka Jamur',
-      },
-      {
-        id: 'addon-bakso-suki',
-        name: 'Aneka Bakso & Suki Seafood',
-        price: 30000,
-        image: 'https://assets.boontrack.com/products/1791444770642_9efd7a52-282d-4a8b-9f3e-61e50dd9948a.webp',
-        unit: '12 pcs Fishball & Chikuwa Mix',
-      },
-      {
-        id: 'addon-kuah-1l',
-        name: 'Ekstra Kuah 1 Liter',
-        price: 20000,
-        image: 'https://assets.boontrack.com/products/1791444324625_90e00db8-cf97-48cb-be5d-8ec767b5e4a2.webp',
-        unit: 'Botol 1.000 ml Kaldu / Tom Yum',
-      },
-      {
-        id: 'addon-gas-kaleng',
-        name: 'Gas Kaleng Portabel',
-        price: 15000,
-        image: 'https://assets.boontrack.com/products/1791443819009_e981d827-05cd-455c-af52-f3287b8e2445.webp',
-        unit: '1 Kaleng Gas Butane Siap Pakai',
-      },
-    ];
-  }, [fnbCatering]);
+    if (!Array.isArray(products) || products.length === 0) {
+      return [];
+    }
+
+    const matching = products.filter((p: Product) => {
+      if (!p) return false;
+      if ((p as any).is_active === false) return false;
+      const cat = (p.category || '').toLowerCase().trim();
+      return (
+        cat.includes('alacarte') ||
+        cat.includes('addon') ||
+        cat.includes('tambahan') ||
+        cat.includes('ekstra') ||
+        cat.includes('minuman')
+      );
+    });
+
+    // Priority sort: Alacarte food items first, followed by Minuman
+    return matching
+      .sort((a, b) => {
+        const catA = (a.category || '').toLowerCase();
+        const catB = (b.category || '').toLowerCase();
+        const isDrinkA = catA.includes('minuman');
+        const isDrinkB = catB.includes('minuman');
+        if (isDrinkA && !isDrinkB) return 1;
+        if (!isDrinkA && isDrinkB) return -1;
+        return 0;
+      })
+      .map((p: Product) => {
+        const cat = (p.category || '').toLowerCase().trim();
+        const rawDesc = typeof p.description === 'string' ? p.description.trim() : '';
+        const fallbackUnit = cat.includes('minuman') ? 'Kemasan Botol 1 Liter' : 'Porsi Tambahan';
+        const unit = rawDesc.length > 0 ? rawDesc : fallbackUnit;
+
+        return {
+          id: String(p.id),
+          name: p.name || (p as any).title || '',
+          price: Number(p.price || 0),
+          image: p.image_url || p.image || '/placeholder-product.png',
+          unit,
+          description: rawDesc,
+          category: p.category || 'Alacarte (Additional)',
+          requires_equipment: false,
+        };
+      });
+  }, [products]);
 
   // Group products into 4 categories:
   // 1. Paket Alat Hemat (10 Pax Mabar)
@@ -1470,7 +1478,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       </section>
 
       {/* ── 4. SEKSI ADD-ONS CEPAT (HORIZONTAL SCROLL) ── */}
-      <section className="max-w-5xl mx-auto px-4 pt-12">
+      {addonsList.length > 0 && (
+        <section className="max-w-5xl mx-auto px-4 pt-12">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
@@ -1555,6 +1564,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           })}
         </div>
       </section>
+      )}
 
       {/* ── 5. STICKY BOTTOM CHECKOUT BAR (WHATSAPP CONVERSATIONAL FLOW) ── */}
       {totalItems > 0 && (
