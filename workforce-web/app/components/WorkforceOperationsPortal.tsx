@@ -41,7 +41,7 @@ import PwaInstallPrompt from './PwaInstallPrompt';
 import SlideOverDrawer from './SlideOverDrawer';
 import EmptyState from './EmptyState';
 import { CardSkeleton, RosterCardSkeleton } from './LoadingSkeleton';
-import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw, Printer } from 'lucide-react';
+import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw, Printer, Mail, UserCheck } from 'lucide-react';
 
 interface CheckpointItem {
   id: string;
@@ -112,6 +112,22 @@ export interface AllocatedPersonnel {
   };
 }
 
+export interface FacilityRecord {
+  id: string;
+  name: string;
+  type: string;
+  sla: string;
+  personnel: number;
+  address: string;
+  supervisor: string;
+  clientBrand: string;
+  picName: string;
+  picRole?: string;
+  picEmail: string;
+  picWa: string;
+  radius: string;
+}
+
 export interface WorkforceOperationsPortalProps {
   initialRole?: 'field' | 'supervisor' | 'reseller';
   tenantSlug?: string;
@@ -139,7 +155,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   // Contextual Slide-Over Drawer States (CTO UX Architecture)
   const [selectedOfficerForDrawer, setSelectedOfficerForDrawer] = useState<OfficerMonitoring | null>(null);
   const [selectedIncidentForDrawer, setSelectedIncidentForDrawer] = useState<IncidentRecord | null>(null);
-  const [selectedFacilityForDrawer, setSelectedFacilityForDrawer] = useState<any | null>(null);
+  const [selectedFacilityForDrawer, setSelectedFacilityForDrawer] = useState<FacilityRecord | null>(null);
 
   // Uniform Filter Bar States (/ops)
   const [filterFacility, setFilterFacility] = useState<string>('all');
@@ -371,8 +387,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   const [topupSuccessToast, setTopupSuccessToast] = useState(false);
   const [lastTopupAddedQty, setLastTopupAddedQty] = useState(0);
 
-  // Client Facility State
-  const [facilities, setFacilities] = useState([
+  // Client Facility State (Pre-seeded with Enterprise Brands & PICs)
+  const [facilities, setFacilities] = useState<FacilityRecord[]>([
     {
       id: 'FAC-01',
       name: 'Metro Financial Tower Hub',
@@ -381,6 +397,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       personnel: 8,
       address: 'Financial District, Fl. 1-45',
       supervisor: 'Marcus Sterling (SUP-1092)',
+      clientBrand: 'PT Sinarmas Land / Grand Hyatt Group',
+      picName: 'Hendra Wijaya, S.T.',
+      picEmail: 'h.wijaya@sinarmasland.com',
+      picWa: '+62 811-2345-6789',
+      radius: '100m',
     },
     {
       id: 'FAC-02',
@@ -390,6 +411,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       personnel: 4,
       address: 'West Cargo Port Sector C',
       supervisor: 'Robert Chen (SUP-0842)',
+      clientBrand: 'PT Samudera Indonesia Logistics Hub',
+      picName: 'Capt. Bambang Suryono',
+      picEmail: 'bambang.s@samudera.id',
+      picWa: '+62 812-9876-5432',
+      radius: '150m',
     },
     {
       id: 'FAC-03',
@@ -399,13 +425,22 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       personnel: 2,
       address: 'Perimeter Boundary Sector 1',
       supervisor: 'Victor Ward (SUP-0914)',
+      clientBrand: 'PT Perusahaan Gas Negara (PGN) Energy Grid',
+      picName: 'Ir. Dwi Prasetyo',
+      picEmail: 'dwi.prasetyo@pgn.co.id',
+      picWa: '+62 813-4567-8901',
+      radius: '80m',
     },
   ]);
 
-  // Add Facility Form State
+  // Add Facility Form State (Brand & PIC Integration)
   const [newFacilityName, setNewFacilityName] = useState('');
+  const [newFacilityBrand, setNewFacilityBrand] = useState('');
   const [newFacilityAddress, setNewFacilityAddress] = useState('');
-  const [newFacilityRadius, setNewFacilityRadius] = useState('50m');
+  const [newFacilityRadius, setNewFacilityRadius] = useState('100m');
+  const [newFacilityPicName, setNewFacilityPicName] = useState('');
+  const [newFacilityPicEmail, setNewFacilityPicEmail] = useState('');
+  const [newFacilityPicWa, setNewFacilityPicWa] = useState('+62 ');
   const [newFacilitySupervisor, setNewFacilitySupervisor] = useState('');
   const [newFacilityQuota, setNewFacilityQuota] = useState('4');
 
@@ -888,22 +923,41 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     if (!newFacilityName.trim()) return;
 
     const quota = parseInt(newFacilityQuota, 10) || 0;
-    const newFac = {
+    const branchName = newFacilityName.trim();
+    const brandName = newFacilityBrand.trim() || 'PT Enterprise Client Group';
+    const picName = newFacilityPicName.trim() || 'PIC Lapangan';
+    const picEmail = newFacilityPicEmail.trim() || 'pic@enterprise.id';
+    const picWa = newFacilityPicWa.trim() || '+62 812-0000-0000';
+    const radius = newFacilityRadius.trim() || '100m';
+
+    const newFac: FacilityRecord = {
       id: `FAC-0${facilities.length + 1}`,
-      name: newFacilityName,
+      name: branchName,
       type: 'Secured Client Site',
       sla: '100% Prime',
       personnel: quota,
-      address: `${newFacilityAddress} (Radius ${newFacilityRadius})`,
-      supervisor: newFacilitySupervisor || 'Assigned On Deploy',
+      address: newFacilityAddress.trim() || 'Alamat Perimeter Belum Ditetapkan',
+      supervisor: newFacilitySupervisor.trim() || 'Assigned On Deploy',
+      clientBrand: brandName,
+      picName: picName,
+      picEmail: picEmail,
+      picWa: picWa,
+      radius: radius,
     };
 
     setFacilities([...facilities, newFac]);
     setModalType(null);
     setNewFacilityName('');
+    setNewFacilityBrand('');
     setNewFacilityAddress('');
+    setNewFacilityRadius('100m');
+    setNewFacilityPicName('');
+    setNewFacilityPicEmail('');
+    setNewFacilityPicWa('+62 ');
     setNewFacilitySupervisor('');
-    alert(`Fasilitas "${newFac.name}" berhasil ditambahkan ke portofolio klien!`);
+    setNewFacilityQuota('4');
+
+    triggerToast(`Fasilitas ${newFac.name} untuk klien ${newFac.clientBrand} berhasil didaftarkan ke jaringan BWM.`);
   }
 
   // Live Clock effect
@@ -1886,7 +1940,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 <div
                   key={fac.id}
                   onClick={() => {
-                    setPersonnelBranchFilter(fac.name);
+                    setSelectedFacilityForDrawer(fac);
                   }}
                   className={`p-5 rounded-2xl bg-white border transition cursor-pointer space-y-3 group ${
                     personnelBranchFilter === fac.name
@@ -1901,11 +1955,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                     <span className="text-xs font-bold text-emerald-600">{fac.sla}</span>
                   </div>
                   <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block truncate">
+                      {fac.clientBrand}
+                    </span>
                     <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">{fac.name}</h4>
                     <p className="text-xs text-slate-500 mt-0.5">Active Deployment: {fac.personnel} Personnel &bull; Annual SLA</p>
                   </div>
                   <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-                    <span>Supervisor: {fac.supervisor}</span>
+                    <span className="truncate max-w-[160px]">PIC: <strong className="text-slate-700">{fac.picName}</strong></span>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1914,9 +1971,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                         const el = document.getElementById('personnel-allocation-section');
                         if (el) el.scrollIntoView({ behavior: 'smooth' });
                       }}
-                      className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center space-x-1"
+                      className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center space-x-1 shrink-0"
                     >
-                      <span>Inspect Branch &rarr;</span>
+                      <span>Filter Roster &rarr;</span>
                     </button>
                   </div>
                 </div>
@@ -1972,17 +2029,21 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               return (
                 <div className="p-4 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 space-y-3">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
                           ACTIVE BRANCH DRILL-DOWN
                         </span>
                         <h4 className="text-sm font-bold text-slate-900">{activeBranch.name}</h4>
+                        <span className="inline-flex items-center space-x-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          <Building className="w-3 h-3 text-indigo-600" />
+                          <span>Brand Klien: <strong>{activeBranch.clientBrand || 'Enterprise Client'}</strong></span>
+                        </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                         <span className="flex items-center space-x-1">
                           <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                          <span>{activeBranch.address}</span>
+                          <span>{activeBranch.address} (Radius {activeBranch.radius || '100m'})</span>
                         </span>
                         <span className="flex items-center space-x-1">
                           <Shield className="w-3.5 h-3.5 text-slate-500" />
@@ -1995,9 +2056,40 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                           </span>
                         </span>
                       </div>
+                      {/* PIC Metadata Line */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-700 bg-white/80 px-3 py-1.5 rounded-lg border border-blue-200/60 shadow-xs">
+                        <span className="font-bold text-slate-900 flex items-center space-x-1">
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Penanggung Jawab (PIC):</span>
+                        </span>
+                        <span className="font-bold text-slate-900">{activeBranch.picName || 'PIC Lapangan'}</span>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-mono text-slate-600 flex items-center space-x-1">
+                          <Mail className="w-3 h-3 text-slate-400" />
+                          <span>{activeBranch.picEmail || '-'}</span>
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <a
+                          href={`https://wa.me/${(activeBranch.picWa || '').replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center space-x-1"
+                        >
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          <span>{activeBranch.picWa || '-'}</span>
+                        </a>
+                      </div>
                     </div>
 
                     <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFacilityForDrawer(activeBranch)}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Detail Klien &amp; PIC</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2863,10 +2955,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         </div>
       )}
 
-      {/* Modal: Tambah Fasilitas / Cabang Baru (CTO Mandate) */}
+      {/* Modal: Tambah Fasilitas / Cabang Baru (Brand & PIC Integration) */}
       {modalType === 'tambah_fasilitas' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full p-6 space-y-4 relative shadow-2xl text-slate-900 my-8 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setModalType(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
@@ -2875,76 +2967,193 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </button>
             <div>
               <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200 mb-1">
-                <span>NEW CLIENT BRANCH</span>
+                <span>FACILITY &amp; CLIENT ONBOARDING</span>
               </div>
               <h3 className="text-xl font-bold text-slate-900">Tambah Fasilitas / Cabang Baru</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Daftarkan lokasi perimeter baru untuk penempatan personel dan kuota pass.
+                Daftarkan perimeter operasional cabang baru, entitas holding/brand klien, dan PIC resmi ke platform BWM.
               </p>
             </div>
 
-            <form onSubmit={handleAddFacility} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Fasilitas / Gedung</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Sudirman Central Plaza Hub"
-                  value={newFacilityName}
-                  onChange={(e) => setNewFacilityName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            <form onSubmit={handleAddFacility} className="space-y-4">
+              {/* a. Identitas Fasilitas & Brand Klien */}
+              <div className="space-y-3">
+                <div className="text-xs font-black uppercase text-blue-900 tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-100">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>A. Identitas Fasilitas &amp; Brand Klien</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Cabang / Hub Operasional</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="misal: Sudirman Central Plaza Hub"
+                      value={newFacilityName}
+                      onChange={(e) => setNewFacilityName(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Entitas Brand / Holding Klien</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="misal: PT Sinarmas Land / Grand Hyatt Group"
+                      value={newFacilityBrand}
+                      onChange={(e) => setNewFacilityBrand(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Fisik Gedung</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="misal: Jl. Jend. Sudirman Kav. 25, Tower 2 Fl. 1-32"
+                      value={newFacilityAddress}
+                      onChange={(e) => setNewFacilityAddress(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Radius Validasi GPS</label>
+                    <input
+                      type="text"
+                      placeholder="misal: 100m"
+                      value={newFacilityRadius}
+                      onChange={(e) => setNewFacilityRadius(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Supervisor Utama (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Nama & ID Supervisor (mis: Bambang - SUP-2041)"
+                    value={newFacilitySupervisor}
+                    onChange={(e) => setNewFacilitySupervisor(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Lokasi</label>
+              {/* b. Informasi Penanggung Jawab (PIC Cabang / Property Manager) */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-black uppercase text-indigo-900 tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-100">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>B. Informasi Penanggung Jawab (PIC Cabang / Property Manager)</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap PIC</label>
                   <input
                     type="text"
                     required
-                    placeholder="Jl. Jend. Sudirman Kav. 25"
-                    value={newFacilityAddress}
-                    onChange={(e) => setNewFacilityAddress(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="misal: Hendra Wijaya, S.T."
+                    value={newFacilityPicName}
+                    onChange={(e) => setNewFacilityPicName(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Email Resmi PIC</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="misal: h.wijaya@sinarmasland.com"
+                      value={newFacilityPicEmail}
+                      onChange={(e) => setNewFacilityPicEmail(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nomor WhatsApp Aktif (+62)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="+62 812-XXXX-XXXX"
+                      value={newFacilityPicWa}
+                      onChange={(e) => setNewFacilityPicWa(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* c. Alokasi Kuota Personel Awal */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-black uppercase text-emerald-900 tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-100">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>C. Alokasi Kuota Personel Awal</span>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Radius</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Jumlah Pass / Personel Dialokasikan</label>
                   <input
-                    type="text"
-                    placeholder="50m"
-                    value={newFacilityRadius}
-                    onChange={(e) => setNewFacilityRadius(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    type="number"
+                    min="1"
+                    max="50"
+                    required
+                    value={newFacilityQuota}
+                    onChange={(e) => setNewFacilityQuota(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Kuota komitmen untuk penugasan petugas keamanan / personel operasional di hub ini.
+                  </p>
                 </div>
+
+                {/* Indikator Dinamis Ketersediaan Pass */}
+                {(() => {
+                  const reqQuota = parseInt(newFacilityQuota, 10) || 0;
+                  const isSufficient = availablePasses >= reqQuota;
+                  return (
+                    <div
+                      className={`p-3 rounded-xl border text-xs flex items-start space-x-2.5 ${
+                        isSufficient
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : 'bg-amber-50 border-amber-200 text-amber-900'
+                      }`}
+                    >
+                      {isSufficient ? (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      )}
+                      <div className="space-y-0.5">
+                        <div className="font-bold">
+                          {isSufficient
+                            ? 'Saldo Standby Pool Mencukupi'
+                            : 'Perhatian: Saldo Standby Pool Terbatas'}
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          {isSufficient ? (
+                            <>
+                              Tersedia <strong>{availablePasses} Standby Passes</strong> di pool agensi Anda. Cukup untuk memenuhi alokasi komitmen <strong>{reqQuota} Personel</strong> tanpa top-up tambahan.
+                            </>
+                          ) : (
+                            <>
+                              Tersedia <strong>{availablePasses} Standby Passes</strong>, alokasi komitmen adalah <strong>{reqQuota} Personel</strong>. Anda tetap dapat mendaftarkan cabang ini dan melakukan penambahan pass pool secara terpisah nanti.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Supervisor Utama</label>
-                <input
-                  type="text"
-                  placeholder="Nama & ID Supervisor (mis: Bambang - SUP-2041)"
-                  value={newFacilitySupervisor}
-                  onChange={(e) => setNewFacilitySupervisor(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Alokasi Kuota Pass Awal</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={newFacilityQuota}
-                  onChange={(e) => setNewFacilityQuota(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-[10px] text-slate-500 mt-1">Kuota pass akan dipotong dari saldo standby pool Anda saat personel diaktifkan.</p>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end space-x-2">
+              {/* d. Tombol Submit (Zero Payment Code) */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setModalType(null)}
@@ -2954,9 +3163,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center space-x-1.5"
                 >
-                  Simpan &amp; Aktifkan Cabang
+                  <Building2 className="w-4 h-4" />
+                  <span>Simpan &amp; Daftarkan Cabang</span>
                 </button>
               </div>
             </form>
@@ -4001,7 +4211,45 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         }
       >
         {selectedFacilityForDrawer && (
-          <div className="space-y-6">
+          <div className="space-y-5">
+            {/* Brand Klien & Holding Banner */}
+            <div className="p-4 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-indigo-700 tracking-wider">Brand Klien / Holding</span>
+              <div className="text-base font-black text-slate-900">{selectedFacilityForDrawer.clientBrand || 'Enterprise Client Holding'}</div>
+              <p className="text-xs text-slate-600">{selectedFacilityForDrawer.type || 'Commercial Facility'}</p>
+            </div>
+
+            {/* Informasi Penanggung Jawab (PIC) */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Penanggung Jawab (PIC Cabang)</span>
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  VERIFIED PIC
+                </span>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                <div className="text-sm font-bold text-slate-900">{selectedFacilityForDrawer.picName || 'Hendra Wijaya, S.T.'}</div>
+                <div className="flex items-center space-x-2 text-slate-600">
+                  <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="font-mono text-slate-700">{selectedFacilityForDrawer.picEmail || 'pic@client.com'}</span>
+                </div>
+                <div className="flex items-center space-x-2 text-slate-600">
+                  <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <a
+                    href={`https://wa.me/${(selectedFacilityForDrawer.picWa || '').replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-emerald-700 hover:underline"
+                  >
+                    {selectedFacilityForDrawer.picWa || '+62 812-0000-0000'}
+                  </a>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
                 <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Deployed Guards</span>
@@ -4016,10 +4264,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
 
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <span className="text-xs font-bold text-slate-700">Deployment Details</span>
+              <span className="text-xs font-bold text-slate-700">Deployment Details &amp; Geofence</span>
               <p className="text-xs text-slate-600">
                 {selectedFacilityForDrawer.address || 'Facility perimeter secured under Main Agent SLA coverage.'}
               </p>
+              <div className="text-[11px] text-slate-500 flex items-center space-x-1.5 font-mono pt-1">
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                <span>Radius Geofence GPS: {selectedFacilityForDrawer.radius || '100m'}</span>
+              </div>
             </div>
           </div>
         )}
