@@ -21,7 +21,8 @@ import {
   PostgresTenantPassLedger,
   SecurityInvariantViolation,
   WebhookInbox,
-  registerAuthoritativePayment,
+  registerOrderPreCheckout,
+  bindProviderTransaction,
 } from '@/packages/workforce-billing';
 
 describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy Engine', () => {
@@ -1397,9 +1398,20 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
             })
           ).rejects.toThrow('UNVERIFIED_PAYMENT_TENANT_MAPPING');
 
-          // Case 2: Registered to legitTenant, but adversary attempts claim
+          // Case 2: Registered to legitTenant in persistent registry, but adversary attempts claim
           const payRef = `pay_registered_${ts}`;
-          registerAuthoritativePayment(payRef, legitTenant);
+          await registerOrderPreCheckout(client, {
+            tenant_id: legitTenant,
+            internal_order_id: `ord_${ts}`,
+            provider: 'DODO_PAYMENTS',
+            currency: 'USD',
+            expected_amount: 50000,
+          });
+          await bindProviderTransaction(client, {
+            tenant_id: legitTenant,
+            internal_order_id: `ord_${ts}`,
+            provider_transaction_id: payRef,
+          });
 
           await expect(
             pgLedger.processWebhookAndMutateLedgerAtomic({

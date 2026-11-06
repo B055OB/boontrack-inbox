@@ -3,8 +3,6 @@ import {
   PersistentWebhookIngestionParams,
   PersistentWebhookIngestionResult,
   verifyAuthoritativePaymentTenant,
-  registerAuthoritativePayment,
-  clearAuthoritativePaymentRegistry,
   extractPaymentReference,
   extractPayloadTenant,
 } from '../ledger/postgres-tenant-pass-ledger';
@@ -12,8 +10,6 @@ import { Client, PoolClient } from 'pg';
 
 export {
   verifyAuthoritativePaymentTenant,
-  registerAuthoritativePayment,
-  clearAuthoritativePaymentRegistry,
   extractPaymentReference,
   extractPayloadTenant,
 };

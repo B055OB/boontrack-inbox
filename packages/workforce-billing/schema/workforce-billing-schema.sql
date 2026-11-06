@@ -317,3 +317,36 @@ SET brand_name = EXCLUDED.brand_name,
     primary_color = EXCLUDED.primary_color,
     accent_color = EXCLUDED.accent_color,
     is_active = EXCLUDED.is_active;
+
+-- -----------------------------------------------------------------------------------------
+-- 7. TABEL: workforce_payment_registry (Persistent Transaction Registry)
+-- Authoritative Pre-Checkout Order Registration & Provider Transaction Binding
+-- -----------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workforce_payment_registry (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(64) NOT NULL,
+    internal_order_id VARCHAR(128) NOT NULL,
+    provider VARCHAR(32) NOT NULL, -- 'xendit' | 'dodo'
+    provider_account_id VARCHAR(64),
+    provider_transaction_id VARCHAR(128), -- Nullable saat registrasi awal pre-checkout
+    currency VARCHAR(8) NOT NULL, -- 'IDR' | 'USD'
+    expected_amount BIGINT NOT NULL, -- Integer amount (rupiah murni / integer-cents)
+    status VARCHAR(32) NOT NULL DEFAULT 'INITIATED', -- INITIATED, BOUND, SETTLED, FAILED, EXPIRED
+    authoritative_verified_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_payment_registry_tenant_order UNIQUE (tenant_id, internal_order_id),
+    CONSTRAINT chk_payment_registry_status CHECK (status IN ('INITIATED', 'BOUND', 'SETTLED', 'FAILED', 'EXPIRED'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_registry_provider_tx 
+ON workforce_payment_registry (provider, provider_transaction_id) 
+WHERE provider_transaction_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_payment_registry_tenant 
+ON workforce_payment_registry(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_payment_registry_status 
+ON workforce_payment_registry(status);
+

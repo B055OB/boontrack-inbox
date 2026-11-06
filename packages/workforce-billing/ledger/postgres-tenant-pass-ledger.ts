@@ -19,19 +19,6 @@ export class SecurityInvariantViolation extends Error {
 }
 
 /**
- * In-memory authoritative payment-to-tenant registry for registered transactions.
- */
-export const authoritativePaymentTenantRegistry = new Map<string, string>();
-
-export function registerAuthoritativePayment(paymentRef: string, tenantId: string): void {
-  authoritativePaymentTenantRegistry.set(paymentRef, tenantId);
-}
-
-export function clearAuthoritativePaymentRegistry(): void {
-  authoritativePaymentTenantRegistry.clear();
-}
-
-/**
  * Extracts payment or transaction reference from raw payload.
  */
 export function extractPaymentReference(rawPayload: any): string | null {
@@ -77,13 +64,16 @@ export function extractPayloadTenant(rawPayload: any): string | null {
 
 /**
  * Verifies authenticity of tenant ownership for payment webhook (Fail-Closed).
- * Validates that transaction reference in payload is registered and bound to authoritative tenantId.
+ * Validates that transaction reference in payload is registered and bound to authoritative tenantId
+ * directly from persistent PostgreSQL registry (workforce_staging.workforce_payment_registry).
  */
 export async function verifyAuthoritativePaymentTenant(
   provider: string,
   eventId: string,
   tenantId: string,
-  rawPayload: any
+  rawPayload: any,
+  client?: Client | PoolClient,
+  targetSchema: string = 'workforce_staging'
 ): Promise<boolean> {
   if (!tenantId || tenantId.trim() === '') {
     throw new SecurityInvariantViolation("TENANT_ID_REQUIRED: Missing authoritative tenant identifier");
@@ -106,32 +96,35 @@ export async function verifyAuthoritativePaymentTenant(
   const payloadTenant = extractPayloadTenant(rawPayload);
   if (payloadTenant && payloadTenant !== tenantId) {
     throw new SecurityInvariantViolation(
-      "UNVERIFIED_PAYMENT_TENANT_MAPPING: Transaction reference does not match authoritative tenant mapping"
+      "UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Transaction reference does not match authoritative tenant mapping"
     );
   }
 
-  // 3. Payment / Transaction reference resolution
+  // 3. Payment / Transaction reference resolution via PostgreSQL Persistent Registry
   const paymentRef = extractPaymentReference(rawPayload);
   if (paymentRef) {
-    // If registered in authoritative registry, verify bound tenant matches
-    if (authoritativePaymentTenantRegistry.has(paymentRef)) {
-      const boundTenant = authoritativePaymentTenantRegistry.get(paymentRef);
+    if (client) {
+      const res = await client.query(
+        `SELECT tenant_id, status FROM ${targetSchema}.workforce_payment_registry WHERE provider_transaction_id = $1`,
+        [paymentRef]
+      );
+      if (res.rows.length === 0) {
+        throw new SecurityInvariantViolation(
+          "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Transaction reference not registered in persistent registry"
+        );
+      }
+      const boundTenant = res.rows[0].tenant_id;
       if (boundTenant !== tenantId) {
         throw new SecurityInvariantViolation(
-          "UNVERIFIED_PAYMENT_TENANT_MAPPING: Transaction reference does not match authoritative tenant mapping"
+          "UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Transaction reference does not match authoritative tenant mapping"
         );
       }
       return true;
     }
 
-    // If payload explicitly claims verified or trusted test context without registry
-    if (rawPayload?.authoritative_verified === true) {
-      return true;
-    }
-
-    // Transaction reference is unregistered / not found in authoritative mapping
+    // Fail-closed: Cannot verify transaction reference without persistent client connection
     throw new SecurityInvariantViolation(
-      "UNVERIFIED_PAYMENT_TENANT_MAPPING: Transaction reference does not match authoritative tenant mapping"
+      "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Transaction reference not registered in persistent registry"
     );
   }
 
@@ -423,7 +416,7 @@ export class PostgresTenantPassLedger {
     }
 
     // Fail-closed authoritative payment-to-tenant verification before acquiring lock
-    await verifyAuthoritativePaymentTenant(provider, eventId, tenantId, rawPayload);
+    await verifyAuthoritativePaymentTenant(provider, eventId, tenantId, rawPayload, this.client, this.targetSchema);
 
     await this.client.query('BEGIN');
     try {
