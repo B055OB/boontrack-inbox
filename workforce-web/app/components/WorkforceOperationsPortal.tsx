@@ -79,6 +79,26 @@ interface IncidentRecord {
   inWhatsAppGroup: boolean;
 }
 
+export interface AllocatedPersonnel {
+  id: string;
+  name: string;
+  nip: string;
+  nik: string;
+  wa: string;
+  site: string;
+  post: string;
+  shift: string;
+  startDate: string;
+  daysLeft: number;
+  autoRenew: boolean;
+  status: string;
+  photo: string | null;
+  patrolSla: string;
+  onTimeAttendance: string;
+  checkpointScans: string;
+  incidentReports: string;
+}
+
 export interface WorkforceOperationsPortalProps {
   initialRole?: 'field' | 'supervisor' | 'reseller';
   tenantSlug?: string;
@@ -152,6 +172,8 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     | 'dual_dispatch_success'
     | 'cron_nudge_result'
     | 'tambah_fasilitas'
+    | 'tambah_personel'
+    | 'detail_personel'
     | null
   >(null);
 
@@ -374,22 +396,285 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   // Branch Filter for Personnel Table
   const [personnelBranchFilter, setPersonnelBranchFilter] = useState<string>('all');
 
-  // Reseller Allocated Personnel Roster with 30-Day Expiry Countdown
-  const [allocatedPersonnelList, setAllocatedPersonnelList] = useState([
-    { id: 'PAS-01', name: 'Officer Sarah Jenkins', nip: 'OP-4821', site: 'Metro Financial Tower Hub', startDate: '14 Oct 2026', daysLeft: 24, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-02', name: 'Officer Marcus Sterling', nip: 'OP-3914', site: 'Metro Financial Tower Hub', startDate: '19 Oct 2026', daysLeft: 19, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-03', name: 'Officer Lucas Hayes', nip: 'OP-5108', site: 'Metro Financial Tower Hub', startDate: '04 Oct 2026', daysLeft: 3, autoRenew: false, status: 'CRITICAL' },
-    { id: 'PAS-04', name: 'Officer Elena Rostova', nip: 'OP-6219', site: 'Metro Financial Tower Hub', startDate: '24 Oct 2026', daysLeft: 14, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-05', name: 'Officer David Vance', nip: 'OP-4012', site: 'Logistics Terminal 4 Bay', startDate: '16 Oct 2026', daysLeft: 22, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-06', name: 'Officer Robert Chen', nip: 'OP-3011', site: 'Logistics Terminal 4 Bay', startDate: '03 Oct 2026', daysLeft: 2, autoRenew: false, status: 'CRITICAL' },
-    { id: 'PAS-07', name: 'Officer Tariq Mansoor', nip: 'OP-4105', site: 'Logistics Terminal 4 Bay', startDate: '13 Oct 2026', daysLeft: 25, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-08', name: 'Officer Samuel Thorne', nip: 'OP-5192', site: 'Logistics Terminal 4 Bay', startDate: '27 Oct 2026', daysLeft: 11, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-09', name: 'Officer Chloe Bennett', nip: 'OP-6021', site: 'Metro Financial Tower Hub', startDate: '06 Nov 2026', daysLeft: 30, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-10', name: 'Officer Liam Walker', nip: 'OP-3920', site: 'Metro Financial Tower Hub', startDate: '29 Oct 2026', daysLeft: 9, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-11', name: 'Officer Michael Reyes', nip: 'OP-4819', site: 'East Boundary Perimeter Hub', startDate: '17 Oct 2026', daysLeft: 21, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-12', name: 'Officer Victor Ward', nip: 'OP-5201', site: 'East Boundary Perimeter Hub', startDate: '20 Oct 2026', daysLeft: 18, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-13', name: 'Officer Grace Kim', nip: 'OP-6310', site: 'Logistics Terminal 4 Bay', startDate: '12 Oct 2026', daysLeft: 26, autoRenew: true, status: 'ACTIVE' },
-    { id: 'PAS-14', name: 'Officer Daniel Brooks', nip: 'OP-4491', site: 'Metro Financial Tower Hub', startDate: '23 Oct 2026', daysLeft: 15, autoRenew: true, status: 'ACTIVE' },
+  // Personnel Detail & Onboarding States (CTO Mandate)
+  const [selectedPersonnelForDetail, setSelectedPersonnelForDetail] = useState<AllocatedPersonnel | null>(null);
+  const [newOfficerName, setNewOfficerName] = useState('');
+  const [newOfficerNik, setNewOfficerNik] = useState('');
+  const [newOfficerNip, setNewOfficerNip] = useState('');
+  const [newOfficerWa, setNewOfficerWa] = useState('+62 ');
+  const [newOfficerBranch, setNewOfficerBranch] = useState('Metro Financial Tower Hub');
+  const [newOfficerPost, setNewOfficerPost] = useState('Lobby Utama');
+  const [newOfficerShift, setNewOfficerShift] = useState('Pagi (07:00 - 15:00)');
+  const [newOfficerPhoto, setNewOfficerPhoto] = useState<string | null>(null);
+
+  // Reseller Allocated Personnel Roster with 30-Day Expiry Countdown & Performance KPIs
+  const [allocatedPersonnelList, setAllocatedPersonnelList] = useState<AllocatedPersonnel[]>([
+    {
+      id: 'PAS-01',
+      name: 'Officer Sarah Jenkins',
+      nip: 'OP-4821',
+      nik: '3171018904920001',
+      wa: '+62 812-3456-7891',
+      site: 'Metro Financial Tower Hub',
+      post: 'North Lobby Main Gate',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '14 Oct 2026',
+      daysLeft: 24,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '98.8%',
+      onTimeAttendance: '100%',
+      checkpointScans: '142 / 144 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-02',
+      name: 'Officer Marcus Sterling',
+      nip: 'OP-3914',
+      nik: '3171019005910002',
+      wa: '+62 812-3456-7892',
+      site: 'Metro Financial Tower Hub',
+      post: 'Substation Perimeter B',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '19 Oct 2026',
+      daysLeft: 19,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '99.1%',
+      onTimeAttendance: '97.5%',
+      checkpointScans: '138 / 140 Scan QR',
+      incidentReports: '1 Insiden Terselesaikan',
+    },
+    {
+      id: 'PAS-03',
+      name: 'Officer Lucas Hayes',
+      nip: 'OP-5108',
+      nik: '3171019207880003',
+      wa: '+62 812-3456-7893',
+      site: 'Metro Financial Tower Hub',
+      post: 'Loading Dock Bay A',
+      shift: 'Sore (15:00 - 23:00)',
+      startDate: '04 Oct 2026',
+      daysLeft: 3,
+      autoRenew: false,
+      status: 'CRITICAL',
+      photo: null,
+      patrolSla: '96.4%',
+      onTimeAttendance: '94.0%',
+      checkpointScans: '110 / 115 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-04',
+      name: 'Officer Elena Rostova',
+      nip: 'OP-6219',
+      nik: '3171019308940004',
+      wa: '+62 812-3456-7894',
+      site: 'Metro Financial Tower Hub',
+      post: 'South Perimeter Access Gate',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '24 Oct 2026',
+      daysLeft: 14,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '99.5%',
+      onTimeAttendance: '100%',
+      checkpointScans: '150 / 150 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-05',
+      name: 'Officer David Vance',
+      nip: 'OP-4012',
+      nik: '3171018803870005',
+      wa: '+62 812-3456-7895',
+      site: 'Logistics Terminal 4 Bay',
+      post: 'West Gate Logistics Entry',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '16 Oct 2026',
+      daysLeft: 22,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '98.0%',
+      onTimeAttendance: '99.0%',
+      checkpointScans: '130 / 132 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-06',
+      name: 'Officer Robert Chen',
+      nip: 'OP-3011',
+      nik: '3171018602850006',
+      wa: '+62 812-3456-7896',
+      site: 'Logistics Terminal 4 Bay',
+      post: 'Perimeter Outer Fence',
+      shift: 'Malam (23:00 - 07:00)',
+      startDate: '03 Oct 2026',
+      daysLeft: 2,
+      autoRenew: false,
+      status: 'CRITICAL',
+      photo: null,
+      patrolSla: '95.8%',
+      onTimeAttendance: '92.5%',
+      checkpointScans: '98 / 102 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-07',
+      name: 'Officer Tariq Mansoor',
+      nip: 'OP-4105',
+      nik: '3171019106900007',
+      wa: '+62 812-3456-7897',
+      site: 'Logistics Terminal 4 Bay',
+      post: 'Cargo Staging Area B',
+      shift: 'Sore (15:00 - 23:00)',
+      startDate: '13 Oct 2026',
+      daysLeft: 25,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '98.9%',
+      onTimeAttendance: '98.5%',
+      checkpointScans: '140 / 142 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-08',
+      name: 'Officer Samuel Thorne',
+      nip: 'OP-5192',
+      nik: '3171019409930008',
+      wa: '+62 812-3456-7898',
+      site: 'Logistics Terminal 4 Bay',
+      post: 'Heavy Vehicle Exit Post',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '27 Oct 2026',
+      daysLeft: 11,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '99.0%',
+      onTimeAttendance: '99.2%',
+      checkpointScans: '125 / 126 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-09',
+      name: 'Officer Chloe Bennett',
+      nip: 'OP-6021',
+      nik: '3171019510940009',
+      wa: '+62 812-3456-7899',
+      site: 'Metro Financial Tower Hub',
+      post: 'Executive Elevator Lobby',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '06 Nov 2026',
+      daysLeft: 30,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '100%',
+      onTimeAttendance: '100%',
+      checkpointScans: '160 / 160 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-10',
+      name: 'Officer Liam Walker',
+      nip: 'OP-3920',
+      nik: '3171019201910010',
+      wa: '+62 812-3456-7810',
+      site: 'Metro Financial Tower Hub',
+      post: 'Parking Basement B1-B3',
+      shift: 'Malam (23:00 - 07:00)',
+      startDate: '29 Oct 2026',
+      daysLeft: 9,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '97.2%',
+      onTimeAttendance: '96.5%',
+      checkpointScans: '115 / 118 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-11',
+      name: 'Officer Michael Reyes',
+      nip: 'OP-4819',
+      nik: '3171019004890011',
+      wa: '+62 812-3456-7811',
+      site: 'East Boundary Perimeter Hub',
+      post: 'Perimeter Guard Tower A',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '17 Oct 2026',
+      daysLeft: 21,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '99.4%',
+      onTimeAttendance: '100%',
+      checkpointScans: '148 / 149 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-12',
+      name: 'Officer Victor Ward',
+      nip: 'OP-5201',
+      nik: '3171018705860012',
+      wa: '+62 812-3456-7812',
+      site: 'East Boundary Perimeter Hub',
+      post: 'Fuel & Utility Vault Post',
+      shift: 'Sore (15:00 - 23:00)',
+      startDate: '20 Oct 2026',
+      daysLeft: 18,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '98.5%',
+      onTimeAttendance: '98.0%',
+      checkpointScans: '135 / 137 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-13',
+      name: 'Officer Grace Kim',
+      nip: 'OP-6310',
+      nik: '3171019611950013',
+      wa: '+62 812-3456-7813',
+      site: 'Logistics Terminal 4 Bay',
+      post: 'Security Dispatch Room',
+      shift: 'Pagi (07:00 - 15:00)',
+      startDate: '12 Oct 2026',
+      daysLeft: 26,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '100%',
+      onTimeAttendance: '100%',
+      checkpointScans: '155 / 155 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
+    {
+      id: 'PAS-14',
+      name: 'Officer Daniel Brooks',
+      nip: 'OP-4491',
+      nik: '3171019108900014',
+      wa: '+62 812-3456-7814',
+      site: 'Metro Financial Tower Hub',
+      post: 'East Wing Pedestrian Gate',
+      shift: 'Sore (15:00 - 23:00)',
+      startDate: '23 Oct 2026',
+      daysLeft: 15,
+      autoRenew: true,
+      status: 'ACTIVE',
+      photo: null,
+      patrolSla: '98.1%',
+      onTimeAttendance: '97.0%',
+      checkpointScans: '132 / 134 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    },
   ]);
 
   function handleRenewPersonnelPass(personnelId: string, personnelName: string) {
@@ -407,6 +692,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           : p
       )
     );
+    if (selectedPersonnelForDetail && selectedPersonnelForDetail.id === personnelId) {
+      setSelectedPersonnelForDetail((prev: any) => ({
+        ...prev,
+        daysLeft: 30,
+        status: 'ACTIVE',
+        startDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      }));
+    }
     alert(`Pass 30-hari untuk ${personnelName} (${personnelId}) berhasil diperpanjang dari kuota pool!`);
   }
 
@@ -414,6 +707,63 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     setAllocatedPersonnelList((prev) =>
       prev.map((p) => (p.id === personnelId ? { ...p, autoRenew: !p.autoRenew } : p))
     );
+  }
+
+  function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewOfficerPhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function handleAddPersonnel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newOfficerName.trim() || !newOfficerNip.trim()) return;
+
+    if (availablePasses <= 0) {
+      alert('Standby BWM Credit Passes tidak mencukupi untuk mengaktifkan petugas baru! Silakan top-up pass wholesale terlebih dahulu.');
+      setModalType('topup_seats');
+      return;
+    }
+
+    setAvailablePasses((prev) => prev - 1);
+
+    const newId = `PAS-${String(allocatedPersonnelList.length + 1).padStart(2, '0')}`;
+    const newOfficer = {
+      id: newId,
+      name: newOfficerName,
+      nip: newOfficerNip,
+      nik: newOfficerNik || '317101XXXXXXXXXX',
+      wa: newOfficerWa || '+62 812-3456-7890',
+      site: newOfficerBranch || (facilities[0]?.name || 'Metro Financial Tower Hub'),
+      post: newOfficerPost || 'Lobby Utama',
+      shift: newOfficerShift || 'Pagi (07:00 - 15:00)',
+      photo: newOfficerPhoto,
+      startDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      daysLeft: 30,
+      autoRenew: true,
+      status: 'ACTIVE',
+      patrolSla: '100%',
+      onTimeAttendance: '100%',
+      checkpointScans: '0 / 0 Scan QR',
+      incidentReports: '0 Insiden Terbuka',
+    };
+
+    setAllocatedPersonnelList((prev) => [newOfficer, ...prev]);
+    setModalType(null);
+
+    // Reset form states
+    setNewOfficerName('');
+    setNewOfficerNik('');
+    setNewOfficerNip('');
+    setNewOfficerWa('+62 ');
+    setNewOfficerPhoto(null);
+
+    alert(`Petugas ${newOfficer.name} (${newOfficer.nip}) berhasil didaftarkan dan diaktifkan di ${newOfficer.site}! 1 BWM Pass telah dipotong.`);
   }
 
   function handleAddFacility(e: React.FormEvent) {
@@ -1416,8 +1766,14 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               {facilities.map((fac) => (
                 <div
                   key={fac.id}
-                  onClick={() => setSelectedFacilityForDrawer(fac)}
-                  className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
+                  onClick={() => {
+                    setPersonnelBranchFilter(fac.name);
+                  }}
+                  className={`p-5 rounded-2xl bg-white border transition cursor-pointer space-y-3 group ${
+                    personnelBranchFilter === fac.name
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md'
+                      : 'border-slate-200 shadow-sm hover:shadow-md'
+                  }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
@@ -1431,7 +1787,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   </div>
                   <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
                     <span>Supervisor: {fac.supervisor}</span>
-                    <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPersonnelBranchFilter(fac.name);
+                        const el = document.getElementById('personnel-allocation-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center space-x-1"
+                    >
+                      <span>Inspect Branch &rarr;</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1439,32 +1806,99 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
           </div>
 
           {/* Section: Personnel Pass Expiry & Fleet Deployment Table (CTO Mandate) */}
-          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+          <div id="personnel-allocation-section" className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Rincian Personel &amp; Masa Aktif Pass per Cabang</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Monitoring masa berlaku 30-hari pass, countdown kedaluwarsa, dan kontrol auto-renew.
+                  Monitoring masa berlaku 30-hari pass, countdown kedaluwarsa, dan kontrol auto-renew. Klik baris petugas untuk inspeksi profil &amp; KPI.
                 </p>
               </div>
 
-              {/* Branch Filter */}
-              <div className="flex items-center space-x-2 text-xs">
-                <span className="font-semibold text-slate-500">Filter Cabang:</span>
-                <select
-                  value={personnelBranchFilter}
-                  onChange={(e) => setPersonnelBranchFilter(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              {/* Action: Daftarkan Personel Baru & Branch Filter */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setModalType('tambah_personel')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
                 >
-                  <option value="all">Semua Cabang / Fasilitas ({allocatedPersonnelList.length} Personel)</option>
-                  {facilities.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
+                  <Plus className="w-4 h-4" />
+                  <span>+ Daftarkan Personel Baru</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-slate-500">Filter Cabang:</span>
+                  <select
+                    value={personnelBranchFilter}
+                    onChange={(e) => setPersonnelBranchFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="all">Semua Cabang / Fasilitas ({allocatedPersonnelList.length} Personel)</option>
+                    {facilities.map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
+
+            {/* Active Branch Context Drill-down Banner */}
+            {personnelBranchFilter !== 'all' && (() => {
+              const activeBranch = facilities.find((f) => f.name === personnelBranchFilter);
+              if (!activeBranch) return null;
+              const branchOfficerCount = allocatedPersonnelList.filter((p) => p.site === activeBranch.name).length;
+              return (
+                <div className="p-4 rounded-xl bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                        ACTIVE BRANCH DRILL-DOWN
+                      </span>
+                      <h4 className="text-sm font-bold text-slate-900">{activeBranch.name}</h4>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                      <span className="flex items-center space-x-1">
+                        <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                        <span>{activeBranch.address}</span>
+                      </span>
+                      <span className="flex items-center space-x-1">
+                        <Shield className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Supervisor: <strong>{activeBranch.supervisor}</strong></span>
+                      </span>
+                      <span className="flex items-center space-x-1">
+                        <Users className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>
+                          Total Petugas Bertugas: <strong>{branchOfficerCount} Personel</strong>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewOfficerBranch(activeBranch.name);
+                        setModalType('tambah_personel');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Daftarkan Personel Cabang Ini</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPersonnelBranchFilter('all')}
+                      className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                    >
+                      <span>&larr; Kembali ke Tampilan Semua Cabang</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Table */}
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -1483,15 +1917,43 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                   {allocatedPersonnelList
                     .filter((p) => personnelBranchFilter === 'all' || p.site === personnelBranchFilter)
                     .map((officer) => (
-                      <tr key={officer.id} className="hover:bg-slate-50/70 transition">
+                      <tr
+                        key={officer.id}
+                        onClick={() => {
+                          setSelectedPersonnelForDetail(officer);
+                          setModalType('detail_personel');
+                        }}
+                        className="hover:bg-blue-50/50 transition cursor-pointer group"
+                      >
                         <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-900">{officer.name}</div>
-                          <div className="font-mono text-[11px] text-blue-600 font-bold">{officer.nip} &bull; {officer.id}</div>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                              {officer.photo ? (
+                                <img src={officer.photo} alt={officer.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="font-bold text-xs text-blue-700">
+                                  {officer.name.split(' ').slice(1, 3).map((n) => n[0]).join('') || 'SEC'}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 group-hover:text-blue-600 transition flex items-center space-x-1.5">
+                                <span>{officer.name}</span>
+                                <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition" />
+                              </div>
+                              <div className="font-mono text-[11px] text-blue-600 font-bold">
+                                {officer.nip} &bull; {officer.id}
+                              </div>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 font-medium text-slate-700">
                           <div className="flex items-center space-x-1.5">
                             <Building2 className="w-3.5 h-3.5 text-slate-400" />
                             <span>{officer.site}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            {officer.post || 'Pos Utama'} &bull; {officer.shift || 'Shift Pagi'}
                           </div>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-slate-600">
@@ -1511,7 +1973,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                         <td className="py-3.5 px-4 text-center">
                           <button
                             type="button"
-                            onClick={() => handleTogglePersonnelAutoRenew(officer.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTogglePersonnelAutoRenew(officer.id);
+                            }}
                             className={`px-3 py-1 rounded-full font-bold text-[11px] transition cursor-pointer ${
                               officer.autoRenew
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -1524,7 +1989,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                         <td className="py-3.5 px-4 text-right">
                           <button
                             type="button"
-                            onClick={() => handleRenewPersonnelPass(officer.id, officer.name)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRenewPersonnelPass(officer.id, officer.name);
+                            }}
                             className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
                           >
                             Perpanjang Pass
@@ -2122,6 +2590,346 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Daftarkan Personel Baru (CTO Mandate) */}
+      {modalType === 'tambah_personel' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 relative shadow-2xl text-slate-900 my-8">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+            <div>
+              <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200 mb-1">
+                <span>OFFICER ENROLLMENT &amp; PASS ACTIVATION</span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Daftarkan Personel Baru</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Registrasi data identitas petugas keamanan dan aktivasi lisensi 30-hari BWM Pass.
+              </p>
+            </div>
+
+            <form onSubmit={handleAddPersonnel} className="space-y-4">
+              {/* a. Foto Profil Petugas */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Foto Profil Petugas (Seragam)</label>
+                <div className="flex items-center space-x-4">
+                  <div className="relative w-20 h-20 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 overflow-hidden flex items-center justify-center shrink-0 group hover:border-blue-500 transition">
+                    {newOfficerPhoto ? (
+                      <img src={newOfficerPhoto} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-2">
+                        <Camera className="w-6 h-6 text-slate-400 mx-auto" />
+                        <span className="text-[9px] text-slate-400 font-bold block mt-0.5">Upload</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="file"
+                      id="officer-photo-input"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="officer-photo-input"
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                      <span>{newOfficerPhoto ? 'Ganti Foto' : 'Pilih Foto Avatar'}</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400">Format PNG/JPG, rasio kotak disarankan (seragam sekuriti aktif).</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* b. Data Identitas */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap Petugas</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Officer Denny Setiawan"
+                      value={newOfficerName}
+                      onChange={(e) => setNewOfficerName(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">NIK (KTP 16 Digit)</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={16}
+                      placeholder="317101XXXXXXXXXX"
+                      value={newOfficerNik}
+                      onChange={(e) => setNewOfficerNik(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">ID Badge / NIP Petugas</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="OP-7102"
+                      value={newOfficerNip}
+                      onChange={(e) => setNewOfficerNip(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">No. WhatsApp Aktif (+62)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="+62 812-3456-7890"
+                      value={newOfficerWa}
+                      onChange={(e) => setNewOfficerWa(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* c. Penempatan Pos & Shift */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Cabang / Fasilitas Penempatan</label>
+                  <select
+                    value={newOfficerBranch}
+                    onChange={(e) => setNewOfficerBranch(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-bold"
+                  >
+                    {facilities.map((fac) => (
+                      <option key={fac.id} value={fac.name}>
+                        {fac.name} &bull; {fac.type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Pos Penugasan</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Lobby Utama / Gate Barat"
+                      value={newOfficerPost}
+                      onChange={(e) => setNewOfficerPost(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Pilihan Shift Kerja</label>
+                    <select
+                      value={newOfficerShift}
+                      onChange={(e) => setNewOfficerShift(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    >
+                      <option value="Pagi (07:00 - 15:00)">Pagi (07:00 - 15:00)</option>
+                      <option value="Sore (15:00 - 23:00)">Sore (15:00 - 23:00)</option>
+                      <option value="Malam (23:00 - 07:00)">Malam (23:00 - 07:00)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* d. Konfirmasi Kuota Pass */}
+              <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 flex items-start space-x-2.5 text-xs text-amber-900">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold">Konfirmasi Pemotongan Kuota Pass:</p>
+                  <p className="text-amber-800 text-[11px] leading-relaxed">
+                    Aktivasi petugas ini akan memotong <strong>1 BWM Pass</strong> (masa aktif 30 hari) dari Standby Pool Anda.
+                  </p>
+                  <p className="text-[11px] text-amber-700 font-mono mt-1">
+                    Saldo Standby Pool Saat Ini: <strong>{availablePasses} Passes Tersedia</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* e. Tombol Submit */}
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center space-x-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan &amp; Aktifkan Petugas</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Inspeksi Profil & Kartu Performa Petugas (CTO Mandate) */}
+      {modalType === 'detail_personel' && selectedPersonnelForDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full p-6 space-y-5 relative shadow-2xl text-slate-900 my-8">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+
+            {/* a. Header Profil */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4 pb-4 border-b border-slate-100">
+              <div className="relative w-20 h-20 rounded-full bg-slate-100 border-2 border-blue-500 overflow-hidden shadow-sm shrink-0 flex items-center justify-center">
+                {selectedPersonnelForDetail.photo ? (
+                  <img src={selectedPersonnelForDetail.photo} alt={selectedPersonnelForDetail.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-linear-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-xl">
+                    {selectedPersonnelForDetail.name.split(' ').slice(1, 3).map((n: string) => n[0]).join('') || 'OP'}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-slate-900 truncate">{selectedPersonnelForDetail.name}</h3>
+                  {/* b. Badge Status Pass */}
+                  {selectedPersonnelForDetail.daysLeft <= 5 ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 text-[11px]">
+                      Sisa {selectedPersonnelForDetail.daysLeft} Hari (Perpanjangan Kritis)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
+                      Sisa {selectedPersonnelForDetail.daysLeft} Hari Aktif
+                    </span>
+                  )}
+                </div>
+                <div className="font-mono text-xs text-blue-600 font-bold">
+                  {selectedPersonnelForDetail.nip} &bull; {selectedPersonnelForDetail.id} {selectedPersonnelForDetail.nik && `• NIK: ${selectedPersonnelForDetail.nik}`}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                  <span className="flex items-center space-x-1">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{selectedPersonnelForDetail.site}</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{selectedPersonnelForDetail.post || 'Pos Utama'} ({selectedPersonnelForDetail.shift || 'Shift Pagi'})</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-mono">{selectedPersonnelForDetail.wa || '+62 812-3456-7890'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* c. 4 Kartu KPI Performa Individual */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
+                KPI Performa &amp; Metrik Operasional Individu
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                {/* KPI 1 */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+                    <span>Patrol Checkpoint SLA</span>
+                    <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="text-lg font-black text-slate-900">{selectedPersonnelForDetail.patrolSla || '98.8%'}</div>
+                  <div className="text-[10px] text-slate-500">Kepatuhan Rute Patroli Standar</div>
+                </div>
+
+                {/* KPI 2 */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+                    <span>On-Time Attendance</span>
+                    <Clock className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-lg font-black text-slate-900">{selectedPersonnelForDetail.onTimeAttendance || '100%'}</div>
+                  <div className="text-[10px] text-slate-500">Hadir Tepat Waktu Tanpa Keterlambatan</div>
+                </div>
+
+                {/* KPI 3 */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+                    <span>Checkpoint Scans</span>
+                    <QrCode className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="text-lg font-black text-slate-900">{selectedPersonnelForDetail.checkpointScans || '142 / 144'}</div>
+                  <div className="text-[10px] text-slate-500">Titik Barcode Tervalidasi Geofence</div>
+                </div>
+
+                {/* KPI 4 */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+                    <span>Laporan Insiden Sektor</span>
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="text-lg font-black text-slate-900">{selectedPersonnelForDetail.incidentReports || '0 Insiden Terbuka'}</div>
+                  <div className="text-[10px] text-slate-500">Status Tindak Lanjut Insiden</div>
+                </div>
+              </div>
+            </div>
+
+            {/* d. Tombol Aksi */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const rawWa = selectedPersonnelForDetail.wa || '+62 812-3456-7890';
+                  const cleanPhone = rawWa.replace(/[^0-9]/g, '');
+                  const message = encodeURIComponent(
+                    `Halo ${selectedPersonnelForDetail.name}, berikut link aplikasi PWA BWM Workforce resmi Anda untuk penugasan di ${selectedPersonnelForDetail.site}:\nhttps://workforce.boontrack.com/login\n\nNIP Anda: ${selectedPersonnelForDetail.nip}`
+                  );
+                  window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>Kirim Link PWA via WhatsApp</span>
+              </button>
+
+              <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRenewPersonnelPass(selectedPersonnelForDetail.id, selectedPersonnelForDetail.name);
+                    setSelectedPersonnelForDetail((prev: any) => ({
+                      ...prev,
+                      daysLeft: 30,
+                      status: 'ACTIVE',
+                    }));
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Perpanjang Pass (+30 Hari)</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
