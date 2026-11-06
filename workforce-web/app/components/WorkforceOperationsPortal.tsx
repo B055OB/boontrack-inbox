@@ -151,6 +151,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     | 'lapor_insiden'
     | 'dual_dispatch_success'
     | 'cron_nudge_result'
+    | 'tambah_fasilitas'
     | null
   >(null);
 
@@ -323,32 +324,120 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     }, 1200);
   }
 
-  // Top-Up Dialog State (Dodo Payments USD)
+  // Top-Up Dialog State (Wholesale Dodo Payments USD)
   const [selectedTopupPasses, setSelectedTopupPasses] = useState<{ qty: number; price: string; tier: string }>({
     qty: 25,
-    price: '$375 USD',
+    price: '$102 USD',
     tier: 'Tier Professional (Recommended)',
   });
   const [topupSuccessToast, setTopupSuccessToast] = useState(false);
   const [lastTopupAddedQty, setLastTopupAddedQty] = useState(0);
 
-  // Reseller Allocated Personnel Roster
-  const [allocatedPersonnelList, setAllocatedPersonnelList] = useState([
-    { id: 'PAS-01', name: 'Officer Sarah Jenkins', nip: 'OP-4821', site: 'Metro Financial Tower Hub', passExpiry: '24 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-02', name: 'Officer Marcus Sterling', nip: 'OP-3914', site: 'Metro Financial Tower Hub', passExpiry: '19 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-03', name: 'Officer Lucas Hayes', nip: 'OP-5108', site: 'Metro Financial Tower Hub', passExpiry: '28 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-04', name: 'Officer Elena Rostova', nip: 'OP-6219', site: 'Metro Financial Tower Hub', passExpiry: '14 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-05', name: 'Officer David Vance', nip: 'OP-4012', site: 'Logistics Terminal 4 Bay', passExpiry: '22 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-06', name: 'Officer Robert Chen', nip: 'OP-3011', site: 'Logistics Terminal 4 Bay', passExpiry: '17 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-07', name: 'Officer Tariq Mansoor', nip: 'OP-4105', site: 'Logistics Terminal 4 Bay', passExpiry: '25 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-08', name: 'Officer Samuel Thorne', nip: 'OP-5192', site: 'Logistics Terminal 4 Bay', passExpiry: '11 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-09', name: 'Officer Chloe Bennett', nip: 'OP-6021', site: 'Metro Financial Tower Hub', passExpiry: '30 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-10', name: 'Officer Liam Walker', nip: 'OP-3920', site: 'Metro Financial Tower Hub', passExpiry: '9 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-11', name: 'Officer Michael Reyes', nip: 'OP-4819', site: 'Metro Financial Tower Hub', passExpiry: '21 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-12', name: 'Officer Victor Ward', nip: 'OP-5201', site: 'Logistics Terminal 4 Bay', passExpiry: '18 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-13', name: 'Officer Grace Kim', nip: 'OP-6310', site: 'Logistics Terminal 4 Bay', passExpiry: '26 Days Remaining', status: 'ACTIVE' },
-    { id: 'PAS-14', name: 'Officer Daniel Brooks', nip: 'OP-4491', site: 'Metro Financial Tower Hub', passExpiry: '15 Days Remaining', status: 'ACTIVE' },
+  // Client Facility State
+  const [facilities, setFacilities] = useState([
+    {
+      id: 'FAC-01',
+      name: 'Metro Financial Tower Hub',
+      type: 'Commercial Office High-Rise',
+      sla: '99.2%',
+      personnel: 8,
+      address: 'Financial District, Fl. 1-45',
+      supervisor: 'Marcus Sterling (SUP-1092)',
+    },
+    {
+      id: 'FAC-02',
+      name: 'Logistics Terminal 4 Bay',
+      type: 'Industrial & Cargo Logistics',
+      sla: '98.7%',
+      personnel: 4,
+      address: 'West Cargo Port Sector C',
+      supervisor: 'Robert Chen (SUP-0842)',
+    },
+    {
+      id: 'FAC-03',
+      name: 'East Boundary Perimeter Hub',
+      type: 'Critical Infrastructure',
+      sla: '100% Prime',
+      personnel: 2,
+      address: 'Perimeter Boundary Sector 1',
+      supervisor: 'Victor Ward (SUP-0914)',
+    },
   ]);
+
+  // Add Facility Form State
+  const [newFacilityName, setNewFacilityName] = useState('');
+  const [newFacilityAddress, setNewFacilityAddress] = useState('');
+  const [newFacilityRadius, setNewFacilityRadius] = useState('50m');
+  const [newFacilitySupervisor, setNewFacilitySupervisor] = useState('');
+  const [newFacilityQuota, setNewFacilityQuota] = useState('4');
+
+  // Branch Filter for Personnel Table
+  const [personnelBranchFilter, setPersonnelBranchFilter] = useState<string>('all');
+
+  // Reseller Allocated Personnel Roster with 30-Day Expiry Countdown
+  const [allocatedPersonnelList, setAllocatedPersonnelList] = useState([
+    { id: 'PAS-01', name: 'Officer Sarah Jenkins', nip: 'OP-4821', site: 'Metro Financial Tower Hub', startDate: '14 Oct 2026', daysLeft: 24, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-02', name: 'Officer Marcus Sterling', nip: 'OP-3914', site: 'Metro Financial Tower Hub', startDate: '19 Oct 2026', daysLeft: 19, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-03', name: 'Officer Lucas Hayes', nip: 'OP-5108', site: 'Metro Financial Tower Hub', startDate: '04 Oct 2026', daysLeft: 3, autoRenew: false, status: 'CRITICAL' },
+    { id: 'PAS-04', name: 'Officer Elena Rostova', nip: 'OP-6219', site: 'Metro Financial Tower Hub', startDate: '24 Oct 2026', daysLeft: 14, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-05', name: 'Officer David Vance', nip: 'OP-4012', site: 'Logistics Terminal 4 Bay', startDate: '16 Oct 2026', daysLeft: 22, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-06', name: 'Officer Robert Chen', nip: 'OP-3011', site: 'Logistics Terminal 4 Bay', startDate: '03 Oct 2026', daysLeft: 2, autoRenew: false, status: 'CRITICAL' },
+    { id: 'PAS-07', name: 'Officer Tariq Mansoor', nip: 'OP-4105', site: 'Logistics Terminal 4 Bay', startDate: '13 Oct 2026', daysLeft: 25, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-08', name: 'Officer Samuel Thorne', nip: 'OP-5192', site: 'Logistics Terminal 4 Bay', startDate: '27 Oct 2026', daysLeft: 11, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-09', name: 'Officer Chloe Bennett', nip: 'OP-6021', site: 'Metro Financial Tower Hub', startDate: '06 Nov 2026', daysLeft: 30, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-10', name: 'Officer Liam Walker', nip: 'OP-3920', site: 'Metro Financial Tower Hub', startDate: '29 Oct 2026', daysLeft: 9, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-11', name: 'Officer Michael Reyes', nip: 'OP-4819', site: 'East Boundary Perimeter Hub', startDate: '17 Oct 2026', daysLeft: 21, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-12', name: 'Officer Victor Ward', nip: 'OP-5201', site: 'East Boundary Perimeter Hub', startDate: '20 Oct 2026', daysLeft: 18, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-13', name: 'Officer Grace Kim', nip: 'OP-6310', site: 'Logistics Terminal 4 Bay', startDate: '12 Oct 2026', daysLeft: 26, autoRenew: true, status: 'ACTIVE' },
+    { id: 'PAS-14', name: 'Officer Daniel Brooks', nip: 'OP-4491', site: 'Metro Financial Tower Hub', startDate: '23 Oct 2026', daysLeft: 15, autoRenew: true, status: 'ACTIVE' },
+  ]);
+
+  function handleRenewPersonnelPass(personnelId: string, personnelName: string) {
+    if (availablePasses <= 0) {
+      alert('Standby BWM Credit Passes tidak mencukupi! Silakan top-up pass wholesale terlebih dahulu.');
+      setModalType('topup_seats');
+      return;
+    }
+
+    setAvailablePasses((prev) => prev - 1);
+    setAllocatedPersonnelList((prev) =>
+      prev.map((p) =>
+        p.id === personnelId
+          ? { ...p, daysLeft: 30, status: 'ACTIVE', startDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }
+          : p
+      )
+    );
+    alert(`Pass 30-hari untuk ${personnelName} (${personnelId}) berhasil diperpanjang dari kuota pool!`);
+  }
+
+  function handleTogglePersonnelAutoRenew(personnelId: string) {
+    setAllocatedPersonnelList((prev) =>
+      prev.map((p) => (p.id === personnelId ? { ...p, autoRenew: !p.autoRenew } : p))
+    );
+  }
+
+  function handleAddFacility(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newFacilityName.trim()) return;
+
+    const quota = parseInt(newFacilityQuota, 10) || 0;
+    const newFac = {
+      id: `FAC-0${facilities.length + 1}`,
+      name: newFacilityName,
+      type: 'Secured Client Site',
+      sla: '100% Prime',
+      personnel: quota,
+      address: `${newFacilityAddress} (Radius ${newFacilityRadius})`,
+      supervisor: newFacilitySupervisor || 'Assigned On Deploy',
+    };
+
+    setFacilities([...facilities, newFac]);
+    setModalType(null);
+    setNewFacilityName('');
+    setNewFacilityAddress('');
+    setNewFacilitySupervisor('');
+    alert(`Fasilitas "${newFac.name}" berhasil ditambahkan ke portofolio klien!`);
+  }
 
   // Live Clock effect
   useEffect(() => {
@@ -564,16 +653,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Left: Brand Identity */}
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center p-1 shadow-xs">
-              <Image src={branding.logoLightUrl} alt={`${branding.brandName} Logo`} width={32} height={32} className="object-contain" priority />
+            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center p-1.5 shadow-xs">
+              <Image src={branding.logoLightUrl} alt={`${branding.brandName} Logo`} width={36} height={36} className="object-contain" priority />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-sm tracking-tight text-slate-900">{branding.portalTitle}</span>
-                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
-                  {currentRole === 'field' ? 'Field Mobile' : currentRole === 'supervisor' ? 'Command Desk' : 'Main Agent'}
-                </span>
-              </div>
+              <span className="text-2xl font-black tracking-tight text-slate-900">BWM</span>
               <div className="text-[11px] text-slate-500">
                 Facility: <span className="text-slate-800 font-semibold">{currentRole === 'reseller' ? resellerAgency : currentRole === 'supervisor' ? supervisorBranch : mitraPlacement}</span> &bull; <span className="font-mono text-slate-600">{currentTime}</span>
               </div>
@@ -619,8 +703,12 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <div className="font-bold text-slate-900">
                 {currentRole === 'field' ? userName : currentRole === 'supervisor' ? supervisorName : resellerName}
               </div>
-              <div className="text-[10px] text-slate-500 font-mono">
-                {currentRole === 'field' ? userNip : currentRole === 'supervisor' ? supervisorNip : resellerEmail}
+              <div className="text-[11px] text-slate-500 font-medium">
+                {currentRole === 'reseller'
+                  ? 'Apex Security Operations • Country Main Agent'
+                  : currentRole === 'supervisor'
+                  ? `${supervisorBranch} • Branch Supervisor Desk`
+                  : `${mitraPlacement} • Field Officer Patrol`}
               </div>
             </div>
 
@@ -1304,79 +1392,148 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">Click any client facility card to inspect branch details in slide-over drawer.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setModalType('audit_sla')}
-                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-xs transition flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto"
-              >
-                <Download className="w-4 h-4 text-slate-500" />
-                <span>{t('workforce.mainAgent.downloadAudit')}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalType('tambah_fasilitas')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Tambah Fasilitas / Cabang Baru</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalType('audit_sla')}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-slate-500" />
+                  <span>{t('workforce.mainAgent.downloadAudit')}</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Facility 1 */}
-              <div
-                onClick={() => setSelectedFacilityForDrawer({ name: 'Metro Financial Tower Hub', type: 'Commercial Office High-Rise', sla: '99.2%', personnel: 8, address: 'Financial District, Fl. 1-45' })}
-                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                    Commercial Office High-Rise
-                  </span>
-                  <span className="text-xs font-bold text-emerald-600">99.2% SLA</span>
+              {facilities.map((fac) => (
+                <div
+                  key={fac.id}
+                  onClick={() => setSelectedFacilityForDrawer(fac)}
+                  className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      {fac.type}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-600">{fac.sla}</span>
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">{fac.name}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Active Deployment: {fac.personnel} Personnel &bull; Annual SLA</p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                    <span>Supervisor: {fac.supervisor}</span>
+                    <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">Metro Financial Tower Hub</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 8 Personnel &bull; Annual SLA</p>
-                </div>
-                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-                  <span>Branch: SUP-1092</span>
-                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
-                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section: Personnel Pass Expiry & Fleet Deployment Table (CTO Mandate) */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Rincian Personel &amp; Masa Aktif Pass per Cabang</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Monitoring masa berlaku 30-hari pass, countdown kedaluwarsa, dan kontrol auto-renew.
+                </p>
               </div>
 
-              {/* Facility 2 */}
-              <div
-                onClick={() => setSelectedFacilityForDrawer({ name: 'Logistics Terminal 4 Bay', type: 'Industrial & Cargo Logistics', sla: '98.7%', personnel: 4, address: 'West Cargo Port Sector C' })}
-                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                    Industrial &amp; Cargo Logistics
-                  </span>
-                  <span className="text-xs font-bold text-emerald-600">98.7% SLA</span>
-                </div>
-                <div>
-                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">Logistics Terminal 4 Bay</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 4 Personnel &bull; Annual SLA</p>
-                </div>
-                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-                  <span>Branch: SUP-0842</span>
-                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
-                </div>
+              {/* Branch Filter */}
+              <div className="flex items-center space-x-2 text-xs">
+                <span className="font-semibold text-slate-500">Filter Cabang:</span>
+                <select
+                  value={personnelBranchFilter}
+                  onChange={(e) => setPersonnelBranchFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="all">Semua Cabang / Fasilitas ({allocatedPersonnelList.length} Personel)</option>
+                  {facilities.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
               </div>
+            </div>
 
-              {/* Facility 3 */}
-              <div
-                onClick={() => setSelectedFacilityForDrawer({ name: 'East Boundary Perimeter Hub', type: 'Critical Infrastructure', sla: '100% Prime', personnel: 2, address: 'Perimeter Boundary Sector 1' })}
-                className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer space-y-3 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Critical Infrastructure
-                  </span>
-                  <span className="text-xs font-bold text-emerald-600">100% SLA</span>
-                </div>
-                <div>
-                  <h4 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition">East Boundary Perimeter Hub</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Active Deployment: 2 Personnel &bull; Annual SLA</p>
-                </div>
-                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-                  <span>Branch: SUP-0914</span>
-                  <span className="font-bold text-blue-600 group-hover:underline">Inspect Branch &rarr;</span>
-                </div>
-              </div>
+            {/* Table */}
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Nama Petugas &amp; ID Badge</th>
+                    <th className="py-3 px-4">Fasilitas / Cabang Penempatan</th>
+                    <th className="py-3 px-4">Tanggal Mulai Pass</th>
+                    <th className="py-3 px-4">Masa Aktif Pass</th>
+                    <th className="py-3 px-4 text-center">Auto-Renew</th>
+                    <th className="py-3 px-4 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allocatedPersonnelList
+                    .filter((p) => personnelBranchFilter === 'all' || p.site === personnelBranchFilter)
+                    .map((officer) => (
+                      <tr key={officer.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-900">{officer.name}</div>
+                          <div className="font-mono text-[11px] text-blue-600 font-bold">{officer.nip} &bull; {officer.id}</div>
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-slate-700">
+                          <div className="flex items-center space-x-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{officer.site}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-slate-600">
+                          {officer.startDate}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {officer.daysLeft <= 5 ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 text-[11px]">
+                              Sisa {officer.daysLeft} Hari (Perpanjangan Kritis)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">
+                              Sisa {officer.daysLeft} Hari (Aktif)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePersonnelAutoRenew(officer.id)}
+                            className={`px-3 py-1 rounded-full font-bold text-[11px] transition cursor-pointer ${
+                              officer.autoRenew
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {officer.autoRenew ? '✓ On' : 'Off'}
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleRenewPersonnelPass(officer.id, officer.name)}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                          >
+                            Perpanjang Pass
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </main>
@@ -1801,11 +1958,15 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               </p>
             </div>
 
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-medium">
+              <span className="font-bold">Wholesale Sovereign Rate:</span> Rekomendasi jual ke klien: $12–$15/pass.
+            </div>
+
             <div className="space-y-2.5">
               {[
-                { qty: 10, tier: 'Tier Starter', price: '$150 USD', rate: '$15/pass/mo', desc: '10 Passes — $150 USD ($15/pass/mo)' },
-                { qty: 25, tier: 'Tier Professional (Recommended)', price: '$375 USD', rate: '$15/pass/mo', desc: '25 Passes — $375 USD ($15/pass/mo)', recommended: true },
-                { qty: 50, tier: 'Tier Enterprise Fleet', price: '$700 USD', rate: '$14/pass/mo', desc: '50 Passes — $700 USD ($14/pass/mo)' },
+                { qty: 10, tier: 'Tier Starter', price: '$45 USD', rate: '$4.50/pass', desc: '10 Passes — $45 USD ($4.50/pass)' },
+                { qty: 25, tier: 'Tier Professional (Recommended)', price: '$102 USD', rate: '$4.08/pass avg', desc: '25 Passes — $102 USD ($4.08/pass avg)', recommended: true },
+                { qty: 50, tier: 'Tier Enterprise Fleet', price: '$196 USD', rate: '$3.92/pass avg', desc: '50 Passes — $196 USD ($3.92/pass avg)' },
               ].map((pkg) => (
                 <button
                   key={pkg.qty}
@@ -1860,6 +2021,107 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Tambah Fasilitas / Cabang Baru (CTO Mandate) */}
+      {modalType === 'tambah_fasilitas' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
+            <button
+              onClick={() => setModalType(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+            >
+              &times;
+            </button>
+            <div>
+              <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200 mb-1">
+                <span>NEW CLIENT BRANCH</span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Tambah Fasilitas / Cabang Baru</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Daftarkan lokasi perimeter baru untuk penempatan personel dan kuota pass.
+              </p>
+            </div>
+
+            <form onSubmit={handleAddFacility} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Fasilitas / Gedung</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Sudirman Central Plaza Hub"
+                  value={newFacilityName}
+                  onChange={(e) => setNewFacilityName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Lokasi</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Jl. Jend. Sudirman Kav. 25"
+                    value={newFacilityAddress}
+                    onChange={(e) => setNewFacilityAddress(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Radius</label>
+                  <input
+                    type="text"
+                    placeholder="50m"
+                    value={newFacilityRadius}
+                    onChange={(e) => setNewFacilityRadius(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Supervisor Utama</label>
+                <input
+                  type="text"
+                  placeholder="Nama & ID Supervisor (mis: Bambang - SUP-2041)"
+                  value={newFacilitySupervisor}
+                  onChange={(e) => setNewFacilitySupervisor(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Alokasi Kuota Pass Awal</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={newFacilityQuota}
+                  onChange={(e) => setNewFacilityQuota(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Kuota pass akan dipotong dari saldo standby pool Anda saat personel diaktifkan.</p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                >
+                  Simpan &amp; Aktifkan Cabang
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

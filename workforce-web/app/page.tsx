@@ -112,12 +112,7 @@ export default function BwmModernLandingPage() {
               <Image src="/logo.png" alt="BWM Logo" width={36} height={36} className="object-contain" priority />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-xl tracking-tight text-slate-900">BWM</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 tracking-wide">
-                  ENTERPRISE PLATFORM
-                </span>
-              </div>
+              <span className="text-2xl font-black tracking-tight text-slate-900">BWM</span>
               <p className="text-[11px] text-slate-500 font-medium tracking-tight">Workforce Management OS</p>
             </div>
           </Link>
