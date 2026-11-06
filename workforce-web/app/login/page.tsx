@@ -6,9 +6,9 @@ import Image from 'next/image';
 
 export default function WorkforceLoginPage() {
   const [slug, setSlug] = useState('apex');
-  const [nik, setNik] = useState('sarah.jenkins@apexsecurity.com');
-  const [pin, setPin] = useState('123456');
-  const [activePreset, setActivePreset] = useState<'sarah' | 'marcus' | 'apex'>('sarah');
+  const [nik, setNik] = useState('partner@apexsecurity.com');
+  const [pin, setPin] = useState('998877');
+  const [activePreset, setActivePreset] = useState<'sarah' | 'marcus' | 'apex'>('apex');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export default function WorkforceLoginPage() {
       setNik('sarah.jenkins@apexsecurity.com');
       setPin('123456');
     } else if (preset === 'marcus') {
-      setNik('marcus.sterling@apexsecurity.com');
+      setNik('marcus.vance@apexsecurity.com');
       setPin('901105');
     } else if (preset === 'apex') {
       setNik('partner@apexsecurity.com');
@@ -133,7 +133,7 @@ export default function WorkforceLoginPage() {
                 <div>
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Officer Sarah Jenkins
+                    Sarah Jenkins - Senior Field Officer
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
                     sarah.jenkins@apexsecurity.com &bull; Badge #OP-4821
@@ -157,10 +157,10 @@ export default function WorkforceLoginPage() {
                 <div>
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    Marcus Sterling (Supervisor)
+                    Marcus Vance - Facility Operations Lead
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    marcus.sterling@apexsecurity.com &bull; Badge #SUP-1092
+                    marcus.vance@apexsecurity.com &bull; Badge #SUP-1092
                   </div>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-bold">
@@ -168,7 +168,7 @@ export default function WorkforceLoginPage() {
                 </span>
               </button>
 
-              {/* Preset 3: Enterprise Main Agent */}
+              {/* Preset 3: Main Agent Command Center */}
               <button
                 type="button"
                 onClick={() => handleQuickFill('apex')}
@@ -181,7 +181,7 @@ export default function WorkforceLoginPage() {
                 <div>
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                    Apex Security Services Ltd
+                    Apex Sovereign Partner - Main Agent Command Center
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">
                     Main Agent: partner@apexsecurity.com (Apex Security Services Ltd)

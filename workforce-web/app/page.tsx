@@ -445,7 +445,7 @@ export default function BwmModernLandingPage() {
               </div>
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Agency Client B</div>
-                <div className="text-sm font-bold text-slate-900">Satya Garda Perkasa</div>
+                <div className="text-sm font-bold text-slate-900">Sovereign Security Network</div>
                 <div className="text-xs text-slate-500">Jakarta Hub &bull; 14 Branches</div>
               </div>
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
@@ -808,7 +808,7 @@ export default function BwmModernLandingPage() {
                 </div>
               </div>
 
-              {/* Showcase 2: Satya */}
+              {/* Showcase 2: Sovereign */}
               <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -816,8 +816,8 @@ export default function BwmModernLandingPage() {
                       S
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-slate-900">Satya Garda Perkasa</div>
-                      <div className="text-[10px] text-blue-600 font-mono">satya.workforce.boontrack.com</div>
+                      <div className="text-sm font-bold text-slate-900">Sovereign Security Network</div>
+                      <div className="text-[10px] text-blue-600 font-mono">sovereign.workforce.boontrack.com</div>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">

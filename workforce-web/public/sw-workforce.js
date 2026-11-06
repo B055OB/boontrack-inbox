@@ -1,11 +1,11 @@
 /**
- * Service Worker: SATYA Workforce Management
- * Cache Name: satya-workforce-v1
+ * Service Worker: BWM Workforce Management Operating System
+ * Cache Name: bwm-workforce-v2 (replaces legacy satya-workforce-v1)
  * Scope: Strictly isolated static caching and Web Push RFC handler.
  * DILARANG KERAS CACHE: /api/, /auth/, geolokasi, dan data presensi.
  */
 
-const CACHE_NAME = 'satya-workforce-v1';
+const CACHE_NAME = 'bwm-workforce-v2';
 
 // Static assets to precache on install
 const PRECACHE_ASSETS = [
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName.startsWith('satya-workforce-')) {
+          if (cacheName !== CACHE_NAME && (cacheName.startsWith('satya-workforce-') || cacheName.startsWith('bwm-workforce-'))) {
             console.log('[SW-Workforce] Removing outdated cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -129,7 +129,7 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = data.title || 'SATYA Workforce Alert';
+  const title = data.title || 'BWM Workforce Alert';
   const options = {
     body: data.body || 'Notifikasi tugas lapangan baru dari Danru / Dispatcher.',
     icon: data.icon || '/icons/workforce-192.png',
@@ -139,7 +139,7 @@ self.addEventListener('push', (event) => {
       dateOfArrival: Date.now(),
     },
     vibrate: [100, 50, 100],
-    tag: data.tag || 'satya-operational-alert',
+    tag: data.tag || 'bwm-operational-alert',
     renotify: true,
   };
 

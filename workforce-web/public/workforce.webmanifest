@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "BoonTrack Workforce",
-  "short_name": "SATYA",
-  "description": "BoonTrack Workforce Management (SATYA)",
+  "name": "BoonTrack Workforce Management",
+  "short_name": "BWM",
+  "description": "BWM Enterprise Workforce Management Operating System",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

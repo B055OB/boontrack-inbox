@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     let userProfile: UserProfile | null = null;
 
-    // A1. B2B Enterprise: Field Officer (Officer Sarah Jenkins) -> /portal
+    // A1. B2B Enterprise: Field Officer (Sarah Jenkins - Senior Field Officer) -> /portal
     if (
       cleanIdentifier === 'OP-4821' ||
       cleanIdentifier.toLowerCase() === 'sarah.jenkins@apexsecurity.com' ||
@@ -78,38 +78,40 @@ export async function POST(req: NextRequest) {
       userProfile = {
         agency_slug: cleanSlug || 'apex',
         nik: 'sarah.jenkins@apexsecurity.com',
-        name: 'Officer Sarah Jenkins',
+        name: 'Sarah Jenkins - Senior Field Officer',
         role: 'field_personnel',
         site: 'Metro Financial Tower Hub',
         branch: 'Metro Financial Tower Hub',
         agency_name: 'Apex Security Services Ltd',
       };
     }
-    // A2. B2B Enterprise: Branch Supervisor (Marcus Sterling) -> /ops
+    // A2. B2B Enterprise: Branch Supervisor (Marcus Vance - Facility Operations Lead) -> /ops
     else if (
       cleanIdentifier === 'SUP-1092' ||
       cleanIdentifier.toLowerCase() === 'marcus.sterling@apexsecurity.com' ||
+      cleanIdentifier.toLowerCase() === 'marcus.vance@apexsecurity.com' ||
       cleanIdentifier.toLowerCase().includes('marcus')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'apex',
-        nik: 'marcus.sterling@apexsecurity.com',
-        name: 'Marcus Sterling',
+        nik: 'marcus.vance@apexsecurity.com',
+        name: 'Marcus Vance - Facility Operations Lead',
         role: 'supervisor',
         branch: 'Metro Financial Tower Hub',
         site: 'Metro Financial Tower Hub',
         agency_name: 'Apex Security Services Ltd',
       };
     }
-    // A3. B2B Enterprise: Master Reseller (Apex Security Services Ltd) -> /dashboard
+    // A3. B2B Enterprise: Main Agent Command Center (Apex Sovereign Partner - Main Agent Lead) -> /dashboard
     else if (
       cleanIdentifier.toLowerCase() === 'partner@apexsecurity.com' ||
-      cleanIdentifier.toLowerCase().includes('apexsecurity')
+      cleanIdentifier.toLowerCase().includes('apexsecurity') ||
+      cleanIdentifier.toLowerCase().includes('apex')
     ) {
       userProfile = {
         agency_slug: cleanSlug || 'apex',
         nik: 'partner@apexsecurity.com',
-        name: 'Apex Security Operations',
+        name: 'Apex Sovereign Partner - Main Agent Lead',
         role: 'master_reseller',
         agency_name: 'Apex Security Services Ltd',
         branch: 'Metro Financial Tower Hub',

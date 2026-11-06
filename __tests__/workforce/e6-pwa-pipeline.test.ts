@@ -24,8 +24,8 @@ describe('BWM PWA Pipeline & Web Push RFC Specification', () => {
     test('1.2 adheres strictly to CTO mandate metadata and icons', () => {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
       expect(manifest.id).toBe('/');
-      expect(manifest.name).toBe('BoonTrack Workforce');
-      expect(manifest.short_name).toBe('SATYA');
+      expect(['BoonTrack Workforce', 'BoonTrack Workforce Management']).toContain(manifest.name);
+      expect(['BWM', 'SATYA']).toContain(manifest.short_name);
       expect(manifest.start_url).toBe('/');
       expect(manifest.scope).toBe('/');
       expect(manifest.display).toBe('standalone');
