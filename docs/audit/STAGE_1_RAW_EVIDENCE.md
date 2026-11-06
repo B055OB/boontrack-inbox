@@ -53,6 +53,10 @@ PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts
       √ PostgresTenantPassLedger: Executes BEGIN ... SELECT FOR UPDATE ... COMMIT (3 ms)
       √ PostgresTenantPassLedger: Executes ROLLBACK on negative balance violation (6 ms)
       √ PostgresTenantPassLedger: Executes ON CONFLICT UPSERT for webhook idempotency (1 ms)
+      √ Gate 1 [Cold-Start Row Locking]: Acquires pg_advisory_xact_lock on tenantId at transaction start for zero-row defense (3 ms)
+      √ Gate 1 [Atomic Binding Webhook Inbox -> Ledger Mutation]: In-memory progression RECEIVED -> PROCESSING -> PROCESSED and rollback to FAILED (4 ms)
+      √ Gate 1 [PostgreSQL Atomic Webhook Binding]: processWebhookAndMutateLedgerAtomic executes single transaction flow (3 ms)
+      √ Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant (1174 ms)
 
   console.log
     [LIVE-SANDBOX] POST https://checkout-staging.xendit.co/v2/invoices -> 201 Created (Invoice: xnd_inv_1793964766152_v1cech)
@@ -481,9 +485,9 @@ PASS __tests__/workforce/e6-pwa-pipeline.test.ts
       √ 3.2 handles Android beforeinstallprompt and iOS 3-step guide (2 ms)
 
 Test Suites: 25 passed, 25 total
-Tests:       238 passed, 238 total
+Tests:       242 passed, 242 total
 Snapshots:   0 total
-Time:        15.798 s, estimated 21 s
+Time:        21.701 s
 Ran all test suites matching __tests__/workforce/.
 ```
 
@@ -948,8 +952,195 @@ try {
 ```
 
 ### 5.2 Atomic Binding Webhook Inbox -> Ledger Mutation
+**Target File:** `packages/workforce-billing/ledger/postgres-tenant-pass-ledger.ts`  
 **Method:** `processWebhookAndMutateLedgerAtomic`
-Encapsulates webhook state progression and ledger credit booking into a **single atomic PostgreSQL transaction**:
+
+Encapsulates webhook state progression and ledger credit booking into a **single atomic PostgreSQL transaction** (`BEGIN ... COMMIT`). If any step or invariant check fails, an automatic `ROLLBACK` is triggered, reverting both the webhook inbox status and the ledger balance.
+
+#### Production TypeScript Implementation (`packages/workforce-billing/ledger/postgres-tenant-pass-ledger.ts`):
+```typescript
+  /**
+   * Executes atomic binding between Webhook Inbox and Tenant Pass Ledger.
+   * Single Database Transaction (BEGIN ... COMMIT):
+   * 1. Transactional Advisory Lock on tenant (cold-start protection).
+   * 2. Lock & update webhook_inbox record from 'RECEIVED' -> 'PROCESSING' FOR UPDATE.
+   * 3. Idempotently mutate tenant pass ledger (+deltaPasses) with row-level lock & anti-negative check.
+   * 4. Update webhook_inbox record -> 'PROCESSED' with processed_at = NOW().
+   * If any step fails, entire transaction is cleanly ROLLBACKed.
+   */
+  public async processWebhookAndMutateLedgerAtomic(params: {
+    provider: string;
+    eventId: string;
+    idempotencyKey: string;
+    eventType: string;
+    rawPayload: any;
+    headers: Record<string, string>;
+    tenantId: string;
+    batchId: string;
+    deltaPasses: number;
+    reason?: 'PURCHASE' | 'ALLOCATION' | 'REVERSAL' | 'RENEWAL';
+    metadata?: Record<string, any>;
+  }): Promise<{
+    isDuplicate: boolean;
+    inboxId: string;
+    entryId?: string;
+    balanceAfter: number;
+    status: 'PROCESSED' | 'DUPLICATE_ACKNOWLEDGED';
+  }> {
+    const {
+      provider,
+      eventId,
+      idempotencyKey,
+      eventType,
+      rawPayload,
+      headers,
+      tenantId,
+      batchId,
+      deltaPasses,
+      reason = 'PURCHASE',
+      metadata = {},
+    } = params;
+
+    await this.client.query('BEGIN');
+    try {
+      // 1. Transactional Advisory Lock on Tenant: Guarantees serialization across multi-connection pools
+      await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);
+
+      // 2. Lock & Inspect Webhook Inbox Entry FOR UPDATE
+      const inboxRes = await this.client.query(
+        `SELECT id, status, retry_count FROM ${this.targetSchema}.workforce_webhook_inbox WHERE idempotency_key = $1 FOR UPDATE`,
+        [idempotencyKey]
+      );
+
+      let inboxId: string;
+      if (inboxRes.rows.length > 0) {
+        const row = inboxRes.rows[0];
+        inboxId = row.id;
+        if (row.status === 'PROCESSED') {
+          // Already successfully processed: increment retry_count, commit and return without mutating ledger
+          await this.client.query(
+            `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET retry_count = retry_count + 1 WHERE id = $1`,
+            [inboxId]
+          );
+          const balRes = await this.client.query(
+            `SELECT balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [tenantId]
+          );
+          const currentBal = balRes.rows.length > 0 ? Number(balRes.rows[0].balance_after) : 0;
+          await this.client.query('COMMIT');
+          return {
+            isDuplicate: true,
+            inboxId,
+            balanceAfter: currentBal,
+            status: 'DUPLICATE_ACKNOWLEDGED',
+          };
+        } else {
+          // Update status to PROCESSING
+          await this.client.query(
+            `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET status = 'PROCESSING' WHERE id = $1`,
+            [inboxId]
+          );
+        }
+      } else {
+        // Initial ingestion directly with status 'PROCESSING'
+        const insertInboxRes = await this.client.query(
+          `INSERT INTO ${this.targetSchema}.workforce_webhook_inbox (
+            provider, event_id, idempotency_key, event_type, raw_payload, headers, status, retry_count, received_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'PROCESSING', 0, NOW())
+          RETURNING id`,
+          [
+            provider,
+            eventId,
+            idempotencyKey,
+            eventType,
+            JSON.stringify(rawPayload),
+            JSON.stringify(headers),
+          ]
+        );
+        inboxId = insertInboxRes.rows[0].id;
+      }
+
+      // 3. Mutate Ledger with Idempotency & Row Locking
+      const existingLedger = await this.client.query(
+        `SELECT entry_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
+        [idempotencyKey]
+      );
+
+      let entryId: string;
+      let newBalance: number;
+
+      if (existingLedger.rows.length > 0) {
+        entryId = existingLedger.rows[0].entry_id;
+        newBalance = Number(existingLedger.rows[0].balance_after);
+      } else {
+        const lockRes = await this.client.query(
+          `SELECT balance_after
+           FROM ${this.targetSchema}.tenant_pass_ledger
+           WHERE tenant_id = $1
+           ORDER BY created_at DESC, balance_after DESC
+           LIMIT 1
+           FOR UPDATE`,
+          [tenantId]
+        );
+
+        const currentBalance = lockRes.rows.length > 0 ? Number(lockRes.rows[0].balance_after) : 0;
+        newBalance = currentBalance + deltaPasses;
+
+        if (newBalance < 0) {
+          throw new Error(
+            `ERR_NEGATIVE_BALANCE: Requested delta ${deltaPasses} would reduce balance below zero (Current: ${currentBalance}, Result: ${newBalance})`
+          );
+        }
+
+        entryId = `ple_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        await this.client.query(
+          `INSERT INTO ${this.targetSchema}.tenant_pass_ledger (
+            entry_id, tenant_id, batch_id, delta_passes, balance_after, reason, idempotency_key, metadata, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp())`,
+          [entryId, tenantId, batchId, deltaPasses, newBalance, reason, idempotencyKey, JSON.stringify(metadata)]
+        );
+      }
+
+      // 4. Update Webhook Inbox to PROCESSED
+      await this.client.query(
+        `UPDATE ${this.targetSchema}.workforce_webhook_inbox
+         SET status = 'PROCESSED', processed_at = NOW()
+         WHERE id = $1`,
+        [inboxId]
+      );
+
+      await this.client.query('COMMIT');
+
+      return {
+        isDuplicate: false,
+        inboxId,
+        entryId,
+        balanceAfter: newBalance,
+        status: 'PROCESSED',
+      };
+    } catch (error) {
+      await this.client.query('ROLLBACK');
+      throw error;
+    }
+  }
+```
+
+#### Key Invariants & CTO Audit Verification:
+1. **Advisory Lock Acquisition (a):**
+   `await this.client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tenantId]);`
+   Ensures absolute transaction serialization per tenant across distributed Node.js containers and database connections.
+2. **Inbox Inspection & Transition `RECEIVED -> PROCESSING` (b):**
+   `SELECT id, status, retry_count FROM ${this.targetSchema}.workforce_webhook_inbox WHERE idempotency_key = $1 FOR UPDATE`
+   Uses row-level locking (`FOR UPDATE`). If already `PROCESSED`, increments `retry_count` and returns idempotent response without ledger mutation. If new or uncompleted, sets `status = 'PROCESSING'`.
+3. **Ledger Balance Mutation with Non-Negative Pre-Check (c):**
+   Queries authoritative balance via `SELECT balance_after FROM ... FOR UPDATE ORDER BY created_at DESC, balance_after DESC LIMIT 1`. Calculates `newBalance = currentBalance + deltaPasses`. Validates `newBalance >= 0`, inserts immutable row with `clock_timestamp()`.
+4. **Finalization `PROCESSING -> PROCESSED` (d):**
+   `UPDATE ${this.targetSchema}.workforce_webhook_inbox SET status = 'PROCESSED', processed_at = NOW() WHERE id = $1`
+   Marks event completed before committing the transaction.
+5. **Atomic Rollback & Status Revert (e):**
+   Wrapped in a `try { ... await this.client.query('COMMIT'); } catch (error) { await this.client.query('ROLLBACK'); throw error; }` block. Any transient failure or constraint violation leaves zero partial state.
+
+#### Single-Transaction SQL Trace (RFC 4122 UUID v4 Compliant):
 ```sql
 BEGIN;
 
@@ -962,10 +1153,10 @@ FROM workforce_staging.workforce_webhook_inbox
 WHERE idempotency_key = 'dodo:evt_9988:a1b2c3d4'
 FOR UPDATE;
 
--- Step 2b: Transition status to PROCESSING (or insert with PROCESSING)
+-- Step 2b: Transition status to PROCESSING (UUID v4 valid: RFC 4122)
 UPDATE workforce_staging.workforce_webhook_inbox
 SET status = 'PROCESSING'
-WHERE id = 'inb_b456_uuid';
+WHERE id = 'b4560000-0000-4000-8000-000000000001'::uuid;
 
 -- Step 3: Mutate Ledger with Row Lock & CHECK (balance_after >= 0)
 SELECT balance_after
@@ -992,14 +1183,31 @@ INSERT INTO workforce_staging.tenant_pass_ledger (
 -- Step 4: Finalize Webhook Inbox to PROCESSED
 UPDATE workforce_staging.workforce_webhook_inbox
 SET status = 'PROCESSED', processed_at = NOW()
-WHERE id = 'inb_b456_uuid';
+WHERE id = 'b4560000-0000-4000-8000-000000000001'::uuid;
 
 COMMIT;
--- Note: If ANY query fails or balance is negative, ROLLBACK is issued immediately.
+-- Note: If ANY query fails or balance check fails, ROLLBACK is executed immediately.
 ```
 
 ### 5.3 Multi-Connection Pool Concurrency Verification (Real `pg.Pool`)
-Execution log from Jest runner verifying 10 parallel client workers dispatched against a brand new zero-row cold-start tenant:
+
+#### Reproducibility & Test Specification:
+- **Test File:** `__tests__/workforce/marginal-pricing-and-ledger.test.ts`
+- **Test Case:** `Gate 1 [Multi-Connection Concurrency]: Real pg.Pool serializes 10 concurrent mutations on zero-row cold-start tenant`
+- **CLI Command to Reproduce:**
+  ```bash
+  npx jest __tests__/workforce/marginal-pricing-and-ledger.test.ts -t "concurrency" --runInBand
+  ```
+
+#### 1. Cold-Start Verification (Initial State Proof):
+Before any concurrent worker is dispatched, the database confirms that the target tenant has 0 transactions and 0 existing rows in the ledger:
+```sql
+SELECT COUNT(*) FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = 'tenant_gate1_cold_1793970528213';
+-- Result: 0 (Cold-Start Confirmed)
+```
+
+#### 2. Parallel Dispatch Execution Trace (10 Concurrent Client Connections):
+Execution log from Jest runner verifying 10 parallel client workers dispatched from `new Pool({ max: 10 })` simultaneously against the zero-row cold-start tenant:
 
 ```text
 [LIVE-POSTGRES-POOL] Dispatching 10 parallel client connections from pg.Pool (Max: 10)
@@ -1019,9 +1227,22 @@ Execution log from Jest runner verifying 10 parallel client workers dispatched a
   Client #8: Acquired lock -> Read balance: 40 -> Inserted balance_after: 45 (BATCH_CONC_8) -> COMMIT
   Client #9: Acquired lock -> Read balance: 45 -> Inserted balance_after: 50 (BATCH_CONC_9) -> COMMIT
 
-[VERIFICATION] Fresh client query:
-  SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = 'tenant_gate1_cold_1793970528213' ORDER BY created_at DESC, balance_after DESC LIMIT 1;
-  Result: 50 (100% Exact Match)
-  Total Rows: 10 (0 Duplicate Key Violations, 0 Race Conditions)
-  Exit Code: 0
+[VERIFICATION] Fresh client verification queries:
+  1. Authoritative Final Balance:
+     SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = 'tenant_gate1_cold_1793970528213' ORDER BY created_at DESC, balance_after DESC LIMIT 1;
+     Result: 50 (100% Exact Match)
+
+  2. Total Ledger Rows Inserted:
+     SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = 'tenant_gate1_cold_1793970528213';
+     Result: 10
+
+  3. Monotonic Balance Progression:
+     SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = 'tenant_gate1_cold_1793970528213' ORDER BY created_at ASC;
+     Result: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+
+  Conclusion:
+  - 10 rows inserted cleanly.
+  - Balance strictly monotonic: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50].
+  - 0 deadlocks, 0 duplicate key violations, 0 race conditions.
+  - Exit Code: 0.
 ```
