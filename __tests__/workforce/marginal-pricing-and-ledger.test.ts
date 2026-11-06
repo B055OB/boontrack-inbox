@@ -21,6 +21,7 @@ import {
   PostgresTenantPassLedger,
   SecurityInvariantViolation,
   WebhookInbox,
+  registerAuthoritativePayment,
 } from '@/packages/workforce-billing';
 
 describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy Engine', () => {
@@ -482,14 +483,30 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
       expect(executedQueries[executedQueries.length - 1]).toBe('ROLLBACK');
     });
 
-    test('PostgresTenantPassLedger: Executes ON CONFLICT UPSERT for webhook idempotency', async () => {
-      let capturedQuery = '';
+    test('PostgresTenantPassLedger: Executes identity-verified idempotency check and update for webhook replay', async () => {
+      const executedQueries: string[] = [];
       const mockClient: any = {
         query: jest.fn().mockImplementation((queryText: string) => {
-          capturedQuery = queryText.trim().replace(/\s+/g, ' ');
-          return Promise.resolve({
-            rows: [{ id: 'inb_test_123', status: 'RECEIVED', retry_count: 1, is_new_delivery: false }],
-          });
+          executedQueries.push(queryText.trim().replace(/\s+/g, ' '));
+          if (queryText.includes('WHERE idempotency_key = $1')) {
+            return Promise.resolve({
+              rows: [{
+                id: 'inb_test_123',
+                provider: 'DODO_PAYMENTS',
+                event_id: 'evt_pg_replay_01',
+                idempotency_key: 'idemp_pg_replay_01',
+                tenant_id: 'tenant_mock_01',
+                status: 'RECEIVED',
+                retry_count: 1,
+              }],
+            });
+          }
+          if (queryText.includes('UPDATE')) {
+            return Promise.resolve({
+              rows: [{ id: 'inb_test_123', status: 'RECEIVED', retry_count: 2 }],
+            });
+          }
+          return Promise.resolve({ rows: [] });
         }),
       };
 
@@ -504,10 +521,10 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
         headers: { 'x-signature': 'abc' },
       });
 
-      expect(capturedQuery).toContain('ON CONFLICT (idempotency_key) DO UPDATE');
-      expect(capturedQuery).toContain('SET retry_count = workforce_staging.workforce_webhook_inbox.retry_count + 1');
+      expect(executedQueries.some((q) => q.includes('SELECT') && q.includes('WHERE idempotency_key = $1'))).toBe(true);
+      expect(executedQueries.some((q) => q.includes('UPDATE') && q.includes('SET retry_count = retry_count + 1'))).toBe(true);
       expect(res.isDuplicate).toBe(true);
-      expect(res.retryCount).toBe(1);
+      expect(res.retryCount).toBe(2);
     });
 
     test('Gate 1 [Cold-Start Row Locking]: Acquires pg_advisory_xact_lock on tenantId at transaction start for zero-row defense', async () => {
@@ -1234,6 +1251,254 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
               headers: {},
             })
           ).rejects.toThrow('TENANT_ID_REQUIRED');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('k. Ingest dengan idempotency key sama tapi tenant berbeda -> melempar IDEMPOTENCY_KEY_IDENTITY_CONFLICT', async () => {
+        const ts = Date.now();
+        const idempKey = `idemp_upsert_conflict_tenant_${ts}`;
+        const provider = 'DODO_PAYMENTS';
+        const eventId = `evt_upsert_conflict_tenant_${ts}`;
+        const tenantA = `tenant_upsert_A_${ts}`;
+        const tenantB = `tenant_upsert_B_${ts}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Ingest initial webhook for tenantA
+          const resA = await pgLedger.ingestPersistentWebhook({
+            provider,
+            eventId,
+            idempotencyKey: idempKey,
+            eventType: 'payment.succeeded',
+            tenantId: tenantA,
+            rawPayload: { amount: 10000 },
+            headers: {},
+          });
+          expect(resA.isDuplicate).toBe(false);
+
+          // Attempt second ingestion with same idempotency key but tenantB
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider,
+              eventId,
+              idempotencyKey: idempKey,
+              eventType: 'payment.succeeded',
+              tenantId: tenantB,
+              rawPayload: { amount: 10000 },
+              headers: {},
+            })
+          ).rejects.toThrow('IDEMPOTENCY_KEY_IDENTITY_CONFLICT');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('l. Ingest dengan idempotency key sama tapi provider berbeda -> melempar IDEMPOTENCY_KEY_IDENTITY_CONFLICT', async () => {
+        const ts = Date.now();
+        const idempKey = `idemp_upsert_conflict_prov_${ts}`;
+        const eventId = `evt_upsert_conflict_prov_${ts}`;
+        const tenant = `tenant_upsert_prov_${ts}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Ingest initial webhook with DODO_PAYMENTS
+          const res = await pgLedger.ingestPersistentWebhook({
+            provider: 'DODO_PAYMENTS',
+            eventId,
+            idempotencyKey: idempKey,
+            eventType: 'payment.succeeded',
+            tenantId: tenant,
+            rawPayload: { amount: 10000 },
+            headers: {},
+          });
+          expect(res.isDuplicate).toBe(false);
+
+          // Attempt second ingestion with same idempotency key but XENDIT
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider: 'XENDIT',
+              eventId,
+              idempotencyKey: idempKey,
+              eventType: 'payment.succeeded',
+              tenantId: tenant,
+              rawPayload: { amount: 10000 },
+              headers: {},
+            })
+          ).rejects.toThrow('IDEMPOTENCY_KEY_IDENTITY_CONFLICT');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('m. Ingest dengan idempotency key sama tapi eventId berbeda -> melempar IDEMPOTENCY_KEY_IDENTITY_CONFLICT', async () => {
+        const ts = Date.now();
+        const idempKey = `idemp_upsert_conflict_evt_${ts}`;
+        const tenant = `tenant_upsert_evt_${ts}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Ingest initial webhook with evt_1
+          const res = await pgLedger.ingestPersistentWebhook({
+            provider: 'DODO_PAYMENTS',
+            eventId: `evt_1_${ts}`,
+            idempotencyKey: idempKey,
+            eventType: 'payment.succeeded',
+            tenantId: tenant,
+            rawPayload: { amount: 10000 },
+            headers: {},
+          });
+          expect(res.isDuplicate).toBe(false);
+
+          // Attempt second ingestion with same idempotency key but evt_2
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_2_${ts}`,
+              idempotencyKey: idempKey,
+              eventType: 'payment.succeeded',
+              tenantId: tenant,
+              rawPayload: { amount: 10000 },
+              headers: {},
+            })
+          ).rejects.toThrow('IDEMPOTENCY_KEY_IDENTITY_CONFLICT');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('n. Process webhook dengan payment reference tidak terdaftar / invalid tenant mapping -> melempar UNVERIFIED_PAYMENT_TENANT_MAPPING', async () => {
+        const ts = Date.now();
+        const legitTenant = `tenant_pay_legit_${ts}`;
+        const adversaryTenant = `tenant_pay_adv_${ts}`;
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // Case 1: Unregistered payment reference
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_unreg_${ts}`,
+              idempotencyKey: `idemp_unreg_${ts}`,
+              eventType: 'payment.succeeded',
+              rawPayload: { payment_reference: `pay_unreg_${ts}`, amount: 50000 },
+              headers: {},
+              tenantId: legitTenant,
+              batchId: 'BATCH_UNREG',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('UNVERIFIED_PAYMENT_TENANT_MAPPING');
+
+          // Case 2: Registered to legitTenant, but adversary attempts claim
+          const payRef = `pay_registered_${ts}`;
+          registerAuthoritativePayment(payRef, legitTenant);
+
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_stolen_${ts}`,
+              idempotencyKey: `idemp_stolen_${ts}`,
+              eventType: 'payment.succeeded',
+              rawPayload: { payment_reference: payRef, amount: 50000 },
+              headers: {},
+              tenantId: adversaryTenant, // Adversary claims legitTenant's payment
+              batchId: 'BATCH_STOLEN',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('UNVERIFIED_PAYMENT_TENANT_MAPPING');
+
+          // Case 3: Registered to legitTenant, processed by legitTenant -> SUCCEEDS
+          const validRes = await pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'DODO_PAYMENTS',
+            eventId: `evt_valid_pay_${ts}`,
+            idempotencyKey: `idemp_valid_pay_${ts}`,
+            eventType: 'payment.succeeded',
+            rawPayload: { payment_reference: payRef, amount: 50000 },
+            headers: {},
+            tenantId: legitTenant,
+            batchId: 'BATCH_VALID_PAY',
+            deltaPasses: 10,
+          });
+          expect(validRes.status).toBe('PROCESSED');
+          expect(validRes.balanceAfter).toBe(10);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('o. Zero side-effects post-rejection: Verifikasi COUNT(*) ledger === 0 dan ownership inbox tidak berubah', async () => {
+        const ts = Date.now();
+        const victimTenant = `tenant_victim_${ts}`;
+        const attackerTenant = `tenant_attacker_${ts}`;
+        const idempKey = `idemp_zero_side_effect_${ts}`;
+        const eventId = `evt_zero_side_effect_${ts}`;
+
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+          // 1. Initial legitimate ingestion by victim
+          await pgLedger.ingestPersistentWebhook({
+            provider: 'DODO_PAYMENTS',
+            eventId,
+            idempotencyKey: idempKey,
+            eventType: 'payment.succeeded',
+            tenantId: victimTenant,
+            rawPayload: { amount: 20000 },
+            headers: {},
+          });
+
+          // 2. Attacker attempts upsert hijacking with same idempotency key
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider: 'DODO_PAYMENTS',
+              eventId,
+              idempotencyKey: idempKey,
+              eventType: 'payment.succeeded',
+              tenantId: attackerTenant,
+              rawPayload: { amount: 20000 },
+              headers: {},
+            })
+          ).rejects.toThrow('IDEMPOTENCY_KEY_IDENTITY_CONFLICT');
+
+          // 3. Attacker attempts ledger mutation with unregistered payment mapping
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_fake_attacker_${ts}`,
+              idempotencyKey: `idemp_fake_attacker_${ts}`,
+              eventType: 'payment.succeeded',
+              rawPayload: { payment_reference: `pay_fake_${ts}` },
+              headers: {},
+              tenantId: attackerTenant,
+              batchId: 'BATCH_ATTACK',
+              deltaPasses: 50,
+            })
+          ).rejects.toThrow('UNVERIFIED_PAYMENT_TENANT_MAPPING');
+
+          // 4. Verify ZERO ledger mutations occurred for attackerTenant
+          const countLedger = await client.query(
+            `SELECT count(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+            [attackerTenant]
+          );
+          expect(Number(countLedger.rows[0].count)).toBe(0);
+
+          // 5. Verify inbox record ownership was NOT altered (still belongs to victimTenant)
+          const inboxRow = await client.query(
+            `SELECT tenant_id, retry_count FROM workforce_staging.workforce_webhook_inbox WHERE idempotency_key = $1`,
+            [idempKey]
+          );
+          expect(inboxRow.rows.length).toBe(1);
+          expect(inboxRow.rows[0].tenant_id).toBe(victimTenant);
+          expect(Number(inboxRow.rows[0].retry_count)).toBe(0); // Retry count not bumped on rejected conflict
         } finally {
           client.release();
         }

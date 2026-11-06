@@ -1,5 +1,22 @@
-import { SecurityInvariantViolation, PersistentWebhookIngestionParams, PersistentWebhookIngestionResult } from '../ledger/postgres-tenant-pass-ledger';
+import {
+  SecurityInvariantViolation,
+  PersistentWebhookIngestionParams,
+  PersistentWebhookIngestionResult,
+  verifyAuthoritativePaymentTenant,
+  registerAuthoritativePayment,
+  clearAuthoritativePaymentRegistry,
+  extractPaymentReference,
+  extractPayloadTenant,
+} from '../ledger/postgres-tenant-pass-ledger';
 import { Client, PoolClient } from 'pg';
+
+export {
+  verifyAuthoritativePaymentTenant,
+  registerAuthoritativePayment,
+  clearAuthoritativePaymentRegistry,
+  extractPaymentReference,
+  extractPayloadTenant,
+};
 /**
  * packages/workforce-billing/inbox/webhook-inbox.ts
  * Webhook Inbox, Idempotency Engine & Dead-Letter Queue (DLQ)
@@ -222,7 +239,8 @@ export class WebhookInbox {
 
 /**
  * Ingests persistent webhook directly to PostgreSQL workforce_staging.workforce_webhook_inbox.
- * Fails closed if tenantId is missing or empty.
+ * Enforces fail-closed identity conflict verification:
+ * DILARANG melakukan blind ON CONFLICT (idempotency_key) DO UPDATE.
  */
 export async function ingestPersistentWebhook(
   client: Client | PoolClient,
@@ -237,32 +255,103 @@ export async function ingestPersistentWebhook(
     );
   }
 
-  const query = `
-    INSERT INTO ${targetSchema}.workforce_webhook_inbox (
-      provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', 0, NOW())
-    ON CONFLICT (idempotency_key) DO UPDATE
-      SET retry_count = ${targetSchema}.workforce_webhook_inbox.retry_count + 1
-    RETURNING id, status, retry_count, (xmax = 0) AS is_new_delivery;
-  `;
+  // 1. Verify if a record with idempotencyKey already exists in DB
+  const checkRes = await client.query(
+    `SELECT id, provider, event_id, idempotency_key, tenant_id, status, retry_count
+     FROM ${targetSchema}.workforce_webhook_inbox
+     WHERE idempotency_key = $1`,
+    [idempotencyKey]
+  );
 
-  const res = await client.query(query, [
-    provider,
-    eventId,
-    idempotencyKey,
-    eventType,
-    tenantId,
-    JSON.stringify(rawPayload),
-    JSON.stringify(headers),
-  ]);
+  if (checkRes.rows.length > 0) {
+    const existing = checkRes.rows[0];
+    if (
+      existing.tenant_id !== tenantId ||
+      existing.provider !== provider ||
+      existing.event_id !== eventId
+    ) {
+      throw new SecurityInvariantViolation(
+        "IDEMPOTENCY_KEY_IDENTITY_CONFLICT: Idempotency key already claimed with different identity/tenant"
+      );
+    }
 
-  const row = res.rows[0];
-  const isNew = row.is_new_delivery;
+    const updateRes = await client.query(
+      `UPDATE ${targetSchema}.workforce_webhook_inbox
+       SET retry_count = retry_count + 1
+       WHERE id = $1
+       RETURNING id, status, retry_count`,
+      [existing.id]
+    );
 
-  return {
-    inboxId: row.id,
-    isDuplicate: !isNew,
-    retryCount: Number(row.retry_count),
-    status: row.status,
-  };
+    const updated = updateRes.rows[0];
+    return {
+      inboxId: updated.id,
+      isDuplicate: true,
+      retryCount: Number(updated.retry_count),
+      status: updated.status,
+    };
+  }
+
+  // 2. Insert new delivery (fail-closed if race condition occurs on idempotency_key)
+  try {
+    const insertRes = await client.query(
+      `INSERT INTO ${targetSchema}.workforce_webhook_inbox (
+        provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', 0, NOW())
+      RETURNING id, status, retry_count`,
+      [
+        provider,
+        eventId,
+        idempotencyKey,
+        eventType,
+        tenantId,
+        JSON.stringify(rawPayload),
+        JSON.stringify(headers),
+      ]
+    );
+
+    const inserted = insertRes.rows[0];
+    return {
+      inboxId: inserted.id,
+      isDuplicate: false,
+      retryCount: Number(inserted.retry_count),
+      status: inserted.status,
+    };
+  } catch (err: any) {
+    if (err.code === '23505') {
+      const recheck = await client.query(
+        `SELECT id, provider, event_id, idempotency_key, tenant_id, status, retry_count
+         FROM ${targetSchema}.workforce_webhook_inbox
+         WHERE idempotency_key = $1`,
+        [idempotencyKey]
+      );
+      if (recheck.rows.length > 0) {
+        const existing = recheck.rows[0];
+        if (
+          existing.tenant_id !== tenantId ||
+          existing.provider !== provider ||
+          existing.event_id !== eventId
+        ) {
+          throw new SecurityInvariantViolation(
+            "IDEMPOTENCY_KEY_IDENTITY_CONFLICT: Idempotency key already claimed with different identity/tenant"
+          );
+        }
+        const updateRes = await client.query(
+          `UPDATE ${targetSchema}.workforce_webhook_inbox
+           SET retry_count = retry_count + 1
+           WHERE id = $1
+           RETURNING id, status, retry_count`,
+          [existing.id]
+        );
+        const updated = updateRes.rows[0];
+        return {
+          inboxId: updated.id,
+          isDuplicate: true,
+          retryCount: Number(updated.retry_count),
+          status: updated.status,
+        };
+      }
+    }
+    throw err;
+  }
 }
