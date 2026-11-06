@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS workforce_webhook_inbox (
     event_id VARCHAR(128) NOT NULL,
     idempotency_key VARCHAR(256) UNIQUE NOT NULL,
     event_type VARCHAR(64) NOT NULL,
-    tenant_id VARCHAR(64),
+    tenant_id VARCHAR(64) NOT NULL,
     raw_payload JSONB NOT NULL,
     headers JSONB NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED',

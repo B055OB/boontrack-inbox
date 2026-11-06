@@ -39,6 +39,7 @@ export interface PersistentWebhookIngestionParams {
   eventId: string;
   idempotencyKey: string;
   eventType: string;
+  tenantId: string;
   rawPayload: any;
   headers: Record<string, string>;
 }
@@ -144,12 +145,18 @@ export class PostgresTenantPassLedger {
   public async ingestPersistentWebhook(
     params: PersistentWebhookIngestionParams
   ): Promise<PersistentWebhookIngestionResult> {
-    const { provider, eventId, idempotencyKey, eventType, rawPayload, headers } = params;
+    const { provider, eventId, idempotencyKey, eventType, tenantId, rawPayload, headers } = params;
+
+    if (!tenantId || tenantId.trim() === '') {
+      throw new SecurityInvariantViolation(
+        "TENANT_ID_REQUIRED: Cannot ingest financial webhook without authoritative tenant binding"
+      );
+    }
 
     const query = `
       INSERT INTO ${this.targetSchema}.workforce_webhook_inbox (
-        provider, event_id, idempotency_key, event_type, raw_payload, headers, status, retry_count, received_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'RECEIVED', 0, NOW())
+        provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', 0, NOW())
       ON CONFLICT (idempotency_key) DO UPDATE
         SET retry_count = ${this.targetSchema}.workforce_webhook_inbox.retry_count + 1
       RETURNING id, status, retry_count, (xmax = 0) AS is_new_delivery;
@@ -160,6 +167,7 @@ export class PostgresTenantPassLedger {
       eventId,
       idempotencyKey,
       eventType,
+      tenantId,
       JSON.stringify(rawPayload),
       JSON.stringify(headers),
     ]);
@@ -217,6 +225,11 @@ export class PostgresTenantPassLedger {
       metadata = {},
     } = params;
 
+    // Fail-closed initial tenant validation
+    if (!tenantId || tenantId.trim() === '') {
+      throw new SecurityInvariantViolation("TENANT_ID_REQUIRED");
+    }
+
     await this.client.query('BEGIN');
     try {
       // 1. Transactional Advisory Lock on Tenant: Guarantees serialization across multi-connection pools
@@ -251,9 +264,13 @@ export class PostgresTenantPassLedger {
           throw new SecurityInvariantViolation("IDENTITY_CONFLICT: Webhook record identity mismatch");
         }
 
-        // Verify Authoritative Tenant Ownership
-        const storedTenantId = row.tenant_id || (typeof row.raw_payload === 'string' ? JSON.parse(row.raw_payload) : row.raw_payload)?.tenant_id;
-        if (storedTenantId && storedTenantId !== tenantId) {
+        // Invariant 2: Verify Authoritative Tenant Ownership (Fail-Closed)
+        if (!row.tenant_id || row.tenant_id.trim() === '') {
+          throw new SecurityInvariantViolation(
+            "LEGACY_UNBOUND_TENANT_RECORD: Cannot process financial mutation on unverified tenant row"
+          );
+        }
+        if (row.tenant_id !== tenantId) {
           throw new SecurityInvariantViolation("CROSS_TENANT_IDEMPOTENCY_MISMATCH");
         }
 

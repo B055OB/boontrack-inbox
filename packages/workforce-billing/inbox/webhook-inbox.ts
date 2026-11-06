@@ -1,3 +1,5 @@
+import { SecurityInvariantViolation, PersistentWebhookIngestionParams, PersistentWebhookIngestionResult } from '../ledger/postgres-tenant-pass-ledger';
+import { Client, PoolClient } from 'pg';
 /**
  * packages/workforce-billing/inbox/webhook-inbox.ts
  * Webhook Inbox, Idempotency Engine & Dead-Letter Queue (DLQ)
@@ -201,8 +203,66 @@ export class WebhookInbox {
     return Array.from(this.inbox.values());
   }
 
+  /**
+   * Persists webhook to PostgreSQL workforce_staging.workforce_webhook_inbox with authoritative tenant binding.
+   */
+  public async ingestPersistentWebhook(
+    client: Client | PoolClient,
+    params: PersistentWebhookIngestionParams,
+    targetSchema?: string
+  ): Promise<PersistentWebhookIngestionResult> {
+    return ingestPersistentWebhook(client, params, targetSchema);
+  }
+
   public getDeadLetterQueue(): DeadLetterQueueEntry[] {
     return [...this.dlq];
   }
 }
 
+
+/**
+ * Ingests persistent webhook directly to PostgreSQL workforce_staging.workforce_webhook_inbox.
+ * Fails closed if tenantId is missing or empty.
+ */
+export async function ingestPersistentWebhook(
+  client: Client | PoolClient,
+  params: PersistentWebhookIngestionParams,
+  targetSchema: string = 'workforce_staging'
+): Promise<PersistentWebhookIngestionResult> {
+  const { provider, eventId, idempotencyKey, eventType, tenantId, rawPayload, headers } = params;
+
+  if (!tenantId || tenantId.trim() === '') {
+    throw new SecurityInvariantViolation(
+      "TENANT_ID_REQUIRED: Cannot ingest financial webhook without authoritative tenant binding"
+    );
+  }
+
+  const query = `
+    INSERT INTO ${targetSchema}.workforce_webhook_inbox (
+      provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', 0, NOW())
+    ON CONFLICT (idempotency_key) DO UPDATE
+      SET retry_count = ${targetSchema}.workforce_webhook_inbox.retry_count + 1
+    RETURNING id, status, retry_count, (xmax = 0) AS is_new_delivery;
+  `;
+
+  const res = await client.query(query, [
+    provider,
+    eventId,
+    idempotencyKey,
+    eventType,
+    tenantId,
+    JSON.stringify(rawPayload),
+    JSON.stringify(headers),
+  ]);
+
+  const row = res.rows[0];
+  const isNew = row.is_new_delivery;
+
+  return {
+    inboxId: row.id,
+    isDuplicate: !isNew,
+    retryCount: Number(row.retry_count),
+    status: row.status,
+  };
+}

@@ -499,6 +499,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
         eventId: 'evt_pg_replay_01',
         idempotencyKey: 'idemp_pg_replay_01',
         eventType: 'payment.succeeded',
+        tenantId: 'tenant_mock_01',
         rawPayload: { amount: 15000 },
         headers: { 'x-signature': 'abc' },
       });
@@ -1123,6 +1124,116 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
             [adversaryTenant]
           );
           expect(Number(advRes.rows[0].count)).toBe(0);
+        } finally {
+          client.release();
+        }
+      });
+
+      test('h. Null / Empty Tenant Ingestion: Memanggil proses webhook dengan tenantId kosong -> wajib throw TENANT_ID_REQUIRED, 0 mutasi DB', async () => {
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_empty_tenant_${Date.now()}`,
+              idempotencyKey: `idemp_empty_tenant_${Date.now()}`,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 37500 },
+              headers: {},
+              tenantId: '', // Empty string -> fail closed
+              batchId: 'BATCH_EMPTY',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('TENANT_ID_REQUIRED');
+
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_whitespace_tenant_${Date.now()}`,
+              idempotencyKey: `idemp_whitespace_tenant_${Date.now()}`,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 37500 },
+              headers: {},
+              tenantId: '   ', // Whitespace string -> fail closed
+              batchId: 'BATCH_EMPTY',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('TENANT_ID_REQUIRED');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('i. Legacy Unbound Record: Simulasi baris tanpa tenant di inbox -> mutasi wajib ditolak dengan LEGACY_UNBOUND_TENANT_RECORD', async () => {
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          const ts = Date.now();
+          const legacyEventId = `evt_legacy_${ts}`;
+          const legacyIdempKey = `idemp_legacy_${ts}`;
+
+          // Insert simulation legacy row where tenant_id is empty
+          await client.query(
+            `INSERT INTO workforce_staging.workforce_webhook_inbox (
+              provider, event_id, idempotency_key, event_type, tenant_id, raw_payload, headers, status, retry_count, received_at
+            ) VALUES ($1, $2, $3, $4, '', $5, $6, 'PROCESSING', 0, NOW())`,
+            [
+              'DODO_PAYMENTS',
+              legacyEventId,
+              legacyIdempKey,
+              'payment.succeeded',
+              JSON.stringify({ amount: 1000 }),
+              JSON.stringify({}),
+            ]
+          );
+
+          // Attempt to mutate using this unbound record with a claiming tenant
+          await expect(
+            pgLedger.processWebhookAndMutateLedgerAtomic({
+              provider: 'DODO_PAYMENTS',
+              eventId: legacyEventId,
+              idempotencyKey: legacyIdempKey,
+              eventType: 'payment.succeeded',
+              rawPayload: { amount: 1000 },
+              headers: {},
+              tenantId: `tenant_attempting_${ts}`,
+              batchId: 'BATCH_LEGACY_CLAIM',
+              deltaPasses: 10,
+            })
+          ).rejects.toThrow('LEGACY_UNBOUND_TENANT_RECORD');
+        } finally {
+          client.release();
+        }
+      });
+
+      test('j. Alternate Ingestion Path: Uji ingestPersistentWebhook tanpa tenantId -> wajib ditolak', async () => {
+        const client = await pool.connect();
+        try {
+          const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_alt_no_tenant_${Date.now()}`,
+              idempotencyKey: `idemp_alt_no_tenant_${Date.now()}`,
+              eventType: 'payment.succeeded',
+              tenantId: '', // Empty tenant -> fail closed
+              rawPayload: { amount: 10000 },
+              headers: {},
+            })
+          ).rejects.toThrow('TENANT_ID_REQUIRED');
+
+          await expect(
+            pgLedger.ingestPersistentWebhook({
+              provider: 'DODO_PAYMENTS',
+              eventId: `evt_alt_null_tenant_${Date.now()}`,
+              idempotencyKey: `idemp_alt_null_tenant_${Date.now()}`,
+              eventType: 'payment.succeeded',
+              tenantId: null as any, // Null tenant -> fail closed
+              rawPayload: { amount: 10000 },
+              headers: {},
+            })
+          ).rejects.toThrow('TENANT_ID_REQUIRED');
         } finally {
           client.release();
         }
