@@ -232,7 +232,7 @@ async function resolveTenantStorefront(slug: string): Promise<TenantStorefrontRe
   };
 
   try {
-    const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,is_active,status,business_type,template,template_code,tier&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
+    const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,is_active,status,business_type,template_code,tier&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
     const supaRes = await fetch(supaUrl, {
       headers: {
         apikey: supabaseKey,
