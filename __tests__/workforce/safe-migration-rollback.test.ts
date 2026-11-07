@@ -176,6 +176,31 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('RESET ROLE');
   });
 
+  test('2c. In Rolled-Back State: Authenticated Users Cannot Query or Scrape Storefront Views (Round 3K)', async () => {
+    await client.query('SET ROLE authenticated');
+
+    // Storefront projections in rolled-back state strictly REVOKED from authenticated users (Round 3K)
+    let authSfTenantsErr: any = null;
+    try {
+      await client.query('SELECT * FROM public.storefront_tenants LIMIT 1');
+    } catch (err) {
+      authSfTenantsErr = err;
+    }
+    expect(authSfTenantsErr).toBeDefined();
+    expect(authSfTenantsErr.code).toBe('42501');
+
+    let authSfProdsErr: any = null;
+    try {
+      await client.query('SELECT * FROM public.storefront_products LIMIT 1');
+    } catch (err) {
+      authSfProdsErr = err;
+    }
+    expect(authSfProdsErr).toBeDefined();
+    expect(authSfProdsErr.code).toBe('42501');
+
+    await client.query('RESET ROLE');
+  });
+
   test('3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies', async () => {
     await client.query('RESET ROLE');
     await expect(client.query(upSql)).resolves.toBeDefined();

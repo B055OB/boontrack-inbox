@@ -336,6 +336,28 @@ CREATE POLICY rls_branch_credit_pools_delete ON workforce_staging.branch_credit_
         )
     );
 
+-- D. workforce_staging.tenant_memberships (Round 3K: Role-Bounded Membership Visibility)
+-- Visible ONLY to OWNER and MERCHANT (and service_role). CS and OPERATOR cannot inspect memberships.
+DROP POLICY IF EXISTS rls_tenant_memberships_isolation ON workforce_staging.tenant_memberships;
+DROP POLICY IF EXISTS rls_tenant_memberships_select ON workforce_staging.tenant_memberships;
+DROP POLICY IF EXISTS rls_tenant_memberships_mutation ON workforce_staging.tenant_memberships;
+
+CREATE POLICY rls_tenant_memberships_select ON workforce_staging.tenant_memberships
+    FOR SELECT TO public
+    USING (
+        auth.role() = 'service_role' OR
+        (
+            (workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT') OR workforce_staging.is_trusted_tenant_member(tenant_slug, 'MERCHANT')) AND
+            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true) OR tenant_slug = current_setting('app.current_agency_id', true)) AND
+            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true) OR tenant_slug = current_setting('app.current_tenant_id', true))
+        )
+    );
+
+CREATE POLICY rls_tenant_memberships_mutation ON workforce_staging.tenant_memberships
+    FOR ALL TO public
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
 -- ============================================================================
 -- 4. Recreate Safe Storefront Views with Strict Opt-In Publication Filter
 -- ============================================================================
@@ -531,7 +553,7 @@ WITH (security_invoker = false) AS
     SELECT * FROM workforce_staging.tenant_memberships
     WHERE auth.role() = 'service_role' 
        OR (
-           (workforce_staging.is_trusted_tenant_member(tenant_id) OR workforce_staging.is_trusted_tenant_member(tenant_slug))
+           (workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT') OR workforce_staging.is_trusted_tenant_member(tenant_slug, 'MERCHANT'))
            AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true) OR tenant_slug = current_setting('app.current_agency_id', true))
            AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true) OR tenant_slug = current_setting('app.current_tenant_id', true))
        )

@@ -315,6 +315,13 @@ describe('BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)'
     );
     expect(poolUpdate.rowCount).toBe(1);
 
+    // 7. Can read tenant memberships (Round 3K: Role-Bounded Membership Visibility)
+    const memRead = await client.query(
+      'SELECT user_id, role FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(memRead.rows.length).toBeGreaterThanOrEqual(1);
+
     await resetAuthContext(client);
   });
 
@@ -364,6 +371,13 @@ describe('BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)'
       [BRANCH_POOL_ID]
     );
     expect(poolUpdate.rowCount).toBe(0);
+
+    // 7. Can read tenant memberships (Round 3K: Role-Bounded Membership Visibility)
+    const memRead = await client.query(
+      'SELECT user_id, role FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(memRead.rows.length).toBeGreaterThanOrEqual(1);
 
     await resetAuthContext(client);
   });
@@ -419,6 +433,13 @@ describe('BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)'
       [BRANCH_POOL_ID]
     );
     expect(poolUpdate.rowCount).toBe(0);
+
+    // 7. CANNOT read tenant memberships (Round 3K: returns 0 rows / fails closed for CS)
+    const memRead = await client.query(
+      'SELECT user_id, role FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(memRead.rows.length).toBe(0);
 
     // Verify baseline product was NOT modified or deleted
     await resetAuthContext(client);
@@ -479,6 +500,13 @@ describe('BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)'
       [BRANCH_POOL_ID]
     );
     expect(poolUpdate.rowCount).toBe(0);
+
+    // 7. CANNOT read tenant memberships (Round 3K: returns 0 rows / fails closed for OPERATOR)
+    const memRead = await client.query(
+      'SELECT user_id, role FROM public.tenant_memberships WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(memRead.rows.length).toBe(0);
 
     await resetAuthContext(client);
   });

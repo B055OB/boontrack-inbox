@@ -669,4 +669,61 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
 
     await pgClient.query('RESET ROLE');
   });
+
+  test('7e. Role-bounded membership visibility: OWNER & MERCHANT can list members; CS & OPERATOR receive 0 rows (Round 3K)', async () => {
+    // 1. OWNER can query tenant memberships
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+    await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: USER_OWNER,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantId },
+      }),
+    ]);
+    const ownerMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    expect(ownerMemRes.rows.length).toBeGreaterThanOrEqual(1);
+
+    // 2. MERCHANT can query tenant memberships
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+    await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: USER_MERCHANT,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantId },
+      }),
+    ]);
+    const merchantMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    expect(merchantMemRes.rows.length).toBeGreaterThanOrEqual(1);
+
+    // 3. OPERATOR receives 0 rows (strictly fail closed)
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+    await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: USER_OPERATOR,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantId },
+      }),
+    ]);
+    const opMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    expect(opMemRes.rows.length).toBe(0);
+
+    // 4. CS receives 0 rows (strictly fail closed)
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+    await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: USER_CS,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantId },
+      }),
+    ]);
+    const csMemRes = await pgClient.query('SELECT user_id, role, is_active FROM public.tenant_memberships WHERE tenant_id = $1', [tenantId]);
+    expect(csMemRes.rows.length).toBe(0);
+
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('RESET request.jwt.claims');
+  });
 });

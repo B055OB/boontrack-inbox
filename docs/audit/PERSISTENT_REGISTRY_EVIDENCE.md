@@ -2250,3 +2250,183 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **BLD** | Next.js Production Build Integrity | `npm run build:workforce` compiles all 22 routes with zero TypeScript errors | Turbopack build | **EXIT 0 (PASS)** |
 | **FZN** | Production & Dodo Payments Hold | Production Supabase & live payments untouched, merge on hold | Architecture scope | **STRICT FROZEN** |
 
+---
+
+## 15. BWM Gate 1 Round 3K: Rollback Catalog Seal & Role-Bounded Membership Visibility
+
+**Authority:** Founder Executive Directive & CTO Guardian  
+**Repository:** `boontrack-workforce` (`B055OB/boontrack-inbox`)  
+**Branch:** `feat/bwm-workforce-isolated`  
+**Execution Scope:** `[TARGET TENANT: workforce_staging] | [TARGET CHANNEL: NONE] | [BLAST RADIUS: ISOLATED]`  
+**Status:** REMEDIATION COMPLETE & FULLY VERIFIED (MERGE HOLD MAINTAINED)
+
+---
+
+### 15.1 Architectural Changes Implemented
+
+#### 1. Migration 010 Rollback Storefront Hardening (`010.down.sql`)
+- **Blocker:** In the rolled-back state, `public.storefront_tenants` and `public.storefront_products` granted `SELECT` to `authenticated`, allowing authenticated users to scrape active tenant catalogs without explicit storefront opt-in.
+- **Remediation:** Removed all blanket grants to `authenticated`:
+  ```sql
+  REVOKE ALL ON public.storefront_tenants FROM authenticated, anon;
+  REVOKE ALL ON public.storefront_products FROM authenticated, anon;
+  GRANT ALL ON public.storefront_tenants TO postgres, service_role;
+  GRANT ALL ON public.storefront_products TO postgres, service_role;
+  ```
+- **Invariant:** In the rolled-back state, storefront views strictly fail closed for both `anon` and `authenticated` roles (SQLSTATE `42501`). Only `service_role` and administrative superuser can inspect storefront projections.
+
+#### 2. Role-Bounded Membership Visibility (`010.sql`)
+- **Blocker:** Unrestricted tenant members (including `CS` and `OPERATOR`) could inspect or enumerate internal team membership records in `public.tenant_memberships`.
+- **Remediation:** Bounded membership visibility strictly to administrative management roles:
+  - In `public.tenant_memberships` view:
+    ```sql
+    WHERE auth.role() = 'service_role' 
+       OR (
+           (workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT') OR workforce_staging.is_trusted_tenant_member(tenant_slug, 'MERCHANT'))
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true) OR tenant_slug = current_setting('app.current_agency_id', true))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true) OR tenant_slug = current_setting('app.current_tenant_id', true))
+       )
+    ```
+  - In `workforce_staging.tenant_memberships` table RLS:
+    ```sql
+    CREATE POLICY rls_tenant_memberships_select ON workforce_staging.tenant_memberships
+        FOR SELECT TO public
+        USING (
+            auth.role() = 'service_role' OR
+            (
+                (workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT') OR workforce_staging.is_trusted_tenant_member(tenant_slug, 'MERCHANT')) AND
+                (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true) OR tenant_slug = current_setting('app.current_agency_id', true)) AND
+                (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true) OR tenant_slug = current_setting('app.current_tenant_id', true))
+            )
+        );
+    ```
+- **Invariant:** `OWNER` and `MERCHANT` roles can list and manage membership rows. `CS` and `OPERATOR` roles receive exactly 0 rows (fail closed).
+
+---
+
+### 15.2 Test Enhancements & Execution Logs
+
+#### A. Safe Rollback Suite (`safe-migration-rollback.test.ts`)
+Added Test 2c verifying that authenticated users cannot query or scrape storefront views in the rolled-back state.
+Command: `npx.cmd jest __tests__/workforce/safe-migration-rollback.test.ts`
+```
+PASS __tests__/workforce/safe-migration-rollback.test.ts (6.83 s)
+  BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)
+    √ 1. Migration 010 DOWN Executes Cleanly Without Regressions (490 ms)
+    √ 2. In Rolled-Back State: Anonymous Access to Full Tables Remains Strictly Revoked (977 ms)
+    √ 2b. In Rolled-Back State: Authenticated Users Cannot Perform Unrestricted DML and Fail Closed (445 ms)
+    √ 2c. In Rolled-Back State: Authenticated Users Cannot Query or Scrape Storefront Views (Round 3K) (344 ms)
+    √ 3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies (563 ms)
+    √ 4. Post-Reapplication Security Boundary: Anonymous Full-Table Denial Maintained (619 ms)
+    √ 5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I) (1360 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       7 passed, 7 total
+Time:        7.509 s
+```
+
+#### B. API Authorization Convergence Suite (`api-authorization-convergence.test.ts`)
+Added Test 7e verifying role-bounded membership visibility.
+Command: `npx.cmd jest __tests__/workforce/api-authorization-convergence.test.ts`
+```
+PASS __tests__/workforce/api-authorization-convergence.test.ts (15.745 s)
+  BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Authority
+    ...
+    √ 7d. Direct base table access on workforce_staging.tenants and workforce_staging.products is rejected (Round 3J Blocker 5) (506 ms)
+    √ 7e. Role-bounded membership visibility: OWNER & MERCHANT can list members; CS & OPERATOR receive 0 rows (Round 3K) (1508 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       21 passed, 21 total
+Time:        16.177 s
+```
+
+#### C. Role-Based Authorization Suite (`role-authorization.test.ts`)
+Enhanced Tests 2-5 to verify tenant membership visibility across OWNER, MERCHANT, CS, and OPERATOR roles.
+Command: `npx.cmd jest __tests__/workforce/role-authorization.test.ts`
+```
+PASS __tests__/workforce/role-authorization.test.ts (11.912 s)
+  BWM Gate 1 Round 3H — Role-Based Database Authorization (Blocker D)
+    √ 1. Database Function Level Role Hierarchy Verification (is_trusted_tenant_member) (2452 ms)
+    √ 2. Positive OWNER Authorization: Full Administrative Control on Tenants, Products, and Pools (1269 ms)
+    √ 3. Positive MERCHANT Authorization: Product Management Permitted; Tenant/Pool Mutation Blocked (1294 ms)
+    √ 4. CS (Customer Support) Role: Read-Only Support Permitted; All Mutations Strictly Suppressed (1352 ms)
+    √ 5. OPERATOR Role: Operational Catalog View Permitted; Product & Tenant Mutations Suppressed (1436 ms)
+    √ 6. Unassigned / Outsider User Fails Closed Across All Tables (1174 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Time:        12.379 s
+```
+
+#### D. Full Workforce Regression Suite (36 Suites, 411 Tests)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (29.006 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (26.594 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (13.933 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (13.573 s)
+PASS __tests__/workforce/role-authorization.test.ts (11.632 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (8.485 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.152 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (6.112 s)
+PASS __tests__/workforce/real-data-api-exposure.test.ts (6.012 s)
+... [Remaining 27 suites pass cleanly] ...
+
+Test Suites: 36 passed, 36 total
+Tests:       411 passed, 411 total
+Snapshots:   0 total
+Time:        165.83 s
+```
+
+#### E. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 83ms
+✓ Compiled successfully in 1135ms
+  Running TypeScript ...
+  Finished TypeScript in 5.2s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 801ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 15.3 Sign-off Matrix for Round 3K
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :---: |
+| **K1** | Rollback Catalog Seal | `010.down.sql` strictly revokes storefront views from `authenticated` | `safe-migration-rollback.test.ts` (Test 2c: 42501) | **SEALED & VERIFIED** |
+| **K2** | Role-Bounded Memberships | `OWNER` & `MERCHANT` can query memberships; `CS` & `OPERATOR` return 0 rows | `api-authorization-convergence.test.ts` (Test 7e), `role-authorization.test.ts` | **BOUNDED & VERIFIED** |
+| **K3** | Database RLS Parity | View and table RLS both enforce `is_trusted_tenant_member(..., 'MERCHANT')` | Migration 010 UP, RLS policies | **PARITY ENFORCED** |
+| **REG** | Full Regression Suite | All 36 suites, 411 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (411/411)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+
+

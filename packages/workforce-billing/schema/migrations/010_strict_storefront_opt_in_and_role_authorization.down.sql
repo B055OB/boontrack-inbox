@@ -43,12 +43,12 @@ WITH (security_invoker = false) AS
     FROM workforce_staging.products
     WHERE is_active = TRUE AND status = 'ACTIVE';
 
--- CTO Mandate Round 3I: In rolled-back state, public storefront projections MUST remain default-deny.
--- Anon access is strictly revoked so private tenants and unverified products are never exposed without opt-in.
-GRANT SELECT ON public.storefront_tenants TO authenticated, service_role;
-GRANT SELECT ON public.storefront_products TO authenticated, service_role;
-REVOKE ALL ON public.storefront_tenants FROM anon;
-REVOKE ALL ON public.storefront_products FROM anon;
+-- CTO Mandate Round 3K: In rolled-back state, public storefront projections MUST remain strictly fail-closed.
+-- Blanket access for authenticated users is eliminated; only service_role retains access.
+REVOKE ALL ON public.storefront_tenants FROM authenticated, anon;
+REVOKE ALL ON public.storefront_products FROM authenticated, anon;
+GRANT ALL ON public.storefront_tenants TO postgres, service_role;
+GRANT ALL ON public.storefront_products TO postgres, service_role;
 DROP VIEW IF EXISTS public.tenant_memberships CASCADE;
 
 -- 2. Restore Migration 009 Policies on tenants, products, branch_credit_pools
