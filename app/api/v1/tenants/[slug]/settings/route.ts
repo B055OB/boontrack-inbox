@@ -124,155 +124,48 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     return settings;
   }
 
-  const isStaff = role === 'CS' || role === 'OPERATOR';
-  const sanitized = { ...settings };
-  const metadata = sanitized.metadata ? { ...sanitized.metadata } : {};
-
-  // Redact identity, contact & external communications to NULL for non-OWNER (Migration 010 Parity)
-  sanitized.phone = null;
-  sanitized.contact_phone = null;
-  sanitized.whatsapp = null;
-  sanitized.whatsapp_number = null;
-  sanitized.wa_number = null;
-  sanitized.waba_phone_number_id = null;
-  sanitized.telegram_chat_id = null;
-  sanitized.telegram_group_config = null;
-
-  metadata.phone = null;
-  metadata.contact_phone = null;
-  metadata.whatsapp = null;
-  metadata.whatsapp_number = null;
-  metadata.wa_number = null;
-  metadata.waba_phone_number_id = null;
-  metadata.telegram_chat_id = null;
-  metadata.telegram_group_config = null;
-
-  // Redact banking & financial information for non-OWNER (MERCHANT, CS, OPERATOR)
-  sanitized.bank = null;
-  sanitized.bank_settings = null;
-  sanitized.bank_transfer = null;
-  sanitized.bank_accounts = null;
-  sanitized.bank_name = null;
-  sanitized.bank_account = null;
-  sanitized.bank_holder = null;
-  sanitized.payment_config = null;
-  sanitized.payment_settings = null;
-
-  metadata.bank = null;
-  metadata.bank_settings = null;
-  metadata.bank_transfer = null;
-  metadata.bank_accounts = null;
-  metadata.bank_name = null;
-  metadata.bank_account = null;
-  metadata.bank_holder = null;
-  metadata.accounts = null;
-  metadata.manual_bank_accounts = null;
-  metadata.payment_config = null;
-  metadata.payment_settings = null;
-
-  // Redact CAPI & tracking tokens for non-OWNER
-  sanitized.capi_token = null;
-  sanitized.meta_capi_token = null;
-  metadata.capi_token = null;
-  metadata.meta_capi_token = null;
-
-  if (sanitized.ads_tracking_config) {
-    sanitized.ads_tracking_config = {
-      ...sanitized.ads_tracking_config,
-      meta_capi_token: null,
-      capi_token: null,
-      tiktok_access_token: null,
-    };
-  }
-  if (sanitized.tracking) {
-    sanitized.tracking = {
-      ...sanitized.tracking,
-      meta_capi_token: null,
-      capi_token: null,
-      tiktok_access_token: null,
-    };
-  }
-  if (metadata.ads_tracking_config) {
-    metadata.ads_tracking_config = {
-      ...metadata.ads_tracking_config,
-      meta_capi_token: null,
-      capi_token: null,
-      tiktok_access_token: null,
-    };
-  }
-  if (metadata.tracking) {
-    metadata.tracking = {
-      ...metadata.tracking,
-      meta_capi_token: null,
-      capi_token: null,
-      tiktok_access_token: null,
-    };
+  // Construct metadata strictly via ALLOWED_METADATA_KEYS projection (Round 3Q)
+  const ALLOWED_METADATA_KEYS = ['business_hours', 'display_name', 'theme', 'catalog_preferences', 'public_links'];
+  const sanitizedMetadata: Record<string, any> = {};
+  if (settings.metadata && typeof settings.metadata === 'object') {
+    for (const key of ALLOWED_METADATA_KEYS) {
+      if (settings.metadata[key] !== undefined) {
+        sanitizedMetadata[key] = settings.metadata[key];
+      }
+    }
   }
 
-  // Redact WABA access tokens & phone id for non-OWNER
-  if (sanitized.waba_config) {
-    sanitized.waba_config = {
-      ...sanitized.waba_config,
-      phone_number_id: null,
-      access_token: null,
-      permanent_access_token: null,
-      api_key: null,
-    };
-  }
-  if (metadata.waba_config) {
-    metadata.waba_config = {
-      ...metadata.waba_config,
-      phone_number_id: null,
-      access_token: null,
-      permanent_access_token: null,
-      api_key: null,
-    };
-  }
-  metadata.waba_access_token = null;
-  metadata.waba_phone_number_id = null;
-
-  // Redact integration configurations for non-OWNER
-  sanitized.integration = null;
-  sanitized.integrations = null;
-  metadata.integration = null;
-  metadata.integrations = null;
-
-  // Redact gateway_config.metadata & whatsapp_connection.metadata for non-OWNER
-  if (sanitized.gateway_config) {
-    sanitized.gateway_config = {
-      ...sanitized.gateway_config,
-      metadata: null,
-      phone_number: null,
-    };
-  }
-  if (sanitized.whatsapp_connection) {
-    sanitized.whatsapp_connection = {
-      ...sanitized.whatsapp_connection,
-      metadata: null,
-      phone_number: null,
-    };
-  }
-
-  // Additional redactions for CS & OPERATOR roles
-  if (isStaff) {
-    sanitized.qris_image_url = null;
-    sanitized.qris_url = null;
-    sanitized.qris_image = null;
-    sanitized.is_qris_active = false;
-    sanitized.qris_enabled = false;
-    sanitized.trial_ends_at = null;
-    sanitized.subscription_ends_at = null;
-    sanitized.suspension_reason = null;
-
-    metadata.qris_image_url = null;
-    metadata.qris_url = null;
-    metadata.qris_image = null;
-    metadata.raw_qris_string = null;
-    metadata.qris_payload = null;
-  }
-
-  sanitized.metadata = metadata;
-  return sanitized;
+  // Construct clean projected object from scratch for non-OWNER roles (MERCHANT, OPERATOR, CS)
+  return {
+    id: settings.id,
+    slug: settings.slug,
+    name: settings.name,
+    tier: settings.tier,
+    status: settings.status,
+    logo_url: settings.logo_url,
+    avatar_url: settings.avatar_url,
+    bio: settings.bio,
+    currency: settings.currency,
+    created_at: settings.created_at,
+    updated_at: settings.updated_at,
+    phone: null,
+    whatsapp_number: null,
+    waba_phone_number_id: null,
+    telegram_chat_id: null,
+    bank: null,
+    bank_accounts: null,
+    payment_config: null,
+    capi_token: null,
+    waba_access_token: null,
+    waba_config: null,
+    integration: null,
+    gateway_config: null,
+    qris_image_url: null,
+    is_qris_active: false,
+    faqs: settings.faqs || [],
+    theme: settings.theme,
+    metadata: sanitizedMetadata,
+  };
 }
 
 export async function GET(

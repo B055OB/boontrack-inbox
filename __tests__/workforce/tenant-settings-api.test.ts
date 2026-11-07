@@ -113,6 +113,9 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
           "ads_tracking_config": {"meta_capi_token": "EAAX_TEST_CAPI_TOKEN_999", "pixel_id": "PIXEL_888"},
           "waba_config": {"phone_number_id": "WABA_TEST_ID_123", "waba_id": "WABA_ACC_999", "permanent_access_token": "EAAG_TEST_WABA_TOKEN_777", "access_token": "EAAG_TEST_WABA_TOKEN_777"},
           "waba_access_token": "EAAG_TEST_WABA_TOKEN_777",
+          "waba_id": "WABA_ACC_999",
+          "whatsapp_phone_number_id": "456",
+          "waba_account_id": "789",
           "is_bank_transfer_active": true,
           "is_qris_active": true,
           "raw_qris_string": "00020101021126580016ID.CO.QRIS.WWW0118936000020110000000021500000000000000005204581253033605802ID5914FORTRESS ALPHA6007JAKARTA6304ABCD"
@@ -274,16 +277,16 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.settings.slug).toBe(slugA);
     expect(json.settings.name).toBe('Fortress Alpha Defense');
 
-    // Financial & Integration secrets MUST be strictly redacted/null
+    // Financial & Integration secrets MUST be strictly redacted/null/undefined (Round 3Q True Allowlist Projection)
     expect(json.settings.bank).toBeNull();
     expect(json.settings.bank_accounts).toBeNull();
     expect(json.settings.payment_config).toBeNull();
     expect(json.settings.capi_token).toBeNull();
-    expect(json.settings.waba_config.access_token).toBeNull();
-    expect(json.settings.waba_config.permanent_access_token).toBeNull();
-    expect(json.settings.metadata.bank).toBeNull();
-    expect(json.settings.metadata.bank_accounts).toBeNull();
-    expect(json.settings.metadata.capi_token).toBeNull();
+    expect(json.settings.waba_config).toBeFalsy();
+    expect(json.settings.metadata.bank).toBeUndefined();
+    expect(json.settings.metadata.bank_accounts).toBeUndefined();
+    expect(json.settings.metadata.capi_token).toBeUndefined();
+    expect(json.settings.metadata.waba_config).toBeUndefined();
 
     // Migration 010 Parity: Phone and communication IDs redacted for MERCHANT
     expect(json.settings.phone).toBeNull();
@@ -595,7 +598,7 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.settings.payment_config).toBeNull();
     expect(json.settings.capi_token).toBeNull();
     expect(json.settings.integration).toBeNull();
-    expect(json.settings.gateway_config?.metadata).toBeNull();
+    expect(json.settings.gateway_config).toBeNull();
   });
 
   test('8b. GET Parity: Query GET settings as OWNER returns unmasked communication and identity fields', async () => {
@@ -670,5 +673,104 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.message).toMatch(/berhasil diperbarui/i);
+  });
+
+  // ── TEST 10: TRUE ALLOWLIST PROJECTION & DEEP METADATA SANITIZATION (Round 3Q) ─
+  test('10a. Deep Metadata Leakage Assertion: MERCHANT receives clean projection with nested metadata redacted', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenMerchantA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // Deep metadata leakage assertions: strict allowlist projection ensures undefined
+    expect(json.settings.metadata.waba_config).toBeUndefined();
+    expect(json.settings.metadata.waba_id).toBeUndefined();
+    expect(json.settings.metadata.whatsapp_phone_number_id).toBeUndefined();
+    expect(json.settings.metadata.waba_account_id).toBeUndefined();
+
+    // Top-level communications and identifiers strictly null
+    expect(json.settings.phone).toBeNull();
+    expect(json.settings.whatsapp_number).toBeNull();
+    expect(json.settings.waba_phone_number_id).toBeNull();
+    expect(json.settings.telegram_chat_id).toBeNull();
+  });
+
+  test('10b. Deep Metadata Leakage Assertion: OPERATOR receives clean projection with nested metadata redacted', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOperatorA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // Deep metadata leakage assertions for OPERATOR
+    expect(json.settings.metadata.waba_config).toBeUndefined();
+    expect(json.settings.metadata.waba_id).toBeUndefined();
+    expect(json.settings.metadata.whatsapp_phone_number_id).toBeUndefined();
+    expect(json.settings.metadata.waba_account_id).toBeUndefined();
+
+    // Top-level communications and identifiers strictly null
+    expect(json.settings.phone).toBeNull();
+    expect(json.settings.whatsapp_number).toBeNull();
+    expect(json.settings.waba_phone_number_id).toBeNull();
+    expect(json.settings.telegram_chat_id).toBeNull();
+  });
+
+  test('10c. Deep Metadata Leakage Assertion: CS receives clean projection with nested metadata redacted', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenCSA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // Deep metadata leakage assertions for CS
+    expect(json.settings.metadata.waba_config).toBeUndefined();
+    expect(json.settings.metadata.waba_id).toBeUndefined();
+    expect(json.settings.metadata.whatsapp_phone_number_id).toBeUndefined();
+    expect(json.settings.metadata.waba_account_id).toBeUndefined();
+
+    // Top-level communications and identifiers strictly null
+    expect(json.settings.phone).toBeNull();
+    expect(json.settings.whatsapp_number).toBeNull();
+    expect(json.settings.waba_phone_number_id).toBeNull();
+    expect(json.settings.telegram_chat_id).toBeNull();
+  });
+
+  test('10d. OWNER Positive Control: OWNER receives complete metadata intact', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // OWNER receives complete metadata and unmasked credentials
+    expect(json.settings.metadata.waba_config).toBeDefined();
+    expect(json.settings.metadata.waba_config.waba_id).toBe('WABA_ACC_999');
+    expect(json.settings.metadata.whatsapp_phone_number_id).toBe('456');
+    expect(json.settings.metadata.waba_account_id).toBe('789');
+
+    // Unmasked top-level fields for OWNER
+    expect(json.settings.phone).toBe('+628111222333');
+    expect(json.settings.whatsapp_number).toBe('+628111222333');
+    expect(json.settings.waba_phone_number_id).toBe('WABA_TEST_ID_123');
+    expect(json.settings.capi_token).toBe('EAAX_TEST_CAPI_TOKEN_999');
+    expect(json.settings.bank).toBeDefined();
+    expect(json.settings.bank.account_number).toBe('1234567890');
   });
 });
