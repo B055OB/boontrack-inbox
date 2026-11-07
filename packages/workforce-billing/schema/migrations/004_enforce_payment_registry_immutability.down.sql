@@ -5,3 +5,4 @@
 
 DROP TRIGGER IF EXISTS trg_payment_registry_immutability ON workforce_staging.workforce_payment_registry;
 DROP FUNCTION IF EXISTS workforce_staging.fn_enforce_payment_registry_immutability();
+

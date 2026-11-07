@@ -70,3 +70,4 @@ CREATE TRIGGER trg_payment_registry_immutability
 BEFORE UPDATE ON workforce_staging.workforce_payment_registry
 FOR EACH ROW
 EXECUTE FUNCTION workforce_staging.fn_enforce_payment_registry_immutability();
+
