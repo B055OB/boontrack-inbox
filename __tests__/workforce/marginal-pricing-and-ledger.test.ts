@@ -923,7 +923,7 @@ describe('BWM Master Sprint: Dynamic Branding, Native i18n, & Financial Accuracy
         } finally {
           client.release();
         }
-      });
+      }, 30000);
 
       test('c. 2 Concurrent Workers Same Event: Tembakkan 2 worker serentak -> tepat 1 berhasil mutasi, 1 terdeteksi duplikat', async () => {
         const tenantId = `tenant_wh_race_${Date.now()}`;

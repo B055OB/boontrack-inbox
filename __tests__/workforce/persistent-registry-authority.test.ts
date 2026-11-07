@@ -1046,6 +1046,46 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
         client.release();
       }
     });
+
+    test('5k. Attempt direct UPDATE during INITIATED -> BOUND transition modifying forbidden field triggers IMMUTABLE_FIELD_MODIFICATION exception', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_trg_bound_tamper_${ts}`;
+      const internalOrderId = `ord_trg_bound_tamper_${ts}`;
+      const providerTxId = `tx_bound_tamper_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        const order = await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+
+        // Attempt INITIATED -> BOUND transition while simultaneously altering expected_amount
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = $1, expected_amount = 500000 
+             WHERE id = $2`,
+            [providerTxId, order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: Column expected_amount cannot be modified');
+
+        // Attempt INITIATED -> BOUND transition while simultaneously altering currency
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = $1, currency = 'USD' 
+             WHERE id = $2`,
+            [providerTxId, order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: Column currency cannot be modified');
+      } finally {
+        client.release();
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -1241,19 +1281,31 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
           })
         ).rejects.toThrow('AMOUNT_OR_CURRENCY_MISMATCH');
 
+        // Explicit check: order in persistent registry MUST remain in BOUND status with initialBoundTxId
+        const orderRes = await client.query(
+          `SELECT status, provider_transaction_id, provider_account_id FROM workforce_staging.workforce_payment_registry WHERE internal_order_id = $1`,
+          [internalOrderId]
+        );
+        expect(orderRes.rows.length).toBe(1);
+        const refetchedOrder = orderRes.rows[0];
+        expect(refetchedOrder.status).toBe('BOUND');
+        expect(refetchedOrder.provider_transaction_id).toBe(providerTxId);
+
         // Verify clean rollback: ZERO rows in tenant_pass_ledger
         const ledgerRes = await client.query(
           `SELECT COUNT(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
           [tenantId]
         );
-        expect(Number(ledgerRes.rows[0].count)).toBe(0);
+        const ledgerRowCount = Number(ledgerRes.rows[0].count);
+        expect(ledgerRowCount).toBe(0);
 
         // Verify clean rollback: inbox row was rolled back or NOT PROCESSED
         const inboxRes = await client.query(
           `SELECT status FROM workforce_staging.workforce_webhook_inbox WHERE event_id = $1`,
           [eventId]
         );
-        expect(inboxRes.rows.length === 0 || inboxRes.rows[0].status !== 'PROCESSED').toBe(true);
+        const inboxStatus = inboxRes.rows.length > 0 ? inboxRes.rows[0].status : null;
+        expect(inboxStatus).not.toBe('PROCESSED');
       } finally {
         client.release();
       }
