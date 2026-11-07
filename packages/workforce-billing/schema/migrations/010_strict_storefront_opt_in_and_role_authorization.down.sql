@@ -43,10 +43,13 @@ WITH (security_invoker = false) AS
     FROM workforce_staging.products
     WHERE is_active = TRUE AND status = 'ACTIVE';
 
-GRANT SELECT ON public.storefront_tenants TO anon, authenticated;
-GRANT SELECT ON public.storefront_products TO anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.storefront_tenants FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.storefront_products FROM anon, authenticated;
+-- CTO Mandate Round 3I: In rolled-back state, public storefront projections MUST remain default-deny.
+-- Anon access is strictly revoked so private tenants and unverified products are never exposed without opt-in.
+GRANT SELECT ON public.storefront_tenants TO authenticated, service_role;
+GRANT SELECT ON public.storefront_products TO authenticated, service_role;
+REVOKE ALL ON public.storefront_tenants FROM anon;
+REVOKE ALL ON public.storefront_products FROM anon;
+DROP VIEW IF EXISTS public.tenant_memberships CASCADE;
 
 -- 2. Restore Migration 009 Policies on tenants, products, branch_credit_pools
 DROP POLICY IF EXISTS rls_tenants_isolation ON workforce_staging.tenants;
@@ -193,6 +196,8 @@ DROP INDEX IF EXISTS workforce_staging.idx_products_is_publicly_published;
 -- Drop base public views first so column drop has no dependent views
 DROP VIEW IF EXISTS public.tenants CASCADE;
 DROP VIEW IF EXISTS public.products CASCADE;
+DROP FUNCTION IF EXISTS public.trg_fn_tenants_view_dml CASCADE;
+DROP FUNCTION IF EXISTS public.trg_fn_products_view_dml CASCADE;
 
 ALTER TABLE workforce_staging.tenants DROP COLUMN IF EXISTS public_storefront_enabled;
 ALTER TABLE workforce_staging.products DROP COLUMN IF EXISTS is_publicly_published;

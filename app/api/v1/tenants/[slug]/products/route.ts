@@ -16,6 +16,7 @@ import {
 } from '@/lib/product-catalog';
 import {
   authorizeMerchantRequest,
+  authorizeMerchantSession,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 
@@ -61,9 +62,9 @@ export async function POST(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['CREATE_PRODUCT', 'MUTATE_PRODUCT']);
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
@@ -89,7 +90,7 @@ export async function POST(
       type,
     } = body;
 
-    const trimmedName = String(name || '').trim();
+    const trimmedName = String(name || body.title || '').trim();
     if (!trimmedName) {
       return NextResponse.json(
         { success: false, error: 'Nama produk wajib diisi.' },
@@ -510,9 +511,9 @@ export async function DELETE(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['DELETE_PRODUCT', 'MUTATE_PRODUCT']);
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
@@ -645,9 +646,11 @@ export async function GET(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // Authorization Boundary: Differentiate Private Merchant/Internal Machine vs Public Storefront
-    const authResult = authorizeMerchantRequest(req, slug);
-    const isMachineAuth = isInternalMachineAuthorized(req, slug);
+    const authResult = await authorizeMerchantSession(req, slug);
+    const isMachineAuth = isInternalMachineAuthorized(req, slug, ['READ_PRODUCT']);
     const isAuthorizedMerchant = authResult.authorized || isMachineAuth;
+    const callerRole = isMachineAuth ? 'OWNER' : (authResult.authorized ? authResult.payload.role : null);
+    const isLimitedRole = callerRole === 'CS' || callerRole === 'OPERATOR';
 
     const supabase = getSupabaseAdmin() || getSupabase();
 
@@ -681,7 +684,7 @@ export async function GET(
               price: Number(sp.price) || 0,
               promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
               description: sp.description || '',
-              download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+              download_url: isLimitedRole ? null : (sp.link_digital || sp.fulfillment_metadata?.access_url || ''),
               image: sp.image || sp.image_url || '',
               image_url: sp.image_url || sp.image || '',
               stock: sp.stock !== undefined ? Number(sp.stock) : 999,
@@ -690,8 +693,8 @@ export async function GET(
               is_active: sp.is_active !== false,
               status: sp.status || 'ACTIVE',
               is_publicly_published: sp.is_publicly_published ?? false,
-              fulfillment_metadata: sp.fulfillment_metadata,
-              single_page_config: sp.fulfillment_metadata?.single_page_config,
+              fulfillment_metadata: isLimitedRole ? null : sp.fulfillment_metadata,
+              single_page_config: isLimitedRole ? null : sp.fulfillment_metadata?.single_page_config,
             }));
 
             const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
@@ -702,6 +705,27 @@ export async function GET(
               }
             }
           }
+        }
+
+        // Apply role-safe masking across all catalog items for CS / OPERATOR
+        if (isLimitedRole) {
+          products = products.map((p) => {
+            const {
+              fulfillment_metadata,
+              single_page_config,
+              download_url,
+              link_digital,
+              asset_reference,
+              license_status,
+              ...safeProd
+            } = p;
+            return {
+              ...safeProd,
+              download_url: null,
+              fulfillment_metadata: null,
+              single_page_config: null,
+            };
+          });
         }
 
         return NextResponse.json({

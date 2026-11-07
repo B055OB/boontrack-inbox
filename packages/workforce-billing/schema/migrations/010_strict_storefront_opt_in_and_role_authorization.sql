@@ -397,21 +397,292 @@ GRANT SELECT ON public.storefront_products TO anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.storefront_tenants FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.storefront_products FROM anon, authenticated;
 
--- Refresh public base views so PostgREST schema cache includes newly added columns
+-- Refresh public base views with Column Confidentiality & Masking (Round 3I)
+DROP VIEW IF EXISTS public.tenants CASCADE;
+DROP VIEW IF EXISTS public.products CASCADE;
+DROP VIEW IF EXISTS public.tenant_memberships CASCADE;
+
 CREATE OR REPLACE VIEW public.tenants 
 WITH (security_invoker = true) AS 
-    SELECT * FROM workforce_staging.tenants;
+    SELECT 
+        id,
+        slug,
+        name,
+        category,
+        tier,
+        status,
+        is_active,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+            THEN metadata 
+            ELSE NULL 
+        END AS metadata,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+            THEN phone 
+            ELSE NULL 
+        END AS phone,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+            THEN whatsapp_number 
+            ELSE NULL 
+        END AS whatsapp_number,
+        created_at,
+        updated_at,
+        subscription_status,
+        trial_ends_at,
+        subscription_ends_at,
+        bot_paused,
+        is_bot_active,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+            THEN waba_phone_number_id 
+            ELSE NULL 
+        END AS waba_phone_number_id,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+            THEN telegram_chat_id 
+            ELSE NULL 
+        END AS telegram_chat_id,
+        logo_url,
+        avatar_url,
+        qris_image_url,
+        bio,
+        public_storefront_enabled
+    FROM workforce_staging.tenants;
 
 CREATE OR REPLACE VIEW public.products 
 WITH (security_invoker = true) AS 
-    SELECT * FROM workforce_staging.products;
+    SELECT 
+        id,
+        tenant_id,
+        title,
+        slug,
+        price,
+        promo_price,
+        category,
+        product_type,
+        description,
+        stock,
+        is_active,
+        status,
+        sku,
+        created_at,
+        updated_at,
+        name,
+        image,
+        image_url,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
+            THEN asset_reference 
+            ELSE NULL 
+        END AS asset_reference,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
+            THEN license_status 
+            ELSE NULL 
+        END AS license_status,
+        is_digital,
+        requires_shipping,
+        is_unlimited_stock,
+        CASE 
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
+            THEN fulfillment_metadata 
+            ELSE NULL 
+        END AS fulfillment_metadata,
+        is_publicly_published
+    FROM workforce_staging.products;
+
+CREATE OR REPLACE VIEW public.tenant_memberships 
+WITH (security_invoker = true) AS 
+    SELECT * FROM workforce_staging.tenant_memberships;
 
 GRANT ALL ON public.tenants TO postgres, service_role;
 GRANT ALL ON public.products TO postgres, service_role;
+GRANT ALL ON public.tenant_memberships TO postgres, service_role;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tenants TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.products TO authenticated;
+GRANT SELECT ON public.tenant_memberships TO authenticated;
+
 REVOKE ALL ON public.tenants FROM anon;
 REVOKE ALL ON public.products FROM anon;
+REVOKE ALL ON public.tenant_memberships FROM anon;
+
+-- ============================================================================
+-- 5. Updatable View Triggers (INSTEAD OF DML on Masked Views)
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.trg_fn_tenants_view_dml()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = workforce_staging, public
+AS $$
+BEGIN
+    IF auth.role() <> 'service_role' THEN
+        IF TG_OP = 'INSERT' THEN
+            IF NOT (workforce_staging.is_trusted_tenant_member(NEW.id::text, 'OWNER') OR workforce_staging.is_trusted_tenant_member(NEW.slug, 'OWNER')) THEN
+                RAISE EXCEPTION 'permission denied for table tenants' USING ERRCODE = '42501';
+            END IF;
+        ELSIF TG_OP = 'UPDATE' THEN
+            IF NOT (workforce_staging.is_trusted_tenant_member(OLD.id::text, 'OWNER') OR workforce_staging.is_trusted_tenant_member(OLD.slug, 'OWNER')) THEN
+                RETURN NULL;
+            END IF;
+        ELSIF TG_OP = 'DELETE' THEN
+            IF NOT (workforce_staging.is_trusted_tenant_member(OLD.id::text, 'OWNER') OR workforce_staging.is_trusted_tenant_member(OLD.slug, 'OWNER')) THEN
+                RETURN NULL;
+            END IF;
+        END IF;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO workforce_staging.tenants (
+            id, slug, name, category, tier, status, is_active, metadata, phone, whatsapp_number,
+            subscription_status, trial_ends_at, subscription_ends_at, bot_paused, is_bot_active,
+            waba_phone_number_id, telegram_chat_id, logo_url, avatar_url, qris_image_url, bio, public_storefront_enabled
+        ) VALUES (
+            COALESCE(NEW.id, gen_random_uuid()), NEW.slug, NEW.name, NEW.category, NEW.tier, NEW.status,
+            NEW.is_active, NEW.metadata, NEW.phone, NEW.whatsapp_number, NEW.subscription_status,
+            NEW.trial_ends_at, NEW.subscription_ends_at, NEW.bot_paused, NEW.is_bot_active,
+            NEW.waba_phone_number_id, NEW.telegram_chat_id, NEW.logo_url, NEW.avatar_url,
+            NEW.qris_image_url, NEW.bio, COALESCE(NEW.public_storefront_enabled, FALSE)
+        )
+        RETURNING * INTO NEW;
+        RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        UPDATE workforce_staging.tenants SET
+            slug = COALESCE(NEW.slug, slug),
+            name = COALESCE(NEW.name, name),
+            category = COALESCE(NEW.category, category),
+            tier = COALESCE(NEW.tier, tier),
+            status = COALESCE(NEW.status, status),
+            is_active = COALESCE(NEW.is_active, is_active),
+            metadata = COALESCE(NEW.metadata, metadata),
+            phone = COALESCE(NEW.phone, phone),
+            whatsapp_number = COALESCE(NEW.whatsapp_number, whatsapp_number),
+            subscription_status = COALESCE(NEW.subscription_status, subscription_status),
+            trial_ends_at = COALESCE(NEW.trial_ends_at, trial_ends_at),
+            subscription_ends_at = COALESCE(NEW.subscription_ends_at, subscription_ends_at),
+            bot_paused = COALESCE(NEW.bot_paused, bot_paused),
+            is_bot_active = COALESCE(NEW.is_bot_active, is_bot_active),
+            waba_phone_number_id = COALESCE(NEW.waba_phone_number_id, waba_phone_number_id),
+            telegram_chat_id = COALESCE(NEW.telegram_chat_id, telegram_chat_id),
+            logo_url = COALESCE(NEW.logo_url, logo_url),
+            avatar_url = COALESCE(NEW.avatar_url, avatar_url),
+            qris_image_url = COALESCE(NEW.qris_image_url, qris_image_url),
+            bio = COALESCE(NEW.bio, bio),
+            public_storefront_enabled = COALESCE(NEW.public_storefront_enabled, public_storefront_enabled),
+            updated_at = NOW()
+        WHERE id = OLD.id
+        RETURNING * INTO NEW;
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        DELETE FROM workforce_staging.tenants WHERE id = OLD.id;
+        RETURN OLD;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_tenants_view_dml ON public.tenants;
+CREATE TRIGGER trg_tenants_view_dml
+INSTEAD OF INSERT OR UPDATE OR DELETE ON public.tenants
+FOR EACH ROW EXECUTE FUNCTION public.trg_fn_tenants_view_dml();
+
+CREATE OR REPLACE FUNCTION public.trg_fn_products_view_dml()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = workforce_staging, public
+AS $$
+BEGIN
+    IF auth.role() <> 'service_role' THEN
+        IF TG_OP = 'INSERT' THEN
+            IF NOT workforce_staging.is_trusted_tenant_member(NEW.tenant_id, 'MERCHANT') THEN
+                RAISE EXCEPTION 'permission denied for table products' USING ERRCODE = '42501';
+            END IF;
+        ELSIF TG_OP = 'UPDATE' THEN
+            IF NOT workforce_staging.is_trusted_tenant_member(OLD.tenant_id, 'MERCHANT') THEN
+                RETURN NULL;
+            END IF;
+        ELSIF TG_OP = 'DELETE' THEN
+            IF NOT workforce_staging.is_trusted_tenant_member(OLD.tenant_id, 'MERCHANT') THEN
+                RETURN NULL;
+            END IF;
+        END IF;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO workforce_staging.products (
+            id, tenant_id, title, slug, price, promo_price, category, product_type,
+            description, stock, is_active, status, sku, name, image, image_url,
+            asset_reference, license_status, is_digital, requires_shipping,
+            is_unlimited_stock, fulfillment_metadata, is_publicly_published
+        ) VALUES (
+            COALESCE(NEW.id, gen_random_uuid()), NEW.tenant_id, NEW.title, NEW.slug,
+            COALESCE(NEW.price, 0), NEW.promo_price, COALESCE(NEW.category, 'service'),
+            COALESCE(NEW.product_type, 'SERVICE'), NEW.description, COALESCE(NEW.stock, 999),
+            COALESCE(NEW.is_active, TRUE), COALESCE(NEW.status, 'ACTIVE'), NEW.sku,
+            NEW.name, NEW.image, NEW.image_url, NEW.asset_reference, NEW.license_status,
+            COALESCE(NEW.is_digital, FALSE), COALESCE(NEW.requires_shipping, FALSE),
+            COALESCE(NEW.is_unlimited_stock, TRUE), COALESCE(NEW.fulfillment_metadata, '{}'::jsonb),
+            COALESCE(NEW.is_publicly_published, FALSE)
+        )
+        RETURNING * INTO NEW;
+        RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        UPDATE workforce_staging.products SET
+            tenant_id = COALESCE(NEW.tenant_id, tenant_id),
+            title = COALESCE(NEW.title, title),
+            slug = COALESCE(NEW.slug, slug),
+            price = COALESCE(NEW.price, price),
+            promo_price = COALESCE(NEW.promo_price, promo_price),
+            category = COALESCE(NEW.category, category),
+            product_type = COALESCE(NEW.product_type, product_type),
+            description = COALESCE(NEW.description, description),
+            stock = COALESCE(NEW.stock, stock),
+            is_active = COALESCE(NEW.is_active, is_active),
+            status = COALESCE(NEW.status, status),
+            sku = COALESCE(NEW.sku, sku),
+            name = COALESCE(NEW.name, name),
+            image = COALESCE(NEW.image, image),
+            image_url = COALESCE(NEW.image_url, image_url),
+            asset_reference = COALESCE(NEW.asset_reference, asset_reference),
+            license_status = COALESCE(NEW.license_status, license_status),
+            is_digital = COALESCE(NEW.is_digital, is_digital),
+            requires_shipping = COALESCE(NEW.requires_shipping, requires_shipping),
+            is_unlimited_stock = COALESCE(NEW.is_unlimited_stock, is_unlimited_stock),
+            fulfillment_metadata = COALESCE(NEW.fulfillment_metadata, fulfillment_metadata),
+            is_publicly_published = COALESCE(NEW.is_publicly_published, is_publicly_published),
+            updated_at = NOW()
+        WHERE id = OLD.id
+        RETURNING * INTO NEW;
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        DELETE FROM workforce_staging.products WHERE id = OLD.id;
+        RETURN OLD;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_products_view_dml ON public.products;
+CREATE TRIGGER trg_products_view_dml
+INSTEAD OF INSERT OR UPDATE OR DELETE ON public.products
+FOR EACH ROW EXECUTE FUNCTION public.trg_fn_products_view_dml();
 
 -- Notify PostgREST to reload schema cache
 NOTIFY pgrst, 'reload schema';

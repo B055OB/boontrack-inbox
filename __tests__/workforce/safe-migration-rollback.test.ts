@@ -126,12 +126,24 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     expect(anonBaseProdsErr).toBeDefined();
     expect(anonBaseProdsErr.code).toBe('42501');
 
-    // C. Safe public storefront views remain accessible
-    const sfTenantsRes = await client.query('SELECT COUNT(*)::int AS count FROM public.storefront_tenants');
-    expect(sfTenantsRes.rows[0].count).toBeGreaterThanOrEqual(0);
+    // C. Storefront projections in rolled-back state strictly REVOKED from anon (Default-Deny Round 3I)
+    let anonSfTenantsErr: any = null;
+    try {
+      await client.query('SELECT * FROM public.storefront_tenants LIMIT 1');
+    } catch (err) {
+      anonSfTenantsErr = err;
+    }
+    expect(anonSfTenantsErr).toBeDefined();
+    expect(anonSfTenantsErr.code).toBe('42501');
 
-    const sfProdsRes = await client.query('SELECT COUNT(*)::int AS count FROM public.storefront_products');
-    expect(sfProdsRes.rows[0].count).toBeGreaterThanOrEqual(0);
+    let anonSfProdsErr: any = null;
+    try {
+      await client.query('SELECT * FROM public.storefront_products LIMIT 1');
+    } catch (err) {
+      anonSfProdsErr = err;
+    }
+    expect(anonSfProdsErr).toBeDefined();
+    expect(anonSfProdsErr.code).toBe('42501');
 
     await client.query('RESET ROLE');
   });
@@ -217,5 +229,37 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     expect(sfProds.rows[0].count).toBeGreaterThanOrEqual(0);
 
     await client.query('RESET ROLE');
+  });
+
+  test('5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I)', async () => {
+    const down009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.down.sql');
+    const up009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.sql');
+    const down009Sql = fs.readFileSync(down009Path, 'utf8');
+    const up009Sql = fs.readFileSync(up009Path, 'utf8');
+
+    await client.query('RESET ROLE');
+    // First rollback 010, then rollback 009
+    await client.query(downSql);
+    await expect(client.query(down009Sql)).resolves.toBeDefined();
+
+    // Verify in 009 rolled-back state that GUC-only impersonation does NOT grant access
+    await client.query('SET ROLE authenticated');
+    await client.query("SET app.current_tenant_id = 'solusi-ads'");
+    const res = await client.query('SELECT * FROM workforce_staging.tenants');
+    // Fails closed: 0 rows returned even though app.current_tenant_id was set!
+    expect(res.rows.length).toBe(0);
+
+    // Reapply 009 UP and 010 UP cleanly
+    await client.query('RESET ROLE');
+    await expect(client.query(up009Sql)).resolves.toBeDefined();
+    await expect(client.query(upSql)).resolves.toBeDefined();
+
+    // Verify database views restored
+    const viewCheck = await client.query(`
+      SELECT table_name FROM information_schema.views 
+      WHERE table_schema = 'public' 
+        AND table_name IN ('tenants', 'products', 'tenant_memberships', 'storefront_tenants', 'storefront_products')
+    `);
+    expect(viewCheck.rows.length).toBe(5);
   });
 });

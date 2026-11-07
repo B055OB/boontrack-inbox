@@ -13,6 +13,7 @@ import {
 } from '@/lib/product-catalog';
 import {
   authorizeMerchantRequest,
+  authorizeMerchantSession,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 
@@ -27,9 +28,11 @@ export async function GET(
     const slug = normalizeTenantSlug(rawSlug || '');
     const supabaseAdmin = getSupabaseAdmin();
 
-    const authResult = authorizeMerchantRequest(req, slug);
-    const isMachineAuth = isInternalMachineAuthorized(req, slug);
+    const authResult = await authorizeMerchantSession(req, slug);
+    const isMachineAuth = isInternalMachineAuthorized(req, slug, ['READ_PRODUCT']);
     const isAuthorizedMerchant = authResult.authorized || isMachineAuth;
+    const callerRole = isMachineAuth ? 'OWNER' : (authResult.authorized ? authResult.payload.role : null);
+    const isLimitedRole = callerRole === 'CS' || callerRole === 'OPERATOR';
 
     // 1. Private Authorized Tenant Path
     if (isAuthorizedMerchant) {
@@ -50,16 +53,38 @@ export async function GET(
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
-      if (error || !product) {
+      let targetProduct: any = product;
+
+      if (error || !targetProduct) {
         const metaProds = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
         const match = metaProds.find((p: any) => String(p.id) === String(productId) || p.slug === String(productId));
         if (match) {
-          return NextResponse.json({ success: true, product: match });
+          targetProduct = match;
+        } else {
+          return NextResponse.json({ success: false, error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
         }
-        return NextResponse.json({ success: false, error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
       }
 
-      return NextResponse.json({ success: true, product });
+      // Role-safe projection for CS and OPERATOR
+      if (isLimitedRole && targetProduct) {
+        const {
+          fulfillment_metadata,
+          single_page_config,
+          download_url,
+          link_digital,
+          asset_reference,
+          license_status,
+          ...safeProd
+        } = targetProduct;
+        targetProduct = {
+          ...safeProd,
+          download_url: null,
+          fulfillment_metadata: null,
+          single_page_config: null,
+        };
+      }
+
+      return NextResponse.json({ success: true, product: targetProduct });
     }
 
     // 2. Public Storefront Access (Strict Opt-In & Allowlist Only)
@@ -118,9 +143,9 @@ async function handleProductMutation(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['UPDATE_PRODUCT', 'MUTATE_PRODUCT']);
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
@@ -304,9 +329,9 @@ export async function DELETE(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['DELETE_PRODUCT', 'MUTATE_PRODUCT']);
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }

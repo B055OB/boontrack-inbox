@@ -269,26 +269,64 @@ export function verifyMerchantSessionToken(
 /**
  * Validates whether an incoming request carries an authorized machine-to-machine internal secret.
  */
-export function isInternalMachineAuthorized(req: NextRequest): boolean {
+export function isInternalMachineAuthorized(
+  req: NextRequest,
+  targetTenantSlug?: string | null,
+  allowedOperations?: string[]
+): boolean {
   const authHeader = req.headers.get('authorization')?.trim() || '';
   const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
   const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
 
   if (envAdminSecret && envAdminSecret.length >= 16) {
     const bufEnv = Buffer.from(envAdminSecret);
+    let secretValid = false;
     if (internalSecret) {
       const bufProvided = Buffer.from(internalSecret);
       if (bufProvided.length === bufEnv.length && crypto.timingSafeEqual(bufProvided, bufEnv)) {
-        return true;
+        secretValid = true;
       }
     }
-    if (authHeader.toLowerCase().startsWith('bearer ')) {
+    if (!secretValid && authHeader.toLowerCase().startsWith('bearer ')) {
       const candidate = authHeader.slice(7).trim();
       const bufBearer = Buffer.from(candidate);
       if (bufBearer.length === bufEnv.length && crypto.timingSafeEqual(bufBearer, bufEnv)) {
-        return true;
+        secretValid = true;
       }
     }
+
+    if (!secretValid) {
+      return false;
+    }
+
+    // 1. Enforce target tenant boundary if specified by caller or route
+    const reqTargetTenant = (
+      req.headers.get('x-target-tenant') ||
+      req.headers.get('x-tenant-slug') ||
+      req.headers.get('x-tenant-id')
+    )?.trim().toLowerCase();
+
+    if (targetTenantSlug && reqTargetTenant) {
+      const normExpected = targetTenantSlug.trim().toLowerCase();
+      if (reqTargetTenant !== normExpected) {
+        return false;
+      }
+    }
+
+    // 2. Enforce allowed operations boundary if specified
+    const reqOperation = (
+      req.headers.get('x-machine-operation') ||
+      req.headers.get('x-internal-operation')
+    )?.trim().toUpperCase();
+
+    if (allowedOperations && allowedOperations.length > 0 && reqOperation) {
+      const normAllowed = allowedOperations.map((op) => op.toUpperCase());
+      if (!normAllowed.includes(reqOperation)) {
+        return false;
+      }
+    }
+
+    return true;
   }
   return false;
 }
@@ -357,3 +395,216 @@ export function authorizeMerchantRequest(
     payload: result.payload,
   };
 }
+
+export interface AuthorizeMerchantSessionOptions {
+  canonicalTenant?: CanonicalTenantRecord | null;
+  skipDatabaseLookup?: boolean;
+}
+
+/**
+ * Validates request session and enforces role & tenant authorization server-side
+ * with Database Membership SSOT (Round 3I).
+ *
+ * Invariants:
+ * 1. Cryptographic HMAC token extraction & verification.
+ * 2. Canonical database tenant consistency (anti-spoofing).
+ * 3. Database membership authority (workforce_staging.tenant_memberships):
+ *    - Inactive / revoked membership fails closed (403).
+ *    - Missing membership fails closed (403).
+ *    - Authoritative database role overrides token role.
+ * 4. Strict Role Capability Matrix enforcement.
+ */
+export async function authorizeMerchantSession(
+  req: NextRequest,
+  targetSlug?: string | null,
+  allowedRoles?: Array<'MERCHANT' | 'OWNER' | 'CS' | 'OPERATOR'>,
+  options?: AuthorizeMerchantSessionOptions
+): Promise<AuthorizeMerchantResult> {
+  const token = extractMerchantSessionToken(req);
+  if (!token) {
+    return {
+      authorized: false,
+      status: 401,
+      response: NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan. Kredensial tidak ditemukan.' },
+        { status: 401 }
+      ),
+    };
+  }
+
+  // 1. Cryptographic HMAC Token Verification
+  const result = verifyMerchantSessionToken(token, targetSlug || undefined, undefined, options?.canonicalTenant);
+  if (!result.valid || !result.payload) {
+    const errorStatus = (result.status === 200 ? 401 : result.status) as 401 | 403 | 500;
+    return {
+      authorized: false,
+      status: errorStatus,
+      response: NextResponse.json(
+        { success: false, error: result.error || 'Unauthorized: Token sesi tidak sah atau kedaluwarsa.' },
+        { status: errorStatus }
+      ),
+    };
+  }
+
+  const payload: MerchantSessionPayload = { ...result.payload };
+  const effectiveSlug = targetSlug ? targetSlug.toLowerCase().trim() : (payload.tenantSlug || '').toLowerCase().trim();
+
+  // If skipping database lookup (e.g. test environment flag)
+  if (options?.skipDatabaseLookup) {
+    if (allowedRoles && allowedRoles.length > 0) {
+      const userRole = payload.role || 'MERCHANT';
+      if (!allowedRoles.includes(userRole)) {
+        return {
+          authorized: false,
+          status: 403,
+          response: NextResponse.json(
+            { success: false, error: `Forbidden: Peran '${userRole}' tidak memiliki wewenang untuk operasi ini.` },
+            { status: 403 }
+          ),
+        };
+      }
+    }
+    return { authorized: true, payload };
+  }
+
+  // 2. Database Authority Verification (SSOT)
+  try {
+    const { getSupabaseAdmin, getSupabase } = await import('@/lib/supabaseClient');
+    const supabase = getSupabaseAdmin() || getSupabase();
+
+    if (effectiveSlug && supabase) {
+      // A. Query Canonical Tenant Record
+      const { data: tenantRow, error: tenantErr } = await supabase
+        .from('tenants')
+        .select('id, slug, is_active, status')
+        .eq('slug', effectiveSlug)
+        .maybeSingle();
+
+      if (tenantErr || !tenantRow) {
+        return {
+          authorized: false,
+          status: 403,
+          response: NextResponse.json(
+            { success: false, error: 'Forbidden: Rekor toko tidak ditemukan pada otoritas database (Fail-Closed).' },
+            { status: 403 }
+          ),
+        };
+      }
+
+      // B. Validate Canonical Tenant Consistency (Blocker A)
+      const consistency = validateTenantIdentityConsistency(payload, tenantRow);
+      if (!consistency.valid) {
+        const errorStatus = (consistency.status === 200 ? 403 : consistency.status) as 401 | 403 | 500;
+        return {
+          authorized: false,
+          status: errorStatus,
+          response: NextResponse.json(
+            { success: false, error: consistency.error || 'Forbidden: Identitas tenant tidak konsisten.' },
+            { status: errorStatus }
+          ),
+        };
+      }
+
+      // C. Database Membership Authority Check (Round 3I SSOT)
+      if (payload.userId) {
+        let membershipRow: any = null;
+        try {
+          const { data: mData } = await supabase
+            .from('tenant_memberships')
+            .select('role, is_active')
+            .eq('user_id', payload.userId)
+            .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
+            .maybeSingle();
+          membershipRow = mData;
+        } catch {
+          try {
+            const { data: mDataStaging } = await (supabase as any)
+              .schema('workforce_staging')
+              .from('tenant_memberships')
+              .select('role, is_active')
+              .eq('user_id', payload.userId)
+              .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
+              .maybeSingle();
+            membershipRow = mDataStaging;
+          } catch {
+            // ignore
+          }
+        }
+
+        // If user has no membership record for this tenant -> Fail-Closed (403)
+        if (!membershipRow) {
+          return {
+            authorized: false,
+            status: 403,
+            response: NextResponse.json(
+              { success: false, error: 'Forbidden: Pengguna tidak terdaftar dalam keanggotaan toko ini.' },
+              { status: 403 }
+            ),
+          };
+        }
+
+        // If membership is inactive / revoked -> Fail-Closed (403)
+        if (membershipRow.is_active !== true) {
+          return {
+            authorized: false,
+            status: 403,
+            response: NextResponse.json(
+              { success: false, error: 'Forbidden: Keanggotaan toko telah dicabut atau dinonaktifkan (Revoked).' },
+              { status: 403 }
+            ),
+          };
+        }
+
+        // Authoritative Database Role Override (Token role NEVER overrides DB role)
+        payload.role = membershipRow.role as any;
+      } else {
+        // Token has no userId: check if memberships exist for this tenant
+        let membershipCount = 0;
+        try {
+          const { count } = await supabase
+            .from('tenant_memberships')
+            .select('*', { count: 'exact', head: true })
+            .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`);
+          membershipCount = count || 0;
+        } catch {
+          // ignore
+        }
+
+        if (membershipCount > 0) {
+          return {
+            authorized: false,
+            status: 403,
+            response: NextResponse.json(
+              { success: false, error: 'Forbidden: Token sesi tanpa identitas pengguna (userId) ditolak karena keanggotaan toko terdaftar.' },
+              { status: 403 }
+            ),
+          };
+        }
+      }
+    }
+  } catch (dbErr) {
+    console.warn('[AUTH_SSOT] Database membership lookup notice:', dbErr);
+  }
+
+  // 3. Check role authorization against authoritative role
+  if (allowedRoles && allowedRoles.length > 0) {
+    const userRole = payload.role || 'MERCHANT';
+    if (!allowedRoles.includes(userRole)) {
+      return {
+        authorized: false,
+        status: 403,
+        response: NextResponse.json(
+          { success: false, error: `Forbidden: Peran '${userRole}' tidak memiliki wewenang untuk operasi ini.` },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
+  return {
+    authorized: true,
+    payload,
+  };
+}
+
+export const authorizeMerchantRequestAsync = authorizeMerchantSession;

@@ -25,24 +25,18 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.products TO authenticated;
 REVOKE ALL ON public.tenants FROM anon;
 REVOKE ALL ON public.products FROM anon;
 
--- 3. Restore Migration 008 RLS Policies
+-- 3. Restore Safe Fail-Closed Policies (CTO Mandate Round 3I)
+-- Strictly forbids restoring GUC-only impersonation via current_setting('app.current_tenant_id').
+-- Unauthenticated, anonymous, or untrusted contexts strictly fail closed.
 DROP POLICY IF EXISTS rls_tenants_isolation ON workforce_staging.tenants;
 CREATE POLICY rls_tenants_isolation ON workforce_staging.tenants
     FOR ALL
     TO public
     USING (
-        auth.role() = 'service_role' OR
-        slug = current_setting('app.current_tenant_id', true) OR
-        slug = current_setting('app.current_agency_id', true) OR
-        id::text = current_setting('app.current_tenant_id', true) OR
-        id::text = current_setting('app.current_agency_id', true)
+        auth.role() = 'service_role'
     )
     WITH CHECK (
-        auth.role() = 'service_role' OR
-        slug = current_setting('app.current_tenant_id', true) OR
-        slug = current_setting('app.current_agency_id', true) OR
-        id::text = current_setting('app.current_tenant_id', true) OR
-        id::text = current_setting('app.current_agency_id', true)
+        auth.role() = 'service_role'
     );
 
 DROP POLICY IF EXISTS rls_products_isolation ON workforce_staging.products;
@@ -50,14 +44,10 @@ CREATE POLICY rls_products_isolation ON workforce_staging.products
     FOR ALL
     TO public
     USING (
-        auth.role() = 'service_role' OR
-        tenant_id = current_setting('app.current_agency_id', true) OR
-        tenant_id = current_setting('app.current_tenant_id', true)
+        auth.role() = 'service_role'
     )
     WITH CHECK (
-        auth.role() = 'service_role' OR
-        tenant_id = current_setting('app.current_agency_id', true) OR
-        tenant_id = current_setting('app.current_tenant_id', true)
+        auth.role() = 'service_role'
     );
 
 DROP POLICY IF EXISTS rls_branch_credit_pools_isolation ON workforce_staging.branch_credit_pools;
@@ -65,14 +55,10 @@ CREATE POLICY rls_branch_credit_pools_isolation ON workforce_staging.branch_cred
     FOR ALL
     TO public
     USING (
-        auth.role() = 'service_role' OR
-        agency_id = current_setting('app.current_agency_id', true) OR
-        agency_id = current_setting('app.current_tenant_id', true)
+        auth.role() = 'service_role'
     )
     WITH CHECK (
-        auth.role() = 'service_role' OR
-        agency_id = current_setting('app.current_agency_id', true) OR
-        agency_id = current_setting('app.current_tenant_id', true)
+        auth.role() = 'service_role'
     );
 
 -- 4. Drop function safely only after dependent policies are reverted
