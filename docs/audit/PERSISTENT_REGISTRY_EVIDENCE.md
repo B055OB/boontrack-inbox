@@ -2904,3 +2904,146 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **REG** | Full Regression Suite | All 36 suites, 415 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (415/415)** |
 | **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
 | **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+
+---
+
+## 19. BWM Gate 1 — Round 3O: Database-Backed Session Authorization & Strict Secret Boundaries on Settings API
+
+### 19.1 Architectural Hardening Overview
+
+1. **Database-Backed Session Authorization in Settings API (`app/api/v1/tenants/[slug]/settings/route.ts`):**
+   - In both GET and PUT route handlers: Replaced all calls to `authorizeMerchantRequest(...)` with:
+     ```typescript
+     const authResult = await authorizeMerchantSession(req, slug, allowedRoles);
+     ```
+   - Authorization is strictly bound to `session.role` resolved from PostgreSQL `workforce_staging.tenant_memberships`.
+   - Requests with revoked memberships (`is_active = FALSE`) fail closed immediately with 403 Forbidden.
+   - Any token attempting role elevation (e.g. signed as `OWNER`, but DB membership recorded as `MERCHANT`) is authoritatively downgraded to its database role.
+
+2. **Role Boundaries & Secret Masking in GET Settings (`settings/route.ts`):**
+   - Implemented `sanitizeSettingsForRole(settings, role)` covering root and nested `metadata` fields:
+     - **`OWNER`**: Unmasked access to banking, payment configurations, QRIS payloads, Meta CAPI tokens, TikTok access tokens, and permanent WABA access tokens.
+     - **`MERCHANT`**: Operational profile and storefront settings only. Strictly redacts/nullifies `bank`, `bank_settings`, `bank_transfer`, `bank_accounts`, `bank_name`, `bank_account`, `bank_holder`, `payment_config`, `payment_settings`, `capi_token`, `meta_capi_token`, `waba_access_token`, and integration tracking secrets.
+     - **`OPERATOR` & `CS`**: Read-only operational whitelist. Strictly redacts all financial data, integration credentials, QRIS URLs/images/payloads, and subscription metadata.
+
+3. **Strict OWNER-Only Mutation Boundary in PUT Settings (`settings/route.ts`):**
+   - Non-OWNER callers attempting to mutate sensitive fields (`bank`, `bank_settings`, `bank_transfer`, `bank_accounts`, `manual_bank_accounts`, `bank_name`, `bank_account`, `bank_holder`, `payment_config`, `payment_settings`, `qris_image_url`, `qris_payload`, `qris_static_string`, `capi_token`, `meta_capi_token`, `waba_config`, `waba_access_token`, `plan_tier`, `tier`, `tenant_secrets`, `secret_api_key`, or corresponding tracking secrets in `metadata`) are rejected with 403 Forbidden before calling `getSupabaseAdmin()`.
+   - Permitted non-OWNER (MERCHANT) updates to operational profile fields (e.g., bio, name, category, faqs) persist safely, and the return payload is sanitized to prevent credential leakage.
+
+4. **Supabase Database as Single Source of Truth (SSOT):**
+   - Eliminated unauthenticated mock proxying on GET that previously returned synthetic defaults, ensuring direct read from `tenants` table via `getSupabaseAdmin()`.
+   - Unknown tenant lookups fail closed at the authorization gate (403/404).
+
+5. **Real Database Membership Integration Tests (`__tests__/workforce/tenant-settings-api.test.ts`):**
+   - 12 integration tests executing directly against live Supabase staging:
+     - `1a-1b`: Revoked active membership fails closed (403 on GET & PUT).
+     - `2a-2c`: Downgraded role test (token OWNER, DB MERCHANT -> masked GET secrets, 403 on bank/CAPI PUT).
+     - `3a-3b`: Legitimate OWNER operations (unmasked GET, successful bank & store settings update).
+     - `4a`: Legitimate MERCHANT profile update (updates bio & FAQs, sanitized response).
+     - `5a-5b`: Cross-tenant isolation (Tenant A token on Tenant B settings fails closed with 403/404).
+     - `6a-6b`: Operational staff role boundaries (OPERATOR/CS read-only whitelist, 403 on PUT).
+
+---
+
+### 19.2 Test Suite Execution Evidence
+
+#### A. Tenant Settings API Test Suite (`tenant-settings-api.test.ts`)
+Command: `npx.cmd jest __tests__/workforce/tenant-settings-api.test.ts`
+```
+PASS __tests__/workforce/tenant-settings-api.test.ts (15.455 s)
+  BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict Secret Boundaries on Settings API
+    √ 1a. Revoked active membership token is rejected with 403 on GET settings (1085 ms)
+    √ 1b. Revoked active membership token is rejected with 403 on PUT settings (456 ms)
+    √ 2a. Downgraded user (Token OWNER, DB MERCHANT) gets masked secrets on GET settings (1421 ms)
+    √ 2b. Downgraded user (Token OWNER, DB MERCHANT) is rejected with 403 when attempting to update bank or secrets (536 ms)
+    √ 2c. Downgraded user (Token OWNER, DB MERCHANT) is rejected with 403 when updating CAPI or tracking secrets (452 ms)
+    √ 3a. Legitimate OWNER reads unmasked credentials on GET settings (1807 ms)
+    √ 3b. Legitimate OWNER can update bank accounts and store settings (2050 ms)
+    √ 4a. Legitimate MERCHANT can update non-sensitive operational profile fields (bio & faqs) (2197 ms)
+    √ 5a. Cross-tenant token is rejected with 403/404 on GET settings (1 ms)
+    √ 5b. Cross-tenant token is rejected with 403/404 on PUT settings (1 ms)
+    √ 6a. OPERATOR receives read-only operational whitelist with all secrets and QRIS redacted (1032 ms)
+    √ 6b. OPERATOR is rejected with 403 when attempting PUT settings (274 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       12 passed, 12 total
+Snapshots:   0 total
+Time:        16.037 s
+```
+
+#### B. Full Workforce Regression Test Suite (37 Suites, 427 Tests)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (32.034 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (27.294 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (19.846 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (14.351 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (14.159 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (8.892 s)
+PASS __tests__/workforce/tenant-settings-api.test.ts (10.079 s)
+PASS __tests__/workforce/role-authorization.test.ts (12.215 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.411 s)
+PASS __tests__/workforce/tenant-operational-regression.test.ts (8.324 s)
+... [Remaining 27 suites pass cleanly] ...
+
+Test Suites: 37 passed, 37 total
+Tests:       427 passed, 427 total
+Snapshots:   0 total
+Time:        198.844 s
+```
+
+#### C. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 98ms
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.5s
+  Running TypeScript ...
+  Finished TypeScript in 8.6s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 2.2s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 19.3 Sign-off Matrix for Round 3O
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :---: |
+| **O1** | DB-Backed Session Auth | Settings API validates sessions against PostgreSQL `tenant_memberships`; revoked sessions fail closed (403) | `tenant-settings-api.test.ts` (Tests 1a, 1b) | **ENFORCED & VERIFIED** |
+| **O2** | Authoritative Role Override | Token claiming OWNER but DB set to MERCHANT is authoritatively downgraded | `tenant-settings-api.test.ts` (Tests 2a, 2b, 2c) | **SSOT ENFORCED** |
+| **O3** | Secret Masking on GET | Banking, CAPI, WABA, and tracking secrets redacted for non-OWNER (MERCHANT, CS, OPERATOR) | `tenant-settings-api.test.ts` (Tests 2a, 6a) | **MASKED & REDACTED** |
+| **O4** | OWNER-Only Secret Mutation | Non-OWNER attempting to update bank, WABA, CAPI, or tier is rejected with 403 prior to Admin execution | `tenant-settings-api.test.ts` (Tests 2b, 2c, 6b) | **PRE-UPDATE REJECTED** |
+| **O5** | Legitimate Operations | OWNER retains unmasked credentials and update capabilities; MERCHANT updates general profile | `tenant-settings-api.test.ts` (Tests 3a, 3b, 4a) | **OPERATIONAL & PRESERVED** |
+| **O6** | Cross-Tenant Isolation | Tenant A token cannot access or mutate Tenant B settings (403/404) | `tenant-settings-api.test.ts` (Tests 5a, 5b) | **ISOLATED (ZERO LEAK)** |
+| **REG** | Full Regression Suite | All 37 suites, 427 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (427/427)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+

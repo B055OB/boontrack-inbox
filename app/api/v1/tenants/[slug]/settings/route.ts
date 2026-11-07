@@ -6,7 +6,7 @@ import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
-  authorizeMerchantRequest,
+  authorizeMerchantSession,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 
@@ -31,6 +31,119 @@ function resolvePlanTier(tier: string | undefined | null): TierEnum {
   return 'SOLO';
 }
 
+export function sanitizeSettingsForRole(settings: any, role: string) {
+  if (!settings) return settings;
+  if (role === 'OWNER') {
+    return settings;
+  }
+
+  const isStaff = role === 'CS' || role === 'OPERATOR';
+  const sanitized = { ...settings };
+  const metadata = sanitized.metadata ? { ...sanitized.metadata } : {};
+
+  // Redact banking & financial information for non-OWNER (MERCHANT, CS, OPERATOR)
+  sanitized.bank = null;
+  sanitized.bank_settings = null;
+  sanitized.bank_transfer = null;
+  sanitized.bank_accounts = null;
+  sanitized.bank_name = null;
+  sanitized.bank_account = null;
+  sanitized.bank_holder = null;
+  sanitized.payment_config = null;
+  sanitized.payment_settings = null;
+
+  metadata.bank = null;
+  metadata.bank_settings = null;
+  metadata.bank_transfer = null;
+  metadata.bank_accounts = null;
+  metadata.bank_name = null;
+  metadata.bank_account = null;
+  metadata.bank_holder = null;
+  metadata.accounts = null;
+  metadata.manual_bank_accounts = null;
+  metadata.payment_config = null;
+  metadata.payment_settings = null;
+
+  // Redact CAPI & tracking tokens for non-OWNER
+  sanitized.capi_token = null;
+  sanitized.meta_capi_token = null;
+  metadata.capi_token = null;
+  metadata.meta_capi_token = null;
+
+  if (sanitized.ads_tracking_config) {
+    sanitized.ads_tracking_config = {
+      ...sanitized.ads_tracking_config,
+      meta_capi_token: null,
+      capi_token: null,
+      tiktok_access_token: null,
+    };
+  }
+  if (sanitized.tracking) {
+    sanitized.tracking = {
+      ...sanitized.tracking,
+      meta_capi_token: null,
+      capi_token: null,
+      tiktok_access_token: null,
+    };
+  }
+  if (metadata.ads_tracking_config) {
+    metadata.ads_tracking_config = {
+      ...metadata.ads_tracking_config,
+      meta_capi_token: null,
+      capi_token: null,
+      tiktok_access_token: null,
+    };
+  }
+  if (metadata.tracking) {
+    metadata.tracking = {
+      ...metadata.tracking,
+      meta_capi_token: null,
+      capi_token: null,
+      tiktok_access_token: null,
+    };
+  }
+
+  // Redact WABA access tokens for non-OWNER
+  if (sanitized.waba_config) {
+    sanitized.waba_config = {
+      ...sanitized.waba_config,
+      access_token: null,
+      permanent_access_token: null,
+      api_key: null,
+    };
+  }
+  if (metadata.waba_config) {
+    metadata.waba_config = {
+      ...metadata.waba_config,
+      access_token: null,
+      permanent_access_token: null,
+      api_key: null,
+    };
+  }
+  metadata.waba_access_token = null;
+
+  // Additional redactions for CS & OPERATOR roles
+  if (isStaff) {
+    sanitized.qris_image_url = null;
+    sanitized.qris_url = null;
+    sanitized.qris_image = null;
+    sanitized.is_qris_active = false;
+    sanitized.qris_enabled = false;
+    sanitized.trial_ends_at = null;
+    sanitized.subscription_ends_at = null;
+    sanitized.suspension_reason = null;
+
+    metadata.qris_image_url = null;
+    metadata.qris_url = null;
+    metadata.qris_image = null;
+    metadata.raw_qris_string = null;
+    metadata.qris_payload = null;
+  }
+
+  sanitized.metadata = metadata;
+  return sanitized;
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -39,67 +152,19 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // ── AUTH GUARD (P0 SECURITY MANDATE) ──
+    // ── AUTH GUARD (P0 SECURITY MANDATE - DATABASE-BACKED) ──
     const isInternalAuth = isInternalMachineAuthorized(_req);
     let callerRole: string = 'OWNER';
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT', 'CS', 'OPERATOR']);
+      const authResult = await authorizeMerchantSession(_req, slug, ['OWNER', 'MERCHANT', 'CS', 'OPERATOR']);
       if (!authResult.authorized) {
         return authResult.response;
       }
-      callerRole = authResult.payload.role || 'MERCHANT';
+      callerRole = authResult.payload?.role || 'MERCHANT';
     }
 
-    // 1. Coba sync dari Core Backend (Railway) jika online
-    try {
-      const coreRes = await fetch(
-        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
-        {
-          headers: { 'X-Tenant-ID': slug },
-          cache: 'no-store',
-        }
-      );
-      if (coreRes.ok) {
-        const data = await coreRes.json();
-        const settingsObj = data?.settings || (data?.slug || data?.name ? data : null);
-        if (settingsObj) {
-          try {
-            const supabase = getSupabase();
-            const { data: tenantRow } = await supabase
-              .from('tenants')
-              .select('metadata')
-              .eq('slug', slug)
-              .maybeSingle();
-            if (tenantRow?.metadata?.boonpilot_proposal) {
-              settingsObj.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
-              settingsObj.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
-            }
-            if (tenantRow?.metadata?.faqs) {
-              settingsObj.faqs = tenantRow.metadata.faqs;
-            }
-            if (tenantRow?.metadata?.interactive_menu) {
-              settingsObj.interactive_menu = tenantRow.metadata.interactive_menu;
-              settingsObj.interactive_menus = Array.isArray(tenantRow.metadata.interactive_menu?.items)
-                ? tenantRow.metadata.interactive_menu.items
-                : (Array.isArray(tenantRow.metadata.interactive_menu) ? tenantRow.metadata.interactive_menu : []);
-              settingsObj.bot_mode = tenantRow.metadata.interactive_menu?.mode || settingsObj.bot_mode || 'HYBRID';
-            } else if (tenantRow?.metadata?.interactive_menus) {
-              settingsObj.interactive_menus = tenantRow.metadata.interactive_menus;
-            }
-            if (tenantRow?.metadata) {
-              settingsObj.metadata = tenantRow.metadata;
-            }
-          } catch {}
-          return NextResponse.json({ success: true, settings: settingsObj });
-        }
-      }
-    } catch {
-      // Lanjut ke Supabase database murni
-    }
-
-    // 2. Query murni ke Supabase Database menggunakan Admin Client (Bypass RLS)
-    let supabase = getSupabaseAdmin();
-    if (!supabase) supabase = getSupabase();
+    // 1. Query murni ke Supabase Database sebagai Single Source of Truth (SSOT)
+    let supabase = getSupabaseAdmin() || getSupabase();
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     let tenantRow: any = null;
@@ -247,10 +312,10 @@ export async function GET(
       ? { ...wabaConfig, access_token: null, permanent_access_token: null }
       : wabaConfig;
 
-    // 4. Return data asli database tanpa data dummy
+    // 4. Return data asli database dengan sanitasi berbasis peran (Round 3O)
     return NextResponse.json({
       success: true,
-      settings: {
+      settings: sanitizeSettingsForRole({
         slug: tenantRow.slug,
         name: tenantRow.name,
         store_name: metadata.store_name || tenantRow.name,
@@ -337,7 +402,7 @@ export async function GET(
         gateway_config: gatewayConfig,
         whatsapp_connection: gatewayConfig,
         whatsapp_instance: gatewayConfig.instance_name,
-      },
+      }, callerRole),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching settings';
@@ -353,13 +418,15 @@ export async function PUT(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE - DATABASE-BACKED) ──
     const isInternalAuth = isInternalMachineAuthorized(req);
+    let callerRole: string = 'OWNER';
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
+      callerRole = authResult.payload?.role || 'MERCHANT';
     }
 
     const perm = await checkTenantMutationPermission(slug);
@@ -367,6 +434,75 @@ export async function PUT(
       return perm.response;
     }
     const body = await req.json();
+
+    // ── STRICT OWNER-ONLY MUTATION GUARD (Round 3O) ──
+    if (callerRole !== 'OWNER') {
+      const hasSensitiveUpdate =
+        body.bank !== undefined ||
+        body.bank_settings !== undefined ||
+        body.bank_transfer !== undefined ||
+        body.bank_accounts !== undefined ||
+        body.accounts !== undefined ||
+        body.manual_bank_accounts !== undefined ||
+        body.bank_name !== undefined ||
+        body.bank_account !== undefined ||
+        body.bank_holder !== undefined ||
+        body.is_bank_transfer_active !== undefined ||
+        body.enable_manual_transfer !== undefined ||
+        body.enable_bank_transfer !== undefined ||
+        body.payment_config !== undefined ||
+        body.payment_settings !== undefined ||
+        body.qris_image_url !== undefined ||
+        body.qris_payload !== undefined ||
+        body.qris_static_string !== undefined ||
+        body.capi_token !== undefined ||
+        body.meta_capi_token !== undefined ||
+        body.waba_config !== undefined ||
+        body.waba_phone_number_id !== undefined ||
+        body.waba_account_id !== undefined ||
+        body.waba_access_token !== undefined ||
+        body.plan_tier !== undefined ||
+        body.tier !== undefined ||
+        body.features !== undefined ||
+        body.tenant_secrets !== undefined ||
+        body.secret_api_key !== undefined ||
+        (body.tracking && (body.tracking.meta_capi_token !== undefined || body.tracking.capi_token !== undefined || body.tracking.tiktok_access_token !== undefined)) ||
+        (body.ads_tracking_config && (body.ads_tracking_config.meta_capi_token !== undefined || body.ads_tracking_config.capi_token !== undefined || body.ads_tracking_config.tiktok_access_token !== undefined)) ||
+        (body.metadata && (
+          body.metadata.bank !== undefined ||
+          body.metadata.bank_settings !== undefined ||
+          body.metadata.bank_transfer !== undefined ||
+          body.metadata.bank_accounts !== undefined ||
+          body.metadata.bank_name !== undefined ||
+          body.metadata.bank_account !== undefined ||
+          body.metadata.bank_holder !== undefined ||
+          body.metadata.accounts !== undefined ||
+          body.metadata.manual_bank_accounts !== undefined ||
+          body.metadata.payment_config !== undefined ||
+          body.metadata.payment_settings !== undefined ||
+          body.metadata.capi_token !== undefined ||
+          body.metadata.meta_capi_token !== undefined ||
+          body.metadata.waba_config !== undefined ||
+          body.metadata.waba_access_token !== undefined ||
+          body.metadata.waba_phone_number_id !== undefined ||
+          body.metadata.waba_account_id !== undefined ||
+          body.metadata.plan_tier !== undefined ||
+          body.metadata.tier !== undefined ||
+          body.metadata.features !== undefined ||
+          body.metadata.tenant_secrets !== undefined ||
+          body.metadata.secret_api_key !== undefined
+        ));
+
+      if (hasSensitiveUpdate) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Only tenant OWNER can mutate financial and integration credentials.',
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     const {
       name,
@@ -873,7 +1009,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Pengaturan toko berhasil diperbarui.',
-      settings: {
+      settings: sanitizeSettingsForRole({
         slug,
         name: name || existing.name,
         category: category || existing.category,
@@ -901,7 +1037,7 @@ export async function PUT(
             : (existing.metadata?.logo_url || null),
         telegram_group_config: updatedMetadata.telegram_group_config || null,
         telegram_chat_id: updateFields.telegram_chat_id ?? (existing.telegram_chat_id || null),
-      },
+      }, callerRole),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error updating settings';
