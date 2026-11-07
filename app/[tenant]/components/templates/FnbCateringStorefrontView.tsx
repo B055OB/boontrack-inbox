@@ -32,6 +32,7 @@ import {
   HeartHandshake,
   Loader2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/types';
 import dynamic from 'next/dynamic';
@@ -47,6 +48,7 @@ import {
   isCateringPackage,
   LARGE_ORDER_WARNING_MESSAGE,
   SHABU_AJHI_HANDOVER_PHONE,
+  parseCoordinatesFromInput,
 } from '@/lib/shipping/deliveryCalculator';
 import {
   EquipmentReturnPicker,
@@ -177,6 +179,9 @@ export function buildCateringWhatsAppUrl(params: {
   pickupDate?: string;
   formattedPickupDate?: string;
   hasEquipment?: boolean;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  mapsUrl?: string;
 }): { message: string; waUrl: string; cleanWa: string } {
   const hasEquipment = params.hasEquipment ?? true;
   const itemsSummary = params.cartItems
@@ -202,6 +207,13 @@ export function buildCateringWhatsAppUrl(params: {
     ? `• Penjemputan Alat: ${resolvedPickupLabel}${resolvedPickupDateText ? ` (${resolvedPickupDateText})` : ''}\n`
     : '';
 
+  const mapsLink =
+    params.mapsUrl ||
+    (params.destinationLatitude && params.destinationLongitude
+      ? `https://www.google.com/maps?q=${params.destinationLatitude},${params.destinationLongitude}`
+      : '');
+  const mapsLine = mapsLink ? `• 📍 Titik Lokasi (Google Maps): ${mapsLink}\n` : '';
+
   const equipmentGuaranteeText = hasEquipment
     ? `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\nPeralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n`
     : `✨ *Pengantaran Menu Makanan Langsung (Tanpa Pinjam Alat)*\nPesanan menu siap masak/santap diantar langsung oleh kurir ke lokasi Anda.\n\n`;
@@ -211,7 +223,8 @@ export function buildCateringWhatsAppUrl(params: {
     `• Hari / Tanggal: ${params.formattedDeliveryDate} (${params.deliveryDate})\n` +
     `• Slot Jam: ${params.selectedTimeSlot}\n` +
     pickupScheduleLine +
-    `• Tipe Lokasi: ${cleanLocation}\n\n` +
+    `• Tipe Lokasi: ${cleanLocation}\n` +
+    mapsLine + `\n` +
     `🍲 *Rincian Pesanan:*\n` +
     `${itemsSummary}\n\n` +
     `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
@@ -234,6 +247,9 @@ export function buildLiveCookingWhatsAppUrl(params: {
   cartItems?: Array<{ name: string; qty: number; price?: number; soupVariant?: string; selectedSoups?: Record<string, number> }>;
   totalPackages?: number;
   totalPrice?: number;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  mapsUrl?: string;
 }): { waUrl: string; message: string; targetPhone: string } {
   const targetPhone = (params.waNumber || '6289617799878').replace(/\D/g, '') || '6289617799878';
   const storeName = params.storeName || 'Shabu Ajhi';
@@ -263,12 +279,20 @@ export function buildLiveCookingWhatsAppUrl(params: {
     itemsSummary = `Pesanan Partai Besar (${params.totalPackages || 5}+ paket)`;
   }
 
+  const mapsLink =
+    params.mapsUrl ||
+    (params.destinationLatitude && params.destinationLongitude
+      ? `https://www.google.com/maps?q=${params.destinationLatitude},${params.destinationLongitude}`
+      : '');
+  const mapsLine = mapsLink ? `📍 *Titik Lokasi (Google Maps):* ${mapsLink}\n\n` : '';
+
   const message =
     `Halo ${storeName}, saya ingin berkonsultasi pemesanan catering partai besar (5+ paket / ~50+ porsi) untuk layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi:\n\n` +
     `📦 *Jumlah Paket:* ${params.totalPackages || '>= 5'} paket (~50+ porsi)\n` +
     `📅 *Perkiraan Tanggal:* ${dateStr}\n` +
     `⏰ *Slot Jam:* ${slotStr}\n` +
     `📍 *Lokasi Acara:* ${address}\n\n` +
+    mapsLine +
     `🍲 *Rincian Paket:*\n` +
     `${itemsSummary}\n\n` +
     (params.totalPrice ? `💰 *Estimasi Total Menu:* Rp ${params.totalPrice.toLocaleString('id-ID')}\n\n` : '') +
@@ -304,6 +328,116 @@ export default function FnbCateringStorefrontView({
   const [locationDetails, setLocationDetails] = useState<string>('');
   // ── JADWAL PENJEMPUTAN ALAT MASAK STATE ──
   const [pickupWindow, setPickupWindow] = useState<PickupWindow>('SAME_DAY');
+
+  // ── LOKASI PENGANTARAN PRESISI & AUTOCOMPLETE STATE ──
+  const [destinationDistrict, setDestinationDistrict] = useState<string>('');
+  const [destinationCity, setDestinationCity] = useState<string>('');
+  const [destinationPostalCode, setDestinationPostalCode] = useState<string>('');
+  const [destinationLatitude, setDestinationLatitude] = useState<number | null>(null);
+  const [destinationLongitude, setDestinationLongitude] = useState<number | null>(null);
+  const [locationQuery, setLocationQuery] = useState<string>('');
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [selectedLocationObj, setSelectedLocationObj] = useState<any | null>(null);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsStatusNotice, setGpsStatusNotice] = useState<string | null>(null);
+  const [sharelockInput, setSharelockInput] = useState<string>('');
+  const [showSharelockInput, setShowSharelockInput] = useState(false);
+  const locationDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Autocomplete pencarian lokasi via endpoint /api/v1/shipping/locations/search (Debounced 280ms)
+  useEffect(() => {
+    const q = locationQuery.trim();
+    if (q.length < 3 || (selectedLocationObj && locationQuery.includes(selectedLocationObj.district))) {
+      setLocationSuggestions([]);
+      setIsLoadingLocations(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsLoadingLocations(true);
+      try {
+        const res = await fetch(`/api/v1/shipping/locations/search?input=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.areas) && data.areas.length > 0) {
+            setLocationSuggestions(data.areas);
+            setIsLocationDropdownOpen(true);
+          } else {
+            setLocationSuggestions([]);
+          }
+        }
+      } catch (err) {
+        console.warn('[Location Autocomplete Error]:', err);
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [locationQuery, selectedLocationObj]);
+
+  // Tutup dropdown jika user klik di luar dropdown area
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(e.target as Node)) {
+        setIsLocationDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectLocation = (area: any) => {
+    setSelectedLocationObj(area);
+    setDestinationDistrict(area.district || '');
+    setDestinationCity(area.city || '');
+    setDestinationPostalCode(area.postal_code || '');
+    if (area.latitude !== undefined && area.latitude !== null && area.latitude !== '') {
+      setDestinationLatitude(Number(area.latitude));
+    }
+    if (area.longitude !== undefined && area.longitude !== null && area.longitude !== '') {
+      setDestinationLongitude(Number(area.longitude));
+    }
+    setGpsStatusNotice(null);
+    setLocationQuery(`Kec. ${area.district}, ${area.city}`);
+    setIsLocationDropdownOpen(false);
+  };
+
+  const handleDetectGpsCoordinates = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setGpsStatusNotice('Browser Anda tidak mendukung deteksi GPS.');
+      return;
+    }
+    setIsDetectingGps(true);
+    setGpsStatusNotice(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setDestinationLatitude(lat);
+        setDestinationLongitude(lng);
+        setIsDetectingGps(false);
+        setGpsStatusNotice(`Titik GPS presisi terdeteksi: (${lat}, ${lng})`);
+      },
+      () => {
+        setIsDetectingGps(false);
+        setGpsStatusNotice('Gagal mendeteksi lokasi GPS. Pastikan izin lokasi aktif.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSharelockChange = (val: string) => {
+    setSharelockInput(val);
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setDestinationLatitude(parsed.latitude);
+      setDestinationLongitude(parsed.longitude);
+      setGpsStatusNotice(`Titik koordinat berhasil diekstrak: (${parsed.latitude.toFixed(5)}, ${parsed.longitude.toFixed(5)})`);
+    }
+  };
 
   // ── REAKTIF FETCHING BOOKING SLOTS BERDASARKAN TANGGAL & SLUG ──
   useEffect(() => {
@@ -747,6 +881,15 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     }
 
         // Large order handoff routing (>= 5 packages -> Live Cooking & Event Catering)
+    const mapsUrl = (destinationLatitude && destinationLongitude)
+      ? `https://www.google.com/maps?q=${destinationLatitude},${destinationLongitude}`
+      : (sharelockInput.trim().startsWith('http') ? sharelockInput.trim() : '');
+
+    const resolvedLocationStr = [
+      locationDetails.trim(),
+      selectedLocationObj ? `Kec. ${selectedLocationObj.district}, ${selectedLocationObj.city}` : '',
+    ].filter(Boolean).join(' - ') || locationType;
+
     if (isLargePartyOrder) {
       const { waUrl } = buildLiveCookingWhatsAppUrl({
         storeName: effectiveName,
@@ -754,10 +897,13 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
         deliveryDate,
         formattedDeliveryDate,
         selectedTimeSlot,
-        locationAddress: `${locationType} - ${locationDetails}`,
+        locationAddress: `${locationType} - ${resolvedLocationStr}`,
         cartItems: Object.values(cart),
         totalPackages: totalCateringPackages,
         totalPrice,
+        destinationLatitude,
+        destinationLongitude,
+        mapsUrl,
       });
 
       if (typeof window !== 'undefined') {
@@ -779,10 +925,13 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       pickupDate,
       formattedPickupDate,
       locationType,
-      locationDetails,
+      locationDetails: resolvedLocationStr,
       cartItems: Object.values(cart),
       totalPrice,
       hasEquipment: hasEquipmentInCart,
+      destinationLatitude,
+      destinationLongitude,
+      mapsUrl,
     });
 
     if (typeof window !== 'undefined') {
@@ -803,6 +952,15 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       alert('Silakan pilih slot jam pengantaran yang masih tersedia terlebih dahulu.');
       return;
     }
+
+    const mapsUrl = (destinationLatitude && destinationLongitude)
+      ? `https://www.google.com/maps?q=${destinationLatitude},${destinationLongitude}`
+      : (sharelockInput.trim().startsWith('http') ? sharelockInput.trim() : '');
+
+    const resolvedAddress = [
+      locationDetails.trim(),
+      selectedLocationObj ? `Kec. ${selectedLocationObj.district}, ${selectedLocationObj.city}` : '',
+    ].filter(Boolean).join(' - ') || locationType;
 
     const hasEquipmentInCart = Object.values(cart).some((c) => isCateringPackage(c));
     const combinedTitles = Object.values(cart)
@@ -830,8 +988,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
         requires_equipment: c.requires_equipment,
       })),
       notes: hasEquipmentInCart
-        ? `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${locationDetails}`
-        : `Jadwal Pengantaran: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${locationDetails} (Menu Alacarte / Tanpa Alat)`,
+        ? `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${resolvedAddress}${mapsUrl ? ` | Maps: ${mapsUrl}` : ''}`
+        : `Jadwal Pengantaran: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${resolvedAddress} (Menu Alacarte / Tanpa Alat)${mapsUrl ? ` | Maps: ${mapsUrl}` : ''}`,
       metadata: {
         booking: {
           event_date: deliveryDate,
@@ -844,6 +1002,16 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           pickup_preference: PICKUP_WINDOW_LABELS[pickupWindow],
           location_type: locationType,
           location_details: locationDetails,
+          destination_address: resolvedAddress,
+          destination_district: destinationDistrict,
+          destination_city: destinationCity,
+          destination_postal_code: destinationPostalCode,
+          destination_latitude: destinationLatitude,
+          destination_longitude: destinationLongitude,
+          latitude: destinationLatitude,
+          longitude: destinationLongitude,
+          maps_url: mapsUrl,
+          sharelock: sharelockInput || mapsUrl,
         },
         delivery_slot: {
           slot_id: selectedSlotId,
@@ -1062,19 +1230,189 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             </div>
           </div>
 
-          {/* Input Teks Nama Villa / Alamat */}
-          <div>
-            <input
-              type="text"
-              value={locationDetails}
-              onChange={(e) => setLocationDetails(e.target.value)}
-              placeholder={
-                locationType === 'Villa / Glamping'
-                  ? 'Ketik Nama Villa / Blok Glamping (Contoh: Villa Istana Bunga Blok V1-No 8, Parongpong Lembang)...'
-                  : 'Ketik Alamat Lengkap / Patokan Rumah (Contoh: Jl. Dago Asri No. 12, Coblong Bandung)...'
-              }
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition"
-            />
+          {/* 3. Wilayah Pengantaran & Titik Lokasi Presisi */}
+          <div className="space-y-2.5 pt-1 border-t border-amber-100">
+            {/* Location Autocomplete Selector */}
+            <div className="space-y-1.5 relative" ref={locationDropdownRef}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Kecamatan &amp; Wilayah Tujuan:</span>
+                </label>
+                {selectedLocationObj && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationObj(null);
+                      setLocationQuery('');
+                      setDestinationCity('');
+                      setDestinationDistrict('');
+                      setDestinationPostalCode('');
+                      setDestinationLatitude(null);
+                      setDestinationLongitude(null);
+                      setGpsStatusNotice(null);
+                    }}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 font-medium cursor-pointer"
+                  >
+                    Ubah Wilayah
+                  </button>
+                )}
+              </div>
+
+              {!selectedLocationObj ? (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="w-3.5 h-3.5 text-rose-600" />
+                  </div>
+                  <input
+                    type="text"
+                    value={locationQuery}
+                    onChange={(e) => setLocationQuery(e.target.value)}
+                    onFocus={() => {
+                      if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
+                    }}
+                    placeholder="Ketik minimal 3 huruf (cth: Parongpong, Lembang, Coblong, Bojongsoang)..."
+                    className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition font-sans"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                    {isLoadingLocations && (
+                      <Loader2 className="w-3.5 h-3.5 text-rose-600 animate-spin" />
+                    )}
+                  </div>
+
+                  {/* Dropdown Hasil Pencarian Area */}
+                  {isLocationDropdownOpen && locationSuggestions.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-amber-200 rounded-xl shadow-xl divide-y divide-amber-50">
+                      <div className="p-2 bg-amber-50/80 text-[10px] text-slate-600 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-rose-600" />
+                          Pilih Wilayah Tujuan
+                        </span>
+                        <span>{locationSuggestions.length} Opsi</span>
+                      </div>
+                      {locationSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectLocation(item)}
+                          className="w-full text-left p-2.5 hover:bg-rose-50/70 transition flex items-center justify-between gap-2 text-xs group cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 group-hover:text-rose-700 truncate">
+                              Kec. {item.district}, {item.city}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {item.province || 'Jawa Barat'}
+                            </p>
+                          </div>
+                          {item.postal_code && (
+                            <span className="shrink-0 font-mono text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                              {item.postal_code}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-950 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs text-emerald-950">
+                        Kec. {selectedLocationObj.district}, {selectedLocationObj.city}
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        {selectedLocationObj.postal_code ? `Kode Pos: ${selectedLocationObj.postal_code}` : 'Wilayah Bandung Raya Terverifikasi'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
+                    Terkunci
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions: GPS Presisi & Sharelock / Maps Link */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={handleDetectGpsCoordinates}
+                disabled={isDetectingGps}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                {isDetectingGps ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Mendeteksi GPS...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🎯 Gunakan GPS Presisi</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSharelockInput((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3 text-slate-500" />
+                <span>{showSharelockInput ? 'Tutup Input Sharelock' : '📍 Tempel Link Sharelock / Maps'}</span>
+              </button>
+
+              {destinationLatitude && destinationLongitude && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-medium">
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>GPS: {destinationLatitude.toFixed(4)}, {destinationLongitude.toFixed(4)}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Input Sharelock / Google Maps URL */}
+            {showSharelockInput && (
+              <div className="space-y-1 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <label className="text-[11px] font-semibold text-slate-600 block">
+                  Tempel URL Google Maps / Link Sharelock WhatsApp:
+                </label>
+                <input
+                  type="text"
+                  value={sharelockInput}
+                  onChange={(e) => handleSharelockChange(e.target.value)}
+                  placeholder="https://maps.app.goo.gl/... atau https://www.google.com/maps?q=-6.7967,107.5817"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-rose-500 font-mono"
+                />
+              </div>
+            )}
+
+            {/* Feedback Status Notice GPS / Koordinat */}
+            {gpsStatusNotice && (
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>{gpsStatusNotice}</span>
+              </div>
+            )}
+
+            {/* Input Teks Nama Villa / Detail Patokan */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                {locationType === 'Villa / Glamping' ? 'Nama Villa & Patokan Spesifik:' : 'Detail Patokan Rumah & No. Rumah:'}
+              </label>
+              <input
+                type="text"
+                value={locationDetails}
+                onChange={(e) => setLocationDetails(e.target.value)}
+                placeholder={
+                  locationType === 'Villa / Glamping'
+                    ? 'Ketik Nama Villa / Blok Glamping (Contoh: Villa Istana Bunga Blok V1-No 8, Parongpong Lembang)...'
+                    : 'Ketik Alamat Lengkap / Patokan Rumah (Contoh: Jl. Dago Asri No. 12, RT 02 RW 05, pagar hitam)...'
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition"
+              />
+            </div>
           </div>
 
           {/* 3. Slot Jam Pengantaran & Ketersediaan Trip Kurir */}

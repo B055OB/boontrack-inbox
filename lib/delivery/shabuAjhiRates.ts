@@ -21,10 +21,14 @@ import {
   CateringItem,
   countCateringPackages,
   hasEquipmentItems,
+  isCateringPackage,
   calculateShabuAjhiOneWayRate,
+  parseCoordinatesFromInput,
   SHABU_AJHI_HANDOVER_PHONE,
 } from '@/lib/shipping/deliveryCalculator';
 import { evaluateFleetRules } from '@/lib/cart/fleetRules';
+
+export { parseCoordinatesFromInput };
 
 export const EXTREME_DISTANCE_SURCHARGE_PER_KM = 7000;
 export const BASE_TIER_13_FEE = 115000; // Tarif dasar tier 13 (24.1 - 26.0 KM)
@@ -96,7 +100,42 @@ export function calculateShabuAjhiRate(
     };
   }
 
-  // ALACARTE / NON-EQUIPMENT 1-WAY MOTORCYCLE DELIVERY CHECK
+  // 1a. Menu Kategori Stall (Live Cooking Stall) Check -> Ongkir Rp 0 (All-in)
+  const isStallOrder = Boolean(
+    items &&
+      items.length > 0 &&
+      items.some((it) => {
+        const cat = (it.category || it.category_name || '').toLowerCase();
+        const nm = (it.name || '').toLowerCase();
+        return (
+          cat.includes('stall') ||
+          cat.includes('live cooking') ||
+          nm.includes('stall') ||
+          nm.includes('live cooking')
+        );
+      })
+  );
+  if (isStallOrder) {
+    return {
+      distanceKm,
+      baseFee: 0,
+      surchargeFee: 0,
+      excessKm: 0,
+      multiplier: 1.0,
+      totalFee: 0,
+      provider: 'INTERNAL_DRIVER',
+      requiresPickup: true,
+      requires_pickup: true,
+      isDeliverable: true,
+      outOfRange: false,
+      fleetType: 'custom',
+      fleetDescription: 'Layanan Live Cooking Stall (All-in Termasuk Chef & Alat)',
+      notes: 'Ongkir Gratis / All-in pada Paket Live Cooking Stall.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+    };
+  }
+
+  // 1b. ALACARTE / NON-EQUIPMENT 1-WAY MOTORCYCLE DELIVERY CHECK
   const hasEquipment = hasEquipmentItems(items);
   if (items && items.length > 0 && !hasEquipment) {
     const oneWayFee = calculateShabuAjhiOneWayRate(distanceKm);
@@ -121,6 +160,28 @@ export function calculateShabuAjhiRate(
 
   // Evaluate fleet multiplier & combination rules
   const fleet = evaluateFleetRules(totalPackages, items);
+
+  // 1c. Radius <= 3.0 KM dengan Minimal 1 Paket Katering -> Free Ongkir (Rp 0)
+  const hasCateringPackage = Boolean(items && items.length > 0 && items.some((it) => isCateringPackage(it)));
+  if (distanceKm <= 3.0 && hasCateringPackage) {
+    return {
+      distanceKm,
+      baseFee: 0,
+      surchargeFee: 0,
+      excessKm: 0,
+      multiplier: fleet.multiplier,
+      totalFee: 0,
+      provider: 'INTERNAL_DRIVER',
+      requiresPickup: true,
+      requires_pickup: true,
+      isDeliverable: true,
+      outOfRange: false,
+      fleetType: fleet.fleetType,
+      fleetDescription: 'Kurir Dapur Instan (Gratis Ongkir Khusus Paket <= 3 km)',
+      notes: 'Gratis ongkir antar-jemput alat untuk paket katering dalam radius 3.0 km.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+    };
+  }
 
   // CASE 1: Standard Range (<= 26.0 KM)
   if (distanceKm <= MAX_REGULAR_DISTANCE_KM) {
