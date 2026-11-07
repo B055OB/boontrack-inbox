@@ -610,3 +610,264 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **Governance Report** | Branch protection & signing audited (read-only) | Section 8.6 | **VERIFIED (REPORTED)** |
 | **Production Deployment** | Dodo Payments & Production remain locked | Entire Scope | **STRICT FROZEN** |
 
+---
+
+## 9. Round 3E: Real Persistence & Database RLS Adversarial Verification
+
+**Directive Authority:** BoonTrack CTO Official Mandate (Round 3E)  
+**Branch:** `feat/bwm-workforce-isolated`  
+**Execution Environment:** Isolated PostgreSQL Staging Database (`db.tjkbgxrckaocgosvmzmj.supabase.co:5432`)  
+**Production Status:** STRICTLY LOCKED (`mpluzajlzpregmjwpjqr.supabase.co` untouched)  
+**Dodo Payments Status:** STRICTLY FROZEN (Zero production credentials altered)  
+
+---
+
+### 9.1 Database Investigation & Architecture Findings
+
+A comprehensive database probe was executed against PostgreSQL Staging to audit schema layout, role privileges, RLS enforcement, and tenant context propagation:
+
+#### 1. Schema Topology & Table Layout
+The isolated staging database contains 14 domain and billing tables in the `workforce_staging` schema:
+- **Core Workforce Tables:** `branch_credit_pools`, `credit_purchase_transactions`, `seat_credit_ledger`, `workforce_credit_lots`, `workforce_credit_allocations`, `verified_domain_registry`, `workforce_verified_domain_registry`, `tenant_pass_ledger`, `workforce_payment_registry`, `workforce_financial_ledger`, `workforce_tax_ledger`, `workforce_webhook_inbox`.
+- **Tenant Persistence Tables (Migration 007):** `workforce_staging.tenants`, `workforce_staging.products`.
+
+#### 2. PostgreSQL Runtime Roles & RLS Bypass Privileges
+Direct catalog inspection on `pg_roles` proves the security boundary division:
+```sql
+SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname IN ('postgres', 'service_role', 'authenticated', 'anon');
+```
+| Role | Superuser | `rolbypassrls` | Operational Purpose | Security Boundary |
+| :--- | :---: | :---: | :--- | :--- |
+| `postgres` | `false` | **`true`** | Administrative migration & maintenance | Bypasses RLS (Admin SSOT) |
+| `service_role` | `false` | **`true`** | Backend service admin client (`SUPABASE_SERVICE_ROLE_KEY`) | Bypasses RLS (Reconciler/Batches) |
+| `authenticated` | `false` | **`false`** | End-user tenant runtime connection | **Actively Enforces RLS** |
+| `anon` | `false` | **`false`** | Unauthenticated public visitor | **Actively Enforces RLS** |
+
+> [!IMPORTANT]
+> **Architectural Distinction: Application-Level Authorization vs. Database-Level RLS:**
+> - When application API routes use `getSupabaseAdmin()`, requests execute under `service_role`, which possesses `rolbypassrls: true`. Isolation at this layer is enforced by application-level middleware and cryptographic HMAC session verification (`authorizeMerchantRequest`).
+> - True database-level security boundary enforcement occurs when executing under a non-bypass role (`authenticated`, `rolbypassrls = false`). In this mode, the PostgreSQL query engine actively enforces Row-Level Security policies, ensuring that queries without tenant context return 0 rows (fail-closed) and unauthorized modifications are blocked at the database engine level (SQLSTATE 42501).
+
+#### 3. Authoritative Database Tenant Context Mechanism
+In `workforce_staging`, multi-tenant isolation relies on PostgreSQL session configuration variables:
+- **GUC Identifier:** `app.current_agency_id` (and `app.current_tenant_id`)
+- **Setting Context:** `SELECT set_config('app.current_agency_id', :agency_id, false);`
+- **Fail-Closed Behavior:** If `app.current_agency_id` is unset or empty, `current_setting('app.current_agency_id', true)` evaluates to `NULL`. Since `agency_id = NULL` evaluates to `NULL` (falsy), PostgreSQL RLS suppresses all rows by default (`0 rows returned`).
+
+#### 4. PostgREST Gateway vs. Direct PostgreSQL Persistence
+Direct HTTP calls against the Supabase PostgREST gateway for `workforce_staging` return:
+`PGRST106: Only the following schemas are exposed: public, graphql_public`
+Therefore, direct PostgreSQL connection over port 5432 (`WORKFORCE_DATABASE_DIRECT_URL`) is the true, authoritative persistence and migration path for all workforce domain and billing tables.
+
+---
+
+### 9.2 Migration 007: Staging Tenant & Product Persistence Schema
+
+Migration `007_create_workforce_staging_tenants_and_products.sql` provisions physical storage and RLS enforcement for tenant-facing operations:
+- **Table `workforce_staging.tenants`:** Stores tenant configuration, tier (`PRO_SCALE`), phone, status, and JSONB metadata.
+- **Table `workforce_staging.products`:** Stores tenant product catalog with `tenant_id`, `price`, `promo_price`, `stock`, `status`, and category.
+- **Row-Level Security on `products`:**
+  ```sql
+  ALTER TABLE workforce_staging.products ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY rls_products_isolation ON workforce_staging.products
+      FOR ALL TO public
+      USING (
+          auth.role() = 'service_role' OR
+          tenant_id = current_setting('app.current_agency_id', true) OR
+          tenant_id = current_setting('app.current_tenant_id', true)
+      )
+      WITH CHECK (
+          auth.role() = 'service_role' OR
+          tenant_id = current_setting('app.current_agency_id', true) OR
+          tenant_id = current_setting('app.current_tenant_id', true)
+      );
+  ```
+- **Grants:** Explicit DML permissions (`SELECT, INSERT, UPDATE, DELETE`) granted to `authenticated`, `service_role`, and `postgres` on `tenants`, `products`, `branch_credit_pools`, `credit_purchase_transactions`, and `seat_credit_ledger`.
+
+---
+
+### 9.3 Real Persistence Staging Integration Suite (`real-persistence-integration.test.ts`)
+
+Proves that legitimate tenant CRUD operations execute against real PostgreSQL storage, with zero dependency on in-memory mock variables:
+
+| Test ID | Operation Under Test | Persistent Target Table | Verification Details | Result |
+| :--- | :--- | :--- | :--- | :---: |
+| **1** | Product Creation | `workforce_staging.products` | Tenant A creates product; returns UUID, price `750000`, status `ACTIVE`. | **PASSED** |
+| **2** | Product Retrieval | `workforce_staging.products` | Direct SELECT confirms stored fields match inserted payload. | **PASSED** |
+| **3** | Product Mutation | `workforce_staging.products` | Price updated to `850000` IDR, stock to 150; verified via direct SELECT. | **PASSED** |
+| **4** | Profile & Branding Update | `verified_domain_registry` & `tenants` | Domain inserted (`#10B981`), tenant metadata updated with features array. | **PASSED** |
+| **5** | Disconnected Client Verification | Independent Connection | Active client completely closed; fresh connection opened; data intact on disk. | **PASSED** |
+| **6** | Product Deletion | `workforce_staging.products` | Tenant A deletes product; subsequent SELECT returns exactly 0 rows. | **PASSED** |
+| **7** | Cross-Tenant Isolation | `workforce_staging.products` | Tenant B update/delete attempts return `rowCount = 0`; Tenant A product intact. | **PASSED** |
+| **8** | Credit Lots Lifecycle | `workforce_staging.workforce_credit_lots`| Credit lot inserted (`5000`), consumed (`250`); balance check constraint satisfied. | **PASSED** |
+
+---
+
+### 9.4 Database-Level RLS Adversarial Suite (`database-rls-adversarial.test.ts`)
+
+Executed under PostgreSQL runtime role `authenticated` (`rolbypassrls = false`), demonstrating that cross-tenant isolation is enforced by the database query engine:
+
+| Test ID | Adversarial Scenario Under Test | Tested Query Mechanism | Observed PostgreSQL Engine Behavior | Security Outcome |
+| :--- | :--- | :--- | :--- | :---: |
+| **1** | Engine Privilege Audit | `SELECT rolbypassrls FROM pg_roles` | `authenticated.rolbypassrls = false`; `postgres.rolbypassrls = true`. | **VERIFIED** |
+| **2** | Positive RLS Read | `SELECT * FROM branch_credit_pools` | Pure SELECT without WHERE returns ONLY Tenant Alpha records. | **PASSED** |
+| **3** | Cross-Tenant Read Suppression | `SELECT * WHERE agency_id = :beta` | PostgreSQL RLS filters out rows; returns exactly 0 records. | **SUPPRESSED** |
+| **4** | Cross-Tenant Update Suppression | `UPDATE ... WHERE agency_id = :beta` | PostgreSQL RLS suppresses update; returns `rowCount = 0`. | **SUPPRESSED** |
+| **5** | Cross-Tenant Delete Suppression | `DELETE ... WHERE agency_id = :beta` | PostgreSQL RLS suppresses delete; returns `rowCount = 0`. | **SUPPRESSED** |
+| **6** | Cross-Tenant Insert Rejection | `INSERT INTO ... VALUES (:beta, ...)` | PostgreSQL rejects insert with SQLSTATE `42501` (RLS policy violation). | **REJECTED (42501)** |
+| **7** | Missing Context (Fail-Closed) | Query with unset tenant GUC | `RESET app.current_agency_id` causes pure SELECT to return 0 rows. | **FAIL-CLOSED** |
+| **8** | Spoofed Context (Fail-Closed) | Query with ghost agency GUC | `SET app.current_agency_id = 'unauthorized'` returns 0 rows. | **FAIL-CLOSED** |
+| **9** | Privileged Admin Bypass Audit | `RESET ROLE; SELECT *` | Reverting to `postgres` returns all tenant rows for admin tasks. | **VERIFIED** |
+| **10**| Ledger Immutability Defense | `DELETE FROM seat_credit_ledger` | Even within tenant's RLS scope, rule/trigger suppresses delete (`rowCount = 0`).| **IMMUTABLE** |
+
+---
+
+### 9.5 Automated Test Suite Execution Logs
+
+#### A. Database-Level RLS Adversarial Suite
+Command: `npx.cmd jest __tests__/workforce/database-rls-adversarial.test.ts --runInBand`
+```
+PASS __tests__/workforce/database-rls-adversarial.test.ts
+  BWM Gate 1 Round 3E — Database-Level RLS Adversarial Verification
+    √ 1. Database Engine Verification: Role RLS Bypass Flags & Table Row Security (2337 ms)
+    √ 2. Positive Read via Database RLS Boundary (Pure SELECT Without WHERE Predicate) (525 ms)
+    √ 3. Negative Cross-Tenant Read Suppression: Tenant A Cannot Read Tenant B Records (0 Rows) (210 ms)
+    √ 4. Negative Cross-Tenant Update Suppression: Tenant A Cannot Update Tenant B Records (rowCount = 0) (752 ms)
+    √ 5. Negative Cross-Tenant Delete Suppression: Tenant A Cannot Delete Tenant B Records (rowCount = 0) (779 ms)
+    √ 6. Negative Cross-Tenant Insert: Rejected with PostgreSQL RLS Policy Violation (SQLSTATE 42501) (199 ms)
+    √ 7. Fail-Closed on Missing Tenant Context: Queries Return 0 Rows (533 ms)
+    √ 8. Fail-Closed on Unauthorized / Spoofed Tenant Context: Queries Return 0 Rows (287 ms)
+    √ 9. Privileged Service-Role / Postgres Bypass Verification (Administrative SSOT) (305 ms)
+    √ 10. Seat Credit Ledger Defense-in-Depth: Rules & Triggers Prevent Ledger Mutation Even Under RLS Scope (1155 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        15.986 s
+```
+
+#### B. Real Persistence Staging Integration Suite
+Command: `npx.cmd jest __tests__/workforce/real-persistence-integration.test.ts --runInBand`
+```
+PASS __tests__/workforce/real-persistence-integration.test.ts
+  BWM Gate 1 Round 3E — Real Persistence Staging Integration
+    √ 1. Real Persistence: Tenant A Creates Product in PostgreSQL (workforce_staging.products) (100 ms)
+    √ 2. Real Persistence: Tenant A Retrieves Product From Persistent Store (96 ms)
+    √ 3. Real Persistence: Tenant A Updates Product & Verifies Database State Reflection (190 ms)
+    √ 4. Real Persistence: Tenant A Updates Profile & Branding in Persistent Store (192 ms)
+    √ 5. Disconnected Fresh-Client Verification: Zero In-Memory Mock/Cache Proof (773 ms)
+    √ 6. Real Persistence: Tenant A Deletes Test Product & Verifies Persistent Row Absence (196 ms)
+    √ 7. Multi-Tenant Isolation: Tenant B Cannot Mutate or Delete Tenant A Resources (530 ms)
+    √ 8. Workforce Credit Lots Persistent Store Lifecycle in PostgreSQL (278 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+Time:        10.538 s
+```
+
+#### C. Persistent Registry & Authority Suite (Round 3C Invariants Verified)
+Command: `npx.cmd jest __tests__/workforce/persistent-registry-authority.test.ts --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (36.245 s)
+Test Suites: 1 passed, 1 total
+Tests:       49 passed, 49 total
+Snapshots:   0 total
+Time:        37.402 s
+```
+
+#### D. Full Workforce Regression Test Suite
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (44.449 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (32.331 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (6.817 s)
+PASS __tests__/workforce/real-persistence-integration.test.ts
+PASS __tests__/workforce/tenant-operational-regression.test.ts
+PASS __tests__/workforce/e6-chargeback-dispute.test.ts (6.231 s)
+PASS __tests__/workforce/e6-consumption-concurrency.test.ts (5.364 s)
+PASS __tests__/workforce/e6-purchase-concurrency.test.ts
+PASS __tests__/workforce/e8-staging-sandbox-integration.test.ts
+PASS __tests__/workforce/e9-dynamic-branding-pilot.test.ts
+PASS __tests__/workforce/e6-preview-readiness.test.ts
+PASS __tests__/workforce/e6-workforce-e2e.test.ts
+PASS __tests__/workforce/e6-staging-db.test.ts
+PASS __tests__/workforce/e9-white-label-pilot.test.ts
+PASS __tests__/workforce/e3-security.test.ts
+PASS __tests__/workforce/e2-scaffolding.test.ts
+PASS __tests__/workforce/credit-pool-ledger.test.ts
+PASS __tests__/workforce/workforce-middleware.test.ts
+PASS __tests__/workforce/e6-auth-regression.test.ts
+PASS __tests__/workforce/host-validation.test.ts
+PASS __tests__/workforce/e7-payment-infrastructure-financial-integrity.test.ts
+PASS __tests__/workforce/tenant-hierarchy.test.ts
+PASS __tests__/workforce/billing-lifecycle.test.ts
+PASS __tests__/workforce/e5-contract-simulation.test.ts
+PASS __tests__/workforce/e6-pwa-pipeline.test.ts
+PASS __tests__/workforce/e5-persistence-hardening.test.ts
+PASS __tests__/workforce/storage-isolation.test.ts
+PASS __tests__/workforce/supabase-fallback-client.test.ts
+PASS __tests__/workforce/e6-dual-dispatch-scheduler.test.ts
+
+Test Suites: 29 passed, 29 total
+Tests:       341 passed, 341 total
+Snapshots:   0 total
+Time:        129.214 s
+```
+
+#### E. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 132ms
+✓ Compiled successfully in 4.9s
+  Running TypeScript ...
+  Finished TypeScript in 12.6s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 691ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 9.6 Final Gate 1 Closure Sign-off Matrix (Round 3E)
+
+| Verification Category | Criterion | Evidence Location | Status |
+| :--- | :--- | :--- | :---: |
+| **Real Persistence Path** | CRUD persists in PostgreSQL (`products`, `lots`, `domains`) | Section 9.3 (Tests 1-4, 8) | **VERIFIED (100% PERSISTENT)** |
+| **Zero In-Memory Mock Proof** | Fresh disconnected client verifies disk persistence | Section 9.3 (Test 5) | **VERIFIED (ZERO MOCK)** |
+| **Database RLS Boundary** | Non-bypass role `authenticated` (`rolbypassrls = false`) | Section 9.4 (Test 1) | **VERIFIED (ENFORCED)** |
+| **Cross-Tenant RLS Suppression**| Reads, updates, and deletes suppressed (`rowCount = 0`) | Section 9.4 (Tests 3-5) | **VERIFIED (ZERO LEAK)** |
+| **Cross-Tenant RLS Rejection**| Cross-tenant inserts rejected with SQLSTATE 42501 | Section 9.4 (Test 6) | **VERIFIED (SQLSTATE 42501)** |
+| **Fail-Closed Context Defense** | Missing or bogus `app.current_agency_id` returns 0 rows | Section 9.4 (Tests 7-8) | **VERIFIED (FAIL-CLOSED)** |
+| **Round 3C Invariant Protection**| `chk_payment_registry_bound_has_valid_tx` intact | Section 9.5 (C) | **VERIFIED (49/49 PASS)** |
+| **Full Workforce Regression** | 29/29 suites, 341/341 tests pass | Section 9.5 (D) | **VERIFIED (341/341 PASS)** |
+| **Next.js Workforce Build** | 22 routes compiled with 0 errors | Section 9.5 (E) | **VERIFIED (EXIT 0)** |
+| **Production Deployment** | Dodo Payments & Production remain locked | Entire Scope | **STRICT FROZEN** |
+
+
