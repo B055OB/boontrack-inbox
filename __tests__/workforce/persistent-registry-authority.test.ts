@@ -1086,6 +1086,131 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
         client.release();
       }
     });
+
+    test('5l. Positive Authority Transition: Legitimate INITIATED -> BOUND transition with valid provider_transaction_id and provider_account_id succeeds, and tenant operations remain normal', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_auth_pos_${ts}`;
+      const internalOrderId = `ord_auth_pos_${ts}`;
+      const providerTxId = `tx_auth_pos_${ts}`;
+      const validAccountId = `acc_xnd_valid_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // Step 1: Pre-register order with provider_account_id in INITIATED status
+        const registered = await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 150000,
+          provider_account_id: validAccountId,
+          metadata: { plan: 'tier1' },
+        });
+        expect(registered.status).toBe('INITIATED');
+        expect(registered.provider_transaction_id).toBeNull();
+        expect(registered.provider_account_id).toBe(validAccountId);
+
+        // Step 2: Transition INITIATED -> BOUND atomically with provider_transaction_id
+        const bound = await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+          provider_account_id: validAccountId,
+        });
+        expect(bound.status).toBe('BOUND');
+        expect(bound.provider_transaction_id).toBe(providerTxId);
+        expect(bound.provider_account_id).toBe(validAccountId);
+
+        // Step 3: Legitimate tenant operational queries post-binding remain 100% normal
+        const tenantOrders = await client.query(
+          `SELECT id, internal_order_id, status FROM workforce_staging.workforce_payment_registry WHERE tenant_id = $1`,
+          [tenantId]
+        );
+        expect(tenantOrders.rows.length).toBe(1);
+        expect(tenantOrders.rows[0].status).toBe('BOUND');
+
+        // Verify tenant balance query executes normally
+        const balCheck = await client.query(
+          `SELECT balance_after FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [tenantId]
+        );
+        expect(balCheck.rows.length).toBe(0); // Zero balance prior to settlement
+      } finally {
+        client.release();
+      }
+    });
+
+    test('5m. Negative Binding Replacement & Authority Boundary: Subsequent attempts to overwrite provider_transaction_id or provider_account_id on bound order are rejected by trigger', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_auth_neg_${ts}`;
+      const internalOrderId = `ord_auth_neg_${ts}`;
+      const providerTxId = `tx_orig_${ts}`;
+      const origAccountId = `acc_orig_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // Setup initial bound order
+        const order = await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 200000,
+          provider_account_id: origAccountId,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+          provider_account_id: origAccountId,
+        });
+
+        // Attempt 1: Direct SQL overwrite of provider_transaction_id on BOUND order rejected
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry SET provider_transaction_id = 'tx_tampered_overwrite' WHERE id = $1`,
+            [order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND');
+
+        // Attempt 2: Direct SQL overwrite of provider_account_id on BOUND order rejected
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry SET provider_account_id = 'acc_tampered_overwrite' WHERE id = $1`,
+            [order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: provider_account_id cannot be modified once BOUND');
+
+        // Attempt 3: Secondary bind attempt via bindProviderTransaction API rejected
+        await expect(
+          bindProviderTransaction(client, {
+            tenant_id: tenantId,
+            internal_order_id: internalOrderId,
+            provider_transaction_id: 'tx_secondary_illegal',
+          })
+        ).rejects.toThrow('INVALID_ORDER_STATUS');
+
+        // Attempt 4: Overwriting provider column rejected
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry SET provider = 'dodo' WHERE id = $1`,
+            [order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: Column provider cannot be modified');
+
+        // Final verification: original provider, transaction_id, and account_id remain completely intact
+        const verifyRow = await client.query(
+          `SELECT provider, provider_transaction_id, provider_account_id, status FROM workforce_staging.workforce_payment_registry WHERE id = $1`,
+          [order.id]
+        );
+        expect(verifyRow.rows[0].provider).toBe('xendit');
+        expect(verifyRow.rows[0].provider_transaction_id).toBe(providerTxId);
+        expect(verifyRow.rows[0].provider_account_id).toBe(origAccountId);
+        expect(verifyRow.rows[0].status).toBe('BOUND');
+      } finally {
+        client.release();
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -1300,6 +1425,86 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
         expect(ledgerRowCount).toBe(0);
 
         // Verify clean rollback: inbox row was rolled back or NOT PROCESSED
+        const inboxRes = await client.query(
+          `SELECT status FROM workforce_staging.workforce_webhook_inbox WHERE event_id = $1`,
+          [eventId]
+        );
+        const inboxStatus = inboxRes.rows.length > 0 ? inboxRes.rows[0].status : null;
+        expect(inboxStatus).not.toBe('PROCESSED');
+      } finally {
+        client.release();
+      }
+    });
+
+    test('7c. Independent Provider Mismatch Rollback: Webhook settlement failure due to provider mismatch rolls back cleanly with order strictly remaining BOUND', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_pm_rb_${ts}`;
+      const internalOrderId = `ord_pm_rb_${ts}`;
+      const providerTxId = `tx_pm_rb_${ts}`;
+      const initialAccountId = `acc_pm_orig_${ts}`;
+      const eventId = `evt_pm_rb_${ts}`;
+      const idempotencyKey = `idemp_pm_rb_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 350000,
+          provider_account_id: initialAccountId,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+          provider_account_id: initialAccountId,
+        });
+
+        const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+        // Webhook attempt with MISMATCHING PROVIDER: order registered as 'xendit', webhook sent with 'dodo'
+        await expect(
+          pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'dodo', // Mismatch!
+            eventId,
+            idempotencyKey,
+            eventType: 'payment.succeeded',
+            rawPayload: {
+              payment_reference: providerTxId,
+              currency: 'IDR',
+              amount: 350000,
+              tenant_id: tenantId,
+              provider_account_id: initialAccountId,
+            },
+            headers: {},
+            tenantId,
+            batchId: `BATCH_${internalOrderId}`,
+            deltaPasses: 10,
+          })
+        ).rejects.toThrow('PROVIDER_OR_ACCOUNT_MISMATCH');
+
+        // 1. Direct SQL verification: order in persistent registry MUST remain in BOUND status
+        const orderRes = await client.query(
+          `SELECT status, provider, provider_transaction_id, provider_account_id FROM workforce_staging.workforce_payment_registry WHERE internal_order_id = $1`,
+          [internalOrderId]
+        );
+        expect(orderRes.rows.length).toBe(1);
+        const refetchedOrder = orderRes.rows[0];
+        expect(refetchedOrder.status).toBe('BOUND');
+        expect(refetchedOrder.provider).toBe('xendit');
+        expect(refetchedOrder.provider_transaction_id).toBe(providerTxId);
+        expect(refetchedOrder.provider_account_id).toBe(initialAccountId);
+
+        // 2. Direct SQL verification: pass balance mutations remain 0 (ledger row count === 0)
+        const ledgerRes = await client.query(
+          `SELECT COUNT(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+          [tenantId]
+        );
+        expect(Number(ledgerRes.rows[0].count)).toBe(0);
+
+        // 3. Direct SQL verification: webhook inbox event status must NOT be 'PROCESSED'
         const inboxRes = await client.query(
           `SELECT status FROM workforce_staging.workforce_webhook_inbox WHERE event_id = $1`,
           [eventId]
