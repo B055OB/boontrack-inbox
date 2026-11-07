@@ -15,6 +15,7 @@ import {
   calculateShabuAjhiOneWayRate,
   calculateDeliveryFee,
   CateringItem,
+  parseCoordinatesFromInput,
 } from '@/lib/shipping/deliveryCalculator';
 import { calculateShabuAjhiRate } from '@/lib/delivery/shabuAjhiRates';
 import { buildCateringWhatsAppUrl } from '@/app/[tenant]/components/templates/FnbCateringStorefrontView';
@@ -190,10 +191,86 @@ describe('Shabu Ajhi Alacarte 1-Way Shipping Engine', () => {
         cartItems: [{ name: 'Paket Oishi Shabu', qty: 1, price: 250000 }],
         totalPrice: 250000,
         hasEquipment: true,
+        destinationLatitude: -6.7967,
+        destinationLongitude: 107.5817,
       });
 
       expect(message).toContain('Penjemputan Alat: Besok Pagi (H+1)');
       expect(message).toContain('100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)');
+      expect(message).toContain('• 📍 Titik Lokasi (Google Maps): https://www.google.com/maps?q=-6.7967,107.5817');
+    });
+  });
+
+  describe('Radius <= 3.0 KM & Category Stall Logistics Policy', () => {
+    it('should set totalFee = 0 for Live Cooking Stall packages (All-in)', () => {
+      const stallCart: CateringItem[] = [
+        { name: 'Live Cooking Stall Shabu & Grill (50 Porsi)', qty: 1, price: 4500000, category: 'Live Cooking Stall' },
+      ];
+      const result = calculateShabuAjhiRate(15.0, { items: stallCart, hasInternalDriver: true });
+      expect(result.totalFee).toBe(0);
+      expect(result.isDeliverable).toBe(true);
+      expect(result.requiresPickup).toBe(true);
+      expect(result.fleetDescription).toContain('Live Cooking Stall');
+    });
+
+    it('should set totalFee = 0 (Free Ongkir Khusus Paket) for catering packages within <= 3.0 KM', () => {
+      const packageCart: CateringItem[] = [
+        { name: 'Paket Oishi Shabu (4-6 Porsi)', qty: 1, price: 250000, category: 'Paket Alat Hemat', requires_equipment: true },
+      ];
+      const result = calculateShabuAjhiRate(2.5, { items: packageCart, hasInternalDriver: true });
+      expect(result.totalFee).toBe(0);
+      expect(result.requiresPickup).toBe(true);
+      expect(result.isDeliverable).toBe(true);
+      expect(result.fleetDescription).toContain('Gratis Ongkir Khusus Paket <= 3 km');
+    });
+
+    it('should charge standard 1-way fee Rp 12.000 for pure alacarte within <= 3.0 KM', () => {
+      const alacarteCart: CateringItem[] = [
+        { name: 'Beef Slice Fat 250gr', qty: 2, price: 35000, category: 'Alacarte' },
+      ];
+      const result = calculateShabuAjhiRate(2.5, { items: alacarteCart });
+      expect(result.totalFee).toBe(12000);
+      expect(result.requiresPickup).toBe(false);
+      expect(result.isDeliverable).toBe(true);
+      expect(result.fleetDescription).toContain('Kurir Instan 1 Arah');
+    });
+
+    it('should charge 13-tier PP rate for catering package beyond 3.0 KM', () => {
+      const packageCart: CateringItem[] = [
+        { name: 'Paket Oishi Shabu (4-6 Porsi)', qty: 1, price: 250000, category: 'Paket Alat Hemat', requires_equipment: true },
+      ];
+      // 3.5 km is Tier 2 (3-5 km) -> Rp 30.000
+      const result = calculateShabuAjhiRate(3.5, { items: packageCart, hasInternalDriver: true });
+      expect(result.totalFee).toBe(30000);
+      expect(result.requiresPickup).toBe(true);
+    });
+  });
+
+  describe('parseCoordinatesFromInput utility', () => {
+    it('should parse raw "latitude, longitude" format', () => {
+      const coords = parseCoordinatesFromInput('-6.7967, 107.5817');
+      expect(coords).not.toBeNull();
+      expect(coords?.latitude).toBeCloseTo(-6.7967, 4);
+      expect(coords?.longitude).toBeCloseTo(107.5817, 4);
+    });
+
+    it('should parse Google Maps query url (?q=lat,lng)', () => {
+      const coords = parseCoordinatesFromInput('https://maps.google.com/?q=-6.7967,107.5817');
+      expect(coords).not.toBeNull();
+      expect(coords?.latitude).toBeCloseTo(-6.7967, 4);
+      expect(coords?.longitude).toBeCloseTo(107.5817, 4);
+    });
+
+    it('should parse Google Maps place path (/@lat,lng,...)', () => {
+      const coords = parseCoordinatesFromInput('https://www.google.com/maps/place/Villa+Istana+Bunga/@-6.7967,107.5817,17z/data=...');
+      expect(coords).not.toBeNull();
+      expect(coords?.latitude).toBeCloseTo(-6.7967, 4);
+      expect(coords?.longitude).toBeCloseTo(107.5817, 4);
+    });
+
+    it('should return null for non-coordinate string without pattern', () => {
+      expect(parseCoordinatesFromInput('Jl. Bojongsoang No. 12')).toBeNull();
+      expect(parseCoordinatesFromInput('')).toBeNull();
     });
   });
 });

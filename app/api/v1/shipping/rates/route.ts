@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { calculateDistanceKm, calculateRoadDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
 import { resolveAreaCoordinates, geocodeDestinationAddress } from '@/app/api/v1/shipping/locations/search/route';
-import { calculateShabuAjhiRate } from '@/lib/delivery/shabuAjhiRates';
+import { calculateShabuAjhiRate, parseCoordinatesFromInput } from '@/lib/delivery/shabuAjhiRates';
 import { CateringItem } from '@/lib/shipping/deliveryCalculator';
 
 export interface RateOption {
@@ -241,6 +241,15 @@ export async function POST(req: NextRequest) {
         : body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
         ? Number(body.longitude)
         : null;
+
+    // Ekstraksi otomatis jika pengguna menyertakan URL Google Maps / Sharelock
+    if ((destLat == null || destLon == null) && (body.maps_url || body.sharelock || body.destination_address)) {
+      const parsedFromUrl = parseCoordinatesFromInput(body.maps_url || body.sharelock || body.destination_address);
+      if (parsedFromUrl) {
+        destLat = parsedFromUrl.latitude;
+        destLon = parsedFromUrl.longitude;
+      }
+    }
 
     // Deteksi apakah produk adalah FnB / makanan segar mudah basi (termasuk jika ada item paket FnB)
     const isFnb = Boolean(
@@ -493,22 +502,49 @@ export async function POST(req: NextRequest) {
         ? (metaShipping?.internal_courier?.label_oneway || 'Kurir Instan Toko (Pengantaran 1 Arah)')
         : (metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)');
 
-      availableRates.unshift({
+      const cateringRateOption: RateOption = {
         id: isAlacarteOnly ? 'alacarte_armada_internal' : 'catering_armada_internal',
         courier_name: officialCourierName,
         service: cateringResult.fleetDescription || (isAlacarteOnly ? 'Pengantaran Menu Makanan (Tanpa Pinjam Alat)' : 'Antar & Jemput Alat Masak Kotor H+1'),
         price: cateringResult.totalFee,
         etd: isAlacarteOnly ? 'Hari Ini (1 - 2 Jam Diantar Langsung)' : 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
         type: 'instant',
-        badge: isAlacarteOnly ? 'Kurir 1 Arah' : (cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP'),
+        badge: cateringResult.totalFee === 0 ? 'Gratis Ongkir' : (isAlacarteOnly ? 'Kurir 1 Arah' : (cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP')),
         provider: 'platform',
         max_days: 0.1,
         is_fnb_safe: true,
         warning: cateringResult.notes,
         requires_pickup: cateringResult.requires_pickup,
-      } as any);
+      } as any;
 
-      externalRatesLoaded = true;
+      // Shabu Ajhi / Katering 100% menggunakan armada internal (Zero External Courier API)
+      return NextResponse.json({
+        success: true,
+        rates: [cateringRateOption],
+        fnb_safe: true,
+        is_fnb: true,
+        distance_km: distanceKm,
+        max_radius_km: effectiveMaxInstantRadius,
+        instant_eligible: true,
+        origin: {
+          address: originAddress,
+          city: effectiveOriginCity,
+          district: originDistrict,
+          postal_code: String(effectiveOriginPostal),
+          subdistrict_id: originSubdistrictId,
+          latitude: originLat,
+          longitude: originLon,
+        },
+        destination: {
+          city: destinationCity,
+          district: destinationDistrict,
+          postal_code: destinationPostalCode,
+          area_id: destinationAreaId,
+          latitude: finalDestLat,
+          longitude: finalDestLon,
+        },
+        weight_grams: weightInGrams,
+      });
     }
 
     // 2. INTEGRASI BITESHIP: MENDUKUNG SELURUH KURIR (INSTAN, REGULER, KARGO)

@@ -144,7 +144,9 @@ export function isCateringPackage(item: CateringItem): boolean {
     category.includes('frozen') ||
     category.includes('side dish') ||
     category.includes('extra') ||
-    category.includes('addon')
+    category.includes('addon') ||
+    category.includes('stall') ||
+    category.includes('live cooking')
   ) {
     return false;
   }
@@ -158,6 +160,8 @@ export function isCateringPackage(item: CateringItem): boolean {
     normalized.startsWith('extra') ||
     normalized.startsWith('addon') ||
     normalized.startsWith('tambahan') ||
+    normalized.includes('stall') ||
+    normalized.includes('live cooking') ||
     normalized.includes('sayur campur') ||
     normalized.includes('daging slice') ||
     normalized.includes('beef slice') ||
@@ -239,6 +243,61 @@ export function calculateShabuAjhiOneWayRate(distanceKm: number): number {
   const extraKm = Math.max(0, distanceKm - 4);
   const rawFee = 12000 + (extraKm * 2800);
   return Math.max(12000, Math.round(rawFee / 500) * 500);
+}
+
+/**
+ * Helper to parse latitude and longitude from Google Maps URLs, sharelock links, or raw coordinate strings.
+ * Handles:
+ * 1. Raw "lat, lng" e.g. "-6.7967, 107.5817"
+ * 2. Query param: ?q=-6.7967,107.5817 or &q=-6.7967,107.5817
+ * 3. Place path: /@ -6.7967,107.5817,17z
+ * 4. Coordinate param: ?ll=-6.7967,107.5817 or &ll=-6.7967,107.5817
+ */
+export function parseCoordinatesFromInput(input: string): { latitude: number; longitude: number } | null {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+
+  // Pattern 1: Raw "lat, lng" e.g. "-6.7967, 107.5817"
+  const rawCoordMatch = trimmed.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
+  if (rawCoordMatch) {
+    const lat = parseFloat(rawCoordMatch[1]);
+    const lng = parseFloat(rawCoordMatch[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // Pattern 2: ?q=lat,lng or &q=lat,lng
+  const qMatch = trimmed.match(/[?&]q=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  if (qMatch) {
+    const lat = parseFloat(qMatch[1]);
+    const lng = parseFloat(qMatch[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // Pattern 3: /@lat,lng,
+  const atMatch = trimmed.match(/@(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // Pattern 4: ?ll=lat,lng or &ll=lat,lng
+  const llMatch = trimmed.match(/[?&]ll=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  if (llMatch) {
+    const lat = parseFloat(llMatch[1]);
+    const lng = parseFloat(llMatch[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -338,6 +397,40 @@ export function calculateDeliveryFee(
     };
   }
 
+  // 1a. Menu Kategori Stall (Live Cooking Stall) Check -> Ongkir Rp 0 (All-in)
+  const isStallOrder = Boolean(
+    items &&
+      items.length > 0 &&
+      items.some((it) => {
+        const cat = (it.category || it.category_name || '').toLowerCase();
+        const nm = (it.name || '').toLowerCase();
+        return (
+          cat.includes('stall') ||
+          cat.includes('live cooking') ||
+          nm.includes('stall') ||
+          nm.includes('live cooking')
+        );
+      })
+  );
+  if (isStallOrder) {
+    return {
+      isDeliverable: true,
+      outOfRange: false,
+      distanceKm,
+      baseFee: 0,
+      multiplier: 1.0,
+      totalFee: 0,
+      totalPackages,
+      requiresManualCoordination: false,
+      requires_pickup: true,
+      fleetType: 'custom',
+      fleetDescription: 'Layanan Live Cooking Stall (All-in Termasuk Chef & Alat)',
+      notes: 'Ongkir Gratis / All-in pada Paket Live Cooking Stall.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+      provider: 'INTERNAL_DRIVER',
+    };
+  }
+
   // 1b. Alacarte / Non-Equipment 1-Way Delivery Check (No Cookware Pickup)
   const hasEquipment = hasEquipmentItems(items);
   if (items && items.length > 0 && !hasEquipment) {
@@ -355,6 +448,28 @@ export function calculateDeliveryFee(
       fleetType: 'motor',
       fleetDescription: 'Kurir Instan 1 Arah (Pengantaran Menu Tanpa Alat)',
       notes: 'Pengantaran 1 arah menu alacarte/makanan tanpa peminjaman alat masak.',
+      handoverContact: SHABU_AJHI_HANDOVER_PHONE,
+      provider: 'INTERNAL_DRIVER',
+    };
+  }
+
+  // 1c. Radius <= 3.0 KM dengan Minimal 1 Paket Katering -> Free Ongkir (Rp 0)
+  const hasCateringPackage = Boolean(items && items.length > 0 && items.some((it) => isCateringPackage(it)));
+  if (distanceKm <= 3.0 && hasCateringPackage) {
+    const fleet = getFleetMultiplier(totalPackages, items);
+    return {
+      isDeliverable: true,
+      outOfRange: false,
+      distanceKm,
+      baseFee: 0,
+      multiplier: fleet.multiplier,
+      totalFee: 0,
+      totalPackages,
+      requiresManualCoordination: false,
+      requires_pickup: true,
+      fleetType: fleet.fleetType,
+      fleetDescription: 'Kurir Dapur Instan (Gratis Ongkir Khusus Paket <= 3 km)',
+      notes: 'Gratis ongkir antar-jemput alat untuk paket katering dalam radius 3.0 km.',
       handoverContact: SHABU_AJHI_HANDOVER_PHONE,
       provider: 'INTERNAL_DRIVER',
     };
