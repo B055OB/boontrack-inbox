@@ -5640,7 +5640,13 @@ function SingleProductContent() {
                     </div>
 
                     {config.testimonials && config.testimonials.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div
+                        className={
+                          config.testimonials.length === 1
+                            ? "max-w-md sm:max-w-lg mx-auto w-full pt-1"
+                            : "grid grid-cols-1 md:grid-cols-2 gap-6 pt-1"
+                        }
+                      >
                         {config.testimonials.map((t) => (
                           <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
                             <div>
@@ -5673,21 +5679,30 @@ function SingleProductContent() {
                     )}
 
                     {config.testimonial_images && config.testimonial_images.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                      <div
+                        className={
+                          config.testimonial_images.length === 1
+                            ? "max-w-md sm:max-w-lg mx-auto w-full pt-1"
+                            : "grid grid-cols-1 md:grid-cols-2 gap-6 pt-1"
+                        }
+                      >
                         {config.testimonial_images.map((imgUrl, idx) => (
-                          <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
-                            <div className="overflow-hidden bg-slate-100">
+                          <div
+                            key={idx}
+                            className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group flex flex-col justify-between"
+                          >
+                            <div className="w-full h-auto overflow-hidden rounded-2xl bg-slate-50">
                               <img 
                                 src={imgUrl} 
                                 alt={`Bukti Testimoni ${idx + 1}`} 
-                                className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
+                                className="w-full h-auto object-contain group-hover:scale-[1.02] transition duration-300"
                                 loading="lazy"
                               />
                             </div>
-                            <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
+                            <div className="p-3 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
                               <span className="font-semibold text-slate-700">{categoryLabels.verifiedUserLabel}</span>
                               <span className="text-emerald-600 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> {categoryLabels.verifiedStatusLabel}
+                                <CheckCircle2 className="w-3.5 h-3.5" /> {categoryLabels.verifiedStatusLabel}
                               </span>
                             </div>
                           </div>

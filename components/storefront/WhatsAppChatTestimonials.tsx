@@ -115,8 +115,14 @@ export function WhatsAppChatTestimonials({
         </div>
       </div>
 
-      {/* Grid 2 baris / 2 kolom (atau carousel geser pada layar HP) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+      {/* Grid 2 baris / 2 kolom (atau 1 kartu di tengah jika tunggal) */}
+      <div
+        className={
+          items.length === 1
+            ? 'max-w-md sm:max-w-lg mx-auto w-full'
+            : 'grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5'
+        }
+      >
         {items.map((item, idx) => {
           const initials = item.avatarText || item.name.split(' ').map((n) => n[0]).join('').slice(0, 2);
           const bgGradient = item.avatarBg || 'from-emerald-500 to-teal-600';
