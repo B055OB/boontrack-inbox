@@ -86,15 +86,15 @@ describe('BWM Gate 1 Round 3F — Real Application API Persistence (Unmocked)', 
 
     // 1. Pre-provision tenants directly in staging DB
     const insA = await pgClient.query(`
-      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, subscription_status, is_active, metadata)
-      VALUES ($1, 'Alpha Security Services', 'service', 'PRO_SCALE', 'active', 'active', true, '{"products": []}')
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, subscription_status, is_active, public_storefront_enabled, metadata)
+      VALUES ($1, 'Alpha Security Services', 'service', 'PRO_SCALE', 'active', 'active', true, true, '{"products": []}')
       RETURNING id
     `, [slugA]);
     tenantIdA = insA.rows[0].id;
 
     const insB = await pgClient.query(`
-      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, subscription_status, is_active, metadata)
-      VALUES ($1, 'Beta Security Services', 'service', 'PRO_SCALE', 'active', 'active', true, '{"products": []}')
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, subscription_status, is_active, public_storefront_enabled, metadata)
+      VALUES ($1, 'Beta Security Services', 'service', 'PRO_SCALE', 'active', 'active', true, true, '{"products": []}')
       RETURNING id
     `, [slugB]);
     tenantIdB = insB.rows[0].id;

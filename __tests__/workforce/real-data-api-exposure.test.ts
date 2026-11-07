@@ -94,13 +94,15 @@ describe('BWM Gate 1 Round 3G — Real Supabase PostgREST Data API Exposure & Bo
     });
 
     // 3. Seed tenants in staging database
+    // Alpha: Explicitly opted-in to public storefront (public_storefront_enabled = true)
+    // Beta: Private enterprise tenant (public_storefront_enabled = false)
     const alphaTenantRes = await pgClient.query(`
       INSERT INTO workforce_staging.tenants (
-        slug, name, category, tier, status, is_active,
+        slug, name, category, tier, status, is_active, public_storefront_enabled,
         phone, whatsapp_number, waba_phone_number_id, telegram_chat_id,
         logo_url, avatar_url, bio, metadata
       ) VALUES (
-        $1, 'Exposure Alpha Systems', 'service', 'PRO_SCALE', 'active', true,
+        $1, 'Exposure Alpha Systems', 'service', 'PRO_SCALE', 'active', true, true,
         '+6281111111', '+6281111111', 'waba_secret_token_alpha_123', 'tg_chat_alpha_456',
         'https://cdn.example.com/logo-alpha.png', 'https://cdn.example.com/avatar-alpha.png',
         'Top Tier Alpha Defense Systems',
@@ -118,11 +120,11 @@ describe('BWM Gate 1 Round 3G — Real Supabase PostgREST Data API Exposure & Bo
 
     const betaTenantRes = await pgClient.query(`
       INSERT INTO workforce_staging.tenants (
-        slug, name, category, tier, status, is_active,
+        slug, name, category, tier, status, is_active, public_storefront_enabled,
         phone, whatsapp_number, waba_phone_number_id, telegram_chat_id,
         logo_url, avatar_url, bio, metadata
       ) VALUES (
-        $1, 'Exposure Beta Systems', 'service', 'PRO_SCALE', 'active', true,
+        $1, 'Exposure Beta Systems', 'service', 'PRO_SCALE', 'active', true, false,
         '+6282222222', '+6282222222', 'waba_secret_token_beta_999', 'tg_chat_beta_888',
         'https://cdn.example.com/logo-beta.png', 'https://cdn.example.com/avatar-beta.png',
         'Top Tier Beta Cyber Systems',
@@ -138,15 +140,15 @@ describe('BWM Gate 1 Round 3G — Real Supabase PostgREST Data API Exposure & Bo
     ]);
     tenantBetaId = betaTenantRes.rows[0].id;
 
-    // 4. Seed products: Alpha Active, Alpha Draft, Beta Active
+    // 4. Seed products: Alpha Active (published), Alpha Draft (unpublished), Beta Active (published on private tenant)
     await pgClient.query(`
       INSERT INTO workforce_staging.products (
         tenant_id, title, name, slug, price, promo_price, category, product_type,
-        stock, is_unlimited_stock, is_active, status, fulfillment_metadata, asset_reference
+        stock, is_unlimited_stock, is_active, status, is_publicly_published, fulfillment_metadata, asset_reference
       ) VALUES
-        ($1, 'Alpha Active Product', 'Alpha Active Product', $2, 150000, 125000, 'service', 'SERVICE', 99, true, true, 'ACTIVE', '{"access_url": "https://cdn.internal/secret-file-alpha.zip", "key": "ALPHA-KEY-999"}'::jsonb, 'internal://assets/alpha-secret.pdf'),
-        ($1, 'Alpha Draft Product', 'Alpha Draft Product', $3, 250000, null, 'service', 'SERVICE', 10, false, false, 'DRAFT', '{"access_url": "https://cdn.internal/secret-file-draft.zip"}'::jsonb, 'internal://assets/draft-secret.pdf'),
-        ($4, 'Beta Operations Suite', 'Beta Operations Suite', $5, 500000, 450000, 'service', 'SERVICE', 50, true, true, 'ACTIVE', '{"access_url": "https://cdn.internal/secret-file-beta.zip", "key": "BETA-KEY-111"}'::jsonb, 'internal://assets/beta-secret.pdf')
+        ($1, 'Alpha Active Product', 'Alpha Active Product', $2, 150000, 125000, 'service', 'SERVICE', 99, true, true, 'ACTIVE', true, '{"access_url": "https://cdn.internal/secret-file-alpha.zip", "key": "ALPHA-KEY-999"}'::jsonb, 'internal://assets/alpha-secret.pdf'),
+        ($1, 'Alpha Draft Product', 'Alpha Draft Product', $3, 250000, null, 'service', 'SERVICE', 10, false, false, 'DRAFT', false, '{"access_url": "https://cdn.internal/secret-file-draft.zip"}'::jsonb, 'internal://assets/draft-secret.pdf'),
+        ($4, 'Beta Operations Suite', 'Beta Operations Suite', $5, 500000, 450000, 'service', 'SERVICE', 50, true, true, 'ACTIVE', true, '{"access_url": "https://cdn.internal/secret-file-beta.zip", "key": "BETA-KEY-111"}'::jsonb, 'internal://assets/beta-secret.pdf')
     `, [tenantAlphaId, PROD_ACTIVE_SLUG, PROD_DRAFT_SLUG, tenantBetaId, PROD_BETA_SLUG]);
 
     // 5. Create real Supabase Auth user for Alpha
@@ -188,27 +190,69 @@ describe('BWM Gate 1 Round 3G — Real Supabase PostgREST Data API Exposure & Bo
   }, 45000);
 
   afterAll(async () => {
-    // Clean up test fixtures safely
-    if (alphaAuthUserId && adminClient) {
-      try {
-        await adminClient.auth.admin.deleteUser(alphaAuthUserId);
-      } catch {
-        // ignore
-      }
-    }
+    // Blocker G: Independent parameterized queries with strict verification and count reporting
+    let pDelCount = 0;
+    let mDelCount = 0;
+    let tDelCount = 0;
+    let authUserDeleted = false;
+
     if (pgClient) {
       try {
-        await pgClient.query(`
-          DELETE FROM workforce_staging.products WHERE tenant_id IN ($1, $2);
-          DELETE FROM workforce_staging.tenant_memberships WHERE user_id = $3;
-          DELETE FROM workforce_staging.tenants WHERE id IN ($1, $2);
-        `, [tenantAlphaId, tenantBetaId, alphaAuthUserId]);
-      } catch {
-        // ignore
+        const pRes = await pgClient.query(
+          'DELETE FROM workforce_staging.products WHERE tenant_id = $1 OR tenant_id = $2',
+          [tenantAlphaId, tenantBetaId]
+        );
+        pDelCount = pRes.rowCount ?? 0;
+
+        const mRes = await pgClient.query(
+          'DELETE FROM workforce_staging.tenant_memberships WHERE user_id = $1',
+          [alphaAuthUserId]
+        );
+        mDelCount = mRes.rowCount ?? 0;
+
+        const tRes = await pgClient.query(
+          'DELETE FROM workforce_staging.tenants WHERE id = $1 OR id = $2',
+          [tenantAlphaId, tenantBetaId]
+        );
+        tDelCount = tRes.rowCount ?? 0;
+
+        // Verify zero remaining test fixtures in staging
+        const pCheck = await pgClient.query(
+          'SELECT COUNT(*)::int AS count FROM workforce_staging.products WHERE tenant_id = $1 OR tenant_id = $2',
+          [tenantAlphaId, tenantBetaId]
+        );
+        expect(pCheck.rows[0].count).toBe(0);
+
+        const mCheck = await pgClient.query(
+          'SELECT COUNT(*)::int AS count FROM workforce_staging.tenant_memberships WHERE user_id = $1',
+          [alphaAuthUserId]
+        );
+        expect(mCheck.rows[0].count).toBe(0);
+
+        const tCheck = await pgClient.query(
+          'SELECT COUNT(*)::int AS count FROM workforce_staging.tenants WHERE id = $1 OR id = $2',
+          [tenantAlphaId, tenantBetaId]
+        );
+        expect(tCheck.rows[0].count).toBe(0);
       } finally {
         await pgClient.end();
       }
     }
+
+    if (alphaAuthUserId && adminClient) {
+      const { error: delErr } = await adminClient.auth.admin.deleteUser(alphaAuthUserId);
+      if (!delErr) {
+        authUserDeleted = true;
+      }
+    }
+
+    // Report verified cleanup statistics in evidence logs
+    console.log('[Audit Cleanup Verified] Independent Rows Removed:', {
+      productsRemoved: pDelCount,
+      membershipsRemoved: mDelCount,
+      tenantsRemoved: tDelCount,
+      authUserDeleted,
+    });
   }, 30000);
 
   test('1. Anonymous Enumeration Rejection: GET /rest/v1/tenants with anon key fails closed', async () => {
@@ -288,6 +332,38 @@ describe('BWM Gate 1 Round 3G — Real Supabase PostgREST Data API Exposure & Bo
     const keys = Object.keys(activeProd);
     expect(keys).not.toContain('fulfillment_metadata');
     expect(keys).not.toContain('asset_reference');
+  });
+
+  test('4b. Strict Storefront Opt-In: Private enterprise tenant and unpublished products invisible to public views', async () => {
+    // 1. Private Enterprise Tenant (public_storefront_enabled = false) MUST NOT appear in storefront_tenants
+    const { data: betaTenantData, error: betaTenantErr } = await anonClient
+      .from('storefront_tenants')
+      .select('*')
+      .eq('slug', TENANT_BETA_SLUG);
+
+    expect(betaTenantErr).toBeNull();
+    expect(betaTenantData).toBeDefined();
+    expect(betaTenantData?.length).toBe(0); // 100% invisible to anonymous storefront callers
+
+    // 2. Products of Private Enterprise Tenant MUST NOT appear in storefront_products
+    const { data: betaProdData, error: betaProdErr } = await anonClient
+      .from('storefront_products')
+      .select('*')
+      .eq('tenant_id', tenantBetaId);
+
+    expect(betaProdErr).toBeNull();
+    expect(betaProdData).toBeDefined();
+    expect(betaProdData?.length).toBe(0);
+
+    // 3. Unpublished Product (is_publicly_published = false) MUST NOT appear in storefront_products
+    const { data: draftData, error: draftErr } = await anonClient
+      .from('storefront_products')
+      .select('*')
+      .eq('slug', PROD_DRAFT_SLUG);
+
+    expect(draftErr).toBeNull();
+    expect(draftData).toBeDefined();
+    expect(draftData?.length).toBe(0);
   });
 
   test('5. Anonymous Mutation Rejection: Anonymous user cannot mutate storefront views', async () => {

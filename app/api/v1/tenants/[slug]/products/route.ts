@@ -12,6 +12,7 @@ import {
   sanitizeProductPayload,
   safeJsonStringify,
   sanitizePublicProduct,
+  mapToPublicProductAllowlist,
 } from '@/lib/product-catalog';
 import {
   authorizeMerchantRequest,
@@ -379,6 +380,7 @@ export async function POST(
           product_type: dbProductType,
           sku: productSku,
           is_active: body.is_active !== false,
+          is_publicly_published: body.is_publicly_published !== undefined ? Boolean(body.is_publicly_published) : (body.is_active !== false),
           requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL')),
           is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
           fulfillment_metadata: {
@@ -642,109 +644,125 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // 1. Single Source of Truth: Supabase (tenants.metadata.products & products table)
+    // Authorization Boundary: Differentiate Private Merchant/Internal Machine vs Public Storefront
+    const authResult = authorizeMerchantRequest(req, slug);
+    const isMachineAuth = isInternalMachineAuthorized(req, slug);
+    const isAuthorizedMerchant = authResult.authorized || isMachineAuth;
+
+    const supabase = getSupabaseAdmin() || getSupabase();
+
+    // =========================================================================
+    // 1. Private Authorized Tenant Path (Authorized Merchant or Internal Machine)
+    // =========================================================================
+    if (isAuthorizedMerchant) {
+      try {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, slug, metadata')
+          .eq('slug', slug)
+          .maybeSingle();
+
+        let products: any[] = Array.isArray(tenantRow?.metadata?.products) ? tenantRow.metadata.products : [];
+
+        if (tenantRow?.id) {
+          const { data: sqlProds } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', tenantRow.id);
+
+          if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+            const sqlMapped = sqlProds.map((sp: any, idx: number) => ({
+              id: sp.id,
+              name: sp.title || `Produk ${idx + 1}`,
+              title: sp.title || `Produk ${idx + 1}`,
+              slug: sp.slug,
+              category: sp?.category || (sp?.product_type === 'PHYSICAL' ? 'physical' : 'digital'),
+              product_type: sp?.product_type || 'SERVICE',
+              price: Number(sp.price) || 0,
+              promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+              description: sp.description || '',
+              download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+              image: sp.image || sp.image_url || '',
+              image_url: sp.image_url || sp.image || '',
+              stock: sp.stock !== undefined ? Number(sp.stock) : 999,
+              sku: sp.sku || '',
+              is_unlimited: sp.is_unlimited_stock ?? true,
+              is_active: sp.is_active !== false,
+              status: sp.status || 'ACTIVE',
+              is_publicly_published: sp.is_publicly_published ?? false,
+              fulfillment_metadata: sp.fulfillment_metadata,
+              single_page_config: sp.fulfillment_metadata?.single_page_config,
+            }));
+
+            const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
+            const existingIds = new Set(products.map((p) => String(p.id)));
+            for (const sp of sqlMapped) {
+              if (!existingSlugs.has((sp.slug || '').toLowerCase()) && !existingIds.has(String(sp.id))) {
+                products.push(sp);
+              }
+            }
+          }
+        }
+
+        return NextResponse.json({
+          success: true,
+          products,
+        });
+      } catch (authErr) {
+        console.warn('[Products Route] Authorized fetch error:', authErr);
+      }
+    }
+
+    // =========================================================================
+    // 2. Public Storefront Access (Unauthenticated Customer)
+    // Strictly requires explicit public storefront opt-in (public_storefront_enabled = TRUE)
+    // =========================================================================
     try {
-      const supabase = getSupabaseAdmin() || getSupabase();
       const { data: tenantRow } = await supabase
         .from('tenants')
-        .select('id, metadata')
+        .select('id, slug, is_active, status, public_storefront_enabled')
         .eq('slug', slug)
         .maybeSingle();
 
-      let products: any[] = Array.isArray(tenantRow?.metadata?.products)
-        ? tenantRow.metadata.products.filter((p: any) => {
-            if (!p || typeof p !== 'object') return false;
-            if (p.is_active === false || p.is_active === 'false' || p.is_active === 0 || p.is_active === '0') return false;
-            const st = typeof p.status === 'string' ? p.status.toLowerCase().trim() : '';
-            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
-            return true;
-          })
-        : (tenantRow?.metadata?.product &&
-           tenantRow.metadata.product.name &&
-           tenantRow.metadata.product.name !== slug &&
-           tenantRow.metadata.product.is_active !== false &&
-           !['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(String(tenantRow.metadata.product.status || '').toLowerCase().trim()))
-        ? [tenantRow.metadata.product]
-        : [];
+      // Enterprise / private tenant or tenant without public storefront enabled:
+      // Return empty catalog without leaking private metadata or tenant internal attributes
+      if (
+        !tenantRow ||
+        tenantRow.is_active === false ||
+        tenantRow.status !== 'active' ||
+        tenantRow.public_storefront_enabled !== true
+      ) {
+        return NextResponse.json({
+          success: true,
+          products: [],
+        });
+      }
 
-      // Query juga dari tabel SQL `products` jika ada (hanya ambil produk aktif)
-      if (tenantRow?.id) {
-        const { data: sqlProds } = await supabase
-          .from('products')
-          .select('*')
-          .eq('tenant_id', tenantRow.id)
-          .eq('is_active', true);
+      // Query strictly published products using explicit public field projection
+      const { data: sqlProds } = await supabase
+        .from('products')
+        .select('id, title, name, slug, price, promo_price, category, product_type, description, stock, is_unlimited_stock, image, image_url, is_active, status, is_publicly_published')
+        .eq('tenant_id', tenantRow.id)
+        .eq('is_active', true)
+        .eq('status', 'ACTIVE')
+        .eq('is_publicly_published', true);
 
-        if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-          const activeSqlProds = sqlProds.filter((sp: any) => {
-            if (!sp) return false;
-            if (sp.is_active === false || sp.is_active === 'false' || sp.is_active === 0 || sp.is_active === '0') return false;
-            const st = typeof sp.status === 'string' ? sp.status.toLowerCase().trim() : '';
-            if (['draft', 'hidden', 'archived', 'inactive', 'sembunyi'].includes(st)) return false;
-            return true;
-          });
-
-          const sqlMapped = activeSqlProds.map((sp: any, idx: number) => ({
-            id: sp.id,
-            name: sp.title || `Produk ${idx + 1}`,
-            title: sp.title || `Produk ${idx + 1}`,
-            slug: sp.slug,
-            category: sp?.category || (sp?.product_type === 'PHYSICAL' ? 'physical' : (['SERVICE', 'FIELD_SERVICE', 'PROFESSIONAL_SERVICE', 'AGENCY'].includes(String(sp?.product_type || '').toUpperCase()) ? 'jasa' : 'digital')),
-            product_type: sp?.product_type || (sp?.category === 'fisik' ? 'PHYSICAL' : (sp?.category === 'jasa' || sp?.category === 'service' ? 'SERVICE' : 'DIGITAL')),
-            price: Number(sp.price) || 0,
-            promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-            description: sp.description || '',
-            download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-            image: sp.image || sp.fulfillment_metadata?.single_page_config?.banner_url || '',
-            stock: sp.stock !== undefined ? Number(sp.stock) : 999,
-            sku: sp.sku || '',
-            is_unlimited: sp.is_unlimited_stock ?? true,
-            is_active: sp.is_active !== false,
-            status: sp.status || 'ACTIVE',
-            fulfillment_metadata: sp.fulfillment_metadata,
-            single_page_config: sp.fulfillment_metadata?.single_page_config,
-          }));
-
-          const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
-          const existingIds = new Set(products.map((p) => String(p.id)));
-          for (const sp of sqlMapped) {
-            if (!existingSlugs.has((sp.slug || '').toLowerCase()) && !existingIds.has(String(sp.id))) {
-              products.push(sp);
-            }
+      const publicList: any[] = [];
+      if (Array.isArray(sqlProds)) {
+        for (const sp of sqlProds) {
+          const allowlisted = mapToPublicProductAllowlist(sp);
+          if (allowlisted) {
+            publicList.push(allowlisted);
           }
         }
       }
 
-      if (products.length > 0) {
-        return NextResponse.json({
-          success: true,
-          products: products.map((p) => sanitizePublicProduct(p)),
-        });
-      }
-    } catch (supabaseErr) {
-      console.warn('Supabase products fetch note:', supabaseErr);
-    }
-
-    // 2. Fallback jika Supabase kosong: Coba Railway Backend Core
-    try {
-      const railwayRes = await fetch(
-        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products`),
-        {
-          headers: { 'X-Tenant-ID': slug },
-          cache: 'no-store',
-        }
-      );
-      if (railwayRes.ok) {
-        const rData = await railwayRes.json();
-        if (Array.isArray(rData.products) && rData.products.length > 0) {
-          return NextResponse.json({
-            success: true,
-            products: rData.products.map((p: any) => sanitizePublicProduct(p)),
-          });
-        }
-      }
-    } catch (railwayErr) {
-      console.warn('Railway backend products fetch note:', railwayErr);
+      return NextResponse.json({
+        success: true,
+        products: publicList,
+      });
+    } catch (publicErr) {
+      console.warn('[Products Route] Public storefront fetch error:', publicErr);
     }
 
     return NextResponse.json({

@@ -37,6 +37,7 @@ interface MockTenant {
   tier: string;
   status: string;
   is_active: boolean;
+  public_storefront_enabled?: boolean;
   metadata: Record<string, any>;
 }
 
@@ -53,6 +54,7 @@ interface MockProduct {
   stock: number;
   is_active: boolean;
   status: string;
+  is_publicly_published?: boolean;
 }
 
 const mockTenantsDb: MockTenant[] = [];
@@ -105,6 +107,8 @@ const mockSupabaseAdmin: any = {
               if (f.field === 'id' && p.id !== f.val && p.slug !== f.val) return false;
               if (f.field === 'slug' && p.slug !== f.val) return false;
               if (f.field === 'is_active' && p.is_active !== f.val) return false;
+              if (f.field === 'status' && p.status !== f.val) return false;
+              if (f.field === 'is_publicly_published' && p.is_publicly_published !== f.val) return false;
             }
             return true;
           });
@@ -141,6 +145,7 @@ const mockSupabaseAdmin: any = {
               stock: r.stock !== undefined ? Number(r.stock) : 999,
               is_active: r.is_active !== false,
               status: r.status || 'ACTIVE',
+              is_publicly_published: r.is_publicly_published !== false,
             };
             mockProductsDb.push(newProd);
             inserted.push(newProd);
@@ -248,6 +253,7 @@ const mockSupabaseAdmin: any = {
                 tier: item.tier || 'PRO_SCALE',
                 status: item.status || 'active',
                 is_active: item.is_active !== false,
+                public_storefront_enabled: item.public_storefront_enabled !== false,
                 metadata: item.metadata || {},
               };
               mockTenantsDb.push(newT);
@@ -320,6 +326,8 @@ const mockSupabaseAdmin: any = {
             for (const f of eqFilters) {
               if (f.field === 'tenant_id' && p.tenant_id !== f.val) return false;
               if (f.field === 'is_active' && p.is_active !== f.val) return false;
+              if (f.field === 'status' && p.status !== f.val) return false;
+              if (f.field === 'is_publicly_published' && p.is_publicly_published !== f.val) return false;
               if (f.field === 'id' && p.id !== f.val) return false;
             }
             return true;
@@ -417,6 +425,7 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
         tier: 'PRO_SCALE',
         status: 'active',
         is_active: true,
+        public_storefront_enabled: true,
         metadata: {
           store_name: `Satya Alpha Store ${ts}`,
           products: [],
@@ -431,6 +440,7 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
         tier: 'SOLO',
         status: 'active',
         is_active: true,
+        public_storefront_enabled: true,
         metadata: {
           store_name: `Retail Beta Store ${ts}`,
           products: [],

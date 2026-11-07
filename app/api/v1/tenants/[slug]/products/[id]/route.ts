@@ -9,6 +9,7 @@ import {
   mapToDbProductType,
   sanitizeProductPayload,
   sanitizePublicProduct,
+  mapToPublicProductAllowlist,
 } from '@/lib/product-catalog';
 import {
   authorizeMerchantRequest,
@@ -18,7 +19,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> }
 ) {
   try {
@@ -26,34 +27,68 @@ export async function GET(
     const slug = normalizeTenantSlug(rawSlug || '');
     const supabaseAdmin = getSupabaseAdmin();
 
+    const authResult = authorizeMerchantRequest(req, slug);
+    const isMachineAuth = isInternalMachineAuthorized(req, slug);
+    const isAuthorizedMerchant = authResult.authorized || isMachineAuth;
+
+    // 1. Private Authorized Tenant Path
+    if (isAuthorizedMerchant) {
+      const { data: tenant } = await supabaseAdmin
+        .from('tenants')
+        .select('id, slug, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (!tenant) {
+        return NextResponse.json({ success: false, error: 'TENANT_NOT_FOUND' }, { status: 404 });
+      }
+
+      const { data: product, error } = await supabaseAdmin
+        .from('products')
+        .select('*')
+        .eq('id', productId)
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
+
+      if (error || !product) {
+        const metaProds = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
+        const match = metaProds.find((p: any) => String(p.id) === String(productId) || p.slug === String(productId));
+        if (match) {
+          return NextResponse.json({ success: true, product: match });
+        }
+        return NextResponse.json({ success: false, error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
+      }
+
+      return NextResponse.json({ success: true, product });
+    }
+
+    // 2. Public Storefront Access (Strict Opt-In & Allowlist Only)
     const { data: tenant } = await supabaseAdmin
       .from('tenants')
-      .select('id, slug, metadata')
+      .select('id, slug, is_active, status, public_storefront_enabled')
       .eq('slug', slug)
       .maybeSingle();
 
-    if (!tenant) {
-      return NextResponse.json({ success: false, error: 'TENANT_NOT_FOUND' }, { status: 404 });
+    if (!tenant || tenant.is_active === false || tenant.status !== 'active' || tenant.public_storefront_enabled !== true) {
+      return NextResponse.json({ success: false, error: 'STOREFRONT_NOT_AVAILABLE' }, { status: 404 });
     }
 
     const { data: product, error } = await supabaseAdmin
       .from('products')
-      .select('*')
+      .select('id, title, name, slug, price, promo_price, category, product_type, description, stock, is_unlimited_stock, image, image_url, is_active, status, is_publicly_published')
       .eq('id', productId)
       .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .eq('status', 'ACTIVE')
+      .eq('is_publicly_published', true)
       .maybeSingle();
 
     if (error || !product) {
-      // Check in metadata.products as fallback
-      const metaProds = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
-      const match = metaProds.find((p: any) => String(p.id) === String(productId) || p.slug === String(productId));
-      if (match) {
-        return NextResponse.json({ success: true, product: sanitizePublicProduct(match) });
-      }
       return NextResponse.json({ success: false, error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, product: sanitizePublicProduct(product) });
+    const allowlisted = mapToPublicProductAllowlist(product);
+    return NextResponse.json({ success: true, product: allowlisted });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching product';
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
@@ -139,6 +174,7 @@ async function handleProductMutation(
     if (body.is_unlimited !== undefined) payload.is_unlimited_stock = Boolean(body.is_unlimited);
     if (body.sku) payload.sku = body.sku;
     if (body.is_active !== undefined) payload.is_active = Boolean(body.is_active);
+    if (body.is_publicly_published !== undefined) payload.is_publicly_published = Boolean(body.is_publicly_published);
     if (body.product_type) payload.product_type = dbProductType;
     if (body.requires_shipping !== undefined) payload.requires_shipping = Boolean(body.requires_shipping);
     if (body.fulfillment_metadata || body.single_page_config) {

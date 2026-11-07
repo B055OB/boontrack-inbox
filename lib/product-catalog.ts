@@ -1852,67 +1852,86 @@ export function safeJsonStringify(val: any, indent?: number): string {
 }
 
 /**
- * Sanitizes a product payload for public, unauthenticated egress.
- * HARD-GATE INVARIANT: Digital product download URLs, Telegram invite links, meeting URLs,
- * and protected fulfillment credentials must NEVER be exposed in public catalog payloads
- * before verified payment.
+ * Strict Public Product Allowlist Interface
+ * BWM Gate 1 Round 3H: Explicit Allowlist Projection Only.
+ * Zero arbitrary extension properties, zero raw metadata, zero fulfillment credentials.
+ */
+export interface PublicProductAllowlist {
+  id: string;
+  name: string;
+  title: string;
+  slug: string;
+  category: string;
+  product_type: string;
+  price: number;
+  promo_price?: number;
+  description: string;
+  image: string;
+  image_url: string;
+  is_unlimited: boolean;
+  is_active: boolean;
+  status: string;
+}
+
+/**
+ * Strict allowlist mapper for public storefront product egress.
+ * BWM Gate 1 Round 3H (Blocker C Remediation).
+ * Explicitly constructs a clean object containing ONLY storefront-approved attributes.
+ * Drops all arbitrary top-level properties, raw metadata, fulfillment_metadata,
+ * single_page_config, download links, asset references, license keys, and payment settings.
+ */
+export function mapToPublicProductAllowlist(raw: any): PublicProductAllowlist | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const id = String(raw.id || '');
+  const title = String(raw.title || raw.name || '');
+  const name = String(raw.name || raw.title || '');
+  const slug = String(raw.slug || '');
+  const category = String(raw.category || 'service');
+  const product_type = String(raw.product_type || 'SERVICE');
+  const price = Number(raw.price) || 0;
+  const promo_price = raw.promo_price !== undefined && raw.promo_price !== null ? Number(raw.promo_price) : undefined;
+  const description = typeof raw.description === 'string' ? raw.description : '';
+  const image = typeof raw.image === 'string' ? raw.image : (typeof raw.image_url === 'string' ? raw.image_url : '');
+  const image_url = typeof raw.image_url === 'string' ? raw.image_url : (typeof raw.image === 'string' ? raw.image : '');
+  const is_unlimited = Boolean(raw.is_unlimited ?? raw.is_unlimited_stock ?? true);
+  const is_active = Boolean(raw.is_active !== false);
+  const status = String(raw.status || 'ACTIVE');
+
+  return {
+    id,
+    name,
+    title,
+    slug,
+    category,
+    product_type,
+    price,
+    promo_price,
+    description,
+    image,
+    image_url,
+    is_unlimited,
+    is_active,
+    status,
+  };
+}
+
+/**
+ * Sanitizes a product payload for public, unauthenticated egress using explicit allowlist.
+ * HARD-GATE INVARIANT (Round 3H): Digital product download URLs, Telegram invite links, meeting URLs,
+ * license credentials, arbitrary metadata, single_page_config, and internal assets must NEVER be exposed.
  */
 export function sanitizePublicProduct<T = any>(product: T): T {
   if (!product || typeof product !== 'object') return product;
 
   if (Array.isArray(product)) {
-    return product.map((p) => sanitizePublicProduct(p)) as any;
+    return product
+      .map((p) => mapToPublicProductAllowlist(p))
+      .filter((p): p is PublicProductAllowlist => p !== null) as any;
   }
 
-  const clean: Record<string, any> = { ...(product as Record<string, any>) };
-
-  // Strip top-level digital & fulfillment asset links
-  clean.download_url = null;
-  clean.link_digital = null;
-  clean.delivery_url = null;
-  clean.asset_reference = null;
-  if ('access_url' in clean) {
-    clean.access_url = null;
-  }
-
-  // Sanitize fulfillment_metadata if present
-  if (clean.fulfillment_metadata && typeof clean.fulfillment_metadata === 'object') {
-    clean.fulfillment_metadata = {
-      ...clean.fulfillment_metadata,
-      access_url: null,
-      meeting_url: null,
-      google_meet_url: null,
-      credentials: null,
-      license_key: null,
-      instructions: clean.fulfillment_metadata.instructions
-        ? (clean.fulfillment_metadata.instructions.includes('http') || clean.fulfillment_metadata.instructions.includes('t.me')
-            ? ''
-            : clean.fulfillment_metadata.instructions)
-        : '',
-    };
-  }
-
-  // Sanitize embedded metadata if present
-  if (clean.metadata && typeof clean.metadata === 'object') {
-    const cleanMeta = { ...clean.metadata };
-    delete cleanMeta.download_url;
-    delete cleanMeta.link_digital;
-    delete cleanMeta.delivery_url;
-    delete cleanMeta.access_url;
-    if (cleanMeta.fulfillment_metadata && typeof cleanMeta.fulfillment_metadata === 'object') {
-      cleanMeta.fulfillment_metadata = {
-        ...cleanMeta.fulfillment_metadata,
-        access_url: null,
-        meeting_url: null,
-        google_meet_url: null,
-        credentials: null,
-        license_key: null,
-      };
-    }
-    clean.metadata = cleanMeta;
-  }
-
-  return clean as T;
+  const mapped = mapToPublicProductAllowlist(product);
+  return (mapped || product) as T;
 }
 
 /**
