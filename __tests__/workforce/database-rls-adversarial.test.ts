@@ -66,6 +66,10 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
   async function cleanFixtures(pgClient: Client) {
     await pgClient.query('RESET ROLE');
+    await pgClient.query('RESET request.jwt.claims');
+    await pgClient.query('RESET request.jwt.claim.sub');
+    await pgClient.query('RESET app.current_agency_id');
+    await pgClient.query('RESET app.current_tenant_id');
     // Block E: NEVER disable rules or triggers during teardown.
     // Only delete mutable test-scoped baseline rows from branch_credit_pools, products, tenants, and tenant_memberships.
     await pgClient.query(`
@@ -101,7 +105,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
   beforeAll(async () => {
     client = new Client({ connectionString: getDatabaseConnectionString() });
     await client.connect();
-    await client.query('SET search_path TO workforce_staging, public');
+    await client.query('SET search_path TO public, workforce_staging');
 
     // Clean up any stale test fixtures cleanly without touching ledger rules/triggers
     await cleanFixtures(client);
@@ -256,6 +260,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
     // Verify via privileged query that Tenant Beta state was NOT modified
     await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
     const verifyPoolRes = await client.query(
       'SELECT available_credits FROM branch_credit_pools WHERE branch_id = $1',
       [BRANCH_BETA]
@@ -298,6 +303,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
     // Verify via privileged query that Tenant Beta records still exist intact
     await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
     const verifyPool = await client.query('SELECT 1 FROM branch_credit_pools WHERE branch_id = $1', [BRANCH_BETA]);
     expect(verifyPool.rows.length).toBe(1);
 
@@ -521,6 +527,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
   test('13. Privileged Service-Role / Postgres Bypass Verification (Administrative SSOT)', async () => {
     await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
 
     const adminPoolRes = await client.query(`
       SELECT branch_id, agency_id, available_credits 

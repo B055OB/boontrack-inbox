@@ -306,7 +306,10 @@ export function isInternalMachineAuthorized(
       req.headers.get('x-tenant-id')
     )?.trim().toLowerCase();
 
-    if (targetTenantSlug && reqTargetTenant) {
+    if (targetTenantSlug) {
+      if (!reqTargetTenant) {
+        return false;
+      }
       const normExpected = targetTenantSlug.trim().toLowerCase();
       if (reqTargetTenant !== normExpected) {
         return false;
@@ -319,7 +322,10 @@ export function isInternalMachineAuthorized(
       req.headers.get('x-internal-operation')
     )?.trim().toUpperCase();
 
-    if (allowedOperations && allowedOperations.length > 0 && reqOperation) {
+    if (allowedOperations && allowedOperations.length > 0) {
+      if (!reqOperation) {
+        return false;
+      }
       const normAllowed = allowedOperations.map((op) => op.toUpperCase());
       if (!normAllowed.includes(reqOperation)) {
         return false;
@@ -333,7 +339,7 @@ export function isInternalMachineAuthorized(
 
 export type AuthorizeMerchantResult =
   | { authorized: true; payload: MerchantSessionPayload }
-  | { authorized: false; status: 401 | 403 | 500; response: NextResponse };
+  | { authorized: false; status: 401 | 403 | 500 | 503; response: NextResponse; error?: string };
 
 /**
  * Validates request session and enforces role & tenant authorization server-side.
@@ -472,7 +478,19 @@ export async function authorizeMerchantSession(
     const { getSupabaseAdmin, getSupabase } = await import('@/lib/supabaseClient');
     const supabase = getSupabaseAdmin() || getSupabase();
 
-    if (effectiveSlug && supabase) {
+    if (effectiveSlug) {
+      if (!supabase) {
+        return {
+          authorized: false,
+          status: 503,
+          error: 'DATABASE_LOOKUP_FAILED',
+          response: NextResponse.json(
+            { success: false, error: 'Database lookup failed (Fail-Closed).' },
+            { status: 503 }
+          ),
+        };
+      }
+
       // A. Query Canonical Tenant Record
       const { data: tenantRow, error: tenantErr } = await supabase
         .from('tenants')
@@ -480,7 +498,19 @@ export async function authorizeMerchantSession(
         .eq('slug', effectiveSlug)
         .maybeSingle();
 
-      if (tenantErr || !tenantRow) {
+      if (tenantErr) {
+        return {
+          authorized: false,
+          status: 503,
+          error: 'DATABASE_LOOKUP_FAILED',
+          response: NextResponse.json(
+            { success: false, error: 'Database lookup failed (Fail-Closed).' },
+            { status: 503 }
+          ),
+        };
+      }
+
+      if (!tenantRow) {
         return {
           authorized: false,
           status: 403,
@@ -505,29 +535,61 @@ export async function authorizeMerchantSession(
         };
       }
 
-      // C. Database Membership Authority Check (Round 3I SSOT)
+      // C. Database Membership Authority Check (Round 3I/3J SSOT)
       if (payload.userId) {
         let membershipRow: any = null;
-        try {
-          const { data: mData } = await supabase
-            .from('tenant_memberships')
-            .select('role, is_active')
-            .eq('user_id', payload.userId)
-            .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
-            .maybeSingle();
-          membershipRow = mData;
-        } catch {
+        const { data: mData, error: mErr } = await supabase
+          .from('tenant_memberships')
+          .select('role, is_active')
+          .eq('user_id', payload.userId)
+          .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
+          .maybeSingle();
+
+        if (mErr) {
+          return {
+            authorized: false,
+            status: 503,
+            error: 'DATABASE_LOOKUP_FAILED',
+            response: NextResponse.json(
+              { success: false, error: 'Database lookup failed (Fail-Closed).' },
+              { status: 503 }
+            ),
+          };
+        }
+        membershipRow = mData;
+
+        if (!membershipRow) {
           try {
-            const { data: mDataStaging } = await (supabase as any)
+            const { data: mDataStaging, error: mErrStaging } = await (supabase as any)
               .schema('workforce_staging')
               .from('tenant_memberships')
               .select('role, is_active')
               .eq('user_id', payload.userId)
               .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
               .maybeSingle();
+
+            if (mErrStaging) {
+              return {
+                authorized: false,
+                status: 503,
+                error: 'DATABASE_LOOKUP_FAILED',
+                response: NextResponse.json(
+                  { success: false, error: 'Database lookup failed (Fail-Closed).' },
+                  { status: 503 }
+                ),
+              };
+            }
             membershipRow = mDataStaging;
           } catch {
-            // ignore
+            return {
+              authorized: false,
+              status: 503,
+              error: 'DATABASE_LOOKUP_FAILED',
+              response: NextResponse.json(
+                { success: false, error: 'Database lookup failed (Fail-Closed).' },
+                { status: 503 }
+              ),
+            };
           }
         }
 
@@ -559,17 +621,23 @@ export async function authorizeMerchantSession(
         payload.role = membershipRow.role as any;
       } else {
         // Token has no userId: check if memberships exist for this tenant
-        let membershipCount = 0;
-        try {
-          const { count } = await supabase
-            .from('tenant_memberships')
-            .select('*', { count: 'exact', head: true })
-            .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`);
-          membershipCount = count || 0;
-        } catch {
-          // ignore
+        const { count, error: countErr } = await supabase
+          .from('tenant_memberships')
+          .select('*', { count: 'exact', head: true })
+          .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`);
+
+        if (countErr) {
+          return {
+            authorized: false,
+            status: 403,
+            response: NextResponse.json(
+              { success: false, error: 'Forbidden: Gagal memverifikasi keanggotaan untuk token tanpa identitas pengguna.' },
+              { status: 403 }
+            ),
+          };
         }
 
+        const membershipCount = count || 0;
         if (membershipCount > 0) {
           return {
             authorized: false,
@@ -583,7 +651,16 @@ export async function authorizeMerchantSession(
       }
     }
   } catch (dbErr) {
-    console.warn('[AUTH_SSOT] Database membership lookup notice:', dbErr);
+    console.warn('[AUTH_SSOT] Database membership lookup failure:', dbErr);
+    return {
+      authorized: false,
+      status: 503,
+      error: 'DATABASE_LOOKUP_FAILED',
+      response: NextResponse.json(
+        { success: false, error: 'Database lookup failed (Fail-Closed).' },
+        { status: 503 }
+      ),
+    };
   }
 
   // 3. Check role authorization against authoritative role

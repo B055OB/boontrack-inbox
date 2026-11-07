@@ -214,12 +214,12 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
     expect(checkRes.rows[0].is_member).toBe(true);
 
     // 2. Can SELECT product
-    const pRead = await client.query('SELECT * FROM workforce_staging.products WHERE id = $1', [prodAId]);
+    const pRead = await client.query('SELECT * FROM public.products WHERE id = $1', [prodAId]);
     expect(pRead.rows.length).toBe(1);
 
     // 3. Can UPDATE product (as MERCHANT)
     const pUpdate = await client.query(
-      'UPDATE workforce_staging.products SET price = 130000 WHERE id = $1',
+      'UPDATE public.products SET price = 130000 WHERE id = $1',
       [prodAId]
     );
     expect(pUpdate.rowCount).toBe(1);
@@ -247,14 +247,14 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
     expect(checkRes.rows[0].is_member).toBe(false);
 
     // 2. SELECT returns 0 rows (fail closed)
-    const pRead = await client.query('SELECT * FROM workforce_staging.products WHERE id = $1', [prodAId]);
+    const pRead = await client.query('SELECT * FROM public.products WHERE id = $1', [prodAId]);
     expect(pRead.rows.length).toBe(0);
 
     // 3. INSERT fails with SQLSTATE 42501 (RLS Policy Violation)
     let insertErr: any = null;
     try {
       await client.query(`
-        INSERT INTO workforce_staging.products (
+        INSERT INTO public.products (
           tenant_id, title, slug, price, stock, category, product_type
         ) VALUES (
           $1, 'Revoked User Rogue Product', $2, 90000, 5, 'service', 'SERVICE'
@@ -268,14 +268,14 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
 
     // 4. UPDATE affects 0 rows
     const pUpdate = await client.query(
-      'UPDATE workforce_staging.products SET price = 999999 WHERE id = $1',
+      'UPDATE public.products SET price = 999999 WHERE id = $1',
       [prodAId]
     );
     expect(pUpdate.rowCount).toBe(0);
 
     // 5. DELETE affects 0 rows
     const pDelete = await client.query(
-      'DELETE FROM workforce_staging.products WHERE id = $1',
+      'DELETE FROM public.products WHERE id = $1',
       [prodAId]
     );
     expect(pDelete.rowCount).toBe(0);
@@ -303,7 +303,7 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
     expect(checkRes.rows[0].is_member).toBe(false);
 
     // Querying Tenant A with mismatched claim returns 0 rows
-    const pReadA = await client.query('SELECT * FROM workforce_staging.products WHERE id = $1', [prodAId]);
+    const pReadA = await client.query('SELECT * FROM public.products WHERE id = $1', [prodAId]);
     expect(pReadA.rows.length).toBe(0);
 
     // Querying Tenant B (where claim matches, but NO membership exists) returns 0 rows
@@ -327,13 +327,13 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
     );
     expect(checkRes.rows[0].is_member).toBe(true);
 
-    const pRead = await client.query('SELECT price FROM workforce_staging.products WHERE id = $1', [prodAId]);
+    const pRead = await client.query('SELECT price FROM public.products WHERE id = $1', [prodAId]);
     expect(pRead.rows.length).toBe(1);
     expect(Number(pRead.rows[0].price)).toBe(130000);
 
     // Operational mutation works again
     const pUpdate = await client.query(
-      'UPDATE workforce_staging.products SET price = 140000 WHERE id = $1',
+      'UPDATE public.products SET price = 140000 WHERE id = $1',
       [prodAId]
     );
     expect(pUpdate.rowCount).toBe(1);
@@ -359,7 +359,7 @@ describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E
     );
     expect(checkRes.rows[0].is_member).toBe(false);
 
-    const pRead = await client.query('SELECT * FROM workforce_staging.products WHERE id = $1', [prodAId]);
+    const pRead = await client.query('SELECT * FROM public.products WHERE id = $1', [prodAId]);
     expect(pRead.rows.length).toBe(0);
 
     await resetAuthContext(client);

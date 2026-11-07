@@ -53,7 +53,7 @@ BEGIN
     -- Direct postgres superuser connection without an assumed unprivileged role bypasses RLS
     v_active_role := current_setting('role', true);
     IF (v_active_role IS NULL OR v_active_role = 'none' OR v_active_role = 'postgres') 
-       AND session_user = 'postgres' AND v_role IS NULL THEN
+       AND session_user = 'postgres' THEN
         RETURN TRUE;
     END IF;
 
@@ -403,7 +403,7 @@ DROP VIEW IF EXISTS public.products CASCADE;
 DROP VIEW IF EXISTS public.tenant_memberships CASCADE;
 
 CREATE OR REPLACE VIEW public.tenants 
-WITH (security_invoker = true) AS 
+WITH (security_invoker = false) AS 
     SELECT 
         id,
         slug,
@@ -459,10 +459,20 @@ WITH (security_invoker = true) AS
         qris_image_url,
         bio,
         public_storefront_enabled
-    FROM workforce_staging.tenants;
+    FROM workforce_staging.tenants
+    WHERE auth.role() = 'service_role' 
+       OR (
+           (workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR slug = current_setting('app.current_tenant_id', true) OR id::text = current_setting('app.current_tenant_id', true))
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR slug = current_setting('app.current_agency_id', true) OR id::text = current_setting('app.current_agency_id', true))
+       )
+       OR (
+           (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+           AND session_user = 'postgres'
+       );
 
 CREATE OR REPLACE VIEW public.products 
-WITH (security_invoker = true) AS 
+WITH (security_invoker = false) AS 
     SELECT 
         id,
         tenant_id,
@@ -504,11 +514,31 @@ WITH (security_invoker = true) AS
             ELSE NULL 
         END AS fulfillment_metadata,
         is_publicly_published
-    FROM workforce_staging.products;
+    FROM workforce_staging.products
+    WHERE auth.role() = 'service_role' 
+       OR (
+           workforce_staging.is_trusted_tenant_member(tenant_id)
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true))
+       )
+       OR (
+           (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+           AND session_user = 'postgres'
+       );
 
 CREATE OR REPLACE VIEW public.tenant_memberships 
-WITH (security_invoker = true) AS 
-    SELECT * FROM workforce_staging.tenant_memberships;
+WITH (security_invoker = false) AS 
+    SELECT * FROM workforce_staging.tenant_memberships
+    WHERE auth.role() = 'service_role' 
+       OR (
+           (workforce_staging.is_trusted_tenant_member(tenant_id) OR workforce_staging.is_trusted_tenant_member(tenant_slug))
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true) OR tenant_slug = current_setting('app.current_agency_id', true))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true) OR tenant_slug = current_setting('app.current_tenant_id', true))
+       )
+       OR (
+           (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+           AND session_user = 'postgres'
+       );
 
 GRANT ALL ON public.tenants TO postgres, service_role;
 GRANT ALL ON public.products TO postgres, service_role;
@@ -521,6 +551,12 @@ GRANT SELECT ON public.tenant_memberships TO authenticated;
 REVOKE ALL ON public.tenants FROM anon;
 REVOKE ALL ON public.products FROM anon;
 REVOKE ALL ON public.tenant_memberships FROM anon;
+
+-- Direct base table permission hardening (Round 3J Remediation)
+REVOKE ALL ON workforce_staging.tenants FROM authenticated;
+REVOKE ALL ON workforce_staging.products FROM authenticated;
+GRANT ALL ON workforce_staging.tenants TO postgres, service_role;
+GRANT ALL ON workforce_staging.products TO postgres, service_role;
 
 -- ============================================================================
 -- 5. Updatable View Triggers (INSTEAD OF DML on Masked Views)
@@ -563,6 +599,10 @@ BEGIN
         RETURNING * INTO NEW;
         RETURN NEW;
     ELSIF TG_OP = 'UPDATE' THEN
+        IF NEW.id IS DISTINCT FROM OLD.id THEN
+            RAISE EXCEPTION 'Tenant ID is immutable' USING ERRCODE = '42501';
+        END IF;
+
         UPDATE workforce_staging.tenants SET
             slug = COALESCE(NEW.slug, slug),
             name = COALESCE(NEW.name, name),
@@ -644,8 +684,12 @@ BEGIN
         RETURNING * INTO NEW;
         RETURN NEW;
     ELSIF TG_OP = 'UPDATE' THEN
+        IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+            RAISE EXCEPTION 'Cross-tenant migration prohibited' USING ERRCODE = '42501';
+        END IF;
+
         UPDATE workforce_staging.products SET
-            tenant_id = COALESCE(NEW.tenant_id, tenant_id),
+            tenant_id = OLD.tenant_id,
             title = COALESCE(NEW.title, title),
             slug = COALESCE(NEW.slug, slug),
             price = COALESCE(NEW.price, price),

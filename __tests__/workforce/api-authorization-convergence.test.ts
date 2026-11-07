@@ -224,10 +224,11 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     expect(prod).toBeDefined();
     expect(prod.title).toBe(productTitle);
     expect(Number(prod.price)).toBe(750000);
-    // OPERATOR MUST NOT have access to fulfillment secrets
-    expect(prod.fulfillment_metadata).toBeNull();
-    expect(prod.single_page_config).toBeNull();
-    expect(prod.download_url).toBeNull();
+    // OPERATOR MUST NOT have access to fulfillment secrets (Round 3J Strict Allowlist Projection)
+    expect(prod.fulfillment_metadata).toBeUndefined();
+    expect(prod.single_page_config).toBeUndefined();
+    expect(prod.download_url).toBeUndefined();
+    expect(Object.keys(prod).sort()).toEqual(['created_at', 'id', 'name', 'price', 'sku', 'status', 'title'].sort());
   });
 
   test('1d. CS catalog view strictly masks fulfillment secrets and access URLs', async () => {
@@ -240,11 +241,12 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     const json = await res.json();
     expect(json.success).toBe(true);
 
-    // CS can read product name/price but secrets are strictly nullified
+    // CS can read product name/price but secrets are strictly omitted via allowlist
     expect(json.product.title).toBe(productTitle);
-    expect(json.product.fulfillment_metadata).toBeNull();
-    expect(json.product.single_page_config).toBeNull();
-    expect(json.product.download_url).toBeNull();
+    expect(json.product.fulfillment_metadata).toBeUndefined();
+    expect(json.product.single_page_config).toBeUndefined();
+    expect(json.product.download_url).toBeUndefined();
+    expect(Object.keys(json.product).sort()).toEqual(['created_at', 'id', 'name', 'price', 'sku', 'status', 'title'].sort());
   });
 
   // ===========================================================================
@@ -389,6 +391,29 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     );
   });
 
+  test('3c. Database failure/timeout during session auth strictly fails closed (503 DATABASE_LOOKUP_FAILED)', async () => {
+    const { getSupabaseAdmin } = await import('@/lib/supabaseClient');
+    const admin = getSupabaseAdmin() as any;
+    const originalFrom = admin.from.bind(admin);
+    // Spy on from to simulate database lookup failure
+    admin.from = jest.fn(() => {
+      throw new Error('Database connection timeout (Simulated ETIMEDOUT)');
+    });
+
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOwner}` },
+    });
+
+    const authCheck = await authorizeMerchantSession(req, slug);
+    expect(authCheck.authorized).toBe(false);
+    expect(authCheck.status).toBe(503);
+    expect(authCheck.error).toBe('DATABASE_LOOKUP_FAILED');
+
+    // Restore original method
+    admin.from = originalFrom;
+  });
+
   // ===========================================================================
   // SECTION 4: AUTHORITATIVE ROLE MODIFICATION OVERRIDE (SSOT)
   // ===========================================================================
@@ -502,6 +527,38 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
     expect(isAuth).toBe(false);
   });
 
+  test('6d. Internal machine auth rejects when targetTenantSlug is specified but tenant header is missing (Round 3J Blocker 2)', () => {
+    const internalSecret = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+    process.env.ADMIN_INTERNAL_SECRET = internalSecret;
+
+    // Secret is valid and operation is valid, but x-target-tenant is missing
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-machine-operation': 'CREATE_PRODUCT',
+      },
+    });
+
+    const isAuth = isInternalMachineAuthorized(req, slug, ['CREATE_PRODUCT']);
+    expect(isAuth).toBe(false);
+  });
+
+  test('6e. Internal machine auth rejects when allowedOperations is specified but operation header is missing (Round 3J Blocker 2)', () => {
+    const internalSecret = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+    process.env.ADMIN_INTERNAL_SECRET = internalSecret;
+
+    // Secret is valid and tenant is valid, but x-machine-operation is missing
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-target-tenant': slug,
+      },
+    });
+
+    const isAuth = isInternalMachineAuthorized(req, slug, ['CREATE_PRODUCT']);
+    expect(isAuth).toBe(false);
+  });
+
   // ===========================================================================
   // SECTION 7: DATABASE COLUMN CONFIDENTIALITY ON PUBLIC VIEWS
   // ===========================================================================
@@ -557,5 +614,59 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
 
     await pgClient.query('RESET ROLE');
     await pgClient.query('RESET request.jwt.claims');
+  });
+
+  test('7c. Cross-tenant update attempts on public.products view trigger SQLSTATE 42501 (Round 3J Blocker 3)', async () => {
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+    await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: USER_MERCHANT,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantId },
+      }),
+    ]);
+
+    let crossTenantUpdateErr: any = null;
+    try {
+      await pgClient.query('UPDATE public.products SET tenant_id = $1 WHERE id = $2', [
+        crypto.randomUUID(),
+        targetProductId,
+      ]);
+    } catch (err: any) {
+      crossTenantUpdateErr = err;
+    }
+
+    expect(crossTenantUpdateErr).not.toBeNull();
+    expect(crossTenantUpdateErr.code).toBe('42501');
+    expect(crossTenantUpdateErr.message).toContain('Cross-tenant migration prohibited');
+
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('RESET request.jwt.claims');
+  });
+
+  test('7d. Direct base table access on workforce_staging.tenants and workforce_staging.products is rejected (Round 3J Blocker 5)', async () => {
+    await pgClient.query('RESET ROLE');
+    await pgClient.query('SET ROLE authenticated');
+
+    let directTenantErr: any = null;
+    try {
+      await pgClient.query('SELECT * FROM workforce_staging.tenants LIMIT 1');
+    } catch (err: any) {
+      directTenantErr = err;
+    }
+    expect(directTenantErr).not.toBeNull();
+    expect(directTenantErr.code).toBe('42501');
+
+    let directProductErr: any = null;
+    try {
+      await pgClient.query('SELECT * FROM workforce_staging.products LIMIT 1');
+    } catch (err: any) {
+      directProductErr = err;
+    }
+    expect(directProductErr).not.toBeNull();
+    expect(directProductErr.code).toBe('42501');
+
+    await pgClient.query('RESET ROLE');
   });
 });

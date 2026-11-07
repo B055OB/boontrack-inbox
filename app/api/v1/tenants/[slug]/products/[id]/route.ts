@@ -65,22 +65,16 @@ export async function GET(
         }
       }
 
-      // Role-safe projection for CS and OPERATOR
+      // Role-safe strict allowlist projection for CS and OPERATOR (Round 3J Remediation)
       if (isLimitedRole && targetProduct) {
-        const {
-          fulfillment_metadata,
-          single_page_config,
-          download_url,
-          link_digital,
-          asset_reference,
-          license_status,
-          ...safeProd
-        } = targetProduct;
         targetProduct = {
-          ...safeProd,
-          download_url: null,
-          fulfillment_metadata: null,
-          single_page_config: null,
+          id: targetProduct.id,
+          title: targetProduct.title || targetProduct.name || '',
+          name: targetProduct.title || targetProduct.name || '',
+          price: Number(targetProduct.price) || 0,
+          status: targetProduct.status || 'ACTIVE',
+          sku: targetProduct.sku || '',
+          created_at: targetProduct.created_at || null,
         };
       }
 

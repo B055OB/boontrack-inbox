@@ -8,6 +8,9 @@ DROP VIEW IF EXISTS public.storefront_tenants;
 
 -- 2. Restore base public views WITH security_invoker = true and STRICT REVOKE from anon
 -- In accordance with CTO Mandate Round 3H: Rollback MUST NEVER restore anonymous access to full tables.
+DROP VIEW IF EXISTS public.tenants CASCADE;
+DROP VIEW IF EXISTS public.products CASCADE;
+
 CREATE OR REPLACE VIEW public.tenants 
 WITH (security_invoker = true) AS 
     SELECT * FROM workforce_staging.tenants;

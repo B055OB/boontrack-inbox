@@ -707,25 +707,17 @@ export async function GET(
           }
         }
 
-        // Apply role-safe masking across all catalog items for CS / OPERATOR
+        // Apply strict allowlist projection for CS / OPERATOR (Round 3J Remediation: Eliminating blacklist destructuring)
         if (isLimitedRole) {
-          products = products.map((p) => {
-            const {
-              fulfillment_metadata,
-              single_page_config,
-              download_url,
-              link_digital,
-              asset_reference,
-              license_status,
-              ...safeProd
-            } = p;
-            return {
-              ...safeProd,
-              download_url: null,
-              fulfillment_metadata: null,
-              single_page_config: null,
-            };
-          });
+          products = products.map((p: any) => ({
+            id: p.id,
+            title: p.title || p.name || '',
+            name: p.title || p.name || '',
+            price: Number(p.price) || 0,
+            status: p.status || 'ACTIVE',
+            sku: p.sku || '',
+            created_at: p.created_at || null,
+          }));
         }
 
         return NextResponse.json({

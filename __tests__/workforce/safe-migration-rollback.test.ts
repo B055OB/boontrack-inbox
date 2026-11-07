@@ -60,10 +60,13 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
   }, 30000);
 
   afterAll(async () => {
-    // ALWAYS ensure migration 010 UP is applied and verified at completion
+    // ALWAYS ensure migration 009 & 010 UP are applied and verified at completion
     if (client) {
       try {
         await client.query('RESET ROLE');
+        const up009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.sql');
+        const up009Sql = fs.readFileSync(up009Path, 'utf8');
+        await client.query(up009Sql);
         await client.query(upSql);
       } finally {
         await client.end();
@@ -144,6 +147,31 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     }
     expect(anonSfProdsErr).toBeDefined();
     expect(anonSfProdsErr.code).toBe('42501');
+
+    await client.query('RESET ROLE');
+  });
+
+  test('2b. In Rolled-Back State: Authenticated Users Cannot Perform Unrestricted DML and Fail Closed', async () => {
+    await client.query('SET ROLE authenticated');
+
+    // Unrestricted mutations on base views are strictly revoked in rolled-back state (Round 3J Blocker 6)
+    let authTenantsMutateErr: any = null;
+    try {
+      await client.query("UPDATE public.tenants SET name = 'Attacker Compromised' WHERE id = '00000000-0000-0000-0000-000000000000'");
+    } catch (err) {
+      authTenantsMutateErr = err;
+    }
+    expect(authTenantsMutateErr).toBeDefined();
+    expect(authTenantsMutateErr.code).toBe('42501');
+
+    let authProductsMutateErr: any = null;
+    try {
+      await client.query("INSERT INTO public.products (tenant_id, title, slug) VALUES ('00000000-0000-0000-0000-000000000000', 'Illegal', 'illegal')");
+    } catch (err) {
+      authProductsMutateErr = err;
+    }
+    expect(authProductsMutateErr).toBeDefined();
+    expect(authProductsMutateErr.code).toBe('42501');
 
     await client.query('RESET ROLE');
   });
@@ -245,9 +273,14 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     // Verify in 009 rolled-back state that GUC-only impersonation does NOT grant access
     await client.query('SET ROLE authenticated');
     await client.query("SET app.current_tenant_id = 'solusi-ads'");
-    const res = await client.query('SELECT * FROM workforce_staging.tenants');
-    // Fails closed: 0 rows returned even though app.current_tenant_id was set!
-    expect(res.rows.length).toBe(0);
+    let gucBlocked = false;
+    try {
+      const res = await client.query('SELECT * FROM workforce_staging.tenants');
+      if (res.rows.length === 0) gucBlocked = true;
+    } catch (err: any) {
+      if (err.code === '42501') gucBlocked = true;
+    }
+    expect(gucBlocked).toBe(true);
 
     // Reapply 009 UP and 010 UP cleanly
     await client.query('RESET ROLE');
