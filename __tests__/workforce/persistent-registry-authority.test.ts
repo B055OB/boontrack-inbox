@@ -449,6 +449,42 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
         client.release();
       }
     });
+
+    test('3d. verifyAuthoritativePaymentTenant fails closed on provider mismatch', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_prov_guard_${ts}`;
+      const internalOrderId = `ord_prov_guard_${ts}`;
+      const providerTxId = `tx_prov_guard_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        // Guard called with adversary provider 'dodo' for xendit order
+        await expect(
+          verifyAuthoritativePaymentTenant(
+            'dodo',
+            `evt_prov_${ts}`,
+            tenantId,
+            { payment_reference: providerTxId, tenant_id: tenantId },
+            client
+          )
+        ).rejects.toThrow('PROVIDER_OR_ACCOUNT_MISMATCH');
+      } finally {
+        client.release();
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -584,6 +620,124 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
             delta_passes: 3.5, // Invalid fractional passes
           })
         ).rejects.toThrow('INVALID_PASS_QUANTITY');
+      } finally {
+        client.release();
+      }
+    });
+
+    test('4e. Settlement request without currency throws MISSING_REQUIRED_CURRENCY (zero USD defaulting defense)', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_no_curr_${ts}`;
+      const internalOrderId = `ord_no_curr_${ts}`;
+      const providerTxId = `tx_no_curr_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        // verifyAndSettleAuthoritativePayment: empty currency rejected
+        await expect(
+          verifyAndSettleAuthoritativePayment(client, {
+            provider: 'xendit',
+            provider_transaction_id: providerTxId,
+            tenant_id: tenantId,
+            currency: '',
+            amount: 100000,
+          } as any)
+        ).rejects.toThrow('MISSING_REQUIRED_CURRENCY');
+
+        // verifyAndSettleAuthoritativePayment: missing currency rejected
+        await expect(
+          verifyAndSettleAuthoritativePayment(client, {
+            provider: 'xendit',
+            provider_transaction_id: providerTxId,
+            tenant_id: tenantId,
+            amount: 100000,
+          } as any)
+        ).rejects.toThrow('MISSING_REQUIRED_CURRENCY');
+
+        // processWebhookAndMutateLedgerAtomic: missing currency rejected without USD defaulting
+        const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+        await expect(
+          pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'xendit',
+            eventId: `evt_nocurr_${ts}`,
+            idempotencyKey: `idemp_nocurr_${ts}`,
+            eventType: 'payment.succeeded',
+            rawPayload: {
+              payment_reference: providerTxId,
+              amount: 100000,
+              tenant_id: tenantId,
+              // currency intentionally omitted
+            },
+            headers: {},
+            tenantId,
+            batchId: `BATCH_${internalOrderId}`,
+            deltaPasses: 10,
+          })
+        ).rejects.toThrow('MISSING_REQUIRED_CURRENCY');
+      } finally {
+        client.release();
+      }
+    });
+
+    test('4f. Non-positive expected_amount rejected (pre-checkout rejects and DB constraint chk_payment_registry_positive_amount prevents insert)', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_non_pos_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // App-level rejection for zero amount
+        await expect(
+          registerOrderPreCheckout(client, {
+            tenant_id: tenantId,
+            internal_order_id: `ord_zero_${ts}`,
+            provider: 'xendit',
+            currency: 'IDR',
+            expected_amount: 0,
+          })
+        ).rejects.toThrow('ORDER_AMOUNT_MUST_BE_POSITIVE');
+
+        // App-level rejection for negative amount
+        await expect(
+          registerOrderPreCheckout(client, {
+            tenant_id: tenantId,
+            internal_order_id: `ord_neg_${ts}`,
+            provider: 'xendit',
+            currency: 'IDR',
+            expected_amount: -50000,
+          })
+        ).rejects.toThrow('ORDER_AMOUNT_MUST_BE_POSITIVE');
+
+        // DB check constraint chk_payment_registry_positive_amount rejection on direct SQL insert
+        await expect(
+          client.query(
+            `INSERT INTO workforce_staging.workforce_payment_registry (
+              tenant_id, internal_order_id, provider, currency, expected_amount, status
+            ) VALUES ($1, $2, 'xendit', 'IDR', 0, 'INITIATED')`,
+            [tenantId, `ord_sql_zero_${ts}`]
+          )
+        ).rejects.toThrow(/chk_payment_registry_positive_amount|check constraint/i);
+
+        await expect(
+          client.query(
+            `INSERT INTO workforce_staging.workforce_payment_registry (
+              tenant_id, internal_order_id, provider, currency, expected_amount, status
+            ) VALUES ($1, $2, 'xendit', 'IDR', -9999, 'INITIATED')`,
+            [tenantId, `ord_sql_neg_${ts}`]
+          )
+        ).rejects.toThrow(/chk_payment_registry_positive_amount|check constraint/i);
       } finally {
         client.release();
       }
@@ -824,6 +978,74 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
         client.release();
       }
     });
+
+    test('5i. Direct SQL UPDATE on provider_transaction_id for order in BOUND status raises IMMUTABLE_FIELD_MODIFICATION', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_trg_tx_${ts}`;
+      const internalOrderId = `ord_trg_tx_${ts}`;
+      const providerTxId = `tx_bound_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        const order = await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        // Direct SQL update attempt on provider_transaction_id while in BOUND status
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry SET provider_transaction_id = 'tampered_tx_id' WHERE id = $1`,
+            [order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND');
+      } finally {
+        client.release();
+      }
+    });
+
+    test('5j. Direct SQL UPDATE on provider_account_id for order in BOUND status raises IMMUTABLE_FIELD_MODIFICATION', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_trg_acc_${ts}`;
+      const internalOrderId = `ord_trg_acc_${ts}`;
+      const providerTxId = `tx_bound_acc_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        const order = await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+          provider_account_id: 'acc_original_123',
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+          provider_account_id: 'acc_original_123',
+        });
+
+        // Direct SQL update attempt on provider_account_id while in BOUND status
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry SET provider_account_id = 'acc_tampered_999' WHERE id = $1`,
+            [order.id]
+          )
+        ).rejects.toThrow('IMMUTABLE_FIELD_MODIFICATION: provider_account_id cannot be modified once BOUND');
+      } finally {
+        client.release();
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -969,6 +1191,69 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
           [adversaryTenant]
         );
         expect(Number(countAdv.rows[0].count)).toBe(0);
+      } finally {
+        client.release();
+      }
+    });
+
+    test('7b. Rollback verification: currency/provider failure during webhook settlement rolls back cleanly (zero rows in tenant_pass_ledger, inbox status not PROCESSED)', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_rollback_${ts}`;
+      const internalOrderId = `ord_rollback_${ts}`;
+      const providerTxId = `tx_rollback_${ts}`;
+      const eventId = `evt_rollback_${ts}`;
+      const idempotencyKey = `idemp_rollback_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 300000,
+        });
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        const pgLedger = new PostgresTenantPassLedger(client, 'workforce_staging');
+
+        // Webhook attempt with mismatching currency (USD instead of IDR)
+        await expect(
+          pgLedger.processWebhookAndMutateLedgerAtomic({
+            provider: 'xendit',
+            eventId,
+            idempotencyKey,
+            eventType: 'payment.succeeded',
+            rawPayload: {
+              payment_reference: providerTxId,
+              currency: 'USD', // Mismatch!
+              amount: 300000,
+              tenant_id: tenantId,
+            },
+            headers: {},
+            tenantId,
+            batchId: `BATCH_${internalOrderId}`,
+            deltaPasses: 10,
+          })
+        ).rejects.toThrow('AMOUNT_OR_CURRENCY_MISMATCH');
+
+        // Verify clean rollback: ZERO rows in tenant_pass_ledger
+        const ledgerRes = await client.query(
+          `SELECT COUNT(*) as count FROM workforce_staging.tenant_pass_ledger WHERE tenant_id = $1`,
+          [tenantId]
+        );
+        expect(Number(ledgerRes.rows[0].count)).toBe(0);
+
+        // Verify clean rollback: inbox row was rolled back or NOT PROCESSED
+        const inboxRes = await client.query(
+          `SELECT status FROM workforce_staging.workforce_webhook_inbox WHERE event_id = $1`,
+          [eventId]
+        );
+        expect(inboxRes.rows.length === 0 || inboxRes.rows[0].status !== 'PROCESSED').toBe(true);
       } finally {
         client.release();
       }

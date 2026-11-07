@@ -101,8 +101,8 @@ export async function registerOrderPreCheckout(
     throw new SecurityInvariantViolation('CURRENCY_REQUIRED: Missing transaction currency');
   }
   const amountBigInt = BigInt(expected_amount);
-  if (amountBigInt < BigInt(0)) {
-    throw new SecurityInvariantViolation('INVALID_AMOUNT: Expected amount cannot be negative');
+  if (amountBigInt <= BigInt(0)) {
+    throw new SecurityInvariantViolation('ORDER_AMOUNT_MUST_BE_POSITIVE: Expected amount must be greater than zero');
   }
 
   const query = `
@@ -280,8 +280,11 @@ export async function verifyAndSettleAuthoritativePayment(
       }
     }
 
-    // Rule 6: Currency mismatch rejection
-    if (webhookPayload.currency && order.currency.toUpperCase() !== webhookPayload.currency.trim().toUpperCase()) {
+    // Rule 6: Currency verification & mismatch rejection (strict explicit currency requirement)
+    if (!webhookPayload.currency || typeof webhookPayload.currency !== 'string' || !webhookPayload.currency.trim()) {
+      throw new SecurityInvariantViolation('MISSING_REQUIRED_CURRENCY: Webhook payload must specify currency');
+    }
+    if (order.currency.toUpperCase() !== webhookPayload.currency.trim().toUpperCase()) {
       throw new SecurityInvariantViolation(
         `AMOUNT_OR_CURRENCY_MISMATCH: Order currency ${order.currency} does not match webhook currency ${webhookPayload.currency}`
       );

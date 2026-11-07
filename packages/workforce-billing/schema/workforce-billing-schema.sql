@@ -337,7 +337,8 @@ CREATE TABLE IF NOT EXISTS workforce_payment_registry (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_payment_registry_tenant_order UNIQUE (tenant_id, internal_order_id),
-    CONSTRAINT chk_payment_registry_status CHECK (status IN ('INITIATED', 'BOUND', 'SETTLED', 'FAILED', 'EXPIRED'))
+    CONSTRAINT chk_payment_registry_status CHECK (status IN ('INITIATED', 'BOUND', 'SETTLED', 'FAILED', 'EXPIRED')),
+    CONSTRAINT chk_payment_registry_positive_amount CHECK (expected_amount > 0)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_registry_provider_tx 
@@ -368,6 +369,19 @@ BEGIN
     END IF;
     IF OLD.expected_amount IS DISTINCT FROM NEW.expected_amount THEN
         RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: Column expected_amount cannot be modified once created';
+    END IF;
+
+    -- Enforce Post-Bound Immutability for provider_transaction_id & provider_account_id
+    IF NEW.provider_transaction_id IS DISTINCT FROM OLD.provider_transaction_id THEN
+        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
+            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND';
+        END IF;
+    END IF;
+
+    IF NEW.provider_account_id IS DISTINCT FROM OLD.provider_account_id THEN
+        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
+            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_account_id cannot be modified once BOUND';
+        END IF;
     END IF;
 
     IF OLD.status IS DISTINCT FROM NEW.status THEN

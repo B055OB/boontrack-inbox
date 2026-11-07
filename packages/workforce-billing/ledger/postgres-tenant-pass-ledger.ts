@@ -64,6 +64,10 @@ export function extractPayloadTenant(rawPayload: any): string | null {
 }
 
 /**
+ * Tenant-binding guard pre-check.
+ * NOTE: This function is a fail-closed preliminary verification guard,
+ * NOT a replacement for the authoritative atomic settlement executed via verifyAndSettleAuthoritativePayment().
+ *
  * Verifies authenticity of tenant ownership for payment webhook (Fail-Closed).
  * Validates that transaction reference in payload is registered and bound to authoritative tenantId
  * directly from persistent PostgreSQL registry (workforce_staging.workforce_payment_registry).
@@ -111,7 +115,7 @@ export async function verifyAuthoritativePaymentTenant(
 
   if (client) {
     const res = await client.query(
-      `SELECT tenant_id, status FROM ${targetSchema}.workforce_payment_registry WHERE provider_transaction_id = $1`,
+      `SELECT tenant_id, status, provider FROM ${targetSchema}.workforce_payment_registry WHERE provider_transaction_id = $1`,
       [paymentRef.trim()]
     );
     if (res.rows.length === 0) {
@@ -130,6 +134,15 @@ export async function verifyAuthoritativePaymentTenant(
         `INVALID_PAYMENT_STATUS_NOT_BOUND: Order status is ${row.status}, must be in BOUND status to settle`
       );
     }
+
+    // Provider authenticity verification
+    const normalizeProvider = (p: string) => p.toLowerCase().replace(/_payments$/, '');
+    if (normalizeProvider(row.provider) !== normalizeProvider(provider)) {
+      throw new SecurityInvariantViolation(
+        `PROVIDER_OR_ACCOUNT_MISMATCH: Order provider ${row.provider} does not match parameter provider ${provider}`
+      );
+    }
+
     return true;
   }
 
@@ -546,6 +559,13 @@ export class PostgresTenantPassLedger {
         );
       }
 
+      // Mandatory explicit currency verification (fail-closed, zero USD defaulting)
+      if (!rawPayload?.currency || typeof rawPayload.currency !== 'string' || !rawPayload.currency.trim()) {
+        throw new SecurityInvariantViolation(
+          'MISSING_REQUIRED_CURRENCY: Missing transaction currency in webhook payload'
+        );
+      }
+
       // 4. Route Settlement Exclusively through verifyAndSettleAuthoritativePayment (Single Path)
       const settlement = await verifyAndSettleAuthoritativePayment(
         this.client,
@@ -553,7 +573,7 @@ export class PostgresTenantPassLedger {
           provider,
           provider_transaction_id: paymentRef,
           tenant_id: tenantId,
-          currency: rawPayload?.currency || 'USD',
+          currency: rawPayload.currency.trim(),
           amount: rawPayload?.amount !== undefined ? rawPayload.amount : 0,
           provider_account_id: rawPayload?.provider_account_id || rawPayload?.providerAccountId,
           delta_passes: deltaPasses,
