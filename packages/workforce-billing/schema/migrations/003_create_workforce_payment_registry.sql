@@ -38,3 +38,4 @@ ON workforce_staging.workforce_payment_registry(tenant_id);
 
 CREATE INDEX IF NOT EXISTS idx_payment_registry_status 
 ON workforce_staging.workforce_payment_registry(status);
+

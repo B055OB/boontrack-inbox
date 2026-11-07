@@ -51,14 +51,18 @@ export interface AuthoritativePaymentWebhookPayload {
   provider_transaction_id?: string | null;
   payment_reference?: string | null;
   tenant_id: string;
-  currency: string;
-  amount: number | bigint;
+  currency?: string;
+  amount: number | bigint | string;
   provider_account_id?: string;
   batch_id?: string;
   delta_passes?: number;
   reason?: 'PURCHASE' | 'ALLOCATION' | 'REVERSAL' | 'RENEWAL';
   idempotency_key?: string;
   metadata?: Record<string, any>;
+}
+
+export interface SettlePaymentOptions {
+  inTransaction?: boolean;
 }
 
 export interface AuthoritativeSettlementResult {
@@ -188,7 +192,8 @@ export async function bindProviderTransaction(
 export async function verifyAndSettleAuthoritativePayment(
   client: Client | PoolClient,
   webhookPayload: AuthoritativePaymentWebhookPayload,
-  targetSchema: string = 'workforce_staging'
+  targetSchema: string = 'workforce_staging',
+  options?: SettlePaymentOptions
 ): Promise<AuthoritativeSettlementResult> {
   const paymentRef = (webhookPayload.provider_transaction_id || webhookPayload.payment_reference || '').trim();
 
@@ -201,7 +206,20 @@ export async function verifyAndSettleAuthoritativePayment(
     throw new SecurityInvariantViolation('TENANT_ID_REQUIRED: Missing authoritative tenant identifier');
   }
 
-  await client.query('BEGIN');
+  // Rule 1b: Explicit positive integer passes validation
+  const deltaPasses = webhookPayload.delta_passes !== undefined ? webhookPayload.delta_passes : 10;
+  if (!Number.isInteger(deltaPasses) || deltaPasses <= 0) {
+    throw new SecurityInvariantViolation(
+      `INVALID_PASS_QUANTITY: delta_passes must be a positive integer greater than 0, received ${deltaPasses}`
+    );
+  }
+
+  const manageTx = !options?.inTransaction;
+
+  if (manageTx) {
+    await client.query('BEGIN');
+  }
+
   try {
     // 1. Transactional Row-Level Lock on order row in persistent registry
     const orderRes = await client.query(
@@ -215,7 +233,7 @@ export async function verifyAndSettleAuthoritativePayment(
     // Rule 2: Unknown payment reference rejection (fail-closed)
     if (orderRes.rows.length === 0) {
       throw new SecurityInvariantViolation(
-        `UNKNOWN_PAYMENT_REFERENCE: Payment reference ${paymentRef} is not registered in authoritative persistent registry`
+        `UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Payment reference ${paymentRef} is not registered in authoritative persistent registry`
       );
     }
 
@@ -224,14 +242,21 @@ export async function verifyAndSettleAuthoritativePayment(
     // Rule 3: Already settled check (duplicate webhook idempotency)
     if (order.status === 'SETTLED') {
       throw new SecurityInvariantViolation(
-        `DUPLICATE_WEBHOOK_IDEMPOTENCY: Payment transaction ${paymentRef} has already been settled`
+        `IDEMPOTENCY_REPLAY_SETTLED: DUPLICATE_WEBHOOK_IDEMPOTENCY - Payment transaction ${paymentRef} has already been settled`
+      );
+    }
+
+    // Rule 3b: Explicit BOUND status requirement (fail-closed on INITIATED, FAILED, EXPIRED, etc.)
+    if (order.status !== 'BOUND') {
+      throw new SecurityInvariantViolation(
+        `INVALID_PAYMENT_STATUS_NOT_BOUND: Order status is ${order.status}, must be in BOUND status to settle`
       );
     }
 
     // Rule 4: Cross-tenant collision rejection
     if (order.tenant_id !== webhookPayload.tenant_id.trim()) {
       throw new SecurityInvariantViolation(
-        `CROSS_TENANT_COLLISION: Payment reference ${paymentRef} belongs to tenant ${order.tenant_id}, attempted claim by tenant ${webhookPayload.tenant_id}`
+        `UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Payment reference ${paymentRef} belongs to tenant ${order.tenant_id}, attempted claim by tenant ${webhookPayload.tenant_id}`
       );
     }
 
@@ -242,18 +267,21 @@ export async function verifyAndSettleAuthoritativePayment(
         `PROVIDER_OR_ACCOUNT_MISMATCH: Order provider ${order.provider} does not match webhook provider ${webhookPayload.provider}`
       );
     }
-    if (
-      order.provider_account_id &&
-      webhookPayload.provider_account_id &&
-      order.provider_account_id !== webhookPayload.provider_account_id.trim()
-    ) {
-      throw new SecurityInvariantViolation(
-        `PROVIDER_OR_ACCOUNT_MISMATCH: Order provider account ${order.provider_account_id} does not match webhook provider account ${webhookPayload.provider_account_id}`
-      );
+    if (order.provider_account_id && order.provider_account_id.trim() !== '') {
+      if (!webhookPayload.provider_account_id || webhookPayload.provider_account_id.trim() === '') {
+        throw new SecurityInvariantViolation(
+          `MISSING_REQUIRED_PROVIDER_ACCOUNT: Provider account ID is required for registered order ${order.internal_order_id} but missing from webhook`
+        );
+      }
+      if (order.provider_account_id.trim() !== webhookPayload.provider_account_id.trim()) {
+        throw new SecurityInvariantViolation(
+          `PROVIDER_OR_ACCOUNT_MISMATCH: Order provider account ${order.provider_account_id} does not match webhook provider account ${webhookPayload.provider_account_id}`
+        );
+      }
     }
 
     // Rule 6: Currency mismatch rejection
-    if (order.currency.toUpperCase() !== webhookPayload.currency.trim().toUpperCase()) {
+    if (webhookPayload.currency && order.currency.toUpperCase() !== webhookPayload.currency.trim().toUpperCase()) {
       throw new SecurityInvariantViolation(
         `AMOUNT_OR_CURRENCY_MISMATCH: Order currency ${order.currency} does not match webhook currency ${webhookPayload.currency}`
       );
@@ -283,7 +311,6 @@ export async function verifyAndSettleAuthoritativePayment(
       [order.tenant_id]
     );
 
-    const deltaPasses = webhookPayload.delta_passes !== undefined ? webhookPayload.delta_passes : 10;
     const currentBalance = lockBal.rows.length > 0 ? Number(lockBal.rows[0].balance_after) : 0;
     const newBalance = currentBalance + deltaPasses;
     const entryId = `ple_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -319,7 +346,9 @@ export async function verifyAndSettleAuthoritativePayment(
       [order.id]
     );
 
-    await client.query('COMMIT');
+    if (manageTx) {
+      await client.query('COMMIT');
+    }
 
     return {
       settled: true,
@@ -333,7 +362,9 @@ export async function verifyAndSettleAuthoritativePayment(
       settledAt: settleRes.rows[0].authoritative_verified_at.toISOString(),
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (manageTx) {
+      await client.query('ROLLBACK');
+    }
     throw err;
   }
 }

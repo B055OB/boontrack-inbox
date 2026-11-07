@@ -10,6 +10,7 @@
  */
 
 import { Client, PoolClient } from 'pg';
+import { verifyAndSettleAuthoritativePayment } from '../registry/persistent-payment-registry';
 
 export class SecurityInvariantViolation extends Error {
   constructor(message: string) {
@@ -102,33 +103,40 @@ export async function verifyAuthoritativePaymentTenant(
 
   // 3. Payment / Transaction reference resolution via PostgreSQL Persistent Registry
   const paymentRef = extractPaymentReference(rawPayload);
-  if (paymentRef) {
-    if (client) {
-      const res = await client.query(
-        `SELECT tenant_id, status FROM ${targetSchema}.workforce_payment_registry WHERE provider_transaction_id = $1`,
-        [paymentRef]
-      );
-      if (res.rows.length === 0) {
-        throw new SecurityInvariantViolation(
-          "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Transaction reference not registered in persistent registry"
-        );
-      }
-      const boundTenant = res.rows[0].tenant_id;
-      if (boundTenant !== tenantId) {
-        throw new SecurityInvariantViolation(
-          "UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Transaction reference does not match authoritative tenant mapping"
-        );
-      }
-      return true;
-    }
-
-    // Fail-closed: Cannot verify transaction reference without persistent client connection
+  if (!paymentRef || paymentRef.trim() === '') {
     throw new SecurityInvariantViolation(
-      "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Transaction reference not registered in persistent registry"
+      "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Missing payment transaction reference for settlement"
     );
   }
 
-  return true;
+  if (client) {
+    const res = await client.query(
+      `SELECT tenant_id, status FROM ${targetSchema}.workforce_payment_registry WHERE provider_transaction_id = $1`,
+      [paymentRef.trim()]
+    );
+    if (res.rows.length === 0) {
+      throw new SecurityInvariantViolation(
+        "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Transaction reference not registered in persistent registry"
+      );
+    }
+    const row = res.rows[0];
+    if (row.tenant_id !== tenantId) {
+      throw new SecurityInvariantViolation(
+        "UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Transaction reference does not match authoritative tenant mapping"
+      );
+    }
+    if (row.status !== 'BOUND') {
+      throw new SecurityInvariantViolation(
+        `INVALID_PAYMENT_STATUS_NOT_BOUND: Order status is ${row.status}, must be in BOUND status to settle`
+      );
+    }
+    return true;
+  }
+
+  // Fail-closed: Cannot verify transaction reference without persistent client connection
+  throw new SecurityInvariantViolation(
+    "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Cannot verify transaction reference without persistent client connection"
+  );
 }
 
 export interface PostgresLedgerMutationParams {
@@ -412,11 +420,8 @@ export class PostgresTenantPassLedger {
 
     // Fail-closed initial tenant validation
     if (!tenantId || tenantId.trim() === '') {
-      throw new SecurityInvariantViolation("TENANT_ID_REQUIRED");
+      throw new SecurityInvariantViolation("TENANT_ID_REQUIRED: Missing authoritative tenant identifier");
     }
-
-    // Fail-closed authoritative payment-to-tenant verification before acquiring lock
-    await verifyAuthoritativePaymentTenant(provider, eventId, tenantId, rawPayload, this.client, this.targetSchema);
 
     await this.client.query('BEGIN');
     try {
@@ -512,53 +517,56 @@ export class PostgresTenantPassLedger {
         inboxId = insertInboxRes.rows[0].id;
       }
 
-      // 3. Mutate Ledger with Idempotency & Row Locking
-      const existingLedger = await this.client.query(
-        `SELECT entry_id, tenant_id, balance_after FROM ${this.targetSchema}.tenant_pass_ledger WHERE idempotency_key = $1`,
-        [idempotencyKey]
-      );
-
-      let entryId: string;
-      let newBalance: number;
-
-      if (existingLedger.rows.length > 0) {
-        if (existingLedger.rows[0].tenant_id !== tenantId) {
-          throw new SecurityInvariantViolation(
-            `CROSS_TENANT_IDEMPOTENCY_MISMATCH: Ledger idempotency key ${idempotencyKey} belongs to tenant ${existingLedger.rows[0].tenant_id}, attempted access by tenant ${tenantId}`
-          );
-        }
-        entryId = existingLedger.rows[0].entry_id;
-        newBalance = Number(existingLedger.rows[0].balance_after);
-      } else {
-        const lockRes = await this.client.query(
-          `SELECT balance_after
-           FROM ${this.targetSchema}.tenant_pass_ledger
-           WHERE tenant_id = $1
-           ORDER BY created_at DESC, balance_after DESC
-           LIMIT 1
-           FOR UPDATE`,
-          [tenantId]
-        );
-
-        const currentBalance = lockRes.rows.length > 0 ? Number(lockRes.rows[0].balance_after) : 0;
-        newBalance = currentBalance + deltaPasses;
-
-        if (newBalance < 0) {
-          throw new Error(
-            `ERR_NEGATIVE_BALANCE: Requested delta ${deltaPasses} would reduce balance below zero (Current: ${currentBalance}, Result: ${newBalance})`
-          );
-        }
-
-        entryId = `ple_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        await this.client.query(
-          `INSERT INTO ${this.targetSchema}.tenant_pass_ledger (
-            entry_id, tenant_id, batch_id, delta_passes, balance_after, reason, idempotency_key, metadata, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp())`,
-          [entryId, tenantId, batchId, deltaPasses, newBalance, reason, idempotencyKey, JSON.stringify(metadata)]
+      // 3. Fail-closed Payment Reference Validation
+      const paymentRef = extractPaymentReference(rawPayload);
+      if (!paymentRef || paymentRef.trim() === '') {
+        throw new SecurityInvariantViolation(
+          "UNVERIFIED_PAYMENT_TENANT_MAPPING: UNKNOWN_PAYMENT_REFERENCE - Missing payment transaction reference for settlement"
         );
       }
 
-      // 4. Update Webhook Inbox to PROCESSED
+      // Explicit unverified flag defense
+      if (
+        rawPayload?.unverified === true ||
+        rawPayload?.verified === false ||
+        rawPayload?.is_unverified === true ||
+        rawPayload?.unregistered === true ||
+        rawPayload?.status === 'UNVERIFIED'
+      ) {
+        throw new SecurityInvariantViolation(
+          "UNVERIFIED_PAYMENT_TENANT_MAPPING: Transaction reference does not match authoritative tenant mapping"
+        );
+      }
+
+      // Tenant reference check in payload (if specified, must match parameter tenantId)
+      const payloadTenant = extractPayloadTenant(rawPayload);
+      if (payloadTenant && payloadTenant !== tenantId) {
+        throw new SecurityInvariantViolation(
+          "UNVERIFIED_PAYMENT_TENANT_MAPPING: CROSS_TENANT_COLLISION - Transaction reference does not match authoritative tenant mapping"
+        );
+      }
+
+      // 4. Route Settlement Exclusively through verifyAndSettleAuthoritativePayment (Single Path)
+      const settlement = await verifyAndSettleAuthoritativePayment(
+        this.client,
+        {
+          provider,
+          provider_transaction_id: paymentRef,
+          tenant_id: tenantId,
+          currency: rawPayload?.currency || 'USD',
+          amount: rawPayload?.amount !== undefined ? rawPayload.amount : 0,
+          provider_account_id: rawPayload?.provider_account_id || rawPayload?.providerAccountId,
+          delta_passes: deltaPasses,
+          batch_id: batchId,
+          idempotency_key: idempotencyKey,
+          reason,
+          metadata,
+        },
+        this.targetSchema,
+        { inTransaction: true }
+      );
+
+      // 5. Update Webhook Inbox to PROCESSED
       await this.client.query(
         `UPDATE ${this.targetSchema}.workforce_webhook_inbox
          SET status = 'PROCESSED', processed_at = NOW()
@@ -571,8 +579,8 @@ export class PostgresTenantPassLedger {
       return {
         isDuplicate: false,
         inboxId,
-        entryId,
-        balanceAfter: newBalance,
+        entryId: settlement.ledgerEntryId,
+        balanceAfter: settlement.balanceAfter,
         status: 'PROCESSED',
       };
     } catch (error) {
