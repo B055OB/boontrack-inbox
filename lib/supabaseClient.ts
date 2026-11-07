@@ -4,8 +4,9 @@ import { isValidUuid, safeUuidOrNull } from './uuid-guard';
 export { isValidUuid, safeUuidOrNull };
 
 // ─── Fail-closed validation (module load time) ───────────────────────────────
-let _url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-let _anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Prioritize WORKFORCE_SUPABASE_* to ensure isolated staging targeting
+let _url = process.env.WORKFORCE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+let _anonKey = process.env.WORKFORCE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!_url || !_anonKey) {
   const isNonProduction =
@@ -45,7 +46,7 @@ export const SUPABASE_PUBLISHABLE_KEY: string =
  */
 export const SUPABASE_SERVICE_ROLE_KEY: string =
   typeof window === 'undefined'
-    ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
+    ? (process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '')
     : '';
 
 // Direct export of browser-safe Supabase client (lazy initialization prevents eager WebSocket connections at module load)
@@ -130,16 +131,22 @@ export const getSupabaseAdmin = (): SupabaseClient => {
     throw new Error('[Security Guard] getSupabaseAdmin() cannot be called in client-side browser context.');
   }
 
-  // Read ONLY from process.env — no hardcoded fallback, no alias chain.
-  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
+  // Read from WORKFORCE_SUPABASE_* (staging priority) or SUPABASE_*
+  const serviceKey = (
+    process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ''
+  ).trim();
 
   if (!serviceKey) {
     throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
   }
 
+  const targetUrl = process.env.WORKFORCE_SUPABASE_URL || supabaseUrl;
+
   if (!supabaseAdminInstance || serviceKey !== lastConfiguredAdminKey) {
     lastConfiguredAdminKey = serviceKey;
-    supabaseAdminInstance = createClient(supabaseUrl, serviceKey, {
+    supabaseAdminInstance = createClient(targetUrl, serviceKey, {
       auth: { persistSession: false },
       global: {
         fetch: createGuardedFetch(),
