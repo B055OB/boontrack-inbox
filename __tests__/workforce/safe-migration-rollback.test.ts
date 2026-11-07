@@ -244,14 +244,18 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [testTenantSlug]);
   });
 
-  test('2e. In Rolled-Back State: Credit Pool Mutation Separation (MERCHANT Rejected, OWNER Permitted) (Round 3L)', async () => {
+  test('2e. In Rolled-Back State: Full Role Matrix on Credit Pool Mutations (OWNER Permitted, MERCHANT/CS/OPERATOR Denied) (Round 3M)', async () => {
     await client.query('RESET ROLE');
     await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_agency_id');
 
     const testTenantSlug = `rb-pool-${Date.now()}`;
     const ownerUserId = '99999999-9999-4999-9999-999999999991';
     const merchantUserId = '99999999-9999-4999-9999-999999999992';
+    const operatorUserId = '99999999-9999-4999-9999-999999999993';
+    const csUserId = '99999999-9999-4999-9999-999999999994';
     const branchPoolId = `pool-rb-${Date.now()}`;
+    const ownerBranchPoolId = `pool-rb-owner-${Date.now()}`;
 
     // 1. Seed tenant baseline, memberships, and credit pool
     await client.query(`
@@ -262,55 +266,72 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query(`
       INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
       VALUES 
-        ($1, $3, $3, 'OWNER', TRUE),
-        ($2, $3, $3, 'MERCHANT', TRUE)
-    `, [ownerUserId, merchantUserId, testTenantSlug]);
+        ($1, $5, $5, 'OWNER', TRUE),
+        ($2, $5, $5, 'MERCHANT', TRUE),
+        ($3, $5, $5, 'OPERATOR', TRUE),
+        ($4, $5, $5, 'CS', TRUE)
+    `, [ownerUserId, merchantUserId, operatorUserId, csUserId, testTenantSlug]);
 
     await client.query(`
       INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
       VALUES ($1, $2, 500, 5, 'IDR')
     `, [branchPoolId, testTenantSlug]);
 
-    // 2. MERCHANT Context
-    await client.query('SET ROLE authenticated');
-    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
-      JSON.stringify({
-        sub: merchantUserId,
-        role: 'authenticated',
-        app_metadata: { tenant_id: testTenantSlug },
-      }),
-    ]);
-    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [testTenantSlug]);
+    // Helper to test non-owner role denial across all mutations
+    const assertNonOwnerDenial = async (userId: string, roleName: string) => {
+      await client.query('RESET ROLE');
+      await client.query('SET ROLE authenticated');
+      await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+        JSON.stringify({
+          sub: userId,
+          role: 'authenticated',
+          app_metadata: { tenant_id: testTenantSlug },
+        }),
+      ]);
+      await client.query("SELECT set_config('app.current_agency_id', $1, false)", [testTenantSlug]);
 
-    // A. MERCHANT can SELECT credit pools
-    const readPool = await client.query(
-      'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
-      [branchPoolId]
-    );
-    expect(readPool.rows.length).toBe(1);
-    expect(readPool.rows[0].available_credits).toBe(500);
+      // A. Can SELECT credit pools
+      const readPool = await client.query(
+        'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+        [branchPoolId]
+      );
+      expect(readPool.rows.length).toBe(1);
+      expect(readPool.rows[0].available_credits).toBe(500);
 
-    // B. MERCHANT CANNOT UPDATE credit pools (affects 0 rows under RLS)
-    const updateRes = await client.query(
-      'UPDATE workforce_staging.branch_credit_pools SET available_credits = 99999 WHERE branch_id = $1',
-      [branchPoolId]
-    );
-    expect(updateRes.rowCount).toBe(0);
+      // B. CANNOT UPDATE credit pools (affects 0 rows under RLS)
+      const updateRes = await client.query(
+        'UPDATE workforce_staging.branch_credit_pools SET available_credits = 99999 WHERE branch_id = $1',
+        [branchPoolId]
+      );
+      expect(updateRes.rowCount).toBe(0);
 
-    // C. MERCHANT CANNOT INSERT into credit pools (fails closed with 42501)
-    let merchantInsertErr: any = null;
-    try {
-      await client.query(`
-        INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits)
-        VALUES ('illegal_merchant_pool', $1, 1000)
-      `, [testTenantSlug]);
-    } catch (err: any) {
-      merchantInsertErr = err;
-    }
-    expect(merchantInsertErr).not.toBeNull();
-    expect(merchantInsertErr.code).toBe('42501');
+      // C. CANNOT DELETE credit pools (affects 0 rows under RLS)
+      const deleteRes = await client.query(
+        'DELETE FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+        [branchPoolId]
+      );
+      expect(deleteRes.rowCount).toBe(0);
 
-    // 3. OWNER Context
+      // D. CANNOT INSERT credit pools (fails closed with 42501)
+      let insertErr: any = null;
+      try {
+        await client.query(`
+          INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits)
+          VALUES ($1, $2, 1000)
+        `, [`illegal_${roleName.toLowerCase()}_pool`, testTenantSlug]);
+      } catch (err: any) {
+        insertErr = err;
+      }
+      expect(insertErr).not.toBeNull();
+      expect(insertErr.code).toBe('42501');
+    };
+
+    // 2. Test Non-Owner Roles (MERCHANT, OPERATOR, CS)
+    await assertNonOwnerDenial(merchantUserId, 'MERCHANT');
+    await assertNonOwnerDenial(operatorUserId, 'OPERATOR');
+    await assertNonOwnerDenial(csUserId, 'CS');
+
+    // 3. Test OWNER Role
     await client.query('RESET ROLE');
     await client.query('SET ROLE authenticated');
     await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
@@ -322,27 +343,170 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     ]);
     await client.query("SELECT set_config('app.current_agency_id', $1, false)", [testTenantSlug]);
 
-    // OWNER can mutate credit pools
+    // A. OWNER can SELECT
+    const ownerRead = await client.query(
+      'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [branchPoolId]
+    );
+    expect(ownerRead.rows.length).toBe(1);
+    expect(ownerRead.rows[0].available_credits).toBe(500);
+
+    // B. OWNER can INSERT
+    await client.query(`
+      INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
+      VALUES ($1, $2, 1000, 10, 'IDR')
+    `, [ownerBranchPoolId, testTenantSlug]);
+
+    const ownerVerifyInsert = await client.query(
+      'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [ownerBranchPoolId]
+    );
+    expect(ownerVerifyInsert.rows.length).toBe(1);
+    expect(ownerVerifyInsert.rows[0].available_credits).toBe(1000);
+
+    // C. OWNER can UPDATE
     const ownerUpdateRes = await client.query(
       'UPDATE workforce_staging.branch_credit_pools SET available_credits = 750 WHERE branch_id = $1',
       [branchPoolId]
     );
     expect(ownerUpdateRes.rowCount).toBe(1);
 
-    // Verify credits modified to 750
-    const verifyOwnerRead = await client.query(
+    const verifyOwnerUpdate = await client.query(
       'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
       [branchPoolId]
     );
-    expect(verifyOwnerRead.rows[0].available_credits).toBe(750);
+    expect(verifyOwnerUpdate.rows[0].available_credits).toBe(750);
+
+    // D. OWNER can DELETE
+    const ownerDeleteRes = await client.query(
+      'DELETE FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [ownerBranchPoolId]
+    );
+    expect(ownerDeleteRes.rowCount).toBe(1);
+
+    const verifyOwnerDelete = await client.query(
+      'SELECT 1 FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [ownerBranchPoolId]
+    );
+    expect(verifyOwnerDelete.rows.length).toBe(0);
 
     // Clean up
     await client.query('RESET ROLE');
     await client.query('RESET request.jwt.claims');
     await client.query('RESET app.current_agency_id');
-    await client.query('DELETE FROM workforce_staging.branch_credit_pools WHERE branch_id = $1', [branchPoolId]);
+    await client.query('DELETE FROM workforce_staging.branch_credit_pools WHERE branch_id IN ($1, $2)', [branchPoolId, ownerBranchPoolId]);
     await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [testTenantSlug]);
     await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [testTenantSlug]);
+  });
+
+  test('2f. In Rolled-Back State: Legitimate Tenant Read Access Restored & Cross-Tenant Read Boundary Enforced (Round 3M)', async () => {
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_tenant_id');
+    await client.query('RESET app.current_agency_id');
+
+    const tenantASlug = `rb-read-a-${Date.now()}`;
+    const tenantBSlug = `rb-read-b-${Date.now()}`;
+    const userAId = '77777777-7777-4777-8777-777777777771';
+    const prodAId = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+    const prodBId = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
+
+    // 1. Seed two distinct tenants
+    const tenantAInsert = await client.query(`
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, is_active, phone)
+      VALUES ($1, 'Tenant Alpha (Legitimate)', 'service', 'PRO_SCALE', 'active', TRUE, '+62811111111')
+      RETURNING id
+    `, [tenantASlug]);
+    const tenantAId = tenantAInsert.rows[0].id;
+
+    const tenantBInsert = await client.query(`
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, is_active, phone)
+      VALUES ($1, 'Tenant Beta (Isolated)', 'service', 'PRO_SCALE', 'active', TRUE, '+62822222222')
+      RETURNING id
+    `, [tenantBSlug]);
+    const tenantBId = tenantBInsert.rows[0].id;
+
+    // 2. Seed membership: User A belongs ONLY to Tenant A (role = 'MERCHANT', is_active = TRUE)
+    await client.query(`
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES ($1, $2, $3, 'MERCHANT', TRUE)
+    `, [userAId, tenantASlug, tenantASlug]);
+
+    // 3. Seed products for both tenants
+    await client.query(`
+      INSERT INTO workforce_staging.products (id, tenant_id, title, slug, price, stock, is_active, status)
+      VALUES 
+        ($1, $2, 'Alpha Product', 'alpha-prod', 100000, 10, TRUE, 'ACTIVE'),
+        ($3, $4, 'Beta Product', 'beta-prod', 200000, 20, TRUE, 'ACTIVE')
+    `, [prodAId, tenantASlug, prodBId, tenantBSlug]);
+
+    // 4. Authenticate as User A
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: userAId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantASlug },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantASlug]);
+
+    // A. Positive Read: User A can read their own tenant via public.tenants view in rolled-back state
+    const readOwnTenant = await client.query('SELECT id, slug, name, phone FROM public.tenants WHERE slug = $1', [tenantASlug]);
+    expect(readOwnTenant.rows.length).toBe(1);
+    expect(readOwnTenant.rows[0].slug).toBe(tenantASlug);
+    expect(readOwnTenant.rows[0].name).toBe('Tenant Alpha (Legitimate)');
+    expect(readOwnTenant.rows[0].phone).toBe('+62811111111');
+
+    // B. Positive Read: User A can read their own products via public.products view in rolled-back state
+    const readOwnProducts = await client.query('SELECT id, tenant_id, title, price FROM public.products WHERE tenant_id = $1', [tenantASlug]);
+    expect(readOwnProducts.rows.length).toBe(1);
+    expect(readOwnProducts.rows[0].id).toBe(prodAId);
+    expect(readOwnProducts.rows[0].title).toBe('Alpha Product');
+
+    // C. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B via public.tenants view (filtered by row-level WHERE)
+    const crossTenantRead = await client.query('SELECT * FROM public.tenants WHERE slug = $1', [tenantBSlug]);
+    expect(crossTenantRead.rows.length).toBe(0);
+
+    // D. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B products via public.products view
+    const crossProductRead = await client.query('SELECT * FROM public.products WHERE tenant_id = $1', [tenantBSlug]);
+    expect(crossProductRead.rows.length).toBe(0);
+
+    // E. Unfiltered view read: User A querying with zero WHERE filter only gets Tenant A rows
+    const allVisibleTenants = await client.query('SELECT slug FROM public.tenants WHERE slug IN ($1, $2)', [tenantASlug, tenantBSlug]);
+    expect(allVisibleTenants.rows.length).toBe(1);
+    expect(allVisibleTenants.rows[0].slug).toBe(tenantASlug);
+
+    const allVisibleProds = await client.query('SELECT tenant_id FROM public.products WHERE tenant_id IN ($1, $2)', [tenantASlug, tenantBSlug]);
+    expect(allVisibleProds.rows.length).toBe(1);
+    expect(allVisibleProds.rows[0].tenant_id).toBe(tenantASlug);
+
+    // F. Direct table access remains strictly revoked (SQLSTATE 42501)
+    let directTenantsErr: any = null;
+    try {
+      await client.query('SELECT * FROM workforce_staging.tenants WHERE slug = $1', [tenantASlug]);
+    } catch (err: any) {
+      directTenantsErr = err;
+    }
+    expect(directTenantsErr).not.toBeNull();
+    expect(directTenantsErr.code).toBe('42501');
+
+    let directProdsErr: any = null;
+    try {
+      await client.query('SELECT * FROM workforce_staging.products WHERE tenant_id = $1', [tenantASlug]);
+    } catch (err: any) {
+      directProdsErr = err;
+    }
+    expect(directProdsErr).not.toBeNull();
+    expect(directProdsErr.code).toBe('42501');
+
+    // Clean up
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_tenant_id');
+    await client.query('DELETE FROM workforce_staging.products WHERE id IN ($1, $2)', [prodAId, prodBId]);
+    await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantASlug]);
+    await client.query('DELETE FROM workforce_staging.tenants WHERE id IN ($1, $2)', [tenantAId, tenantBId]);
   });
 
   test('3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies', async () => {

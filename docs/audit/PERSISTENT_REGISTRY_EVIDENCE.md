@@ -2577,3 +2577,166 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 
 
 
+---
+
+## 17. BWM Gate 1 Round 3M: Rollback View Permission Resolution & Complete Mutation Boundary Enforcement
+
+**Authority:** Founder Executive Directive & CTO Guardian  
+**Repository:** `boontrack-workforce` (`B055OB/boontrack-inbox`)  
+**Branch:** `feat/bwm-workforce-isolated`  
+**Execution Scope:** `[TARGET TENANT: workforce_staging] | [TARGET CHANNEL: NONE] | [BLAST RADIUS: ISOLATED]`  
+**Status:** REMEDIATION COMPLETE & FULLY VERIFIED (MERGE HOLD MAINTAINED)
+
+---
+
+### 17.1 Architectural Changes Implemented
+
+#### 1. Resolution of View Invocation Permissions in Migration 010 Rollback (`010.down.sql`)
+- **Blocker:** In `010.down.sql`, `public.tenants` and `public.products` were previously recreated using `WITH (security_invoker = true)` without row-filtering `WHERE` clauses. Because direct `SELECT` on `workforce_staging.tenants` and `workforce_staging.products` is strictly revoked from `authenticated`, any legitimate query by an authenticated merchant failed with SQLSTATE `42501 permission denied for table tenants/products`.
+- **Remediation:** In [010_strict_storefront_opt_in_and_role_authorization.down.sql](file:///c:/boontrack-workforce/packages/workforce-billing/schema/migrations/010_strict_storefront_opt_in_and_role_authorization.down.sql):
+  - Defined views with `WITH (security_invoker = false)` (standard view execution under owner context) so view queries execute without granting direct base-table access to callers.
+  - Implemented explicit row-level `WHERE` filters in view definitions enforcing membership boundaries:
+    - `public.tenants`:
+      ```sql
+      WHERE auth.role() = 'service_role'
+         OR (
+             (workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug))
+             AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR slug = current_setting('app.current_tenant_id', true) OR id::text = current_setting('app.current_tenant_id', true))
+             AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR slug = current_setting('app.current_agency_id', true) OR id::text = current_setting('app.current_agency_id', true))
+         )
+         OR (
+             (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+             AND session_user = 'postgres'
+         );
+      ```
+    - `public.products`:
+      ```sql
+      WHERE auth.role() = 'service_role'
+         OR (
+             workforce_staging.is_trusted_tenant_member(tenant_id)
+             AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true))
+             AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true))
+         )
+         OR (
+             (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+             AND session_user = 'postgres'
+         );
+      ```
+  - Direct base tables `workforce_staging.tenants`, `workforce_staging.products`, and `workforce_staging.tenant_memberships` remain strictly revoked (`REVOKE ALL FROM authenticated, anon`).
+  - Views grant `SELECT` to `authenticated`, while `INSERT`, `UPDATE`, `DELETE` are revoked.
+
+#### 2. Complete Role Mutation Boundary on Credit Pools in 010 Rollback (`010.down.sql`)
+- **Blocker:** Rollback policies must ensure complete lifecycle mutation defense across all DML verbs (`INSERT`, `UPDATE`, `DELETE`).
+- **Remediation:** Enforced discrete per-command RLS policies on `workforce_staging.branch_credit_pools`:
+  - `rls_branch_credit_pools_select`: Allows active members (`is_trusted_tenant_member(agency_id)`).
+  - `rls_branch_credit_pools_insert`: Restricted to `is_trusted_tenant_member(agency_id, 'OWNER')` or `service_role`.
+  - `rls_branch_credit_pools_update`: Restricted to `is_trusted_tenant_member(agency_id, 'OWNER')` or `service_role`.
+  - `rls_branch_credit_pools_delete`: Restricted to `is_trusted_tenant_member(agency_id, 'OWNER')` or `service_role`.
+- **Invariant:** Non-owner roles (`MERCHANT`, `CS`, `OPERATOR`) are strictly prohibited from mutating or deleting credit pools (`rowCount = 0` or SQLSTATE `42501`).
+
+---
+
+### 17.2 Test Enhancements & Execution Logs
+
+#### A. Safe Rollback Suite (`safe-migration-rollback.test.ts`)
+Updated Test 2e and added Test 2f to verify Round 3M invariants:
+- **Test 2e:** Validates the full role matrix for credit pool mutations in 010 DOWN state:
+  - `MERCHANT`, `OPERATOR`, `CS`: Can `SELECT` (500 credits); `UPDATE` returns 0 rows; `DELETE` returns 0 rows; `INSERT` fails closed with SQLSTATE `42501`.
+  - `OWNER`: Permitted to `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
+- **Test 2f:** Validates legitimate tenant read restoration and cross-tenant read isolation:
+  - Authenticated User A (member of Tenant Alpha) successfully selects Tenant Alpha and its products via `public.tenants` and `public.products`.
+  - User A querying Tenant Beta or Tenant Beta products receives 0 rows.
+  - User A attempting direct `SELECT` on `workforce_staging.tenants` or `workforce_staging.products` receives SQLSTATE `42501`.
+Command: `npx.cmd jest __tests__/workforce/safe-migration-rollback.test.ts`
+```
+PASS __tests__/workforce/safe-migration-rollback.test.ts (16.122 s)
+  BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)
+    √ 1. Migration 010 DOWN Executes Cleanly Without Regressions (653 ms)
+    √ 2. In Rolled-Back State: Anonymous Access to Full Tables Remains Strictly Revoked (1259 ms)
+    √ 2b. In Rolled-Back State: Authenticated Users Cannot Perform Unrestricted DML and Fail Closed (382 ms)
+    √ 2c. In Rolled-Back State: Authenticated Users Cannot Query or Scrape Storefront Views (Round 3K) (476 ms)
+    √ 2d. In Rolled-Back State: Revoked Membership with Stale JWT Fails Closed (Round 3L) (1077 ms)
+    √ 2e. In Rolled-Back State: Full Role Matrix on Credit Pool Mutations (OWNER Permitted, MERCHANT/CS/OPERATOR Denied) (Round 3M) (4808 ms)
+    √ 2f. In Rolled-Back State: Legitimate Tenant Read Access Restored & Cross-Tenant Read Boundary Enforced (Round 3M) (2536 ms)
+    √ 3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies (500 ms)
+    √ 4. Post-Reapplication Security Boundary: Anonymous Full-Table Denial Maintained (779 ms)
+    √ 5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I) (1429 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        16.802 s
+```
+
+#### B. Full Workforce Regression Test Suite (36 Suites, 414 Tests)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (31.353 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (26.739 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (14.112 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (15.37 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (14.123 s)
+PASS __tests__/workforce/role-authorization.test.ts (11.665 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (9.397 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.152 s)
+PASS __tests__/workforce/tenant-operational-regression.test.ts (8.152 s)
+... [Remaining 27 suites pass cleanly] ...
+
+Test Suites: 36 passed, 36 total
+Tests:       414 passed, 414 total
+Snapshots:   0 total
+Time:        181.623 s
+```
+
+#### C. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 132ms
+✓ Compiled successfully in 1496ms
+  Running TypeScript ...
+  Finished TypeScript in 7.0s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 794ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 17.3 Sign-off Matrix for Round 3M
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :--- | :---: |
+| **M1** | Rollback View Read Availability | Views execute with `security_invoker = false`; authenticated members read own data | `safe-migration-rollback.test.ts` (Test 2f) | **RESTORED & VERIFIED** |
+| **M2** | Cross-Tenant Read Boundary | Views enforce row-level `is_trusted_tenant_member`; cross-tenant reads return 0 rows | `safe-migration-rollback.test.ts` (Test 2f) | **ISOLATED & VERIFIED** |
+| **M3** | Direct Base Table Denial | Base tables `tenants` and `products` remain revoked from `authenticated` (42501) | `safe-migration-rollback.test.ts` (Test 2f) | **SEALED & VERIFIED** |
+| **M4** | Complete Credit Pool Boundary | `OWNER` can INSERT/UPDATE/DELETE; `MERCHANT`, `CS`, `OPERATOR` strictly denied | `safe-migration-rollback.test.ts` (Test 2e) | **ENFORCED & VERIFIED** |
+| **M5** | Reversible Migration Lifecycle | 010 DOWN -> assert invariants -> 010 UP reapply restores publication columns & RLS | `safe-migration-rollback.test.ts` (Tests 1, 3, 5) | **REVERSIBLE & CLEAN** |
+| **REG** | Full Regression Suite | All 36 suites, 414 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (414/414)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |

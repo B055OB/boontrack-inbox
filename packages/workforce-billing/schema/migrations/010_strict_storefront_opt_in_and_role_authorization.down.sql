@@ -201,6 +201,11 @@ CREATE POLICY rls_products_isolation ON workforce_staging.products
         )
     );
 
+-- Ensure RLS remains enabled on all base tables in rollback state
+ALTER TABLE workforce_staging.tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workforce_staging.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workforce_staging.branch_credit_pools ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS rls_branch_credit_pools_isolation ON workforce_staging.branch_credit_pools;
 DROP POLICY IF EXISTS rls_branch_credit_pools_select ON workforce_staging.branch_credit_pools;
 DROP POLICY IF EXISTS rls_branch_credit_pools_insert ON workforce_staging.branch_credit_pools;
@@ -275,9 +280,10 @@ DROP FUNCTION IF EXISTS public.trg_fn_products_view_dml CASCADE;
 ALTER TABLE workforce_staging.tenants DROP COLUMN IF EXISTS public_storefront_enabled;
 ALTER TABLE workforce_staging.products DROP COLUMN IF EXISTS is_publicly_published;
 
--- Recreate base public views strictly with column confidentiality, role-safe projection, and anon revoked
+-- Recreate base public views strictly with column confidentiality, role-safe projection, and fail-closed tenant boundary (Round 3M)
+-- Do NOT use security_invoker = true since direct table access is revoked from authenticated
 CREATE OR REPLACE VIEW public.tenants 
-WITH (security_invoker = true) AS 
+WITH (security_invoker = false) AS 
     SELECT 
         id, slug, name, category, tier, status, is_active,
         CASE 
@@ -308,10 +314,20 @@ WITH (security_invoker = true) AS
             ELSE NULL 
         END AS telegram_chat_id,
         logo_url, avatar_url, qris_image_url, bio
-    FROM workforce_staging.tenants;
+    FROM workforce_staging.tenants
+    WHERE auth.role() = 'service_role'
+       OR (
+           (workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR slug = current_setting('app.current_tenant_id', true) OR id::text = current_setting('app.current_tenant_id', true))
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR slug = current_setting('app.current_agency_id', true) OR id::text = current_setting('app.current_agency_id', true))
+       )
+       OR (
+           (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+           AND session_user = 'postgres'
+       );
 
 CREATE OR REPLACE VIEW public.products 
-WITH (security_invoker = true) AS 
+WITH (security_invoker = false) AS 
     SELECT 
         id, tenant_id, title, slug, price, promo_price, category, product_type,
         description, stock, is_active, status, sku, created_at, updated_at,
@@ -332,16 +348,31 @@ WITH (security_invoker = true) AS
             THEN fulfillment_metadata 
             ELSE NULL 
         END AS fulfillment_metadata
-    FROM workforce_staging.products;
+    FROM workforce_staging.products
+    WHERE auth.role() = 'service_role'
+       OR (
+           workforce_staging.is_trusted_tenant_member(tenant_id)
+           AND (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR tenant_id = current_setting('app.current_agency_id', true))
+           AND (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('app.current_tenant_id', true))
+       )
+       OR (
+           (current_setting('role', true) IS NULL OR current_setting('role', true) = 'none' OR current_setting('role', true) = 'postgres')
+           AND session_user = 'postgres'
+       );
 
 GRANT ALL ON public.tenants TO postgres, service_role;
 GRANT ALL ON public.products TO postgres, service_role;
 
--- Round 3J: Authenticated users only receive role-checked SELECT; unrestricted DML revoked
+-- Round 3M: Authenticated users can read their own tenant via view, but cannot mutate
 GRANT SELECT ON public.tenants TO authenticated;
 GRANT SELECT ON public.products TO authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.tenants FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.products FROM authenticated;
+
+-- Direct workforce_staging base tables remain strictly revoked from non-service roles
+REVOKE ALL ON workforce_staging.tenants FROM authenticated, anon;
+REVOKE ALL ON workforce_staging.products FROM authenticated, anon;
+REVOKE ALL ON workforce_staging.tenant_memberships FROM authenticated, anon;
 
 REVOKE ALL ON public.tenants FROM anon;
 REVOKE ALL ON public.products FROM anon;
