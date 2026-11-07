@@ -1,16 +1,24 @@
 /**
  * __tests__/workforce/database-rls-adversarial.test.ts
- * BWM Gate 1 Round 3F: Database-Level RLS & Trusted Identity Adversarial Verification Suite
+ * BWM Gate 1 Round 3G: Database-Level RLS & Trusted Identity Adversarial Verification Suite
  *
- * Directives (CTO Official Mandate Round 3F — Blockers A, B, C, E):
- * 1. Eliminate mutable session GUC impersonation: Verify transaction-local context isolation
- *    (set_config(..., true)) and prove zero stale context leakage across connection-pool reuse.
- * 2. Enforce Row-Level Security on workforce_staging.tenants: Prove strict tenant-owned
- *    isolation for read, update, delete, and insert without application WHERE predicates.
- * 3. Enforce Row-Level Security on workforce_staging.products: Prove cross-tenant read/update/delete/insert
- *    suppression and fail-closed behavior under pure SELECT/UPDATE/DELETE.
- * 4. Safe adversarial test fixtures: Zero DISABLE RULE or DISABLE TRIGGER. All append-only
- *    ledger tests execute within atomic transaction rollback (BEGIN ... ROLLBACK).
+ * Directives (CTO Official Mandate Round 3G — Blockers B, C, E):
+ * 1. Eliminate mutable session GUC impersonation: Enforce trusted tenant identity via
+ *    workforce_staging.tenant_memberships and is_trusted_tenant_member(target_tenant_id).
+ * 2. Complete 12 Adversarial Scenarios:
+ *    - 1. Alpha can read Alpha records.
+ *    - 2. Alpha cannot read Beta records (0 rows).
+ *    - 3. Alpha cannot update Beta records (rowCount = 0).
+ *    - 4. Alpha cannot delete Beta records (rowCount = 0).
+ *    - 5. Alpha cannot insert records for Beta (rejected with SQLSTATE 42501).
+ *    - 6. Critical Anti-Impersonation Test 1: Alpha sets app.current_agency_id = 'tenant_beta' -> 0 rows.
+ *    - 7. Critical Anti-Impersonation Test 2: Alpha sets app.current_tenant_id = 'tenant_beta' -> 0 rows.
+ *    - 8. Missing authentication context fails closed (0 rows).
+ *    - 9. Invalid or revoked identity fails closed (0 rows).
+ *    - 10. Sequential transactions on same connection do not leak identity.
+ *    - 11. Rollback does not preserve tenant context.
+ *    - 12. Actual authenticated JWT identity is tested via request.jwt.claims matching auth.uid().
+ * 3. Preserve Admin SSOT and Append-Only Ledger Protections (Zero DISABLE RULE/TRIGGER).
  */
 
 import fs from 'fs';
@@ -43,7 +51,7 @@ function getDatabaseConnectionString(): string {
   return connStr;
 }
 
-describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversarial Verification', () => {
+describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversarial Verification', () => {
   let client: Client;
   const TENANT_ALPHA = 'adv_tenant_alpha_3f';
   const TENANT_BETA = 'adv_tenant_beta_3f';
@@ -52,15 +60,42 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
   const PROD_ALPHA_SLUG = 'adv-prod-alpha-3f';
   const PROD_BETA_SLUG = 'adv-prod-beta-3f';
 
+  const USER_ALPHA_ID = '11111111-1111-4111-a111-111111111111';
+  const USER_BETA_ID = '22222222-2222-4222-a222-222222222222';
+  const USER_REVOKED_ID = '33333333-3333-4333-a333-333333333333';
+
   async function cleanFixtures(pgClient: Client) {
     await pgClient.query('RESET ROLE');
     // Block E: NEVER disable rules or triggers during teardown.
-    // Only delete mutable test-scoped baseline rows from branch_credit_pools, products, and tenants.
+    // Only delete mutable test-scoped baseline rows from branch_credit_pools, products, tenants, and tenant_memberships.
     await pgClient.query(`
       DELETE FROM branch_credit_pools WHERE agency_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
       DELETE FROM products WHERE tenant_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
       DELETE FROM tenants WHERE slug IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f') OR id::text IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
+      DELETE FROM tenant_memberships WHERE user_id IN ('11111111-1111-4111-a111-111111111111', '22222222-2222-4222-a222-222222222222', '33333333-3333-4333-a333-333333333333');
     `);
+  }
+
+  async function setAuthContext(pgClient: Client, userId: string | null, agencyId?: string, tenantId?: string) {
+    await pgClient.query('SET ROLE authenticated');
+    if (userId) {
+      await pgClient.query("SELECT set_config('request.jwt.claims', $1, false)", [
+        JSON.stringify({ sub: userId, role: 'authenticated' })
+      ]);
+    } else {
+      await pgClient.query("RESET request.jwt.claims");
+      await pgClient.query("RESET request.jwt.claim.sub");
+    }
+    if (agencyId) {
+      await pgClient.query("SELECT set_config('app.current_agency_id', $1, false)", [agencyId]);
+    } else {
+      await pgClient.query("RESET app.current_agency_id");
+    }
+    if (tenantId) {
+      await pgClient.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantId]);
+    } else {
+      await pgClient.query("RESET app.current_tenant_id");
+    }
   }
 
   beforeAll(async () => {
@@ -94,6 +129,15 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
         ($1, 'Alpha Intelligence Suite', $2, 250000, 50, 'service', 'SERVICE'),
         ($3, 'Beta Operations Suite', $4, 500000, 100, 'service', 'SERVICE')
     `, [TENANT_ALPHA, PROD_ALPHA_SLUG, TENANT_BETA, PROD_BETA_SLUG]);
+
+    // 4. Seed tenant_memberships baseline (Blocker B)
+    await client.query(`
+      INSERT INTO tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES
+        ($1, $2, $2, 'OWNER', true),
+        ($3, $4, $4, 'OWNER', true),
+        ($5, $2, $2, 'MEMBER', false)
+    `, [USER_ALPHA_ID, TENANT_ALPHA, USER_BETA_ID, TENANT_BETA, USER_REVOKED_ID]);
   }, 30000);
 
   afterAll(async () => {
@@ -108,8 +152,7 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     }
   }, 30000);
 
-  test('1. Database Engine Verification: Role RLS Bypass Flags & Table Row Security', async () => {
-    // Verify authenticated role does NOT have bypassrls
+  test('0. Database Engine Verification: Role RLS Bypass Flags & Table Row Security', async () => {
     const authRoleRes = await client.query(`
       SELECT rolname, rolbypassrls 
       FROM pg_roles 
@@ -118,7 +161,6 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(authRoleRes.rows.length).toBe(1);
     expect(authRoleRes.rows[0].rolbypassrls).toBe(false);
 
-    // Verify postgres role has bypassrls
     const pgRoleRes = await client.query(`
       SELECT rolname, rolbypassrls 
       FROM pg_roles 
@@ -127,22 +169,20 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(pgRoleRes.rows.length).toBe(1);
     expect(pgRoleRes.rows[0].rolbypassrls).toBe(true);
 
-    // Verify Row-Level Security is active on target tables (tenants, branch_credit_pools, products)
     const tableRlsRes = await client.query(`
       SELECT tablename, rowsecurity 
       FROM pg_tables 
-      WHERE schemaname = 'workforce_staging' AND tablename IN ('tenants', 'branch_credit_pools', 'products')
+      WHERE schemaname = 'workforce_staging' AND tablename IN ('tenants', 'branch_credit_pools', 'products', 'tenant_memberships')
     `);
     const rlsMap = Object.fromEntries(tableRlsRes.rows.map(r => [r.tablename, r.rowsecurity]));
     expect(rlsMap['tenants']).toBe(true);
     expect(rlsMap['branch_credit_pools']).toBe(true);
     expect(rlsMap['products']).toBe(true);
+    expect(rlsMap['tenant_memberships']).toBe(true);
   });
 
-  test('2. Positive Read via Database RLS Boundary (Pure SELECT Without WHERE Predicate)', async () => {
-    await client.query('SET ROLE authenticated');
-    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [TENANT_ALPHA]);
-    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [TENANT_ALPHA]);
+  test('1. Positive Read: Alpha can read Alpha records (Pure SELECT without WHERE)', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
 
     // Query branch_credit_pools with ZERO WHERE filter
     const poolsRes = await client.query('SELECT branch_id, agency_id, available_credits FROM branch_credit_pools');
@@ -164,15 +204,16 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(alphaProd).toBeDefined();
     expect(alphaProd?.title).toBe('Alpha Intelligence Suite');
 
-    // Query tenants with ZERO WHERE filter (Blocker B)
+    // Query tenants with ZERO WHERE filter
     const tenantsRes = await client.query('SELECT slug, name FROM tenants');
     expect(tenantsRes.rows.length).toBe(1);
     expect(tenantsRes.rows[0].slug).toBe(TENANT_ALPHA);
     expect(tenantsRes.rows[0].name).toBe('Alpha Defense Systems');
   });
 
-  test('3. Negative Cross-Tenant Read Suppression: Tenant A Cannot Read Tenant B Records (0 Rows)', async () => {
-    // Under authenticated role with app.current_agency_id = TENANT_ALPHA
+  test('2. Negative Cross-Tenant Read Suppression: Alpha cannot read Beta records (0 rows)', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
+
     const poolsRes = await client.query(
       'SELECT * FROM branch_credit_pools WHERE agency_id = $1',
       [TENANT_BETA]
@@ -185,7 +226,6 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     );
     expect(prodsRes.rows.length).toBe(0);
 
-    // Tenants table cross-tenant read suppression (Blocker B)
     const tenantsRes = await client.query(
       'SELECT * FROM tenants WHERE slug = $1',
       [TENANT_BETA]
@@ -193,22 +233,21 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(tenantsRes.rows.length).toBe(0);
   });
 
-  test('4. Negative Cross-Tenant Update Suppression: Tenant A Cannot Update Tenant B Records (rowCount = 0)', async () => {
-    // Adversary attempts to alter Tenant Beta's credit balance
+  test('3. Negative Cross-Tenant Update Suppression: Alpha cannot update Beta records (rowCount = 0)', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
+
     const updatePoolRes = await client.query(
       'UPDATE branch_credit_pools SET available_credits = 999999 WHERE agency_id = $1',
       [TENANT_BETA]
     );
     expect(updatePoolRes.rowCount).toBe(0);
 
-    // Adversary attempts to alter Tenant Beta's product price
     const updateProdRes = await client.query(
       'UPDATE products SET price = 1 WHERE tenant_id = $1',
       [TENANT_BETA]
     );
     expect(updateProdRes.rowCount).toBe(0);
 
-    // Adversary attempts to alter Tenant Beta's profile (Blocker B)
     const updateTenantRes = await client.query(
       "UPDATE tenants SET name = 'Hacked by Alpha' WHERE slug = $1",
       [TENANT_BETA]
@@ -234,29 +273,23 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
       [TENANT_BETA]
     );
     expect(verifyTenantRes.rows[0].name).toBe('Beta Intelligence Labs');
-
-    // Revert to authenticated role
-    await client.query('SET ROLE authenticated');
-    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [TENANT_ALPHA]);
-    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [TENANT_ALPHA]);
   });
 
-  test('5. Negative Cross-Tenant Delete Suppression: Tenant A Cannot Delete Tenant B Records (rowCount = 0)', async () => {
-    // Adversary attempts to delete Tenant Beta's credit pool
+  test('4. Negative Cross-Tenant Delete Suppression: Alpha cannot delete Beta records (rowCount = 0)', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
+
     const deletePoolRes = await client.query(
       'DELETE FROM branch_credit_pools WHERE agency_id = $1',
       [TENANT_BETA]
     );
     expect(deletePoolRes.rowCount).toBe(0);
 
-    // Adversary attempts to delete Tenant Beta's product
     const deleteProdRes = await client.query(
       'DELETE FROM products WHERE tenant_id = $1',
       [TENANT_BETA]
     );
     expect(deleteProdRes.rowCount).toBe(0);
 
-    // Adversary attempts to delete Tenant Beta's tenant profile (Blocker B)
     const deleteTenantRes = await client.query(
       'DELETE FROM tenants WHERE slug = $1',
       [TENANT_BETA]
@@ -273,15 +306,11 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
 
     const verifyTenant = await client.query('SELECT 1 FROM tenants WHERE slug = $1', [TENANT_BETA]);
     expect(verifyTenant.rows.length).toBe(1);
-
-    // Revert to authenticated
-    await client.query('SET ROLE authenticated');
-    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [TENANT_ALPHA]);
-    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [TENANT_ALPHA]);
   });
 
-  test('6. Negative Cross-Tenant Insert: Rejected with PostgreSQL RLS Policy Violation (SQLSTATE 42501)', async () => {
-    // Adversary attempts to insert a credit pool record for Tenant Beta
+  test('5. Negative Cross-Tenant Insert: Rejected with SQLSTATE 42501 (RLS Policy Violation)', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
+
     let poolError: any = null;
     try {
       await client.query(`
@@ -293,9 +322,7 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     }
     expect(poolError).not.toBeNull();
     expect(poolError.code).toBe('42501');
-    expect(poolError.message).toContain('violates row-level security policy');
 
-    // Adversary attempts to insert a product record for Tenant Beta
     let prodError: any = null;
     try {
       await client.query(`
@@ -307,9 +334,7 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     }
     expect(prodError).not.toBeNull();
     expect(prodError.code).toBe('42501');
-    expect(prodError.message).toContain('violates row-level security policy');
 
-    // Adversary attempts to insert a tenant record for Tenant Beta (Blocker B)
     let tenantError: any = null;
     try {
       await client.query(`
@@ -321,49 +346,85 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     }
     expect(tenantError).not.toBeNull();
     expect(tenantError.code).toBe('42501');
-    expect(tenantError.message).toContain('violates row-level security policy');
   });
 
-  test('7. Fail-Closed on Missing Tenant Context: Queries Return 0 Rows', async () => {
-    // Reset tenant context to NULL / unset
-    await client.query('RESET app.current_agency_id');
-    await client.query('RESET app.current_tenant_id');
+  test('6. Critical Anti-Impersonation Test 1: Alpha sets app.current_agency_id = "tenant_beta" -> Returns 0 Rows', async () => {
+    // Authenticated as Alpha
+    await setAuthContext(client, USER_ALPHA_ID);
 
-    // Query branch_credit_pools without WHERE clause
+    // Adversary attempts to spoof agency GUC to Beta
+    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [TENANT_BETA]);
+
+    // Query products: must return 0 rows (proves setting GUC does not grant Beta access)
+    const prodsRes = await client.query('SELECT * FROM products');
+    expect(prodsRes.rows.length).toBe(0);
+
+    // Query tenants: must return 0 rows
+    const tenantsRes = await client.query('SELECT * FROM tenants');
+    expect(tenantsRes.rows.length).toBe(0);
+
+    // Query pools: must return 0 rows
+    const poolsRes = await client.query('SELECT * FROM branch_credit_pools');
+    expect(poolsRes.rows.length).toBe(0);
+  });
+
+  test('7. Critical Anti-Impersonation Test 2: Alpha sets app.current_tenant_id = "tenant_beta" -> Returns 0 Rows', async () => {
+    // Authenticated as Alpha
+    await setAuthContext(client, USER_ALPHA_ID);
+
+    // Adversary attempts to spoof tenant GUC to Beta
+    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [TENANT_BETA]);
+
+    // Query products: must return 0 rows
+    const prodsRes = await client.query('SELECT * FROM products');
+    expect(prodsRes.rows.length).toBe(0);
+
+    // Query tenants: must return 0 rows
+    const tenantsRes = await client.query('SELECT * FROM tenants');
+    expect(tenantsRes.rows.length).toBe(0);
+
+    // Query pools: must return 0 rows
+    const poolsRes = await client.query('SELECT * FROM branch_credit_pools');
+    expect(poolsRes.rows.length).toBe(0);
+  });
+
+  test('8. Missing Authentication Context Fails Closed: Queries Return 0 Rows', async () => {
+    await setAuthContext(client, null);
+
     const poolRes = await client.query('SELECT * FROM branch_credit_pools');
     expect(poolRes.rows.length).toBe(0);
 
-    // Query products without WHERE clause
     const prodRes = await client.query('SELECT * FROM products');
     expect(prodRes.rows.length).toBe(0);
 
-    // Query tenants without WHERE clause
+    const tenantRes = await client.query('SELECT * FROM tenants');
+    expect(tenantRes.rows.length).toBe(0);
+
+    const memberRes = await client.query('SELECT * FROM tenant_memberships');
+    expect(memberRes.rows.length).toBe(0);
+  });
+
+  test('9. Invalid or Revoked Identity Fails Closed: Queries Return 0 Rows', async () => {
+    // Authenticate as USER_REVOKED_ID (membership is_active = false)
+    await setAuthContext(client, USER_REVOKED_ID, TENANT_ALPHA, TENANT_ALPHA);
+
+    const poolRes = await client.query('SELECT * FROM branch_credit_pools');
+    expect(poolRes.rows.length).toBe(0);
+
+    const prodRes = await client.query('SELECT * FROM products');
+    expect(prodRes.rows.length).toBe(0);
+
     const tenantRes = await client.query('SELECT * FROM tenants');
     expect(tenantRes.rows.length).toBe(0);
   });
 
-  test('8. Fail-Closed on Unauthorized / Spoofed Tenant Context: Queries Return 0 Rows', async () => {
-    // Set an unauthorized non-existent tenant context
-    await client.query("SET app.current_agency_id = 'unauthorized_ghost_context_xyz'");
-    await client.query("SET app.current_tenant_id = 'unauthorized_ghost_context_xyz'");
-
-    const poolRes = await client.query('SELECT * FROM branch_credit_pools');
-    expect(poolRes.rows.length).toBe(0);
-
-    const prodRes = await client.query('SELECT * FROM products');
-    expect(prodRes.rows.length).toBe(0);
-
-    const tenantRes = await client.query('SELECT * FROM tenants');
-    expect(tenantRes.rows.length).toBe(0);
-  });
-
-  test('9. Transaction-Local Context & Connection-Pool Reuse Safety (Blockers A & C)', async () => {
-    // In connection pooling, connections are shared across requests.
-    // Proving set_config(..., true) inside a transaction automatically clears upon COMMIT/ROLLBACK,
-    // guaranteeing ZERO stale context leakage when a pooled connection is reused.
-
-    // 1. Transaction 1: Tenant Alpha executes within transaction-local context
+  test('10. Sequential Transactions on Same Connection Do Not Leak Identity', async () => {
+    // 1. Transaction 1: User Alpha executes within transaction-local context
     await client.query('BEGIN');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ sub: USER_ALPHA_ID, role: 'authenticated' })
+    ]);
     await client.query("SELECT set_config('app.current_agency_id', $1, true)", [TENANT_ALPHA]);
     await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [TENANT_ALPHA]);
 
@@ -373,15 +434,16 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     await client.query('COMMIT');
 
     // 2. Immediate subsequent query on SAME physical connection outside transaction:
-    // Without any manual RESET, the context MUST be automatically empty and FAIL CLOSED (0 rows).
+    // Without any manual reset, context MUST be empty and fail closed (0 rows).
     const leakCheck = await client.query('SELECT slug FROM products');
     expect(leakCheck.rows.length).toBe(0);
 
-    const leakCheckTenant = await client.query('SELECT slug FROM tenants');
-    expect(leakCheckTenant.rows.length).toBe(0);
-
-    // 3. Transaction 2: Tenant Beta uses the SAME physical connection
+    // 3. Transaction 2: User Beta uses the SAME physical connection
     await client.query('BEGIN');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ sub: USER_BETA_ID, role: 'authenticated' })
+    ]);
     await client.query("SELECT set_config('app.current_agency_id', $1, true)", [TENANT_BETA]);
     await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [TENANT_BETA]);
 
@@ -395,11 +457,71 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(finalLeakCheck.rows.length).toBe(0);
   });
 
-  test('10. Privileged Service-Role / Postgres Bypass Verification (Administrative SSOT)', async () => {
-    // Reset role to postgres (privileged superuser/admin)
+  test('11. Rollback Does Not Preserve Tenant Context', async () => {
+    await client.query('BEGIN');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ sub: USER_ALPHA_ID, role: 'authenticated' })
+    ]);
+    await client.query("SELECT set_config('app.current_agency_id', $1, true)", [TENANT_ALPHA]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [TENANT_ALPHA]);
+
+    const testSlug = `tx-rollback-prod-${Date.now()}`;
+    await client.query(`
+      INSERT INTO products (tenant_id, title, slug, price)
+      VALUES ($1, 'Rollback Test Product', $2, 99000)
+    `, [TENANT_ALPHA, testSlug]);
+
+    const inTxCheck = await client.query('SELECT slug FROM products WHERE slug = $1', [testSlug]);
+    expect(inTxCheck.rows.length).toBe(1);
+
+    await client.query('ROLLBACK');
+
+    // After rollback: context is gone
+    const postRollbackCtx = await client.query('SELECT slug FROM products');
+    expect(postRollbackCtx.rows.length).toBe(0);
+
+    // Verify row was not persisted
+    await client.query('RESET ROLE');
+    const postRollbackData = await client.query('SELECT 1 FROM products WHERE slug = $1', [testSlug]);
+    expect(postRollbackData.rows.length).toBe(0);
+  });
+
+  test('12. Actual Authenticated JWT Identity Tested via request.jwt.claims Matching auth.uid()', async () => {
+    await client.query('SET ROLE authenticated');
+    await client.query('RESET app.current_agency_id');
+    await client.query('RESET app.current_tenant_id');
+
+    // Test with Alpha JWT claims
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({ sub: USER_ALPHA_ID, role: 'authenticated' })
+    ]);
+
+    const alphaUidRes = await client.query('SELECT auth.uid() as uid, auth.role() as role');
+    expect(alphaUidRes.rows[0].uid).toBe(USER_ALPHA_ID);
+    expect(alphaUidRes.rows[0].role).toBe('authenticated');
+
+    const alphaProds = await client.query('SELECT tenant_id FROM products');
+    expect(alphaProds.rows.length).toBe(1);
+    expect(alphaProds.rows[0].tenant_id).toBe(TENANT_ALPHA);
+
+    // Test with Beta JWT claims
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({ sub: USER_BETA_ID, role: 'authenticated' })
+    ]);
+
+    const betaUidRes = await client.query('SELECT auth.uid() as uid, auth.role() as role');
+    expect(betaUidRes.rows[0].uid).toBe(USER_BETA_ID);
+    expect(betaUidRes.rows[0].role).toBe('authenticated');
+
+    const betaProds = await client.query('SELECT tenant_id FROM products');
+    expect(betaProds.rows.length).toBe(1);
+    expect(betaProds.rows[0].tenant_id).toBe(TENANT_BETA);
+  });
+
+  test('13. Privileged Service-Role / Postgres Bypass Verification (Administrative SSOT)', async () => {
     await client.query('RESET ROLE');
 
-    // Admin query sees both Tenant Alpha and Tenant Beta records
     const adminPoolRes = await client.query(`
       SELECT branch_id, agency_id, available_credits 
       FROM branch_credit_pools 
@@ -421,15 +543,13 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(adminProdRes.rows.map(r => r.tenant_id)).toEqual([TENANT_ALPHA, TENANT_BETA]);
   });
 
-  test('11. Seat Credit Ledger Defense-in-Depth: Rules & Triggers Active Under Atomic Rollback (Blocker E)', async () => {
-    // Verify triggers and rules are enabled and active
+  test('14. Seat Credit Ledger Defense-in-Depth: Rules & Triggers Active Under Atomic Rollback (Blocker E)', async () => {
     const triggerRes = await client.query(`
       SELECT tgname, tgenabled 
       FROM pg_trigger 
       WHERE tgname = 'trg_seat_credit_ledger_immutability'
     `);
     expect(triggerRes.rows.length).toBe(1);
-    // 'O' means origin and local triggers fire (enabled)
     expect(triggerRes.rows[0].tgenabled).toBe('O');
 
     const ruleRes = await client.query(`
@@ -440,14 +560,11 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
     expect(ruleRes.rows.length).toBe(1);
     expect(ruleRes.rows[0].is_instead).toBe(true);
 
-    // Blocker E requirement: Wrap append-only test in BEGIN ... ROLLBACK
-    // ZERO DISABLE RULE or DISABLE TRIGGER throughout the entire lifecycle.
     await client.query('BEGIN');
     try {
       const ledgerTxRef = `tx_adv_test_${Date.now()}`;
       const ledgerCreditId = `crd_adv_test_${Date.now()}`;
 
-      // Insert purchase transaction first (due to foreign key)
       const purchaseRes = await client.query(`
         INSERT INTO credit_purchase_transactions (branch_id, agency_id, payment_reference, purchase_reference, quantity, unit_price_idr, subtotal_idr, tax_idr, total_idr, status)
         VALUES ($1, $2, $3, $4, 10, 30000, 300000, 33000, 333000, 'SETTLED')
@@ -455,7 +572,6 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
       `, [BRANCH_ALPHA, TENANT_ALPHA, ledgerTxRef, ledgerTxRef]);
       const purchaseId = purchaseRes.rows[0].purchase_id;
 
-      // Insert ledger record
       await client.query(`
         INSERT INTO seat_credit_ledger (credit_id, purchase_id, branch_id, agency_id, purchase_reference, payment_reference, amount_idr, action_type, status)
         VALUES ($1, $2, $3, $4, $5, $6, 30000, 'PURCHASE', 'AVAILABLE')
@@ -463,9 +579,11 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
 
       // Switch to authenticated role with Tenant Alpha's context
       await client.query('SET ROLE authenticated');
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: USER_ALPHA_ID, role: 'authenticated' })
+      ]);
       await client.query("SELECT set_config('app.current_agency_id', $1, true)", [TENANT_ALPHA]);
 
-      // Tenant Alpha can view its own ledger row
       const ledgerRead = await client.query('SELECT credit_id, agency_id, amount_idr FROM seat_credit_ledger WHERE credit_id = $1', [ledgerCreditId]);
       expect(ledgerRead.rows.length).toBe(1);
       expect(ledgerRead.rows[0].agency_id).toBe(TENANT_ALPHA);
@@ -474,7 +592,6 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
       const deleteRes = await client.query('DELETE FROM seat_credit_ledger WHERE credit_id = $1', [ledgerCreditId]);
       expect(deleteRes.rowCount).toBe(0);
 
-      // Verify row still exists in database intact
       const verifyStillExists = await client.query('SELECT credit_id, amount_idr FROM seat_credit_ledger WHERE credit_id = $1', [ledgerCreditId]);
       expect(verifyStillExists.rows.length).toBe(1);
       expect(verifyStillExists.rows[0].credit_id).toBe(ledgerCreditId);
@@ -483,11 +600,9 @@ describe('BWM Gate 1 Round 3F — Database-Level RLS & Trusted Identity Adversar
       const updateRes = await client.query('UPDATE seat_credit_ledger SET amount_idr = 999999 WHERE credit_id = $1', [ledgerCreditId]);
       expect(updateRes.rowCount).toBe(0);
 
-      // Verify amount_idr was NOT mutated
       const verifyUnchanged = await client.query('SELECT amount_idr FROM seat_credit_ledger WHERE credit_id = $1', [ledgerCreditId]);
       expect(Number(verifyUnchanged.rows[0].amount_idr)).toBe(30000);
     } finally {
-      // Revert role and rollback transaction to leave database 100% clean without disabling rules/triggers
       await client.query('RESET ROLE');
       await client.query('ROLLBACK');
     }

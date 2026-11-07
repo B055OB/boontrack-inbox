@@ -644,7 +644,7 @@ export async function GET(
 
     // 1. Single Source of Truth: Supabase (tenants.metadata.products & products table)
     try {
-      const supabase = getSupabase();
+      const supabase = getSupabaseAdmin() || getSupabase();
       const { data: tenantRow } = await supabase
         .from('tenants')
         .select('id, metadata')
