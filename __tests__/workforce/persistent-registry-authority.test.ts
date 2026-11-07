@@ -1814,4 +1814,436 @@ describe('BWM Gate 1: Persistent Transaction Registry & Authority Engine (CTO Ma
       }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // REQUIREMENT 10: Final Persistent Binding Completeness & Database Authority (CTO Mandate Round 3C)
+  // ---------------------------------------------------------------------------
+  describe('Requirement 10: Final Persistent Binding Completeness & Database Authority (CTO Mandate Round 3C)', () => {
+    test('10a. Direct SQL UPDATE to BOUND with NULL provider_transaction_id is rejected at database level', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_bound_null_${ts}`;
+      const internalOrderId = `ord_bound_null_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+
+        // Direct SQL attempt to set status = 'BOUND' with provider_transaction_id = NULL
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = NULL 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow(/(INVALID_BINDING_REFERENCE|chk_payment_registry_bound_has_valid_tx)/i);
+
+        // Verify order remains intact in INITIATED status
+        const orderRes = await client.query(
+          `SELECT status, provider_transaction_id FROM workforce_staging.workforce_payment_registry 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, internalOrderId]
+        );
+        expect(orderRes.rows[0].status).toBe('INITIATED');
+        expect(orderRes.rows[0].provider_transaction_id).toBeNull();
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10b. Direct SQL UPDATE to BOUND with empty string provider_transaction_id is rejected at database level', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_bound_empty_${ts}`;
+      const internalOrderId = `ord_bound_empty_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+
+        // Direct SQL attempt to set status = 'BOUND' with provider_transaction_id = ''
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = '' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow(/(INVALID_BINDING_REFERENCE|chk_payment_registry_bound_has_valid_tx)/i);
+
+        // Verify order remains intact in INITIATED status
+        const orderRes = await client.query(
+          `SELECT status, provider_transaction_id FROM workforce_staging.workforce_payment_registry 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, internalOrderId]
+        );
+        expect(orderRes.rows[0].status).toBe('INITIATED');
+        expect(orderRes.rows[0].provider_transaction_id).toBeNull();
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10c. Direct SQL UPDATE to BOUND with whitespace-only provider_transaction_id is rejected at database level', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_bound_white_${ts}`;
+      const internalOrderId = `ord_bound_white_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+
+        // Direct SQL attempt to set status = 'BOUND' with provider_transaction_id = '   '
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = '   ' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow(/(INVALID_BINDING_REFERENCE|chk_payment_registry_bound_has_valid_tx)/i);
+
+        // Verify order remains intact in INITIATED status
+        const orderRes = await client.query(
+          `SELECT status, provider_transaction_id FROM workforce_staging.workforce_payment_registry 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, internalOrderId]
+        );
+        expect(orderRes.rows[0].status).toBe('INITIATED');
+        expect(orderRes.rows[0].provider_transaction_id).toBeNull();
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10d. Direct SQL INSERT with status BOUND and invalid provider_transaction_id is rejected by CHECK constraint', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_ins_bound_${ts}`;
+      const ordNull = `ord_ins_null_${ts}`;
+      const ordEmpty = `ord_ins_empty_${ts}`;
+      const ordWhite = `ord_ins_white_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // Direct INSERT with NULL
+        await expect(
+          client.query(
+            `INSERT INTO workforce_staging.workforce_payment_registry (
+              tenant_id, internal_order_id, provider, currency, expected_amount, status, provider_transaction_id
+            ) VALUES ($1, $2, 'xendit', 'IDR', 100000, 'BOUND', NULL)`,
+            [tenantId, ordNull]
+          )
+        ).rejects.toThrow(/chk_payment_registry_bound_has_valid_tx/i);
+
+        // Direct INSERT with empty string ''
+        await expect(
+          client.query(
+            `INSERT INTO workforce_staging.workforce_payment_registry (
+              tenant_id, internal_order_id, provider, currency, expected_amount, status, provider_transaction_id
+            ) VALUES ($1, $2, 'xendit', 'IDR', 100000, 'BOUND', '')`,
+            [tenantId, ordEmpty]
+          )
+        ).rejects.toThrow(/chk_payment_registry_bound_has_valid_tx/i);
+
+        // Direct INSERT with whitespace '   '
+        await expect(
+          client.query(
+            `INSERT INTO workforce_staging.workforce_payment_registry (
+              tenant_id, internal_order_id, provider, currency, expected_amount, status, provider_transaction_id
+            ) VALUES ($1, $2, 'xendit', 'IDR', 100000, 'BOUND', '   ')`,
+            [tenantId, ordWhite]
+          )
+        ).rejects.toThrow(/chk_payment_registry_bound_has_valid_tx/i);
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10e. Legitimate INITIATED -> BOUND transition with valid transaction ID succeeds (preserving nullable provider_account_id semantics)', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_pos_valid_${ts}`;
+      const internalOrderId = `ord_pos_valid_${ts}`;
+      const providerTxId = `tx_pos_valid_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // Register without provider_account_id (nullable semantics)
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'dodo',
+          currency: 'USD',
+          expected_amount: 5000,
+        });
+
+        // Direct SQL update to BOUND with valid provider_transaction_id
+        await client.query(
+          `UPDATE workforce_staging.workforce_payment_registry 
+           SET status = 'BOUND', provider_transaction_id = $1 
+           WHERE tenant_id = $2 AND internal_order_id = $3`,
+          [providerTxId, tenantId, internalOrderId]
+        );
+
+        const orderRes = await client.query(
+          `SELECT status, provider_transaction_id, provider_account_id 
+           FROM workforce_staging.workforce_payment_registry 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, internalOrderId]
+        );
+        expect(orderRes.rows[0].status).toBe('BOUND');
+        expect(orderRes.rows[0].provider_transaction_id).toBe(providerTxId);
+        expect(orderRes.rows[0].provider_account_id).toBeNull(); // Valid nullable semantics
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10f. Subsequent overwrite or modification of provider_transaction_id on BOUND order is strictly rejected', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_bound_lock_${ts}`;
+      const internalOrderId = `ord_bound_lock_${ts}`;
+      const providerTxId = `tx_bound_orig_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 150000,
+        });
+
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        // Attempt 1: Overwrite with another transaction ID
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET provider_transaction_id = 'tx_adversary_hijack' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow(/IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND/i);
+
+        // Attempt 2: Clear provider_transaction_id back to NULL
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET provider_transaction_id = NULL 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow();
+
+        // Verify transaction ID was NOT mutated
+        const orderRes = await client.query(
+          `SELECT provider_transaction_id FROM workforce_staging.workforce_payment_registry 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, internalOrderId]
+        );
+        expect(orderRes.rows[0].provider_transaction_id).toBe(providerTxId);
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10g. Legitimate BOUND -> SETTLED transition succeeds, and SETTLED records enforce strict permanent immutability', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_settle_perm_${ts}`;
+      const internalOrderId = `ord_settle_perm_${ts}`;
+      const providerTxId = `tx_settle_perm_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 200000,
+        });
+
+        await bindProviderTransaction(client, {
+          tenant_id: tenantId,
+          internal_order_id: internalOrderId,
+          provider_transaction_id: providerTxId,
+        });
+
+        // Settle legitimately
+        const settlement = await verifyAndSettleAuthoritativePayment(client, {
+          provider: 'xendit',
+          provider_transaction_id: providerTxId,
+          tenant_id: tenantId,
+          currency: 'IDR',
+          amount: 200000,
+          delta_passes: 10,
+        });
+        expect(settlement.settled).toBe(true);
+        expect(settlement.status).toBe('SETTLED');
+
+        // Direct SQL attempt to nullify provider_transaction_id on SETTLED record
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET provider_transaction_id = NULL 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow();
+
+        // Direct SQL attempt to revert status from SETTLED to BOUND or INITIATED
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, internalOrderId]
+          )
+        ).rejects.toThrow(/SETTLED is immutable and cannot be transitioned/i);
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10h. Terminal states FAILED and EXPIRED remain strictly immutable against status resurrection', async () => {
+      const ts = Date.now();
+      const tenantId = `tenant_term_res_${ts}`;
+      const ordFailed = `ord_term_failed_${ts}`;
+      const ordExpired = `ord_term_expired_${ts}`;
+
+      const client = await poolA.connect();
+      try {
+        // Setup order 1 -> FAILED
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: ordFailed,
+          provider: 'xendit',
+          currency: 'IDR',
+          expected_amount: 100000,
+        });
+        await client.query(
+          `UPDATE workforce_staging.workforce_payment_registry SET status = 'FAILED' 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, ordFailed]
+        );
+
+        // Attempt resurrection of FAILED -> BOUND
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'BOUND', provider_transaction_id = 'tx_resurrect_fail' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, ordFailed]
+          )
+        ).rejects.toThrow(/Terminal status FAILED cannot be transitioned to BOUND/i);
+
+        // Setup order 2 -> EXPIRED
+        await registerOrderPreCheckout(client, {
+          tenant_id: tenantId,
+          internal_order_id: ordExpired,
+          provider: 'dodo',
+          currency: 'USD',
+          expected_amount: 2500,
+        });
+        await client.query(
+          `UPDATE workforce_staging.workforce_payment_registry SET status = 'EXPIRED' 
+           WHERE tenant_id = $1 AND internal_order_id = $2`,
+          [tenantId, ordExpired]
+        );
+
+        // Attempt resurrection of EXPIRED -> SETTLED
+        await expect(
+          client.query(
+            `UPDATE workforce_staging.workforce_payment_registry 
+             SET status = 'SETTLED' 
+             WHERE tenant_id = $1 AND internal_order_id = $2`,
+            [tenantId, ordExpired]
+          )
+        ).rejects.toThrow(/Terminal status EXPIRED cannot be transitioned to SETTLED/i);
+      } finally {
+        client.release();
+      }
+    });
+
+    test('10i. Tenant operational CRUD regression verification (verified_domain_registry and pass queries remain 100% normal)', async () => {
+      const ts = Date.now();
+      const testTenant = `tenant_crud_regress_${ts}`;
+      const testHost = `test-${ts}.workforce.boontrack.com`;
+
+      const client = await poolA.connect();
+      try {
+        // 1. CREATE / INSERT domain registration
+        await client.query(
+          `INSERT INTO workforce_staging.verified_domain_registry 
+           (tenant_id, hostname, brand_name, logo_url, primary_color, accent_color, is_active)
+           VALUES ($1, $2, 'Audit Test Brand', '/icons/test.png', '#10b981', '#059669', TRUE)`,
+          [testTenant, testHost]
+        );
+
+        // 2. READ domain registration
+        const readRes = await client.query(
+          `SELECT tenant_id, hostname, brand_name, is_active 
+           FROM workforce_staging.verified_domain_registry 
+           WHERE tenant_id = $1`,
+          [testTenant]
+        );
+        expect(readRes.rows.length).toBe(1);
+        expect(readRes.rows[0].brand_name).toBe('Audit Test Brand');
+        expect(readRes.rows[0].is_active).toBe(true);
+
+        // 3. UPDATE domain registration
+        await client.query(
+          `UPDATE workforce_staging.verified_domain_registry 
+           SET brand_name = 'Updated Brand Name', accent_color = '#047857' 
+           WHERE tenant_id = $1`,
+          [testTenant]
+        );
+
+        const updateRes = await client.query(
+          `SELECT brand_name, accent_color 
+           FROM workforce_staging.verified_domain_registry 
+           WHERE tenant_id = $1`,
+          [testTenant]
+        );
+        expect(updateRes.rows[0].brand_name).toBe('Updated Brand Name');
+        expect(updateRes.rows[0].accent_color).toBe('#047857');
+
+        // 4. DELETE / Clean up
+        await client.query(
+          `DELETE FROM workforce_staging.verified_domain_registry WHERE tenant_id = $1`,
+          [testTenant]
+        );
+
+        const cleanRes = await client.query(
+          `SELECT COUNT(*) as count FROM workforce_staging.verified_domain_registry WHERE tenant_id = $1`,
+          [testTenant]
+        );
+        expect(Number(cleanRes.rows[0].count)).toBe(0);
+      } finally {
+        client.release();
+      }
+    });
+  });
 });

@@ -338,7 +338,8 @@ CREATE TABLE IF NOT EXISTS workforce_payment_registry (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_payment_registry_tenant_order UNIQUE (tenant_id, internal_order_id),
     CONSTRAINT chk_payment_registry_status CHECK (status IN ('INITIATED', 'BOUND', 'SETTLED', 'FAILED', 'EXPIRED')),
-    CONSTRAINT chk_payment_registry_positive_amount CHECK (expected_amount > 0)
+    CONSTRAINT chk_payment_registry_positive_amount CHECK (expected_amount > 0),
+    CONSTRAINT chk_payment_registry_bound_has_valid_tx CHECK (status NOT IN ('BOUND', 'SETTLED') OR (provider_transaction_id IS NOT NULL AND LENGTH(TRIM(provider_transaction_id)) > 0))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_registry_provider_tx 
@@ -371,19 +372,7 @@ BEGIN
         RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: Column expected_amount cannot be modified once created';
     END IF;
 
-    -- Enforce Post-Bound Immutability for provider_transaction_id & provider_account_id
-    IF NEW.provider_transaction_id IS DISTINCT FROM OLD.provider_transaction_id THEN
-        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
-            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND';
-        END IF;
-    END IF;
-
-    IF NEW.provider_account_id IS DISTINCT FROM OLD.provider_account_id THEN
-        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
-            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_account_id cannot be modified once BOUND';
-        END IF;
-    END IF;
-
+    -- Enforce State Machine Transitions FIRST
     IF OLD.status IS DISTINCT FROM NEW.status THEN
         IF OLD.status = 'INITIATED' THEN
             IF NEW.status NOT IN ('BOUND', 'FAILED', 'EXPIRED') THEN
@@ -399,6 +388,26 @@ BEGIN
             RAISE EXCEPTION 'INVALID_STATUS_TRANSITION: Terminal status % cannot be transitioned to %', OLD.status, NEW.status;
         ELSE
             RAISE EXCEPTION 'INVALID_STATUS_TRANSITION: Unknown current status %', OLD.status;
+        END IF;
+    END IF;
+
+    -- Enforce Post-Bound Immutability for provider_transaction_id & provider_account_id
+    IF NEW.provider_transaction_id IS DISTINCT FROM OLD.provider_transaction_id THEN
+        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
+            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_transaction_id cannot be modified once BOUND';
+        END IF;
+    END IF;
+
+    IF NEW.provider_account_id IS DISTINCT FROM OLD.provider_account_id THEN
+        IF NOT (OLD.status = 'INITIATED' AND NEW.status = 'BOUND') THEN
+            RAISE EXCEPTION 'IMMUTABLE_FIELD_MODIFICATION: provider_account_id cannot be modified once BOUND';
+        END IF;
+    END IF;
+
+    -- Enforce Mandatory Valid Provider Transaction Reference when entering/remaining in BOUND or SETTLED
+    IF NEW.status IN ('BOUND', 'SETTLED') THEN
+        IF NEW.provider_transaction_id IS NULL OR TRIM(NEW.provider_transaction_id) = '' THEN
+            RAISE EXCEPTION 'INVALID_BINDING_REFERENCE: Status % requires a non-empty, valid provider_transaction_id', NEW.status;
         END IF;
     END IF;
 
