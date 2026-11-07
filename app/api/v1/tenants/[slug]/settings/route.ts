@@ -31,6 +31,93 @@ function resolvePlanTier(tier: string | undefined | null): TierEnum {
   return 'SOLO';
 }
 
+function checkInternalMachineScope(
+  req: NextRequest,
+  slug: string,
+  allowedOperation: 'READ_TENANT_SETTINGS' | 'UPDATE_TENANT_SETTINGS'
+): { isMachineAttempt: boolean; isAuthorized: boolean; response?: NextResponse } {
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+
+  const hasSecretHeader = Boolean(internalSecret);
+  const isBearerCandidate = authHeader.toLowerCase().startsWith('bearer ') && Boolean(envAdminSecret) && authHeader.slice(7).trim() === envAdminSecret;
+  const isMachineAttempt = hasSecretHeader || isBearerCandidate;
+
+  if (!isMachineAttempt) {
+    return { isMachineAttempt: false, isAuthorized: false };
+  }
+
+  const isInternalAuth = isInternalMachineAuthorized(req, slug, [allowedOperation]);
+  if (!isInternalAuth) {
+    if (internalSecret && (!envAdminSecret || internalSecret !== envAdminSecret)) {
+      return {
+        isMachineAttempt: true,
+        isAuthorized: false,
+        response: NextResponse.json(
+          { success: false, error: 'Unauthorized: Invalid internal machine secret.' },
+          { status: 401 }
+        ),
+      };
+    }
+
+    const reqTargetTenant = (
+      req.headers.get('x-target-tenant') ||
+      req.headers.get('x-tenant-slug') ||
+      req.headers.get('x-tenant-id')
+    )?.trim().toLowerCase();
+
+    if (!reqTargetTenant) {
+      return {
+        isMachineAttempt: true,
+        isAuthorized: false,
+        response: NextResponse.json(
+          { success: false, error: 'Forbidden: x-target-tenant header is required for internal machine authorization.' },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (reqTargetTenant !== slug.trim().toLowerCase()) {
+      return {
+        isMachineAttempt: true,
+        isAuthorized: false,
+        response: NextResponse.json(
+          { success: false, error: 'Forbidden: Target tenant does not match internal machine scope.' },
+          { status: 403 }
+        ),
+      };
+    }
+
+    const reqOperation = (
+      req.headers.get('x-machine-operation') ||
+      req.headers.get('x-internal-operation')
+    )?.trim().toUpperCase();
+
+    if (!reqOperation || reqOperation !== allowedOperation) {
+      return {
+        isMachineAttempt: true,
+        isAuthorized: false,
+        response: NextResponse.json(
+          { success: false, error: `Forbidden: Operation does not match internal machine scope '${allowedOperation}'.` },
+          { status: 403 }
+        ),
+      };
+    }
+
+    return {
+      isMachineAttempt: true,
+      isAuthorized: false,
+      response: NextResponse.json(
+        { success: false, error: 'Forbidden: Machine authorization failed scope verification.' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { isMachineAttempt: true, isAuthorized: true };
+}
+
 export function sanitizeSettingsForRole(settings: any, role: string) {
   if (!settings) return settings;
   if (role === 'OWNER') {
@@ -40,6 +127,25 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
   const isStaff = role === 'CS' || role === 'OPERATOR';
   const sanitized = { ...settings };
   const metadata = sanitized.metadata ? { ...sanitized.metadata } : {};
+
+  // Redact identity, contact & external communications to NULL for non-OWNER (Migration 010 Parity)
+  sanitized.phone = null;
+  sanitized.contact_phone = null;
+  sanitized.whatsapp = null;
+  sanitized.whatsapp_number = null;
+  sanitized.wa_number = null;
+  sanitized.waba_phone_number_id = null;
+  sanitized.telegram_chat_id = null;
+  sanitized.telegram_group_config = null;
+
+  metadata.phone = null;
+  metadata.contact_phone = null;
+  metadata.whatsapp = null;
+  metadata.whatsapp_number = null;
+  metadata.wa_number = null;
+  metadata.waba_phone_number_id = null;
+  metadata.telegram_chat_id = null;
+  metadata.telegram_group_config = null;
 
   // Redact banking & financial information for non-OWNER (MERCHANT, CS, OPERATOR)
   sanitized.bank = null;
@@ -103,10 +209,11 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     };
   }
 
-  // Redact WABA access tokens for non-OWNER
+  // Redact WABA access tokens & phone id for non-OWNER
   if (sanitized.waba_config) {
     sanitized.waba_config = {
       ...sanitized.waba_config,
+      phone_number_id: null,
       access_token: null,
       permanent_access_token: null,
       api_key: null,
@@ -115,12 +222,36 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
   if (metadata.waba_config) {
     metadata.waba_config = {
       ...metadata.waba_config,
+      phone_number_id: null,
       access_token: null,
       permanent_access_token: null,
       api_key: null,
     };
   }
   metadata.waba_access_token = null;
+  metadata.waba_phone_number_id = null;
+
+  // Redact integration configurations for non-OWNER
+  sanitized.integration = null;
+  sanitized.integrations = null;
+  metadata.integration = null;
+  metadata.integrations = null;
+
+  // Redact gateway_config.metadata & whatsapp_connection.metadata for non-OWNER
+  if (sanitized.gateway_config) {
+    sanitized.gateway_config = {
+      ...sanitized.gateway_config,
+      metadata: null,
+      phone_number: null,
+    };
+  }
+  if (sanitized.whatsapp_connection) {
+    sanitized.whatsapp_connection = {
+      ...sanitized.whatsapp_connection,
+      metadata: null,
+      phone_number: null,
+    };
+  }
 
   // Additional redactions for CS & OPERATOR roles
   if (isStaff) {
@@ -152,10 +283,15 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // ── AUTH GUARD (P0 SECURITY MANDATE - DATABASE-BACKED) ──
-    const isInternalAuth = isInternalMachineAuthorized(_req);
+    // ── AUTH GUARD (P0 SECURITY MANDATE - SCOPED MACHINE & DB-BACKED SESSION) ──
+    const machineAuth = checkInternalMachineScope(_req, slug, 'READ_TENANT_SETTINGS');
     let callerRole: string = 'OWNER';
-    if (!isInternalAuth) {
+    if (machineAuth.isMachineAttempt) {
+      if (!machineAuth.isAuthorized) {
+        return machineAuth.response!;
+      }
+      callerRole = 'OWNER';
+    } else {
       const authResult = await authorizeMerchantSession(_req, slug, ['OWNER', 'MERCHANT', 'CS', 'OPERATOR']);
       if (!authResult.authorized) {
         return authResult.response;
@@ -418,10 +554,15 @@ export async function PUT(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE - DATABASE-BACKED) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE - SCOPED MACHINE & DB-BACKED SESSION) ──
+    const machineAuth = checkInternalMachineScope(req, slug, 'UPDATE_TENANT_SETTINGS');
     let callerRole: string = 'OWNER';
-    if (!isInternalAuth) {
+    if (machineAuth.isMachineAttempt) {
+      if (!machineAuth.isAuthorized) {
+        return machineAuth.response!;
+      }
+      callerRole = 'OWNER';
+    } else {
       const authResult = await authorizeMerchantSession(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
@@ -435,69 +576,44 @@ export async function PUT(
     }
     const body = await req.json();
 
-    // ── STRICT OWNER-ONLY MUTATION GUARD (Round 3O) ──
+    // ── STRICT OWNER-ONLY MUTATION GUARD (Round 3P Strict Allowlist) ──
     if (callerRole !== 'OWNER') {
-      const hasSensitiveUpdate =
-        body.bank !== undefined ||
-        body.bank_settings !== undefined ||
-        body.bank_transfer !== undefined ||
-        body.bank_accounts !== undefined ||
-        body.accounts !== undefined ||
-        body.manual_bank_accounts !== undefined ||
-        body.bank_name !== undefined ||
-        body.bank_account !== undefined ||
-        body.bank_holder !== undefined ||
-        body.is_bank_transfer_active !== undefined ||
-        body.enable_manual_transfer !== undefined ||
-        body.enable_bank_transfer !== undefined ||
-        body.payment_config !== undefined ||
-        body.payment_settings !== undefined ||
-        body.qris_image_url !== undefined ||
-        body.qris_payload !== undefined ||
-        body.qris_static_string !== undefined ||
-        body.capi_token !== undefined ||
-        body.meta_capi_token !== undefined ||
-        body.waba_config !== undefined ||
-        body.waba_phone_number_id !== undefined ||
-        body.waba_account_id !== undefined ||
-        body.waba_access_token !== undefined ||
-        body.plan_tier !== undefined ||
-        body.tier !== undefined ||
-        body.features !== undefined ||
-        body.tenant_secrets !== undefined ||
-        body.secret_api_key !== undefined ||
-        (body.tracking && (body.tracking.meta_capi_token !== undefined || body.tracking.capi_token !== undefined || body.tracking.tiktok_access_token !== undefined)) ||
-        (body.ads_tracking_config && (body.ads_tracking_config.meta_capi_token !== undefined || body.ads_tracking_config.capi_token !== undefined || body.ads_tracking_config.tiktok_access_token !== undefined)) ||
-        (body.metadata && (
-          body.metadata.bank !== undefined ||
-          body.metadata.bank_settings !== undefined ||
-          body.metadata.bank_transfer !== undefined ||
-          body.metadata.bank_accounts !== undefined ||
-          body.metadata.bank_name !== undefined ||
-          body.metadata.bank_account !== undefined ||
-          body.metadata.bank_holder !== undefined ||
-          body.metadata.accounts !== undefined ||
-          body.metadata.manual_bank_accounts !== undefined ||
-          body.metadata.payment_config !== undefined ||
-          body.metadata.payment_settings !== undefined ||
-          body.metadata.capi_token !== undefined ||
-          body.metadata.meta_capi_token !== undefined ||
-          body.metadata.waba_config !== undefined ||
-          body.metadata.waba_access_token !== undefined ||
-          body.metadata.waba_phone_number_id !== undefined ||
-          body.metadata.waba_account_id !== undefined ||
-          body.metadata.plan_tier !== undefined ||
-          body.metadata.tier !== undefined ||
-          body.metadata.features !== undefined ||
-          body.metadata.tenant_secrets !== undefined ||
-          body.metadata.secret_api_key !== undefined
-        ));
+      const PERMITTED_MERCHANT_FIELDS = new Set([
+        'name',
+        'bio',
+        'display_name',
+        'logo_url',
+        'avatar_url',
+        'business_hours',
+        'catalog_preferences',
+        'description',
+        'store_name',
+        'tagline',
+        'faqs',
+        'theme',
+        'template',
+        'microsite',
+        'category',
+        'greeting_message',
+        'custom_greeting_message',
+        'interactive_menus',
+        'interactive_menu',
+      ]);
 
-      if (hasSensitiveUpdate) {
+      const topLevelKeys = Object.keys(body).filter((k) => k !== 'metadata');
+      const hasUnpermittedTopLevel = topLevelKeys.some((k) => !PERMITTED_MERCHANT_FIELDS.has(k));
+
+      let hasUnpermittedMetadata = false;
+      if (body.metadata && typeof body.metadata === 'object') {
+        const metadataKeys = Object.keys(body.metadata);
+        hasUnpermittedMetadata = metadataKeys.some((k) => !PERMITTED_MERCHANT_FIELDS.has(k));
+      }
+
+      if (hasUnpermittedTopLevel || hasUnpermittedMetadata) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Forbidden: Only tenant OWNER can mutate financial and integration credentials.',
+            error: 'Forbidden: Only tenant OWNER can mutate financial, identity, or integration configurations.',
           },
           { status: 403 }
         );

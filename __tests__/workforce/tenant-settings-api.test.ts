@@ -83,7 +83,13 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
   let tokenCSA: string;
   let tokenOwnerB: string;
 
+  const TEST_MACHINE_SECRET = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+  let originalAdminSecret: string | undefined;
+
   beforeAll(async () => {
+    originalAdminSecret = process.env.ADMIN_INTERNAL_SECRET;
+    process.env.ADMIN_INTERNAL_SECRET = TEST_MACHINE_SECRET;
+
     pgClient = new Client({ connectionString: getDatabaseConnectionString() });
     await pgClient.connect();
     await pgClient.query('SET search_path TO workforce_staging, public');
@@ -207,6 +213,11 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
 
   afterAll(async () => {
     try {
+      if (originalAdminSecret !== undefined) {
+        process.env.ADMIN_INTERNAL_SECRET = originalAdminSecret;
+      } else {
+        delete process.env.ADMIN_INTERNAL_SECRET;
+      }
       if (pgClient) {
         await pgClient.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_slug IN ($1, $2)', [slugA, slugB]);
         await pgClient.query('DELETE FROM workforce_staging.tenants WHERE slug IN ($1, $2)', [slugA, slugB]);
@@ -273,6 +284,13 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.settings.metadata.bank).toBeNull();
     expect(json.settings.metadata.bank_accounts).toBeNull();
     expect(json.settings.metadata.capi_token).toBeNull();
+
+    // Migration 010 Parity: Phone and communication IDs redacted for MERCHANT
+    expect(json.settings.phone).toBeNull();
+    expect(json.settings.whatsapp_number).toBeNull();
+    expect(json.settings.waba_phone_number_id).toBeNull();
+    expect(json.settings.telegram_chat_id).toBeNull();
+    expect(json.settings.integration).toBeNull();
   });
 
   test('2b. Downgraded user (Token OWNER, DB MERCHANT) is rejected with 403 when attempting to update bank or secrets', async () => {
@@ -291,7 +309,7 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.success).toBe(false);
-    expect(json.error).toMatch(/Only tenant OWNER can mutate financial and integration credentials/i);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial.*(credentials|configurations)/i);
   });
 
   test('2c. Downgraded user (Token OWNER, DB MERCHANT) is rejected with 403 when updating CAPI or tracking secrets', async () => {
@@ -310,7 +328,7 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.success).toBe(false);
-    expect(json.error).toMatch(/Only tenant OWNER can mutate financial and integration credentials/i);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial.*(credentials|configurations)/i);
   });
 
   // ── TEST 3: LEGITIMATE OWNER OPERATIONS ──────────────────────────────────
@@ -331,6 +349,9 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.settings.capi_token).toBe('EAAX_TEST_CAPI_TOKEN_999');
     expect(json.settings.waba_config.permanent_access_token).toBe('EAAG_TEST_WABA_TOKEN_777');
     expect(json.settings.is_qris_active).toBe(true);
+    expect(json.settings.phone).toBe('+628111222333');
+    expect(json.settings.whatsapp_number).toBe('+628111222333');
+    expect(json.settings.waba_phone_number_id).toBe('WABA_TEST_ID_123');
   });
 
   test('3b. Legitimate OWNER can update bank accounts and store settings', async () => {
@@ -459,5 +480,195 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.success).toBe(false);
+  });
+
+  // ── TEST 7: INTERNAL MACHINE AUTHENTICATION SCOPE BOUNDS (Round 3P) ──────
+  test('7a. Machine Auth Negative: Valid internal secret + MISSING x-target-tenant fails closed (401/403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-machine-operation': 'READ_TENANT_SETTINGS',
+        // MISSING x-target-tenant
+      },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect([401, 403]).toContain(res.status);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+  });
+
+  test('7b. Machine Auth Negative: Valid internal secret + WRONG target tenant slug fails closed (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-target-tenant': 'unauthorized-adversary-tenant',
+        'x-machine-operation': 'READ_TENANT_SETTINGS',
+      },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/target tenant/i);
+  });
+
+  test('7c. Machine Auth Negative: Valid internal secret + WRONG operation header on PUT fails closed (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-target-tenant': slugA,
+        'x-machine-operation': 'READ_TENANT_SETTINGS', // Unauthorized operation for mutation
+      },
+      body: JSON.stringify({ name: 'Machine Wrong Op Name' }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/operation does not match/i);
+  });
+
+  test('7d. Machine Auth Positive: Valid internal secret + MATCHING slug & operation succeeds (200)', async () => {
+    // 1. Scoped Machine GET
+    const getReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-target-tenant': slugA,
+        'x-machine-operation': 'READ_TENANT_SETTINGS',
+      },
+    });
+
+    const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: slugA }) });
+    expect(getRes.status).toBe(200);
+    const getJson = await getRes.json();
+    expect(getJson.success).toBe(true);
+    expect(getJson.settings.slug).toBe(slugA);
+    expect(getJson.settings.name).toBeDefined();
+    expect(getJson.settings.phone).toBe('+628111222333');
+
+    // 2. Scoped Machine PUT
+    const putReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-target-tenant': slugA,
+        'x-machine-operation': 'UPDATE_TENANT_SETTINGS',
+      },
+      body: JSON.stringify({
+        bio: 'Updated via Scoped Machine Auth 2026',
+      }),
+    });
+
+    const putRes = await updateSettings(putReq, { params: Promise.resolve({ slug: slugA }) });
+    expect(putRes.status).toBe(200);
+    const putJson = await putRes.json();
+    expect(putJson.success).toBe(true);
+  });
+
+  // ── TEST 8: GET PARITY ASSERTION FOR MERCHANT (Migration 010 Parity) ──────
+  test('8a. GET Parity: Query GET settings as MERCHANT returns strictly masked communication and identity fields', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenMerchantA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // Migration 010 Parity assertions: strictly null or undefined
+    expect(json.settings.phone).toBeNull();
+    expect(json.settings.whatsapp_number).toBeNull();
+    expect(json.settings.waba_phone_number_id).toBeNull();
+    expect(json.settings.telegram_chat_id).toBeNull();
+    expect(json.settings.bank_accounts).toBeNull();
+    expect(json.settings.payment_config).toBeNull();
+    expect(json.settings.capi_token).toBeNull();
+    expect(json.settings.integration).toBeNull();
+    expect(json.settings.gateway_config?.metadata).toBeNull();
+  });
+
+  test('8b. GET Parity: Query GET settings as OWNER returns unmasked communication and identity fields', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    expect(json.settings.phone).toBe('+628111222333');
+    expect(json.settings.whatsapp_number).toBe('+628111222333');
+    expect(json.settings.waba_phone_number_id).toBe('WABA_TEST_ID_123');
+  });
+
+  // ── TEST 9: PUT SENSITIVE INTEGRATION ATTEMPT BY MERCHANT (STRICT ALLOWLIST)
+  test('9a. PUT Sensitive Integration Attempt by MERCHANT with top-level integration is rejected (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        integration: { webhook_url: 'https://evil.com' },
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+  });
+
+  test('9b. PUT Sensitive Integration Attempt by MERCHANT with metadata.integration is rejected (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        metadata: { integration: { token: 'abc-secret' } },
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+  });
+
+  test('9c. PUT Allowed Profile Fields by MERCHANT ({ bio: "Updated Bio" }) succeeds (200)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        bio: 'Updated Bio for Fortress Alpha Defense',
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.message).toMatch(/berhasil diperbarui/i);
   });
 });
