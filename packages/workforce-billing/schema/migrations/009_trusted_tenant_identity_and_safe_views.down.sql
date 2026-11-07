@@ -54,6 +54,11 @@ CREATE POLICY rls_products_isolation ON workforce_staging.products
     );
 
 DROP POLICY IF EXISTS rls_branch_credit_pools_isolation ON workforce_staging.branch_credit_pools;
+DROP POLICY IF EXISTS rls_branch_credit_pools_select ON workforce_staging.branch_credit_pools;
+DROP POLICY IF EXISTS rls_branch_credit_pools_insert ON workforce_staging.branch_credit_pools;
+DROP POLICY IF EXISTS rls_branch_credit_pools_update ON workforce_staging.branch_credit_pools;
+DROP POLICY IF EXISTS rls_branch_credit_pools_delete ON workforce_staging.branch_credit_pools;
+
 CREATE POLICY rls_branch_credit_pools_isolation ON workforce_staging.branch_credit_pools
     FOR ALL
     TO public
@@ -65,7 +70,8 @@ CREATE POLICY rls_branch_credit_pools_isolation ON workforce_staging.branch_cred
     );
 
 -- 4. Drop function safely only after dependent policies are reverted
-DROP FUNCTION IF EXISTS workforce_staging.is_trusted_tenant_member(TEXT);
+DROP FUNCTION IF EXISTS workforce_staging.is_trusted_tenant_member(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS workforce_staging.is_trusted_tenant_member(TEXT, TEXT) CASCADE;
 
 -- 5. Drop tenant_memberships table
 DROP TABLE IF EXISTS workforce_staging.tenant_memberships;

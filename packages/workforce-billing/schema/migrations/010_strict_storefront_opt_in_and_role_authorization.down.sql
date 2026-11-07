@@ -51,7 +51,94 @@ GRANT ALL ON public.storefront_tenants TO postgres, service_role;
 GRANT ALL ON public.storefront_products TO postgres, service_role;
 DROP VIEW IF EXISTS public.tenant_memberships CASCADE;
 
--- 2. Restore Migration 009 Policies on tenants, products, branch_credit_pools
+-- 2. Restore is_trusted_tenant_member helper without stale JWT bypass (Round 3L)
+CREATE OR REPLACE FUNCTION workforce_staging.is_trusted_tenant_member(
+    target_tenant_id TEXT,
+    required_role TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = workforce_staging, public
+AS $$
+DECLARE
+    v_uid UUID;
+    v_role TEXT;
+    v_active_role TEXT;
+    v_jwt_tenant_id TEXT;
+    v_member_role TEXT;
+    v_is_active BOOLEAN;
+BEGIN
+    -- 1. Service role or superuser bypass
+    v_role := auth.role();
+    IF v_role = 'service_role' THEN
+        RETURN TRUE;
+    END IF;
+
+    v_active_role := current_setting('role', true);
+    IF (v_active_role IS NULL OR v_active_role = 'none' OR v_active_role = 'postgres') AND session_user = 'postgres' THEN
+        RETURN TRUE;
+    END IF;
+
+    v_uid := auth.uid();
+    IF v_uid IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
+    -- 2. Check active database membership (SSOT - NO early JWT claim return!)
+    SELECT tm.role, tm.is_active 
+    INTO v_member_role, v_is_active
+    FROM workforce_staging.tenant_memberships tm
+    WHERE tm.user_id = v_uid
+      AND (tm.tenant_id = target_tenant_id OR tm.tenant_slug = target_tenant_id)
+    LIMIT 1;
+
+    -- If no membership record exists or is_active is FALSE, fail closed immediately
+    IF v_member_role IS NULL OR v_is_active IS NOT TRUE THEN
+        RETURN FALSE;
+    END IF;
+
+    -- 3. Verify JWT claims do not contradict target tenant if present
+    BEGIN
+        v_jwt_tenant_id := auth.jwt() -> 'app_metadata' ->> 'tenant_id';
+        IF v_jwt_tenant_id IS NOT NULL AND (v_jwt_tenant_id != target_tenant_id) THEN
+            RETURN FALSE;
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+    END;
+
+    -- 4. Check role requirement if specified
+    IF required_role IS NOT NULL THEN
+        IF required_role = 'OWNER' THEN
+            RETURN v_member_role = 'OWNER';
+        ELSIF required_role = 'MERCHANT' THEN
+            RETURN v_member_role IN ('OWNER', 'MERCHANT');
+        ELSIF required_role = 'OPERATOR' THEN
+            RETURN v_member_role IN ('OWNER', 'MERCHANT', 'OPERATOR');
+        ELSIF required_role = 'CS' THEN
+            RETURN v_member_role IN ('OWNER', 'MERCHANT', 'OPERATOR', 'CS');
+        END IF;
+        RETURN v_member_role = required_role;
+    END IF;
+
+    RETURN TRUE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION workforce_staging.is_trusted_tenant_member(
+    target_tenant_id TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = workforce_staging, public
+AS $$
+    SELECT workforce_staging.is_trusted_tenant_member(target_tenant_id, NULL::TEXT);
+$$;
+
+-- 3. Restore Policies on tenants, products, branch_credit_pools (Role-Bounded in Rollback)
 DROP POLICY IF EXISTS rls_tenants_isolation ON workforce_staging.tenants;
 DROP POLICY IF EXISTS rls_tenants_select ON workforce_staging.tenants;
 DROP POLICY IF EXISTS rls_tenants_insert ON workforce_staging.tenants;
@@ -119,19 +206,12 @@ DROP POLICY IF EXISTS rls_branch_credit_pools_select ON workforce_staging.branch
 DROP POLICY IF EXISTS rls_branch_credit_pools_insert ON workforce_staging.branch_credit_pools;
 DROP POLICY IF EXISTS rls_branch_credit_pools_update ON workforce_staging.branch_credit_pools;
 DROP POLICY IF EXISTS rls_branch_credit_pools_delete ON workforce_staging.branch_credit_pools;
+DROP POLICY IF EXISTS rls_branch_credit_pools_mutation ON workforce_staging.branch_credit_pools;
 
-CREATE POLICY rls_branch_credit_pools_isolation ON workforce_staging.branch_credit_pools
-    FOR ALL
-    TO public
+-- SELECT policy: Permit any active tenant member (Round 3L)
+CREATE POLICY rls_branch_credit_pools_select ON workforce_staging.branch_credit_pools
+    FOR SELECT TO public
     USING (
-        auth.role() = 'service_role' OR
-        (
-            workforce_staging.is_trusted_tenant_member(agency_id) AND
-            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR agency_id = current_setting('app.current_agency_id', true)) AND
-            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR agency_id = current_setting('app.current_tenant_id', true))
-        )
-    )
-    WITH CHECK (
         auth.role() = 'service_role' OR
         (
             workforce_staging.is_trusted_tenant_member(agency_id) AND
@@ -140,54 +220,47 @@ CREATE POLICY rls_branch_credit_pools_isolation ON workforce_staging.branch_cred
         )
     );
 
--- 3. Restore 1-argument is_trusted_tenant_member function safely
-CREATE OR REPLACE FUNCTION workforce_staging.is_trusted_tenant_member(target_tenant_id TEXT)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-STABLE
-SET search_path = workforce_staging, public
-AS $$
-DECLARE
-    v_uid UUID;
-    v_role TEXT;
-    v_active_role TEXT;
-    v_jwt_tenant_id TEXT;
-BEGIN
-    v_role := auth.role();
-    IF v_role = 'service_role' THEN
-        RETURN TRUE;
-    END IF;
+-- MUTATION policies: Strictly restricted to OWNER role or service_role (Round 3L)
+CREATE POLICY rls_branch_credit_pools_insert ON workforce_staging.branch_credit_pools
+    FOR INSERT TO public
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        (
+            workforce_staging.is_trusted_tenant_member(agency_id, 'OWNER') AND
+            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR agency_id = current_setting('app.current_agency_id', true)) AND
+            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR agency_id = current_setting('app.current_tenant_id', true))
+        )
+    );
 
-    v_active_role := current_setting('role', true);
-    IF (v_active_role IS NULL OR v_active_role = 'none' OR v_active_role = 'postgres') AND session_user = 'postgres' AND v_role IS NULL THEN
-        RETURN TRUE;
-    END IF;
+CREATE POLICY rls_branch_credit_pools_update ON workforce_staging.branch_credit_pools
+    FOR UPDATE TO public
+    USING (
+        auth.role() = 'service_role' OR
+        (
+            workforce_staging.is_trusted_tenant_member(agency_id, 'OWNER') AND
+            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR agency_id = current_setting('app.current_agency_id', true)) AND
+            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR agency_id = current_setting('app.current_tenant_id', true))
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        (
+            workforce_staging.is_trusted_tenant_member(agency_id, 'OWNER') AND
+            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR agency_id = current_setting('app.current_agency_id', true)) AND
+            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR agency_id = current_setting('app.current_tenant_id', true))
+        )
+    );
 
-    BEGIN
-        v_jwt_tenant_id := auth.jwt() -> 'app_metadata' ->> 'tenant_id';
-        IF v_jwt_tenant_id IS NOT NULL AND (v_jwt_tenant_id = target_tenant_id) THEN
-            RETURN TRUE;
-        END IF;
-    EXCEPTION WHEN OTHERS THEN
-    END;
-
-    v_uid := auth.uid();
-    IF v_uid IS NOT NULL THEN
-        IF EXISTS (
-            SELECT 1 
-            FROM workforce_staging.tenant_memberships tm
-            WHERE tm.user_id = v_uid
-              AND tm.is_active = TRUE
-              AND (tm.tenant_id = target_tenant_id OR tm.tenant_slug = target_tenant_id)
-        ) THEN
-            RETURN TRUE;
-        END IF;
-    END IF;
-
-    RETURN FALSE;
-END;
-$$;
+CREATE POLICY rls_branch_credit_pools_delete ON workforce_staging.branch_credit_pools
+    FOR DELETE TO public
+    USING (
+        auth.role() = 'service_role' OR
+        (
+            workforce_staging.is_trusted_tenant_member(agency_id, 'OWNER') AND
+            (nullif(current_setting('app.current_agency_id', true), '') IS NULL OR agency_id = current_setting('app.current_agency_id', true)) AND
+            (nullif(current_setting('app.current_tenant_id', true), '') IS NULL OR agency_id = current_setting('app.current_tenant_id', true))
+        )
+    );
 
 -- 4. Drop publication indexes and columns safely
 DROP INDEX IF EXISTS workforce_staging.idx_tenants_public_storefront;

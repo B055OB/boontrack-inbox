@@ -2429,4 +2429,151 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
 | **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
 
+---
+
+## 16. BWM Gate 1 Round 3L: Rollback Stale JWT Elimination & Credit Pool Mutation Isolation
+
+**Authority:** Founder Executive Directive & CTO Guardian  
+**Repository:** `boontrack-workforce` (`B055OB/boontrack-inbox`)  
+**Branch:** `feat/bwm-workforce-isolated`  
+**Execution Scope:** `[TARGET TENANT: workforce_staging] | [TARGET CHANNEL: NONE] | [BLAST RADIUS: ISOLATED]`  
+**Status:** REMEDIATION COMPLETE & FULLY VERIFIED (MERGE HOLD MAINTAINED)
+
+---
+
+### 16.1 Architectural Changes Implemented
+
+#### 1. Elimination of Stale JWT Bypass in Rollback Helper (`010.down.sql`)
+- **Blocker:** In the rolled-back definition of `is_trusted_tenant_member`, an early-return check on `auth.jwt() -> 'app_metadata' ->> 'tenant_id'` permitted access even if the user's database membership had been revoked (`is_active = FALSE`).
+- **Remediation:** In [010_strict_storefront_opt_in_and_role_authorization.down.sql](file:///c:/boontrack-workforce/packages/workforce-billing/schema/migrations/010_strict_storefront_opt_in_and_role_authorization.down.sql), removed the early JWT claim return block. Enforced that membership is authoritatively verified against the physical database:
+  ```sql
+  SELECT tm.role, tm.is_active 
+  INTO v_member_role, v_is_active
+  FROM workforce_staging.tenant_memberships tm
+  WHERE tm.user_id = v_uid
+    AND (tm.tenant_id = target_tenant_id OR tm.tenant_slug = target_tenant_id)
+  LIMIT 1;
+
+  IF v_member_role IS NULL OR v_is_active IS NOT TRUE THEN
+      RETURN FALSE;
+  END IF;
+  ```
+- **Invariant:** A JWT claim alone without an active database membership record strictly fails closed (`FALSE`).
+
+#### 2. Credit Pool Mutation Isolation in Rollback (`010.down.sql`)
+- **Blocker:** The rolled-back state previously used a monolithic `FOR ALL` policy on `branch_credit_pools`, allowing any active member (such as `MERCHANT`) to mutate credit pool balances.
+- **Remediation:** Dropped the monolithic policy and established separated SELECT and MUTATION policies:
+  - **SELECT Policy:** Active members can read pool balances via `is_trusted_tenant_member(agency_id)`.
+  - **MUTATION Policies (INSERT, UPDATE, DELETE):** Strictly restricted to `OWNER` role via `is_trusted_tenant_member(agency_id, 'OWNER')` or `service_role`.
+- **Invariant:** `MERCHANT`, `OPERATOR`, and `CS` roles are strictly prohibited from modifying credit pools in the rolled-back state (`rowCount = 0` or SQLSTATE `42501`).
+
+---
+
+### 16.2 Test Enhancements & Execution Logs
+
+#### A. Safe Rollback Suite (`safe-migration-rollback.test.ts`)
+Added Tests 2d and 2e directly validating Round 3L invariants in the 010 DOWN state:
+- **Test 2d:** Revoked membership (`is_active = FALSE`) presenting matching tenant JWT claim is strictly rejected.
+- **Test 2e:** In 010 DOWN state, `MERCHANT` is permitted to read credit pools but strictly rejected from `INSERT`/`UPDATE`, while `OWNER` mutation is permitted.
+Command: `npx.cmd jest __tests__/workforce/safe-migration-rollback.test.ts`
+```
+PASS __tests__/workforce/safe-migration-rollback.test.ts (10.69 s)
+  BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)
+    √ 1. Migration 010 DOWN Executes Cleanly Without Regressions (544 ms)
+    √ 2. In Rolled-Back State: Anonymous Access to Full Tables Remains Strictly Revoked (1108 ms)
+    √ 2b. In Rolled-Back State: Authenticated Users Cannot Perform Unrestricted DML and Fail Closed (384 ms)
+    √ 2c. In Rolled-Back State: Authenticated Users Cannot Query or Scrape Storefront Views (Round 3K) (373 ms)
+    √ 2d. In Rolled-Back State: Revoked Membership with Stale JWT Fails Closed (Round 3L) (1041 ms)
+    √ 2e. In Rolled-Back State: Credit Pool Mutation Separation (MERCHANT Rejected, OWNER Permitted) (Round 3L) (2280 ms)
+    √ 3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies (538 ms)
+    √ 4. Post-Reapplication Security Boundary: Anonymous Full-Table Denial Maintained (770 ms)
+    √ 5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I) (1568 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       9 passed, 9 total
+Time:        11.264 s
+```
+
+#### B. API Authorization Convergence & Role Authorization Suites
+Command: `npx.cmd jest __tests__/workforce/api-authorization-convergence.test.ts __tests__/workforce/role-authorization.test.ts`
+```
+PASS __tests__/workforce/role-authorization.test.ts (12.666 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (15.745 s)
+
+Test Suites: 2 passed, 2 total
+Tests:       27 passed, 27 total
+Time:        17.331 s
+```
+
+#### C. Full Workforce Regression Test Suite (36 Suites, 413 Tests)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (31.907 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (26.669 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (14.586 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (14.433 s)
+PASS __tests__/workforce/role-authorization.test.ts (11.575 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (9.176 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (8.841 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.152 s)
+... [Remaining 28 suites pass cleanly] ...
+
+Test Suites: 36 passed, 36 total
+Tests:       413 passed, 413 total
+Snapshots:   0 total
+Time:        175.371 s
+```
+
+#### D. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 88ms
+✓ Compiled successfully in 1246ms
+  Running TypeScript ...
+  Finished TypeScript in 7.6s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 1188ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 16.3 Sign-off Matrix for Round 3L
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :---: |
+| **L1** | Stale JWT Elimination | Database membership verification mandatory; JWT alone cannot grant access | `safe-migration-rollback.test.ts` (Test 2d) | **ELIMINATED & VERIFIED** |
+| **L2** | Credit Pool Mutation Isolation | Credit pool mutations strictly restricted to `OWNER`; `MERCHANT` mutations rejected | `safe-migration-rollback.test.ts` (Test 2e) | **ISOLATED & VERIFIED** |
+| **L3** | Reversible Rollback Cycle | DOWN -> UP reapplication executes cleanly with all policies and views restored | `safe-migration-rollback.test.ts` (Tests 1, 3, 5) | **REVERSIBLE & CLEAN** |
+| **REG** | Full Regression Suite | All 36 suites, 413 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (413/413)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+
+
 

@@ -201,6 +201,150 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('RESET ROLE');
   });
 
+  test('2d. In Rolled-Back State: Revoked Membership with Stale JWT Fails Closed (Round 3L)', async () => {
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+
+    const testTenantSlug = `rb-stale-${Date.now()}`;
+    const testUserId = '88888888-8888-4888-8888-888888888888';
+
+    // 1. Seed tenant baseline and revoked membership (is_active = FALSE)
+    await client.query(`
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, is_active)
+      VALUES ($1, 'Rollback Stale Test Tenant', 'service', 'PRO_SCALE', 'active', TRUE)
+    `, [testTenantSlug]);
+
+    await client.query(`
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES ($1, $2, $2, 'MERCHANT', FALSE)
+    `, [testUserId, testTenantSlug]);
+
+    // 2. Set claims with matching tenant claim in app_metadata
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: testUserId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: testTenantSlug },
+      }),
+    ]);
+
+    // 3. Query is_trusted_tenant_member in 010 DOWN state
+    const checkRes = await client.query(
+      'SELECT workforce_staging.is_trusted_tenant_member($1) AS is_member',
+      [testTenantSlug]
+    );
+    // JWT claim alone MUST NOT grant access without an active DB membership!
+    expect(checkRes.rows[0].is_member).toBe(false);
+
+    // Clean up
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [testTenantSlug]);
+    await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [testTenantSlug]);
+  });
+
+  test('2e. In Rolled-Back State: Credit Pool Mutation Separation (MERCHANT Rejected, OWNER Permitted) (Round 3L)', async () => {
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+
+    const testTenantSlug = `rb-pool-${Date.now()}`;
+    const ownerUserId = '99999999-9999-4999-9999-999999999991';
+    const merchantUserId = '99999999-9999-4999-9999-999999999992';
+    const branchPoolId = `pool-rb-${Date.now()}`;
+
+    // 1. Seed tenant baseline, memberships, and credit pool
+    await client.query(`
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, is_active)
+      VALUES ($1, 'Rollback Pool Test Tenant', 'service', 'PRO_SCALE', 'active', TRUE)
+    `, [testTenantSlug]);
+
+    await client.query(`
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES 
+        ($1, $3, $3, 'OWNER', TRUE),
+        ($2, $3, $3, 'MERCHANT', TRUE)
+    `, [ownerUserId, merchantUserId, testTenantSlug]);
+
+    await client.query(`
+      INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
+      VALUES ($1, $2, 500, 5, 'IDR')
+    `, [branchPoolId, testTenantSlug]);
+
+    // 2. MERCHANT Context
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: merchantUserId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: testTenantSlug },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [testTenantSlug]);
+
+    // A. MERCHANT can SELECT credit pools
+    const readPool = await client.query(
+      'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [branchPoolId]
+    );
+    expect(readPool.rows.length).toBe(1);
+    expect(readPool.rows[0].available_credits).toBe(500);
+
+    // B. MERCHANT CANNOT UPDATE credit pools (affects 0 rows under RLS)
+    const updateRes = await client.query(
+      'UPDATE workforce_staging.branch_credit_pools SET available_credits = 99999 WHERE branch_id = $1',
+      [branchPoolId]
+    );
+    expect(updateRes.rowCount).toBe(0);
+
+    // C. MERCHANT CANNOT INSERT into credit pools (fails closed with 42501)
+    let merchantInsertErr: any = null;
+    try {
+      await client.query(`
+        INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits)
+        VALUES ('illegal_merchant_pool', $1, 1000)
+      `, [testTenantSlug]);
+    } catch (err: any) {
+      merchantInsertErr = err;
+    }
+    expect(merchantInsertErr).not.toBeNull();
+    expect(merchantInsertErr.code).toBe('42501');
+
+    // 3. OWNER Context
+    await client.query('RESET ROLE');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: ownerUserId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: testTenantSlug },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_agency_id', $1, false)", [testTenantSlug]);
+
+    // OWNER can mutate credit pools
+    const ownerUpdateRes = await client.query(
+      'UPDATE workforce_staging.branch_credit_pools SET available_credits = 750 WHERE branch_id = $1',
+      [branchPoolId]
+    );
+    expect(ownerUpdateRes.rowCount).toBe(1);
+
+    // Verify credits modified to 750
+    const verifyOwnerRead = await client.query(
+      'SELECT available_credits FROM workforce_staging.branch_credit_pools WHERE branch_id = $1',
+      [branchPoolId]
+    );
+    expect(verifyOwnerRead.rows[0].available_credits).toBe(750);
+
+    // Clean up
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_agency_id');
+    await client.query('DELETE FROM workforce_staging.branch_credit_pools WHERE branch_id = $1', [branchPoolId]);
+    await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [testTenantSlug]);
+    await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [testTenantSlug]);
+  });
+
   test('3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies', async () => {
     await client.query('RESET ROLE');
     await expect(client.query(upSql)).resolves.toBeDefined();
