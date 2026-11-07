@@ -280,36 +280,46 @@ DROP FUNCTION IF EXISTS public.trg_fn_products_view_dml CASCADE;
 ALTER TABLE workforce_staging.tenants DROP COLUMN IF EXISTS public_storefront_enabled;
 ALTER TABLE workforce_staging.products DROP COLUMN IF EXISTS is_publicly_published;
 
--- Recreate base public views strictly with column confidentiality, role-safe projection, and fail-closed tenant boundary (Round 3M)
+-- Recreate base public views strictly with column confidentiality, role-safe projection, and fail-closed tenant boundary (Round 3N)
 -- Do NOT use security_invoker = true since direct table access is revoked from authenticated
 CREATE OR REPLACE VIEW public.tenants 
 WITH (security_invoker = false) AS 
     SELECT 
         id, slug, name, category, tier, status, is_active,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
             THEN metadata 
             ELSE NULL 
         END AS metadata,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
             THEN phone 
             ELSE NULL 
         END AS phone,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
             THEN whatsapp_number 
             ELSE NULL 
         END AS whatsapp_number,
         created_at, updated_at, subscription_status, trial_ends_at, subscription_ends_at,
         bot_paused, is_bot_active,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
             THEN waba_phone_number_id 
             ELSE NULL 
         END AS waba_phone_number_id,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(id::text) OR workforce_staging.is_trusted_tenant_member(slug)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+                 OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
             THEN telegram_chat_id 
             ELSE NULL 
         END AS telegram_chat_id,
@@ -333,18 +343,21 @@ WITH (security_invoker = false) AS
         description, stock, is_active, status, sku, created_at, updated_at,
         name, image, image_url,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(tenant_id)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
             THEN asset_reference 
             ELSE NULL 
         END AS asset_reference,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(tenant_id)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
             THEN license_status 
             ELSE NULL 
         END AS license_status,
         is_digital, requires_shipping, is_unlimited_stock,
         CASE 
-            WHEN auth.role() = 'service_role' OR workforce_staging.is_trusted_tenant_member(tenant_id)
+            WHEN auth.role() = 'service_role' 
+                 OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
             THEN fulfillment_metadata 
             ELSE NULL 
         END AS fulfillment_metadata

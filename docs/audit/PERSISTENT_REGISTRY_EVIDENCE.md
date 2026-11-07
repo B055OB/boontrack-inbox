@@ -2740,3 +2740,167 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **REG** | Full Regression Suite | All 36 suites, 414 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (414/414)** |
 | **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
 | **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+
+
+---
+
+## 18. BWM Gate 1 Round 3N: Rollback Column Masking Parity & Full 4-Role Matrix Enforcement
+
+**Authority:** Founder Executive Directive & CTO Guardian  
+**Repository:** `boontrack-workforce` (`B055OB/boontrack-inbox`)  
+**Branch:** `feat/bwm-workforce-isolated`  
+**Execution Scope:** `[TARGET TENANT: workforce_staging] | [TARGET CHANNEL: NONE] | [BLAST RADIUS: ISOLATED]`  
+**Status:** REMEDIATION COMPLETE & FULLY VERIFIED (MERGE HOLD MAINTAINED)
+
+---
+
+### 18.1 Architectural Changes Implemented
+
+#### 1. Column-Level Masking Parity in Migration 010 Rollback (`010.down.sql`)
+- **Blocker:** In `010.down.sql`, the column masking logic in `public.tenants` and `public.products` previously used general membership checks (`is_trusted_tenant_member(...)`) without role qualification. Consequently, non-owner members (`MERCHANT`, `OPERATOR`, `CS`) were exposed to sensitive tenant contact details (phone, WABA IDs, telegram IDs, metadata), and `OPERATOR`/`CS` members were exposed to digital asset licenses and fulfillment vault keys.
+- **Remediation:** In [010_strict_storefront_opt_in_and_role_authorization.down.sql](file:///c:/boontrack-workforce/packages/workforce-billing/schema/migrations/010_strict_storefront_opt_in_and_role_authorization.down.sql):
+  - In `public.tenants`, restricted sensitive columns strictly to `OWNER` role or `service_role`:
+    ```sql
+    CASE 
+        WHEN auth.role() = 'service_role' 
+             OR workforce_staging.is_trusted_tenant_member(id::text, 'OWNER') 
+             OR workforce_staging.is_trusted_tenant_member(slug, 'OWNER')
+        THEN metadata / phone / whatsapp_number / waba_phone_number_id / telegram_chat_id 
+        ELSE NULL 
+    END
+    ```
+  - In `public.products`, restricted sensitive fulfillment columns strictly to `MERCHANT` role (which includes `OWNER` by role hierarchy) or `service_role`:
+    ```sql
+    CASE 
+        WHEN auth.role() = 'service_role' 
+             OR workforce_staging.is_trusted_tenant_member(tenant_id, 'MERCHANT')
+        THEN asset_reference / license_status / fulfillment_metadata 
+        ELSE NULL 
+    END
+    ```
+  - Preserved `security_invoker = false` on both views to guarantee that execution remains isolated from underlying table permissions.
+  - Direct base tables remain strictly revoked from non-service roles (`REVOKE ALL ON workforce_staging.tenants, workforce_staging.products, workforce_staging.tenant_memberships FROM authenticated, anon`).
+
+#### 2. Correction of Inverted Assertion in Test 2f
+- **Issue:** Test 2f in `safe-migration-rollback.test.ts` previously asserted that a `MERCHANT` user received unmasked phone data (`expect(readOwnTenant.rows[0].phone).toBe('+62811111111')`), directly violating the column masking boundary.
+- **Remediation:** In [safe-migration-rollback.test.ts](file:///c:/boontrack-workforce/__tests__/workforce/safe-migration-rollback.test.ts):
+  - Corrected `MERCHANT` assertion: `expect(readOwnTenant.rows[0].phone).toBeNull()`.
+  - Added positive control for `OWNER`: Authenticating as an `OWNER` member queries the same tenant row and verifies that unmasked phone data (`+62811111111`) is received.
+
+#### 3. Implementation of Full 4-Role Column Masking Matrix Test (Test 2g)
+- Added Test 2g verifying the complete 4-role matrix against the 010 rollback state:
+  - **OWNER:** Tenant row visible, sensitive tenant fields unmasked; Product row visible, sensitive product fields unmasked.
+  - **MERCHANT:** Tenant row visible, sensitive tenant fields masked (NULL); Product row visible, sensitive product fields unmasked.
+  - **OPERATOR:** Tenant row visible, sensitive tenant fields masked (NULL); Product row visible, sensitive product fields masked (NULL).
+  - **CS:** Tenant row visible, sensitive tenant fields masked (NULL); Product row visible, sensitive product fields masked (NULL).
+  - **OUTSIDER:** Zero rows returned across both views.
+  - **ANON:** Access fails closed with SQLSTATE `42501`.
+
+#### 4. Validation of Legitimate Tenant API CRUD Functionality
+- Verified that closing underlying base tables does NOT impede legitimate application workflows:
+  - Product creation: `POST /api/v1/tenants/[slug]/products` succeeds via authorized merchant session and backend service role.
+  - Product catalog updates: `PUT /api/v1/tenants/[slug]/products/[id]` succeeds for authorized OWNER/MERCHANT roles.
+  - Product deletions: `DELETE /api/v1/tenants/[slug]/products/[id]` succeeds for authorized OWNER/MERCHANT roles.
+  - Store profile updates: `PUT /api/v1/tenants/[slug]/settings` succeeds for authorized OWNER role.
+- All 36 regression suites, including `tenant-operational-regression.test.ts` and `real-api-persistence.test.ts`, pass 100%.
+
+---
+
+### 18.2 Test Enhancements & Execution Logs
+
+#### A. Safe Rollback Suite (`safe-migration-rollback.test.ts`)
+Command: `npx.cmd jest __tests__/workforce/safe-migration-rollback.test.ts`
+```
+PASS __tests__/workforce/safe-migration-rollback.test.ts (23.543 s)
+  BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)
+    √ 1. Migration 010 DOWN Executes Cleanly Without Regressions (1056 ms)
+    √ 2. In Rolled-Back State: Anonymous Access to Full Tables Remains Strictly Revoked (1292 ms)
+    √ 2b. In Rolled-Back State: Authenticated Users Cannot Perform Unrestricted DML and Fail Closed (472 ms)
+    √ 2c. In Rolled-Back State: Authenticated Users Cannot Query or Scrape Storefront Views (Round 3K) (566 ms)
+    √ 2d. In Rolled-Back State: Revoked Membership with Stale JWT Fails Closed (Round 3L) (1269 ms)
+    √ 2e. In Rolled-Back State: Full Role Matrix on Credit Pool Mutations (OWNER Permitted, MERCHANT/CS/OPERATOR Denied) (Round 3M) (4865 ms)
+    √ 2f. In Rolled-Back State: Legitimate Tenant Read Access Restored & Cross-Tenant Read Boundary Enforced (Round 3M/3N) (3269 ms)
+    √ 2g. In Rolled-Back State: Full 4-Role Column Masking Matrix & Outsider Isolation (Round 3N) (4530 ms)
+    √ 3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies (513 ms)
+    √ 4. Post-Reapplication Security Boundary: Anonymous Full-Table Denial Maintained (860 ms)
+    √ 5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I) (1535 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       11 passed, 11 total
+Snapshots:   0 total
+Time:        24.483 s
+```
+
+#### B. Full Workforce Regression Test Suite (36 Suites, 415 Tests)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/persistent-registry-authority.test.ts (32.87 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (27.972 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (19.029 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (15.915 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (14.611 s)
+PASS __tests__/workforce/role-authorization.test.ts (11.965 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (9.164 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.152 s)
+PASS __tests__/workforce/tenant-operational-regression.test.ts (8.152 s)
+... [Remaining 27 suites pass cleanly] ...
+
+Test Suites: 36 passed, 36 total
+Tests:       415 passed, 415 total
+Snapshots:   0 total
+Time:        191.272 s
+```
+
+#### C. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 85ms
+  Creating an optimized production build ...
+✓ Compiled successfully in 7.7s
+  Running TypeScript ...
+  Finished TypeScript in 10.4s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 3.1s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 18.3 Sign-off Matrix for Round 3N
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :--- | :---: |
+| **N1** | Masking Parity in Rollback | `tenants` sensitive cols require `OWNER`; `products` sensitive cols require `MERCHANT` | `safe-migration-rollback.test.ts` (Test 2g) | **PARITY ENFORCED** |
+| **N2** | Corrected Test 2f Assertion | `MERCHANT` receives `phone = null`; `OWNER` receives unmasked `+62811111111` | `safe-migration-rollback.test.ts` (Test 2f) | **CORRECTED & VERIFIED** |
+| **N3** | Full 4-Role Matrix Test | Comprehensive coverage across OWNER, MERCHANT, OPERATOR, CS, OUTSIDER, ANON | `safe-migration-rollback.test.ts` (Test 2g) | **MATRIX VERIFIED** |
+| **N4** | Legitimate API CRUD Persistence | Product creation/update/deletion & settings updates succeed via authorized paths | `tenant-operational-regression.test.ts`, `real-api-persistence.test.ts` | **PERSISTED & VERIFIED** |
+| **N5** | Clean Rollback & Reapplication | 010 DOWN -> assert invariants -> 010 UP reapply restores full schema & policies | `safe-migration-rollback.test.ts` (Tests 1, 3, 5) | **REVERSIBLE & CLEAN** |
+| **REG** | Full Regression Suite | All 36 suites, 415 tests in `__tests__/workforce/` pass cleanly | Full suite `--runInBand` | **100% PASS (415/415)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile with Turbopack and TypeScript without error | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |

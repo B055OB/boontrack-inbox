@@ -399,7 +399,7 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [testTenantSlug]);
   });
 
-  test('2f. In Rolled-Back State: Legitimate Tenant Read Access Restored & Cross-Tenant Read Boundary Enforced (Round 3M)', async () => {
+  test('2f. In Rolled-Back State: Legitimate Tenant Read Access Restored & Cross-Tenant Read Boundary Enforced (Round 3M/3N)', async () => {
     await client.query('RESET ROLE');
     await client.query('RESET request.jwt.claims');
     await client.query('RESET app.current_tenant_id');
@@ -408,6 +408,7 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     const tenantASlug = `rb-read-a-${Date.now()}`;
     const tenantBSlug = `rb-read-b-${Date.now()}`;
     const userAId = '77777777-7777-4777-8777-777777777771';
+    const ownerAId = '77777777-7777-4777-8777-777777777772';
     const prodAId = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
     const prodBId = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
 
@@ -426,11 +427,13 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     `, [tenantBSlug]);
     const tenantBId = tenantBInsert.rows[0].id;
 
-    // 2. Seed membership: User A belongs ONLY to Tenant A (role = 'MERCHANT', is_active = TRUE)
+    // 2. Seed memberships: User A (MERCHANT) and Owner A (OWNER) belong to Tenant A
     await client.query(`
       INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
-      VALUES ($1, $2, $3, 'MERCHANT', TRUE)
-    `, [userAId, tenantASlug, tenantASlug]);
+      VALUES 
+        ($1, $2, $3, 'MERCHANT', TRUE),
+        ($4, $2, $3, 'OWNER', TRUE)
+    `, [userAId, tenantASlug, tenantASlug, ownerAId]);
 
     // 3. Seed products for both tenants
     await client.query(`
@@ -440,7 +443,7 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
         ($3, $4, 'Beta Product', 'beta-prod', 200000, 20, TRUE, 'ACTIVE')
     `, [prodAId, tenantASlug, prodBId, tenantBSlug]);
 
-    // 4. Authenticate as User A
+    // 4. Authenticate as User A (MERCHANT)
     await client.query('SET ROLE authenticated');
     await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
       JSON.stringify({
@@ -451,28 +454,56 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     ]);
     await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantASlug]);
 
-    // A. Positive Read: User A can read their own tenant via public.tenants view in rolled-back state
+    // A. Positive Read: User A (MERCHANT) can read their own tenant, but phone is MASKED (NULL) (Round 3N)
     const readOwnTenant = await client.query('SELECT id, slug, name, phone FROM public.tenants WHERE slug = $1', [tenantASlug]);
     expect(readOwnTenant.rows.length).toBe(1);
     expect(readOwnTenant.rows[0].slug).toBe(tenantASlug);
     expect(readOwnTenant.rows[0].name).toBe('Tenant Alpha (Legitimate)');
-    expect(readOwnTenant.rows[0].phone).toBe('+62811111111');
+    expect(readOwnTenant.rows[0].phone).toBeNull();
 
-    // B. Positive Read: User A can read their own products via public.products view in rolled-back state
+    // B. Positive Control: OWNER querying the same tenant row DOES receive unmasked phone (Round 3N)
+    await client.query('RESET ROLE');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: ownerAId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantASlug },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantASlug]);
+
+    const readOwnerTenant = await client.query('SELECT id, slug, name, phone FROM public.tenants WHERE slug = $1', [tenantASlug]);
+    expect(readOwnerTenant.rows.length).toBe(1);
+    expect(readOwnerTenant.rows[0].phone).toBe('+62811111111');
+
+    // Return to User A (MERCHANT) context
+    await client.query('RESET ROLE');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: userAId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: tenantASlug },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantASlug]);
+
+    // C. Positive Read: User A can read their own products via public.products view in rolled-back state
     const readOwnProducts = await client.query('SELECT id, tenant_id, title, price FROM public.products WHERE tenant_id = $1', [tenantASlug]);
     expect(readOwnProducts.rows.length).toBe(1);
     expect(readOwnProducts.rows[0].id).toBe(prodAId);
     expect(readOwnProducts.rows[0].title).toBe('Alpha Product');
 
-    // C. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B via public.tenants view (filtered by row-level WHERE)
+    // D. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B via public.tenants view (filtered by row-level WHERE)
     const crossTenantRead = await client.query('SELECT * FROM public.tenants WHERE slug = $1', [tenantBSlug]);
     expect(crossTenantRead.rows.length).toBe(0);
 
-    // D. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B products via public.products view
+    // E. Cross-Tenant Adversarial Read: User A CANNOT see Tenant B products via public.products view
     const crossProductRead = await client.query('SELECT * FROM public.products WHERE tenant_id = $1', [tenantBSlug]);
     expect(crossProductRead.rows.length).toBe(0);
 
-    // E. Unfiltered view read: User A querying with zero WHERE filter only gets Tenant A rows
+    // F. Unfiltered view read: User A querying with zero WHERE filter only gets Tenant A rows
     const allVisibleTenants = await client.query('SELECT slug FROM public.tenants WHERE slug IN ($1, $2)', [tenantASlug, tenantBSlug]);
     expect(allVisibleTenants.rows.length).toBe(1);
     expect(allVisibleTenants.rows[0].slug).toBe(tenantASlug);
@@ -481,7 +512,7 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     expect(allVisibleProds.rows.length).toBe(1);
     expect(allVisibleProds.rows[0].tenant_id).toBe(tenantASlug);
 
-    // F. Direct table access remains strictly revoked (SQLSTATE 42501)
+    // G. Direct table access remains strictly revoked (SQLSTATE 42501)
     let directTenantsErr: any = null;
     try {
       await client.query('SELECT * FROM workforce_staging.tenants WHERE slug = $1', [tenantASlug]);
@@ -507,6 +538,211 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('DELETE FROM workforce_staging.products WHERE id IN ($1, $2)', [prodAId, prodBId]);
     await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantASlug]);
     await client.query('DELETE FROM workforce_staging.tenants WHERE id IN ($1, $2)', [tenantAId, tenantBId]);
+  });
+
+  test('2g. In Rolled-Back State: Full 4-Role Column Masking Matrix & Outsider Isolation (Round 3N)', async () => {
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_tenant_id');
+    await client.query('RESET app.current_agency_id');
+
+    const tenantSlug = `rb-matrix-${Date.now()}`;
+    const prodId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const merchantId = '22222222-2222-4222-8222-222222222222';
+    const operatorId = '33333333-3333-4333-8333-333333333333';
+    const csId = '44444444-4444-4444-8444-444444444444';
+    const outsiderId = '55555555-5555-4555-8555-555555555555';
+
+    // 1. Seed tenant with sensitive data
+    await client.query(`
+      INSERT INTO workforce_staging.tenants (
+        slug, name, category, tier, status, is_active,
+        phone, whatsapp_number, waba_phone_number_id, telegram_chat_id, metadata
+      )
+      VALUES (
+        $1, 'Matrix 4-Role Test Tenant', 'service', 'PRO_SCALE', 'active', TRUE,
+        '+6281234567890', '+6281234567891', 'waba_secret_id_123', 'tg_secret_chat_456', '{"sensitive_plan":"pro_enterprise"}'::jsonb
+      )
+    `, [tenantSlug]);
+
+    // 2. Seed product with sensitive fields
+    await client.query(`
+      INSERT INTO workforce_staging.products (
+        id, tenant_id, title, slug, price, stock, is_active, status,
+        asset_reference, license_status, fulfillment_metadata
+      )
+      VALUES (
+        $1, $2, 'Matrix Protected Product', 'matrix-prod', 250000, 50, TRUE, 'ACTIVE',
+        'vault://credentials/license-key-abc', 'COMMERCIAL_LICENSED', '{"download_key":"enc_xyz987"}'::jsonb
+      )
+    `, [prodId, tenantSlug]);
+
+    // 3. Seed memberships for 4 roles
+    await client.query(`
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES
+        ($1, $5, $5, 'OWNER', TRUE),
+        ($2, $5, $5, 'MERCHANT', TRUE),
+        ($3, $5, $5, 'OPERATOR', TRUE),
+        ($4, $5, $5, 'CS', TRUE)
+    `, [ownerId, merchantId, operatorId, csId, tenantSlug]);
+
+    const setAuthContext = async (userId: string) => {
+      await client.query('RESET ROLE');
+      await client.query('SET ROLE authenticated');
+      await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+        JSON.stringify({
+          sub: userId,
+          role: 'authenticated',
+          app_metadata: { tenant_id: tenantSlug },
+        }),
+      ]);
+      await client.query("SELECT set_config('app.current_tenant_id', $1, false)", [tenantSlug]);
+    };
+
+    // --- A. OWNER Role Verification ---
+    await setAuthContext(ownerId);
+    const ownerTenantRes = await client.query(`
+      SELECT id, slug, metadata, phone, whatsapp_number, waba_phone_number_id, telegram_chat_id 
+      FROM public.tenants WHERE slug = $1
+    `, [tenantSlug]);
+    expect(ownerTenantRes.rows.length).toBe(1);
+    expect(ownerTenantRes.rows[0].phone).toBe('+6281234567890');
+    expect(ownerTenantRes.rows[0].whatsapp_number).toBe('+6281234567891');
+    expect(ownerTenantRes.rows[0].waba_phone_number_id).toBe('waba_secret_id_123');
+    expect(ownerTenantRes.rows[0].telegram_chat_id).toBe('tg_secret_chat_456');
+    expect(ownerTenantRes.rows[0].metadata).not.toBeNull();
+
+    const ownerProdRes = await client.query(`
+      SELECT id, tenant_id, asset_reference, license_status, fulfillment_metadata
+      FROM public.products WHERE id = $1
+    `, [prodId]);
+    expect(ownerProdRes.rows.length).toBe(1);
+    expect(ownerProdRes.rows[0].asset_reference).toBe('vault://credentials/license-key-abc');
+    expect(ownerProdRes.rows[0].license_status).toBe('COMMERCIAL_LICENSED');
+    expect(ownerProdRes.rows[0].fulfillment_metadata).not.toBeNull();
+
+    // --- B. MERCHANT Role Verification ---
+    await setAuthContext(merchantId);
+    const merchantTenantRes = await client.query(`
+      SELECT id, slug, metadata, phone, whatsapp_number, waba_phone_number_id, telegram_chat_id 
+      FROM public.tenants WHERE slug = $1
+    `, [tenantSlug]);
+    expect(merchantTenantRes.rows.length).toBe(1);
+    // Tenant sensitive columns MUST be MASKED (NULL) for MERCHANT
+    expect(merchantTenantRes.rows[0].phone).toBeNull();
+    expect(merchantTenantRes.rows[0].whatsapp_number).toBeNull();
+    expect(merchantTenantRes.rows[0].waba_phone_number_id).toBeNull();
+    expect(merchantTenantRes.rows[0].telegram_chat_id).toBeNull();
+    expect(merchantTenantRes.rows[0].metadata).toBeNull();
+
+    const merchantProdRes = await client.query(`
+      SELECT id, tenant_id, asset_reference, license_status, fulfillment_metadata
+      FROM public.products WHERE id = $1
+    `, [prodId]);
+    expect(merchantProdRes.rows.length).toBe(1);
+    // Product sensitive columns MUST be UNMASKED for MERCHANT
+    expect(merchantProdRes.rows[0].asset_reference).toBe('vault://credentials/license-key-abc');
+    expect(merchantProdRes.rows[0].license_status).toBe('COMMERCIAL_LICENSED');
+    expect(merchantProdRes.rows[0].fulfillment_metadata).not.toBeNull();
+
+    // --- C. OPERATOR Role Verification ---
+    await setAuthContext(operatorId);
+    const opTenantRes = await client.query(`
+      SELECT id, slug, metadata, phone, whatsapp_number, waba_phone_number_id, telegram_chat_id 
+      FROM public.tenants WHERE slug = $1
+    `, [tenantSlug]);
+    expect(opTenantRes.rows.length).toBe(1);
+    // Tenant sensitive columns MUST be MASKED (NULL) for OPERATOR
+    expect(opTenantRes.rows[0].phone).toBeNull();
+    expect(opTenantRes.rows[0].whatsapp_number).toBeNull();
+    expect(opTenantRes.rows[0].waba_phone_number_id).toBeNull();
+    expect(opTenantRes.rows[0].telegram_chat_id).toBeNull();
+    expect(opTenantRes.rows[0].metadata).toBeNull();
+
+    const opProdRes = await client.query(`
+      SELECT id, tenant_id, asset_reference, license_status, fulfillment_metadata
+      FROM public.products WHERE id = $1
+    `, [prodId]);
+    expect(opProdRes.rows.length).toBe(1);
+    // Product sensitive columns MUST be MASKED (NULL) for OPERATOR
+    expect(opProdRes.rows[0].asset_reference).toBeNull();
+    expect(opProdRes.rows[0].license_status).toBeNull();
+    expect(opProdRes.rows[0].fulfillment_metadata).toBeNull();
+
+    // --- D. CS Role Verification ---
+    await setAuthContext(csId);
+    const csTenantRes = await client.query(`
+      SELECT id, slug, metadata, phone, whatsapp_number, waba_phone_number_id, telegram_chat_id 
+      FROM public.tenants WHERE slug = $1
+    `, [tenantSlug]);
+    expect(csTenantRes.rows.length).toBe(1);
+    // Tenant sensitive columns MUST be MASKED (NULL) for CS
+    expect(csTenantRes.rows[0].phone).toBeNull();
+    expect(csTenantRes.rows[0].whatsapp_number).toBeNull();
+    expect(csTenantRes.rows[0].waba_phone_number_id).toBeNull();
+    expect(csTenantRes.rows[0].telegram_chat_id).toBeNull();
+    expect(csTenantRes.rows[0].metadata).toBeNull();
+
+    const csProdRes = await client.query(`
+      SELECT id, tenant_id, asset_reference, license_status, fulfillment_metadata
+      FROM public.products WHERE id = $1
+    `, [prodId]);
+    expect(csProdRes.rows.length).toBe(1);
+    // Product sensitive columns MUST be MASKED (NULL) for CS
+    expect(csProdRes.rows[0].asset_reference).toBeNull();
+    expect(csProdRes.rows[0].license_status).toBeNull();
+    expect(csProdRes.rows[0].fulfillment_metadata).toBeNull();
+
+    // --- E. OUTSIDER Role Verification (Row-Level Filtering) ---
+    await client.query('RESET ROLE');
+    await client.query('SET ROLE authenticated');
+    await client.query("SELECT set_config('request.jwt.claims', $1, false)", [
+      JSON.stringify({
+        sub: outsiderId,
+        role: 'authenticated',
+        app_metadata: { tenant_id: 'some_other_tenant' },
+      }),
+    ]);
+    await client.query("SELECT set_config('app.current_tenant_id', 'some_other_tenant', false)");
+
+    const outsiderTenantRes = await client.query(`SELECT * FROM public.tenants WHERE slug = $1`, [tenantSlug]);
+    expect(outsiderTenantRes.rows.length).toBe(0);
+
+    const outsiderProdRes = await client.query(`SELECT * FROM public.products WHERE id = $1`, [prodId]);
+    expect(outsiderProdRes.rows.length).toBe(0);
+
+    // --- F. ANON Role Verification (Default-Deny) ---
+    await client.query('RESET ROLE');
+    await client.query('SET ROLE anon');
+
+    let anonTenantErr: any = null;
+    try {
+      await client.query(`SELECT * FROM public.tenants WHERE slug = $1`, [tenantSlug]);
+    } catch (err: any) {
+      anonTenantErr = err;
+    }
+    expect(anonTenantErr).not.toBeNull();
+    expect(anonTenantErr.code).toBe('42501');
+
+    let anonProdErr: any = null;
+    try {
+      await client.query(`SELECT * FROM public.products WHERE id = $1`, [prodId]);
+    } catch (err: any) {
+      anonProdErr = err;
+    }
+    expect(anonProdErr).not.toBeNull();
+    expect(anonProdErr.code).toBe('42501');
+
+    // Clean up
+    await client.query('RESET ROLE');
+    await client.query('RESET request.jwt.claims');
+    await client.query('RESET app.current_tenant_id');
+    await client.query('DELETE FROM workforce_staging.products WHERE id = $1', [prodId]);
+    await client.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1', [tenantSlug]);
+    await client.query('DELETE FROM workforce_staging.tenants WHERE slug = $1', [tenantSlug]);
   });
 
   test('3. Migration 010 UP Reapplies Cleanly and Restores Publications and Policies', async () => {
