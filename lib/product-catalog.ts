@@ -1,6 +1,6 @@
 import { extractTenantBankAccounts } from './bank-accounts';
 import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
-import { getSupabaseAdmin, getSupabase } from './supabaseClient';
+import { getSupabaseAdmin, getSupabase, getWorkforceSupabaseAdmin, verifyFactoryClient } from './supabaseClient';
 import { isValidUuid } from './uuid-guard';
 
 /**
@@ -2161,7 +2161,9 @@ export function projectPublicMicrosite(raw: any): Record<string, any> | null {
   const projected: Record<string, any> = {};
   if (typeof raw.template === 'string') projected.template = raw.template.slice(0, 50);
   if (typeof raw.headline === 'string') projected.headline = raw.headline.slice(0, 200);
+  if (typeof raw.title === 'string') projected.title = raw.title.slice(0, 200);
   if (typeof raw.subheadline === 'string') projected.subheadline = raw.subheadline.slice(0, 500);
+  if (typeof raw.subtitle === 'string') projected.subtitle = raw.subtitle.slice(0, 500);
   if (typeof raw.bio === 'string') projected.bio = raw.bio.slice(0, 1000);
   if (Array.isArray(raw.buttons)) {
     projected.buttons = raw.buttons
@@ -2324,6 +2326,29 @@ export function formatProductCatalogForBotKnowledge(
     .join('\n\n');
 }
 
+export type CatalogDatabaseContext = 'shared' | 'workforce';
+
+export interface FetchActiveCatalogOptions {
+  supabaseClient?: any;
+  clientProvenance?: CatalogDatabaseContext;
+  limit?: number;
+  includeUnavailable?: boolean;
+  context?: CatalogDatabaseContext;
+}
+
+/**
+ * Asserts that an injected Supabase client matches the expected database context.
+ * Delegates strictly to internal factory verification in lib/supabaseClient.ts.
+ * Unregistered, arbitrary, or foreign-domain instances are rejected (fail-closed).
+ */
+export function assertClientProvenance(
+  client: any,
+  expectedContext: CatalogDatabaseContext,
+  options?: FetchActiveCatalogOptions
+): void {
+  verifyFactoryClient(client, expectedContext);
+}
+
 /**
  * Fetches the active product catalog directly from PostgreSQL `products` table
  * with zero stale cache. Serves as single source of truth for LLM context grounding,
@@ -2331,14 +2356,32 @@ export function formatProductCatalogForBotKnowledge(
  */
 export async function fetchActiveCatalog(
   tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
-  options?: {
-    supabaseClient?: any;
-    limit?: number;
-    includeUnavailable?: boolean;
-  }
+  options?: FetchActiveCatalogOptions
 ): Promise<ProductItem[]> {
+  const context = options?.context;
+  if (!context || (typeof context === 'string' && !context.trim())) {
+    throw new Error(
+      `[CATALOG CONTEXT FATAL] Database context is mandatory. Expected "workforce" or "shared", received: ${String(context)}.`
+    );
+  }
+
+  if (context !== 'workforce' && context !== 'shared') {
+    throw new Error(
+      `[CATALOG CONTEXT FATAL] Invalid database context. Expected "workforce" or "shared", received: "${String(context)}".`
+    );
+  }
+
+  // Injected client validation: Ensure injected client provenance strictly matches expected context
+  if (options?.supabaseClient) {
+    assertClientProvenance(options.supabaseClient, context, options);
+  }
+
   try {
-    const supabase = options?.supabaseClient || getSupabaseAdmin() || getSupabase();
+    const supabase = options?.supabaseClient || (
+      context === 'workforce'
+        ? getWorkforceSupabaseAdmin()
+        : (getSupabaseAdmin() || getSupabase())
+    );
     if (!supabase) return [];
 
     let tenantId: string | null = null;
@@ -2486,9 +2529,47 @@ export async function fetchActiveCatalog(
 
     return mappedProducts;
   } catch (err) {
+    if (
+      err instanceof Error &&
+      (
+        err.message.includes('[SHARED ADMIN FATAL]') ||
+        err.message.includes('[SHARED GUARD FATAL]') ||
+        err.message.includes('[WORKFORCE ADMIN FATAL]') ||
+        err.message.includes('[STAGING GUARD FATAL]') ||
+        err.message.includes('[CATALOG CONTEXT FATAL]') ||
+        err.message.includes('[Security Guard]')
+      )
+    ) {
+      throw err;
+    }
     console.error('[fetchActiveCatalog] Unexpected failure:', err);
     return [];
   }
+}
+
+/**
+ * Workforce-specific active catalog fetcher.
+ * Explicitly binds database context to 'workforce' and enforces getWorkforceSupabaseAdmin().
+ * Fails closed immediately if Workforce configuration is missing or invalid.
+ * Rejects any injected client that does not belong to Workforce staging.
+ */
+export async function fetchActiveCatalogForWorkforce(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: Omit<FetchActiveCatalogOptions, 'context'>
+): Promise<ProductItem[]> {
+  return fetchActiveCatalog(tenantOrSlug, { ...options, context: 'workforce' });
+}
+
+/**
+ * Shared-specific active catalog fetcher for Shop, Studio, Creator, Core.
+ * Explicitly binds database context to 'shared' and enforces shared client.
+ * Rejects any injected client that belongs to Workforce staging.
+ */
+export async function fetchActiveCatalogForShared(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: Omit<FetchActiveCatalogOptions, 'context'>
+): Promise<ProductItem[]> {
+  return fetchActiveCatalog(tenantOrSlug, { ...options, context: 'shared' });
 }
 
 /**
@@ -2497,17 +2578,27 @@ export async function fetchActiveCatalog(
  */
 export async function fetchActiveCatalogGrounding(
   tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
-  options?: {
-    supabaseClient?: any;
-    limit?: number;
-    includeUnavailable?: boolean;
-  }
+  options?: FetchActiveCatalogOptions
 ): Promise<string> {
   const tenantObj = typeof tenantOrSlug === 'string'
     ? { slug: tenantOrSlug }
     : tenantOrSlug;
   const products = await fetchActiveCatalog(tenantOrSlug, options);
   return formatProductCatalogForBotKnowledge(tenantObj, products);
+}
+
+export async function fetchActiveCatalogGroundingForWorkforce(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: Omit<FetchActiveCatalogOptions, 'context'>
+): Promise<string> {
+  return fetchActiveCatalogGrounding(tenantOrSlug, { ...options, context: 'workforce' });
+}
+
+export async function fetchActiveCatalogGroundingForShared(
+  tenantOrSlug: string | { id?: string; slug?: string; metadata?: any; custom_domain?: string | null; [key: string]: any },
+  options?: Omit<FetchActiveCatalogOptions, 'context'>
+): Promise<string> {
+  return fetchActiveCatalogGrounding(tenantOrSlug, { ...options, context: 'shared' });
 }
 
 
