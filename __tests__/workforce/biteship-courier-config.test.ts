@@ -42,6 +42,8 @@ import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import {
   GET as getSettings,
   PUT as updateSettings,
+  projectSafeRscTenantDto,
+  projectShippingConfigDto,
 } from '@/app/api/v1/tenants/[slug]/settings/route';
 import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
@@ -71,6 +73,7 @@ function getDatabaseConnectionString(): string {
 }
 
 describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Authoritative Config', () => {
+  jest.setTimeout(30000);
   let pgClient: Client;
   const timestamp = Date.now();
 
@@ -373,6 +376,155 @@ describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Au
 
       const res = await updateSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
       expect(res.status).toBe(403);
+    });
+  });
+
+  // =========================================================================
+  // 7. RSC Shipping DTO Constructive Positive Allowlist (Temuan A)
+  // =========================================================================
+  describe('7. RSC Shipping DTO Constructive Positive Allowlist (Temuan A)', () => {
+    it('7.1 Positive Test: Safe operational fields are projected cleanly for OWNER', () => {
+      const mockSettings = {
+        id: 'mock-tenant-id-1',
+        slug: 'test-store',
+        name: 'Test Store',
+        metadata: {
+          shipping_config: {
+            is_enabled: true,
+            active_aggregator: 'biteship',
+            auto_pickup: true,
+            free_shipping_threshold: 150000,
+            couriers: ['gosend', 'grab', 'jne'],
+            is_self_pickup_enabled: true,
+            pickup_address: 'Jl. Surya No. 12, Bandung',
+            pickup_maps_url: 'https://maps.google.com/?q=-6.9,107.6',
+            pickup_operational_hours: '09:00 - 21:00',
+            pickup_instructions: 'Ambil di kasir lantai 1',
+            origin: {
+              sender_name: 'Gudang Utama',
+              sender_phone: '081234567890',
+              address: 'Jl. Surya No. 12',
+              city: 'Bandung',
+              district: 'Rancasari',
+              postal_code: '40286',
+            },
+            routing_rules: {
+              instant: 'biteship',
+              regular: 'lincah',
+            },
+            fnb_settings: {
+              is_enabled: true,
+              kitchen_address: 'Jl. Dapur No. 1',
+              max_distance_km: 15,
+            },
+            lincah: {
+              provider: 'lincah',
+              status: 'connected',
+              is_connected: true,
+              is_sandbox: false,
+              last_validated_at: '2026-11-08T00:00:00Z',
+              api_key: 'LINCAH_SECRET_KEY_MUST_BE_STRIPPED',
+              secret: 'LINCAH_SECRET_TOKEN_MUST_BE_STRIPPED',
+            },
+            biteship: {
+              is_connected: true,
+              is_sandbox: false,
+              last_validated_at: '2026-11-08T00:00:00Z',
+              api_key: 'BITESHIP_API_KEY_MUST_BE_STRIPPED',
+            },
+          },
+        },
+      };
+
+      const dto = projectSafeRscTenantDto(mockSettings, 'OWNER');
+      const shipping = dto.metadata.shipping_config;
+
+      expect(shipping).toBeDefined();
+      expect(shipping.is_enabled).toBe(true);
+      expect(shipping.active_aggregator).toBe('biteship');
+      expect(shipping.auto_pickup).toBe(true);
+      expect(shipping.free_shipping_threshold).toBe(150000);
+      expect(shipping.couriers).toEqual(['gosend', 'grab', 'jne']);
+      expect(shipping.is_self_pickup_enabled).toBe(true);
+      expect(shipping.pickup_address).toBe('Jl. Surya No. 12, Bandung');
+      expect(shipping.pickup_maps_url).toBe('https://maps.google.com/?q=-6.9,107.6');
+      expect(shipping.origin.sender_name).toBe('Gudang Utama');
+      expect(shipping.origin.city).toBe('Bandung');
+      expect(shipping.routing_rules.instant).toBe('biteship');
+      expect(shipping.fnb_settings.kitchen_address).toBe('Jl. Dapur No. 1');
+
+      // Provider status preserved without secrets
+      expect(shipping.lincah.is_connected).toBe(true);
+      expect(shipping.lincah.status).toBe('connected');
+      expect(shipping.lincah.api_key).toBeUndefined();
+      expect(shipping.lincah.secret).toBeUndefined();
+      expect(shipping.biteship.is_connected).toBe(true);
+      expect(shipping.biteship.api_key).toBeUndefined();
+    });
+
+    it('7.2 Adversarial Negative Test: Root-level secrets and unknown arbitrary keys are completely eliminated', () => {
+      const hostileSettings = {
+        id: 'hostile-tenant-1',
+        slug: 'hostile-store',
+        metadata: {
+          shipping_config: {
+            is_enabled: true,
+            active_aggregator: 'lincah',
+            // Malicious / leaked root-level credentials and arbitrary fields
+            api_key: 'HOSTILE_ROOT_API_KEY_99999',
+            secret: 'HOSTILE_ROOT_SECRET_88888',
+            auth_token: 'HOSTILE_ROOT_AUTH_TOKEN_77777',
+            partner_id: 'HOSTILE_ROOT_PARTNER_66666',
+            nested_unknown: { leaked_payload: 'danger' },
+            arbitrary_property: 'should_never_exist',
+            injection_payload: '<script>alert(1)</script>',
+            sql_attempt: "'; DROP TABLE tenants; --",
+          },
+        },
+      };
+
+      const dto = projectSafeRscTenantDto(hostileSettings, 'OWNER');
+      const shipping = dto.metadata.shipping_config;
+
+      expect(shipping).toBeDefined();
+      expect(shipping.is_enabled).toBe(true);
+      expect(shipping.active_aggregator).toBe('lincah');
+
+      // PROVE all hostile / arbitrary / secret keys are undefined
+      expect(shipping.api_key).toBeUndefined();
+      expect(shipping.secret).toBeUndefined();
+      expect(shipping.auth_token).toBeUndefined();
+      expect(shipping.partner_id).toBeUndefined();
+      expect(shipping.nested_unknown).toBeUndefined();
+      expect(shipping.arbitrary_property).toBeUndefined();
+      expect(shipping.injection_payload).toBeUndefined();
+      expect(shipping.sql_attempt).toBeUndefined();
+
+      // Ensure JSON serialization is free of leaked strings
+      const serialized = JSON.stringify(dto);
+      expect(serialized).not.toContain('HOSTILE_ROOT_API_KEY_99999');
+      expect(serialized).not.toContain('HOSTILE_ROOT_SECRET_88888');
+      expect(serialized).not.toContain('HOSTILE_ROOT_AUTH_TOKEN_77777');
+      expect(serialized).not.toContain('leaked_payload');
+    });
+
+    it('7.3 Non-OWNER role (CS / MERCHANT) does NOT receive shipping_config in RSC DTO', () => {
+      const mockSettings = {
+        id: 'tenant-cs-1',
+        slug: 'cs-store',
+        metadata: {
+          shipping_config: {
+            is_enabled: true,
+            pickup_address: 'Alamat Rahasia Gudang',
+          },
+        },
+      };
+
+      const csDto = projectSafeRscTenantDto(mockSettings, 'CS');
+      expect(csDto.metadata.shipping_config).toBeUndefined();
+
+      const merchantDto = projectSafeRscTenantDto(mockSettings, 'MERCHANT');
+      expect(merchantDto.metadata.shipping_config).toBeUndefined();
     });
   });
 });

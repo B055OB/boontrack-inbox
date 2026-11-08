@@ -382,6 +382,101 @@ export function projectFeaturesDto(raw: any): Record<string, boolean | string | 
 }
 
 /**
+ * projectShippingConfigDto — Constructive Positive Allowlist for Shipping Configuration.
+ *
+ * Guarantees zero leak of root-level or nested credentials (api_key, secret, auth_token, partner_id, etc.).
+ * ONLY operational public fields required by UI and checkout are extracted.
+ * Rest-spread is STRICTLY FORBIDDEN.
+ */
+export function projectShippingConfigDto(raw: any): Record<string, any> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+
+  const safe: Record<string, any> = {};
+
+  if (typeof raw.is_enabled === 'boolean') safe.is_enabled = raw.is_enabled;
+  if (typeof raw.active_aggregator === 'string') safe.active_aggregator = raw.active_aggregator.slice(0, 50);
+  if (typeof raw.auto_pickup === 'boolean') safe.auto_pickup = raw.auto_pickup;
+  if (typeof raw.free_shipping_threshold === 'number' && !Number.isNaN(raw.free_shipping_threshold)) {
+    safe.free_shipping_threshold = raw.free_shipping_threshold;
+  }
+
+  // Couriers list: array of string courier IDs
+  if (Array.isArray(raw.couriers)) {
+    safe.couriers = raw.couriers.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 50));
+  } else if (Array.isArray(raw.active_couriers)) {
+    safe.active_couriers = raw.active_couriers.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 50));
+  }
+
+  // Self pickup operational fields
+  if (typeof raw.is_self_pickup_enabled === 'boolean') safe.is_self_pickup_enabled = raw.is_self_pickup_enabled;
+  if (typeof raw.pickup_address === 'string') safe.pickup_address = raw.pickup_address.slice(0, 500);
+  if (typeof raw.pickup_maps_url === 'string') safe.pickup_maps_url = raw.pickup_maps_url.slice(0, 1000);
+  if (typeof raw.pickup_operational_hours === 'string') safe.pickup_operational_hours = raw.pickup_operational_hours.slice(0, 200);
+  if (typeof raw.pickup_instructions === 'string') safe.pickup_instructions = raw.pickup_instructions.slice(0, 1000);
+
+  // Flat origin fields
+  if (typeof raw.origin_address === 'string') safe.origin_address = raw.origin_address.slice(0, 500);
+  if (typeof raw.origin_city === 'string') safe.origin_city = raw.origin_city.slice(0, 100);
+  if (typeof raw.origin_district === 'string') safe.origin_district = raw.origin_district.slice(0, 100);
+  if (typeof raw.origin_postal_code === 'string') safe.origin_postal_code = raw.origin_postal_code.slice(0, 20);
+
+  // Nested origin object
+  if (raw.origin && typeof raw.origin === 'object' && !Array.isArray(raw.origin)) {
+    const originSafe: Record<string, any> = {};
+    if (typeof raw.origin.sender_name === 'string') originSafe.sender_name = raw.origin.sender_name.slice(0, 100);
+    if (typeof raw.origin.sender_phone === 'string') originSafe.sender_phone = raw.origin.sender_phone.slice(0, 50);
+    if (typeof raw.origin.address === 'string') originSafe.address = raw.origin.address.slice(0, 500);
+    if (typeof raw.origin.city === 'string') originSafe.city = raw.origin.city.slice(0, 100);
+    if (typeof raw.origin.district === 'string') originSafe.district = raw.origin.district.slice(0, 100);
+    if (typeof raw.origin.postal_code === 'string') originSafe.postal_code = raw.origin.postal_code.slice(0, 20);
+    safe.origin = originSafe;
+  }
+
+  // Nested routing rules
+  if (raw.routing_rules && typeof raw.routing_rules === 'object' && !Array.isArray(raw.routing_rules)) {
+    const routingSafe: Record<string, any> = {};
+    if (typeof raw.routing_rules.instant === 'string') routingSafe.instant = raw.routing_rules.instant.slice(0, 50);
+    if (typeof raw.routing_rules.regular === 'string') routingSafe.regular = raw.routing_rules.regular.slice(0, 50);
+    safe.routing_rules = routingSafe;
+  }
+
+  // Nested FnB catering settings
+  if (raw.fnb_settings && typeof raw.fnb_settings === 'object' && !Array.isArray(raw.fnb_settings)) {
+    const fnbSafe: Record<string, any> = {};
+    if (typeof raw.fnb_settings.is_enabled === 'boolean') fnbSafe.is_enabled = raw.fnb_settings.is_enabled;
+    if (typeof raw.fnb_settings.kitchen_address === 'string') fnbSafe.kitchen_address = raw.fnb_settings.kitchen_address.slice(0, 500);
+    if (typeof raw.fnb_settings.max_distance_km === 'number' && !Number.isNaN(raw.fnb_settings.max_distance_km)) {
+      fnbSafe.max_distance_km = raw.fnb_settings.max_distance_km;
+    }
+    safe.fnb_settings = fnbSafe;
+  }
+
+  // Lincah provider status (NO secrets)
+  if (raw.lincah && typeof raw.lincah === 'object' && !Array.isArray(raw.lincah)) {
+    safe.lincah = {
+      provider: typeof raw.lincah.provider === 'string' ? raw.lincah.provider.slice(0, 50) : 'lincah',
+      status: typeof raw.lincah.status === 'string' ? raw.lincah.status.slice(0, 50) : undefined,
+      is_connected: Boolean(raw.lincah.is_connected),
+      is_sandbox: Boolean(raw.lincah.is_sandbox),
+      last_validated_at: typeof raw.lincah.last_validated_at === 'string' ? raw.lincah.last_validated_at : null,
+      // api_key and secret are NEVER projected
+    };
+  }
+
+  // Biteship provider status (NO secrets)
+  if (raw.biteship && typeof raw.biteship === 'object' && !Array.isArray(raw.biteship)) {
+    safe.biteship = {
+      is_connected: Boolean(raw.biteship.is_connected),
+      is_sandbox: Boolean(raw.biteship.is_sandbox),
+      last_validated_at: typeof raw.biteship.last_validated_at === 'string' ? raw.biteship.last_validated_at : null,
+      // api_key is NEVER projected
+    };
+  }
+
+  return safe;
+}
+
+/**
  * projectSafeRscTenantDto — RSC-safe tenant DTO for ALL roles including OWNER.
  *
  * NEVER serializes raw credential strings into the RSC HTML stream.
@@ -431,22 +526,12 @@ export function projectSafeRscTenantDto(settings: any, role: string): Record<str
   if (projectedMicrosite) safeMetadata.microsite = projectedMicrosite;
   if (selfPickupConfig) safeMetadata.self_pickup_config = selfPickupConfig;
 
-  // For OWNER: include shipping_config (non-secret operational config)
+  // For OWNER: include shipping_config strictly via constructive positive allowlist (Round 3T.1 Temuan A)
   if (role === 'OWNER' && meta.shipping_config && typeof meta.shipping_config === 'object') {
-    // Strip any api_key / secret fields from shipping config
-    const { lincah, ...shippingRest } = meta.shipping_config;
-    const safeShipping: Record<string, any> = { ...shippingRest };
-    if (lincah && typeof lincah === 'object') {
-      safeShipping.lincah = {
-        provider: lincah.provider,
-        status: lincah.status,
-        is_connected: Boolean(lincah.is_connected),
-        is_sandbox: Boolean(lincah.is_sandbox),
-        last_validated_at: lincah.last_validated_at,
-        // api_key and secret deliberately OMITTED
-      };
+    const safeShipping = projectShippingConfigDto(meta.shipping_config);
+    if (safeShipping) {
+      safeMetadata.shipping_config = safeShipping;
     }
-    safeMetadata.shipping_config = safeShipping;
   }
 
   // Determine secret presence booleans (replace raw secret strings)
