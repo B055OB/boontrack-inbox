@@ -1,7 +1,8 @@
 import React from 'react';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import InboxDashboardClient from './InboxDashboardClient';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { authorizeServerComponentTenant } from '@/lib/auth/merchant-session';
+import { sanitizeSettingsForRole } from '@/app/api/v1/tenants/[slug]/settings/route';
 
 interface InboxPageProps {
   params: Promise<{ tenant: string }>;
@@ -17,26 +18,24 @@ export default async function TenantInboxPage({ params }: InboxPageProps) {
     notFound();
   }
 
-  const supabase = getSupabaseAdmin() || getSupabase();
-  let tenantData: any = null;
-
-  if (supabase) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanTenant);
-    let tQuery = supabase.from('tenants').select('id, slug, name, category, tier, metadata');
-    if (isUuid) {
-      tQuery = tQuery.eq('id', cleanTenant);
-    } else {
-      tQuery = tQuery.eq('slug', cleanTenant);
+  // 1. Enforce Full Server Authorization Chain BEFORE Any Elevated Database Access
+  // Inbox is accessible to all active tenant members: OWNER, MERCHANT, OPERATOR, CS
+  const auth = await authorizeServerComponentTenant(cleanTenant, ['OWNER', 'MERCHANT', 'OPERATOR', 'CS']);
+  if (!auth.authorized || !auth.tenantRow) {
+    if (auth.reason === 'UNAUTHENTICATED') {
+      redirect(`/login?redirectTo=/${encodeURIComponent(cleanTenant)}/dashboard/inbox`);
     }
-    const { data } = await tQuery.maybeSingle();
-    tenantData = data;
+    notFound();
   }
+
+  // 2. Constructive DTO Projection: Strip all secrets and project only role-authorized fields
+  const safeTenantDto = sanitizeSettingsForRole(auth.tenantRow, auth.role || 'CS');
 
   return (
     <InboxDashboardClient
-      tenantSlug={tenantData?.slug || cleanTenant}
-      tenantId={tenantData?.id || null}
-      initialTenant={tenantData}
+      tenantSlug={auth.tenantRow.slug || cleanTenant}
+      tenantId={auth.tenantRow.id || null}
+      initialTenant={safeTenantDto}
     />
   );
 }

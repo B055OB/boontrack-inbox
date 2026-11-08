@@ -477,47 +477,80 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
       setQrisError(false);
       async function loadTenant() {
         try {
+          let data: any = null;
+
+          // 1. Primary: Hardened Public Tenant API (Round 3T.1)
+          try {
+            const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`);
+            if (apiRes.ok) {
+              const apiJson = await apiRes.json();
+              if (apiJson?.success && apiJson.tenant) {
+                data = apiJson.tenant;
+              }
+            }
+          } catch (apiErr) {
+            console.warn('[CheckoutModal] Failed fetching tenant from public API, checking storefront view:', apiErr);
+          }
+
           const supabase = getSupabase();
-          if (supabase) {
-            const { data } = await supabase
-              .from('tenants')
-              .select('*')
-              .eq('slug', tenantSlug)
-              .maybeSingle();
-            if (data) {
-              setTenantData(data);
-              const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || data?.phone || '';
-              if (phone) setTenantPhone(phone);
-              const metaId = data?.metadata?.pixel_config?.meta_pixel_id || data?.metadata?.meta_pixel_id || '';
-              if (metaId) setTenantMetaPixel(metaId);
-              const ttId = data?.metadata?.pixel_config?.tiktok_pixel_id || data?.metadata?.tiktok_pixel_id || '';
-              if (ttId) setTenantTTPixel(ttId);
 
-              const accounts = extractTenantBankAccounts(data);
-              setBankAccounts(accounts);
-              if (accounts.length === 0) {
-                setPaymentMethod('qris');
+          // 2. Secondary: Safe Opt-In Storefront View
+          if (!data && supabase) {
+            try {
+              const { data: sfData } = await supabase
+                .from('storefront_tenants')
+                .select('id, name, slug, category, tier, status, is_active, logo_url, avatar_url, bio, created_at')
+                .eq('slug', tenantSlug)
+                .maybeSingle();
+              if (sfData) {
+                data = sfData;
               }
+            } catch {}
+          }
 
-              const shippingCfg = await getStoreShippingConfig(tenantSlug, supabase).catch(() => null);
-              if (shippingCfg) {
-                setSelfPickupConfig({
-                  isEnabled: Boolean(shippingCfg.is_self_pickup_enabled),
-                  pickupAddress: shippingCfg.pickup_address || shippingCfg.origin_address || '',
-                  pickupMapsUrl: shippingCfg.pickup_maps_url || '',
-                  pickupInstructions: shippingCfg.pickup_operational_hours || shippingCfg.pickup_instructions || '',
-                  storeName: data?.name || data?.metadata?.store_name || tenantSlug,
-                });
-              } else if (data?.metadata?.biteship_config) {
-                const bCfg = data.metadata.biteship_config;
-                setSelfPickupConfig({
-                  isEnabled: Boolean(bCfg.is_self_pickup_enabled),
-                  pickupAddress: bCfg.pickup_address || bCfg.origin_address || '',
-                  pickupMapsUrl: bCfg.pickup_maps_url || '',
-                  pickupInstructions: bCfg.pickup_operational_hours || bCfg.pickup_instructions || '',
-                  storeName: data?.name || data?.metadata?.store_name || tenantSlug,
-                });
-              }
+          if (data) {
+            setTenantData(data);
+            const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || data?.phone || '';
+            if (phone) setTenantPhone(phone);
+            const metaId = data?.metadata?.pixel_config?.meta_pixel_id || data?.metadata?.meta_pixel_id || '';
+            if (metaId) setTenantMetaPixel(metaId);
+            const ttId = data?.metadata?.pixel_config?.tiktok_pixel_id || data?.metadata?.tiktok_pixel_id || '';
+            if (ttId) setTenantTTPixel(ttId);
+
+            const accounts = data?.payment_methods?.bank_accounts || extractTenantBankAccounts(data);
+            setBankAccounts(accounts);
+            if (accounts.length === 0) {
+              setPaymentMethod('qris');
+            }
+
+            const shippingCfg = await getStoreShippingConfig(tenantSlug, supabase).catch(() => null);
+            if (shippingCfg) {
+              setSelfPickupConfig({
+                isEnabled: Boolean(shippingCfg.is_self_pickup_enabled),
+                pickupAddress: shippingCfg.pickup_address || shippingCfg.origin_address || '',
+                pickupMapsUrl: shippingCfg.pickup_maps_url || '',
+                pickupInstructions: shippingCfg.pickup_operational_hours || shippingCfg.pickup_instructions || '',
+                storeName: data?.name || data?.metadata?.store_name || tenantSlug,
+              });
+            } else if (data?.metadata?.self_pickup) {
+              const sPickup = data.metadata.self_pickup;
+              setSelfPickupConfig({
+                isEnabled: Boolean(sPickup.is_self_pickup_enabled),
+                pickupAddress: sPickup.pickup_address || '',
+                pickupMapsUrl: sPickup.pickup_maps_url || '',
+                pickupInstructions: sPickup.pickup_instructions || '',
+                storeName: data?.name || data?.metadata?.store_name || tenantSlug,
+              });
+            } else if (data?.metadata?.biteship_config) {
+              const bCfg = data.metadata.biteship_config;
+              setSelfPickupConfig({
+                isEnabled: Boolean(bCfg.is_self_pickup_enabled),
+                pickupAddress: bCfg.pickup_address || bCfg.origin_address || '',
+                pickupMapsUrl: bCfg.pickup_maps_url || '',
+                pickupInstructions: bCfg.pickup_operational_hours || bCfg.pickup_instructions || '',
+                storeName: data?.name || data?.metadata?.store_name || tenantSlug,
+              });
+            }
 
               const staticQris =
                 (data as any)?.qris_payload ||
@@ -555,7 +588,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 setTenantQrisImageUrl(qrisImg);
               }
             }
-          }
         } catch {}
       }
       loadTenant();

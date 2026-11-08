@@ -173,14 +173,24 @@ export default function BiteshipCourierConfig({
             }
           }
 
-          // Check tenants table metadata for dynamic origin, warehouse address & fnb_catering
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          const meta = tenantRow?.metadata || {};
+          // Check tenant metadata via authenticated server API
+          let meta: any = {};
+          try {
+            const sRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+            if (sRes.ok) {
+              const sJson = await sRes.json();
+              meta = sJson?.settings?.metadata || sJson?.settings || {};
+            }
+          } catch {}
+          if (!meta || Object.keys(meta).length === 0) {
+            try {
+              const pRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`, { cache: 'no-store' });
+              if (pRes.ok) {
+                const pJson = await pRes.json();
+                meta = pJson?.tenant?.metadata || pJson?.tenant || {};
+              }
+            } catch {}
+          }
 
           if (meta.fnb_catering === true || meta.vertical === 'fnb-culinary' || isFnbCateringProp) {
             setIsFnbCatering(true);
@@ -198,7 +208,7 @@ export default function BiteshipCourierConfig({
 
           const basicShipping = meta.basic_shipping?.origin_address;
           const kitchenAddr = meta.kitchen_address;
-          const storeAddr = meta.store_address || meta.address || (tenantRow as any)?.address;
+          const storeAddr = meta.store_address || meta.address || '';
 
           // Prioritaskan alamat gudang / dapur riil dari profil database
           const dynamicOrigin =
@@ -367,49 +377,30 @@ export default function BiteshipCourierConfig({
           origin_postal_code: originPostalCode,
         }, supabase);
 
-        // 3. Synchronize to tenants.metadata for universal storefront access
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow) {
-          const currentMeta = tenantRow.metadata || {};
-          const updatedMeta = {
-            ...currentMeta,
-            pickup_address: effectivePickupAddress,
-            pickup_maps_url: pickupMapsUrl,
-            pickup_operational_hours: pickupInstructions,
-            self_pickup_config: {
-              ...(currentMeta.self_pickup_config || {}),
-              is_enabled: isSelfPickupEnabled,
-              pickup_address: effectivePickupAddress,
-              pickup_maps_url: pickupMapsUrl,
-              pickup_operational_hours: pickupInstructions,
-              pickup_instructions: pickupInstructions,
-            },
-            shipping_config: {
-              ...(currentMeta.shipping_config || {}),
-              is_self_pickup_enabled: isSelfPickupEnabled,
-              pickup_address: effectivePickupAddress,
-              pickup_maps_url: pickupMapsUrl,
-              pickup_operational_hours: pickupInstructions,
-              pickup_instructions: pickupInstructions,
-              self_pickup: {
+        // 3. Synchronize to server settings API for universal storefront access (Round 3T.1)
+        try {
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              self_pickup_config: {
                 is_enabled: isSelfPickupEnabled,
-                address: effectivePickupAddress,
-                maps_url: pickupMapsUrl,
-                operational_hours: pickupInstructions,
-                instructions: pickupInstructions,
+                pickup_address: effectivePickupAddress,
+                pickup_maps_url: pickupMapsUrl,
+                pickup_operational_hours: pickupInstructions,
+                pickup_instructions: pickupInstructions,
               },
-            },
-          };
-
-          await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-            .eq('slug', tenantSlug);
+              shipping_config: {
+                is_self_pickup_enabled: isSelfPickupEnabled,
+                pickup_address: effectivePickupAddress,
+                pickup_maps_url: pickupMapsUrl,
+                pickup_operational_hours: pickupInstructions,
+                pickup_instructions: pickupInstructions,
+              },
+            }),
+          });
+        } catch (settingsErr) {
+          console.warn('[BiteshipCourierConfig] Settings API sync note:', settingsErr);
         }
       }
 
@@ -474,57 +465,31 @@ export default function BiteshipCourierConfig({
             { onConflict: 'tenant_slug' }
           );
 
-        // 2. Update tenants metadata
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantData) {
-          const meta = tenantData.metadata || {};
-          const updatedMeta = {
-            ...meta,
-            shipping_config: {
-              ...(meta.shipping_config || {}),
-              active_aggregator: 'lincah',
-              provider: 'lincah',
-              status: 'connected',
-              is_active: true,
-              lincah: {
-                api_key: inputLincahApiKey.trim(),
-                secret: inputLincahApiKeyReadOnly.trim(),
-                api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-                is_sandbox: false,
-                is_connected: true,
-                status: 'active',
-                last_validated_at: now,
+        // 2. Synchronize to server settings API (Round 3T.1)
+        try {
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shipping_config: {
+                active_aggregator: 'lincah',
+                provider: 'lincah',
+                status: 'connected',
+                is_active: true,
+                lincah: {
+                  api_key: inputLincahApiKey.trim(),
+                  secret: inputLincahApiKeyReadOnly.trim(),
+                  api_key_read_only: inputLincahApiKeyReadOnly.trim(),
+                  is_sandbox: false,
+                  is_connected: true,
+                  status: 'active',
+                  last_validated_at: now,
+                },
               },
-            },
-            lincah_config: {
-              provider: 'lincah',
-              status: 'connected',
-              is_connected: true,
-              api_key: inputLincahApiKey.trim(),
-              secret: inputLincahApiKeyReadOnly.trim(),
-              api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-              updated_at: now,
-            },
-            shipping_settings: {
-              provider: 'lincah',
-              status: 'connected',
-              is_active: true,
-              api_key: inputLincahApiKey.trim(),
-              secret: inputLincahApiKeyReadOnly.trim(),
-              api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-              updated_at: now,
-            },
-          };
-
-          await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('slug', tenantSlug);
+            }),
+          });
+        } catch (settingsErr) {
+          console.warn('[BiteshipCourierConfig] Settings API Lincah sync note:', settingsErr);
         }
       }
 

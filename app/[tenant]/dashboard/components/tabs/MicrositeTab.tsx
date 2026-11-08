@@ -116,16 +116,30 @@ export default function MicrositeTab({
     async function loadMicrositeConfig() {
       try {
         setIsLoading(true);
-        const supabase = getSupabase();
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('id, name, metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
+        let meta: any = null;
 
-        if (tenantRow && isMounted) {
-          const meta = tenantRow.metadata || {};
-          const existingButtons = meta.microsite?.buttons;
+        try {
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (res.ok) {
+            const json = await res.json();
+            meta = json?.settings?.metadata || json?.settings;
+          }
+        } catch (apiErr) {
+          console.warn('[MicrositeTab] Settings API fetch error, falling back to public endpoint:', apiErr);
+        }
+
+        if (!meta) {
+          try {
+            const pubRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`, { cache: 'no-store' });
+            if (pubRes.ok) {
+              const pubJson = await pubRes.json();
+              meta = pubJson?.tenant?.metadata || pubJson?.tenant;
+            }
+          } catch {}
+        }
+
+        if (meta && isMounted) {
+          const existingButtons = meta.microsite?.buttons || meta.public_links;
           if (Array.isArray(existingButtons) && existingButtons.length > 0) {
             setButtons(existingButtons);
           } else {
@@ -174,18 +188,21 @@ export default function MicrositeTab({
             if (Array.isArray(meta.products) && meta.products.length > 0) {
               setCatalogProducts(meta.products);
             } else {
-              const { data: dbProducts } = await supabase
-                .from('products')
-                .select('*')
-                .eq('tenant_id', tenantRow.id || tenantSlug);
-              if (Array.isArray(dbProducts) && dbProducts.length > 0) {
-                setCatalogProducts(
-                  dbProducts.map((p: any) => ({
-                    ...p,
-                    image: p.image_url || p.image,
-                  }))
-                );
-              }
+              try {
+                const prodRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`);
+                if (prodRes.ok) {
+                  const prodJson = await prodRes.json();
+                  const pList = prodJson?.products || prodJson?.data || [];
+                  if (Array.isArray(pList) && pList.length > 0) {
+                    setCatalogProducts(
+                      pList.map((p: any) => ({
+                        ...p,
+                        image: p.image_url || p.image,
+                      }))
+                    );
+                  }
+                }
+              } catch {}
             }
           }
         }
@@ -244,76 +261,32 @@ export default function MicrositeTab({
     setFeedback(null);
 
     try {
-      const supabase = getSupabase();
-      // Fetch latest metadata to prevent overwriting other fields
-      const { data: currentTenant } = await supabase
-        .from('tenants')
-        .select('metadata')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-
-      const currentMeta = currentTenant?.metadata || {};
-      const updatedMeta = {
-        ...currentMeta,
-        storefront_template: activeTemplate,
-        bio: bioText,
-        featured_product_ids: featuredProductIds,
-        show_products: showProducts,
-        display_catalog: showProducts,
-        microsite_show_products: showProducts,
-        microsite_featured_product_ids: featuredProductIds,
-        microsite_product_mode: productMode,
-        theme: {
-          ...(currentMeta.theme || {}),
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template: activeTemplate,
+          bio: bioText,
+          description: bioText,
           show_products: showProducts,
-        },
-        theme_config: {
-          ...(currentMeta.theme_config || {}),
-          show_products: showProducts,
-        },
-        microsite: {
-          ...(currentMeta.microsite || {}),
-          buttons,
-          show_products: showProducts,
-          featured_product_ids: featuredProductIds,
-          product_mode: productMode,
-        },
-        sections: {
-          ...(currentMeta.sections || {}),
-          catalog: { is_active: showProducts },
-          products: { is_active: showProducts },
-        },
-      };
-
-      const { error: dbErr } = await supabase
-        .from('tenants')
-        .update({ metadata: updatedMeta })
-        .eq('slug', tenantSlug);
-
-      if (dbErr) throw dbErr;
-
-      // Also sync via settings API route
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: activeTemplate,
-            bio: bioText,
+          display_catalog: showProducts,
+          microsite_show_products: showProducts,
+          microsite_featured_product_ids: featuredProductIds,
+          microsite_product_mode: productMode,
+          public_links: buttons,
+          microsite: {
+            buttons,
             show_products: showProducts,
-            display_catalog: showProducts,
-            microsite_show_products: showProducts,
-            microsite_featured_product_ids: featuredProductIds,
-            microsite_product_mode: productMode,
-            microsite: {
-              buttons,
-              show_products: showProducts,
-              featured_product_ids: featuredProductIds,
-              product_mode: productMode,
-            },
-          }),
-        });
-      } catch {}
+            featured_product_ids: featuredProductIds,
+            product_mode: productMode,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error || errJson?.message || 'Gagal menyimpan konfigurasi.');
+      }
 
       setFeedback({ type: 'success', text: 'Konfigurasi microsite & tombol CTA berhasil disimpan!' });
       if (onSaved) onSaved('Konfigurasi microsite berhasil diperbarui.');

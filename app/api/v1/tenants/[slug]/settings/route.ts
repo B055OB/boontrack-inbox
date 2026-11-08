@@ -413,6 +413,18 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     if (settings.metadata.features) {
       sanitizedMetadata.features = projectFeaturesDto(settings.metadata.features);
     }
+    if (settings.metadata.microsite && typeof settings.metadata.microsite === 'object' && !Array.isArray(settings.metadata.microsite)) {
+      sanitizedMetadata.microsite = settings.metadata.microsite;
+    }
+    if (settings.metadata.self_pickup_config && typeof settings.metadata.self_pickup_config === 'object') {
+      sanitizedMetadata.self_pickup_config = {
+        is_enabled: Boolean(settings.metadata.self_pickup_config.is_enabled),
+        pickup_address: typeof settings.metadata.self_pickup_config.pickup_address === 'string' ? settings.metadata.self_pickup_config.pickup_address : '',
+        pickup_maps_url: typeof settings.metadata.self_pickup_config.pickup_maps_url === 'string' ? settings.metadata.self_pickup_config.pickup_maps_url : '',
+        pickup_operational_hours: typeof settings.metadata.self_pickup_config.pickup_operational_hours === 'string' ? settings.metadata.self_pickup_config.pickup_operational_hours : '',
+        pickup_instructions: typeof settings.metadata.self_pickup_config.pickup_instructions === 'string' ? settings.metadata.self_pickup_config.pickup_instructions : '',
+      };
+    }
   }
 
   // Construct clean projected object from scratch for non-OWNER roles (MERCHANT, OPERATOR, CS)
@@ -420,7 +432,7 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     id: settings.id,
     slug: settings.slug,
     name: settings.name,
-    store_name: settings.store_name || settings.name,
+    store_name: settings.store_name || (typeof settings.metadata?.store_name === 'string' ? settings.metadata.store_name : settings.name),
     display_name: typeof settings.display_name === 'string'
       ? settings.display_name
       : (typeof settings.metadata?.display_name === 'string' ? settings.metadata.display_name : null),
@@ -994,6 +1006,8 @@ export async function PUT(
         'interactive_menus',
         'interactive_menu',
         'public_links',
+        'self_pickup_config',
+        'shipping_config',
       ]);
 
       const topLevelKeys = Object.keys(body).filter((k) => k !== 'metadata');
@@ -1057,6 +1071,7 @@ export async function PUT(
       custom_greeting_message,
       sales_policy,
       playbook,
+      self_pickup_config,
       shipping_config,
       lincah_config,
       shipping_settings,
@@ -1297,6 +1312,9 @@ export async function PUT(
         tagline: body.tagline !== undefined ? body.tagline : body.metadata?.tagline,
       } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
+      ...(self_pickup_config !== undefined || body.self_pickup_config !== undefined || body.metadata?.self_pickup_config !== undefined ? {
+        self_pickup_config: self_pickup_config ?? body.self_pickup_config ?? body.metadata?.self_pickup_config,
+      } : {}),
       ...(shipping_config !== undefined ? { shipping_config } : {}),
       ...(lincah_config !== undefined ? { lincah_config } : {}),
       ...(shipping_settings !== undefined ? { shipping_settings } : {}),

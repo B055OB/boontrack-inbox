@@ -134,14 +134,36 @@ function MerchantLoginForm() {
       }
     }
 
-    // 2. Query Supabase dynamically (Single source of truth)
+    // 2. Query dynamically (Primary: Hardened Public Tenant API, Secondary: Safe Opt-In Storefront View)
     try {
+      let row: any = null;
+
+      try {
+        const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(clean)}`);
+        if (apiRes.ok) {
+          const apiJson = await apiRes.json();
+          if (apiJson?.success && apiJson.tenant) {
+            row = apiJson.tenant;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[Login] Public API lookup error, falling back to storefront view:', apiErr);
+      }
+
       const supabase = getSupabase();
-      const { data: row } = await supabase
-        .from('tenants')
-        .select('slug, name, metadata, tier, template_code, business_type, tenant_kind, category')
-        .eq('slug', clean)
-        .maybeSingle();
+
+      if (!row && supabase) {
+        try {
+          const { data: sfRow } = await supabase
+            .from('storefront_tenants')
+            .select('slug, name, category, tier, status, is_active')
+            .eq('slug', clean)
+            .maybeSingle();
+          if (sfRow) {
+            row = sfRow;
+          }
+        } catch {}
+      }
 
       if (row) {
         const runtime = resolveTenantRuntime({

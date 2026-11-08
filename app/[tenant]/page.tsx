@@ -219,14 +219,38 @@ export default function TenantStorefrontPage() {
     async function loadTenantAndCatalog() {
       if (!tenantSlug) return;
       try {
-        const supabase = getSupabase();
-        const { data: tenantData, error } = await supabase
-          .from("tenants")
-          .select("id, name, slug, category, tier, status, business_type, template_code, metadata")
-          .eq("slug", tenantSlug)
-          .single();
+        let tenantRow: any = null;
 
-        if (error || !tenantData) {
+        // 1. Primary Ingress: Secure Hardened Public Tenant API (Round 3T.1)
+        try {
+          const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`);
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            if (apiJson?.success && apiJson.tenant) {
+              tenantRow = apiJson.tenant;
+            }
+          }
+        } catch (apiErr) {
+          console.warn("[Storefront] Public API fetch error, falling back to storefront view:", apiErr);
+        }
+
+        const supabase = getSupabase();
+
+        // 2. Secondary Ingress: Safe Public Opt-In Storefront View
+        if (!tenantRow && supabase) {
+          try {
+            const { data: sfData } = await supabase
+              .from("storefront_tenants")
+              .select("id, name, slug, category, tier, status, is_active, logo_url, avatar_url, bio, created_at")
+              .eq("slug", tenantSlug)
+              .maybeSingle();
+            if (sfData) {
+              tenantRow = sfData;
+            }
+          } catch {}
+        }
+
+        if (!tenantRow) {
           const fallbackConfig = getTenantConfig(tenantSlug);
           if (fallbackConfig) {
             if (isMounted) {
@@ -249,22 +273,23 @@ export default function TenantStorefrontPage() {
           return;
         }
 
-        const tenantRow = tenantData;
         let sqlProducts: any[] = [];
-        try {
-          const { data: prodsData } = await supabase
-            .from("products")
-            .select("*")
-            .eq("tenant_id", tenantRow.id)
-            .eq("is_active", true);
-          sqlProducts = (prodsData || []).filter((sp: any) => {
-            if (!sp) return false;
-            if (sp.is_active === false || sp.is_active === "false" || sp.is_active === 0 || sp.is_active === "0") return false;
-            const st = typeof sp.status === "string" ? sp.status.toLowerCase().trim() : "";
-            if (["draft", "hidden", "archived", "inactive", "sembunyi"].includes(st)) return false;
-            return true;
-          });
-        } catch {}
+        if (tenantRow.id && supabase) {
+          try {
+            const { data: prodsData } = await supabase
+              .from("products")
+              .select("*")
+              .eq("tenant_id", tenantRow.id)
+              .eq("is_active", true);
+            sqlProducts = (prodsData || []).filter((sp: any) => {
+              if (!sp) return false;
+              if (sp.is_active === false || sp.is_active === "false" || sp.is_active === 0 || sp.is_active === "0") return false;
+              const st = typeof sp.status === "string" ? sp.status.toLowerCase().trim() : "";
+              if (["draft", "hidden", "archived", "inactive", "sembunyi"].includes(st)) return false;
+              return true;
+            });
+          } catch {}
+        }
 
         if (isMounted) {
           setTenant(tenantRow);

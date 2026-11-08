@@ -1,3 +1,4 @@
+import { extractTenantBankAccounts } from './bank-accounts';
 import { getProductPageUrl, getStorefrontUrl } from './storefront-urls';
 import { getSupabaseAdmin, getSupabase } from './supabaseClient';
 import { isValidUuid } from './uuid-guard';
@@ -1934,21 +1935,322 @@ export function sanitizePublicProduct<T = any>(product: T): T {
   return (mapped || product) as T;
 }
 
-/**
- * Sanitizes tenant metadata before public, unauthenticated exposure.
- * Recursively strips protected product fulfillment credentials and access URLs.
- */
-export function sanitizePublicTenantMetadata(metadata: any): any {
-  if (!metadata || typeof metadata !== 'object') return metadata;
+// ── PUBLIC METADATA ALLOWLIST PROJECTION SCHEMAS (Round 3T.1) ──
 
-  const clean = { ...metadata };
+export const ALLOWED_PUBLIC_THEME_KEYS = new Set([
+  'template',
+  'visual_theme',
+  'primary_color',
+  'secondary_color',
+  'accent_color',
+  'font_family',
+  'layout',
+  'layout_style',
+  'chat_enabled',
+  'chat_position',
+  'show_featured_products',
+  'featured_product_ids',
+  'header_style',
+  'card_style',
+  'badge',
+  'theme_id',
+]);
 
-  if (Array.isArray(clean.products)) {
-    clean.products = clean.products.map((p: any) => sanitizePublicProduct(p));
+export function projectPublicTheme(raw: any): Record<string, any> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { template: 'default', chat_enabled: true, chat_position: 'bottom-right' };
+  }
+  const projected: Record<string, any> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (ALLOWED_PUBLIC_THEME_KEYS.has(key)) {
+      if (key === 'featured_product_ids' && Array.isArray(value)) {
+        projected[key] = value.filter((id) => typeof id === 'string' || typeof id === 'number');
+      } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        projected[key] = value;
+      }
+    }
+  }
+  if (!projected.template) projected.template = 'default';
+  return projected;
+}
+
+export function projectPublicFaqs(rawFaqs: any): Array<{ id: string; question: string; answer: string; category?: string }> {
+  if (!Array.isArray(rawFaqs)) return [];
+  const projected: Array<{ id: string; question: string; answer: string; category?: string }> = [];
+  for (const item of rawFaqs) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const question = typeof item.question === 'string' ? item.question : (typeof item.title === 'string' ? item.title : '');
+    const answer = typeof item.answer === 'string' ? item.answer : (typeof item.content === 'string' ? item.content : '');
+    const category = typeof item.category === 'string' ? item.category : undefined;
+    const id = typeof item.id === 'string' || typeof item.id === 'number' ? String(item.id) : `faq_${Math.random().toString(36).substring(2, 7)}`;
+    if (question || answer) {
+      projected.push({
+        id,
+        question,
+        answer,
+        ...(category ? { category } : {}),
+      });
+    }
+  }
+  return projected;
+}
+
+export const ALLOWED_PUBLIC_DAY_KEYS = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
+export function projectPublicBusinessHours(raw: any): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const projected: Record<string, any> = {};
+
+  if (typeof raw.timezone === 'string') projected.timezone = raw.timezone;
+  if (typeof raw.is_always_open === 'boolean') projected.is_always_open = raw.is_always_open;
+  if (typeof raw.notes === 'string') projected.notes = raw.notes;
+
+  if (raw.days && typeof raw.days === 'object' && !Array.isArray(raw.days)) {
+    const projectedDays: Record<string, any> = {};
+    for (const [day, dayVal] of Object.entries(raw.days)) {
+      if (ALLOWED_PUBLIC_DAY_KEYS.has(day.toLowerCase()) && dayVal && typeof dayVal === 'object' && !Array.isArray(dayVal)) {
+        projectedDays[day.toLowerCase()] = {
+          open: typeof (dayVal as any).open === 'string' ? (dayVal as any).open : '',
+          close: typeof (dayVal as any).close === 'string' ? (dayVal as any).close : '',
+          is_open: typeof (dayVal as any).is_open === 'boolean' ? (dayVal as any).is_open : true,
+        };
+      }
+    }
+    projected.days = projectedDays;
   }
 
-  if (clean.product && typeof clean.product === 'object') {
-    clean.product = sanitizePublicProduct(clean.product);
+  if (Array.isArray(raw.schedule)) {
+    const projectedSchedule: any[] = [];
+    for (const item of raw.schedule) {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        projectedSchedule.push({
+          day: typeof item.day === 'string' ? item.day : '',
+          open: typeof item.open === 'string' ? item.open : '',
+          close: typeof item.close === 'string' ? item.close : '',
+          closed: typeof item.closed === 'boolean' ? item.closed : Boolean(item.is_closed),
+        });
+      }
+    }
+    projected.schedule = projectedSchedule;
+  }
+
+  for (const day of ALLOWED_PUBLIC_DAY_KEYS) {
+    if (raw[day] && typeof raw[day] === 'object' && !Array.isArray(raw[day])) {
+      projected[day] = {
+        open: typeof raw[day].open === 'string' ? raw[day].open : '',
+        close: typeof raw[day].close === 'string' ? raw[day].close : '',
+        is_open: typeof raw[day].is_open === 'boolean' ? raw[day].is_open : true,
+      };
+    }
+  }
+
+  return projected;
+}
+
+export const ALLOWED_PUBLIC_CATALOG_KEYS = new Set([
+  'default_sort',
+  'items_per_page',
+  'show_out_of_stock',
+  'show_prices',
+  'card_layout',
+  'display_mode',
+  'categories_visible',
+  'allow_search',
+  'featured_category_ids',
+]);
+
+export function projectPublicCatalogPreferences(raw: any): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const projected: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(raw)) {
+    if (ALLOWED_PUBLIC_CATALOG_KEYS.has(key)) {
+      if (key === 'featured_category_ids' && Array.isArray(value)) {
+        projected[key] = value.filter((id) => typeof id === 'string' || typeof id === 'number');
+      } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        projected[key] = value;
+      }
+    }
+  }
+  return projected;
+}
+
+export const ALLOWED_PUBLIC_LINK_PLATFORMS = new Set([
+  'instagram',
+  'tiktok',
+  'facebook',
+  'twitter',
+  'x',
+  'youtube',
+  'website',
+  'maps',
+  'shopee',
+  'tokopedia',
+  'whatsapp',
+  'telegram',
+  'linkedin',
+  'marketplace',
+  'gofood',
+  'grabfood',
+  'shopeefood',
+  'custom',
+]);
+
+export function projectPublicLinks(raw: any): any {
+  if (!raw) return null;
+
+  if (Array.isArray(raw)) {
+    const projectedArray: any[] = [];
+    for (const item of raw) {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const title = typeof item.title === 'string' ? item.title.slice(0, 100) : (typeof item.label === 'string' ? item.label.slice(0, 100) : '');
+        const url = typeof item.url === 'string' ? item.url.slice(0, 500) : (typeof item.href === 'string' ? item.href.slice(0, 500) : '');
+        const rawPlatform = typeof item.platform === 'string' ? item.platform.trim().toLowerCase() : '';
+        const platform = rawPlatform && rawPlatform.length <= 32 && ALLOWED_PUBLIC_LINK_PLATFORMS.has(rawPlatform)
+          ? rawPlatform
+          : undefined;
+        if (url) {
+          projectedArray.push({
+            title,
+            url,
+            ...(platform ? { platform } : {}),
+            icon: typeof item.icon === 'string' && item.icon.length <= 32 ? item.icon : undefined,
+            order: typeof item.order === 'number' && Number.isFinite(item.order) ? item.order : undefined,
+            is_active: typeof item.is_active === 'boolean' ? item.is_active : true,
+          });
+        }
+      }
+    }
+    return projectedArray;
+  }
+
+  if (typeof raw === 'object') {
+    const projectedObj: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const normKey = key.toLowerCase().trim();
+      if (ALLOWED_PUBLIC_LINK_PLATFORMS.has(normKey) && typeof value === 'string' && value.length <= 500) {
+        projectedObj[normKey] = value;
+      }
+    }
+    return projectedObj;
+  }
+
+  return null;
+}
+
+export function projectPublicPixelConfig(raw: any): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const projected: Record<string, string> = {};
+  if (typeof raw.meta_pixel_id === 'string' && raw.meta_pixel_id.trim()) {
+    projected.meta_pixel_id = raw.meta_pixel_id.trim().slice(0, 50);
+  }
+  if (typeof raw.tiktok_pixel_id === 'string' && raw.tiktok_pixel_id.trim()) {
+    projected.tiktok_pixel_id = raw.tiktok_pixel_id.trim().slice(0, 50);
+  }
+  if (typeof raw.gtm_id === 'string' && raw.gtm_id.trim()) {
+    projected.gtm_id = raw.gtm_id.trim().slice(0, 50);
+  }
+  if (typeof raw.ga4_id === 'string' && raw.ga4_id.trim()) {
+    projected.ga4_id = raw.ga4_id.trim().slice(0, 50);
+  }
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+export function projectPublicMicrosite(raw: any): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const projected: Record<string, any> = {};
+  if (typeof raw.template === 'string') projected.template = raw.template.slice(0, 50);
+  if (typeof raw.headline === 'string') projected.headline = raw.headline.slice(0, 200);
+  if (typeof raw.subheadline === 'string') projected.subheadline = raw.subheadline.slice(0, 500);
+  if (typeof raw.bio === 'string') projected.bio = raw.bio.slice(0, 1000);
+  if (Array.isArray(raw.buttons)) {
+    projected.buttons = raw.buttons
+      .filter((b: any) => b && typeof b === 'object' && !Array.isArray(b))
+      .map((b: any) => ({
+        id: typeof b.id === 'string' || typeof b.id === 'number' ? String(b.id) : undefined,
+        label: typeof b.label === 'string' ? b.label.slice(0, 100) : (typeof b.title === 'string' ? b.title.slice(0, 100) : ''),
+        url: typeof b.url === 'string' ? b.url.slice(0, 500) : (typeof b.href === 'string' ? b.href.slice(0, 500) : ''),
+        icon: typeof b.icon === 'string' ? b.icon.slice(0, 50) : undefined,
+      }))
+      .filter((b: any) => Boolean(b.url));
+  }
+  return projected;
+}
+
+export function projectPublicSelfPickup(raw: any): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return {
+    is_self_pickup_enabled: Boolean(raw.is_self_pickup_enabled),
+    pickup_address: typeof raw.pickup_address === 'string' ? raw.pickup_address.slice(0, 500) : (typeof raw.origin_address === 'string' ? raw.origin_address.slice(0, 500) : ''),
+    pickup_maps_url: typeof raw.pickup_maps_url === 'string' ? raw.pickup_maps_url.slice(0, 500) : '',
+    pickup_instructions: typeof raw.pickup_instructions === 'string' ? raw.pickup_instructions.slice(0, 500) : (typeof raw.pickup_operational_hours === 'string' ? raw.pickup_operational_hours.slice(0, 500) : ''),
+  };
+}
+
+/**
+ * Sanitizes tenant metadata before public, unauthenticated exposure.
+ * Strictly constructive allowlist projection (Round 3T.1) - guarantees ZERO secret leakage.
+ */
+export function sanitizePublicTenantMetadata(metadata: any): Record<string, any> {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const clean: Record<string, any> = {};
+
+  // Display & branding
+  if (typeof metadata.display_name === 'string') clean.display_name = metadata.display_name;
+  if (typeof metadata.store_name === 'string') clean.store_name = metadata.store_name;
+  if (typeof metadata.name === 'string') clean.name = metadata.name;
+  if (typeof metadata.tagline === 'string') clean.tagline = metadata.tagline;
+  if (typeof metadata.description === 'string') clean.description = metadata.description;
+  if (typeof metadata.bio === 'string') clean.bio = metadata.bio;
+  if (typeof metadata.logo_url === 'string') clean.logo_url = metadata.logo_url;
+  if (typeof metadata.avatar_url === 'string') clean.avatar_url = metadata.avatar_url;
+  if (typeof metadata.banner_url === 'string') clean.banner_url = metadata.banner_url;
+
+  // Public contact / CS if present (whatsapp_number / phone)
+  if (typeof metadata.whatsapp_number === 'string') clean.whatsapp_number = metadata.whatsapp_number;
+  else if (typeof metadata.whatsapp === 'string') clean.whatsapp_number = metadata.whatsapp;
+  else if (typeof metadata.phone === 'string') clean.whatsapp_number = metadata.phone;
+
+  // Public theme & faqs & business hours & catalog preferences
+  if (metadata.theme) clean.theme = projectPublicTheme(metadata.theme);
+  if (metadata.theme_config) clean.theme_config = projectPublicTheme(metadata.theme_config);
+  if (metadata.faqs) clean.faqs = projectPublicFaqs(metadata.faqs);
+  if (metadata.business_hours) clean.business_hours = projectPublicBusinessHours(metadata.business_hours);
+  if (metadata.catalog_preferences) clean.catalog_preferences = projectPublicCatalogPreferences(metadata.catalog_preferences);
+
+  // Public links & microsite
+  if (metadata.public_links) clean.public_links = projectPublicLinks(metadata.public_links);
+  if (metadata.links) clean.links = projectPublicLinks(metadata.links);
+  if (metadata.microsite) clean.microsite = projectPublicMicrosite(metadata.microsite);
+
+  // Tracking pixels (public IDs only)
+  const pixelConfig = projectPublicPixelConfig(metadata.pixel_config || metadata);
+  if (pixelConfig) clean.pixel_config = pixelConfig;
+
+  // Payment presentation (safe public bank accounts & QRIS)
+  const bankAccounts = extractTenantBankAccounts(metadata);
+  if (bankAccounts && bankAccounts.length > 0) {
+    clean.bank_accounts = bankAccounts;
+  }
+  if (typeof metadata.qris_image_url === 'string' && metadata.qris_image_url.trim()) {
+    clean.qris_image_url = metadata.qris_image_url.trim();
+  }
+
+  // Self pickup configuration
+  if (metadata.biteship_config) {
+    clean.self_pickup = projectPublicSelfPickup(metadata.biteship_config);
+  } else if (metadata.shipping_config) {
+    clean.self_pickup = projectPublicSelfPickup(metadata.shipping_config);
+  }
+
+  // Products
+  if (Array.isArray(metadata.products)) {
+    clean.products = metadata.products.map((p: any) => sanitizePublicProduct(p));
+  } else if (metadata.product && typeof metadata.product === 'object') {
+    clean.product = sanitizePublicProduct(metadata.product);
   }
 
   return clean;
