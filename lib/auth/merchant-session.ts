@@ -267,13 +267,29 @@ export function verifyMerchantSessionToken(
 
 
 /**
- * Validates whether an incoming request carries an authorized machine-to-machine internal secret.
+ * Validates whether an incoming request carries an authorized machine-to-machine internal secret
+ * bound strictly to an authoritative target tenant and allowed business operation scope.
+ *
+ * M2M Ingress Contract (Workforce Round 3Q):
+ * - Must present valid internal secret via 'x-internal-secret' or 'Authorization: Bearer <secret>'
+ * - Must present canonical 'x-target-tenant' header matching expected targetTenantSlug
+ * - Must present canonical 'x-machine-operation' header matching allowedOperations allowlist
+ * - Legacy aliases (x-tenant-slug, x-tenant-id, x-internal-operation) are STRICTLY REJECTED.
+ * - Missing tenant slug, empty allowed operations, or secret-only calls fail closed immediately.
  */
 export function isInternalMachineAuthorized(
   req: NextRequest,
-  targetTenantSlug?: string | null,
-  allowedOperations?: string[]
+  targetTenantSlug: string,
+  allowedOperations: string[]
 ): boolean {
+  // Fail-closed invariant: Target tenant slug and allowed operations are strictly mandatory
+  if (!targetTenantSlug || typeof targetTenantSlug !== 'string' || !targetTenantSlug.trim()) {
+    return false;
+  }
+  if (!allowedOperations || !Array.isArray(allowedOperations) || allowedOperations.length === 0) {
+    return false;
+  }
+
   const authHeader = req.headers.get('authorization')?.trim() || '';
   const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
   const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
@@ -299,37 +315,24 @@ export function isInternalMachineAuthorized(
       return false;
     }
 
-    // 1. Enforce target tenant boundary if specified by caller or route
-    const reqTargetTenant = (
-      req.headers.get('x-target-tenant') ||
-      req.headers.get('x-tenant-slug') ||
-      req.headers.get('x-tenant-id')
-    )?.trim().toLowerCase();
-
-    if (targetTenantSlug) {
-      if (!reqTargetTenant) {
-        return false;
-      }
-      const normExpected = targetTenantSlug.trim().toLowerCase();
-      if (reqTargetTenant !== normExpected) {
-        return false;
-      }
+    // 1. Enforce canonical target tenant boundary (STRICT: no legacy alias fallbacks)
+    const reqTargetTenant = req.headers.get('x-target-tenant')?.trim().toLowerCase();
+    if (!reqTargetTenant) {
+      return false;
+    }
+    const normExpected = targetTenantSlug.trim().toLowerCase();
+    if (reqTargetTenant !== normExpected) {
+      return false;
     }
 
-    // 2. Enforce allowed operations boundary if specified
-    const reqOperation = (
-      req.headers.get('x-machine-operation') ||
-      req.headers.get('x-internal-operation')
-    )?.trim().toUpperCase();
-
-    if (allowedOperations && allowedOperations.length > 0) {
-      if (!reqOperation) {
-        return false;
-      }
-      const normAllowed = allowedOperations.map((op) => op.toUpperCase());
-      if (!normAllowed.includes(reqOperation)) {
-        return false;
-      }
+    // 2. Enforce canonical allowed operations boundary (STRICT: no legacy alias fallbacks)
+    const reqOperation = req.headers.get('x-machine-operation')?.trim().toUpperCase();
+    if (!reqOperation) {
+      return false;
+    }
+    const normAllowed = allowedOperations.map((op) => op.trim().toUpperCase());
+    if (!normAllowed.includes(reqOperation)) {
+      return false;
     }
 
     return true;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSupabase } from '@/lib/supabaseClient';
 import { sanitizeImageUrl } from '@/lib/image-utils';
+import { isInternalMachineAuthorized } from '@/lib/auth/merchant-session';
 
 export function cleanEnv(val?: string | null): string {
   if (!val) return '';
@@ -309,10 +310,24 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = (formData.get('file') || formData.get('image') || formData.get('qris')) as File | null;
     const tenantSlug =
-      req.headers.get('x-tenant-slug') ||
+      req.headers.get('x-target-tenant') ||
       (formData.get('tenant_slug') as string) ||
       (formData.get('tenant_id') as string) ||
+      req.headers.get('x-tenant-slug') ||
       'sandbox';
+
+    // M2M Ingress Guard: If machine secret is supplied, validate canonical contract
+    const internalSecret = req.headers.get('x-internal-secret')?.trim();
+    const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+    if (internalSecret && envAdminSecret && internalSecret === envAdminSecret) {
+      const isInternal = isInternalMachineAuthorized(req, tenantSlug, ['UPLOAD_MEDIA']);
+      if (!isInternal) {
+        return NextResponse.json(
+          { status: 'error', detail: 'Forbidden: Machine authorization failed scope verification.' },
+          { status: 403 }
+        );
+      }
+    }
     let folder = (formData.get('folder') as string) || 'media';
     const isQris = folder === 'qris' || (file?.name && file.name.toLowerCase().includes('qris'));
     if (isQris) {

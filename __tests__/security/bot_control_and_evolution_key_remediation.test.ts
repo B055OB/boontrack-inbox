@@ -431,12 +431,14 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(json.bot_paused).toBe(true);
     });
 
-    it('11. Allows access with x-internal-secret header', async () => {
+    it('11. Allows access with x-internal-secret and canonical M2M headers', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-internal-secret': 'test-internal-secret-token',
+          'x-target-tenant': 'toko-sukses',
+          'x-machine-operation': 'EXECUTE_BOT_CONTROL',
         },
         body: JSON.stringify({ action: 'PAUSE' }),
       });
@@ -448,12 +450,32 @@ describe('Security Remediation: Official Session Verification on bot-control/rou
       expect(json.success).toBe(true);
     });
 
-    it('12. Allows access with Supabase Service Role Key in Authorization header', async () => {
+    it('11b. Rejects secret-only access with 403 Forbidden when canonical M2M headers are missing', async () => {
+      const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': 'test-internal-secret-token',
+        },
+        body: JSON.stringify({ action: 'PAUSE' }),
+      });
+
+      const res = await POST(req, { params: Promise.resolve({ slug: 'toko-sukses' }) });
+      expect(res.status).toBe(403);
+
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('scope verification');
+    });
+
+    it('12. Allows access with Supabase Service Role Key and canonical M2M headers', async () => {
       const req = new NextRequest('https://boontrack.com/api/v1/tenants/toko-sukses/bot-control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           authorization: 'Bearer test-service-role-secret',
+          'x-target-tenant': 'toko-sukses',
+          'x-machine-operation': 'EXECUTE_BOT_CONTROL',
         },
         body: JSON.stringify({ action: 'RESUME' }),
       });

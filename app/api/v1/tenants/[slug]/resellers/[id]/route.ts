@@ -52,25 +52,25 @@ export async function PATCH(
     const supabaseAdmin = getSupabaseAdmin();
 
     // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, cleanSlug, ['UPDATE_RESELLER']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, cleanSlug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
-    }
 
-    // P1: Anti-IDOR & Otorisasi Pemilik Toko
-    const auth = await verifyTenantOwnerOrAdmin(req, cleanSlug, { supabaseClient: supabaseAdmin });
-    if (!auth.authorized) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
-          message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
-        },
-        { status: auth.errorStatus || 401 }
-      );
+      // P1: Anti-IDOR & Otorisasi Pemilik Toko (User session branch only)
+      const auth = await verifyTenantOwnerOrAdmin(req, cleanSlug, { supabaseClient: supabaseAdmin });
+      if (!auth.authorized) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: auth.errorStatus === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+            message: auth.errorMessage || 'Akses ditolak (Anti-IDOR).',
+          },
+          { status: auth.errorStatus || 401 }
+        );
+      }
     }
 
     // 1. Resolve Tenant (Strict Scope Isolation)

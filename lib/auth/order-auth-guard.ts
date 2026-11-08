@@ -102,6 +102,7 @@ export {
 import {
   extractMerchantSessionToken,
   verifyMerchantSessionToken,
+  isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 
 export function extractMerchantSessionSlug(req: NextRequest): string {
@@ -158,7 +159,8 @@ export async function verifyOrderMutationAuthorization(
     tenant_id?: string | null;
     tenant_slug?: string | null;
   },
-  routeSlug?: string
+  routeSlug?: string,
+  expectedOperation?: string
 ): Promise<OrderMutationAuthResult> {
   const authHeader = req.headers.get('authorization')?.trim() || '';
   const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
@@ -178,17 +180,6 @@ export async function verifyOrderMutationAuthorization(
       status: 401,
       error: 'Unauthorized: SUPABASE_SERVICE_ROLE_KEY dilarang keras digunakan sebagai kredensial inbound API.',
     };
-  }
-
-  // 1. Machine-to-Machine Authentication (Dedicated Internal Secret ONLY)
-  // Must be non-empty, at least 16 characters, and match strictly using constant-time comparison
-  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
-  if (
-    envAdminSecret &&
-    envAdminSecret.length >= 16 &&
-    (safeCompare(internalSecret, envAdminSecret) || safeCompare(authHeader, `Bearer ${envAdminSecret}`))
-  ) {
-    return { authorized: true, status: 200, callerType: 'machine_internal' };
   }
 
   // Explicit security rule: Reject gateway callback token if passed as internal secret or header
@@ -216,6 +207,51 @@ export async function verifyOrderMutationAuthorization(
       authorized: false,
       status: 401,
       error: 'Database client unreachable for session authorization.',
+    };
+  }
+
+  // 1. Machine-to-Machine Authentication (Dedicated Internal Secret ONLY)
+  // Must be bound to the authoritative order tenant and verified operation
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  const isSecretPresented = Boolean(
+    envAdminSecret &&
+    envAdminSecret.length >= 16 &&
+    (
+      (internalSecret && safeCompare(internalSecret, envAdminSecret)) ||
+      (authHeader.toLowerCase().startsWith('bearer ') && safeCompare(authHeader.slice(7).trim(), envAdminSecret))
+    )
+  );
+
+  if (isSecretPresented) {
+    const authoritativeTenant = await resolveAuthoritativeTenantForOrder(supabase, order);
+    const authoritativeSlug = authoritativeTenant?.slug || String(order.tenant_slug || '').toLowerCase().trim();
+
+    if (!authoritativeSlug) {
+      return {
+        authorized: false,
+        status: 403,
+        error: 'Forbidden: Cannot resolve authoritative tenant for order mutation.',
+      };
+    }
+
+    const pathname = req.nextUrl?.pathname || '';
+    let resolvedOp = expectedOperation;
+    if (!resolvedOp) {
+      if (pathname.includes('/approve')) resolvedOp = 'APPROVE_ORDER';
+      else if (pathname.includes('/archive')) resolvedOp = 'ARCHIVE_ORDER';
+      else if (pathname.includes('/quick-paid')) resolvedOp = 'QUICK_PAID_ORDER';
+      else resolvedOp = 'MUTATE_ORDER';
+    }
+
+    const isMachineAuth = isInternalMachineAuthorized(req, authoritativeSlug, [resolvedOp]);
+    if (isMachineAuth) {
+      return { authorized: true, status: 200, callerType: 'machine_internal', callerTenant: authoritativeSlug };
+    }
+
+    return {
+      authorized: false,
+      status: 403,
+      error: 'Forbidden: Machine authorization failed scope verification (x-target-tenant or x-machine-operation mismatch).',
     };
   }
 
