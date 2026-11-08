@@ -11,7 +11,7 @@
 
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveCanonicalTier, CANONICAL_TIERS } from '@/lib/subscription-tiers';
-import { fetchActiveCatalog, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
+import { fetchActiveCatalog, fetchActiveCatalogForShared, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
 
 export interface DashboardAiInput {
   tenant_slug: string;
@@ -328,7 +328,7 @@ export async function handleDashboardAiChat(
 
       // Fetch active catalog context for active tenant
       try {
-        const catalogProducts = await fetchActiveCatalog(slug, { supabaseClient: supabase });
+        const catalogProducts = await fetchActiveCatalogForShared(slug, { supabaseClient: supabase });
         if (catalogProducts && catalogProducts.length > 0) {
           catalogGrounding = formatProductCatalogForBotKnowledge(
             { slug, metadata: tenantMetadata },

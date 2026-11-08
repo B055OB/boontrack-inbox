@@ -2,7 +2,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { isValidUuid } from '@/lib/uuid-guard';
 import { getTenantActionUrl } from '@/lib/checkout-link';
 import { getProductPageUrl } from '@/lib/storefront-urls';
-import { fetchActiveCatalog } from '@/lib/product-catalog';
+import { fetchActiveCatalog, fetchActiveCatalogForShared } from '@/lib/product-catalog';
 import {
   InteractiveMenu,
   InteractiveMenuOption,
@@ -991,7 +991,7 @@ export async function processZeroAiMessage(
     let productLines: string[] = [];
 
     // ZERO STALE CACHE: Ambil katalog produk aktual langsung dari tabel products
-    const liveProducts = await fetchActiveCatalog(tenant, { supabaseClient: supabase, limit: 10 });
+    const liveProducts = await fetchActiveCatalogForShared(tenant, { supabaseClient: supabase, limit: 10 });
 
     if (liveProducts.length > 0) {
       primaryProduct = { id: liveProducts[0].id, slug: liveProducts[0].slug };

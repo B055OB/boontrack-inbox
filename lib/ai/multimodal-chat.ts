@@ -9,7 +9,7 @@
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantActionUrl } from '@/lib/checkout-link';
-import { fetchActiveCatalog, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
+import { fetchActiveCatalog, fetchActiveCatalogForShared, formatProductCatalogForBotKnowledge } from '@/lib/product-catalog';
 import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
 import {
   processConsultationLeadFunnel,
@@ -194,7 +194,7 @@ export async function processMultimodalChat(
         custom_domain: t?.custom_domain || t?.metadata?.custom_domain || null,
       };
       tenantMetadata = t?.metadata || {};
-      tenantProducts = await fetchActiveCatalog(t || slug, { supabaseClient: supabase });
+      tenantProducts = await fetchActiveCatalogForShared(t || slug, { supabaseClient: supabase });
       if (t?.category || t?.business_type) {
         category = t.category || t.business_type;
       }
@@ -798,7 +798,7 @@ export async function processMultimodalChat(
         : `https://shop.boontrack.com/${slug}`;
 
       // 1. Ambil katalog produk aktual langsung dari tabel products (Zero Stale Cache Grounding)
-      liveCatalogProducts = await fetchActiveCatalog(t || slug, { supabaseClient: supabaseAdmin });
+      liveCatalogProducts = await fetchActiveCatalogForShared(t || slug, { supabaseClient: supabaseAdmin });
       const productCatalogText = formatProductCatalogForBotKnowledge(
         t || {
           slug,
