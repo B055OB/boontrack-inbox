@@ -23,7 +23,7 @@ import {
   Store,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-import { getStoreShippingConfig, saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
+import { getStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 interface BiteshipCourierConfigProps {
   tenantSlug: string;
@@ -394,20 +394,6 @@ export default function BiteshipCourierConfig({
           } catch {}
           throw new Error(`Gagal menyimpan ke server: ${errMsg}`);
         }
-
-        // 2. Synchronize to store_shipping_configs table (separate domain table, server-side helper)
-        await saveStoreShippingConfig({
-          tenant_slug: tenantSlug,
-          is_self_pickup_enabled: isSelfPickupEnabled,
-          pickup_address: effectivePickupAddress,
-          pickup_maps_url: pickupMapsUrl,
-          pickup_operational_hours: pickupInstructions,
-          pickup_instructions: pickupInstructions,
-          origin_address: originAddress,
-          origin_city: originCity,
-          origin_district: originDistrict,
-          origin_postal_code: originPostalCode,
-        }, getSupabase());
       }
 
       setFeedback('✅ Pengaturan Logistik & Lokasi Pickup berhasil disimpan!');

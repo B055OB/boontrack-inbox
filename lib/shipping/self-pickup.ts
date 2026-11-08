@@ -232,97 +232,141 @@ export async function saveStoreShippingConfig(
 
   try {
     // 1. Simpan ke tabel store_shipping_configs (jika tabel sudah dimigrasi)
-    try {
-      await supabase
-        .from('store_shipping_configs')
-        .upsert(dbPayload, { onConflict: 'tenant_slug' });
-    } catch (tblErr) {
-      console.warn('[Self-Pickup Config] Note writing to store_shipping_configs table:', tblErr);
+    const { error: storeShippingErr } = await supabase
+      .from('store_shipping_configs')
+      .upsert(dbPayload, { onConflict: 'tenant_slug' });
+
+    if (storeShippingErr) {
+      if (
+        storeShippingErr.code === '42P01' ||
+        storeShippingErr.message?.includes('does not exist') ||
+        storeShippingErr.code === 'PGRST204' ||
+        storeShippingErr.code === 'PGRST205' ||
+        storeShippingErr.message?.includes('Could not find the table')
+      ) {
+        console.warn('[Self-Pickup Config] Table store_shipping_configs does not exist, falling back to tenant_settings:', storeShippingErr.message);
+      } else {
+        return { success: false, error: `store_shipping_configs upsert failed: ${storeShippingErr.message}` };
+      }
     }
 
     // 2. Sinkronkan ke tenant_settings.biteship_config
-    const { data: existingSettings } = await supabase
+    const { data: existingSettings, error: selectTsErr } = await supabase
       .from('tenant_settings')
       .select('biteship_config')
       .eq('tenant_slug', cleanSlug)
       .maybeSingle();
 
-    const currentBiteship = existingSettings?.biteship_config || {};
-    const updatedBiteship = {
-      ...currentBiteship,
-      is_self_pickup_enabled: isEnabled,
+    const isTsMissing = Boolean(
+      selectTsErr &&
+      (selectTsErr.code === '42P01' ||
+        selectTsErr.message?.includes('does not exist') ||
+        selectTsErr.code === 'PGRST204' ||
+        selectTsErr.code === 'PGRST205' ||
+        selectTsErr.message?.includes('Could not find the table'))
+    );
+
+    if (selectTsErr && !isTsMissing) {
+      return { success: false, error: `tenant_settings lookup failed: ${selectTsErr.message}` };
+    }
+
+    if (!isTsMissing) {
+      const currentBiteship = existingSettings?.biteship_config || {};
+      const updatedBiteship = {
+        ...currentBiteship,
+        is_self_pickup_enabled: isEnabled,
+        pickup_address: pickupAddress,
+        pickup_maps_url: config.pickup_maps_url || null,
+        pickup_operational_hours: config.pickup_operational_hours || null,
+        pickup_instructions: config.pickup_instructions || null,
+        self_pickup: {
+          is_enabled: isEnabled,
+          address: pickupAddress,
+          maps_url: config.pickup_maps_url || null,
+          operational_hours: config.pickup_operational_hours || null,
+          instructions: config.pickup_instructions || null,
+        },
+        updated_at: now,
+      };
+
+      const { error: upsertTsErr } = await supabase
+        .from('tenant_settings')
+        .upsert(
+          {
+            tenant_slug: cleanSlug,
+            biteship_config: updatedBiteship,
+            updated_at: now,
+          },
+          { onConflict: 'tenant_slug' }
+        );
+
+      if (upsertTsErr) {
+        const isUpsertTsMissing =
+          upsertTsErr.code === '42P01' ||
+          upsertTsErr.message?.includes('does not exist') ||
+          upsertTsErr.code === 'PGRST204' ||
+          upsertTsErr.code === 'PGRST205' ||
+          upsertTsErr.message?.includes('Could not find the table');
+
+        if (!isUpsertTsMissing) {
+          return { success: false, error: `tenant_settings upsert failed: ${upsertTsErr.message}` };
+        }
+      }
+    }
+
+    // 3. Sinkronkan ke tenants.metadata
+    const { data: tenantRow, error: tenantLookupErr } = await supabase
+      .from('tenants')
+      .select('metadata')
+      .eq('slug', cleanSlug)
+      .maybeSingle();
+
+    if (tenantLookupErr) {
+      return { success: false, error: `tenants lookup failed: ${tenantLookupErr.message}` };
+    }
+
+    if (!tenantRow) {
+      return { success: false, error: `Tenant not found for slug: ${cleanSlug}` };
+    }
+
+    const currentMeta = tenantRow.metadata || {};
+    const updatedMeta = {
+      ...currentMeta,
       pickup_address: pickupAddress,
       pickup_maps_url: config.pickup_maps_url || null,
       pickup_operational_hours: config.pickup_operational_hours || null,
-      pickup_instructions: config.pickup_instructions || null,
-      self_pickup: {
+      self_pickup_config: {
+        ...(currentMeta.self_pickup_config || {}),
         is_enabled: isEnabled,
-        address: pickupAddress,
-        maps_url: config.pickup_maps_url || null,
-        operational_hours: config.pickup_operational_hours || null,
-        instructions: config.pickup_instructions || null,
+        pickup_address: pickupAddress,
+        pickup_maps_url: config.pickup_maps_url || null,
+        pickup_operational_hours: config.pickup_operational_hours || null,
+        pickup_instructions: config.pickup_instructions || null,
       },
-      updated_at: now,
+      shipping_config: {
+        ...(currentMeta.shipping_config || {}),
+        is_self_pickup_enabled: isEnabled,
+        pickup_address: pickupAddress,
+        pickup_maps_url: config.pickup_maps_url || null,
+        pickup_operational_hours: config.pickup_operational_hours || null,
+        pickup_instructions: config.pickup_instructions || null,
+        self_pickup: {
+          is_enabled: isEnabled,
+          address: pickupAddress,
+          maps_url: config.pickup_maps_url || null,
+          operational_hours: config.pickup_operational_hours || null,
+          instructions: config.pickup_instructions || null,
+        },
+      },
     };
 
-    await supabase
-      .from('tenant_settings')
-      .upsert(
-        {
-          tenant_slug: cleanSlug,
-          biteship_config: updatedBiteship,
-          updated_at: now,
-        },
-        { onConflict: 'tenant_slug' }
-      );
+    const { error: updateTenantErr } = await supabase
+      .from('tenants')
+      .update({ metadata: updatedMeta, updated_at: now })
+      .eq('slug', cleanSlug);
 
-    // 3. Sinkronkan ke tenants.metadata
-    try {
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('metadata')
-        .eq('slug', cleanSlug)
-        .maybeSingle();
-
-      if (tenantRow) {
-        const currentMeta = tenantRow.metadata || {};
-        const updatedMeta = {
-          ...currentMeta,
-          pickup_address: pickupAddress,
-          pickup_maps_url: config.pickup_maps_url || null,
-          pickup_operational_hours: config.pickup_operational_hours || null,
-          self_pickup_config: {
-            ...(currentMeta.self_pickup_config || {}),
-            is_enabled: isEnabled,
-            pickup_address: pickupAddress,
-            pickup_maps_url: config.pickup_maps_url || null,
-            pickup_operational_hours: config.pickup_operational_hours || null,
-            pickup_instructions: config.pickup_instructions || null,
-          },
-          shipping_config: {
-            ...(currentMeta.shipping_config || {}),
-            is_self_pickup_enabled: isEnabled,
-            pickup_address: pickupAddress,
-            pickup_maps_url: config.pickup_maps_url || null,
-            pickup_operational_hours: config.pickup_operational_hours || null,
-            pickup_instructions: config.pickup_instructions || null,
-            self_pickup: {
-              is_enabled: isEnabled,
-              address: pickupAddress,
-              maps_url: config.pickup_maps_url || null,
-              operational_hours: config.pickup_operational_hours || null,
-              instructions: config.pickup_instructions || null,
-            },
-          },
-        };
-
-        await supabase
-          .from('tenants')
-          .update({ metadata: updatedMeta, updated_at: now })
-          .eq('slug', cleanSlug);
-      }
-    } catch (metaErr) {
-      console.warn('[Self-Pickup Config] Note updating tenants metadata:', metaErr);
+    if (updateTenantErr) {
+      return { success: false, error: `tenants update failed: ${updateTenantErr.message}` };
     }
 
     return {

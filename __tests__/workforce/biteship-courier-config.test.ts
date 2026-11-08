@@ -527,5 +527,90 @@ describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Au
       expect(merchantDto.metadata.shipping_config).toBeUndefined();
     });
   });
+
+  // =========================================================================
+  // 8. Eliminasi Direct Browser Write & Server-Authoritative Persistence (Temuan B)
+  // =========================================================================
+  describe('8. Eliminasi Direct Browser Write & Server-Authoritative Persistence (Temuan B)', () => {
+    it('8.1 Client Component BiteshipCourierConfig.tsx does NOT contain direct browser Supabase write calls', () => {
+      const componentPath = path.resolve(__dirname, '../../app/[tenant]/dashboard/components/BiteshipCourierConfig.tsx');
+      const componentSource = fs.readFileSync(componentPath, 'utf8');
+
+      // Must NOT import saveStoreShippingConfig
+      expect(componentSource).not.toMatch(/import\s*\{[^}]*saveStoreShippingConfig[^}]*\}\s*from/);
+
+      // Must NOT call saveStoreShippingConfig in browser context
+      expect(componentSource).not.toContain('saveStoreShippingConfig(');
+    });
+
+    it('8.2 Settings API PUT server-authoritatively synchronizes to tenant_settings.biteship_config', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          shipping_config: {
+            is_self_pickup_enabled: true,
+            pickup_address: 'Jl. Sentral Logistik No. 42',
+            pickup_maps_url: 'https://maps.google.com/?q=-6.91,107.61',
+            couriers: ['jne', 'sicepat'],
+            origin: {
+              address: 'Jl. Sentral Logistik No. 42',
+              city: 'Bandung',
+              postal_code: '40286',
+            },
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(res.status).toBe(200);
+
+      // Query database directly to verify server-side synchronization in tenants.metadata
+      const tenantQuery = await pgClient.query(
+        'SELECT metadata FROM workforce_staging.tenants WHERE slug = $1',
+        [TENANT_A_SLUG]
+      );
+      expect(tenantQuery.rows.length).toBeGreaterThan(0);
+      const shippingConfig = tenantQuery.rows[0].metadata?.shipping_config;
+      expect(shippingConfig).toBeDefined();
+      expect(shippingConfig.is_self_pickup_enabled).toBe(true);
+      expect(shippingConfig.pickup_address).toBe('Jl. Sentral Logistik No. 42');
+      expect(shippingConfig.couriers).toEqual(['jne', 'sicepat']);
+    });
+
+    it('8.3 saveStoreShippingConfig helper strictly fails closed and returns error when target tenant is invalid', async () => {
+      const { saveStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+      const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+      const wfAdmin = getWorkforceSupabaseAdmin();
+
+      // Test with non-existent tenant slug
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: `non-existent-tenant-${Date.now()}`,
+          is_self_pickup_enabled: true,
+          pickup_address: 'Nowhere',
+        },
+        wfAdmin
+      );
+
+      // Must return success: false, NOT silently return success: true
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Tenant not found/i);
+    });
+
+    it('8.4 saveStoreShippingConfig helper rejects missing or empty tenant_slug', async () => {
+      const { saveStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+      const result = await saveStoreShippingConfig({
+        tenant_slug: '',
+        is_self_pickup_enabled: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/tenant_slug is required/i);
+    });
+  });
 });
 

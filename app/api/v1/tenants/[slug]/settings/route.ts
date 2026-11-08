@@ -1625,6 +1625,97 @@ export async function PUT(
       }
     }
 
+    // ── PERSIST SHIPPING & SELF-PICKUP SERVER-AUTHORITATIVELY (BYPASS RLS) ──
+    const effectivePickup = self_pickup_config ?? body.self_pickup_config ?? body.metadata?.self_pickup_config;
+    const effectiveShipping = shipping_config ?? body.shipping_config ?? body.metadata?.shipping_config;
+
+    if (effectivePickup !== undefined || effectiveShipping !== undefined) {
+      const isPickupEnabled = Boolean(effectivePickup?.is_enabled ?? effectiveShipping?.is_self_pickup_enabled);
+      const pickupAddressVal = effectivePickup?.pickup_address || effectiveShipping?.pickup_address || effectiveShipping?.origin?.address || null;
+      const pickupMapsUrlVal = effectivePickup?.pickup_maps_url || effectiveShipping?.pickup_maps_url || null;
+      const pickupHoursVal = effectivePickup?.pickup_operational_hours || effectiveShipping?.pickup_operational_hours || null;
+      const pickupInstVal = effectivePickup?.pickup_instructions || effectiveShipping?.pickup_instructions || null;
+      const originAddrVal = effectiveShipping?.origin?.address || effectiveShipping?.origin_address || null;
+      const originCityVal = effectiveShipping?.origin?.city || effectiveShipping?.origin_city || null;
+      const originDistVal = effectiveShipping?.origin?.district || effectiveShipping?.origin_district || null;
+      const originPostVal = effectiveShipping?.origin?.postal_code || effectiveShipping?.origin_postal_code || null;
+
+      // 1. Sync ke store_shipping_configs table via admin client
+      try {
+        const shippingDbPayload: Record<string, any> = {
+          tenant_slug: slug,
+          tenant_id: existing.id,
+          is_self_pickup_enabled: isPickupEnabled,
+          pickup_address: pickupAddressVal,
+          pickup_maps_url: pickupMapsUrlVal,
+          pickup_operational_hours: pickupHoursVal,
+          pickup_instructions: pickupInstVal,
+          origin_address: originAddrVal,
+          origin_city: originCityVal,
+          origin_district: originDistVal,
+          origin_postal_code: originPostVal,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: storeShipErr } = await supabaseAdmin
+          .from('store_shipping_configs')
+          .upsert(shippingDbPayload, { onConflict: 'tenant_slug' });
+        if (storeShipErr && storeShipErr.code !== '42P01' && !storeShipErr.message?.includes('does not exist')) {
+          console.warn('[Settings Route] Upsert store_shipping_configs note:', storeShipErr.message);
+        }
+      } catch (storeShipEx) {
+        console.warn('[Settings Route] store_shipping_configs sync note:', storeShipEx);
+      }
+
+      // 2. Sync ke tenant_settings.biteship_config via admin client
+      try {
+        const { data: curTs } = await supabaseAdmin
+          .from('tenant_settings')
+          .select('biteship_config')
+          .eq('tenant_slug', slug)
+          .maybeSingle();
+
+        const curBiteship = curTs?.biteship_config || {};
+        const updatedBiteship = {
+          ...curBiteship,
+          is_self_pickup_enabled: isPickupEnabled,
+          pickup_address: pickupAddressVal,
+          pickup_maps_url: pickupMapsUrlVal,
+          pickup_operational_hours: pickupHoursVal,
+          pickup_instructions: pickupInstVal,
+          self_pickup: {
+            is_enabled: isPickupEnabled,
+            address: pickupAddressVal,
+            maps_url: pickupMapsUrlVal,
+            operational_hours: pickupHoursVal,
+            instructions: pickupInstVal,
+          },
+          ...(effectiveShipping?.couriers ? { couriers: effectiveShipping.couriers } : {}),
+          ...(effectiveShipping?.origin ? { origin: effectiveShipping.origin } : {}),
+          ...(typeof effectiveShipping?.auto_pickup === 'boolean' ? { auto_pickup: effectiveShipping.auto_pickup } : {}),
+          ...(typeof effectiveShipping?.free_shipping_threshold === 'number' ? { free_shipping_threshold: effectiveShipping.free_shipping_threshold } : {}),
+          ...(typeof effectiveShipping?.is_enabled === 'boolean' ? { is_enabled: effectiveShipping.is_enabled } : {}),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: tsBiteshipErr } = await supabaseAdmin
+          .from('tenant_settings')
+          .upsert(
+            {
+              tenant_slug: slug,
+              biteship_config: updatedBiteship,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'tenant_slug' }
+          );
+        if (tsBiteshipErr) {
+          console.warn('[Settings Route] Upsert tenant_settings.biteship_config note:', tsBiteshipErr.message);
+        }
+      } catch (tsBiteshipEx) {
+        console.warn('[Settings Route] tenant_settings.biteship_config sync note:', tsBiteshipEx);
+      }
+    }
+
     // ── PERSIST WHATSAPP_CONNECTIONS DENGAN ADMIN CLIENT (BYPASS RLS) ──
     if (resolvedWabaPhoneId) {
       try {
