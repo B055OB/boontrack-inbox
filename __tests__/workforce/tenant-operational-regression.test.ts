@@ -62,6 +62,7 @@ const mockProductsDb: MockProduct[] = [];
 
 jest.mock('@/lib/supabaseClient', () => {
   return {
+    getWorkforceSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabase: () => mockSupabaseAdmin,
   };

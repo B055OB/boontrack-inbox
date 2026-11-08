@@ -225,36 +225,6 @@ export default function AdsTrackingPro({
 
         const supabase = getSupabase();
 
-        // 2. Fallback query langsung Supabase client jika API gagal
-        if (!loaded && supabase) {
-          const [settingsRes, tenantRes] = await Promise.all([
-            supabase
-              .from('tenant_settings')
-              .select('ads_tracking_config')
-              .eq('tenant_slug', tenantSlug)
-              .maybeSingle(),
-            supabase
-              .from('tenants')
-              .select('metadata')
-              .eq('slug', tenantSlug)
-              .maybeSingle(),
-          ]);
-
-          const cfg = settingsRes.data?.ads_tracking_config || (tenantRes.data?.metadata as any)?.tracking;
-          if (cfg) {
-            setIsEnabled(cfg.is_enabled ?? true);
-            setMetaPixelId(cfg.meta_pixel_id || cfg.facebook_pixel_id || '');
-            setMetaCapiToken(cfg.meta_capi_token || '');
-            setMetaTestCode(cfg.meta_test_code || '');
-            setMetaAdAccountId(cfg.meta_ad_account_id || cfg.metaAdAccountId || '');
-            setTiktokPixelId(cfg.tiktok_pixel_id || '');
-            setTiktokAccessToken(cfg.tiktok_access_token || '');
-            setGtmId(cfg.gtm_id || cfg.gtmId || '');
-            setEnableWaUtm(cfg.enable_wa_utm ?? true);
-            setAutoDeduplication(cfg.auto_deduplication ?? true);
-          }
-        }
-
         // Fetch real recent orders/leads for lead scoring display
         if (supabase) {
           try {

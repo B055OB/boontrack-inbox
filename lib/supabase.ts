@@ -12,10 +12,10 @@ if (!_url || !_anonKey) {
     process.env.NODE_ENV === 'test';
 
   if (isNonProduction) {
-    _url = _url || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+    _url = _url || 'https://mock-project.supabase.co';
     _anonKey =
       _anonKey ||
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24ifQ.mock_anon_key';
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vY2stcHJvamVjdCIsInJvbGUiOiJhbm9uIn0.mock_anon_key';
   } else {
     if (!_url) {
       throw new Error(

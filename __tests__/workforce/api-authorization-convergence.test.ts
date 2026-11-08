@@ -392,8 +392,8 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
   });
 
   test('3c. Database failure/timeout during session auth strictly fails closed (503 DATABASE_LOOKUP_FAILED)', async () => {
-    const { getSupabaseAdmin } = await import('@/lib/supabaseClient');
-    const admin = getSupabaseAdmin() as any;
+    const { getSupabaseAdmin, getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+    const admin = (getWorkforceSupabaseAdmin ? getWorkforceSupabaseAdmin() : getSupabaseAdmin()) as any;
     const originalFrom = admin.from.bind(admin);
     // Spy on from to simulate database lookup failure
     admin.from = jest.fn(() => {

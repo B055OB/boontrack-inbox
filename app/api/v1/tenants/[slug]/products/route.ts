@@ -2,7 +2,7 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin, getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
@@ -211,7 +211,7 @@ export async function POST(
     let updatedProducts: ProductItem[] = [];
 
     try {
-      const supabaseAdmin = getSupabaseAdmin();
+      const supabaseAdmin = getWorkforceSupabaseAdmin();
       const { data: existing } = await supabaseAdmin
         .from('tenants')
         .select('*')
@@ -536,7 +536,7 @@ export async function DELETE(
     let remainingProducts: ProductItem[] = [];
 
     try {
-      const supabaseAdmin = getSupabaseAdmin();
+      const supabaseAdmin = getWorkforceSupabaseAdmin();
       const { data: existing } = await supabaseAdmin
         .from('tenants')
         .select('*')
@@ -652,7 +652,7 @@ export async function GET(
     const callerRole = isMachineAuth ? 'OWNER' : (authResult.authorized ? authResult.payload.role : null);
     const isLimitedRole = callerRole === 'CS' || callerRole === 'OPERATOR';
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const supabase = getWorkforceSupabaseAdmin();
 
     // =========================================================================
     // 1. Private Authorized Tenant Path (Authorized Merchant or Internal Machine)

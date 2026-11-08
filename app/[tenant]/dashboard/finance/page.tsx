@@ -1,7 +1,8 @@
 import React from 'react';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import FinanceDashboardClient from './FinanceDashboardClient';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { authorizeServerComponentTenant } from '@/lib/auth/merchant-session';
+import { sanitizeSettingsForRole, projectSafeRscTenantDto } from '@/app/api/v1/tenants/[slug]/settings/route';
 
 interface FinancePageProps {
   params: Promise<{ tenant: string }>;
@@ -10,7 +11,6 @@ interface FinancePageProps {
 export const dynamic = 'force-dynamic';
 
 export default async function TenantFinancePage({ params }: FinancePageProps) {
-  // 1. Dynamic extraction from runtime route context (100% tenant-agnostic)
   const { tenant } = await params;
   const cleanTenant = (tenant || '').toLowerCase().trim();
 
@@ -18,27 +18,25 @@ export default async function TenantFinancePage({ params }: FinancePageProps) {
     notFound();
   }
 
-  // 2. Fetch tenant metadata directly from Supabase (Single Source of Truth)
-  const supabase = getSupabaseAdmin() || getSupabase();
-  let tenantData: any = null;
-
-  if (supabase) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanTenant);
-    let tQuery = supabase.from('tenants').select('id, slug, name, category, tier, metadata');
-    if (isUuid) {
-      tQuery = tQuery.eq('id', cleanTenant);
-    } else {
-      tQuery = tQuery.eq('slug', cleanTenant);
+  // 1. Enforce Full Server Authorization Chain BEFORE Any Elevated Database Access
+  // Finance dashboard requires OWNER or MERCHANT role (CS and OPERATOR are rejected)
+  const auth = await authorizeServerComponentTenant(cleanTenant, ['OWNER', 'MERCHANT']);
+  if (!auth.authorized || !auth.tenantRow) {
+    if (auth.reason === 'UNAUTHENTICATED') {
+      redirect(`/login?redirectTo=/${encodeURIComponent(cleanTenant)}/dashboard/finance`);
     }
-    const { data } = await tQuery.maybeSingle();
-    tenantData = data;
+    notFound();
   }
+
+  // 2. Constructive DTO Projection: Strip all secrets — NEVER serialize raw credentials into RSC HTML stream.
+  // projectSafeRscTenantDto is used for ALL roles including OWNER (Round 3T.1 P0-C).
+  const safeTenantDto = projectSafeRscTenantDto(auth.tenantRow, auth.role || 'MERCHANT');
 
   return (
     <FinanceDashboardClient
-      tenantSlug={tenantData?.slug || cleanTenant}
-      tenantId={tenantData?.id || null}
-      initialTenant={tenantData}
+      tenantSlug={auth.tenantRow.slug || cleanTenant}
+      tenantId={auth.tenantRow.id || null}
+      initialTenant={safeTenantDto}
     />
   );
 }

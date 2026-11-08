@@ -271,15 +271,25 @@ export default function TenantDashboardPage() {
 
     async function loadInitialData() {
       try {
-        const supabase = getSupabase();
         let meta: any = null;
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-          meta = tenantRow?.metadata;
+        try {
+          const sRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (sRes.ok) {
+            const sJson = await sRes.json();
+            meta = sJson?.settings?.metadata || sJson?.settings;
+          }
+        } catch (apiErr) {
+          console.warn('[Dashboard] Settings fetch note:', apiErr);
+        }
+
+        if (!meta) {
+          try {
+            const pRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`, { cache: 'no-store' });
+            if (pRes.ok) {
+              const pJson = await pRes.json();
+              meta = pJson?.tenant?.metadata || pJson?.tenant;
+            }
+          } catch {}
         }
 
         if (meta) {

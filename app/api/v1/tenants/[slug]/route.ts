@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
-import { sanitizePublicTenantMetadata } from '@/lib/product-catalog';
+import {
+  sanitizePublicTenantMetadata,
+  projectPublicTheme,
+  projectPublicFaqs,
+  projectPublicBusinessHours,
+  projectPublicCatalogPreferences,
+  projectPublicLinks,
+  projectPublicMicrosite,
+} from '@/lib/product-catalog';
+import { extractTenantBankAccounts } from '@/lib/bank-accounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +30,7 @@ export async function GET(
       );
     }
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const supabase = getWorkforceSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database tidak tersedia.' },
@@ -52,6 +61,22 @@ export async function GET(
     if (!tenantRow) {
       return NextResponse.json(
         { success: false, error: 'TENANT_NOT_FOUND', message: `Tenant tidak ditemukan untuk: ${slug}` },
+        { status: 404 }
+      );
+    }
+
+    // Strict publication & active status check (Round 3T.1 P1-D Directive):
+    // Explicit opt-in required: public_storefront_enabled === true.
+    // Values false, null, and undefined are strictly rejected with 404 (Default-Deny).
+    const normalizedStatus = String(tenantRow.status ?? 'active').toLowerCase().trim();
+
+    if (
+      tenantRow.is_active !== true ||
+      normalizedStatus !== 'active' ||
+      tenantRow.public_storefront_enabled !== true
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_NOT_FOUND', message: `Tenant tidak aktif atau tidak dipublikasikan.` },
         { status: 404 }
       );
     }
@@ -136,6 +161,32 @@ export async function GET(
     }
 
     const tenantName = String(tenantRow.name ?? slug);
+    const storeName = String(metadata.store_name || tenantRow.name || slug);
+    const logoUrl = tenantRow.logo_url || metadata.logo_url || null;
+    const avatarUrl = tenantRow.avatar_url || metadata.avatar_url || null;
+    const bannerUrl = tenantRow.banner_url || metadata.banner_url || null;
+    const bio = tenantRow.bio || metadata.bio || null;
+    const description = metadata.description || null;
+    const tagline = metadata.tagline || null;
+
+    const sanitizedMetadata = sanitizePublicTenantMetadata(metadata);
+    const bankAccounts = extractTenantBankAccounts(metadata);
+    const qrisImageUrl = typeof metadata.qris_image_url === 'string' && metadata.qris_image_url.trim()
+      ? metadata.qris_image_url.trim()
+      : null;
+
+    const paymentMethods = {
+      qris_image_url: qrisImageUrl,
+      bank_accounts: bankAccounts,
+    };
+
+    const theme = projectPublicTheme(metadata.theme || metadata.theme_config);
+    const faqs = projectPublicFaqs(metadata.faqs);
+    const businessHours = projectPublicBusinessHours(metadata.business_hours);
+    const catalogPreferences = projectPublicCatalogPreferences(metadata.catalog_preferences);
+    const microsite = projectPublicMicrosite(metadata.microsite);
+    const publicLinks = projectPublicLinks(metadata.public_links);
+    const links = projectPublicLinks(metadata.links);
 
     return NextResponse.json({
       success: true,
@@ -143,13 +194,31 @@ export async function GET(
         id: String(tenantRow.id ?? ''),
         slug: String(tenantRow.slug ?? slug),
         name: tenantName,
+        store_name: storeName,
         category: String(tenantRow.category ?? 'retail'),
         tier: rawTier,
+        status: normalizedStatus,
+        is_active: Boolean(tenantRow.is_active !== false),
+        public_storefront_enabled: Boolean(tenantRow.public_storefront_enabled),
         is_trial: isTrial,
         trial_ends_at: trialEndsAt,
         days_left: daysLeft,
         is_expired: isExpired,
-        metadata: sanitizePublicTenantMetadata(metadata),
+        logo_url: logoUrl,
+        avatar_url: avatarUrl,
+        banner_url: bannerUrl,
+        bio: bio,
+        description: description,
+        tagline: tagline,
+        theme,
+        faqs,
+        business_hours: businessHours,
+        catalog_preferences: catalogPreferences,
+        microsite,
+        public_links: publicLinks,
+        links,
+        payment_methods: paymentMethods,
+        metadata: sanitizedMetadata,
         packages:
           packages.length > 0
             ? packages

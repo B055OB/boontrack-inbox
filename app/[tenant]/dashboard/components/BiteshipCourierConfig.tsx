@@ -22,8 +22,6 @@ import {
   X,
   Store,
 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabaseClient';
-import { getStoreShippingConfig, saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 interface BiteshipCourierConfigProps {
   tenantSlug: string;
@@ -122,11 +120,10 @@ export default function BiteshipCourierConfig({
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [configRevision, setConfigRevision] = useState<string | null>(null);
 
   // Lincah Logistics Integration State
   const [isLincahConnected, setIsLincahConnected] = useState(false);
-  const [lincahApiKey, setLincahApiKey] = useState('');
-  const [lincahApiKeyReadOnly, setLincahApiKeyReadOnly] = useState('');
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [inputLincahApiKey, setInputLincahApiKey] = useState('');
   const [inputLincahApiKeyReadOnly, setInputLincahApiKeyReadOnly] = useState('');
@@ -136,126 +133,137 @@ export default function BiteshipCourierConfig({
   useEffect(() => {
     async function loadConfig() {
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data } = await supabase
-            .from('tenant_settings')
-            .select('biteship_config')
-            .eq('tenant_slug', tenantSlug)
-            .maybeSingle();
+        let meta: any = {};
+        let shippingConfig: any = {};
+        let selfPickupConfig: any = {};
 
-          const cfg = data?.biteship_config;
-          if (cfg) {
-            setIsEnabled(cfg.is_enabled ?? true);
-            if (cfg.origin) {
-              setSenderName(cfg.origin.sender_name || (displayName ? `Admin Gudang ${displayName}` : 'Admin Gudang'));
-              setSenderPhone(cfg.origin.sender_phone || '');
-              if (cfg.origin.address && !cfg.origin.address.includes('Soekarno Hatta')) {
-                setOriginAddress(cfg.origin.address);
+        try {
+          const sRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (sRes.ok) {
+            const sJson = await sRes.json();
+            const rev = sJson?.settings?.shipping_config_revision || sJson?.settings?.revision || sJson?.revision || null;
+            if (rev) {
+              setConfigRevision(rev);
+            }
+            meta = sJson?.settings?.metadata || sJson?.settings || {};
+            shippingConfig = sJson?.settings?.shipping_config || meta.shipping_config || {};
+            selfPickupConfig = sJson?.settings?.self_pickup_config || meta.self_pickup_config || shippingConfig.self_pickup || {};
+          }
+        } catch {}
+
+        if (!meta || Object.keys(meta).length === 0) {
+          try {
+            const pRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`, { cache: 'no-store' });
+            if (pRes.ok) {
+              const pJson = await pRes.json();
+              meta = pJson?.tenant?.metadata || pJson?.tenant || {};
+              shippingConfig = pJson?.tenant?.shipping_config || meta.shipping_config || {};
+              selfPickupConfig = pJson?.tenant?.self_pickup_config || meta.self_pickup_config || shippingConfig.self_pickup || {};
+            }
+          } catch {}
+        }
+
+        const cfg = shippingConfig;
+        if (cfg && Object.keys(cfg).length > 0) {
+          setIsEnabled(cfg.is_enabled ?? true);
+          if (cfg.origin) {
+            setSenderName(cfg.origin.sender_name || (displayName ? `Admin Gudang ${displayName}` : 'Admin Gudang'));
+            setSenderPhone(cfg.origin.sender_phone || '');
+            if (cfg.origin.address && !cfg.origin.address.includes('Soekarno Hatta')) {
+              setOriginAddress(cfg.origin.address);
+            }
+            setOriginCity(cfg.origin.city || 'Kota Bandung');
+            setOriginDistrict(cfg.origin.district || 'Rancasari');
+            setOriginPostalCode(cfg.origin.postal_code || '40286');
+          }
+          if (cfg.couriers && Array.isArray(cfg.couriers)) {
+            setCouriers(DEFAULT_COURIERS.map((dc) => {
+              if (typeof cfg.couriers[0] === 'string') {
+                return { ...dc, enabled: cfg.couriers.includes(dc.id) };
               }
-              setOriginCity(cfg.origin.city || 'Kota Bandung');
-              setOriginDistrict(cfg.origin.district || 'Rancasari');
-              setOriginPostalCode(cfg.origin.postal_code || '40286');
-            }
-            if (cfg.couriers && Array.isArray(cfg.couriers)) {
-              setCouriers(DEFAULT_COURIERS.map((dc) => {
-                const existing = cfg.couriers.find((c: any) => c.id === dc.id);
-                return existing ? { ...dc, enabled: existing.enabled } : dc;
-              }));
-            }
-            setAutoPickup(cfg.auto_pickup ?? true);
-            setFreeShippingThreshold(cfg.free_shipping_threshold || 0);
-
-            if (cfg.lincah?.api_key) {
-              setLincahApiKey(cfg.lincah.api_key);
-              setLincahApiKeyReadOnly(cfg.lincah.api_key_read_only || cfg.lincah.secret || '');
-              setIsLincahConnected(cfg.lincah.is_connected !== false);
-            }
+              const existing = cfg.couriers.find((c: any) => c.id === dc.id || (typeof c === 'string' && c === dc.id));
+              return existing ? { ...dc, enabled: existing.enabled ?? true } : dc;
+            }));
           }
+          setAutoPickup(cfg.auto_pickup ?? true);
+          setFreeShippingThreshold(cfg.free_shipping_threshold || 0);
 
-          // Check tenants table metadata for dynamic origin, warehouse address & fnb_catering
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          const meta = tenantRow?.metadata || {};
-
-          if (meta.fnb_catering === true || meta.vertical === 'fnb-culinary' || isFnbCateringProp) {
-            setIsFnbCatering(true);
+          if (cfg.lincah) {
+            setIsLincahConnected(Boolean(cfg.lincah.is_connected || cfg.lincah.has_api_key || cfg.lincah.status === 'connected'));
           }
+        }
 
-          const fnbKitchen =
-            cfg?.fnb_settings?.kitchen_address ||
-            meta.shipping_config?.fnb_settings?.kitchen_address ||
-            meta.fnb_settings?.kitchen_address;
+        if (meta.fnb_catering === true || meta.vertical === 'fnb-culinary' || isFnbCateringProp) {
+          setIsFnbCatering(true);
+        }
 
-          const warehouseAddr =
-            typeof meta.warehouse_address === 'string'
-              ? meta.warehouse_address
-              : meta.warehouse_address?.address;
+        const fnbKitchen =
+          cfg?.fnb_settings?.kitchen_address ||
+          meta.shipping_config?.fnb_settings?.kitchen_address ||
+          meta.fnb_settings?.kitchen_address;
 
-          const basicShipping = meta.basic_shipping?.origin_address;
-          const kitchenAddr = meta.kitchen_address;
-          const storeAddr = meta.store_address || meta.address || (tenantRow as any)?.address;
+        const warehouseAddr =
+          typeof meta.warehouse_address === 'string'
+            ? meta.warehouse_address
+            : meta.warehouse_address?.address;
 
-          // Prioritaskan alamat gudang / dapur riil dari profil database
-          const dynamicOrigin =
-            (cfg?.origin?.address && !cfg.origin.address.includes('Soekarno Hatta') ? cfg.origin.address : '') ||
-            (fnbKitchen && fnbKitchen !== 'Dapur Utama / Outlet Resto' ? fnbKitchen : '') ||
-            warehouseAddr ||
-            basicShipping ||
-            kitchenAddr ||
-            storeAddr ||
-            '';
+        const basicShipping = meta.basic_shipping?.origin_address;
+        const kitchenAddr = meta.kitchen_address;
+        const storeAddr = meta.store_address || meta.address || '';
 
-          if (dynamicOrigin) {
-            setOriginAddress(dynamicOrigin);
-          }
-          if (meta.basic_shipping?.origin_city) {
-            setOriginCity(meta.basic_shipping.origin_city);
-          }
-          if (meta.whatsapp_number || meta.phone) {
-            setSenderPhone((prev) => prev || meta.whatsapp_number || meta.phone || '');
-          }
+        // Prioritaskan alamat gudang / dapur riil dari profil database
+        const dynamicOrigin =
+          (cfg?.origin?.address && !cfg.origin.address.includes('Soekarno Hatta') ? cfg.origin.address : '') ||
+          (fnbKitchen && fnbKitchen !== 'Dapur Utama / Outlet Resto' ? fnbKitchen : '') ||
+          warehouseAddr ||
+          basicShipping ||
+          kitchenAddr ||
+          storeAddr ||
+          '';
 
-          const tLincah = meta.shipping_config?.lincah || meta.lincah_config || meta.shipping_settings;
-          if (tLincah?.api_key) {
-            setLincahApiKey((prev) => prev || tLincah.api_key);
-            setLincahApiKeyReadOnly((prev) => prev || tLincah.api_key_read_only || tLincah.secret || '');
-            setIsLincahConnected(true);
-          }
+        if (dynamicOrigin) {
+          setOriginAddress(dynamicOrigin);
+        }
+        if (meta.basic_shipping?.origin_city) {
+          setOriginCity(meta.basic_shipping.origin_city);
+        }
+        if (meta.whatsapp_number || meta.phone) {
+          setSenderPhone((prev) => prev || meta.whatsapp_number || meta.phone || '');
+        }
 
-          // Load universal self-pickup configuration
-          const storeShipping = await getStoreShippingConfig(tenantSlug, supabase);
-          if (storeShipping) {
-            setIsSelfPickupEnabled(storeShipping.is_self_pickup_enabled);
-            const isPlaceholder =
-              !storeShipping.pickup_address ||
-              storeShipping.pickup_address === 'Dapur Utama / Outlet Resto' ||
-              storeShipping.pickup_address.includes('Soekarno Hatta');
+        const tLincah = cfg?.lincah || meta.shipping_config?.lincah || meta.lincah_config;
+        if (tLincah) {
+          setIsLincahConnected(Boolean(tLincah.is_connected || tLincah.has_api_key || tLincah.status === 'connected'));
+        }
 
-            if (!isPlaceholder && storeShipping.pickup_address) {
-              setPickupAddress(storeShipping.pickup_address);
-              setUseOriginAsPickup(
-                storeShipping.pickup_address === (storeShipping.origin_address || dynamicOrigin)
-              );
-            } else {
-              setPickupAddress(dynamicOrigin || '');
-              setUseOriginAsPickup(true);
-            }
+        // Universal self-pickup configuration from server API
+        const storeShipping = selfPickupConfig;
+        if (storeShipping && (storeShipping.is_enabled !== undefined || storeShipping.pickup_address)) {
+          setIsSelfPickupEnabled(Boolean(storeShipping.is_enabled));
+          const isPlaceholder =
+            !storeShipping.pickup_address ||
+            storeShipping.pickup_address === 'Dapur Utama / Outlet Resto' ||
+            storeShipping.pickup_address.includes('Soekarno Hatta');
 
-            if (storeShipping.pickup_maps_url) {
-              setPickupMapsUrl(storeShipping.pickup_maps_url);
-            }
-            if (storeShipping.pickup_instructions || storeShipping.pickup_operational_hours) {
-              setPickupInstructions(storeShipping.pickup_instructions || storeShipping.pickup_operational_hours || '');
-            }
-          } else if (dynamicOrigin) {
-            setPickupAddress(dynamicOrigin);
+          if (!isPlaceholder && storeShipping.pickup_address) {
+            setPickupAddress(storeShipping.pickup_address);
+            setUseOriginAsPickup(
+              storeShipping.pickup_address === (storeShipping.origin_address || dynamicOrigin)
+            );
+          } else {
+            setPickupAddress(dynamicOrigin || '');
             setUseOriginAsPickup(true);
           }
+
+          if (storeShipping.pickup_maps_url) {
+            setPickupMapsUrl(storeShipping.pickup_maps_url);
+          }
+          if (storeShipping.pickup_instructions || storeShipping.pickup_operational_hours) {
+            setPickupInstructions(storeShipping.pickup_instructions || storeShipping.pickup_operational_hours || '');
+          }
+        } else if (dynamicOrigin) {
+          setPickupAddress(dynamicOrigin);
+          setUseOriginAsPickup(true);
         }
       } catch (err) {
         console.warn('[Courier Config] Using default settings:', err);
@@ -278,34 +286,27 @@ export default function BiteshipCourierConfig({
     const effectivePickupAddress = useOriginAsPickup ? originAddress : (pickupAddress || originAddress);
 
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        // Ambil biteship_config saat ini untuk merge agar fnb_settings / fleet tidak hilang
-        const { data: currentSettings } = await supabase
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', tenantSlug)
-          .maybeSingle();
-
-        const currentBiteship = currentSettings?.biteship_config || {};
-
-        const payload: any = {
-          ...currentBiteship,
+      // 1. Primary save: route through Settings API (server-authoritative, no direct browser DB write)
+      const payload: any = {
+        self_pickup_config: {
+          is_enabled: isSelfPickupEnabled,
+          pickup_address: effectivePickupAddress,
+          pickup_maps_url: pickupMapsUrl,
+          pickup_operational_hours: pickupInstructions,
+          pickup_instructions: pickupInstructions,
+        },
+        shipping_config: {
           is_enabled: isEnabled,
           is_self_pickup_enabled: isSelfPickupEnabled,
           pickup_address: effectivePickupAddress,
           pickup_maps_url: pickupMapsUrl,
           pickup_operational_hours: pickupInstructions,
           pickup_instructions: pickupInstructions,
-          self_pickup: {
-            is_enabled: isSelfPickupEnabled,
-            address: effectivePickupAddress,
-            maps_url: pickupMapsUrl,
-            operational_hours: pickupInstructions,
-            instructions: pickupInstructions,
-          },
+          active_aggregator: isLincahConnected ? 'lincah' : 'biteship',
+          couriers: couriers.filter((c) => c.enabled).map((c) => c.id),
+          auto_pickup: autoPickup,
+          free_shipping_threshold: freeShippingThreshold,
           origin: {
-            ...(currentBiteship.origin || {}),
             sender_name: senderName,
             sender_phone: senderPhone,
             address: originAddress,
@@ -313,104 +314,40 @@ export default function BiteshipCourierConfig({
             district: originDistrict,
             postal_code: originPostalCode,
           },
-          couriers,
-          auto_pickup: autoPickup,
-          free_shipping_threshold: freeShippingThreshold,
-          routing_rules: {
-            ...(currentBiteship.routing_rules || {}),
-            instant: currentBiteship.routing_rules?.instant || 'biteship',
-            regular: currentBiteship.routing_rules?.regular || 'lincah',
-          },
-          ...(lincahApiKey ? {
-            lincah: {
-              provider: 'lincah',
-              status: 'connected',
-              is_connected: true,
-              api_key: lincahApiKey,
-              secret: lincahApiKeyReadOnly,
-              api_key_read_only: lincahApiKeyReadOnly,
-              updated_at: new Date().toISOString(),
-            }
+          ...(isFnbCatering ? {
+            fnb_settings: {
+              kitchen_address: originAddress || '',
+            },
           } : {}),
-          updated_at: new Date().toISOString(),
-        };
+        },
+      };
 
-        if (isFnbCatering) {
-          payload.fnb_settings = {
-            ...(currentBiteship.fnb_settings || {}),
-            kitchen_address: originAddress || currentBiteship.fnb_settings?.kitchen_address || '',
-          };
+      if (configRevision) {
+        payload.expected_revision = configRevision;
+      }
+
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!settingsRes.ok) {
+        if (settingsRes.status === 409) {
+          throw new Error('Konflik Versi (409): Pengaturan telah diperbarui di sesi lain. Silakan muat ulang halaman.');
         }
+        let errMsg = `HTTP ${settingsRes.status}`;
+        try {
+          const errBody = await settingsRes.json();
+          errMsg = errBody?.message || errBody?.error || errMsg;
+        } catch {}
+        throw new Error(`Gagal menyimpan ke server: ${errMsg}`);
+      }
 
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              biteship_config: payload,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'tenant_slug' }
-          );
-
-        // 2. Synchronize to store_shipping_configs table
-        await saveStoreShippingConfig({
-          tenant_slug: tenantSlug,
-          is_self_pickup_enabled: isSelfPickupEnabled,
-          pickup_address: effectivePickupAddress,
-          pickup_maps_url: pickupMapsUrl,
-          pickup_operational_hours: pickupInstructions,
-          pickup_instructions: pickupInstructions,
-          origin_address: originAddress,
-          origin_city: originCity,
-          origin_district: originDistrict,
-          origin_postal_code: originPostalCode,
-        }, supabase);
-
-        // 3. Synchronize to tenants.metadata for universal storefront access
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow) {
-          const currentMeta = tenantRow.metadata || {};
-          const updatedMeta = {
-            ...currentMeta,
-            pickup_address: effectivePickupAddress,
-            pickup_maps_url: pickupMapsUrl,
-            pickup_operational_hours: pickupInstructions,
-            self_pickup_config: {
-              ...(currentMeta.self_pickup_config || {}),
-              is_enabled: isSelfPickupEnabled,
-              pickup_address: effectivePickupAddress,
-              pickup_maps_url: pickupMapsUrl,
-              pickup_operational_hours: pickupInstructions,
-              pickup_instructions: pickupInstructions,
-            },
-            shipping_config: {
-              ...(currentMeta.shipping_config || {}),
-              is_self_pickup_enabled: isSelfPickupEnabled,
-              pickup_address: effectivePickupAddress,
-              pickup_maps_url: pickupMapsUrl,
-              pickup_operational_hours: pickupInstructions,
-              pickup_instructions: pickupInstructions,
-              self_pickup: {
-                is_enabled: isSelfPickupEnabled,
-                address: effectivePickupAddress,
-                maps_url: pickupMapsUrl,
-                operational_hours: pickupInstructions,
-                instructions: pickupInstructions,
-              },
-            },
-          };
-
-          await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
-            .eq('slug', tenantSlug);
-        }
+      const resData = await settingsRes.json();
+      const updatedRev = resData?.settings?.shipping_config_revision || resData?.settings?.revision || resData?.revision;
+      if (updatedRev) {
+        setConfigRevision(updatedRev);
       }
 
       setFeedback('✅ Pengaturan Logistik & Lokasi Pickup berhasil disimpan!');
@@ -431,105 +368,60 @@ export default function BiteshipCourierConfig({
     setIsSavingLincah(true);
     setLincahModalError(null);
 
-    const now = new Date().toISOString();
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        // 1. Update tenant_settings
-        const { data: currentSettings } = await supabase
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', tenantSlug)
-          .maybeSingle();
-
-        const currentCfg = currentSettings?.biteship_config || {};
-        const updatedCfg = {
-          ...currentCfg,
-          is_enabled: true,
-          routing_rules: {
-            ...(currentCfg.routing_rules || {}),
-            instant: 'biteship',
-            regular: 'lincah',
-          },
+      // Route ALL Lincah key saves through the server-authoritative Settings API.
+      // No direct browser writes to tenant_settings (Round 3T.1 P1-E).
+      const now = new Date().toISOString();
+      const lincahPayload: any = {
+        shipping_config: {
+          active_aggregator: 'lincah',
+          provider: 'lincah',
+          status: 'connected',
+          is_active: true,
           lincah: {
-            provider: 'lincah',
-            status: 'connected',
-            is_connected: true,
             api_key: inputLincahApiKey.trim(),
             secret: inputLincahApiKeyReadOnly.trim(),
             api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-            updated_at: now,
+            is_sandbox: false,
+            is_connected: true,
+            status: 'active',
+            last_validated_at: now,
           },
-          updated_at: now,
-        };
+        },
+      };
 
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              biteship_config: updatedCfg,
-              updated_at: now,
-            },
-            { onConflict: 'tenant_slug' }
-          );
-
-        // 2. Update tenants metadata
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantData) {
-          const meta = tenantData.metadata || {};
-          const updatedMeta = {
-            ...meta,
-            shipping_config: {
-              ...(meta.shipping_config || {}),
-              active_aggregator: 'lincah',
-              provider: 'lincah',
-              status: 'connected',
-              is_active: true,
-              lincah: {
-                api_key: inputLincahApiKey.trim(),
-                secret: inputLincahApiKeyReadOnly.trim(),
-                api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-                is_sandbox: false,
-                is_connected: true,
-                status: 'active',
-                last_validated_at: now,
-              },
-            },
-            lincah_config: {
-              provider: 'lincah',
-              status: 'connected',
-              is_connected: true,
-              api_key: inputLincahApiKey.trim(),
-              secret: inputLincahApiKeyReadOnly.trim(),
-              api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-              updated_at: now,
-            },
-            shipping_settings: {
-              provider: 'lincah',
-              status: 'connected',
-              is_active: true,
-              api_key: inputLincahApiKey.trim(),
-              secret: inputLincahApiKeyReadOnly.trim(),
-              api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-              updated_at: now,
-            },
-          };
-
-          await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('slug', tenantSlug);
-        }
+      if (configRevision) {
+        lincahPayload.expected_revision = configRevision;
       }
 
-      setLincahApiKey(inputLincahApiKey.trim());
-      setLincahApiKeyReadOnly(inputLincahApiKeyReadOnly.trim());
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lincahPayload),
+      });
+
+      if (!settingsRes.ok) {
+        if (settingsRes.status === 409) {
+          setLincahModalError('Konflik Versi (409): Pengaturan telah diperbarui di sesi lain. Silakan muat ulang halaman.');
+          return;
+        }
+        let errMsg = `HTTP ${settingsRes.status}`;
+        try {
+          const errBody = await settingsRes.json();
+          errMsg = errBody?.message || errBody?.error || errMsg;
+        } catch {}
+        setLincahModalError(`Gagal menyimpan kredensial Lincah: ${errMsg}`);
+        return;
+      }
+
+      const resData = await settingsRes.json();
+      const updatedRev = resData?.settings?.shipping_config_revision || resData?.settings?.revision || resData?.revision;
+      if (updatedRev) {
+        setConfigRevision(updatedRev);
+      }
+
+      setInputLincahApiKey('');
+      setInputLincahApiKeyReadOnly('');
       setIsLincahConnected(true);
       setIsApiKeyModalOpen(false);
       setFeedback('✅ Kredensial API Lincah berhasil dihubungkan ke toko!');
@@ -713,9 +605,9 @@ export default function BiteshipCourierConfig({
             <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
               Hubungkan akun logistik toko Anda untuk menikmati layanan pickup langsung ke lokasi dan sinkronisasi resi pesanan otomatis.
             </p>
-            {isLincahConnected && lincahApiKey && (
+            {isLincahConnected && (
               <p className="text-[11px] font-mono text-slate-400">
-                API Key: <span className="font-semibold text-slate-700">{lincahApiKey.slice(0, 6)}...{lincahApiKey.slice(-4)}</span>
+                API Key: <span className="font-semibold text-slate-700">•••••••••••••••• (Tersimpan Aman)</span>
               </p>
             )}
           </div>
@@ -736,8 +628,8 @@ export default function BiteshipCourierConfig({
             <button
               type="button"
               onClick={() => {
-                setInputLincahApiKey(lincahApiKey);
-                setInputLincahApiKeyReadOnly(lincahApiKeyReadOnly);
+                setInputLincahApiKey('');
+                setInputLincahApiKeyReadOnly('');
                 setLincahModalError(null);
                 setIsApiKeyModalOpen(true);
               }}

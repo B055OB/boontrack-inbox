@@ -137,19 +137,37 @@ export default function CheckoutPage({ params }: Props) {
             let tenantData: any = null;
 
             if (tSlug) {
-              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tSlug);
-              let tQuery = supabase.from('tenants').select('*');
-              if (isUuid) {
-                tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
-              } else {
-                tQuery = tQuery.eq('slug', tSlug);
+              try {
+                const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tSlug)}`);
+                if (apiRes.ok) {
+                  const apiJson = await apiRes.json();
+                  if (apiJson?.success && apiJson.tenant) {
+                    tenantData = apiJson.tenant;
+                    setTenant(tenantData);
+                    setIsTenantLoading(false);
+                    const bAccounts = tenantData.payment_methods?.bank_accounts || extractTenantBankAccounts(tenantData);
+                    setBankAccounts(bAccounts);
+                  }
+                }
+              } catch (apiErr) {
+                console.warn('[Checkout] Failed fetching tenant from public API, checking storefront view:', apiErr);
               }
-              const { data: tRow } = await tQuery.maybeSingle();
-              if (tRow) {
-                tenantData = tRow;
-                setTenant(tRow);
-                setIsTenantLoading(false);
-                setBankAccounts(extractTenantBankAccounts(tRow));
+
+              if (!tenantData && supabase) {
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tSlug);
+                let tQuery = supabase.from('storefront_tenants').select('id, name, slug, category, tier, status, is_active, logo_url, avatar_url, bio, created_at');
+                if (isUuid) {
+                  tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
+                } else {
+                  tQuery = tQuery.eq('slug', tSlug);
+                }
+                const { data: tRow } = await tQuery.maybeSingle();
+                if (tRow) {
+                  tenantData = tRow;
+                  setTenant(tRow);
+                  setIsTenantLoading(false);
+                  setBankAccounts(extractTenantBankAccounts(tRow));
+                }
               }
             }
 
@@ -448,20 +466,40 @@ export default function CheckoutPage({ params }: Props) {
       try {
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
         const supabase = getSupabase();
-        if (supabase && tSlug) {
-          let tQuery = supabase.from('tenants').select('*');
-          if (isUuid(tSlug)) {
-            tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
-          } else {
-            tQuery = tQuery.eq('slug', tSlug);
-          }
-          const { data } = await tQuery.maybeSingle();
+        let data: any = null;
 
-          if (data) {
-            setTenant(data);
-            setIsTenantLoading(false);
-            const accounts = extractTenantBankAccounts(data);
-            setBankAccounts(accounts);
+        if (tSlug) {
+          try {
+            const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tSlug)}`);
+            if (apiRes.ok) {
+              const apiJson = await apiRes.json();
+              if (apiJson?.success && apiJson.tenant) {
+                data = apiJson.tenant;
+              }
+            }
+          } catch (apiErr) {
+            console.warn('[Checkout] Failed fetching tenant info from API:', apiErr);
+          }
+
+          if (!data && supabase) {
+            let tQuery = supabase.from('storefront_tenants').select('id, name, slug, category, tier, status, is_active, logo_url, avatar_url, bio, created_at');
+            if (isUuid(tSlug)) {
+              tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
+            } else {
+              tQuery = tQuery.eq('slug', tSlug);
+            }
+            const { data: sfData } = await tQuery.maybeSingle();
+            if (sfData) {
+              data = sfData;
+            }
+          }
+        }
+
+        if (data) {
+          setTenant(data);
+          setIsTenantLoading(false);
+          const accounts = data.payment_methods?.bank_accounts || extractTenantBankAccounts(data);
+          setBankAccounts(accounts);
 
             // HARD-GATE: Hanya perkaya aset fulfillment jika order sudah diverifikasi LUNAS (PAID)
             const isCurrentlyPaid = ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(String(order?.payment_status || order?.status || '').toUpperCase());
@@ -508,7 +546,6 @@ export default function CheckoutPage({ params }: Props) {
             }
             return;
           }
-        }
         // Fallback: periksa bila data order memuat informasi bank
         setBankAccounts(extractTenantBankAccounts(order));
       } catch (err) {

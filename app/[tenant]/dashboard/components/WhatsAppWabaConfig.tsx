@@ -208,52 +208,6 @@ export default function WhatsAppWabaConfig({
         } catch (apiErr) {
           console.warn('[WhatsAppWabaConfig] API settings fetch note:', apiErr);
         }
-
-        if (loaded) return;
-
-        // 2. Fallback query langsung Supabase client jika API gagal
-        const supabase = getSupabase();
-        if (!supabase) return;
-
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('id, metadata, waba_phone_number_id')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tenantRow) {
-          const meta = tenantRow.metadata || {};
-          const phoneId =
-            tenantRow.waba_phone_number_id ||
-            meta.waba_phone_number_id ||
-            meta.whatsapp_phone_number_id ||
-            meta.waba_config?.phone_number_id;
-          const accountId = meta.waba_account_id || meta.waba_config?.waba_id;
-          const token =
-            meta.waba_access_token ||
-            meta.waba_config?.permanent_access_token ||
-            meta.waba_config?.access_token;
-
-          if (phoneId) setPhoneNumberId(phoneId);
-          if (accountId) setWabaId(accountId);
-          if (token) setAccessToken(token);
-
-          if (
-            meta.waba_configured === true ||
-            meta.waba_active === true ||
-            Boolean(phoneId) ||
-            meta.waba_config?.status === 'CONNECTED'
-          ) {
-            setSuccessData({
-              verifiedName: meta.waba_config?.verified_name || String(displayName || '').toUpperCase(),
-              displayPhone: meta.waba_config?.display_phone_number || (phoneId ? `ID: ${phoneId}` : undefined),
-              qualityRating: meta.waba_config?.quality_rating || 'GREEN (HIGH QUALITY)',
-              message: 'Akun Meta Cloud API (WABA) resmi aktif dan terkonfigurasi pada tenant ini.',
-              status: 'CONNECTED',
-              webhookStatus: 'Subscribed & Safe ACK',
-            });
-          }
-        }
       } catch (err) {
         console.warn('[WABA Config] Note loading existing config:', err);
       }

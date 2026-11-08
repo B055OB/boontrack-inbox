@@ -475,8 +475,8 @@ export async function authorizeMerchantSession(
 
   // 2. Database Authority Verification (SSOT)
   try {
-    const { getSupabaseAdmin, getSupabase } = await import('@/lib/supabaseClient');
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+    const supabase = getWorkforceSupabaseAdmin();
 
     if (effectiveSlug) {
       if (!supabase) {
@@ -685,3 +685,160 @@ export async function authorizeMerchantSession(
 }
 
 export const authorizeMerchantRequestAsync = authorizeMerchantSession;
+
+export interface AuthorizeServerComponentResult {
+  authorized: boolean;
+  reason?: 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'ERROR';
+  role?: string;
+  payload?: MerchantSessionPayload;
+  tenantRow?: any;
+}
+
+/**
+ * Validates request session and enforces role & tenant authorization server-side
+ * inside React Server Components (RSC) where cookies() and headers() are used.
+ *
+ * Full Server Authorization Chain (Round 3T.1 Directive):
+ * 1. Session authentication (HMAC-signed token from cookies/headers).
+ * 2. Tenant identity binding (token tenant matches route tenant).
+ * 3. Canonical tenant record verification in database.
+ * 4. Database membership verification (SSOT: user is active member; revoked memberships fail closed).
+ * 5. Role authorization hierarchy check.
+ */
+export async function authorizeServerComponentTenant(
+  targetSlug: string,
+  allowedRoles?: Array<'MERCHANT' | 'OWNER' | 'CS' | 'OPERATOR'>,
+  providedToken?: string | null
+): Promise<AuthorizeServerComponentResult> {
+  const normSlug = (targetSlug || '').toLowerCase().trim();
+  if (!normSlug) {
+    return { authorized: false, reason: 'NOT_FOUND' };
+  }
+
+  // 1. Resolve token from parameters or Next.js cookies/headers
+  let token = providedToken;
+  if (!token) {
+    try {
+      const { cookies, headers } = await import('next/headers');
+      const cookieStore = await cookies();
+      token =
+        cookieStore.get('bt_merchant_token')?.value ||
+        cookieStore.get('bt_session_token')?.value;
+
+      if (!token) {
+        const headersList = await headers();
+        const headerToken = headersList.get('x-merchant-token')?.trim();
+        if (headerToken && headerToken.includes('.')) {
+          token = headerToken;
+        } else {
+          const authHeader = headersList.get('authorization')?.trim() || '';
+          if (authHeader.toLowerCase().startsWith('bearer ')) {
+            const candidate = authHeader.slice(7).trim();
+            if (candidate.split('.').length === 2) {
+              token = candidate;
+            }
+          }
+        }
+      }
+    } catch {
+      // In isolated test runner without next/headers context
+    }
+  }
+
+  if (!token) {
+    return { authorized: false, reason: 'UNAUTHENTICATED' };
+  }
+
+  // 2. Cryptographic HMAC Token Verification
+  const result = await verifyMerchantSessionTokenAsync(token, normSlug);
+  if (!result.valid || !result.payload) {
+    return { authorized: false, reason: result.status === 403 ? 'FORBIDDEN' : 'UNAUTHENTICATED' };
+  }
+
+  const payload: MerchantSessionPayload = { ...result.payload };
+
+  // 3. Connect to Database & Query Canonical Tenant Record
+  const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+  const supabase = getWorkforceSupabaseAdmin();
+  if (!supabase) {
+    return { authorized: false, reason: 'ERROR' };
+  }
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normSlug);
+  let tQuery = supabase.from('tenants').select('*');
+  if (isUuid) {
+    tQuery = tQuery.eq('id', normSlug);
+  } else {
+    tQuery = tQuery.eq('slug', normSlug);
+  }
+
+  const { data: tenantRow, error: tErr } = await tQuery.maybeSingle();
+  if (tErr || !tenantRow) {
+    return { authorized: false, reason: 'NOT_FOUND' };
+  }
+
+  // 4. Validate Tenant Identity Consistency (anti-spoofing)
+  const consistency = validateTenantIdentityConsistency(payload, tenantRow);
+  if (!consistency.valid) {
+    return { authorized: false, reason: 'FORBIDDEN' };
+  }
+
+  // 5. Database Membership Authority Check (SSOT) — REQUIRED for all human sessions.
+  // userId is MANDATORY. Any token missing userId is rejected fail-closed.
+  if (!payload.userId) {
+    return { authorized: false, reason: 'FORBIDDEN' };
+  }
+
+  let membershipRow: any = null;
+  let authoritativeRole = payload.role || 'MERCHANT';
+
+  {
+    const { data: mData } = await supabase
+      .from('tenant_memberships')
+      .select('role, is_active')
+      .eq('user_id', payload.userId)
+      .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
+      .maybeSingle();
+    membershipRow = mData;
+
+    if (!membershipRow) {
+      try {
+        const { data: mDataStaging } = await (supabase as any)
+          .schema('workforce_staging')
+          .from('tenant_memberships')
+          .select('role, is_active')
+          .eq('user_id', payload.userId)
+          .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
+          .maybeSingle();
+        membershipRow = mDataStaging;
+      } catch { }
+    }
+
+    // Missing membership fails closed
+    if (!membershipRow) {
+      return { authorized: false, reason: 'FORBIDDEN' };
+    }
+
+    // Revoked / inactive membership fails closed
+    if (membershipRow.is_active !== true) {
+      return { authorized: false, reason: 'FORBIDDEN' };
+    }
+
+    // Authoritative DB role override
+    authoritativeRole = membershipRow.role;
+  }
+
+  // 6. Role Authorization Check
+  if (allowedRoles && allowedRoles.length > 0) {
+    if (!allowedRoles.includes(authoritativeRole as any)) {
+      return { authorized: false, reason: 'FORBIDDEN', role: authoritativeRole };
+    }
+  }
+
+  return {
+    authorized: true,
+    role: authoritativeRole,
+    payload,
+    tenantRow,
+  };
+}

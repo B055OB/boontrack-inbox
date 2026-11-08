@@ -2,13 +2,15 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin, getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
   authorizeMerchantSession,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
+import { projectPublicMicrosite } from '@/lib/product-catalog';
+import { saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 export function sanitizePhoneNumber(raw: unknown): string {
   if (!raw) return '';
@@ -380,10 +382,263 @@ export function projectFeaturesDto(raw: any): Record<string, boolean | string | 
   return projected;
 }
 
+/**
+ * projectShippingConfigDto — Constructive Positive Allowlist for Shipping Configuration.
+ *
+ * Guarantees zero leak of root-level or nested credentials (api_key, secret, auth_token, partner_id, etc.).
+ * ONLY operational public fields required by UI and checkout are extracted.
+ * Rest-spread is STRICTLY FORBIDDEN.
+ */
+export function projectShippingConfigDto(raw: any): Record<string, any> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+
+  const safe: Record<string, any> = {};
+
+  if (typeof raw.is_enabled === 'boolean') safe.is_enabled = raw.is_enabled;
+  if (typeof raw.active_aggregator === 'string') safe.active_aggregator = raw.active_aggregator.slice(0, 50);
+  if (typeof raw.auto_pickup === 'boolean') safe.auto_pickup = raw.auto_pickup;
+  if (typeof raw.free_shipping_threshold === 'number' && !Number.isNaN(raw.free_shipping_threshold)) {
+    safe.free_shipping_threshold = raw.free_shipping_threshold;
+  }
+
+  // Couriers list: array of string courier IDs
+  if (Array.isArray(raw.couriers)) {
+    safe.couriers = raw.couriers.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 50));
+  } else if (Array.isArray(raw.active_couriers)) {
+    safe.active_couriers = raw.active_couriers.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 50));
+  }
+
+  // Self pickup operational fields
+  if (typeof raw.is_self_pickup_enabled === 'boolean') safe.is_self_pickup_enabled = raw.is_self_pickup_enabled;
+  if (typeof raw.pickup_address === 'string') safe.pickup_address = raw.pickup_address.slice(0, 500);
+  if (typeof raw.pickup_maps_url === 'string') safe.pickup_maps_url = raw.pickup_maps_url.slice(0, 1000);
+  if (typeof raw.pickup_operational_hours === 'string') safe.pickup_operational_hours = raw.pickup_operational_hours.slice(0, 200);
+  if (typeof raw.pickup_instructions === 'string') safe.pickup_instructions = raw.pickup_instructions.slice(0, 1000);
+
+  // Flat origin fields
+  if (typeof raw.origin_address === 'string') safe.origin_address = raw.origin_address.slice(0, 500);
+  if (typeof raw.origin_city === 'string') safe.origin_city = raw.origin_city.slice(0, 100);
+  if (typeof raw.origin_district === 'string') safe.origin_district = raw.origin_district.slice(0, 100);
+  if (typeof raw.origin_postal_code === 'string') safe.origin_postal_code = raw.origin_postal_code.slice(0, 20);
+
+  // Nested origin object
+  if (raw.origin && typeof raw.origin === 'object' && !Array.isArray(raw.origin)) {
+    const originSafe: Record<string, any> = {};
+    if (typeof raw.origin.sender_name === 'string') originSafe.sender_name = raw.origin.sender_name.slice(0, 100);
+    if (typeof raw.origin.sender_phone === 'string') originSafe.sender_phone = raw.origin.sender_phone.slice(0, 50);
+    if (typeof raw.origin.address === 'string') originSafe.address = raw.origin.address.slice(0, 500);
+    if (typeof raw.origin.city === 'string') originSafe.city = raw.origin.city.slice(0, 100);
+    if (typeof raw.origin.district === 'string') originSafe.district = raw.origin.district.slice(0, 100);
+    if (typeof raw.origin.postal_code === 'string') originSafe.postal_code = raw.origin.postal_code.slice(0, 20);
+    safe.origin = originSafe;
+  }
+
+  // Nested routing rules
+  if (raw.routing_rules && typeof raw.routing_rules === 'object' && !Array.isArray(raw.routing_rules)) {
+    const routingSafe: Record<string, any> = {};
+    if (typeof raw.routing_rules.instant === 'string') routingSafe.instant = raw.routing_rules.instant.slice(0, 50);
+    if (typeof raw.routing_rules.regular === 'string') routingSafe.regular = raw.routing_rules.regular.slice(0, 50);
+    safe.routing_rules = routingSafe;
+  }
+
+  // Nested FnB catering settings
+  if (raw.fnb_settings && typeof raw.fnb_settings === 'object' && !Array.isArray(raw.fnb_settings)) {
+    const fnbSafe: Record<string, any> = {};
+    if (typeof raw.fnb_settings.is_enabled === 'boolean') fnbSafe.is_enabled = raw.fnb_settings.is_enabled;
+    if (typeof raw.fnb_settings.kitchen_address === 'string') fnbSafe.kitchen_address = raw.fnb_settings.kitchen_address.slice(0, 500);
+    if (typeof raw.fnb_settings.max_distance_km === 'number' && !Number.isNaN(raw.fnb_settings.max_distance_km)) {
+      fnbSafe.max_distance_km = raw.fnb_settings.max_distance_km;
+    }
+    safe.fnb_settings = fnbSafe;
+  }
+
+  // Lincah provider status (NO secrets, return presence indicators)
+  if (raw.lincah && typeof raw.lincah === 'object' && !Array.isArray(raw.lincah)) {
+    safe.lincah = {
+      provider: typeof raw.lincah.provider === 'string' ? raw.lincah.provider.slice(0, 50) : 'lincah',
+      status: typeof raw.lincah.status === 'string' ? raw.lincah.status.slice(0, 50) : undefined,
+      is_connected: Boolean(raw.lincah.is_connected),
+      is_sandbox: Boolean(raw.lincah.is_sandbox),
+      has_api_key: Boolean(raw.lincah.api_key || raw.lincah.has_api_key),
+      has_secret: Boolean(raw.lincah.secret || raw.lincah.api_key_read_only || raw.lincah.has_secret),
+      last_validated_at: typeof raw.lincah.last_validated_at === 'string' ? raw.lincah.last_validated_at : null,
+      // api_key, secret, and api_key_read_only are STRICTLY OMITTED
+    };
+  }
+
+  // Biteship provider status (NO secrets, return presence indicators)
+  if (raw.biteship && typeof raw.biteship === 'object' && !Array.isArray(raw.biteship)) {
+    safe.biteship = {
+      provider: 'biteship',
+      is_connected: Boolean(raw.biteship.is_connected),
+      is_sandbox: Boolean(raw.biteship.is_sandbox),
+      is_configured: Boolean(raw.biteship.is_configured || raw.biteship.api_key || raw.biteship.has_api_key),
+      has_api_key: Boolean(raw.biteship.api_key || raw.biteship.has_api_key),
+      last_validated_at: typeof raw.biteship.last_validated_at === 'string' ? raw.biteship.last_validated_at : null,
+      // api_key is STRICTLY OMITTED
+    };
+  }
+
+  return safe;
+}
+
+/**
+ * projectSafeRscTenantDto — RSC-safe tenant DTO for ALL roles including OWNER.
+ *
+ * NEVER serializes raw credential strings into the RSC HTML stream.
+ * Secrets (capi_token, waba_access_token, payment gateway keys, bank credentials) are
+ * replaced with boolean presence indicators (has_capi_token, has_waba_access_token).
+ * Microsite nested content is projected via constructive allowlist.
+ * All other operational fields are preserved for dashboard functionality.
+ */
+export function projectSafeRscTenantDto(settings: any, role: string): Record<string, any> {
+  if (!settings) return {};
+
+  const meta = (settings.metadata && typeof settings.metadata === 'object' && !Array.isArray(settings.metadata))
+    ? settings.metadata : {};
+
+  // Microsite: constructive projection strips hostile nested secrets
+  const projectedMicrosite = meta.microsite && typeof meta.microsite === 'object' && !Array.isArray(meta.microsite)
+    ? (projectPublicMicrosite(meta.microsite) ?? undefined)
+    : undefined;
+
+  // Self-pickup config: safe field-by-field copy
+  const selfPickupConfig = meta.self_pickup_config && typeof meta.self_pickup_config === 'object'
+    ? {
+        is_enabled: Boolean(meta.self_pickup_config.is_enabled),
+        pickup_address: typeof meta.self_pickup_config.pickup_address === 'string' ? meta.self_pickup_config.pickup_address : '',
+        pickup_maps_url: typeof meta.self_pickup_config.pickup_maps_url === 'string' ? meta.self_pickup_config.pickup_maps_url : '',
+        pickup_operational_hours: typeof meta.self_pickup_config.pickup_operational_hours === 'string' ? meta.self_pickup_config.pickup_operational_hours : '',
+        pickup_instructions: typeof meta.self_pickup_config.pickup_instructions === 'string' ? meta.self_pickup_config.pickup_instructions : '',
+      }
+    : undefined;
+
+  const safeMetadata: Record<string, any> = {};
+  if (typeof meta.display_name === 'string') safeMetadata.display_name = meta.display_name;
+  if (typeof meta.description === 'string') safeMetadata.description = meta.description;
+  if (typeof meta.tagline === 'string') safeMetadata.tagline = meta.tagline;
+  if (typeof meta.store_name === 'string') safeMetadata.store_name = meta.store_name;
+  if (typeof meta.qris_payload === 'string') safeMetadata.qris_payload = meta.qris_payload;
+  if (typeof meta.qris_image_url === 'string') safeMetadata.qris_image_url = meta.qris_image_url;
+  if (typeof meta.logo_url === 'string') safeMetadata.logo_url = meta.logo_url;
+  if (typeof meta.store_logo_url === 'string') safeMetadata.store_logo_url = meta.store_logo_url;
+  if (typeof meta.avatar_url === 'string') safeMetadata.avatar_url = meta.avatar_url;
+  if (typeof meta.bio === 'string') safeMetadata.bio = meta.bio;
+  if (meta.theme) safeMetadata.theme = projectThemeDto(meta.theme);
+  if (meta.business_hours) safeMetadata.business_hours = projectBusinessHoursDto(meta.business_hours);
+  if (meta.catalog_preferences) safeMetadata.catalog_preferences = projectCatalogPreferencesDto(meta.catalog_preferences);
+  if (meta.public_links) safeMetadata.public_links = projectPublicLinksDto(meta.public_links);
+  if (meta.features) safeMetadata.features = projectFeaturesDto(meta.features);
+  if (projectedMicrosite) safeMetadata.microsite = projectedMicrosite;
+  if (selfPickupConfig) safeMetadata.self_pickup_config = selfPickupConfig;
+
+  // For OWNER: include shipping_config strictly via constructive positive allowlist (Round 3T.1 Temuan A)
+  if (role === 'OWNER' && meta.shipping_config && typeof meta.shipping_config === 'object') {
+    const safeShipping = projectShippingConfigDto(meta.shipping_config);
+    if (safeShipping) {
+      safeMetadata.shipping_config = safeShipping;
+    }
+  }
+
+  // Determine secret presence booleans (replace raw secret strings)
+  const rawCapiToken = settings.capi_token || meta.capi_token || settings.integration?.capi_token;
+  const rawWabaToken = settings.waba_access_token || meta.waba_config?.access_token || settings.waba_config?.access_token;
+  const rawQrisImage = settings.qris_image_url || meta.qris_image_url;
+  const isQrisActive = Boolean(settings.is_qris_active ?? meta.is_qris_active ?? false);
+
+  return {
+    id: settings.id,
+    slug: settings.slug,
+    name: settings.name,
+    store_name: settings.store_name || (typeof meta.store_name === 'string' ? meta.store_name : settings.name),
+    display_name: typeof settings.display_name === 'string' ? settings.display_name : (typeof meta.display_name === 'string' ? meta.display_name : null),
+    description: typeof settings.description === 'string' ? settings.description : (typeof meta.description === 'string' ? meta.description : null),
+    tagline: typeof settings.tagline === 'string' ? settings.tagline : (typeof meta.tagline === 'string' ? meta.tagline : null),
+    category: settings.category || 'retail',
+    tier: settings.tier,
+    plan_tier: settings.plan_tier,
+    status: settings.status,
+    subscription_status: settings.subscription_status,
+    is_suspended: settings.is_suspended,
+    trial_ends_at: settings.trial_ends_at,
+    subscription_ends_at: settings.subscription_ends_at,
+    logo_url: settings.logo_url,
+    avatar_url: settings.avatar_url,
+    bio: settings.bio,
+    currency: settings.currency || 'IDR',
+    created_at: settings.created_at,
+    updated_at: settings.updated_at,
+    revision: settings.updated_at || settings.metadata?.shipping_revision || null,
+    // Channel config: boolean indicators only — raw tokens NEVER serialized to RSC stream
+    has_capi_token: Boolean(rawCapiToken),
+    has_waba_access_token: Boolean(rawWabaToken),
+    has_waba_config: Boolean(settings.waba_config || meta.waba_config),
+    waba_phone_number_id: settings.waba_phone_number_id || null,
+    // Payment: preserve public-safe fields, strip credentials
+    is_qris_active: isQrisActive,
+    qris_image_url: typeof rawQrisImage === 'string' ? rawQrisImage : null,
+    has_payment_gateway: Boolean(settings.payment_config || settings.gateway_config),
+    // Greeting messages: operational, non-secret
+    greeting_message: settings.greeting_message || null,
+    custom_greeting_message: settings.custom_greeting_message || null,
+    // Contact info: operational public merchant contacts for OWNER
+    phone: role === 'OWNER' ? (settings.phone || meta.phone || null) : null,
+    whatsapp_number: role === 'OWNER' ? (settings.whatsapp_number || meta.whatsapp_number || null) : null,
+    telegram_chat_id: role === 'OWNER' ? (settings.telegram_chat_id || meta.telegram_chat_id || null) : null,
+    // Secret fields — explicitly null for ALL roles in RSC stream
+    bank: null,
+    bank_accounts: null,
+    payment_config: null,
+    capi_token: null,
+    waba_access_token: null,
+    waba_config: null,
+    integration: null,
+    gateway_config: null,
+    // Projected feature DTOs
+    features: projectFeaturesDto(settings.features || meta.features),
+    faqs: projectFaqsDto(settings.faqs || meta.faqs),
+    theme: projectThemeDto(settings.theme || meta.theme),
+    microsite: projectedMicrosite || null,
+    metadata: safeMetadata,
+  };
+}
+
 export function sanitizeSettingsForRole(settings: any, role: string) {
   if (!settings) return settings;
   if (role === 'OWNER') {
-    return settings;
+    // For OWNER: sanitize shipping configuration and exclude raw Lincah/Biteship credential canaries
+    const safeShipping = projectShippingConfigDto(
+      settings.shipping_config || settings.metadata?.shipping_config || settings.metadata?.biteship_config
+    );
+
+    const safeOwnerMetadata: Record<string, any> = {
+      ...(settings.metadata || {}),
+    };
+
+    if (safeOwnerMetadata.shipping_config) {
+      safeOwnerMetadata.shipping_config = projectShippingConfigDto(safeOwnerMetadata.shipping_config);
+    }
+    if (safeOwnerMetadata.biteship_config) {
+      safeOwnerMetadata.biteship_config = projectShippingConfigDto(safeOwnerMetadata.biteship_config);
+    }
+    if (safeOwnerMetadata.lincah_config) {
+      safeOwnerMetadata.lincah_config = projectShippingConfigDto(safeOwnerMetadata.lincah_config);
+    }
+
+    // Strip raw third-party shipping credentials from root metadata
+    delete safeOwnerMetadata.lincah_api_key;
+    delete safeOwnerMetadata.lincah_secret;
+    delete safeOwnerMetadata.biteship_api_key;
+
+    const currentRevision = settings.updated_at || settings.metadata?.shipping_revision || null;
+
+    return {
+      ...settings,
+      revision: currentRevision,
+      shipping_config_revision: currentRevision,
+      shipping_config: safeShipping,
+      metadata: safeOwnerMetadata,
+    };
   }
 
   // Construct metadata strictly via nested DTO projection (Round 3R & 3S)
@@ -397,6 +652,24 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     }
     if (typeof settings.metadata.tagline === 'string') {
       sanitizedMetadata.tagline = settings.metadata.tagline;
+    }
+    if (typeof settings.metadata.qris_payload === 'string') {
+      sanitizedMetadata.qris_payload = settings.metadata.qris_payload;
+    }
+    if (typeof settings.metadata.qris_image_url === 'string') {
+      sanitizedMetadata.qris_image_url = settings.metadata.qris_image_url;
+    }
+    if (typeof settings.metadata.logo_url === 'string') {
+      sanitizedMetadata.logo_url = settings.metadata.logo_url;
+    }
+    if (typeof settings.metadata.store_logo_url === 'string') {
+      sanitizedMetadata.store_logo_url = settings.metadata.store_logo_url;
+    }
+    if (typeof settings.metadata.avatar_url === 'string') {
+      sanitizedMetadata.avatar_url = settings.metadata.avatar_url;
+    }
+    if (typeof settings.metadata.bio === 'string') {
+      sanitizedMetadata.bio = settings.metadata.bio;
     }
     if (settings.metadata.theme) {
       sanitizedMetadata.theme = projectThemeDto(settings.metadata.theme);
@@ -413,6 +686,22 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     if (settings.metadata.features) {
       sanitizedMetadata.features = projectFeaturesDto(settings.metadata.features);
     }
+    if (settings.metadata.microsite && typeof settings.metadata.microsite === 'object' && !Array.isArray(settings.metadata.microsite)) {
+      // Use constructive projection to strip hostile nested secrets from buttons etc. (Round 3T.1 P0-C)
+      const projectedMicrosite = projectPublicMicrosite(settings.metadata.microsite);
+      if (projectedMicrosite) {
+        sanitizedMetadata.microsite = projectedMicrosite;
+      }
+    }
+    if (settings.metadata.self_pickup_config && typeof settings.metadata.self_pickup_config === 'object') {
+      sanitizedMetadata.self_pickup_config = {
+        is_enabled: Boolean(settings.metadata.self_pickup_config.is_enabled),
+        pickup_address: typeof settings.metadata.self_pickup_config.pickup_address === 'string' ? settings.metadata.self_pickup_config.pickup_address : '',
+        pickup_maps_url: typeof settings.metadata.self_pickup_config.pickup_maps_url === 'string' ? settings.metadata.self_pickup_config.pickup_maps_url : '',
+        pickup_operational_hours: typeof settings.metadata.self_pickup_config.pickup_operational_hours === 'string' ? settings.metadata.self_pickup_config.pickup_operational_hours : '',
+        pickup_instructions: typeof settings.metadata.self_pickup_config.pickup_instructions === 'string' ? settings.metadata.self_pickup_config.pickup_instructions : '',
+      };
+    }
   }
 
   // Construct clean projected object from scratch for non-OWNER roles (MERCHANT, OPERATOR, CS)
@@ -420,7 +709,7 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     id: settings.id,
     slug: settings.slug,
     name: settings.name,
-    store_name: settings.store_name || settings.name,
+    store_name: settings.store_name || (typeof settings.metadata?.store_name === 'string' ? settings.metadata.store_name : settings.name),
     display_name: typeof settings.display_name === 'string'
       ? settings.display_name
       : (typeof settings.metadata?.display_name === 'string' ? settings.metadata.display_name : null),
@@ -444,6 +733,7 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     currency: settings.currency || 'IDR',
     created_at: settings.created_at,
     updated_at: settings.updated_at,
+    revision: settings.updated_at || settings.metadata?.shipping_revision || null,
     phone: null,
     whatsapp_number: null,
     waba_phone_number_id: null,
@@ -492,7 +782,7 @@ export async function GET(
     }
 
     // 1. Query murni ke Supabase Database sebagai Single Source of Truth (SSOT)
-    let supabase = getSupabaseAdmin() || getSupabase();
+    let supabase = getWorkforceSupabaseAdmin();
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     let tenantRow: any = null;
@@ -644,9 +934,13 @@ export async function GET(
     // 4. Return data asli database dengan sanitasi berbasis peran (Round 3O)
     return NextResponse.json({
       success: true,
+      revision: tenantRow.updated_at || tenantRow.metadata?.shipping_revision || null,
       settings: sanitizeSettingsForRole({
+        id: tenantRow.id,
         slug: tenantRow.slug,
         name: tenantRow.name,
+        updated_at: tenantRow.updated_at,
+        created_at: tenantRow.created_at,
         store_name: metadata.store_name || tenantRow.name,
         category: tenantRow.category || 'retail',
         tier: tenantRow.tier,
@@ -994,6 +1288,8 @@ export async function PUT(
         'interactive_menus',
         'interactive_menu',
         'public_links',
+        'self_pickup_config',
+        'shipping_config',
       ]);
 
       const topLevelKeys = Object.keys(body).filter((k) => k !== 'metadata');
@@ -1057,6 +1353,7 @@ export async function PUT(
       custom_greeting_message,
       sales_policy,
       playbook,
+      self_pickup_config,
       shipping_config,
       lincah_config,
       shipping_settings,
@@ -1076,7 +1373,7 @@ export async function PUT(
       waba_access_token,
     } = body;
 
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = getWorkforceSupabaseAdmin();
     const { data: existing } = await supabaseAdmin
       .from('tenants')
       .select('*')
@@ -1297,6 +1594,9 @@ export async function PUT(
         tagline: body.tagline !== undefined ? body.tagline : body.metadata?.tagline,
       } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
+      ...(self_pickup_config !== undefined || body.self_pickup_config !== undefined || body.metadata?.self_pickup_config !== undefined ? {
+        self_pickup_config: self_pickup_config ?? body.self_pickup_config ?? body.metadata?.self_pickup_config,
+      } : {}),
       ...(shipping_config !== undefined ? { shipping_config } : {}),
       ...(lincah_config !== undefined ? { lincah_config } : {}),
       ...(shipping_settings !== undefined ? { shipping_settings } : {}),
@@ -1369,6 +1669,56 @@ export async function PUT(
       }
     }
 
+    // ── PERSIST SHIPPING & SELF-PICKUP SERVER-AUTHORITATIVELY VIA UNIFIED HELPER (FAIL-CLOSED) ──
+    const effectivePickup = self_pickup_config ?? body.self_pickup_config ?? body.metadata?.self_pickup_config;
+    const effectiveShipping = shipping_config ?? body.shipping_config ?? body.metadata?.shipping_config;
+    const expectedRevision = body.expected_revision ?? body.revision ?? body.shipping_config_revision;
+    let saveShippingResult: any = null;
+
+    if (effectivePickup !== undefined || effectiveShipping !== undefined) {
+      const isPickupEnabled = Boolean(effectivePickup?.is_enabled ?? effectiveShipping?.is_self_pickup_enabled);
+      const pickupAddressVal = effectivePickup?.pickup_address || effectiveShipping?.pickup_address || effectiveShipping?.origin?.address || null;
+      const pickupMapsUrlVal = effectivePickup?.pickup_maps_url || effectiveShipping?.pickup_maps_url || null;
+      const pickupHoursVal = effectivePickup?.pickup_operational_hours || effectiveShipping?.pickup_operational_hours || null;
+      const pickupInstVal = effectivePickup?.pickup_instructions || effectiveShipping?.pickup_instructions || null;
+      const originAddrVal = effectiveShipping?.origin?.address || effectiveShipping?.origin_address || null;
+      const originCityVal = effectiveShipping?.origin?.city || effectiveShipping?.origin_city || null;
+      const originDistVal = effectiveShipping?.origin?.district || effectiveShipping?.origin_district || null;
+      const originPostVal = effectiveShipping?.origin?.postal_code || effectiveShipping?.origin_postal_code || null;
+
+      saveShippingResult = await saveStoreShippingConfig(
+        {
+          tenant_slug: slug,
+          tenant_id: existing.id,
+          expected_revision: expectedRevision,
+          is_self_pickup_enabled: isPickupEnabled,
+          pickup_address: pickupAddressVal,
+          pickup_maps_url: pickupMapsUrlVal,
+          pickup_operational_hours: pickupHoursVal,
+          pickup_instructions: pickupInstVal,
+          origin_address: originAddrVal,
+          origin_city: originCityVal,
+          origin_district: originDistVal,
+          origin_postal_code: originPostVal,
+          shipping_config: effectiveShipping,
+          combined_tenant_update: updateFields,
+        },
+        supabaseAdmin
+      );
+
+      if (!saveShippingResult.success) {
+        const statusCode = saveShippingResult.status_code || (saveShippingResult.error?.includes('CONFLICT') ? 409 : 500);
+        console.error('[Settings Route] saveStoreShippingConfig failed closed:', saveShippingResult.error, `(HTTP ${statusCode})`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: saveShippingResult.error || 'Failed to persist shipping configuration',
+          },
+          { status: statusCode }
+        );
+      }
+    }
+
     // ── PERSIST WHATSAPP_CONNECTIONS DENGAN ADMIN CLIENT (BYPASS RLS) ──
     if (resolvedWabaPhoneId) {
       try {
@@ -1414,23 +1764,77 @@ export async function PUT(
       }
     }
 
-    // ── UPDATE TABEL TENANTS (DENGAN VERIFIKASI COUNT ROW TERPENGARUH) ──
-    const { data: updatedTenants, error: updateError } = await supabaseAdmin
-      .from('tenants')
-      .update(updateFields)
-      .eq('id', existing.id)
-      .select('id, slug, name, metadata, phone, whatsapp_number');
+    // ── ROUND 3T.1 OPTION 1: SINGLE AUTHORITATIVE CONDITIONAL UPDATE (ELIMINATE DUAL-UPDATE) ──
+    let updatedTenants: any[] | null = null;
 
-    if (updateError || !updatedTenants || updatedTenants.length === 0) {
-      console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED',
-          message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase (0 rows affected).',
-        },
-        { status: 500 }
-      );
+    if (saveShippingResult) {
+      // Step 1 SSOT CAS update in saveStoreShippingConfig already committed combined updateFields atomically
+      updatedTenants = saveShippingResult.updatedTenant ? [saveShippingResult.updatedTenant] : null;
+    } else {
+      // General settings update (no shipping configuration in request)
+      const nowMs = Date.now();
+      const prevMs = existing.updated_at ? Date.parse(existing.updated_at) : 0;
+      const effectiveMs = !isNaN(prevMs) && prevMs >= nowMs ? prevMs + 1 : nowMs;
+      const nextRevision = new Date(effectiveMs).toISOString();
+
+      // OCC validation for general settings update
+      if (expectedRevision && existing.updated_at) {
+        const isMatching =
+          expectedRevision === existing.updated_at ||
+          Date.parse(expectedRevision) === Date.parse(existing.updated_at);
+        if (!isMatching) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'CONFLICT_STALE_REVISION',
+              message: `Konflik versi: Versi yang diharapkan (${expectedRevision}) tidak sesuai dengan versi database (${existing.updated_at}).`,
+            },
+            { status: 409 }
+          );
+        }
+      }
+
+      let updateQuery = supabaseAdmin
+        .from('tenants')
+        .update({
+          ...updateFields,
+          updated_at: nextRevision,
+        })
+        .eq('id', existing.id);
+
+      const filterRevision = existing.updated_at || expectedRevision;
+      if (filterRevision) {
+        updateQuery = updateQuery.eq('updated_at', filterRevision);
+      }
+
+      const { data: qRows, error: updateError } = await updateQuery
+        .select('id, slug, name, metadata, phone, whatsapp_number, updated_at');
+
+      if (updateError) {
+        console.error('[Settings Route] Update tenants failed:', updateError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'UPDATE_FAILED',
+            message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase.',
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!qRows || qRows.length === 0) {
+        console.warn('[Settings Route] 0 rows affected during conditional update');
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CONFLICT_STALE_REVISION',
+            message: 'Konflik versi: Baris tenant telah diperbarui di sesi lain.',
+          },
+          { status: 409 }
+        );
+      }
+
+      updatedTenants = qRows;
     }
 
     // Sync WhatsApp CS number ke tabel whatsapp_connections agar persistent across dashboard reload
@@ -1571,7 +1975,14 @@ export async function PUT(
             : (existing.metadata?.logo_url || null),
         telegram_group_config: updatedMetadata.telegram_group_config || null,
         telegram_chat_id: updateFields.telegram_chat_id ?? (existing.telegram_chat_id || null),
+        updated_at: updatedTenants?.[0]?.updated_at || saveShippingResult?.revision || new Date().toISOString(),
+        metadata: updatedMetadata,
+        shipping_config: effectiveShipping || existing.metadata?.shipping_config,
+        revision: saveShippingResult?.revision || updatedTenants?.[0]?.updated_at,
+        projections: saveShippingResult?.projections,
       }, callerRole),
+      revision: saveShippingResult?.revision || updatedTenants?.[0]?.updated_at,
+      projections: saveShippingResult?.projections,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error updating settings';

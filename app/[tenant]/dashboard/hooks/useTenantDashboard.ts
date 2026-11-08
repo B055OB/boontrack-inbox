@@ -610,57 +610,9 @@ export function useTenantDashboard() {
         setStoreQrisPayload(decodedPayload);
       }
 
-      // Direct persist ke database Supabase (tenants.metadata)
+      // Sync exclusively via authenticated settings API route (Round 3T.1)
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              qris_image_url: publicUrl,
-              qris_url: publicUrl,
-              qris_image: publicUrl,
-              is_qris_active: true,
-              qris_enabled: true,
-              ...(decodedPayload ? {
-                qris_payload: decodedPayload,
-                qris_static_string: decodedPayload,
-              } : {}),
-              payment_settings: {
-                ...(tenantRow.metadata?.payment_settings || {}),
-                qris: publicUrl,
-                is_qris_active: true,
-              },
-              payment_config: {
-                ...(tenantRow.metadata?.payment_config || {}),
-                enable_qris: true,
-                qris_image_url: publicUrl,
-                ...(decodedPayload ? {
-                  qris_payload: decodedPayload,
-                  raw_qris_string: decodedPayload,
-                  static_qris_payload: decodedPayload,
-                } : {}),
-              },
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Direct Supabase QRIS sync note:', sbErr);
-      }
-
-      // Sync via settings API route
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -675,6 +627,9 @@ export function useTenantDashboard() {
             } : {}),
           }),
         });
+        if (!res.ok) {
+          throw new Error('Gagal memperbarui QRIS pada server');
+        }
       } catch (settingsErr) {
         console.warn('Gagal sync qris_image_url via settings route:', settingsErr);
       }
@@ -722,39 +677,16 @@ export function useTenantDashboard() {
 
       setStoreLogoUrl(publicUrl);
 
-      // Direct persist ke database Supabase (tenants.metadata.logo_url)
+      // Sync exclusively via authenticated settings API route (Round 3T.1)
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('id, metadata')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantRow?.id) {
-            const updatedMeta = {
-              ...(tenantRow.metadata || {}),
-              logo_url: publicUrl,
-              avatar_url: publicUrl,
-            };
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
-          }
-        }
-      } catch (sbErr) {
-        console.warn('Direct Supabase logo sync note:', sbErr);
-      }
-
-      // Sync via settings API route
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ logo_url: publicUrl }),
         });
+        if (!res.ok) {
+          throw new Error('Gagal memperbarui logo pada server');
+        }
       } catch (settingsErr) {
         console.warn('Settings API logo update warning:', settingsErr);
       }
@@ -768,37 +700,31 @@ export function useTenantDashboard() {
     }
   };
 
-  // 1. Fetch Tenant Settings from Supabase
+  // 1. Fetch Tenant Settings from Authenticated Server API (Round 3T.1)
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenantSettings = async () => {
       try {
-        const supabase = getSupabase();
         let tenant: any = null;
 
-        if (supabase) {
-          const { data: tRow } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-          tenant = tRow;
+        try {
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            tenant = data?.settings;
+          }
+        } catch (apiErr) {
+          console.warn('[useTenantDashboard] Settings API fetch error, falling back to public endpoint:', apiErr);
         }
 
         if (!tenant) {
-          const res = await fetch(
-            `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${encodeURIComponent(tenantSlug)}&select=*`,
-            {
-              headers: {
-                apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-              },
+          try {
+            const pubRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`, { cache: 'no-store' });
+            if (pubRes.ok) {
+              const pubData = await pubRes.json();
+              tenant = pubData?.tenant;
             }
-          );
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            tenant = data[0];
-          }
+          } catch {}
         }
 
         const isLocalSession = checkClientSession(tenantSlug);
@@ -874,6 +800,7 @@ export function useTenantDashboard() {
 
           // Hydrate Products: Prioritas Supabase (tenants.metadata.products & products table)
           let hydratedProducts: ProductItem[] = [];
+          const supabase = getSupabase();
 
           // 1. Cek tabel SQL `products` jika ada
           if (supabase && tenant.id) {
@@ -2149,10 +2076,7 @@ export function useTenantDashboard() {
                 : {}),
             };
 
-            await supabase
-              .from('tenants')
-              .update({ metadata: updatedMeta })
-              .eq('id', tenantRow.id);
+            // Sync ke backend products route (bukan mutasi direct Supabase dari browser)
 
             // Sync juga ke tabel SQL products jika barisnya ada
             try {
@@ -2258,26 +2182,7 @@ export function useTenantDashboard() {
     const textToSave = customMsg !== undefined ? customMsg : storeGreetingMessage;
     setIsSavingGreeting(true);
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-        const meta = tRow?.metadata || {};
-        meta.greeting_message = textToSave;
-        meta.custom_greeting_message = textToSave;
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: meta,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('slug', tenantSlug);
-      }
-
-      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2285,6 +2190,10 @@ export function useTenantDashboard() {
           custom_greeting_message: textToSave,
         }),
       });
+
+      if (!res.ok) {
+        throw new Error('Gagal menyimpan sapaan via server API');
+      }
 
       setStoreGreetingMessage(textToSave);
       setSaveFeedback('✅ Pesan sapaan otomatis WhatsApp berhasil disimpan!');

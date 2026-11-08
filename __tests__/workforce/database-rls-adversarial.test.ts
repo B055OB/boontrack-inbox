@@ -215,6 +215,43 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
     expect(tenantsRes.rows[0].name).toBe('Alpha Defense Systems');
   });
 
+  test('1b. Positive Write & Read-After-Write: Alpha can INSERT, UPDATE, and SELECT own products under authenticated role', async () => {
+    await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
+
+    // 1. Positive INSERT under authenticated role for own tenant
+    const testSlug = `pos-crud-prod-${Date.now()}`;
+    const insertRes = await client.query(`
+      INSERT INTO products (tenant_id, title, slug, price, stock, category, product_type)
+      VALUES ($1, 'Positive CRUD Product', $2, 180000, 20, 'service', 'SERVICE')
+      RETURNING id, title, price
+    `, [TENANT_ALPHA, testSlug]);
+    expect(insertRes.rows.length).toBe(1);
+    const prodId = insertRes.rows[0].id;
+    expect(Number(insertRes.rows[0].price)).toBe(180000);
+
+    // 2. Positive UPDATE under authenticated role for own product
+    const updateRes = await client.query(
+      'UPDATE products SET price = 210000 WHERE id = $1',
+      [prodId]
+    );
+    expect(updateRes.rowCount).toBe(1);
+
+    // 3. Positive SELECT after write under authenticated role
+    const selectRes = await client.query(
+      'SELECT id, title, price FROM products WHERE id = $1',
+      [prodId]
+    );
+    expect(selectRes.rows.length).toBe(1);
+    expect(Number(selectRes.rows[0].price)).toBe(210000);
+
+    // Cleanup: Positive DELETE under authenticated role
+    const deleteRes = await client.query(
+      'DELETE FROM products WHERE id = $1',
+      [prodId]
+    );
+    expect(deleteRes.rowCount).toBe(1);
+  });
+
   test('2. Negative Cross-Tenant Read Suppression: Alpha cannot read Beta records (0 rows)', async () => {
     await setAuthContext(client, USER_ALPHA_ID, TENANT_ALPHA, TENANT_ALPHA);
 
