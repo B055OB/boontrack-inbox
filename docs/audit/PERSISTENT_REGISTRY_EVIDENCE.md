@@ -3523,3 +3523,153 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | **REG** | Full Regression Suite | All 37 suites, 448 tests in `__tests__/workforce/` pass cleanly with zero regressions | Full suite `--runInBand` | **100% PASS (448/448)** |
 | **BLD** | Next.js Build Integrity | All 22 routes compile cleanly via Turbopack with 0 TypeScript errors | `npm run build:workforce` | **EXIT 0 (PASS)** |
 | **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |
+
+
+---
+
+## 23. BWM Gate 1 Round 3S: Targeted DTO Closure, Feature Sanitization & Full Nested Validation
+
+**Audit Scope:** Elimination of `features` raw passthrough; Constructive `projectFeaturesDto` implementation; Comprehensive structural validation for all nested PUT payloads (`theme`, `faqs`, `business_hours` with root days & `schedule[]`, `catalog_preferences`, `public_links`, `features`, `microsite`); Allowlist & evidence ledger alignment; Read-after-write persistence verification; 100% full workforce regression and Next.js production build.
+**Authority:** Founder / Product Owner Direct Mandate (Supervisor: CTO Guardian)
+**Repository:** `B055OB/boontrack-inbox` (`boontrack-workforce`)
+**Working Directory:** `boontrack-workforce`
+**Branch:** `feat/bwm-workforce-isolated`
+**Target Environment:** `workforce_staging` only
+**Production Status:** STRICTLY LOCKED (`mpluzajlzpregmjwpjqr.supabase.co` untouched)
+**Dodo Payments Status:** STRICT FROZEN
+**Execution Scope:** `[TARGET TENANT: workforce_staging] | [TARGET CHANNEL: NONE] | [BLAST RADIUS: ISOLATED]`
+**Merge Status:** STRICT MERGE HOLD
+
+---
+
+### 23.1 Executive Summary & Architectural Implementation
+
+Round 3S closes the remaining DTO passthrough vectors and completes structural validation across all mutation paths:
+
+1. **Elimination of `features` Raw Passthrough (P0 Closure):**
+   - In `app/api/v1/tenants/[slug]/settings/route.ts`, replaced raw `features: settings.features || {}` with constructive `projectFeaturesDto(settings.features || settings.metadata?.features)`.
+   - Mapped `ALLOWED_FEATURE_KEYS` against all real frontend consumers (`useDashboardData.ts`, `useTenantDashboard.ts`), backend tier definitions (`lib/subscription-tiers.ts`), and config resolvers (`lib/tenant-config.ts`):
+     - `has_capi`, `capi`, `has_reader`, `ads_tracking`, `multi_cs`, `inbox`, `ai_bot`, `chatbox`, `boonpilot`, `smart_chatbox`, `broadcast`, `custom_domain`, `unlimited_products`, `single_page_checkout`, `crm`, `has_crm`, `memory_crm`, `customers`, `export`, `reseller`, `store_reseller`, `reseller_system`, `reseller_tier`, `reseller_unlimited`, `reseller_scale`, `reseller_starter`, `tier`, `paid_ads_intelligence`, `PAID_ADS_INTELLIGENCE`, `viral_trends_radar`, `VIRAL_TRENDS_RADAR`, `whatsapp_gateway`, `telegram_bot`, `webchat_widget`, `auto_ai_reply`, `qris_billing`, `gate_iot_sync`, `cv_ats_scanner`, `rate_limiting`.
+   - Enforced primitive validation (`boolean`, `string`, `number` only): any nested objects, arrays, or unknown keys (`ROUND3S_CANARY_FEATURE`, `internal_secret`, `private_token`, etc.) are dropped.
+   - Preserved `OWNER` positive control: `OWNER` requests receive unmasked feature flags and metadata intact.
+
+2. **Full Structural Nested PUT Validation (P0 Mutation Guard):**
+   - Upgraded `validateMerchantNestedPayload(body)` from basic regex key filtering to comprehensive structural allowlist enforcement at every nested level:
+     - **`theme`**: Constrained to `ALLOWED_THEME_KEYS`. Enforces that `featured_product_ids` contains exclusively string/number primitives, and rejects any nested objects.
+     - **`faqs`**: Constrained to `ALLOWED_FAQ_KEYS` (`id`, `question`, `answer`, `title`, `content`, `category`). Rejects nested objects and arrays within FAQ items.
+     - **`business_hours`**: Constrained root keys to `ALLOWED_BIZ_KEYS`. Enforces that root day entries (`monday`..`sunday`), nested `days` map entries, and `schedule[]` array items strictly contain only `ALLOWED_DAY_FIELDS` / `ALLOWED_SCHEDULE_FIELDS` (`open`, `close`, `is_open`, `closed`). Rejects all injected secret or canary keys at any level.
+     - **`catalog_preferences`**: Constrained to `ALLOWED_CATALOG_KEYS`. Enforces that `featured_category_ids` contains exclusively string/number primitives, and rejects nested objects.
+     - **`public_links`**: Validates array items against `ALLOWED_PUBLIC_LINK_ITEM_KEYS` with primitive values, and validates dictionary object keys against `ALLOWED_LINK_PLATFORMS`.
+     - **`features`**: If submitted, enforces `ALLOWED_FEATURE_KEYS` and primitive values only. Non-`OWNER` callers attempting feature mutation are blocked by `PERMITTED_MERCHANT_FIELDS` enforcement (HTTP 403).
+     - **`microsite`**: Enforces `buttons[]` structure with `ALLOWED_BUTTON_KEYS`.
+   - Added `'public_links'` to `PERMITTED_MERCHANT_FIELDS` to enable legitimate tenant link management.
+
+3. **Read-After-Write API Persistence Alignment:**
+   - Synchronized `updatedMetadata` in PUT handler to persist `business_hours`, `catalog_preferences`, `public_links`, `display_name`, `description`, and `tagline` into PostgreSQL `workforce_staging.tenants.metadata`.
+   - Verified that immediate read-after-write via `GET` returns all updated operational fields intact.
+
+---
+
+### 23.2 Automated Test Execution Logs
+
+#### A. Targeted Settings API Test Suite (45 Tests — 100% Pass)
+Command: `npx.cmd jest __tests__/workforce/tenant-settings-api.test.ts --runInBand`
+```
+PASS __tests__/workforce/tenant-settings-api.test.ts (41.74 s)
+  ... [Sections 1-11 pass cleanly] ...
+  12. Round 3S Targeted DTO Closure, Feature Sanitization & Full Nested Validation
+    √ 12a. Round 3S Adversarial Test: MERCHANT receives constructive features DTO and zero canary leakage (1074 ms)
+    √ 12b. Round 3S Adversarial Test: OPERATOR receives constructive features DTO and zero canary leakage (960 ms)
+    √ 12c. Round 3S Adversarial Test: CS receives constructive features DTO and zero canary leakage (989 ms)
+    √ 12d. Round 3S OWNER Positive Control: OWNER receives full features metadata and all canaries intact (990 ms)
+    √ 12e. Round 3S Mutation Boundary: MERCHANT injecting unknown key into theme is rejected (403) (424 ms)
+    √ 12f. Round 3S Mutation Boundary: MERCHANT injecting unknown key into FAQ item is rejected (403) (402 ms)
+    √ 12g. Round 3S Mutation Boundary: MERCHANT injecting unknown key into root day of business_hours is rejected (403) (528 ms)
+    √ 12h. Round 3S Mutation Boundary: MERCHANT injecting unknown key into business_hours schedule[] is rejected (403) (412 ms)
+    √ 12i. Round 3S Mutation Boundary: MERCHANT injecting non-primitive or unknown key into catalog_preferences is rejected (403) (500 ms)
+    √ 12j. Round 3S Mutation Boundary: MERCHANT injecting unknown key into public_links is rejected (403) (488 ms)
+    √ 12k. Round 3S Mutation Boundary: Non-OWNER attempting features mutation is rejected (403) (431 ms)
+    √ 12l. Round 3S Operational Integrity: Legitimate multi-DTO update persists and read-after-write succeeds (200) (2326 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       45 passed, 45 total
+Snapshots:   0 total
+Time:        41.74 s
+```
+
+#### B. Full Workforce Regression Test Suite (37 Suites, 460 Tests — 100% Pass)
+Command: `npx.cmd jest __tests__/workforce/ --runInBand`
+```
+PASS __tests__/workforce/tenant-settings-api.test.ts (38.158 s)
+PASS __tests__/workforce/persistent-registry-authority.test.ts (35.112 s)
+PASS __tests__/workforce/marginal-pricing-and-ledger.test.ts (29.845 s)
+PASS __tests__/workforce/safe-migration-rollback.test.ts (19.120 s)
+PASS __tests__/workforce/api-authorization-convergence.test.ts (14.218 s)
+PASS __tests__/workforce/database-rls-adversarial.test.ts (13.914 s)
+PASS __tests__/workforce/real-api-persistence.test.ts (11.253 s)
+PASS __tests__/workforce/role-authorization.test.ts (11.984 s)
+PASS __tests__/workforce/membership-revocation.test.ts (8.212 s)
+PASS __tests__/workforce/tenant-operational-regression.test.ts (8.154 s)
+PASS __tests__/workforce/e8-staging-sandbox-integration.test.ts (5.412 s)
+... [Remaining 26 suites pass cleanly] ...
+
+Test Suites: 37 passed, 37 total
+Tests:       460 passed, 460 total
+Snapshots:   0 total
+Time:        223.316 s
+```
+
+#### C. Next.js Workforce Production Build
+Command: `npm.cmd run build:workforce`
+```
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 144ms
+  Creating an optimized production build ...
+✓ Compiled successfully in 4.1s
+  Running TypeScript ...
+  Finished TypeScript in 13.4s ...
+  Collecting page data using 3 workers ...
+✓ Generating static pages using 3 workers (22/22) in 1054ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /api/auth/callback
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/refresh
+├ ƒ /api/cron/nudge-checkout
+├ ƒ /api/incidents
+├ ƒ /api/manifest
+├ ○ /apple-icon.png
+├ ƒ /dashboard
+├ ƒ /field
+├ ○ /icon.png
+├ ƒ /login
+├ ƒ /ops
+├ ƒ /portal
+├ ƒ /supervisor
+└ ƒ /workforce.webmanifest
+
+Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
+```
+
+---
+
+### 23.3 Final Sign-off Matrix for Round 3S
+
+| Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
+| :---: | :--- | :--- | :--- | :---: |
+| **S1** | Features DTO Closure | Raw `features: settings.features \|\| {}` replaced with `projectFeaturesDto()`; unknown keys, nested objects, and arrays eliminated | `tenant-settings-api.test.ts` (Tests 12a, 12b, 12c) | **DTO CLOSURE ENFORCED** |
+| **S2** | Features Canary Stripping | Serialized JSON response contains zero occurrences of `ROUND3S_CANARY_FEATURE`, `internal_secret`, `private_token`, or nested canaries for non-OWNER | `tenant-settings-api.test.ts` (Tests 12a, 12b, 12c) | **ZERO CANARY LEAKAGE** |
+| **S3** | OWNER Positive Control | OWNER role receives all feature flags, canaries, and nested structures intact | `tenant-settings-api.test.ts` (Test 12d) | **POSITIVE CONTROL VERIFIED** |
+| **S4** | Structural PUT Validation | Strict structural allowlists enforced at every level: theme, FAQs, root day entries, `schedule[]`, catalog preferences array items, public links | `tenant-settings-api.test.ts` (Tests 12e-12j) | **STRUCTURAL REJECTION (403)** |
+| **S5** | Non-OWNER Feature Mutation | Non-OWNER attempting features mutation is rejected with HTTP 403 | `tenant-settings-api.test.ts` (Test 12k) | **FEATURE MUTATION BLOCKED (403)** |
+| **S6** | Operational Persistence | Legitimate multi-DTO update persists to PostgreSQL and succeeds on read-after-write with HTTP 200 | `tenant-settings-api.test.ts` (Test 12l) | **READ-AFTER-WRITE VERIFIED** |
+| **REG** | Full Regression Suite | All 37 suites, 460 tests in `__tests__/workforce/` pass cleanly with zero regressions | Full suite `--runInBand` | **100% PASS (460/460)** |
+| **BLD** | Next.js Build Integrity | All 22 routes compile cleanly via Turbopack with 0 TypeScript errors | `npm run build:workforce` | **EXIT 0 (PASS)** |
+| **FZN** | Production & Live Payments | Dodo Payments & Production database strictly locked | Architecture boundary | **STRICT FROZEN** |

@@ -1096,4 +1096,412 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.message).toMatch(/berhasil diperbarui/i);
   });
   });
+
+  // ── TEST 12: ROUND 3S TARGETED DTO CLOSURE & FULL NESTED VALIDATION ──
+  describe('12. Round 3S Targeted DTO Closure, Feature Sanitization & Full Nested Validation', () => {
+    const seedRound3SCanaries = async () => {
+      await pgClient.query(`
+        UPDATE workforce_staging.tenants
+        SET metadata = metadata || jsonb_build_object(
+          'features', jsonb_build_object(
+            'has_capi', true,
+            'ads_tracking', true,
+            'crm', true,
+            'inbox', true,
+            'ai_bot', true,
+            'ROUND3S_CANARY_FEATURE', 'canary_feature_secret_val',
+            'internal_secret', 'ROUND3S_FEATURE_INTERNAL_SECRET',
+            'private_token', 'ROUND3S_FEATURE_PRIVATE_TOKEN',
+            'unknown_nested_obj', jsonb_build_object('nested_canary', 'ROUND3S_NESTED_CANARY'),
+            'unknown_nested_arr', jsonb_build_array('ROUND3S_ARRAY_CANARY_1', 'ROUND3S_ARRAY_CANARY_2')
+          ),
+          'theme', jsonb_build_object(
+            'template', 'clean',
+            'primary_color', '#2563EB',
+            'secondary_color', '#3B82F6',
+            'visual_theme', 'clean_minimal',
+            'layout_style', 'grid'
+          ),
+          'faqs', jsonb_build_array(
+            jsonb_build_object(
+              'id', 'faq_round3s_1',
+              'question', 'What is Round 3S Security?',
+              'answer', 'Targeted DTO closure and alignment.',
+              'category', 'Security'
+            )
+          ),
+          'business_hours', jsonb_build_object(
+            'timezone', 'Asia/Jakarta',
+            'is_always_open', false,
+            'days', jsonb_build_object(
+              'monday', jsonb_build_object('open', '08:00', 'close', '17:00', 'is_open', true)
+            ),
+            'schedule', jsonb_build_array(
+              jsonb_build_object('day', 'monday', 'open', '08:00', 'close', '17:00', 'is_open', true)
+            )
+          ),
+          'catalog_preferences', jsonb_build_object(
+            'default_sort', 'newest',
+            'show_prices', true,
+            'items_per_page', 20,
+            'display_mode', 'grid',
+            'featured_category_ids', jsonb_build_array('cat_1', 'cat_2')
+          ),
+          'public_links', jsonb_build_array(
+            jsonb_build_object(
+              'title', 'Official Instagram',
+              'url', 'https://instagram.com/fortress_alpha',
+              'platform', 'instagram'
+            )
+          )
+        )
+        WHERE slug = $1
+      `, [slugA]);
+    };
+
+    beforeAll(async () => {
+      await seedRound3SCanaries();
+    });
+
+    test('12a. Round 3S Adversarial Test: MERCHANT receives constructive features DTO and zero canary leakage', async () => {
+      await seedRound3SCanaries();
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenMerchantA}` },
+      });
+
+      const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      // Legitimate features preserved
+      expect(json.settings.features).toBeDefined();
+      expect(json.settings.features.has_capi).toBe(true);
+      expect(json.settings.features.ads_tracking).toBe(true);
+      expect(json.settings.features.crm).toBe(true);
+      expect(json.settings.features.inbox).toBe(true);
+      expect(json.settings.features.ai_bot).toBe(true);
+
+      // Unknown keys, canaries, and nested structures strictly stripped
+      expect(json.settings.features.ROUND3S_CANARY_FEATURE).toBeUndefined();
+      expect(json.settings.features.internal_secret).toBeUndefined();
+      expect(json.settings.features.private_token).toBeUndefined();
+      expect(json.settings.features.unknown_nested_obj).toBeUndefined();
+      expect(json.settings.features.unknown_nested_arr).toBeUndefined();
+
+      // Serialized assertion: Zero canary leakage in the entire response
+      const serialized = JSON.stringify(json.settings);
+      expect(serialized).not.toContain('ROUND3S_CANARY_FEATURE');
+      expect(serialized).not.toContain('ROUND3S_FEATURE_INTERNAL_SECRET');
+      expect(serialized).not.toContain('ROUND3S_FEATURE_PRIVATE_TOKEN');
+      expect(serialized).not.toContain('ROUND3S_NESTED_CANARY');
+      expect(serialized).not.toContain('ROUND3S_ARRAY_CANARY');
+    });
+
+    test('12b. Round 3S Adversarial Test: OPERATOR receives constructive features DTO and zero canary leakage', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOperatorA}` },
+      });
+
+      const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      expect(json.settings.features.has_capi).toBe(true);
+      expect(json.settings.features.ROUND3S_CANARY_FEATURE).toBeUndefined();
+
+      const serialized = JSON.stringify(json.settings);
+      expect(serialized).not.toContain('ROUND3S_CANARY_FEATURE');
+      expect(serialized).not.toContain('ROUND3S_FEATURE_INTERNAL_SECRET');
+    });
+
+    test('12c. Round 3S Adversarial Test: CS receives constructive features DTO and zero canary leakage', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenCSA}` },
+      });
+
+      const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      expect(json.settings.features.has_capi).toBe(true);
+      expect(json.settings.features.ROUND3S_CANARY_FEATURE).toBeUndefined();
+
+      const serialized = JSON.stringify(json.settings);
+      expect(serialized).not.toContain('ROUND3S_CANARY_FEATURE');
+      expect(serialized).not.toContain('ROUND3S_FEATURE_INTERNAL_SECRET');
+    });
+
+    test('12d. Round 3S OWNER Positive Control: OWNER receives full features metadata and all canaries intact', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+
+      const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+
+      const ownerSerialized = JSON.stringify(json.settings);
+      expect(ownerSerialized).toContain('ROUND3S_CANARY_FEATURE');
+      expect(ownerSerialized).toContain('ROUND3S_FEATURE_INTERNAL_SECRET');
+      expect(ownerSerialized).toContain('ROUND3S_FEATURE_PRIVATE_TOKEN');
+      expect(ownerSerialized).toContain('ROUND3S_NESTED_CANARY');
+      expect(ownerSerialized).toContain('ROUND3S_ARRAY_CANARY_1');
+      expect(ownerSerialized).toContain('ROUND3S_ARRAY_CANARY_2');
+    });
+
+    test('12e. Round 3S Mutation Boundary: MERCHANT injecting unknown key into theme is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          theme: {
+            template: 'clean',
+            attacker_injected_theme_key: 'malicious_theme_payload',
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12f. Round 3S Mutation Boundary: MERCHANT injecting unknown key into FAQ item is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          faqs: [
+            {
+              question: 'Legitimate question?',
+              answer: 'Legitimate answer.',
+              attacker_faq_key: 'malicious_faq_payload',
+            },
+          ],
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12g. Round 3S Mutation Boundary: MERCHANT injecting unknown key into root day of business_hours is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          business_hours: {
+            monday: {
+              open: '08:00',
+              close: '17:00',
+              attacker_root_day_secret: 'malicious_root_day_payload',
+            },
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12h. Round 3S Mutation Boundary: MERCHANT injecting unknown key into business_hours schedule[] is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          business_hours: {
+            schedule: [
+              {
+                day: 'monday',
+                open: '08:00',
+                close: '17:00',
+                attacker_schedule_secret: 'malicious_schedule_payload',
+              },
+            ],
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12i. Round 3S Mutation Boundary: MERCHANT injecting non-primitive or unknown key into catalog_preferences is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          catalog_preferences: {
+            default_sort: 'newest',
+            featured_category_ids: [{ nested_attack: 'malicious' }],
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12j. Round 3S Mutation Boundary: MERCHANT injecting unknown key into public_links is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          public_links: [
+            {
+              title: 'Instagram',
+              url: 'https://instagram.com/fortress_alpha',
+              attacker_link_token: 'malicious_link_payload',
+            },
+          ],
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12k. Round 3S Mutation Boundary: Non-OWNER attempting features mutation is rejected (403)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          features: {
+            has_capi: true,
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+    });
+
+    test('12l. Round 3S Operational Integrity: Legitimate multi-DTO update persists and read-after-write succeeds (200)', async () => {
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          cookie: `bt_merchant_token=${tokenMerchantA}`,
+        },
+        body: JSON.stringify({
+          bio: 'Updated Operational Fortress Bio',
+          display_name: 'Fortress Alpha Prime Operations',
+          theme: {
+            template: 'clean',
+            primary_color: '#059669',
+            secondary_color: '#10B981',
+            visual_theme: 'clean_minimal',
+            layout_style: 'grid',
+          },
+          faqs: [
+            { id: 'faq_op_1', question: 'Operational support?', answer: '24/7 tactical response.', category: 'General' },
+          ],
+          business_hours: {
+            timezone: 'Asia/Makassar',
+            is_always_open: false,
+            days: {
+              monday: { open: '09:00', close: '18:00', is_open: true },
+              tuesday: { open: '09:00', close: '18:00', is_open: true },
+            },
+            schedule: [
+              { day: 'monday', open: '09:00', close: '18:00', is_open: true },
+            ],
+          },
+          catalog_preferences: {
+            default_sort: 'price_asc',
+            show_prices: true,
+            items_per_page: 24,
+            display_mode: 'grid',
+          },
+          public_links: [
+            { title: 'Store IG', url: 'https://instagram.com/fortress_alpha', platform: 'instagram' },
+          ],
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.message).toMatch(/berhasil diperbarui/i);
+
+      // Read-After-Write Verification
+      const getReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenMerchantA}` },
+      });
+      const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: slugA }) });
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      expect(getJson.success).toBe(true);
+
+      // Assert persisted values
+      expect(getJson.settings.bio).toBe('Updated Operational Fortress Bio');
+      expect(getJson.settings.theme.primary_color).toBe('#059669');
+      expect(getJson.settings.theme.secondary_color).toBe('#10B981');
+      expect(getJson.settings.theme.layout_style).toBe('grid');
+
+      expect(getJson.settings.faqs[0].question).toBe('Operational support?');
+      expect(getJson.settings.faqs[0].category).toBe('General');
+
+      expect(getJson.settings.metadata.business_hours.timezone).toBe('Asia/Makassar');
+      expect(getJson.settings.metadata.business_hours.days.monday.open).toBe('09:00');
+      expect(getJson.settings.metadata.business_hours.schedule[0].open).toBe('09:00');
+
+      expect(getJson.settings.metadata.catalog_preferences.default_sort).toBe('price_asc');
+      expect(getJson.settings.metadata.catalog_preferences.display_mode).toBe('grid');
+
+      expect(getJson.settings.metadata.public_links[0].platform).toBe('instagram');
+      expect(getJson.settings.metadata.public_links[0].url).toBe('https://instagram.com/fortress_alpha');
+    });
+  });
 });

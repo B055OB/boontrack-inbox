@@ -118,15 +118,17 @@ function checkInternalMachineScope(
   return { isMachineAttempt: true, isAuthorized: true };
 }
 
-// ── NESTED DTO ALLOWLIST PROJECTION SCHEMAS (Round 3R) ──
+// ── NESTED DTO ALLOWLIST PROJECTION SCHEMAS (Round 3R & 3S) ──
 
 export const ALLOWED_THEME_KEYS = new Set([
   'template',
   'visual_theme',
   'primary_color',
+  'secondary_color',
   'accent_color',
   'font_family',
   'layout',
+  'layout_style',
   'chat_enabled',
   'chat_position',
   'show_featured_products',
@@ -155,19 +157,21 @@ export function projectThemeDto(raw: any): Record<string, any> {
   return projected;
 }
 
-export function projectFaqsDto(rawFaqs: any): Array<{ id: string; question: string; answer: string }> {
+export function projectFaqsDto(rawFaqs: any): Array<{ id: string; question: string; answer: string; category?: string }> {
   if (!Array.isArray(rawFaqs)) return [];
-  const projected: Array<{ id: string; question: string; answer: string }> = [];
+  const projected: Array<{ id: string; question: string; answer: string; category?: string }> = [];
   for (const item of rawFaqs) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const question = typeof item.question === 'string' ? item.question : (typeof item.title === 'string' ? item.title : '');
     const answer = typeof item.answer === 'string' ? item.answer : (typeof item.content === 'string' ? item.content : '');
+    const category = typeof item.category === 'string' ? item.category : undefined;
     const id = typeof item.id === 'string' || typeof item.id === 'number' ? String(item.id) : `faq_${Math.random().toString(36).substring(2, 7)}`;
     if (question || answer) {
       projected.push({
         id,
         question,
         answer,
+        ...(category ? { category } : {}),
       });
     }
   }
@@ -232,6 +236,7 @@ export const ALLOWED_CATALOG_KEYS = new Set([
   'show_out_of_stock',
   'show_prices',
   'card_layout',
+  'display_mode',
   'categories_visible',
   'allow_search',
   'featured_category_ids',
@@ -258,6 +263,7 @@ export const ALLOWED_LINK_PLATFORMS = new Set([
   'tiktok',
   'facebook',
   'twitter',
+  'x',
   'youtube',
   'website',
   'maps',
@@ -266,6 +272,8 @@ export const ALLOWED_LINK_PLATFORMS = new Set([
   'whatsapp',
   'telegram',
   'linkedin',
+  'marketplace',
+  'custom',
 ]);
 
 export function projectPublicLinksDto(raw: any): any {
@@ -277,10 +285,14 @@ export function projectPublicLinksDto(raw: any): any {
       if (item && typeof item === 'object' && !Array.isArray(item)) {
         const title = typeof item.title === 'string' ? item.title : (typeof item.label === 'string' ? item.label : '');
         const url = typeof item.url === 'string' ? item.url : (typeof item.href === 'string' ? item.href : '');
+        const platform = typeof item.platform === 'string' && ALLOWED_LINK_PLATFORMS.has(item.platform.toLowerCase())
+          ? item.platform.toLowerCase()
+          : undefined;
         if (url) {
           projectedArray.push({
             title,
             url,
+            ...(platform ? { platform } : {}),
             icon: typeof item.icon === 'string' ? item.icon : undefined,
             order: typeof item.order === 'number' ? item.order : undefined,
             is_active: typeof item.is_active === 'boolean' ? item.is_active : true,
@@ -304,13 +316,72 @@ export function projectPublicLinksDto(raw: any): any {
   return null;
 }
 
+export const ALLOWED_FEATURE_KEYS = new Set([
+  'has_capi',
+  'capi',
+  'has_reader',
+  'ads_tracking',
+  'multi_cs',
+  'inbox',
+  'ai_bot',
+  'chatbox',
+  'boonpilot',
+  'smart_chatbox',
+  'broadcast',
+  'custom_domain',
+  'unlimited_products',
+  'single_page_checkout',
+  'crm',
+  'has_crm',
+  'memory_crm',
+  'customers',
+  'export',
+  'reseller',
+  'store_reseller',
+  'reseller_system',
+  'reseller_tier',
+  'reseller_unlimited',
+  'reseller_scale',
+  'reseller_starter',
+  'tier',
+  'paid_ads_intelligence',
+  'PAID_ADS_INTELLIGENCE',
+  'viral_trends_radar',
+  'VIRAL_TRENDS_RADAR',
+  'whatsapp_gateway',
+  'telegram_bot',
+  'webchat_widget',
+  'auto_ai_reply',
+  'qris_billing',
+  'gate_iot_sync',
+  'cv_ats_scanner',
+  'rate_limiting',
+]);
+
+export function projectFeaturesDto(raw: any): Record<string, boolean | string | number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const projected: Record<string, boolean | string | number> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (ALLOWED_FEATURE_KEYS.has(key)) {
+      if (typeof value === 'boolean') {
+        projected[key] = value;
+      } else if (typeof value === 'string' && value.length < 100) {
+        projected[key] = value;
+      } else if (typeof value === 'number' && Number.isFinite(value)) {
+        projected[key] = value;
+      }
+    }
+  }
+  return projected;
+}
+
 export function sanitizeSettingsForRole(settings: any, role: string) {
   if (!settings) return settings;
   if (role === 'OWNER') {
     return settings;
   }
 
-  // Construct metadata strictly via nested DTO projection (Round 3R)
+  // Construct metadata strictly via nested DTO projection (Round 3R & 3S)
   const sanitizedMetadata: Record<string, any> = {};
   if (settings.metadata && typeof settings.metadata === 'object') {
     if (typeof settings.metadata.display_name === 'string') {
@@ -327,6 +398,9 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     }
     if (settings.metadata.public_links) {
       sanitizedMetadata.public_links = projectPublicLinksDto(settings.metadata.public_links);
+    }
+    if (settings.metadata.features) {
+      sanitizedMetadata.features = projectFeaturesDto(settings.metadata.features);
     }
   }
 
@@ -366,7 +440,7 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     is_qris_active: false,
     greeting_message: settings.greeting_message || null,
     custom_greeting_message: settings.custom_greeting_message || null,
-    features: settings.features || {},
+    features: projectFeaturesDto(settings.features || settings.metadata?.features),
     faqs: projectFaqsDto(settings.faqs || settings.metadata?.faqs),
     theme: projectThemeDto(settings.theme || settings.metadata?.theme),
     metadata: sanitizedMetadata,
@@ -524,7 +598,7 @@ export async function GET(
     }
 
     // Feature flag murni dari kolom database metadata.features
-    const rawFeatures = metadata.features || {};
+    const rawFeatures = (metadata.features && typeof metadata.features === 'object') ? metadata.features : {};
     const isHighTier = planTier === 'ADS_PERFORMANCE' || planTier === 'TEAM_SCALE';
 
     const features = {
@@ -532,6 +606,7 @@ export async function GET(
       has_reader: Boolean(rawFeatures.has_reader ?? isHighTier),
       ads_tracking: Boolean(rawFeatures.ads_tracking ?? isHighTier),
       multi_cs: Boolean(rawFeatures.multi_cs ?? (planTier === 'TEAM_SCALE')),
+      ...rawFeatures,
     };
 
     const perm = await checkTenantMutationPermission(slug);
@@ -669,59 +744,173 @@ function validateMerchantNestedPayload(body: any): boolean {
     return false;
   }
 
-  // Validate theme if present
-  const themeObj = body.theme || body.metadata?.theme;
-  if (themeObj && typeof themeObj === 'object' && !Array.isArray(themeObj)) {
-    for (const key of Object.keys(themeObj)) {
+  // 1. Validate theme if present
+  const themeObj = body.theme !== undefined ? body.theme : body.metadata?.theme;
+  if (themeObj !== undefined) {
+    if (!themeObj || typeof themeObj !== 'object' || Array.isArray(themeObj)) {
+      return false;
+    }
+    for (const [key, value] of Object.entries(themeObj)) {
       if (!ALLOWED_THEME_KEYS.has(key)) {
+        return false;
+      }
+      if (key === 'featured_product_ids') {
+        if (!Array.isArray(value)) return false;
+        for (const item of value) {
+          if (typeof item !== 'string' && typeof item !== 'number') return false;
+        }
+      } else if (value !== null && typeof value === 'object') {
         return false;
       }
     }
   }
 
-  // Validate faqs if present
-  const faqsArr = body.faqs || body.metadata?.faqs;
-  if (faqsArr) {
+  // 2. Validate faqs if present
+  const faqsArr = body.faqs !== undefined ? body.faqs : body.metadata?.faqs;
+  if (faqsArr !== undefined) {
     if (!Array.isArray(faqsArr)) return false;
-    const ALLOWED_FAQ_KEYS = new Set(['id', 'question', 'answer', 'title', 'content']);
+    const ALLOWED_FAQ_KEYS = new Set(['id', 'question', 'answer', 'title', 'content', 'category']);
     for (const item of faqsArr) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-      for (const k of Object.keys(item)) {
+      for (const [k, v] of Object.entries(item)) {
         if (!ALLOWED_FAQ_KEYS.has(k)) {
+          return false;
+        }
+        if (v !== null && typeof v === 'object') return false;
+      }
+    }
+  }
+
+  // 3. Validate catalog_preferences if present
+  const catPref = body.catalog_preferences !== undefined ? body.catalog_preferences : body.metadata?.catalog_preferences;
+  if (catPref !== undefined) {
+    if (!catPref || typeof catPref !== 'object' || Array.isArray(catPref)) return false;
+    for (const [key, value] of Object.entries(catPref)) {
+      if (!ALLOWED_CATALOG_KEYS.has(key)) {
+        return false;
+      }
+      if (key === 'featured_category_ids') {
+        if (!Array.isArray(value)) return false;
+        for (const item of value) {
+          if (typeof item !== 'string' && typeof item !== 'number') return false;
+        }
+      } else if (value !== null && typeof value === 'object') {
+        return false;
+      }
+    }
+  }
+
+  // 4. Validate business_hours if present
+  const bizHours = body.business_hours !== undefined ? body.business_hours : body.metadata?.business_hours;
+  if (bizHours !== undefined) {
+    if (!bizHours || typeof bizHours !== 'object' || Array.isArray(bizHours)) return false;
+    const ALLOWED_BIZ_KEYS = new Set(['timezone', 'is_always_open', 'notes', 'days', 'schedule', ...ALLOWED_DAY_KEYS]);
+    const ALLOWED_DAY_FIELDS = new Set(['open', 'close', 'is_open', 'closed']);
+
+    for (const [key, val] of Object.entries(bizHours)) {
+      if (!ALLOWED_BIZ_KEYS.has(key)) {
+        return false;
+      }
+      // Check root day entries (e.g. bizHours.monday)
+      if (ALLOWED_DAY_KEYS.has(key.toLowerCase())) {
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+          for (const [dfKey, dfVal] of Object.entries(val)) {
+            if (!ALLOWED_DAY_FIELDS.has(dfKey)) return false;
+            if (dfVal !== null && typeof dfVal === 'object') return false;
+          }
+        } else if (val !== null && typeof val === 'object') {
           return false;
         }
       }
     }
-  }
 
-  // Validate catalog_preferences if present
-  const catPref = body.catalog_preferences || body.metadata?.catalog_preferences;
-  if (catPref && typeof catPref === 'object' && !Array.isArray(catPref)) {
-    for (const key of Object.keys(catPref)) {
-      if (!ALLOWED_CATALOG_KEYS.has(key)) {
-        return false;
-      }
-    }
-  }
-
-  // Validate business_hours if present
-  const bizHours = body.business_hours || body.metadata?.business_hours;
-  if (bizHours && typeof bizHours === 'object' && !Array.isArray(bizHours)) {
-    const ALLOWED_BIZ_KEYS = new Set(['timezone', 'is_always_open', 'notes', 'days', 'schedule', ...ALLOWED_DAY_KEYS]);
-    for (const key of Object.keys(bizHours)) {
-      if (!ALLOWED_BIZ_KEYS.has(key)) {
-        return false;
-      }
-    }
-    if (bizHours.days && typeof bizHours.days === 'object' && !Array.isArray(bizHours.days)) {
+    if (bizHours.days !== undefined) {
+      if (!bizHours.days || typeof bizHours.days !== 'object' || Array.isArray(bizHours.days)) return false;
       for (const [dayKey, dayVal] of Object.entries(bizHours.days)) {
         if (!ALLOWED_DAY_KEYS.has(dayKey.toLowerCase())) return false;
-        if (dayVal && typeof dayVal === 'object' && !Array.isArray(dayVal)) {
-          const ALLOWED_DAY_FIELDS = new Set(['open', 'close', 'is_open']);
-          for (const df of Object.keys(dayVal)) {
-            if (!ALLOWED_DAY_FIELDS.has(df)) return false;
+        if (!dayVal || typeof dayVal !== 'object' || Array.isArray(dayVal)) return false;
+        for (const [dfKey, dfVal] of Object.entries(dayVal)) {
+          if (!ALLOWED_DAY_FIELDS.has(dfKey)) return false;
+          if (dfVal !== null && typeof dfVal === 'object') return false;
+        }
+      }
+    }
+
+    if (bizHours.schedule !== undefined) {
+      if (!Array.isArray(bizHours.schedule)) return false;
+      const ALLOWED_SCHEDULE_FIELDS = new Set(['day', 'open', 'close', 'is_open', 'closed']);
+      for (const item of bizHours.schedule) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        for (const [skKey, skVal] of Object.entries(item)) {
+          if (!ALLOWED_SCHEDULE_FIELDS.has(skKey)) return false;
+          if (skVal !== null && typeof skVal === 'object') return false;
+        }
+      }
+    }
+  }
+
+  // 5. Validate public_links if present
+  const pubLinks = body.public_links !== undefined ? body.public_links : body.metadata?.public_links;
+  if (pubLinks !== undefined) {
+    if (Array.isArray(pubLinks)) {
+      const ALLOWED_PUBLIC_LINK_ITEM_KEYS = new Set([
+        'title',
+        'label',
+        'url',
+        'href',
+        'icon',
+        'order',
+        'is_active',
+        'platform',
+      ]);
+      for (const item of pubLinks) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        for (const [lkKey, lkVal] of Object.entries(item)) {
+          if (!ALLOWED_PUBLIC_LINK_ITEM_KEYS.has(lkKey)) return false;
+          if (lkVal !== null && typeof lkVal === 'object') return false;
+        }
+      }
+    } else if (pubLinks && typeof pubLinks === 'object') {
+      for (const [key, value] of Object.entries(pubLinks)) {
+        if (!ALLOWED_LINK_PLATFORMS.has(key.toLowerCase())) return false;
+        if (typeof value !== 'string') return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  // 6. Validate features if present
+  const featuresObj = body.features !== undefined ? body.features : body.metadata?.features;
+  if (featuresObj !== undefined) {
+    if (!featuresObj || typeof featuresObj !== 'object' || Array.isArray(featuresObj)) return false;
+    for (const [key, value] of Object.entries(featuresObj)) {
+      if (!ALLOWED_FEATURE_KEYS.has(key)) return false;
+      if (typeof value !== 'boolean' && typeof value !== 'string' && typeof value !== 'number') {
+        return false;
+      }
+    }
+  }
+
+  // 7. Validate microsite if present
+  const micrositeObj = body.microsite !== undefined ? body.microsite : body.metadata?.microsite;
+  if (micrositeObj !== undefined) {
+    if (!micrositeObj || typeof micrositeObj !== 'object' || Array.isArray(micrositeObj)) return false;
+    const ALLOWED_MICROSITE_KEYS = new Set(['buttons', 'title', 'bio', 'template', 'theme']);
+    for (const [key, val] of Object.entries(micrositeObj)) {
+      if (!ALLOWED_MICROSITE_KEYS.has(key)) return false;
+      if (key === 'buttons') {
+        if (!Array.isArray(val)) return false;
+        const ALLOWED_BUTTON_KEYS = new Set(['id', 'label', 'title', 'url', 'href', 'icon', 'is_active', 'order', 'color', 'style']);
+        for (const btn of val) {
+          if (!btn || typeof btn !== 'object' || Array.isArray(btn)) return false;
+          for (const [bk, bv] of Object.entries(btn)) {
+            if (!ALLOWED_BUTTON_KEYS.has(bk)) return false;
+            if (bv !== null && typeof bv === 'object') return false;
           }
         }
+      } else if (val !== null && typeof val === 'object') {
+        return false;
       }
     }
   }
@@ -759,7 +948,7 @@ export async function PUT(
     }
     const body = await req.json();
 
-    // ── STRICT OWNER-ONLY MUTATION GUARD (Round 3P Strict Allowlist) ──
+    // ── STRICT OWNER-ONLY MUTATION GUARD (Round 3P & 3S Strict Allowlist) ──
     if (callerRole !== 'OWNER') {
       const PERMITTED_MERCHANT_FIELDS = new Set([
         'name',
@@ -781,6 +970,7 @@ export async function PUT(
         'custom_greeting_message',
         'interactive_menus',
         'interactive_menu',
+        'public_links',
       ]);
 
       const topLevelKeys = Object.keys(body).filter((k) => k !== 'metadata');
@@ -1065,6 +1255,24 @@ export async function PUT(
       } : {}),
       ...(sales_policy !== undefined ? { sales_policy, playbook: sales_policy } : (playbook !== undefined ? { sales_policy: playbook, playbook } : {})),
       ...(microsite !== undefined ? { microsite } : {}),
+      ...(body.business_hours !== undefined || body.metadata?.business_hours !== undefined ? {
+        business_hours: body.business_hours !== undefined ? body.business_hours : body.metadata?.business_hours,
+      } : {}),
+      ...(body.catalog_preferences !== undefined || body.metadata?.catalog_preferences !== undefined ? {
+        catalog_preferences: body.catalog_preferences !== undefined ? body.catalog_preferences : body.metadata?.catalog_preferences,
+      } : {}),
+      ...(body.public_links !== undefined || body.metadata?.public_links !== undefined ? {
+        public_links: body.public_links !== undefined ? body.public_links : body.metadata?.public_links,
+      } : {}),
+      ...(body.display_name !== undefined || body.metadata?.display_name !== undefined ? {
+        display_name: body.display_name !== undefined ? body.display_name : body.metadata?.display_name,
+      } : {}),
+      ...(body.description !== undefined || body.metadata?.description !== undefined ? {
+        description: body.description !== undefined ? body.description : body.metadata?.description,
+      } : {}),
+      ...(body.tagline !== undefined || body.metadata?.tagline !== undefined ? {
+        tagline: body.tagline !== undefined ? body.tagline : body.metadata?.tagline,
+      } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
       ...(shipping_config !== undefined ? { shipping_config } : {}),
       ...(lincah_config !== undefined ? { lincah_config } : {}),
