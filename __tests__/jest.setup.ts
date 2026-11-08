@@ -437,8 +437,14 @@ export const globalMockSupabaseClient = {
 // 3. Global Mock for @/lib/supabaseClient
 jest.mock('@/lib/supabaseClient', () => {
   return {
+    getWorkforceSupabaseAdmin: jest.fn(() => globalMockSupabaseClient),
     getSupabaseAdmin: jest.fn(() => globalMockSupabaseClient),
     getSupabase: jest.fn(() => globalMockSupabaseClient),
+    assertSharedRestUrlTarget: jest.fn((url: string) => url),
+    assertStagingRestUrlTarget: jest.fn((url: string) => url),
+    verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => {
+      if (client === globalMockSupabaseClient) return;
+    }),
     supabase: globalMockSupabaseClient,
     SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock-project.supabase.co',
     SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key-test',

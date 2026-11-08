@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import {
   sanitizePublicTenantMetadata,
@@ -30,7 +30,7 @@ export async function GET(
       );
     }
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const supabase = getWorkforceSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database tidak tersedia.' },
@@ -65,13 +65,15 @@ export async function GET(
       );
     }
 
-    // Strict publication & active status check (Round 3T.1 Directive):
-    // Inactive or private enterprise tenants fail closed to 404 (Default-Deny Private Visibility).
+    // Strict publication & active status check (Round 3T.1 P1-D Directive):
+    // Explicit opt-in required: public_storefront_enabled === true.
+    // Values false, null, and undefined are strictly rejected with 404 (Default-Deny).
     const normalizedStatus = String(tenantRow.status ?? 'active').toLowerCase().trim();
+
     if (
-      tenantRow.is_active === false ||
+      tenantRow.is_active !== true ||
       normalizedStatus !== 'active' ||
-      tenantRow.public_storefront_enabled === false
+      tenantRow.public_storefront_enabled !== true
     ) {
       return NextResponse.json(
         { success: false, error: 'TENANT_NOT_FOUND', message: `Tenant tidak aktif atau tidak dipublikasikan.` },

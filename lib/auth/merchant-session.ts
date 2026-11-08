@@ -475,8 +475,8 @@ export async function authorizeMerchantSession(
 
   // 2. Database Authority Verification (SSOT)
   try {
-    const { getSupabaseAdmin, getSupabase } = await import('@/lib/supabaseClient');
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+    const supabase = getWorkforceSupabaseAdmin();
 
     if (effectiveSlug) {
       if (!supabase) {
@@ -758,8 +758,8 @@ export async function authorizeServerComponentTenant(
   const payload: MerchantSessionPayload = { ...result.payload };
 
   // 3. Connect to Database & Query Canonical Tenant Record
-  const { getSupabaseAdmin, getSupabase } = await import('@/lib/supabaseClient');
-  const supabase = getSupabaseAdmin() || getSupabase();
+  const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+  const supabase = getWorkforceSupabaseAdmin();
   if (!supabase) {
     return { authorized: false, reason: 'ERROR' };
   }
@@ -783,11 +783,16 @@ export async function authorizeServerComponentTenant(
     return { authorized: false, reason: 'FORBIDDEN' };
   }
 
-  // 5. Database Membership Authority Check (SSOT)
+  // 5. Database Membership Authority Check (SSOT) — REQUIRED for all human sessions.
+  // userId is MANDATORY. Any token missing userId is rejected fail-closed.
+  if (!payload.userId) {
+    return { authorized: false, reason: 'FORBIDDEN' };
+  }
+
+  let membershipRow: any = null;
   let authoritativeRole = payload.role || 'MERCHANT';
 
-  if (payload.userId) {
-    let membershipRow: any = null;
+  {
     const { data: mData } = await supabase
       .from('tenant_memberships')
       .select('role, is_active')
@@ -806,7 +811,7 @@ export async function authorizeServerComponentTenant(
           .or(`tenant_id.eq.${tenantRow.id},tenant_slug.eq.${tenantRow.slug}`)
           .maybeSingle();
         membershipRow = mDataStaging;
-      } catch {}
+      } catch { }
     }
 
     // Missing membership fails closed

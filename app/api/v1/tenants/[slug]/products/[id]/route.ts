@@ -2,7 +2,7 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import {
   slugify,
@@ -26,7 +26,7 @@ export async function GET(
   try {
     const { slug: rawSlug, id: productId } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = getWorkforceSupabaseAdmin();
 
     const authResult = await authorizeMerchantSession(req, slug);
     const isMachineAuth = isInternalMachineAuthorized(req, slug, ['READ_PRODUCT']);
@@ -152,7 +152,7 @@ async function handleProductMutation(
 
     const rawBody = await req.json();
     const body = sanitizeProductPayload(rawBody);
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = getWorkforceSupabaseAdmin();
 
     // 1. Resolve Tenant with Service Role Key
     const { data: tenant, error: tErr } = await supabaseAdmin
@@ -336,7 +336,7 @@ export async function DELETE(
       return perm.response;
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = getWorkforceSupabaseAdmin();
     const { data: tenant } = await supabaseAdmin
       .from('tenants')
       .select('id, slug, metadata')

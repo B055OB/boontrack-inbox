@@ -44,6 +44,7 @@ import { Client } from 'pg';
 import { NextRequest } from 'next/server';
 import { GET as getTenantBySlug } from '@/app/api/v1/tenants/[slug]/route';
 import { sanitizePublicTenantMetadata } from '@/lib/product-catalog';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
@@ -96,8 +97,15 @@ describe('BWM Gate 1 Round 3T.1 — Public Tenant API Hardened DTO & Ingress Bou
     wabaPhoneId: `CANARY_WABA_PHONE_ID_${timestamp}_SECRET`,
   };
 
+  const UNDEF_STOREFRONT_SLUG = `undef-storefront-${timestamp}`;
+  let undefStorefrontId: string;
+
   beforeAll(async () => {
-    pgClient = new Client({ connectionString: getDatabaseConnectionString() });
+    const connStr = getDatabaseConnectionString();
+    // P0-A: Staging guard — abort if connection targets production database
+    assertStagingDatabaseTarget(connStr);
+
+    pgClient = new Client({ connectionString: connStr });
     await pgClient.connect();
     await pgClient.query('SET search_path TO workforce_staging, public');
 
@@ -205,12 +213,26 @@ describe('BWM Gate 1 Round 3T.1 — Public Tenant API Hardened DTO & Ingress Bou
       }),
     ]);
     inactiveTenantId = inactRes.rows[0].id;
+
+    // 4. Seed Tenant with public_storefront_enabled omitted (defaults to false — ENTERPRISE tier — must 404)
+    const undefRes = await pgClient.query(`
+      INSERT INTO workforce_staging.tenants (
+        slug, name, category, tier, status, is_active, metadata
+      ) VALUES (
+        $1, 'Undefined Storefront Corp', 'enterprise', 'ENTERPRISE', 'active', true,
+        $2::jsonb
+      ) RETURNING id
+    `, [
+      UNDEF_STOREFRONT_SLUG,
+      JSON.stringify({ store_name: 'Undefined Storefront' }),
+    ]);
+    undefStorefrontId = undefRes.rows[0].id;
   });
 
   afterAll(async () => {
     if (pgClient) {
       await pgClient.query('DELETE FROM workforce_staging.tenants WHERE id = ANY($1)', [
-        [publicTenantId, privateTenantId, inactiveTenantId].filter(Boolean),
+        [publicTenantId, privateTenantId, inactiveTenantId, undefStorefrontId].filter(Boolean),
       ]);
       await pgClient.end();
     }
@@ -336,6 +358,16 @@ describe('BWM Gate 1 Round 3T.1 — Public Tenant API Hardened DTO & Ingress Bou
     it('2.3 Rejects non-existent tenant slug with 404', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/tenants/ghost-tenant-does-not-exist');
       const res = await getTenantBySlug(req, { params: Promise.resolve({ slug: 'ghost-tenant-does-not-exist' }) });
+
+      expect(res.status).toBe(404);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('TENANT_NOT_FOUND');
+    });
+
+    it('2.4 (P1-D) Rejects ENTERPRISE tenant with public_storefront_enabled omitted (undefined/default) with 404', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${UNDEF_STOREFRONT_SLUG}`);
+      const res = await getTenantBySlug(req, { params: Promise.resolve({ slug: UNDEF_STOREFRONT_SLUG }) });
 
       expect(res.status).toBe(404);
       const json = await res.json();

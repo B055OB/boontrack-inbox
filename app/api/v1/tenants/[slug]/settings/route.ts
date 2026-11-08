@@ -2,13 +2,14 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin, getWorkforceSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
   authorizeMerchantSession,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
+import { projectPublicMicrosite } from '@/lib/product-catalog';
 
 export function sanitizePhoneNumber(raw: unknown): string {
   if (!raw) return '';
@@ -380,6 +381,136 @@ export function projectFeaturesDto(raw: any): Record<string, boolean | string | 
   return projected;
 }
 
+/**
+ * projectSafeRscTenantDto — RSC-safe tenant DTO for ALL roles including OWNER.
+ *
+ * NEVER serializes raw credential strings into the RSC HTML stream.
+ * Secrets (capi_token, waba_access_token, payment gateway keys, bank credentials) are
+ * replaced with boolean presence indicators (has_capi_token, has_waba_access_token).
+ * Microsite nested content is projected via constructive allowlist.
+ * All other operational fields are preserved for dashboard functionality.
+ */
+export function projectSafeRscTenantDto(settings: any, role: string): Record<string, any> {
+  if (!settings) return {};
+
+  const meta = (settings.metadata && typeof settings.metadata === 'object' && !Array.isArray(settings.metadata))
+    ? settings.metadata : {};
+
+  // Microsite: constructive projection strips hostile nested secrets
+  const projectedMicrosite = meta.microsite && typeof meta.microsite === 'object' && !Array.isArray(meta.microsite)
+    ? (projectPublicMicrosite(meta.microsite) ?? undefined)
+    : undefined;
+
+  // Self-pickup config: safe field-by-field copy
+  const selfPickupConfig = meta.self_pickup_config && typeof meta.self_pickup_config === 'object'
+    ? {
+        is_enabled: Boolean(meta.self_pickup_config.is_enabled),
+        pickup_address: typeof meta.self_pickup_config.pickup_address === 'string' ? meta.self_pickup_config.pickup_address : '',
+        pickup_maps_url: typeof meta.self_pickup_config.pickup_maps_url === 'string' ? meta.self_pickup_config.pickup_maps_url : '',
+        pickup_operational_hours: typeof meta.self_pickup_config.pickup_operational_hours === 'string' ? meta.self_pickup_config.pickup_operational_hours : '',
+        pickup_instructions: typeof meta.self_pickup_config.pickup_instructions === 'string' ? meta.self_pickup_config.pickup_instructions : '',
+      }
+    : undefined;
+
+  const safeMetadata: Record<string, any> = {};
+  if (typeof meta.display_name === 'string') safeMetadata.display_name = meta.display_name;
+  if (typeof meta.description === 'string') safeMetadata.description = meta.description;
+  if (typeof meta.tagline === 'string') safeMetadata.tagline = meta.tagline;
+  if (typeof meta.store_name === 'string') safeMetadata.store_name = meta.store_name;
+  if (typeof meta.qris_payload === 'string') safeMetadata.qris_payload = meta.qris_payload;
+  if (typeof meta.qris_image_url === 'string') safeMetadata.qris_image_url = meta.qris_image_url;
+  if (typeof meta.logo_url === 'string') safeMetadata.logo_url = meta.logo_url;
+  if (typeof meta.store_logo_url === 'string') safeMetadata.store_logo_url = meta.store_logo_url;
+  if (typeof meta.avatar_url === 'string') safeMetadata.avatar_url = meta.avatar_url;
+  if (typeof meta.bio === 'string') safeMetadata.bio = meta.bio;
+  if (meta.theme) safeMetadata.theme = projectThemeDto(meta.theme);
+  if (meta.business_hours) safeMetadata.business_hours = projectBusinessHoursDto(meta.business_hours);
+  if (meta.catalog_preferences) safeMetadata.catalog_preferences = projectCatalogPreferencesDto(meta.catalog_preferences);
+  if (meta.public_links) safeMetadata.public_links = projectPublicLinksDto(meta.public_links);
+  if (meta.features) safeMetadata.features = projectFeaturesDto(meta.features);
+  if (projectedMicrosite) safeMetadata.microsite = projectedMicrosite;
+  if (selfPickupConfig) safeMetadata.self_pickup_config = selfPickupConfig;
+
+  // For OWNER: include shipping_config (non-secret operational config)
+  if (role === 'OWNER' && meta.shipping_config && typeof meta.shipping_config === 'object') {
+    // Strip any api_key / secret fields from shipping config
+    const { lincah, ...shippingRest } = meta.shipping_config;
+    const safeShipping: Record<string, any> = { ...shippingRest };
+    if (lincah && typeof lincah === 'object') {
+      safeShipping.lincah = {
+        provider: lincah.provider,
+        status: lincah.status,
+        is_connected: Boolean(lincah.is_connected),
+        is_sandbox: Boolean(lincah.is_sandbox),
+        last_validated_at: lincah.last_validated_at,
+        // api_key and secret deliberately OMITTED
+      };
+    }
+    safeMetadata.shipping_config = safeShipping;
+  }
+
+  // Determine secret presence booleans (replace raw secret strings)
+  const rawCapiToken = settings.capi_token || meta.capi_token || settings.integration?.capi_token;
+  const rawWabaToken = settings.waba_access_token || meta.waba_config?.access_token || settings.waba_config?.access_token;
+  const rawQrisImage = settings.qris_image_url || meta.qris_image_url;
+  const isQrisActive = Boolean(settings.is_qris_active ?? meta.is_qris_active ?? false);
+
+  return {
+    id: settings.id,
+    slug: settings.slug,
+    name: settings.name,
+    store_name: settings.store_name || (typeof meta.store_name === 'string' ? meta.store_name : settings.name),
+    display_name: typeof settings.display_name === 'string' ? settings.display_name : (typeof meta.display_name === 'string' ? meta.display_name : null),
+    description: typeof settings.description === 'string' ? settings.description : (typeof meta.description === 'string' ? meta.description : null),
+    tagline: typeof settings.tagline === 'string' ? settings.tagline : (typeof meta.tagline === 'string' ? meta.tagline : null),
+    category: settings.category || 'retail',
+    tier: settings.tier,
+    plan_tier: settings.plan_tier,
+    status: settings.status,
+    subscription_status: settings.subscription_status,
+    is_suspended: settings.is_suspended,
+    trial_ends_at: settings.trial_ends_at,
+    subscription_ends_at: settings.subscription_ends_at,
+    logo_url: settings.logo_url,
+    avatar_url: settings.avatar_url,
+    bio: settings.bio,
+    currency: settings.currency || 'IDR',
+    created_at: settings.created_at,
+    updated_at: settings.updated_at,
+    // Channel config: boolean indicators only — raw tokens NEVER serialized to RSC stream
+    has_capi_token: Boolean(rawCapiToken),
+    has_waba_access_token: Boolean(rawWabaToken),
+    has_waba_config: Boolean(settings.waba_config || meta.waba_config),
+    waba_phone_number_id: settings.waba_phone_number_id || null,
+    // Payment: preserve public-safe fields, strip credentials
+    is_qris_active: isQrisActive,
+    qris_image_url: typeof rawQrisImage === 'string' ? rawQrisImage : null,
+    has_payment_gateway: Boolean(settings.payment_config || settings.gateway_config),
+    // Greeting messages: operational, non-secret
+    greeting_message: settings.greeting_message || null,
+    custom_greeting_message: settings.custom_greeting_message || null,
+    // Contact info: operational public merchant contacts for OWNER
+    phone: role === 'OWNER' ? (settings.phone || meta.phone || null) : null,
+    whatsapp_number: role === 'OWNER' ? (settings.whatsapp_number || meta.whatsapp_number || null) : null,
+    telegram_chat_id: role === 'OWNER' ? (settings.telegram_chat_id || meta.telegram_chat_id || null) : null,
+    // Secret fields — explicitly null for ALL roles in RSC stream
+    bank: null,
+    bank_accounts: null,
+    payment_config: null,
+    capi_token: null,
+    waba_access_token: null,
+    waba_config: null,
+    integration: null,
+    gateway_config: null,
+    // Projected feature DTOs
+    features: projectFeaturesDto(settings.features || meta.features),
+    faqs: projectFaqsDto(settings.faqs || meta.faqs),
+    theme: projectThemeDto(settings.theme || meta.theme),
+    microsite: projectedMicrosite || null,
+    metadata: safeMetadata,
+  };
+}
+
 export function sanitizeSettingsForRole(settings: any, role: string) {
   if (!settings) return settings;
   if (role === 'OWNER') {
@@ -398,6 +529,24 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     if (typeof settings.metadata.tagline === 'string') {
       sanitizedMetadata.tagline = settings.metadata.tagline;
     }
+    if (typeof settings.metadata.qris_payload === 'string') {
+      sanitizedMetadata.qris_payload = settings.metadata.qris_payload;
+    }
+    if (typeof settings.metadata.qris_image_url === 'string') {
+      sanitizedMetadata.qris_image_url = settings.metadata.qris_image_url;
+    }
+    if (typeof settings.metadata.logo_url === 'string') {
+      sanitizedMetadata.logo_url = settings.metadata.logo_url;
+    }
+    if (typeof settings.metadata.store_logo_url === 'string') {
+      sanitizedMetadata.store_logo_url = settings.metadata.store_logo_url;
+    }
+    if (typeof settings.metadata.avatar_url === 'string') {
+      sanitizedMetadata.avatar_url = settings.metadata.avatar_url;
+    }
+    if (typeof settings.metadata.bio === 'string') {
+      sanitizedMetadata.bio = settings.metadata.bio;
+    }
     if (settings.metadata.theme) {
       sanitizedMetadata.theme = projectThemeDto(settings.metadata.theme);
     }
@@ -414,7 +563,11 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
       sanitizedMetadata.features = projectFeaturesDto(settings.metadata.features);
     }
     if (settings.metadata.microsite && typeof settings.metadata.microsite === 'object' && !Array.isArray(settings.metadata.microsite)) {
-      sanitizedMetadata.microsite = settings.metadata.microsite;
+      // Use constructive projection to strip hostile nested secrets from buttons etc. (Round 3T.1 P0-C)
+      const projectedMicrosite = projectPublicMicrosite(settings.metadata.microsite);
+      if (projectedMicrosite) {
+        sanitizedMetadata.microsite = projectedMicrosite;
+      }
     }
     if (settings.metadata.self_pickup_config && typeof settings.metadata.self_pickup_config === 'object') {
       sanitizedMetadata.self_pickup_config = {
@@ -504,7 +657,7 @@ export async function GET(
     }
 
     // 1. Query murni ke Supabase Database sebagai Single Source of Truth (SSOT)
-    let supabase = getSupabaseAdmin() || getSupabase();
+    let supabase = getWorkforceSupabaseAdmin();
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     let tenantRow: any = null;
@@ -1091,7 +1244,7 @@ export async function PUT(
       waba_access_token,
     } = body;
 
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = getWorkforceSupabaseAdmin();
     const { data: existing } = await supabaseAdmin
       .from('tenants')
       .select('*')
