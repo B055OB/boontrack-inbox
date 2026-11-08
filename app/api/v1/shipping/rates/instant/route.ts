@@ -21,9 +21,9 @@ export function calculateDistanceKm(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c * 10) / 10;
 }
@@ -45,15 +45,15 @@ export async function POST(req: NextRequest) {
       body.destination_latitude !== undefined && body.destination_latitude !== null && body.destination_latitude !== ''
         ? Number(body.destination_latitude)
         : body.latitude !== undefined && body.latitude !== null && body.latitude !== ''
-        ? Number(body.latitude)
-        : null;
+          ? Number(body.latitude)
+          : null;
 
     let destLon: number | null =
       body.destination_longitude !== undefined && body.destination_longitude !== null && body.destination_longitude !== ''
         ? Number(body.destination_longitude)
         : body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
-        ? Number(body.longitude)
-        : null;
+          ? Number(body.longitude)
+          : null;
 
     // Jika koordinat belum dikirim eksplisit, selesaikan via resolver berdasarkan kota, distrik, atau kode pos
     if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
@@ -130,58 +130,117 @@ export async function POST(req: NextRequest) {
           const meta = tenantRes.data?.metadata || {};
           metaShipping = meta.shipping_config;
 
-          if (biteshipCfg) {
+          // ROUND 3T.1 OPTION 3: Authoritative SSOT read priority (tenants.metadata)
+          const isSsotInitialized = Boolean(metaShipping !== undefined && typeof metaShipping === 'object');
+
+          if (isSsotInitialized) {
+            isShippingActive = metaShipping.is_enabled ?? true;
+            if (Array.isArray(metaShipping.couriers)) {
+              enabledCouriers = metaShipping.couriers.map((c: any) =>
+                typeof c === 'string' ? { id: c, enabled: true } : c
+              ).filter((c: any) => c.enabled !== false);
+            } else if (Array.isArray(metaShipping.active_couriers)) {
+              enabledCouriers = metaShipping.active_couriers.map((c: any) =>
+                typeof c === 'string' ? { id: c, enabled: true } : c
+              ).filter((c: any) => c.enabled !== false);
+            }
+
+            const originObj = metaShipping.origin || {};
+            originPostalCode =
+              originPostalCode ||
+              originObj.postal_code ||
+              originObj.origin_postal_code ||
+              metaShipping?.origin_postal_code ||
+              meta.origin_postal_code ||
+              meta.warehouse_address?.postal_code ||
+              '';
+
+            originCity =
+              originCity ||
+              originObj.city ||
+              originObj.origin_city ||
+              metaShipping?.origin_city ||
+              meta.origin_city ||
+              meta.warehouse_address?.city ||
+              '';
+
+            originDistrict =
+              originDistrict ||
+              originObj.district ||
+              originObj.origin_district ||
+              metaShipping?.origin_district ||
+              meta.origin_district ||
+              meta.warehouse_address?.district ||
+              '';
+
+            originAddress =
+              originAddress ||
+              originObj.address ||
+              originObj.origin_address ||
+              metaShipping?.origin_address ||
+              meta.origin_address ||
+              (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
+              '';
+
+            if (originObj.latitude !== undefined && originObj.latitude !== null) {
+              originLat = Number(originObj.latitude);
+            } else if (metaShipping.latitude !== undefined && metaShipping.latitude !== null) {
+              originLat = Number(metaShipping.latitude);
+            }
+            if (originObj.longitude !== undefined && originObj.longitude !== null) {
+              originLon = Number(originObj.longitude);
+            } else if (metaShipping.longitude !== undefined && metaShipping.longitude !== null) {
+              originLon = Number(metaShipping.longitude);
+            }
+          } else if (biteshipCfg) {
+            // Legacy fallback (ONLY if SSOT is genuinely uninitialized)
             isShippingActive = biteshipCfg.is_enabled ?? true;
             if (Array.isArray(biteshipCfg.couriers)) {
               enabledCouriers = biteshipCfg.couriers.filter((c: any) => c.enabled);
             }
+
+            const originObj = biteshipCfg?.origin || shippingOrigin || {};
+            originPostalCode =
+              originPostalCode ||
+              originObj.postal_code ||
+              originObj.origin_postal_code ||
+              meta.origin_postal_code ||
+              meta.warehouse_address?.postal_code ||
+              '';
+
+            originCity =
+              originCity ||
+              originObj.city ||
+              originObj.origin_city ||
+              meta.origin_city ||
+              meta.warehouse_address?.city ||
+              '';
+
+            originDistrict =
+              originDistrict ||
+              originObj.district ||
+              originObj.origin_district ||
+              meta.origin_district ||
+              meta.warehouse_address?.district ||
+              '';
+
+            originAddress =
+              originAddress ||
+              originObj.address ||
+              originObj.origin_address ||
+              meta.origin_address ||
+              (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
+              '';
+
+            if (originObj.latitude !== undefined && originObj.latitude !== null) {
+              originLat = Number(originObj.latitude);
+            }
+            if (originObj.longitude !== undefined && originObj.longitude !== null) {
+              originLon = Number(originObj.longitude);
+            }
           }
 
-          const originObj = biteshipCfg?.origin || shippingOrigin || {};
-          originPostalCode =
-            originPostalCode ||
-            originObj.postal_code ||
-            originObj.origin_postal_code ||
-            metaShipping?.origin_postal_code ||
-            meta.origin_postal_code ||
-            meta.warehouse_address?.postal_code ||
-            '';
-
-          originCity =
-            originCity ||
-            originObj.city ||
-            originObj.origin_city ||
-            metaShipping?.origin_city ||
-            meta.origin_city ||
-            meta.warehouse_address?.city ||
-            '';
-
-          originDistrict =
-            originDistrict ||
-            originObj.district ||
-            originObj.origin_district ||
-            metaShipping?.origin_district ||
-            meta.origin_district ||
-            meta.warehouse_address?.district ||
-            '';
-
-          originAddress =
-            originAddress ||
-            originObj.address ||
-            originObj.origin_address ||
-            metaShipping?.origin_address ||
-            meta.origin_address ||
-            (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
-            '';
-
-          if (originObj.latitude !== undefined && originObj.latitude !== null) {
-            originLat = Number(originObj.latitude);
-          }
-          if (originObj.longitude !== undefined && originObj.longitude !== null) {
-            originLon = Number(originObj.longitude);
-          }
-
-          const fnbSettings = biteshipCfg?.fnb_settings || metaShipping?.fnb_settings || meta?.fnb_settings || {};
+          const fnbSettings = metaShipping?.fnb_settings || biteshipCfg?.fnb_settings || meta?.fnb_settings || {};
           if ((originLat == null || isNaN(originLat)) && fnbSettings.latitude !== undefined && fnbSettings.latitude !== null) {
             originLat = Number(fnbSettings.latitude);
           }
@@ -200,224 +259,224 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isShippingActive) {
-      return NextResponse.json({
-        success: true,
-        coverage: false,
-        is_instant_eligible: false,
-        message: 'Layanan pengiriman dinonaktifkan oleh toko.',
-        couriers: [],
-        rates: [],
-      });
-    }
-
-    // Default origin ke gudang toko pusat jika belum ditentukan
-    const effectiveOriginPostal = Number(originPostalCode) || 40286;
-    const effectiveDestPostal = Number(destinationPostalCode) || 40115;
-
-    // Selesaikan koordinat origin gudang toko
-    if (originLat == null || isNaN(originLat) || originLon == null || isNaN(originLon)) {
-      const originResolved = resolveAreaCoordinates(originCity || 'Kota Bandung', originDistrict || 'Buahbatu', String(effectiveOriginPostal));
-      originLat = originResolved.latitude;
-      originLon = originResolved.longitude;
-    }
-
-    // Pastikan koordinat destinasi final terdefinisi
-    const finalDestLat = destLat ?? -6.9175;
-    const finalDestLon = destLon ?? 107.6191;
-
-    // 2. Hitung Jarak Geospasial Haversine & Validasi Radius Maksimal (Dinamis per Tenant / Default 30 KM)
-    const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
-    // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
-    const rawRadius =
-      metaShipping?.fnb_settings?.max_radius_km ??
-      metaShipping?.max_radius_km ??
-      metaShipping?.internal_courier?.max_radius_km ??
-      metaShipping?.lalamove_internal?.max_radius_km;
-
-    let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
-    const effectiveMaxRadius =
-      !isNaN(parsedRadius) && isFinite(parsedRadius) && parsedRadius > 0
-        ? parsedRadius
-        : 40;
-
-    if (distanceKm > effectiveMaxRadius) {
-      return NextResponse.json({
-        success: true,
-        coverage: false,
-        is_instant_eligible: false,
-        distance_km: distanceKm,
-        max_radius_km: effectiveMaxRadius,
-        message: `Alamat tujuan berada di luar radius kurir instan (jarak: ${distanceKm} km, batas maksimal: ${effectiveMaxRadius} km). Silakan gunakan kurir reguler atau kargo.`,
-        rates: [],
-        couriers: [],
-      });
-    }
-
-    // 3. Jarak Masuk Radius (<= 30 KM): Tarik Tarif Real-Time GoSend & GrabExpress via Biteship
-    const biteshipKey = process.env.BITESHIP_API_KEY;
-    const availableRates: any[] = [];
-    let biteshipSuccess = false;
-
-    if (biteshipKey) {
-      try {
-        const payload: any = {
-          origin_latitude: originLat,
-          origin_longitude: originLon,
-          origin_postal_code: effectiveOriginPostal,
-          destination_latitude: finalDestLat,
-          destination_longitude: finalDestLon,
-          destination_postal_code: effectiveDestPostal,
-          couriers: 'gosend,grab',
-          items: [
-            {
-              name: 'Barang Kiriman',
-              value: 50000,
-              weight: weightInGrams,
-              quantity: 1,
-            },
-          ],
-        };
-
-        if (destinationAreaId) {
-          payload.destination_area_id = destinationAreaId;
-        }
-
-        const biteshipRes = await fetch(BITESHIP_API_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${biteshipKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (biteshipRes.ok) {
-          const bData = await biteshipRes.json();
-          if (Array.isArray(bData?.pricing) && bData.pricing.length > 0) {
-            bData.pricing.forEach((rate: any) => {
-              const courierCode = String(rate.courier_name || '').toLowerCase();
-              const isAllowed =
-                enabledCouriers.length === 0 ||
-                enabledCouriers.some((c) => c.id === courierCode || c.name.toLowerCase().includes(courierCode));
-
-              if (!isAllowed) return;
-
-              availableRates.push({
-                id: `instant_${courierCode}_${rate.service_type || rate.courier_service_name}`.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-                courier_name: `${rate.courier_name.toUpperCase()} (${rate.courier_service_name || rate.service_type})`,
-                service: rate.courier_service_name || rate.service_type,
-                price: Number(rate.price) || 0,
-                etd: rate.duration || '1-2 Jam',
-                type: 'instant',
-                badge: 'Tiba Hari Ini (1-2 Jam)',
-                distance_km: distanceKm,
-                provider: 'biteship',
-              });
-            });
-
-            if (availableRates.length > 0) {
-              biteshipSuccess = true;
-            }
-          }
-        }
-      } catch (bErr) {
-        console.warn('[Rates Instant API] Fetch error:', bErr);
-      }
-    }
-
-    // 4. Fallback Dinamis Berbasis Jarak KM jika API Biteship Offline / Sandbox Saldo Habis
-    // Dihitung adil berdasarkan jarak nyata km (bukan flat buta Rp 20.000)
-    if (!biteshipSuccess) {
-      const extraKm = Math.max(0, distanceKm - 4);
-      const internalCourier = metaShipping?.internal_courier || metaShipping?.lalamove_internal;
-
-      if (internalCourier && internalCourier.is_enabled !== false) {
-        const motorBase = internalCourier.rates?.motor?.base_price ?? internalCourier.motor_base_rate ?? 12000;
-        const motorPerKm = internalCourier.rates?.motor?.per_km_price ?? internalCourier.motor_per_km_rate ?? 2800;
-        const carBase = internalCourier.rates?.car?.base_price ?? internalCourier.car_base_rate ?? 40000;
-        const carPerKm = internalCourier.rates?.car?.per_km_price ?? internalCourier.car_per_km_rate ?? 4500;
-        const officialCourierName = 'Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor)';
-
-        const motorPrice = Math.max(motorBase, Math.round((motorBase + extraKm * motorPerKm) / 500) * 500);
-        const carPrice = Math.max(carBase, Math.round((carBase + extraKm * carPerKm) / 500) * 500);
-
-        availableRates.push({
-          id: 'armada_motor',
-          courier_name: officialCourierName,
-          service: 'Paket 2–4 Pax (Motor / Kurir Ringan)',
-          price: motorPrice,
-          etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
-          type: 'instant',
-          badge: 'Armada Internal Toko',
-          distance_km: distanceKm,
-          provider: 'internal',
-        });
-
-        availableRates.push({
-          id: 'armada_car',
-          courier_name: officialCourierName,
-          service: 'Paket 10 Pax / Rombongan / Multi-Kompor (Mobil / MPV)',
-          price: carPrice,
-          etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
-          type: 'instant',
-          badge: 'Armada Internal Toko',
-          distance_km: distanceKm,
-          provider: 'internal',
-        });
-      } else {
-        const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
-        const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
-
-        const isGosendAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
-        const isGrabAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
-
-        if (isGosendAllowed) {
-          availableRates.push({
-            id: 'instant_gosend_instant',
-            courier_name: 'GOSEND (Instant)',
-            service: 'Instant',
-            price: gosendPrice,
-            etd: '1 - 2 Jam',
-            type: 'instant',
-            badge: 'Tiba Hari Ini (1-2 Jam)',
-            distance_km: distanceKm,
-            provider: 'biteship',
-          });
-        }
-
-        if (isGrabAllowed) {
-          availableRates.push({
-            id: 'instant_grab_instant',
-            courier_name: 'GRAB (Instant)',
-            service: 'Instant',
-            price: grabPrice,
-            etd: '1 - 2 Jam',
-            type: 'instant',
-            badge: 'Tiba Hari Ini (1-2 Jam)',
-            distance_km: distanceKm,
-            provider: 'biteship',
-          });
-        }
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      coverage: availableRates.length > 0,
-      is_instant_eligible: true,
-      distance_km: distanceKm,
-      max_radius_km: MAX_INSTANT_RADIUS_KM,
-      origin_coordinates: { latitude: originLat, longitude: originLon },
-      destination_coordinates: { latitude: finalDestLat, longitude: finalDestLon },
-      rates: availableRates,
-      couriers: availableRates,
-      message: availableRates.length === 0 ? 'Kurir instan dinonaktifkan pada toko ini.' : undefined,
+      coverage: false,
+      is_instant_eligible: false,
+      message: 'Layanan pengiriman dinonaktifkan oleh toko.',
+      couriers: [],
+      rates: [],
     });
-  } catch (error: any) {
-    console.error('[Rates Instant API] Fatal error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Gagal memproses tarif instan' },
-      { status: 500 }
-    );
   }
+
+  // Default origin ke gudang toko pusat jika belum ditentukan
+  const effectiveOriginPostal = Number(originPostalCode) || 40286;
+  const effectiveDestPostal = Number(destinationPostalCode) || 40115;
+
+  // Selesaikan koordinat origin gudang toko
+  if (originLat == null || isNaN(originLat) || originLon == null || isNaN(originLon)) {
+    const originResolved = resolveAreaCoordinates(originCity || 'Kota Bandung', originDistrict || 'Buahbatu', String(effectiveOriginPostal));
+    originLat = originResolved.latitude;
+    originLon = originResolved.longitude;
+  }
+
+  // Pastikan koordinat destinasi final terdefinisi
+  const finalDestLat = destLat ?? -6.9175;
+  const finalDestLon = destLon ?? 107.6191;
+
+  // 2. Hitung Jarak Geospasial Haversine & Validasi Radius Maksimal (Dinamis per Tenant / Default 30 KM)
+  const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+  // Defensive Radius 40 KM: Parsing max_radius_km kebal nilai 0, negatif, string, atau null/undefined
+  const rawRadius =
+    metaShipping?.fnb_settings?.max_radius_km ??
+    metaShipping?.max_radius_km ??
+    metaShipping?.internal_courier?.max_radius_km ??
+    metaShipping?.lalamove_internal?.max_radius_km;
+
+  let parsedRadius = typeof rawRadius === 'number' ? rawRadius : parseFloat(String(rawRadius));
+  const effectiveMaxRadius =
+    !isNaN(parsedRadius) && isFinite(parsedRadius) && parsedRadius > 0
+      ? parsedRadius
+      : 40;
+
+  if (distanceKm > effectiveMaxRadius) {
+    return NextResponse.json({
+      success: true,
+      coverage: false,
+      is_instant_eligible: false,
+      distance_km: distanceKm,
+      max_radius_km: effectiveMaxRadius,
+      message: `Alamat tujuan berada di luar radius kurir instan (jarak: ${distanceKm} km, batas maksimal: ${effectiveMaxRadius} km). Silakan gunakan kurir reguler atau kargo.`,
+      rates: [],
+      couriers: [],
+    });
+  }
+
+  // 3. Jarak Masuk Radius (<= 30 KM): Tarik Tarif Real-Time GoSend & GrabExpress via Biteship
+  const biteshipKey = process.env.BITESHIP_API_KEY;
+  const availableRates: any[] = [];
+  let biteshipSuccess = false;
+
+  if (biteshipKey) {
+    try {
+      const payload: any = {
+        origin_latitude: originLat,
+        origin_longitude: originLon,
+        origin_postal_code: effectiveOriginPostal,
+        destination_latitude: finalDestLat,
+        destination_longitude: finalDestLon,
+        destination_postal_code: effectiveDestPostal,
+        couriers: 'gosend,grab',
+        items: [
+          {
+            name: 'Barang Kiriman',
+            value: 50000,
+            weight: weightInGrams,
+            quantity: 1,
+          },
+        ],
+      };
+
+      if (destinationAreaId) {
+        payload.destination_area_id = destinationAreaId;
+      }
+
+      const biteshipRes = await fetch(BITESHIP_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${biteshipKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (biteshipRes.ok) {
+        const bData = await biteshipRes.json();
+        if (Array.isArray(bData?.pricing) && bData.pricing.length > 0) {
+          bData.pricing.forEach((rate: any) => {
+            const courierCode = String(rate.courier_name || '').toLowerCase();
+            const isAllowed =
+              enabledCouriers.length === 0 ||
+              enabledCouriers.some((c) => c.id === courierCode || c.name.toLowerCase().includes(courierCode));
+
+            if (!isAllowed) return;
+
+            availableRates.push({
+              id: `instant_${courierCode}_${rate.service_type || rate.courier_service_name}`.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+              courier_name: `${rate.courier_name.toUpperCase()} (${rate.courier_service_name || rate.service_type})`,
+              service: rate.courier_service_name || rate.service_type,
+              price: Number(rate.price) || 0,
+              etd: rate.duration || '1-2 Jam',
+              type: 'instant',
+              badge: 'Tiba Hari Ini (1-2 Jam)',
+              distance_km: distanceKm,
+              provider: 'biteship',
+            });
+          });
+
+          if (availableRates.length > 0) {
+            biteshipSuccess = true;
+          }
+        }
+      }
+    } catch (bErr) {
+      console.warn('[Rates Instant API] Fetch error:', bErr);
+    }
+  }
+
+  // 4. Fallback Dinamis Berbasis Jarak KM jika API Biteship Offline / Sandbox Saldo Habis
+  // Dihitung adil berdasarkan jarak nyata km (bukan flat buta Rp 20.000)
+  if (!biteshipSuccess) {
+    const extraKm = Math.max(0, distanceKm - 4);
+    const internalCourier = metaShipping?.internal_courier || metaShipping?.lalamove_internal;
+
+    if (internalCourier && internalCourier.is_enabled !== false) {
+      const motorBase = internalCourier.rates?.motor?.base_price ?? internalCourier.motor_base_rate ?? 12000;
+      const motorPerKm = internalCourier.rates?.motor?.per_km_price ?? internalCourier.motor_per_km_rate ?? 2800;
+      const carBase = internalCourier.rates?.car?.base_price ?? internalCourier.car_base_rate ?? 40000;
+      const carPerKm = internalCourier.rates?.car?.per_km_price ?? internalCourier.car_per_km_rate ?? 4500;
+      const officialCourierName = 'Kurir Internal / Armada Toko (Termasuk Antar & Jemput Alat Masak Kotor)';
+
+      const motorPrice = Math.max(motorBase, Math.round((motorBase + extraKm * motorPerKm) / 500) * 500);
+      const carPrice = Math.max(carBase, Math.round((carBase + extraKm * carPerKm) / 500) * 500);
+
+      availableRates.push({
+        id: 'armada_motor',
+        courier_name: officialCourierName,
+        service: 'Paket 2–4 Pax (Motor / Kurir Ringan)',
+        price: motorPrice,
+        etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
+        type: 'instant',
+        badge: 'Armada Internal Toko',
+        distance_km: distanceKm,
+        provider: 'internal',
+      });
+
+      availableRates.push({
+        id: 'armada_car',
+        courier_name: officialCourierName,
+        service: 'Paket 10 Pax / Rombongan / Multi-Kompor (Mobil / MPV)',
+        price: carPrice,
+        etd: '1 - 2 Jam (Antar + Jemput Alat Masak Kotor)',
+        type: 'instant',
+        badge: 'Armada Internal Toko',
+        distance_km: distanceKm,
+        provider: 'internal',
+      });
+    } else {
+      const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
+      const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+
+      const isGosendAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
+      const isGrabAllowed = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
+
+      if (isGosendAllowed) {
+        availableRates.push({
+          id: 'instant_gosend_instant',
+          courier_name: 'GOSEND (Instant)',
+          service: 'Instant',
+          price: gosendPrice,
+          etd: '1 - 2 Jam',
+          type: 'instant',
+          badge: 'Tiba Hari Ini (1-2 Jam)',
+          distance_km: distanceKm,
+          provider: 'biteship',
+        });
+      }
+
+      if (isGrabAllowed) {
+        availableRates.push({
+          id: 'instant_grab_instant',
+          courier_name: 'GRAB (Instant)',
+          service: 'Instant',
+          price: grabPrice,
+          etd: '1 - 2 Jam',
+          type: 'instant',
+          badge: 'Tiba Hari Ini (1-2 Jam)',
+          distance_km: distanceKm,
+          provider: 'biteship',
+        });
+      }
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    coverage: availableRates.length > 0,
+    is_instant_eligible: true,
+    distance_km: distanceKm,
+    max_radius_km: MAX_INSTANT_RADIUS_KM,
+    origin_coordinates: { latitude: originLat, longitude: originLon },
+    destination_coordinates: { latitude: finalDestLat, longitude: finalDestLon },
+    rates: availableRates,
+    couriers: availableRates,
+    message: availableRates.length === 0 ? 'Kurir instan dinonaktifkan pada toko ini.' : undefined,
+  });
+} catch (error: any) {
+  console.error('[Rates Instant API] Fatal error:', error);
+  return NextResponse.json(
+    { success: false, error: 'Gagal memproses tarif instan' },
+    { status: 500 }
+  );
+}
 }

@@ -10,6 +10,7 @@ import {
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
 import { projectPublicMicrosite } from '@/lib/product-catalog';
+import { saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 export function sanitizePhoneNumber(raw: unknown): string {
   if (!raw) return '';
@@ -451,25 +452,30 @@ export function projectShippingConfigDto(raw: any): Record<string, any> | undefi
     safe.fnb_settings = fnbSafe;
   }
 
-  // Lincah provider status (NO secrets)
+  // Lincah provider status (NO secrets, return presence indicators)
   if (raw.lincah && typeof raw.lincah === 'object' && !Array.isArray(raw.lincah)) {
     safe.lincah = {
       provider: typeof raw.lincah.provider === 'string' ? raw.lincah.provider.slice(0, 50) : 'lincah',
       status: typeof raw.lincah.status === 'string' ? raw.lincah.status.slice(0, 50) : undefined,
       is_connected: Boolean(raw.lincah.is_connected),
       is_sandbox: Boolean(raw.lincah.is_sandbox),
+      has_api_key: Boolean(raw.lincah.api_key || raw.lincah.has_api_key),
+      has_secret: Boolean(raw.lincah.secret || raw.lincah.api_key_read_only || raw.lincah.has_secret),
       last_validated_at: typeof raw.lincah.last_validated_at === 'string' ? raw.lincah.last_validated_at : null,
-      // api_key and secret are NEVER projected
+      // api_key, secret, and api_key_read_only are STRICTLY OMITTED
     };
   }
 
-  // Biteship provider status (NO secrets)
+  // Biteship provider status (NO secrets, return presence indicators)
   if (raw.biteship && typeof raw.biteship === 'object' && !Array.isArray(raw.biteship)) {
     safe.biteship = {
+      provider: 'biteship',
       is_connected: Boolean(raw.biteship.is_connected),
       is_sandbox: Boolean(raw.biteship.is_sandbox),
+      is_configured: Boolean(raw.biteship.is_configured || raw.biteship.api_key || raw.biteship.has_api_key),
+      has_api_key: Boolean(raw.biteship.api_key || raw.biteship.has_api_key),
       last_validated_at: typeof raw.biteship.last_validated_at === 'string' ? raw.biteship.last_validated_at : null,
-      // api_key is NEVER projected
+      // api_key is STRICTLY OMITTED
     };
   }
 
@@ -562,6 +568,7 @@ export function projectSafeRscTenantDto(settings: any, role: string): Record<str
     currency: settings.currency || 'IDR',
     created_at: settings.created_at,
     updated_at: settings.updated_at,
+    revision: settings.updated_at || settings.metadata?.shipping_revision || null,
     // Channel config: boolean indicators only — raw tokens NEVER serialized to RSC stream
     has_capi_token: Boolean(rawCapiToken),
     has_waba_access_token: Boolean(rawWabaToken),
@@ -599,7 +606,39 @@ export function projectSafeRscTenantDto(settings: any, role: string): Record<str
 export function sanitizeSettingsForRole(settings: any, role: string) {
   if (!settings) return settings;
   if (role === 'OWNER') {
-    return settings;
+    // For OWNER: sanitize shipping configuration and exclude raw Lincah/Biteship credential canaries
+    const safeShipping = projectShippingConfigDto(
+      settings.shipping_config || settings.metadata?.shipping_config || settings.metadata?.biteship_config
+    );
+
+    const safeOwnerMetadata: Record<string, any> = {
+      ...(settings.metadata || {}),
+    };
+
+    if (safeOwnerMetadata.shipping_config) {
+      safeOwnerMetadata.shipping_config = projectShippingConfigDto(safeOwnerMetadata.shipping_config);
+    }
+    if (safeOwnerMetadata.biteship_config) {
+      safeOwnerMetadata.biteship_config = projectShippingConfigDto(safeOwnerMetadata.biteship_config);
+    }
+    if (safeOwnerMetadata.lincah_config) {
+      safeOwnerMetadata.lincah_config = projectShippingConfigDto(safeOwnerMetadata.lincah_config);
+    }
+
+    // Strip raw third-party shipping credentials from root metadata
+    delete safeOwnerMetadata.lincah_api_key;
+    delete safeOwnerMetadata.lincah_secret;
+    delete safeOwnerMetadata.biteship_api_key;
+
+    const currentRevision = settings.updated_at || settings.metadata?.shipping_revision || null;
+
+    return {
+      ...settings,
+      revision: currentRevision,
+      shipping_config_revision: currentRevision,
+      shipping_config: safeShipping,
+      metadata: safeOwnerMetadata,
+    };
   }
 
   // Construct metadata strictly via nested DTO projection (Round 3R & 3S)
@@ -694,6 +733,7 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     currency: settings.currency || 'IDR',
     created_at: settings.created_at,
     updated_at: settings.updated_at,
+    revision: settings.updated_at || settings.metadata?.shipping_revision || null,
     phone: null,
     whatsapp_number: null,
     waba_phone_number_id: null,
@@ -894,9 +934,13 @@ export async function GET(
     // 4. Return data asli database dengan sanitasi berbasis peran (Round 3O)
     return NextResponse.json({
       success: true,
+      revision: tenantRow.updated_at || tenantRow.metadata?.shipping_revision || null,
       settings: sanitizeSettingsForRole({
+        id: tenantRow.id,
         slug: tenantRow.slug,
         name: tenantRow.name,
+        updated_at: tenantRow.updated_at,
+        created_at: tenantRow.created_at,
         store_name: metadata.store_name || tenantRow.name,
         category: tenantRow.category || 'retail',
         tier: tenantRow.tier,
@@ -1625,9 +1669,11 @@ export async function PUT(
       }
     }
 
-    // ── PERSIST SHIPPING & SELF-PICKUP SERVER-AUTHORITATIVELY (BYPASS RLS) ──
+    // ── PERSIST SHIPPING & SELF-PICKUP SERVER-AUTHORITATIVELY VIA UNIFIED HELPER (FAIL-CLOSED) ──
     const effectivePickup = self_pickup_config ?? body.self_pickup_config ?? body.metadata?.self_pickup_config;
     const effectiveShipping = shipping_config ?? body.shipping_config ?? body.metadata?.shipping_config;
+    const expectedRevision = body.expected_revision ?? body.revision ?? body.shipping_config_revision;
+    let saveShippingResult: any = null;
 
     if (effectivePickup !== undefined || effectiveShipping !== undefined) {
       const isPickupEnabled = Boolean(effectivePickup?.is_enabled ?? effectiveShipping?.is_self_pickup_enabled);
@@ -1640,11 +1686,11 @@ export async function PUT(
       const originDistVal = effectiveShipping?.origin?.district || effectiveShipping?.origin_district || null;
       const originPostVal = effectiveShipping?.origin?.postal_code || effectiveShipping?.origin_postal_code || null;
 
-      // 1. Sync ke store_shipping_configs table via admin client
-      try {
-        const shippingDbPayload: Record<string, any> = {
+      saveShippingResult = await saveStoreShippingConfig(
+        {
           tenant_slug: slug,
           tenant_id: existing.id,
+          expected_revision: expectedRevision,
           is_self_pickup_enabled: isPickupEnabled,
           pickup_address: pickupAddressVal,
           pickup_maps_url: pickupMapsUrlVal,
@@ -1654,65 +1700,22 @@ export async function PUT(
           origin_city: originCityVal,
           origin_district: originDistVal,
           origin_postal_code: originPostVal,
-          updated_at: new Date().toISOString(),
-        };
+          shipping_config: effectiveShipping,
+          combined_tenant_update: updateFields,
+        },
+        supabaseAdmin
+      );
 
-        const { error: storeShipErr } = await supabaseAdmin
-          .from('store_shipping_configs')
-          .upsert(shippingDbPayload, { onConflict: 'tenant_slug' });
-        if (storeShipErr && storeShipErr.code !== '42P01' && !storeShipErr.message?.includes('does not exist')) {
-          console.warn('[Settings Route] Upsert store_shipping_configs note:', storeShipErr.message);
-        }
-      } catch (storeShipEx) {
-        console.warn('[Settings Route] store_shipping_configs sync note:', storeShipEx);
-      }
-
-      // 2. Sync ke tenant_settings.biteship_config via admin client
-      try {
-        const { data: curTs } = await supabaseAdmin
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', slug)
-          .maybeSingle();
-
-        const curBiteship = curTs?.biteship_config || {};
-        const updatedBiteship = {
-          ...curBiteship,
-          is_self_pickup_enabled: isPickupEnabled,
-          pickup_address: pickupAddressVal,
-          pickup_maps_url: pickupMapsUrlVal,
-          pickup_operational_hours: pickupHoursVal,
-          pickup_instructions: pickupInstVal,
-          self_pickup: {
-            is_enabled: isPickupEnabled,
-            address: pickupAddressVal,
-            maps_url: pickupMapsUrlVal,
-            operational_hours: pickupHoursVal,
-            instructions: pickupInstVal,
+      if (!saveShippingResult.success) {
+        const statusCode = saveShippingResult.status_code || (saveShippingResult.error?.includes('CONFLICT') ? 409 : 500);
+        console.error('[Settings Route] saveStoreShippingConfig failed closed:', saveShippingResult.error, `(HTTP ${statusCode})`);
+        return NextResponse.json(
+          {
+            success: false,
+            error: saveShippingResult.error || 'Failed to persist shipping configuration',
           },
-          ...(effectiveShipping?.couriers ? { couriers: effectiveShipping.couriers } : {}),
-          ...(effectiveShipping?.origin ? { origin: effectiveShipping.origin } : {}),
-          ...(typeof effectiveShipping?.auto_pickup === 'boolean' ? { auto_pickup: effectiveShipping.auto_pickup } : {}),
-          ...(typeof effectiveShipping?.free_shipping_threshold === 'number' ? { free_shipping_threshold: effectiveShipping.free_shipping_threshold } : {}),
-          ...(typeof effectiveShipping?.is_enabled === 'boolean' ? { is_enabled: effectiveShipping.is_enabled } : {}),
-          updated_at: new Date().toISOString(),
-        };
-
-        const { error: tsBiteshipErr } = await supabaseAdmin
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: slug,
-              biteship_config: updatedBiteship,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'tenant_slug' }
-          );
-        if (tsBiteshipErr) {
-          console.warn('[Settings Route] Upsert tenant_settings.biteship_config note:', tsBiteshipErr.message);
-        }
-      } catch (tsBiteshipEx) {
-        console.warn('[Settings Route] tenant_settings.biteship_config sync note:', tsBiteshipEx);
+          { status: statusCode }
+        );
       }
     }
 
@@ -1761,23 +1764,77 @@ export async function PUT(
       }
     }
 
-    // ── UPDATE TABEL TENANTS (DENGAN VERIFIKASI COUNT ROW TERPENGARUH) ──
-    const { data: updatedTenants, error: updateError } = await supabaseAdmin
-      .from('tenants')
-      .update(updateFields)
-      .eq('id', existing.id)
-      .select('id, slug, name, metadata, phone, whatsapp_number');
+    // ── ROUND 3T.1 OPTION 1: SINGLE AUTHORITATIVE CONDITIONAL UPDATE (ELIMINATE DUAL-UPDATE) ──
+    let updatedTenants: any[] | null = null;
 
-    if (updateError || !updatedTenants || updatedTenants.length === 0) {
-      console.error('[Settings Route] Update tenants failed or 0 rows affected:', updateError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'UPDATE_FAILED_OR_ZERO_ROWS_AFFECTED',
-          message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase (0 rows affected).',
-        },
-        { status: 500 }
-      );
+    if (saveShippingResult) {
+      // Step 1 SSOT CAS update in saveStoreShippingConfig already committed combined updateFields atomically
+      updatedTenants = saveShippingResult.updatedTenant ? [saveShippingResult.updatedTenant] : null;
+    } else {
+      // General settings update (no shipping configuration in request)
+      const nowMs = Date.now();
+      const prevMs = existing.updated_at ? Date.parse(existing.updated_at) : 0;
+      const effectiveMs = !isNaN(prevMs) && prevMs >= nowMs ? prevMs + 1 : nowMs;
+      const nextRevision = new Date(effectiveMs).toISOString();
+
+      // OCC validation for general settings update
+      if (expectedRevision && existing.updated_at) {
+        const isMatching =
+          expectedRevision === existing.updated_at ||
+          Date.parse(expectedRevision) === Date.parse(existing.updated_at);
+        if (!isMatching) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'CONFLICT_STALE_REVISION',
+              message: `Konflik versi: Versi yang diharapkan (${expectedRevision}) tidak sesuai dengan versi database (${existing.updated_at}).`,
+            },
+            { status: 409 }
+          );
+        }
+      }
+
+      let updateQuery = supabaseAdmin
+        .from('tenants')
+        .update({
+          ...updateFields,
+          updated_at: nextRevision,
+        })
+        .eq('id', existing.id);
+
+      const filterRevision = existing.updated_at || expectedRevision;
+      if (filterRevision) {
+        updateQuery = updateQuery.eq('updated_at', filterRevision);
+      }
+
+      const { data: qRows, error: updateError } = await updateQuery
+        .select('id, slug, name, metadata, phone, whatsapp_number, updated_at');
+
+      if (updateError) {
+        console.error('[Settings Route] Update tenants failed:', updateError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'UPDATE_FAILED',
+            message: updateError?.message || 'Gagal memperbarui pengaturan toko di database Supabase.',
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!qRows || qRows.length === 0) {
+        console.warn('[Settings Route] 0 rows affected during conditional update');
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CONFLICT_STALE_REVISION',
+            message: 'Konflik versi: Baris tenant telah diperbarui di sesi lain.',
+          },
+          { status: 409 }
+        );
+      }
+
+      updatedTenants = qRows;
     }
 
     // Sync WhatsApp CS number ke tabel whatsapp_connections agar persistent across dashboard reload
@@ -1918,7 +1975,14 @@ export async function PUT(
             : (existing.metadata?.logo_url || null),
         telegram_group_config: updatedMetadata.telegram_group_config || null,
         telegram_chat_id: updateFields.telegram_chat_id ?? (existing.telegram_chat_id || null),
+        updated_at: updatedTenants?.[0]?.updated_at || saveShippingResult?.revision || new Date().toISOString(),
+        metadata: updatedMetadata,
+        shipping_config: effectiveShipping || existing.metadata?.shipping_config,
+        revision: saveShippingResult?.revision || updatedTenants?.[0]?.updated_at,
+        projections: saveShippingResult?.projections,
       }, callerRole),
+      revision: saveShippingResult?.revision || updatedTenants?.[0]?.updated_at,
+      projections: saveShippingResult?.projections,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error updating settings';

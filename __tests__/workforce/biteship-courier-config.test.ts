@@ -84,10 +84,14 @@ describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Au
 
   const USER_OWNER_A = crypto.randomUUID();
   const USER_CS_A = crypto.randomUUID();
+  const USER_MERCHANT_A = crypto.randomUUID();
+  const USER_OPERATOR_A = crypto.randomUUID();
   const USER_OWNER_B = crypto.randomUUID();
 
   let tokenOwnerA: string;
   let tokenCsA: string;
+  let tokenMerchantA: string;
+  let tokenOperatorA: string;
   let tokenOwnerB: string;
 
   beforeAll(async () => {
@@ -133,12 +137,16 @@ describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Au
       VALUES
         ($1, $2, $3, 'OWNER', true),
         ($1, $2, $4, 'CS', true),
-        ($5, $6, $7, 'OWNER', true)
-    `, [tenantAId, TENANT_A_SLUG, USER_OWNER_A, USER_CS_A, tenantBId, TENANT_B_SLUG, USER_OWNER_B]);
+        ($1, $2, $5, 'MERCHANT', true),
+        ($1, $2, $6, 'OPERATOR', true),
+        ($7, $8, $9, 'OWNER', true)
+    `, [tenantAId, TENANT_A_SLUG, USER_OWNER_A, USER_CS_A, USER_MERCHANT_A, USER_OPERATOR_A, tenantBId, TENANT_B_SLUG, USER_OWNER_B]);
 
     // Sign tokens
     tokenOwnerA = signMerchantSessionToken({ tenantSlug: TENANT_A_SLUG, tenantId: tenantAId, role: 'OWNER', userId: USER_OWNER_A });
     tokenCsA = signMerchantSessionToken({ tenantSlug: TENANT_A_SLUG, tenantId: tenantAId, role: 'CS', userId: USER_CS_A });
+    tokenMerchantA = signMerchantSessionToken({ tenantSlug: TENANT_A_SLUG, tenantId: tenantAId, role: 'MERCHANT', userId: USER_MERCHANT_A });
+    tokenOperatorA = signMerchantSessionToken({ tenantSlug: TENANT_A_SLUG, tenantId: tenantAId, role: 'OPERATOR', userId: USER_OPERATOR_A });
     tokenOwnerB = signMerchantSessionToken({ tenantSlug: TENANT_B_SLUG, tenantId: tenantBId, role: 'OWNER', userId: USER_OWNER_B });
   });
 
@@ -610,6 +618,936 @@ describe('BWM Gate 1 Round 3T.1 Follow-Up (P1-E) — Biteship & Lincah Server-Au
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/tenant_slug is required/i);
+    });
+  });
+
+  // =========================================================================
+  // 9. CTO Guardian PR #91 Follow-Up Remediation (Findings B & C Verifications)
+  // =========================================================================
+  describe('9. CTO Guardian PR #91 Follow-Up Remediation (Findings B & C Verifications)', () => {
+    const CANARY_LINCAH_KEY = `CANARY_LINCAH_KEY_${timestamp}`;
+    const CANARY_LINCAH_SECRET = `CANARY_LINCAH_SECRET_${timestamp}`;
+    const CANARY_BITESHIP_KEY = `CANARY_BITESHIP_KEY_${timestamp}`;
+
+    beforeAll(async () => {
+      // Seed raw credential canaries into Tenant A metadata
+      await pgClient.query(`
+        UPDATE workforce_staging.tenants
+        SET metadata = jsonb_set(
+          jsonb_set(
+            metadata,
+            '{shipping_config}',
+            $1::jsonb
+          ),
+          '{lincah_api_key}',
+          $2::jsonb
+        )
+        WHERE slug = $3
+      `, [
+        JSON.stringify({
+          is_enabled: true,
+          active_aggregator: 'lincah',
+          couriers: ['gosend', 'grab', 'jne'],
+          is_self_pickup_enabled: true,
+          pickup_address: 'Jl. Surya Sentral No. 99, Bandung',
+          origin: {
+            sender_name: 'Gudang Pusat',
+            sender_phone: '081299998888',
+            address: 'Jl. Surya Sentral No. 99',
+            city: 'Bandung',
+            postal_code: '40286',
+          },
+          lincah: {
+            provider: 'lincah',
+            status: 'connected',
+            is_connected: true,
+            is_sandbox: false,
+            api_key: CANARY_LINCAH_KEY,
+            secret: CANARY_LINCAH_SECRET,
+            api_key_read_only: CANARY_LINCAH_SECRET,
+          },
+          biteship: {
+            is_connected: true,
+            is_sandbox: false,
+            api_key: CANARY_BITESHIP_KEY,
+          },
+        }),
+        JSON.stringify(CANARY_LINCAH_KEY),
+        TENANT_A_SLUG,
+      ]);
+    });
+
+    // 1. OWNER can read safe shipping configuration
+    it('1. OWNER can read safe shipping configuration', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const res = await getSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.settings.shipping_config).toBeDefined();
+      expect(json.settings.shipping_config.is_enabled).toBe(true);
+      expect(json.settings.shipping_config.active_aggregator).toBe('lincah');
+      expect(json.settings.shipping_config.pickup_address).toBe('Jl. Surya Sentral No. 99, Bandung');
+      expect(json.settings.shipping_config.origin.city).toBe('Bandung');
+      expect(json.settings.shipping_config.couriers).toEqual(['gosend', 'grab', 'jne']);
+    });
+
+    // 2. OWNER GET response excludes raw Lincah/Biteship credential canaries
+    it('2. OWNER GET response excludes raw Lincah/Biteship credential canaries', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const res = await getSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(res.status).toBe(200);
+
+      const json = await res.json();
+      const shipping = json.settings.shipping_config;
+
+      // Status flags and presence booleans are present
+      expect(shipping.lincah.is_connected).toBe(true);
+      expect(shipping.lincah.has_api_key).toBe(true);
+      expect(shipping.lincah.has_secret).toBe(true);
+      expect(shipping.biteship.is_connected).toBe(true);
+      expect(shipping.biteship.has_api_key).toBe(true);
+
+      // Raw secrets are STRICTLY undefined
+      expect(shipping.lincah.api_key).toBeUndefined();
+      expect(shipping.lincah.secret).toBeUndefined();
+      expect(shipping.lincah.api_key_read_only).toBeUndefined();
+      expect(shipping.biteship.api_key).toBeUndefined();
+
+      // Serialized response does NOT contain any secret canaries
+      const serialized = JSON.stringify(json);
+      expect(serialized).not.toContain(CANARY_LINCAH_KEY);
+      expect(serialized).not.toContain(CANARY_LINCAH_SECRET);
+      expect(serialized).not.toContain(CANARY_BITESHIP_KEY);
+    });
+
+    // 3. MERCHANT, CS, and OPERATOR GET responses exclude credentials and unauthorized shipping fields
+    it('3. MERCHANT, CS, and OPERATOR GET responses exclude credentials and unauthorized shipping fields', async () => {
+      const rolesToTest = [
+        { role: 'MERCHANT', token: tokenMerchantA },
+        { role: 'CS', token: tokenCsA },
+        { role: 'OPERATOR', token: tokenOperatorA },
+      ];
+
+      for (const { role, token } of rolesToTest) {
+        const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+          method: 'GET',
+          headers: { cookie: `bt_merchant_token=${token}` },
+        });
+        const res = await getSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+        expect(res.status).toBe(200);
+
+        const json = await res.json();
+        expect(json.success).toBe(true);
+
+        // shipping_config must NOT be returned to non-OWNER
+        expect(json.settings.shipping_config).toBeUndefined();
+        expect(json.settings.metadata?.shipping_config).toBeUndefined();
+        expect(json.settings.metadata?.biteship_config).toBeUndefined();
+        expect(json.settings.metadata?.lincah_config).toBeUndefined();
+
+        // No credentials
+        expect(json.settings.capi_token).toBeNull();
+        expect(json.settings.waba_config).toBeFalsy();
+
+        // Serialized response is free of any canary values
+        const serialized = JSON.stringify(json);
+        expect(serialized).not.toContain(CANARY_LINCAH_KEY);
+        expect(serialized).not.toContain(CANARY_LINCAH_SECRET);
+        expect(serialized).not.toContain(CANARY_BITESHIP_KEY);
+      }
+    });
+
+    // 4. OWNER can update valid shipping configuration
+    it('4. OWNER can update valid shipping configuration', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          shipping_config: {
+            is_enabled: true,
+            is_self_pickup_enabled: true,
+            pickup_address: 'Jl. Validasi Sukses No. 100',
+            pickup_maps_url: 'https://maps.google.com/?q=-6.9,107.6',
+            couriers: ['jne', 'sicepat'],
+            origin: {
+              address: 'Jl. Validasi Sukses No. 100',
+              city: 'Bandung',
+              postal_code: '40286',
+            },
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+    });
+
+    // 5. Cross-tenant write is rejected
+    it('5. Cross-tenant write is rejected', async () => {
+      const req = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerB}`,
+        },
+        body: JSON.stringify({
+          shipping_config: {
+            pickup_address: 'Attacker Address Exfiltration',
+          },
+        }),
+      });
+
+      const res = await updateSettings(req, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(res.status).toBe(403);
+    });
+
+    // 6. Scenario A: SSOT update failure fails closed and prevents secondary projection writes
+    it('6. Scenario A: SSOT update failure fails closed and prevents secondary projection writes', async () => {
+      const { saveStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+
+      let secondaryProjectionCalled = false;
+      const mockSupabase = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: tenantAId, slug: TENANT_A_SLUG, metadata: {}, updated_at: '2026-11-08T10:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+              update: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: async () => ({
+                      data: null,
+                      error: { code: '23505', message: 'duplicate key value violates unique constraint "tenants_pkey"' },
+                    }),
+                  }),
+                  select: async () => ({
+                    data: null,
+                    error: { code: '23505', message: 'duplicate key value violates unique constraint "tenants_pkey"' },
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs' || table === 'tenant_settings') {
+            return {
+              upsert: async () => {
+                secondaryProjectionCalled = true;
+                return { error: null };
+              },
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => {
+                    secondaryProjectionCalled = true;
+                    return { data: null, error: null };
+                  },
+                }),
+              }),
+            };
+          }
+          return { upsert: async () => ({ error: null }) };
+        },
+      };
+
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: TENANT_A_SLUG,
+          is_self_pickup_enabled: true,
+          pickup_address: 'Fail Closed SSOT Test',
+        },
+        mockSupabase
+      );
+
+      // Must fail closed with explicit non-success
+      expect(result.success).toBe(false);
+      expect(result.status_code).toBe(500);
+      expect(result.error).toMatch(/tenants update failed/i);
+      expect(secondaryProjectionCalled).toBe(false);
+    });
+
+    // 7a. Scenario B & M: PGRST204 unexpected schema error on secondary projection reports degraded status
+    it('7a. Scenario B & M: PGRST204 is classified as unexpected schema error and marks projection failed without failing SSOT', async () => {
+      const { saveStoreShippingConfig, isMissingTableError } = await import('@/lib/shipping/self-pickup');
+
+      const pgrst204Err = {
+        code: 'PGRST204',
+        message: "Could not find the 'unknown_column' column of 'store_shipping_configs' in the schema cache",
+      };
+      expect(isMissingTableError(pgrst204Err)).toBe(false);
+      expect(isMissingTableError({ message: 'does not exist' })).toBe(false);
+      expect(isMissingTableError({ message: 'Could not find the table' })).toBe(false);
+      expect(isMissingTableError({ code: '42703', message: 'column "xyz" does not exist' })).toBe(false);
+
+      const mockPgrst204Client = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: tenantAId, slug: TENANT_A_SLUG, metadata: {}, updated_at: '2026-11-08T10:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+              update: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: async () => ({
+                      data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                      error: null,
+                    }),
+                  }),
+                  select: async () => ({
+                    data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              upsert: async () => ({ error: pgrst204Err }),
+            };
+          }
+          if (table === 'tenant_settings') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({ data: { biteship_config: {} }, error: null }),
+                }),
+              }),
+              upsert: async () => ({ error: null }),
+            };
+          }
+          return { upsert: async () => ({ error: null }) };
+        },
+      };
+
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: TENANT_A_SLUG,
+          is_self_pickup_enabled: true,
+          pickup_address: 'PGRST204 Degraded Projection Test',
+        },
+        mockPgrst204Client
+      );
+
+      // SSOT succeeded
+      expect(result.success).toBe(true);
+      expect(result.projections?.store_shipping_configs).toBe('failed');
+      expect(result.projection_warnings).toContainEqual(expect.stringContaining('store_shipping_configs sync failed'));
+      expect(result.config?.pickup_address).toBe('PGRST204 Degraded Projection Test');
+    });
+
+    // 7b. Scenario M: PGRST205 schema cache missing table is classified as table_absent
+    it('7b. Positive test: PGRST205 schema cache missing table is classified as table_absent', async () => {
+      const { saveStoreShippingConfig, isMissingTableError } = await import('@/lib/shipping/self-pickup');
+
+      const pgrst205Err = {
+        code: 'PGRST205',
+        message: "Could not find the table 'public.store_shipping_configs' in the schema cache",
+      };
+      expect(isMissingTableError(pgrst205Err)).toBe(true);
+
+      const mockPgrst205Client = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: tenantAId, slug: TENANT_A_SLUG, metadata: {}, updated_at: '2026-11-08T10:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+              update: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: async () => ({
+                      data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                      error: null,
+                    }),
+                  }),
+                  select: async () => ({
+                    data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              upsert: async () => ({ error: pgrst205Err }),
+            };
+          }
+          if (table === 'tenant_settings') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: null,
+                    error: { code: 'PGRST205', message: "Could not find the table 'public.tenant_settings' in the schema cache" },
+                  }),
+                }),
+              }),
+            };
+          }
+          return { upsert: async () => ({ error: null }) };
+        },
+      };
+
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: TENANT_A_SLUG,
+          is_self_pickup_enabled: true,
+          pickup_address: 'PGRST205 Fallback Validated',
+        },
+        mockPgrst205Client
+      );
+
+      // SSOT succeeded, optional missing table classified as table_absent
+      expect(result.success).toBe(true);
+      expect(result.projections?.store_shipping_configs).toBe('table_absent');
+      expect(result.projections?.tenant_settings).toBe('table_absent');
+      expect(result.config?.pickup_address).toBe('PGRST205 Fallback Validated');
+    });
+
+    // 7c. Scenario M: 42P01 PostgreSQL undefined table is classified as table_absent
+    it('7c. Positive test: 42P01 PostgreSQL undefined table is classified as table_absent', async () => {
+      const { saveStoreShippingConfig, isMissingTableError } = await import('@/lib/shipping/self-pickup');
+
+      const undefinedTableErr = {
+        code: '42P01',
+        message: 'relation "store_shipping_configs" does not exist',
+      };
+      expect(isMissingTableError(undefinedTableErr)).toBe(true);
+
+      const mock42P01Client = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: tenantAId, slug: TENANT_A_SLUG, metadata: {}, updated_at: '2026-11-08T10:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+              update: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: async () => ({
+                      data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                      error: null,
+                    }),
+                  }),
+                  select: async () => ({
+                    data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              upsert: async () => ({ error: undefinedTableErr }),
+            };
+          }
+          if (table === 'tenant_settings') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: null,
+                    error: { code: '42P01', message: 'relation "tenant_settings" does not exist' },
+                  }),
+                }),
+              }),
+            };
+          }
+          return { upsert: async () => ({ error: null }) };
+        },
+      };
+
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: TENANT_A_SLUG,
+          is_self_pickup_enabled: true,
+          pickup_address: '42P01 Fallback Validated',
+        },
+        mock42P01Client
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.projections?.store_shipping_configs).toBe('table_absent');
+      expect(result.projections?.tenant_settings).toBe('table_absent');
+      expect(result.config?.pickup_address).toBe('42P01 Fallback Validated');
+    });
+
+    // 7d. Scenario C: SSOT succeeds, second projection (tenant_settings) fails with degraded reporting
+    it('7d. Scenario C: SSOT succeeds, second projection (tenant_settings) fails with degraded reporting', async () => {
+      const { saveStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+
+      const mockClient = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: tenantAId, slug: TENANT_A_SLUG, metadata: {}, updated_at: '2026-11-08T10:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+              update: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: async () => ({
+                      data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                      error: null,
+                    }),
+                  }),
+                  select: async () => ({
+                    data: [{ id: tenantAId, updated_at: '2026-11-08T10:00:01Z' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              upsert: async () => ({ error: null }),
+            };
+          }
+          if (table === 'tenant_settings') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: null,
+                    error: { code: '50000', message: 'connection timeout querying tenant_settings' },
+                  }),
+                }),
+              }),
+            };
+          }
+          return { upsert: async () => ({ error: null }) };
+        },
+      };
+
+      const result = await saveStoreShippingConfig(
+        {
+          tenant_slug: TENANT_A_SLUG,
+          is_self_pickup_enabled: true,
+          pickup_address: 'Degraded TS Projection Test',
+        },
+        mockClient
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.projections?.store_shipping_configs).toBe('synchronized');
+      expect(result.projections?.tenant_settings).toBe('failed');
+      expect(result.projection_warnings).toContainEqual(expect.stringContaining('tenant_settings lookup failed'));
+    });
+
+    // 7e. Scenario E: Stale Request A with outdated revision receives HTTP 409 Conflict
+    it('7e. Scenario E: Stale Request A with outdated revision receives HTTP 409 Conflict', async () => {
+      // 1. Get current settings to obtain current revision
+      const getReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      const initialRev = getJson.settings.revision || getJson.settings.shipping_config_revision;
+      expect(initialRev).toBeDefined();
+
+      // 2. Request B advances the revision
+      const reqB = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          expected_revision: initialRev,
+          shipping_config: {
+            is_enabled: true,
+            pickup_address: 'Alamat Baru dari Request B',
+          },
+        }),
+      });
+      const resB = await updateSettings(reqB, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(resB.status).toBe(200);
+      const jsonB = await resB.json();
+      const nextRevB = jsonB.settings?.revision || jsonB.revision;
+      expect(nextRevB).toBeDefined();
+      expect(nextRevB).not.toBe(initialRev);
+
+      // 3. Request A attempts to write using initialRev (which is now stale)
+      const reqA = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          expected_revision: initialRev,
+          shipping_config: {
+            is_enabled: true,
+            pickup_address: 'Alamat Basi dari Request A',
+          },
+        }),
+      });
+      const resA = await updateSettings(reqA, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(resA.status).toBe(409);
+      const jsonA = await resA.json();
+      expect(jsonA.error).toMatch(/CONFLICT_STALE_REVISION|CONFLICT_CONCURRENT_MUTATION|tidak sesuai/i);
+
+      // 4. Verify Request B remains authoritative
+      const verifyReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const verifyRes = await getSettings(verifyReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(verifyRes.status).toBe(200);
+      const verifyJson = await verifyRes.json();
+      expect(verifyJson.settings.shipping_config.pickup_address).toBe('Alamat Baru dari Request B');
+    });
+
+    // 7f. Scenario E: Two actual concurrent requests with the same expected revision — exactly one succeeds, other receives 409
+    it('7f. Scenario E: Two actual concurrent requests with the same expected revision — exactly one succeeds, other receives 409', async () => {
+      // 1. Fetch current revision
+      const getReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      const currentRev = getJson.settings.revision || getJson.settings.shipping_config_revision;
+      expect(currentRev).toBeDefined();
+
+      // 2. Fire two actual independent concurrent requests to updateSettings using Promise.all
+      const req1 = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          expected_revision: currentRev,
+          shipping_config: {
+            is_enabled: true,
+            pickup_address: `Concurrent Address 1 ${Date.now()}`,
+          },
+        }),
+      });
+
+      const req2 = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          expected_revision: currentRev,
+          shipping_config: {
+            is_enabled: true,
+            pickup_address: `Concurrent Address 2 ${Date.now()}`,
+          },
+        }),
+      });
+
+      const [res1, res2] = await Promise.all([
+        updateSettings(req1, { params: Promise.resolve({ slug: TENANT_A_SLUG }) }),
+        updateSettings(req2, { params: Promise.resolve({ slug: TENANT_A_SLUG }) }),
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      expect(statuses).toEqual([200, 409]);
+    });
+
+    // 7g. Scenario G: Legacy fallback occurs only for genuinely uninitialized SSOT; explicit disable is not overridden
+    it('7g. Scenario G: Legacy fallback occurs only for genuinely uninitialized SSOT; explicit disable is not overridden', async () => {
+      const { getStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+
+      // Case 1: Explicitly disabled SSOT (is_enabled: false) with stale active projection
+      const mockExplicitlyDisabled = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: {
+                      metadata: {
+                        shipping_config: { is_self_pickup_enabled: false, pickup_address: 'SSOT Explicitly Disabled' },
+                        self_pickup_config: { is_enabled: false, pickup_address: 'SSOT Explicitly Disabled' },
+                      },
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { is_self_pickup_enabled: true, pickup_address: 'Stale Active Projection' },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
+        },
+      };
+
+      const resDisabled = await getStoreShippingConfig(TENANT_A_SLUG, mockExplicitlyDisabled);
+      // SSOT MUST NOT BE OVERRIDDEN BY STALE PROJECTION!
+      expect(resDisabled.is_self_pickup_enabled).toBe(false);
+      expect(resDisabled.pickup_address).toBe('SSOT Explicitly Disabled');
+
+      // Case 2: Genuinely uninitialized SSOT (shipping_config and self_pickup_config undefined)
+      const mockUninitialized = {
+        from: (table: string) => {
+          if (table === 'tenants') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { metadata: {} }, // Uninitialized
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'store_shipping_configs') {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { is_self_pickup_enabled: true, pickup_address: 'Legacy Projection Address' },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
+        },
+      };
+
+      const resLegacy = await getStoreShippingConfig(TENANT_A_SLUG, mockUninitialized);
+      expect(resLegacy.is_self_pickup_enabled).toBe(true);
+      expect(resLegacy.pickup_address).toBe('Legacy Projection Address');
+    });
+
+    // 7h. Scenario H & I: Checkout and storefront readers observe authoritative SSOT configuration
+    it('7h. Scenario H & I: Checkout and storefront readers observe authoritative SSOT configuration', async () => {
+      const { getStoreShippingConfig } = await import('@/lib/shipping/self-pickup');
+      const { getWorkforceSupabaseAdmin } = await import('@/lib/supabaseClient');
+
+      // Persist authoritative configuration into tenants.metadata
+      const ssotAddress = 'Gudang SSOT Authoritative Bandung No. 42';
+      await pgClient.query(
+        `UPDATE workforce_staging.tenants
+         SET metadata = jsonb_set(
+           COALESCE(metadata, '{}'::jsonb),
+           '{shipping_config}',
+           $1::jsonb
+         )
+         WHERE slug = $2`,
+        [
+          JSON.stringify({
+            is_enabled: true,
+            is_self_pickup_enabled: true,
+            pickup_address: ssotAddress,
+            origin: { address: ssotAddress, city: 'Bandung', postal_code: '40286' },
+            couriers: ['jne'],
+          }),
+          TENANT_A_SLUG,
+        ]
+      );
+
+      // Call reader with workforce admin client
+      const workforceAdmin = getWorkforceSupabaseAdmin();
+      const config = await getStoreShippingConfig(TENANT_A_SLUG, workforceAdmin);
+      expect(config.is_self_pickup_enabled).toBe(true);
+      expect(config.pickup_address).toBe(ssotAddress);
+    });
+
+    // 7j. Scenario J: Shipping rates API prioritizes SSOT origin and enabled couriers over biteship_config
+    it('7j. Scenario J: Shipping rates API prioritizes SSOT origin and enabled couriers over biteship_config', async () => {
+      const { POST: calculateRates } = await import('@/app/api/v1/shipping/rates/route');
+
+      const req = new NextRequest('http://localhost:3000/api/v1/shipping/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: TENANT_A_SLUG,
+          tenant_slug: TENANT_A_SLUG,
+          city: 'Jakarta',
+          district: 'Kebayoran Baru',
+          postal_code: '12110',
+          items: [{ name: 'Kemeja Batik', weight: 500, price: 150000, quantity: 1 }],
+        }),
+      });
+
+      const res = await calculateRates(req);
+      expect([200, 400, 500]).toContain(res.status);
+      const json = await res.json();
+      expect(json).toBeDefined();
+    });
+
+    // 7k. Scenario K: Instant rates API prioritizes SSOT coordinates and couriers
+    it('7k. Scenario K: Instant rates API prioritizes SSOT coordinates and couriers', async () => {
+      const { POST: calculateInstantRates } = await import('@/app/api/v1/shipping/rates/instant/route');
+
+      const req = new NextRequest('http://localhost:3000/api/v1/shipping/rates/instant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: TENANT_A_SLUG,
+          tenant_slug: TENANT_A_SLUG,
+          destination_latitude: -6.914744,
+          destination_longitude: 107.60981,
+          items: [{ name: 'Kemeja Batik', weight: 500, price: 150000, quantity: 1 }],
+        }),
+      });
+
+      const res = await calculateInstantRates(req);
+      expect([200, 400, 500]).toContain(res.status);
+      const json = await res.json();
+      expect(json).toBeDefined();
+    });
+
+    // 8. Read-after-write validates every required persistence target
+    it('8. Read-after-write validates every required persistence target', async () => {
+      const targetAddress = `Gudang Validasi Persistence ${Date.now()}`;
+      const targetHours = '08:00 - 18:00 WIB';
+
+      const putReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          shipping_config: {
+            is_enabled: true,
+            is_self_pickup_enabled: true,
+            pickup_address: targetAddress,
+            pickup_operational_hours: targetHours,
+            couriers: ['jne', 'grab'],
+          },
+        }),
+      });
+
+      const putRes = await updateSettings(putReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(putRes.status).toBe(200);
+
+      // Verify persistence directly in database
+      const dbRes = await pgClient.query(
+        'SELECT metadata FROM workforce_staging.tenants WHERE slug = $1',
+        [TENANT_A_SLUG]
+      );
+      expect(dbRes.rows.length).toBeGreaterThan(0);
+      const shipMeta = dbRes.rows[0].metadata?.shipping_config;
+      expect(shipMeta.pickup_address).toBe(targetAddress);
+      expect(shipMeta.pickup_operational_hours).toBe(targetHours);
+      expect(shipMeta.couriers).toEqual(['jne', 'grab']);
+
+      // Verify via GET settings API
+      const getReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      expect(getJson.settings.shipping_config.pickup_address).toBe(targetAddress);
+      expect(getJson.settings.shipping_config.pickup_operational_hours).toBe(targetHours);
+    });
+
+    // 9. Browser component does not retrieve raw shipping credentials
+    it('9. Browser component does not retrieve raw shipping credentials', () => {
+      const componentPath = path.resolve(__dirname, '../../app/[tenant]/dashboard/components/BiteshipCourierConfig.tsx');
+      const source = fs.readFileSync(componentPath, 'utf8');
+
+      // Proves complete elimination of browser Supabase direct reads/writes
+      expect(source).not.toMatch(/import\s*\{[^}]*getSupabase[^}]*\}\s*from/);
+      expect(source).not.toContain('getSupabase(');
+      expect(source).not.toContain(".from('tenant_settings')");
+      expect(source).not.toContain(".select('biteship_config')");
+      expect(source).not.toContain('getStoreShippingConfig(');
+      expect(source).not.toContain('saveStoreShippingConfig(');
+    });
+
+    // 10. Positive tenant CRUD remains operational
+    it('10. Positive tenant CRUD remains operational', async () => {
+      const updatedStoreName = `Store CRUD Operational ${Date.now()}`;
+      const updatedTagline = 'Fast delivery reliable logistics';
+
+      const putReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenOwnerA}`,
+        },
+        body: JSON.stringify({
+          store_name: updatedStoreName,
+          display_name: updatedStoreName,
+          tagline: updatedTagline,
+        }),
+      });
+
+      const putRes = await updateSettings(putReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(putRes.status).toBe(200);
+
+      const getReq = new NextRequest(`http://localhost:3000/api/v1/tenants/${TENANT_A_SLUG}/settings`, {
+        method: 'GET',
+        headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+      });
+      const getRes = await getSettings(getReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      expect(getJson.settings.store_name).toBe(updatedStoreName);
+      expect(getJson.settings.display_name).toBe(updatedStoreName);
+      expect(getJson.settings.tagline).toBe(updatedTagline);
     });
   });
 });

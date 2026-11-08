@@ -298,74 +298,155 @@ export async function POST(req: NextRequest) {
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
           metaShipping = meta.shipping_config;
-          tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
 
-          if (biteshipCfg) {
+          // ROUND 3T.1 OPTION 3: Authoritative SSOT read priority (tenants.metadata)
+          const isSsotInitialized = Boolean(metaShipping !== undefined && typeof metaShipping === 'object');
+
+          if (isSsotInitialized) {
+            // Authoritative shipping business configuration from tenants.metadata
+            isShippingActive = metaShipping.is_enabled ?? true;
+            if (Array.isArray(metaShipping.couriers)) {
+              enabledCouriers = metaShipping.couriers.map((c: any) =>
+                typeof c === 'string' ? { id: c, enabled: true } : c
+              ).filter((c: any) => c.enabled !== false);
+            } else if (Array.isArray(metaShipping.active_couriers)) {
+              enabledCouriers = metaShipping.active_couriers.map((c: any) =>
+                typeof c === 'string' ? { id: c, enabled: true } : c
+              ).filter((c: any) => c.enabled !== false);
+            }
+
+            // Origin resolution prioritizing SSOT
+            const originObj = metaShipping.origin || (meta.basic_shipping ? { ...meta.basic_shipping, address: meta.basic_shipping.origin_address, city: meta.basic_shipping.origin_city } : {}) || {};
+
+            originCity =
+              originCity ||
+              originObj.city ||
+              originObj.origin_city ||
+              metaShipping?.origin_city ||
+              meta.origin_city ||
+              meta.basic_shipping?.origin_city ||
+              meta.warehouse_address?.city ||
+              '';
+
+            originDistrict =
+              originDistrict ||
+              originObj.district ||
+              originObj.origin_district ||
+              originObj.subdistrict ||
+              metaShipping?.origin_district ||
+              metaShipping?.origin_subdistrict ||
+              meta.origin_district ||
+              meta.basic_shipping?.origin_district ||
+              meta.warehouse_address?.district ||
+              '';
+
+            originPostalCode =
+              originPostalCode ||
+              originObj.postal_code ||
+              originObj.origin_postal_code ||
+              metaShipping?.origin_postal_code ||
+              meta.origin_postal_code ||
+              meta.warehouse_address?.postal_code ||
+              '';
+
+            originSubdistrictId =
+              originSubdistrictId ||
+              originObj.subdistrict_id ||
+              originObj.origin_subdistrict_id ||
+              originObj.district_code ||
+              metaShipping?.origin_subdistrict_id ||
+              meta.origin_subdistrict_id ||
+              '';
+
+            originAddress =
+              originAddress ||
+              originObj.address ||
+              originObj.origin_address ||
+              metaShipping?.origin_address ||
+              meta.origin_address ||
+              meta.basic_shipping?.origin_address ||
+              (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
+              '';
+
+            if (originObj.latitude !== undefined && originObj.latitude !== null && originObj.latitude !== '') {
+              originLat = Number(originObj.latitude);
+            } else if (metaShipping.latitude !== undefined && metaShipping.latitude !== null && metaShipping.latitude !== '') {
+              originLat = Number(metaShipping.latitude);
+            }
+            if (originObj.longitude !== undefined && originObj.longitude !== null && originObj.longitude !== '') {
+              originLon = Number(originObj.longitude);
+            } else if (metaShipping.longitude !== undefined && metaShipping.longitude !== null && metaShipping.longitude !== '') {
+              originLon = Number(metaShipping.longitude);
+            }
+          } else if (biteshipCfg) {
+            // Legacy fallback (ONLY if SSOT is genuinely uninitialized)
             isShippingActive = biteshipCfg.is_enabled ?? true;
             if (Array.isArray(biteshipCfg.couriers)) {
               enabledCouriers = biteshipCfg.couriers.filter((c: any) => c.enabled);
             }
+
+            const originObj = biteshipCfg?.origin || shippingOrigin || meta.shipping_settings || meta.basic_shipping || {};
+
+            originCity =
+              originCity ||
+              originObj.city ||
+              originObj.origin_city ||
+              meta.origin_city ||
+              meta.basic_shipping?.origin_city ||
+              meta.warehouse_address?.city ||
+              '';
+
+            originDistrict =
+              originDistrict ||
+              originObj.district ||
+              originObj.origin_district ||
+              originObj.subdistrict ||
+              meta.origin_district ||
+              meta.basic_shipping?.origin_district ||
+              meta.warehouse_address?.district ||
+              '';
+
+            originPostalCode =
+              originPostalCode ||
+              originObj.postal_code ||
+              originObj.origin_postal_code ||
+              meta.origin_postal_code ||
+              meta.warehouse_address?.postal_code ||
+              '';
+
+            originSubdistrictId =
+              originSubdistrictId ||
+              originObj.subdistrict_id ||
+              originObj.origin_subdistrict_id ||
+              originObj.district_code ||
+              meta.origin_subdistrict_id ||
+              '';
+
+            originAddress =
+              originAddress ||
+              originObj.address ||
+              originObj.origin_address ||
+              meta.origin_address ||
+              meta.basic_shipping?.origin_address ||
+              (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
+              '';
+
+            if (originObj.latitude !== undefined && originObj.latitude !== null && originObj.latitude !== '') {
+              originLat = Number(originObj.latitude);
+            }
+            if (originObj.longitude !== undefined && originObj.longitude !== null && originObj.longitude !== '') {
+              originLon = Number(originObj.longitude);
+            }
           }
 
-          // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> basic_shipping -> warehouse_address)
-          const originObj = biteshipCfg?.origin || shippingOrigin || metaShipping?.origin || meta.shipping_settings || meta.basic_shipping || {};
-
-          originCity =
-            originCity ||
-            originObj.city ||
-            originObj.origin_city ||
-            metaShipping?.origin_city ||
-            meta.origin_city ||
-            meta.basic_shipping?.origin_city ||
-            meta.warehouse_address?.city ||
-            '';
-
-          originDistrict =
-            originDistrict ||
-            originObj.district ||
-            originObj.origin_district ||
-            originObj.subdistrict ||
-            metaShipping?.origin_district ||
-            metaShipping?.origin_subdistrict ||
-            meta.origin_district ||
-            meta.basic_shipping?.origin_district ||
-            meta.warehouse_address?.district ||
-            '';
-
-          originPostalCode =
-            originPostalCode ||
-            originObj.postal_code ||
-            originObj.origin_postal_code ||
-            metaShipping?.origin_postal_code ||
-            meta.origin_postal_code ||
-            meta.warehouse_address?.postal_code ||
-            '';
-
-          originSubdistrictId =
-            originSubdistrictId ||
-            originObj.subdistrict_id ||
-            originObj.origin_subdistrict_id ||
-            originObj.district_code ||
-            metaShipping?.origin_subdistrict_id ||
-            meta.origin_subdistrict_id ||
-            meta.warehouse_address?.subdistrict_id ||
-            '';
-
-          originAddress =
-            originAddress ||
-            originObj.address ||
-            originObj.origin_address ||
-            metaShipping?.origin_address ||
-            meta.origin_address ||
-            meta.basic_shipping?.origin_address ||
-            (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
-            '';
-
-          if (originObj.latitude !== undefined && originObj.latitude !== null && originObj.latitude !== '') {
-            originLat = Number(originObj.latitude);
-          }
-          if (originObj.longitude !== undefined && originObj.longitude !== null && originObj.longitude !== '') {
-            originLon = Number(originObj.longitude);
+          // Server-side provider credentials preservation (Biteship/Lincah API keys)
+          tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
+          if (tenantLincah && !tenantLincah.api_key && (biteshipCfg?.lincah?.api_key || meta.lincah_api_key)) {
+            tenantLincah = {
+              ...tenantLincah,
+              api_key: biteshipCfg?.lincah?.api_key || meta.lincah_api_key,
+              secret: biteshipCfg?.lincah?.secret || biteshipCfg?.lincah?.api_key_read_only || meta.lincah_secret,
+            };
           }
 
           const fnbSettings = biteshipCfg?.fnb_settings || metaShipping?.fnb_settings || meta.fnb_settings || {};
