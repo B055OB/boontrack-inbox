@@ -3694,18 +3694,25 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 
 ### 24.1 Executive Findings & Architectural Corrections
 
-#### 1. Work Item A — Public Links Contract & Frontend Consumer Audit
-- **Audit Findings:**
-  - Audited frontend consumers across the codebase (`app/[tenant]/components/templates/MicrositeBioTemplate.tsx`, lines 310-330 & 580-610, and storefront layout components).
-  - Confirmed that `platform` is an active, essential frontend contract field. Frontend templates switch on `link.platform` to render brand-specific iconography and styles (e.g., `instagram`, `tiktok`, `tokopedia`, `website`, `gofood`, `grabfood`, `shopeefood`).
-  - Previously, `projectPublicLinksDto()` in Round 3R omitted `platform` from array item projections, creating a contract asymmetry where PUT payloads containing `platform` were accepted, but subsequent GET responses stripped `platform`.
-- **Contract Harmonization:**
-  - Expanded `ALLOWED_LINK_PLATFORMS` in `app/api/v1/tenants/[slug]/settings/route.ts` to include legitimate food and marketplace delivery platforms:
+#### 1. Work Item A — Public Links Contract & Frontend Consumer Audit (Corrected)
+- **Codebase Consumer Audit (Round 3S.1-A Resolution):**
+  - Conducted an exhaustive codebase-wide audit (`git grep -n "public_links"`, `git grep -n "\.platform"`).
+  - **Zero Direct Consumers:** Confirmed that **zero** frontend components directly consume `metadata.public_links` or access `link.platform`. The prior assertion that `MicrositeBioTemplate.tsx` directly reads `public_links[].platform` was an inaccurate inference and is formally retracted.
+  - **Actual Active Frontend Contracts for Links:**
+    1. `app/[tenant]/components/templates/MicrositeBioTemplate.tsx` (lines 560-564): Primary contract reads `tenantMetadata?.microsite?.buttons` (Array of `{ id, label, url, icon?, subtitle?, badge?, is_active? }`).
+    2. `app/[tenant]/components/templates/MicrositeBioTemplate.tsx` (lines 587-607): Secondary fallback contract reads `tenantMetadata?.links` (Dictionary of platform URLs: `links.gofood`, `links.grabfood`, `links.shopeefood`, `links.instagram`, `links.tiktok`, `links.tokopedia`, `links.website`).
+    3. `app/[tenant]/components/templates/MicrositeBioTemplate.tsx` (lines 310-322): Icon resolution uses `getButtonIcon(iconType)` switching on `iconType` string (`'whatsapp'`, `'instagram'`, `'tiktok'`, `'tokopedia'`, `'shopee'`, `'shopeefood'`, `'maps'`, `'phone'`, `'web'`, `'website'`).
+    4. `app/[tenant]/dashboard/components/tabs/MicrositeTab.tsx` (lines 128-132, 276, 309): Reads and writes `microsite.buttons` array via `PUT /api/v1/tenants/[slug]/settings`.
+    5. `app/creator/[handle]/page.tsx` & `app/creator/admin/page.tsx`: Creator domain consumes `tc.links` (`BioLinkItem[]`) and `profile.social_links` (Dictionary).
+  - **Origin & Purpose of `public_links`:**
+    - `public_links` was introduced in the Round 3Q executive directive (`ALLOWED_METADATA_KEYS = ['business_hours', 'display_name', 'theme', 'catalog_preferences', 'public_links']`) as an API DTO metadata projection key.
+    - While not currently wired directly to a storefront template, it serves as a hardened API contract supporting both array link items and platform dictionary mappings.
+- **Contract Parity & Validation Boundaries in `projectPublicLinksDto()`:**
+  - Expanded `ALLOWED_LINK_PLATFORMS` in `app/api/v1/tenants/[slug]/settings/route.ts` to include:
     `['instagram', 'tiktok', 'facebook', 'twitter', 'x', 'youtube', 'website', 'maps', 'shopee', 'tokopedia', 'gofood', 'grabfood', 'shopeefood', 'whatsapp', 'telegram', 'linkedin', 'marketplace', 'custom']`.
-  - Harmonized `projectPublicLinksDto()` to validate and project `platform`:
-    - Array format: Validates `title` (string, max 100), `url` (string, max 500), `platform` (whitelisted lowercase string, max 32), `icon` (string, max 32), `order` (finite number), and `is_active` (boolean). Rejects nested objects and drops unpermitted/secret keys.
-    - Object format: Validates that dictionary keys belong to `ALLOWED_LINK_PLATFORMS` with string values (max 500 chars).
-  - Ensured both array and dictionary formats are supported symmetrically without data loss or security bypass.
+  - Array format: Validates `title` (string, max 100), `url` (string, max 500), `platform` (optional, whitelisted lowercase string, max 32), `icon` (string, max 32), `order` (finite number), and `is_active` (boolean). Rejects nested objects and drops unpermitted/secret keys.
+  - Object format: Validates dictionary keys against `ALLOWED_LINK_PLATFORMS` with string values (max 500 chars).
+  - Preserves data fidelity across both representations without leakage of private tokens or credentials.
 
 #### 2. Work Item B — Read-After-Write Persistence for 6 Target Fields
 - **Audit & Implementation:**
@@ -3838,7 +3845,7 @@ Exit Code: 0 (All 22 routes compiled successfully, 0 TypeScript errors)
 | Requirement ID | Security Domain | Invariant Enforced | Verification Evidence | Status |
 | :---: | :--- | :--- | :--- | :---: |
 | **S1.1** | Public Links Contract | `platform` field validated against allowlist (`instagram`, `tokopedia`, `gofood`, etc., max 32 chars) and preserved in array/object projections | `tenant-settings-api.test.ts` (Test 12l) | **CONTRACT HARMONIZED** |
-| **S1.2** | Frontend Consumer Parity | `MicrositeBioTemplate.tsx` link platform contracts satisfied without data stripping | Code Audit & Test 12l | **PARITY CONFIRMED** |
+| **S1.2** | Consumer Parity Audit | Exhaustive codebase audit: No direct frontend consumers of `public_links` or `link.platform`; active frontend contracts are `microsite.buttons` (array) and `links` (dictionary). DTO projection supports both safely. | Codebase Audit (`git grep`) & Test 12l | **LEDGER CORRECTED** |
 | **S1.3** | 6-Field Read-After-Write | Explicit persistence and projection verification for `business_hours`, `catalog_preferences`, `public_links`, `display_name`, `description`, `tagline` | `tenant-settings-api.test.ts` (Test 12l) | **PERSISTENCE PROVEN (200)** |
 | **S1.4** | Sensitive Isolation | Unpermitted fields (`phone`, `capi_token`, `bank`) remain strictly unmodified/null on read-after-write | `tenant-settings-api.test.ts` (Test 12l) | **NON-CORRUPTION VERIFIED** |
 | **S1.5** | Merchant Functional Invariant | Legitimate CRUD workflows preserved across roles without cross-tenant leakage | `tenant-operational-regression.test.ts` | **OPERATIONAL INVARIANT PRESERVED** |
