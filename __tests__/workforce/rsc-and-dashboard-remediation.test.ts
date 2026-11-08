@@ -48,7 +48,9 @@ import {
   GET as getSettings,
   PUT as updateSettings,
   sanitizeSettingsForRole,
+  projectSafeRscTenantDto,
 } from '@/app/api/v1/tenants/[slug]/settings/route';
+import { assertStagingDatabaseTarget, assertStagingRestUrlTarget, getWorkforceSupabaseAdmin, getSupabaseAdmin } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
@@ -105,7 +107,11 @@ describe('BWM Gate 1 Round 3T.1 (Phase 2) — RSC Server Rendering & Dashboard S
   };
 
   beforeAll(async () => {
-    pgClient = new Client({ connectionString: getDatabaseConnectionString() });
+    const connStr = getDatabaseConnectionString();
+    // P0-A: Staging guard — abort if connection targets production database
+    assertStagingDatabaseTarget(connStr);
+
+    pgClient = new Client({ connectionString: connStr });
     await pgClient.connect();
     await pgClient.query('SET search_path TO workforce_staging, public');
 
@@ -509,5 +515,577 @@ describe('BWM Gate 1 Round 3T.1 (Phase 2) — RSC Server Rendering & Dashboard S
       const unauthRes = await updateSettings(unauthReq, { params: Promise.resolve({ slug: TENANT_A_SLUG }) });
       expect(unauthRes.status).toBe(401);
     });
+  });
+
+  // =========================================================================
+  // P0-B: userId-missing token negative tests (Round 3T.1 Follow-Up)
+  // =========================================================================
+  describe('P0-B: userId-Missing Token Negative Tests', () => {
+    it('P0-B.1 Valid HMAC token missing userId is rejected with FORBIDDEN even when tenant has active memberships', async () => {
+      // Sign a token with valid tenantSlug/tenantId but NO userId field
+      const tokenNoUserId = signMerchantSessionToken({
+        tenantSlug: TENANT_A_SLUG,
+        tenantId: tenantAId,
+        role: 'OWNER',
+        // userId deliberately omitted
+      } as any);
+
+      const result = await authorizeServerComponentTenant(TENANT_A_SLUG, ['OWNER', 'MERCHANT'], tokenNoUserId);
+      // Must be rejected — userId is mandatory
+      expect(result.authorized).toBe(false);
+      expect(result.reason).toBe('FORBIDDEN');
+    });
+
+    it('P0-B.2 Token with userId = null is rejected with FORBIDDEN', async () => {
+      const tokenNullUserId = signMerchantSessionToken({
+        tenantSlug: TENANT_A_SLUG,
+        tenantId: tenantAId,
+        role: 'OWNER',
+        userId: null,
+      } as any);
+
+      const result = await authorizeServerComponentTenant(TENANT_A_SLUG, ['OWNER', 'MERCHANT'], tokenNullUserId);
+      expect(result.authorized).toBe(false);
+      expect(result.reason).toBe('FORBIDDEN');
+    });
+
+    it('P0-B.3 Token with userId = empty string is rejected with FORBIDDEN', async () => {
+      const tokenEmptyUserId = signMerchantSessionToken({
+        tenantSlug: TENANT_A_SLUG,
+        tenantId: tenantAId,
+        role: 'MERCHANT',
+        userId: '',
+      });
+
+      const result = await authorizeServerComponentTenant(TENANT_A_SLUG, ['OWNER', 'MERCHANT'], tokenEmptyUserId);
+      expect(result.authorized).toBe(false);
+      expect(result.reason).toBe('FORBIDDEN');
+    });
+  });
+});
+
+// =========================================================================
+// P0-A: Database Project Isolation Unit Tests (pure unit, no DB connection)
+// =========================================================================
+describe('P0-A: Database Project Isolation Unit Tests', () => {
+  it('P0-A.1 Rejects empty or missing connection string', () => {
+    expect(() => assertStagingDatabaseTarget('')).toThrow('[STAGING GUARD FATAL] Database connection string is empty');
+    expect(() => assertStagingDatabaseTarget('   ')).toThrow('[STAGING GUARD FATAL] Database connection string is empty');
+    expect(() => assertStagingDatabaseTarget(null as any)).toThrow('[STAGING GUARD FATAL] Database connection string is empty');
+    expect(() => assertStagingDatabaseTarget(undefined as any)).toThrow('[STAGING GUARD FATAL] Database connection string is empty');
+  });
+
+  it('P0-A.2 Rejects production database URL (mpluzajlzpregmjwpjqr)', () => {
+    const prodDirect = 'postgresql://postgres:secretpassword@db.mpluzajlzpregmjwpjqr.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(prodDirect)).toThrow(
+      '[STAGING GUARD FATAL] Connection string targets production database (mpluzajlzpregmjwpjqr)'
+    );
+
+    // Verify error does not leak credentials
+    try {
+      assertStagingDatabaseTarget(prodDirect);
+    } catch (err: any) {
+      expect(err.message).not.toContain('secretpassword');
+    }
+  });
+
+  it('P0-A.3 Rejects Studio staging URL (xkhqirhurnjqglmajghn) — both direct and pooler formats', () => {
+    const studioDirect = 'postgresql://postgres:secretpassword@db.xkhqirhurnjqglmajghn.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(studioDirect)).toThrow(
+      '[STAGING GUARD FATAL] Connection string targets Studio staging (xkhqirhurnjqglmajghn)'
+    );
+
+    const studioPooler = 'postgresql://postgres.xkhqirhurnjqglmajghn:secretpassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
+    expect(() => assertStagingDatabaseTarget(studioPooler)).toThrow(
+      '[STAGING GUARD FATAL] Connection string targets Studio staging (xkhqirhurnjqglmajghn)'
+    );
+
+    // Verify error does not leak credentials
+    try {
+      assertStagingDatabaseTarget(studioDirect);
+    } catch (err: any) {
+      expect(err.message).not.toContain('secretpassword');
+    }
+    try {
+      assertStagingDatabaseTarget(studioPooler);
+    } catch (err: any) {
+      expect(err.message).not.toContain('secretpassword');
+    }
+  });
+
+  it('P0-A.4 Rejects unknown third-party project reference', () => {
+    const rogueUrl = 'postgresql://postgres:secretpassword@db.rogueattackerproject.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(rogueUrl)).toThrow(
+      '[STAGING GUARD FATAL] Connection string hostname'
+    );
+  });
+
+  it('P0-A.5 Accepts designated Workforce staging direct connection string (tjkbgxrckaocgosvmzmj)', () => {
+    const validDirectWorkforce = 'postgresql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(validDirectWorkforce)).not.toThrow();
+
+    const validDirectPostgresProto = 'postgres://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(validDirectPostgresProto)).not.toThrow();
+  });
+
+  it('P0-A.6 Accepts designated Workforce staging pooler connection string (validates project ref in pooler username)', () => {
+    const validPoolerWorkforce = 'postgresql://postgres.tjkbgxrckaocgosvmzmj:testpass@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
+    expect(() => assertStagingDatabaseTarget(validPoolerWorkforce)).not.toThrow();
+  });
+
+  it('P0-A.7 Rejects spoofed URL attempting to smuggle project ref in database path, query parameter, or password', () => {
+    // Project ref in database name instead of postgres
+    const spoofedPath = 'postgresql://postgres:testpass@db.attackerhost.com:5432/tjkbgxrckaocgosvmzmj';
+    expect(() => assertStagingDatabaseTarget(spoofedPath)).toThrow(
+      '[STAGING GUARD FATAL] Invalid database name (tjkbgxrckaocgosvmzmj). Expected postgres.'
+    );
+
+    // Project ref smuggled in query parameter while database is postgres
+    const spoofedQuery = 'postgresql://postgres:testpass@db.attackerhost.com:5432/postgres?ref=tjkbgxrckaocgosvmzmj';
+    expect(() => assertStagingDatabaseTarget(spoofedQuery)).toThrow(
+      '[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected'
+    );
+
+    // Project ref smuggled in password while database is postgres
+    const spoofedPassword = 'postgresql://postgres:tjkbgxrckaocgosvmzmj@db.attackerhost.com:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(spoofedPassword)).toThrow(
+      '[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected'
+    );
+  });
+
+  it('P0-A.8 Rejects hostname lookalikes (suffix and prefix attacks)', () => {
+    const suffixLookalike = 'postgresql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co.attacker.example:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(suffixLookalike)).toThrow(
+      '[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected'
+    );
+
+    const prefixLookalike = 'postgresql://postgres:testpass@attacker-db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(prefixLookalike)).toThrow(
+      '[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected'
+    );
+  });
+
+  it('P0-A.9 Rejects malformed database connection URL', () => {
+    expect(() => assertStagingDatabaseTarget('not-a-valid-url')).toThrow(
+      '[STAGING GUARD FATAL] Malformed database connection URL'
+    );
+  });
+
+  it('P0-A.10 Rejects invalid protocol (non-postgres)', () => {
+    const httpUrl = 'http://db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(httpUrl)).toThrow(
+      '[STAGING GUARD FATAL] Invalid protocol (http:)'
+    );
+
+    const mysqlUrl = 'mysql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(mysqlUrl)).toThrow(
+      '[STAGING GUARD FATAL] Invalid protocol (mysql:)'
+    );
+  });
+
+  it('P0-A.11 Rejects incorrect port for direct and pooler connections', () => {
+    const badPortDirect = 'postgresql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5433/postgres';
+    expect(() => assertStagingDatabaseTarget(badPortDirect)).toThrow(
+      '[STAGING GUARD FATAL] Invalid port (5433) for direct staging connection'
+    );
+
+    const badPortPooler = 'postgresql://postgres.tjkbgxrckaocgosvmzmj:testpass@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres';
+    expect(() => assertStagingDatabaseTarget(badPortPooler)).toThrow(
+      '[STAGING GUARD FATAL] Invalid port (5432) for pooler connection'
+    );
+  });
+
+  it('P0-A.12 Rejects incorrect database name', () => {
+    const badDbName = 'postgresql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/otherdb';
+    expect(() => assertStagingDatabaseTarget(badDbName)).toThrow(
+      '[STAGING GUARD FATAL] Invalid database name (otherdb). Expected postgres.'
+    );
+  });
+
+  it('P0-A.13 Rejects invalid pooler username', () => {
+    const badPoolerUser = 'postgresql://postgres.attacker:testpass@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
+    expect(() => assertStagingDatabaseTarget(badPoolerUser)).toThrow(
+      '[STAGING GUARD FATAL] Invalid pooler username (postgres.attacker)'
+    );
+  });
+
+  it('P0-A.14 Rejects invalid pooler hostname', () => {
+    const badPoolerHost = 'postgresql://postgres.tjkbgxrckaocgosvmzmj:testpass@aws-0-attacker.pooler.supabase.com:6543/postgres';
+    expect(() => assertStagingDatabaseTarget(badPoolerHost)).toThrow(
+      '[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected'
+    );
+  });
+
+  it('P0-A.15 Validates WORKFORCE_TARGET_SCHEMA environment variable', () => {
+    const originalSchema = process.env.WORKFORCE_TARGET_SCHEMA;
+    const validDirect = 'postgresql://postgres:testpass@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/postgres';
+
+    try {
+      process.env.WORKFORCE_TARGET_SCHEMA = 'production_schema';
+      expect(() => assertStagingDatabaseTarget(validDirect)).toThrow(
+        '[STAGING GUARD FATAL] WORKFORCE_TARGET_SCHEMA must be workforce_staging'
+      );
+
+      process.env.WORKFORCE_TARGET_SCHEMA = 'workforce_staging';
+      expect(() => assertStagingDatabaseTarget(validDirect)).not.toThrow();
+    } finally {
+      process.env.WORKFORCE_TARGET_SCHEMA = originalSchema;
+    }
+  });
+});
+
+// =========================================================================
+// P0-A.REST: Strict Supabase REST URL Validation Unit Tests (pure unit)
+// =========================================================================
+describe('P0-A.REST: Strict Supabase REST URL Validation Unit Tests', () => {
+  it('REST-1 Accepts exact canonical Workforce Supabase REST URL', () => {
+    expect(assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co')).toBe(
+      'https://tjkbgxrckaocgosvmzmj.supabase.co'
+    );
+    expect(assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co/')).toBe(
+      'https://tjkbgxrckaocgosvmzmj.supabase.co'
+    );
+    expect(assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co:443')).toBe(
+      'https://tjkbgxrckaocgosvmzmj.supabase.co'
+    );
+  });
+
+  it('REST-2 Rejects missing, empty, or whitespace-only REST URL', () => {
+    expect(() => assertStagingRestUrlTarget('')).toThrow(
+      '[STAGING GUARD FATAL] WORKFORCE_SUPABASE_URL is missing or empty'
+    );
+    expect(() => assertStagingRestUrlTarget('   ')).toThrow(
+      '[STAGING GUARD FATAL] WORKFORCE_SUPABASE_URL is missing or empty'
+    );
+    expect(() => assertStagingRestUrlTarget(null as any)).toThrow(
+      '[STAGING GUARD FATAL] WORKFORCE_SUPABASE_URL is missing or empty'
+    );
+    expect(() => assertStagingRestUrlTarget(undefined as any)).toThrow(
+      '[STAGING GUARD FATAL] WORKFORCE_SUPABASE_URL is missing or empty'
+    );
+  });
+
+  it('REST-3 Rejects production Supabase URL (mpluzajlzpregmjwpjqr)', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://mpluzajlzpregmjwpjqr.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] REST URL targets production database (mpluzajlzpregmjwpjqr)');
+  });
+
+  it('REST-4 Rejects Studio staging URL (xkhqirhurnjqglmajghn)', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://xkhqirhurnjqglmajghn.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] REST URL targets Studio staging (xkhqirhurnjqglmajghn)');
+  });
+
+  it('REST-5 Rejects unknown/other Supabase project ref', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://abcdefghijklmnop1234.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] Invalid Supabase REST hostname');
+  });
+
+  it('REST-6 Rejects project ref smuggling in attacker hostname path', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://attacker.com/tjkbgxrckaocgosvmzmj')
+    ).toThrow('[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected');
+  });
+
+  it('REST-7 Rejects project ref smuggling in attacker hostname query string', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://attacker.com/?ref=tjkbgxrckaocgosvmzmj')
+    ).toThrow('[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected');
+  });
+
+  it('REST-8 Rejects hostname prefix and suffix lookalikes', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://evil-tjkbgxrckaocgosvmzmj.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected');
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj-evil.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected');
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co.attacker.com')
+    ).toThrow('[STAGING GUARD FATAL] Hostname lookalike or project ref smuggling detected');
+  });
+
+  it('REST-9 Rejects insecure HTTP protocol', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('http://tjkbgxrckaocgosvmzmj.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] Insecure protocol (http:). Expected https:.');
+  });
+
+  it('REST-10 Rejects unexpected ports on Supabase REST URL', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co:8443')
+    ).toThrow('[STAGING GUARD FATAL] Unexpected port (8443)');
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co:5432')
+    ).toThrow('[STAGING GUARD FATAL] Unexpected port (5432)');
+  });
+
+  it('REST-11 Rejects embedded credentials in REST URL', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://user:password@tjkbgxrckaocgosvmzmj.supabase.co')
+    ).toThrow('[STAGING GUARD FATAL] Embedded credentials in Supabase REST URL are strictly forbidden');
+  });
+
+  it('REST-12 Rejects URL with unexpected pathname beyond root', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co/rest/v1')
+    ).toThrow('[STAGING GUARD FATAL] Unexpected pathname (/rest/v1) in Supabase REST URL base');
+  });
+
+  it('REST-13 Rejects URL with query string or fragment', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co?apiKey=123')
+    ).toThrow('[STAGING GUARD FATAL] Query parameters in Supabase REST URL base are forbidden');
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co#fragment')
+    ).toThrow('[STAGING GUARD FATAL] Fragment identifier in Supabase REST URL base is forbidden');
+  });
+
+  it('REST-14 Rejects canonical hostname with query string ?ref=test', () => {
+    expect(() =>
+      assertStagingRestUrlTarget('https://tjkbgxrckaocgosvmzmj.supabase.co?ref=test')
+    ).toThrow('[STAGING GUARD FATAL] Query parameters in Supabase REST URL base are forbidden');
+  });
+
+  it('REST-15 Rejects completely malformed URLs (e.g. not a URL, syntax errors)', () => {
+    expect(() => assertStagingRestUrlTarget('not-a-valid-url')).toThrow(
+      '[STAGING GUARD FATAL] Malformed Supabase REST URL'
+    );
+    expect(() => assertStagingRestUrlTarget('ht tp://bad url')).toThrow(
+      '[STAGING GUARD FATAL] Malformed Supabase REST URL'
+    );
+    expect(() => assertStagingRestUrlTarget('://missing-protocol')).toThrow(
+      '[STAGING GUARD FATAL] Malformed Supabase REST URL'
+    );
+  });
+
+  // ─── ADMIN-1 through ADMIN-5: getWorkforceSupabaseAdmin Runtime Isolation ──
+  it('ADMIN-1 getWorkforceSupabaseAdmin returns active client against canonical staging project', () => {
+    const admin = getWorkforceSupabaseAdmin();
+    expect(admin).toBeDefined();
+    expect(typeof admin.from).toBe('function');
+  });
+
+  it('ADMIN-2 getWorkforceSupabaseAdmin strictly fails when WORKFORCE_SUPABASE_URL is missing (zero fallback)', () => {
+    const origUrl = process.env.WORKFORCE_SUPABASE_URL;
+    const origShared = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    try {
+      delete process.env.WORKFORCE_SUPABASE_URL;
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://mock-project.supabase.co';
+      expect(() => getWorkforceSupabaseAdmin()).toThrow(/WORKFORCE ADMIN FATAL.*WORKFORCE_SUPABASE_URL is missing/);
+    } finally {
+      process.env.WORKFORCE_SUPABASE_URL = origUrl;
+      process.env.NEXT_PUBLIC_SUPABASE_URL = origShared;
+    }
+  });
+
+  it('ADMIN-3 getWorkforceSupabaseAdmin strictly fails when WORKFORCE_SUPABASE_SERVICE_ROLE_KEY is missing (zero fallback)', () => {
+    const origKey = process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY;
+    const origSharedKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    try {
+      delete process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'shared-key-that-must-not-be-used';
+      expect(() => getWorkforceSupabaseAdmin()).toThrow(/WORKFORCE ADMIN FATAL.*WORKFORCE_SUPABASE_SERVICE_ROLE_KEY is missing/);
+    } finally {
+      process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = origKey;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = origSharedKey;
+    }
+  });
+
+  it('ADMIN-4 getWorkforceSupabaseAdmin fails-closed when WORKFORCE_SUPABASE_URL targets production or Studio staging', () => {
+    const origUrl = process.env.WORKFORCE_SUPABASE_URL;
+    try {
+      process.env.WORKFORCE_SUPABASE_URL = 'https://mpluzajlzpregmjwpjqr.supabase.co';
+      expect(() => getWorkforceSupabaseAdmin()).toThrow(/targets production database/);
+
+      process.env.WORKFORCE_SUPABASE_URL = 'https://xkhqirhurnjqglmajghn.supabase.co';
+      expect(() => getWorkforceSupabaseAdmin()).toThrow(/targets Studio staging/);
+    } finally {
+      process.env.WORKFORCE_SUPABASE_URL = origUrl;
+    }
+  });
+
+  it('ADMIN-5 getWorkforceSupabaseAdmin strictly fails if called in client browser window context', () => {
+    (global as any).window = {};
+    try {
+      expect(() => getWorkforceSupabaseAdmin()).toThrow(/Security Guard/);
+    } finally {
+      delete (global as any).window;
+    }
+  });
+
+  it('ADMIN-6 getWorkforceSupabaseAdmin and getSupabaseAdmin maintain independent singletons (not identical)', () => {
+    const wfAdmin = getWorkforceSupabaseAdmin();
+    const sharedAdmin = getSupabaseAdmin();
+    expect(wfAdmin).toBeDefined();
+    expect(sharedAdmin).toBeDefined();
+    expect(wfAdmin).not.toBe(sharedAdmin);
+  });
+
+  it('ADMIN-7 Key rotation in Workforce factory rotates only Workforce instance and preserves Shared instance', () => {
+    const origWfKey = process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY;
+    try {
+      const initialWf = getWorkforceSupabaseAdmin();
+      const initialShared = getSupabaseAdmin();
+
+      process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = 'rotated-workforce-key-test';
+      const rotatedWf = getWorkforceSupabaseAdmin();
+      const currentShared = getSupabaseAdmin();
+
+      expect(rotatedWf).not.toBe(initialWf);
+      expect(currentShared).toBe(initialShared);
+    } finally {
+      process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = origWfKey;
+    }
+  });
+});
+
+// =========================================================================
+// P0-C: RSC Secret-Canary Tests — projectSafeRscTenantDto (pure unit, no DB required)
+// =========================================================================
+describe('P0-C: RSC Secret-Canary Tests — projectSafeRscTenantDto (Unit)', () => {
+  const mockTenantRow = {
+    id: 'rsc-canary-id',
+    slug: 'rsc-canary-tenant',
+    name: 'Canary Tenant',
+    store_name: 'Canary Store',
+    tier: 'PRO_SCALE',
+    status: 'active',
+    capi_token: 'RAW_CAPI_TOKEN_SECRET',
+    waba_access_token: 'RAW_WABA_TOKEN_SECRET',
+    waba_config: { access_token: 'RAW_WABA_CONFIG_SECRET', app_secret: 'RAW_APP_SECRET' },
+    payment_config: { secret_key: 'RAW_PAYMENT_SECRET', api_key: 'RAW_PAYMENT_KEY' },
+    gateway_config: { midtrans_server_key: 'RAW_MIDTRANS_KEY' },
+    bank_accounts: [{ account_number: '1234567890', secret: 'RAW_BANK_SECRET' }],
+    integration: { capi_token: 'RAW_INTEGRATION_CAPI' },
+    metadata: {
+      store_name: 'Canary Store Meta',
+      capi_token: 'RAW_META_CAPI',
+      waba_config: { access_token: 'RAW_META_WABA_TOKEN' },
+      microsite: {
+        title: 'Canary Microsite',
+        subtitle: 'Public subtitle',
+        buttons: [
+          { label: 'WhatsApp', url: 'https://wa.me/6281234', action: 'whatsapp', secret_key: 'RAW_BUTTON_SECRET' },
+        ],
+        internal_secret: 'RAW_MICROSITE_SECRET',
+      },
+      shipping_config: {
+        lincah: {
+          api_key: 'RAW_LINCAH_API_KEY',
+          secret: 'RAW_LINCAH_SECRET',
+          is_connected: true,
+          status: 'active',
+        },
+      },
+    },
+  };
+
+  it('P0-C.1 projectSafeRscTenantDto for OWNER must NOT contain any raw secret values', () => {
+    const dto = projectSafeRscTenantDto(mockTenantRow, 'OWNER');
+    const serialized = JSON.stringify(dto);
+
+    // Raw secret strings must NOT appear anywhere in the serialized DTO
+    expect(serialized).not.toContain('RAW_CAPI_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_WABA_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_WABA_CONFIG_SECRET');
+    expect(serialized).not.toContain('RAW_APP_SECRET');
+    expect(serialized).not.toContain('RAW_PAYMENT_SECRET');
+    expect(serialized).not.toContain('RAW_PAYMENT_KEY');
+    expect(serialized).not.toContain('RAW_MIDTRANS_KEY');
+    expect(serialized).not.toContain('RAW_BANK_SECRET');
+    expect(serialized).not.toContain('RAW_INTEGRATION_CAPI');
+    expect(serialized).not.toContain('RAW_META_CAPI');
+    expect(serialized).not.toContain('RAW_META_WABA_TOKEN');
+    expect(serialized).not.toContain('RAW_BUTTON_SECRET');
+    expect(serialized).not.toContain('RAW_MICROSITE_SECRET');
+    expect(serialized).not.toContain('RAW_LINCAH_API_KEY');
+    expect(serialized).not.toContain('RAW_LINCAH_SECRET');
+
+    // Explicit null for secret fields
+    expect(dto.capi_token).toBeNull();
+    expect(dto.waba_access_token).toBeNull();
+    expect(dto.payment_config).toBeNull();
+    expect(dto.gateway_config).toBeNull();
+    expect(dto.bank_accounts).toBeNull();
+    expect(dto.integration).toBeNull();
+
+    // Boolean indicators must be present and correct
+    expect(dto.has_capi_token).toBe(true);
+    expect(dto.has_waba_access_token).toBe(true);
+    expect(dto.has_payment_gateway).toBe(true);
+  });
+
+  it('P0-C.2 sanitizeSettingsForRole for MERCHANT/CS must NOT return raw secrets or hostile nested keys', () => {
+    const dto = sanitizeSettingsForRole(mockTenantRow, 'MERCHANT');
+    const serialized = JSON.stringify(dto);
+
+    expect(serialized).not.toContain('RAW_CAPI_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_WABA_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_PAYMENT_SECRET');
+    expect(serialized).not.toContain('RAW_BUTTON_SECRET');
+    expect(serialized).not.toContain('RAW_MICROSITE_SECRET');
+    expect((dto as any).capi_token).toBeNull();
+    expect((dto as any).waba_access_token).toBeNull();
+  });
+
+  it('P0-C.3 projectSafeRscTenantDto for CS role must NOT contain any raw secret values', () => {
+    const dto = projectSafeRscTenantDto(mockTenantRow, 'CS');
+    const serialized = JSON.stringify(dto);
+
+    expect(serialized).not.toContain('RAW_CAPI_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_WABA_TOKEN_SECRET');
+    expect(serialized).not.toContain('RAW_BUTTON_SECRET');
+    expect(dto.capi_token).toBeNull();
+    expect(dto.has_capi_token).toBe(true);
+  });
+
+  it('P0-C.4 Nested canary test: microsite internal secret and button secrets stripped', () => {
+    const dto = projectSafeRscTenantDto(mockTenantRow, 'OWNER');
+    expect(dto.microsite.title).toBe('Canary Microsite');
+    expect(dto.microsite.subtitle).toBe('Public subtitle');
+    expect(dto.microsite.buttons[0].label).toBe('WhatsApp');
+    expect(dto.microsite.buttons[0].url).toBe('https://wa.me/6281234');
+    expect(dto.microsite.buttons[0].secret_key).toBeUndefined();
+    expect((dto.microsite as any).internal_secret).toBeUndefined();
+  });
+
+  it('P0-C.5 Actual Server Component render test: TenantFinancePage and TenantInboxPage props contain ZERO secrets', async () => {
+    const authModule = require('@/lib/auth/merchant-session');
+    const authSpy = jest.spyOn(authModule, 'authorizeServerComponentTenant')
+      .mockResolvedValue({
+        authorized: true,
+        role: 'OWNER',
+        tenantRow: mockTenantRow,
+      });
+
+    try {
+      const TenantFinancePage = (await import('@/app/[tenant]/dashboard/finance/page')).default;
+      const TenantInboxPage = (await import('@/app/[tenant]/dashboard/inbox/page')).default;
+
+      const financeElement = await TenantFinancePage({ params: Promise.resolve({ tenant: 'rsc-canary-tenant' }) });
+      const serializedFinance = JSON.stringify(financeElement.props);
+
+      expect(serializedFinance).not.toContain('RAW_CAPI_TOKEN_SECRET');
+      expect(serializedFinance).not.toContain('RAW_WABA_TOKEN_SECRET');
+      expect(serializedFinance).not.toContain('RAW_PAYMENT_SECRET');
+      expect(serializedFinance).not.toContain('RAW_BUTTON_SECRET');
+      expect(serializedFinance).not.toContain('RAW_LINCAH_API_KEY');
+      expect(financeElement.props.initialTenant.has_capi_token).toBe(true);
+
+      const inboxElement = await TenantInboxPage({ params: Promise.resolve({ tenant: 'rsc-canary-tenant' }) });
+      const serializedInbox = JSON.stringify(inboxElement.props);
+
+      expect(serializedInbox).not.toContain('RAW_CAPI_TOKEN_SECRET');
+      expect(serializedInbox).not.toContain('RAW_WABA_TOKEN_SECRET');
+      expect(serializedInbox).not.toContain('RAW_PAYMENT_SECRET');
+      expect(serializedInbox).not.toContain('RAW_BUTTON_SECRET');
+      expect(serializedInbox).not.toContain('RAW_LINCAH_API_KEY');
+      expect(inboxElement.props.initialTenant.has_capi_token).toBe(true);
+    } finally {
+      authSpy.mockRestore();
+    }
   });
 });

@@ -352,18 +352,50 @@ export default function BiteshipCourierConfig({
           };
         }
 
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              biteship_config: payload,
-              updated_at: new Date().toISOString(),
+        // 1. Primary save: route through Settings API (server-authoritative, no direct browser DB write)
+        const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            self_pickup_config: {
+              is_enabled: isSelfPickupEnabled,
+              pickup_address: effectivePickupAddress,
+              pickup_maps_url: pickupMapsUrl,
+              pickup_operational_hours: pickupInstructions,
+              pickup_instructions: pickupInstructions,
             },
-            { onConflict: 'tenant_slug' }
-          );
+            shipping_config: {
+              is_self_pickup_enabled: isSelfPickupEnabled,
+              pickup_address: effectivePickupAddress,
+              pickup_maps_url: pickupMapsUrl,
+              pickup_operational_hours: pickupInstructions,
+              pickup_instructions: pickupInstructions,
+              active_aggregator: payload.lincah ? 'lincah' : 'biteship',
+              couriers: couriers.filter((c) => c.enabled).map((c) => c.id),
+              auto_pickup: autoPickup,
+              free_shipping_threshold: freeShippingThreshold,
+              origin: {
+                sender_name: senderName,
+                sender_phone: senderPhone,
+                address: originAddress,
+                city: originCity,
+                district: originDistrict,
+                postal_code: originPostalCode,
+              },
+            },
+          }),
+        });
 
-        // 2. Synchronize to store_shipping_configs table
+        if (!settingsRes.ok) {
+          let errMsg = `HTTP ${settingsRes.status}`;
+          try {
+            const errBody = await settingsRes.json();
+            errMsg = errBody?.message || errBody?.error || errMsg;
+          } catch {}
+          throw new Error(`Gagal menyimpan ke server: ${errMsg}`);
+        }
+
+        // 2. Synchronize to store_shipping_configs table (separate domain table, server-side helper)
         await saveStoreShippingConfig({
           tenant_slug: tenantSlug,
           is_self_pickup_enabled: isSelfPickupEnabled,
@@ -375,33 +407,7 @@ export default function BiteshipCourierConfig({
           origin_city: originCity,
           origin_district: originDistrict,
           origin_postal_code: originPostalCode,
-        }, supabase);
-
-        // 3. Synchronize to server settings API for universal storefront access (Round 3T.1)
-        try {
-          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              self_pickup_config: {
-                is_enabled: isSelfPickupEnabled,
-                pickup_address: effectivePickupAddress,
-                pickup_maps_url: pickupMapsUrl,
-                pickup_operational_hours: pickupInstructions,
-                pickup_instructions: pickupInstructions,
-              },
-              shipping_config: {
-                is_self_pickup_enabled: isSelfPickupEnabled,
-                pickup_address: effectivePickupAddress,
-                pickup_maps_url: pickupMapsUrl,
-                pickup_operational_hours: pickupInstructions,
-                pickup_instructions: pickupInstructions,
-              },
-            }),
-          });
-        } catch (settingsErr) {
-          console.warn('[BiteshipCourierConfig] Settings API sync note:', settingsErr);
-        }
+        }, getSupabase());
       }
 
       setFeedback('✅ Pengaturan Logistik & Lokasi Pickup berhasil disimpan!');
@@ -422,75 +428,40 @@ export default function BiteshipCourierConfig({
     setIsSavingLincah(true);
     setLincahModalError(null);
 
-    const now = new Date().toISOString();
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        // 1. Update tenant_settings
-        const { data: currentSettings } = await supabase
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', tenantSlug)
-          .maybeSingle();
-
-        const currentCfg = currentSettings?.biteship_config || {};
-        const updatedCfg = {
-          ...currentCfg,
-          is_enabled: true,
-          routing_rules: {
-            ...(currentCfg.routing_rules || {}),
-            instant: 'biteship',
-            regular: 'lincah',
-          },
-          lincah: {
+      // Route ALL Lincah key saves through the server-authoritative Settings API.
+      // No direct browser writes to tenant_settings (Round 3T.1 P1-E).
+      const now = new Date().toISOString();
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipping_config: {
+            active_aggregator: 'lincah',
             provider: 'lincah',
             status: 'connected',
-            is_connected: true,
-            api_key: inputLincahApiKey.trim(),
-            secret: inputLincahApiKeyReadOnly.trim(),
-            api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-            updated_at: now,
-          },
-          updated_at: now,
-        };
-
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              biteship_config: updatedCfg,
-              updated_at: now,
+            is_active: true,
+            lincah: {
+              api_key: inputLincahApiKey.trim(),
+              secret: inputLincahApiKeyReadOnly.trim(),
+              api_key_read_only: inputLincahApiKeyReadOnly.trim(),
+              is_sandbox: false,
+              is_connected: true,
+              status: 'active',
+              last_validated_at: now,
             },
-            { onConflict: 'tenant_slug' }
-          );
+          },
+        }),
+      });
 
-        // 2. Synchronize to server settings API (Round 3T.1)
+      if (!settingsRes.ok) {
+        let errMsg = `HTTP ${settingsRes.status}`;
         try {
-          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              shipping_config: {
-                active_aggregator: 'lincah',
-                provider: 'lincah',
-                status: 'connected',
-                is_active: true,
-                lincah: {
-                  api_key: inputLincahApiKey.trim(),
-                  secret: inputLincahApiKeyReadOnly.trim(),
-                  api_key_read_only: inputLincahApiKeyReadOnly.trim(),
-                  is_sandbox: false,
-                  is_connected: true,
-                  status: 'active',
-                  last_validated_at: now,
-                },
-              },
-            }),
-          });
-        } catch (settingsErr) {
-          console.warn('[BiteshipCourierConfig] Settings API Lincah sync note:', settingsErr);
-        }
+          const errBody = await settingsRes.json();
+          errMsg = errBody?.message || errBody?.error || errMsg;
+        } catch {}
+        setLincahModalError(`Gagal menyimpan kredensial Lincah: ${errMsg}`);
+        return;
       }
 
       setLincahApiKey(inputLincahApiKey.trim());

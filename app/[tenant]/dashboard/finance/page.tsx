@@ -2,7 +2,7 @@ import React from 'react';
 import { notFound, redirect } from 'next/navigation';
 import FinanceDashboardClient from './FinanceDashboardClient';
 import { authorizeServerComponentTenant } from '@/lib/auth/merchant-session';
-import { sanitizeSettingsForRole } from '@/app/api/v1/tenants/[slug]/settings/route';
+import { sanitizeSettingsForRole, projectSafeRscTenantDto } from '@/app/api/v1/tenants/[slug]/settings/route';
 
 interface FinancePageProps {
   params: Promise<{ tenant: string }>;
@@ -28,8 +28,9 @@ export default async function TenantFinancePage({ params }: FinancePageProps) {
     notFound();
   }
 
-  // 2. Constructive DTO Projection: Strip all secrets and project only role-authorized fields
-  const safeTenantDto = sanitizeSettingsForRole(auth.tenantRow, auth.role || 'MERCHANT');
+  // 2. Constructive DTO Projection: Strip all secrets — NEVER serialize raw credentials into RSC HTML stream.
+  // projectSafeRscTenantDto is used for ALL roles including OWNER (Round 3T.1 P0-C).
+  const safeTenantDto = projectSafeRscTenantDto(auth.tenantRow, auth.role || 'MERCHANT');
 
   return (
     <FinanceDashboardClient
