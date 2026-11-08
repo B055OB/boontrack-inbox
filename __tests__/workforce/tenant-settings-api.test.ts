@@ -105,6 +105,51 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
         TRUE, TRUE,
         '{
           "store_name": "Fortress Alpha Store",
+          "theme": {
+            "template": "clean",
+            "primary_color": "#2563EB",
+            "visual_theme": "clean_minimal",
+            "internal_secret": "ROUND3R_CANARY_THEME",
+            "private_token": "ROUND3R_CANARY_TOKEN"
+          },
+          "faqs": [
+            {
+              "id": "faq_canary_1",
+              "question": "What is Fortress Alpha?",
+              "answer": "Defense systems provider.",
+              "internal_secret": "ROUND3R_CANARY_FAQ",
+              "private_token": "ROUND3R_CANARY_FAQ_TOKEN"
+            }
+          ],
+          "business_hours": {
+            "timezone": "Asia/Jakarta",
+            "is_always_open": false,
+            "internal_secret": "ROUND3R_CANARY_HOURS",
+            "days": {
+              "monday": {
+                "open": "08:00",
+                "close": "17:00",
+                "is_open": true,
+                "nested_secret": "ROUND3R_CANARY_HOURS_NESTED"
+              }
+            }
+          },
+          "catalog_preferences": {
+            "default_sort": "newest",
+            "show_prices": true,
+            "internal_secret": "ROUND3R_CANARY_CATALOG",
+            "admin_notes": "ROUND3R_CANARY_CATALOG_ADMIN"
+          },
+          "public_links": [
+            {
+              "title": "Official Portal",
+              "url": "https://fortress.boontrack.com",
+              "internal_secret": "ROUND3R_CANARY_LINKS",
+              "api_token": "ROUND3R_CANARY_LINKS_TOKEN"
+            }
+          ],
+          "unknown_canary_key": "ROUND3R_CANARY_ROOT",
+          "arbitrary_internal_metadata": "ROUND3R_CANARY_METADATA",
           "bank": {"bank_name": "BCA", "account_number": "1234567890", "account_holder": "PT Fortress Alpha"},
           "bank_accounts": [{"bank_name": "BCA", "account_number": "1234567890", "account_holder": "PT Fortress Alpha"}],
           "payment_config": {"secret_key": "PAY_SEC_KEY_888", "enable_manual_transfer": true},
@@ -772,5 +817,283 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(json.settings.capi_token).toBe('EAAX_TEST_CAPI_TOKEN_999');
     expect(json.settings.bank).toBeDefined();
     expect(json.settings.bank.account_number).toBe('1234567890');
+  });
+
+  // ── TEST 11: ROUND 3R NESTED DTO SECURITY PROJECTION & ADVERSARIAL MATRIX ──
+  describe('11. Round 3R Nested DTO Security Projection & Adversarial Matrix', () => {
+    const seedCanaries = async () => {
+      await pgClient.query(`
+        UPDATE workforce_staging.tenants
+        SET metadata = metadata || jsonb_build_object(
+          'theme', jsonb_build_object(
+            'template', 'clean',
+            'primary_color', '#2563EB',
+            'visual_theme', 'clean_minimal',
+            'internal_secret', 'ROUND3R_CANARY_THEME',
+            'private_token', 'ROUND3R_CANARY_TOKEN'
+          ),
+          'faqs', jsonb_build_array(
+            jsonb_build_object(
+              'id', 'faq_canary_1',
+              'question', 'What is Fortress Alpha?',
+              'answer', 'Defense systems provider.',
+              'internal_secret', 'ROUND3R_CANARY_FAQ',
+              'private_token', 'ROUND3R_CANARY_FAQ_TOKEN'
+            )
+          ),
+          'business_hours', jsonb_build_object(
+            'timezone', 'Asia/Jakarta',
+            'is_always_open', false,
+            'internal_secret', 'ROUND3R_CANARY_HOURS',
+            'days', jsonb_build_object(
+              'monday', jsonb_build_object(
+                'open', '08:00',
+                'close', '17:00',
+                'is_open', true,
+                'nested_secret', 'ROUND3R_CANARY_HOURS_NESTED'
+              )
+            )
+          ),
+          'catalog_preferences', jsonb_build_object(
+            'default_sort', 'newest',
+            'show_prices', true,
+            'internal_secret', 'ROUND3R_CANARY_CATALOG',
+            'admin_notes', 'ROUND3R_CANARY_CATALOG_ADMIN'
+          ),
+          'public_links', jsonb_build_array(
+            jsonb_build_object(
+              'title', 'Official Portal',
+              'url', 'https://fortress.boontrack.com',
+              'internal_secret', 'ROUND3R_CANARY_LINKS',
+              'api_token', 'ROUND3R_CANARY_LINKS_TOKEN'
+            )
+          ),
+          'unknown_canary_key', 'ROUND3R_CANARY_ROOT',
+          'arbitrary_internal_metadata', 'ROUND3R_CANARY_METADATA'
+        )
+        WHERE slug = $1
+      `, [slugA]);
+    };
+
+    beforeAll(async () => {
+      await seedCanaries();
+    });
+
+    test('11a. Round 3R Adversarial Test: MERCHANT receives nested DTO projections and zero canary leakage', async () => {
+      await seedCanaries();
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenMerchantA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // 1. Positive assertions on legitimate operational attributes
+    expect(json.settings.theme).toBeDefined();
+    expect(json.settings.theme.template).toBe('clean');
+    expect(json.settings.theme.primary_color).toBe('#2563EB');
+    expect(json.settings.theme.visual_theme).toBe('clean_minimal');
+
+    expect(Array.isArray(json.settings.faqs)).toBe(true);
+    expect(json.settings.faqs.length).toBeGreaterThan(0);
+    expect(json.settings.faqs[0].question).toBe('What is Fortress Alpha?');
+    expect(json.settings.faqs[0].answer).toBe('Defense systems provider.');
+
+    expect(json.settings.metadata.business_hours).toBeDefined();
+    expect(json.settings.metadata.business_hours.timezone).toBe('Asia/Jakarta');
+    expect(json.settings.metadata.business_hours.days.monday.open).toBe('08:00');
+
+    expect(json.settings.metadata.catalog_preferences).toBeDefined();
+    expect(json.settings.metadata.catalog_preferences.default_sort).toBe('newest');
+
+    expect(Array.isArray(json.settings.metadata.public_links)).toBe(true);
+    expect(json.settings.metadata.public_links[0].url).toBe('https://fortress.boontrack.com');
+
+    // 2. Negative assertions on specific canary and sensitive properties
+    expect(json.settings.theme.internal_secret).toBeUndefined();
+    expect(json.settings.theme.private_token).toBeUndefined();
+    expect(json.settings.faqs[0].internal_secret).toBeUndefined();
+    expect(json.settings.faqs[0].private_token).toBeUndefined();
+    expect(json.settings.metadata.business_hours.internal_secret).toBeUndefined();
+    expect(json.settings.metadata.business_hours.days.monday.nested_secret).toBeUndefined();
+    expect(json.settings.metadata.catalog_preferences.internal_secret).toBeUndefined();
+    expect(json.settings.metadata.catalog_preferences.admin_notes).toBeUndefined();
+    expect(json.settings.metadata.public_links[0].internal_secret).toBeUndefined();
+    expect(json.settings.metadata.public_links[0].api_token).toBeUndefined();
+    expect(json.settings.unknown_canary_key).toBeUndefined();
+    expect(json.settings.metadata.arbitrary_internal_metadata).toBeUndefined();
+
+    // 3. Whole-serialized response assertion guaranteeing zero canary leakage
+    const serialized = JSON.stringify(json.settings);
+    expect(serialized).not.toContain('ROUND3R_CANARY');
+    expect(serialized).not.toContain('ROUND3R_PRIVATE_TOKEN');
+  });
+
+  test('11b. Round 3R Adversarial Test: OPERATOR receives nested DTO projections and zero canary leakage', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOperatorA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    expect(json.settings.theme.template).toBe('clean');
+    expect(json.settings.faqs[0].question).toBe('What is Fortress Alpha?');
+    expect(json.settings.metadata.business_hours.timezone).toBe('Asia/Jakarta');
+
+    const serialized = JSON.stringify(json.settings);
+    expect(serialized).not.toContain('ROUND3R_CANARY');
+    expect(serialized).not.toContain('ROUND3R_PRIVATE_TOKEN');
+  });
+
+  test('11c. Round 3R Adversarial Test: CS receives nested DTO projections and zero canary leakage', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenCSA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    expect(json.settings.theme.template).toBe('clean');
+    expect(json.settings.faqs[0].question).toBe('What is Fortress Alpha?');
+    expect(json.settings.metadata.business_hours.timezone).toBe('Asia/Jakarta');
+
+    const serialized = JSON.stringify(json.settings);
+    expect(serialized).not.toContain('ROUND3R_CANARY');
+    expect(serialized).not.toContain('ROUND3R_PRIVATE_TOKEN');
+  });
+
+  test('11d. Round 3R Adversarial Test: OWNER Positive Control preserves full nested metadata and all canaries intact', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: { cookie: `bt_merchant_token=${tokenOwnerA}` },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // OWNER whole-serialized response contains all canary values intact
+    const ownerSerialized = JSON.stringify(json.settings);
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_THEME');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_FAQ');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_HOURS');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_CATALOG');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_LINKS');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_ROOT');
+    expect(ownerSerialized).toContain('ROUND3R_CANARY_METADATA');
+
+    // OWNER retains complete operational and sensitive properties
+    expect(json.settings.phone).toBe('+628111222333');
+    expect(json.settings.whatsapp_number).toBe('+628111222333');
+    expect(json.settings.bank).toBeDefined();
+    expect(json.settings.capi_token).toBe('EAAX_TEST_CAPI_TOKEN_999');
+  });
+
+  test('11e. Round 3R Mutation Boundary: MERCHANT attempting nested theme secret injection is rejected (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        theme: {
+          template: 'clean',
+          internal_secret: 'ATTACKER_THEME_CANARY',
+        },
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+  });
+
+  test('11f. Round 3R Mutation Boundary: MERCHANT attempting nested FAQ secret injection is rejected (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        faqs: [
+          {
+            question: 'Valid question?',
+            answer: 'Valid answer.',
+            secret_key: 'ATTACKER_FAQ_CANARY',
+          },
+        ],
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+  });
+
+  test('11g. Round 3R Mutation Boundary: MERCHANT attempting nested business hours secret injection is rejected (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        business_hours: {
+          timezone: 'Asia/Jakarta',
+          admin_secret: 'ATTACKER_HOURS_CANARY',
+        },
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error).toMatch(/Only tenant OWNER can mutate financial, identity, or integration configurations/i);
+  });
+
+  test('11h. Round 3R Mutation Boundary: MERCHANT legitimate operational update (theme & business_hours) succeeds (200)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `bt_merchant_token=${tokenMerchantA}`,
+      },
+      body: JSON.stringify({
+        theme: {
+          template: 'clean',
+          primary_color: '#10B981',
+          visual_theme: 'clean_minimal',
+        },
+        business_hours: {
+          timezone: 'Asia/Jakarta',
+          is_always_open: true,
+        },
+      }),
+    });
+
+    const res = await updateSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.message).toMatch(/berhasil diperbarui/i);
+  });
   });
 });
