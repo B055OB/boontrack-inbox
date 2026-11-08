@@ -273,6 +273,9 @@ export const ALLOWED_LINK_PLATFORMS = new Set([
   'telegram',
   'linkedin',
   'marketplace',
+  'gofood',
+  'grabfood',
+  'shopeefood',
   'custom',
 ]);
 
@@ -283,18 +286,19 @@ export function projectPublicLinksDto(raw: any): any {
     const projectedArray: any[] = [];
     for (const item of raw) {
       if (item && typeof item === 'object' && !Array.isArray(item)) {
-        const title = typeof item.title === 'string' ? item.title : (typeof item.label === 'string' ? item.label : '');
-        const url = typeof item.url === 'string' ? item.url : (typeof item.href === 'string' ? item.href : '');
-        const platform = typeof item.platform === 'string' && ALLOWED_LINK_PLATFORMS.has(item.platform.toLowerCase())
-          ? item.platform.toLowerCase()
+        const title = typeof item.title === 'string' ? item.title.slice(0, 100) : (typeof item.label === 'string' ? item.label.slice(0, 100) : '');
+        const url = typeof item.url === 'string' ? item.url.slice(0, 500) : (typeof item.href === 'string' ? item.href.slice(0, 500) : '');
+        const rawPlatform = typeof item.platform === 'string' ? item.platform.trim().toLowerCase() : '';
+        const platform = rawPlatform && rawPlatform.length <= 32 && ALLOWED_LINK_PLATFORMS.has(rawPlatform)
+          ? rawPlatform
           : undefined;
         if (url) {
           projectedArray.push({
             title,
             url,
             ...(platform ? { platform } : {}),
-            icon: typeof item.icon === 'string' ? item.icon : undefined,
-            order: typeof item.order === 'number' ? item.order : undefined,
+            icon: typeof item.icon === 'string' && item.icon.length <= 32 ? item.icon : undefined,
+            order: typeof item.order === 'number' && Number.isFinite(item.order) ? item.order : undefined,
             is_active: typeof item.is_active === 'boolean' ? item.is_active : true,
           });
         }
@@ -306,8 +310,9 @@ export function projectPublicLinksDto(raw: any): any {
   if (typeof raw === 'object') {
     const projectedObj: Record<string, string> = {};
     for (const [key, value] of Object.entries(raw)) {
-      if (ALLOWED_LINK_PLATFORMS.has(key.toLowerCase()) && typeof value === 'string') {
-        projectedObj[key.toLowerCase()] = value;
+      const normKey = key.toLowerCase().trim();
+      if (ALLOWED_LINK_PLATFORMS.has(normKey) && typeof value === 'string' && value.length <= 500) {
+        projectedObj[normKey] = value;
       }
     }
     return projectedObj;
@@ -387,6 +392,12 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     if (typeof settings.metadata.display_name === 'string') {
       sanitizedMetadata.display_name = settings.metadata.display_name;
     }
+    if (typeof settings.metadata.description === 'string') {
+      sanitizedMetadata.description = settings.metadata.description;
+    }
+    if (typeof settings.metadata.tagline === 'string') {
+      sanitizedMetadata.tagline = settings.metadata.tagline;
+    }
     if (settings.metadata.theme) {
       sanitizedMetadata.theme = projectThemeDto(settings.metadata.theme);
     }
@@ -410,6 +421,15 @@ export function sanitizeSettingsForRole(settings: any, role: string) {
     slug: settings.slug,
     name: settings.name,
     store_name: settings.store_name || settings.name,
+    display_name: typeof settings.display_name === 'string'
+      ? settings.display_name
+      : (typeof settings.metadata?.display_name === 'string' ? settings.metadata.display_name : null),
+    description: typeof settings.description === 'string'
+      ? settings.description
+      : (typeof settings.metadata?.description === 'string' ? settings.metadata.description : null),
+    tagline: typeof settings.tagline === 'string'
+      ? settings.tagline
+      : (typeof settings.metadata?.tagline === 'string' ? settings.metadata.tagline : null),
     category: settings.category || 'retail',
     tier: settings.tier,
     plan_tier: settings.plan_tier,
@@ -668,6 +688,9 @@ export async function GET(
         store_logo_url: metadata.store_logo_url || metadata.logo_url || metadata.avatar_url || null,
         avatar_url: metadata.avatar_url || metadata.logo_url || null,
         bio: metadata.bio || null,
+        display_name: metadata.display_name || null,
+        description: metadata.description || null,
+        tagline: metadata.tagline || null,
         phone: tenantRow.phone || tenantRow.whatsapp_number || metadata.phone || metadata.whatsapp_number || metadata.whatsapp || null,
         whatsapp_number: tenantRow.whatsapp_number || tenantRow.phone || metadata.whatsapp_number || metadata.whatsapp || metadata.whatsapp_cs || null,
         faqs: Array.isArray(metadata.faqs)

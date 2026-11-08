@@ -1435,6 +1435,8 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
         body: JSON.stringify({
           bio: 'Updated Operational Fortress Bio',
           display_name: 'Fortress Alpha Prime Operations',
+          description: 'Tactical perimeter defense systems and operational security equipment.',
+          tagline: 'Defending every frontier.',
           theme: {
             template: 'clean',
             primary_color: '#059669',
@@ -1484,24 +1486,46 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
       const getJson = await getRes.json();
       expect(getJson.success).toBe(true);
 
-      // Assert persisted values
+      // Assert persisted values for all 6 target fields + profile fields
       expect(getJson.settings.bio).toBe('Updated Operational Fortress Bio');
+      expect(getJson.settings.display_name).toBe('Fortress Alpha Prime Operations');
+      expect(getJson.settings.metadata.display_name).toBe('Fortress Alpha Prime Operations');
+      expect(getJson.settings.description).toBe('Tactical perimeter defense systems and operational security equipment.');
+      expect(getJson.settings.metadata.description).toBe('Tactical perimeter defense systems and operational security equipment.');
+      expect(getJson.settings.tagline).toBe('Defending every frontier.');
+      expect(getJson.settings.metadata.tagline).toBe('Defending every frontier.');
+
+      // 1. business_hours
+      expect(getJson.settings.metadata.business_hours.timezone).toBe('Asia/Makassar');
+      expect(getJson.settings.metadata.business_hours.days.monday.open).toBe('09:00');
+      expect(getJson.settings.metadata.business_hours.days.monday.close).toBe('18:00');
+      expect(getJson.settings.metadata.business_hours.days.monday.is_open).toBe(true);
+      expect(getJson.settings.metadata.business_hours.schedule[0].open).toBe('09:00');
+
+      // 2. catalog_preferences
+      expect(getJson.settings.metadata.catalog_preferences.default_sort).toBe('price_asc');
+      expect(getJson.settings.metadata.catalog_preferences.display_mode).toBe('grid');
+      expect(getJson.settings.metadata.catalog_preferences.items_per_page).toBe(24);
+      expect(getJson.settings.metadata.catalog_preferences.show_prices).toBe(true);
+
+      // 3. public_links (including platform)
+      expect(getJson.settings.metadata.public_links[0].title).toBe('Store IG');
+      expect(getJson.settings.metadata.public_links[0].platform).toBe('instagram');
+      expect(getJson.settings.metadata.public_links[0].url).toBe('https://instagram.com/fortress_alpha');
+
+      // 4. theme
       expect(getJson.settings.theme.primary_color).toBe('#059669');
       expect(getJson.settings.theme.secondary_color).toBe('#10B981');
       expect(getJson.settings.theme.layout_style).toBe('grid');
 
+      // 5. faqs
       expect(getJson.settings.faqs[0].question).toBe('Operational support?');
       expect(getJson.settings.faqs[0].category).toBe('General');
 
-      expect(getJson.settings.metadata.business_hours.timezone).toBe('Asia/Makassar');
-      expect(getJson.settings.metadata.business_hours.days.monday.open).toBe('09:00');
-      expect(getJson.settings.metadata.business_hours.schedule[0].open).toBe('09:00');
-
-      expect(getJson.settings.metadata.catalog_preferences.default_sort).toBe('price_asc');
-      expect(getJson.settings.metadata.catalog_preferences.display_mode).toBe('grid');
-
-      expect(getJson.settings.metadata.public_links[0].platform).toBe('instagram');
-      expect(getJson.settings.metadata.public_links[0].url).toBe('https://instagram.com/fortress_alpha');
+      // 6. Non-authorized fields remain uncorrupted / masked
+      expect(getJson.settings.phone).toBeNull();
+      expect(getJson.settings.capi_token).toBeNull();
+      expect(getJson.settings.bank).toBeNull();
     });
   });
 });
