@@ -44,6 +44,12 @@ import {
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import CarouselVisualCanvas from '@/components/studio/CarouselVisualCanvas';
 import UgcVideoPhoneMockup from '@/components/studio/UgcVideoPhoneMockup';
+import { sanitizeAndValidateProductUrl } from '@/lib/url-security';
+import {
+  validateImageFile,
+  validateAggregateUploadSize,
+  verifyImageDecodable,
+} from '@/lib/image-upload-security';
 
 export type OutputFormat = 'ad_copy' | 'ugc_video' | 'carousel';
 export type TrendRange = '7d' | '30d';
@@ -140,17 +146,9 @@ function generateStructuredContent(
   const name = productName.trim() || 'Produk Andalan';
   const desc = productDesc.trim() || 'Solusi terbaik untuk kebutuhan sehari-hari.';
   
-  // Safe link sanitizer: prevent javascript:, data:, or private IP/SSRF addresses
-  const rawLink = productUrl.trim();
-  let link = 'https://boontrack.com';
-  if (rawLink) {
-    if (
-      !/^(javascript:|data:|vbscript:|file:)/i.test(rawLink) &&
-      !/^https?:\/\/(localhost|127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.)/i.test(rawLink)
-    ) {
-      link = rawLink.startsWith('http://') || rawLink.startsWith('https://') ? rawLink : `https://${rawLink}`;
-    }
-  }
+  // Safe link sanitizer (Gate G6 Compliance): prevent dangerous schemes and SSRF/private IP representations
+  const urlCheck = sanitizeAndValidateProductUrl(productUrl);
+  const link = urlCheck.isValid ? urlCheck.sanitizedUrl : 'https://boontrack.com';
 
   const hookAngleText = getHookStyleLabel(hookStyle);
 
@@ -323,7 +321,7 @@ export default function StudioDeskPage() {
   const [productName, setProductName] = useState<string>('');
   const [productDescription, setProductDescription] = useState<string>('');
   const [productUrl, setProductUrl] = useState<string>('');
-  const [productImages, setProductImages] = useState<Array<{ name: string; previewUrl: string }>>([]);
+  const [productImages, setProductImages] = useState<Array<{ name: string; previewUrl: string; size?: number }>>([]);
 
   // Accordion Advanced Settings (Collapsed by default)
   const [isAdvancedOpen, setIsAdvancedOpen] = useState<boolean>(false);
@@ -423,18 +421,65 @@ export default function StudioDeskPage() {
     }
   };
 
-  // Image Upload Handler (1-3 images with strict image/* MIME-type validation)
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
+  // Image Upload Handler (Gate G6 Compliance: Magic-byte inspection, SVG rejection, size limits & decodability check)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
     const rawFiles = Array.from(e.target.files);
-    // Strict MIME-type validation: allow only image/* formats (PNG, JPEG, WebP, GIF)
-    const validImageFiles = rawFiles.filter((file) => file.type.startsWith('image/'));
-    const files = validImageFiles.slice(0, 3 - productImages.length);
-    const newImgs = files.map((file) => ({
-      name: file.name,
-      previewUrl: URL.createObjectURL(file),
-    }));
-    setProductImages((prev) => [...prev, ...newImgs].slice(0, 3));
+    e.target.value = ''; // Reset input to allow re-selection
+
+    if (productImages.length >= 3) {
+      alert('Maksimal 3 foto produk yang dapat diunggah.');
+      return;
+    }
+
+    const availableSlots = 3 - productImages.length;
+    const filesToProcess = rawFiles.slice(0, availableSlots);
+
+    // Aggregate size boundary check (25 MB)
+    const existingSizes = productImages.map((img) => img.size || 0);
+    const newSizes = filesToProcess.map((f) => f.size);
+    const aggCheck = validateAggregateUploadSize(existingSizes, newSizes);
+    if (!aggCheck.isValid) {
+      alert(aggCheck.error || 'Total ukuran file melebihi batas 25 MB.');
+      return;
+    }
+
+    const validatedNewImages: Array<{ name: string; previewUrl: string; size: number }> = [];
+
+    for (const file of filesToProcess) {
+      // 1. Read first 512 bytes for magic bytes and SVG content inspection
+      const sliceBuf = await file.slice(0, 512).arrayBuffer();
+      const validation = validateImageFile(
+        new Uint8Array(sliceBuf),
+        file.name,
+        file.type,
+        file.size
+      );
+
+      if (!validation.isValid) {
+        alert(`File "${file.name}" ditolak: ${validation.error}`);
+        continue;
+      }
+
+      // 2. Client-side Image Decodability check
+      const objectUrl = URL.createObjectURL(file);
+      const isDecodable = await verifyImageDecodable(objectUrl);
+      if (!isDecodable) {
+        URL.revokeObjectURL(objectUrl);
+        alert(`File "${file.name}" ditolak: Gambar rusak atau tidak dapat didekode.`);
+        continue;
+      }
+
+      validatedNewImages.push({
+        name: file.name,
+        previewUrl: objectUrl,
+        size: file.size,
+      });
+    }
+
+    if (validatedNewImages.length > 0) {
+      setProductImages((prev) => [...prev, ...validatedNewImages].slice(0, 3));
+    }
   };
 
   const removeImage = (index: number) => {

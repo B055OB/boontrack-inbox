@@ -491,14 +491,14 @@ export async function renderSlideToCanvasBlob(
 
 // ── 6. Export 5-Slide Carousel to ZIP Bundle ────────────────────────────────
 
-export async function exportCarouselZipBundle(
+export async function generateCarouselZipBytes(
   slides: SlideData[],
   options: {
     ratio: '1:1' | '4:5';
     productName: string;
     productImages?: Array<{ previewUrl: string }>;
   }
-): Promise<void> {
+): Promise<{ zipBytes: Uint8Array; filename: string }> {
   const zipFiles: ZipFileInput[] = [];
 
   for (let i = 0; i < slides.length; i++) {
@@ -530,9 +530,22 @@ export async function exportCarouselZipBundle(
   });
 
   const zipBytes = createZipArchive(zipFiles);
-  const zipBlob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
   const sanitizedName = sanitizeSafeFilename(options.productName, 'Produk');
-  triggerDownload(zipBlob, `Carousel-5-Slides-${sanitizedName}-${options.ratio === '4:5' ? '4x5' : '1x1'}.zip`);
+  const filename = `Carousel-5-Slides-${sanitizedName}-${options.ratio === '4:5' ? '4x5' : '1x1'}.zip`;
+  return { zipBytes, filename };
+}
+
+export async function exportCarouselZipBundle(
+  slides: SlideData[],
+  options: {
+    ratio: '1:1' | '4:5';
+    productName: string;
+    productImages?: Array<{ previewUrl: string }>;
+  }
+): Promise<void> {
+  const { zipBytes, filename } = await generateCarouselZipBytes(slides, options);
+  const zipBlob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
+  triggerDownload(zipBlob, filename);
 }
 
 // ── 7. Export Single Slide PNG ──────────────────────────────────────────────
