@@ -105,6 +105,26 @@ export function middleware(req: NextRequest) {
       loginUrl.pathname = '/login';
       return NextResponse.redirect(loginUrl);
     }
+
+    // Fast edge verification of token structure and expiry
+    try {
+      const parts = sessionToken.split('.');
+      if (parts.length !== 3) {
+        throw new Error('Malformed token structure');
+      }
+      // base64url decode in Edge runtime
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const jsonStr = atob(base64);
+      const payload = JSON.parse(jsonStr);
+      const now = Math.floor(Date.now() / 1000);
+      if (payload.exp && payload.exp < now) {
+        throw new Error('Token expired');
+      }
+    } catch {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
   return createBrandedNextResponse();

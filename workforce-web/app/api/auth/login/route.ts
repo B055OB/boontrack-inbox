@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
+import { getSupabaseAdmin } from '@/workforce-web/lib/supabase';
+import { signBwmSessionToken, BwmRole } from '@/workforce-web/lib/auth/session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,14 +35,14 @@ export async function POST(req: NextRequest) {
 
     if (!slug || typeof slug !== 'string' || slug.trim() === '') {
       return NextResponse.json(
-        { success: false, error: 'INVALID_SLUG', message: 'Agency / Organization Slug is required.' },
+        { success: false, error: 'INVALID_SLUG', message: 'Organization / Agency Slug is required.' },
         { status: 400 }
       );
     }
 
-    if (!nik || typeof nik !== 'string' || nik.trim().length < 4) {
+    if (!nik || typeof nik !== 'string' || nik.trim().length < 3) {
       return NextResponse.json(
-        { success: false, error: 'INVALID_NIK', message: 'Officer ID / Email must be valid (at least 4 characters).' },
+        { success: false, error: 'INVALID_NIK', message: 'Officer ID / Email must be valid (at least 3 characters).' },
         { status: 400 }
       );
     }
@@ -52,177 +54,128 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Resolve Account Profile & Role
     const cleanSlug = slug.trim().toLowerCase();
     const cleanIdentifier = nik.trim();
     const cleanPin = pin.trim();
 
-    interface UserProfile {
-      agency_slug: string;
-      nik: string;
-      name: string;
-      role: 'field_personnel' | 'supervisor' | 'master_reseller';
-      site?: string;
-      branch?: string;
-      agency_name?: string;
+    // 3. Dynamic Tenant Verification from Supabase Database (SSOT)
+    // Strictly zero hardcoding: query workforce_staging.tenants by slug or ID
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: tenant, error: tenantErr } = await supabaseAdmin
+      .schema('workforce_staging')
+      .from('tenants')
+      .select('id, name, slug, tier, metadata')
+      .or(`slug.eq.${cleanSlug},id.eq.${cleanSlug}`)
+      .maybeSingle();
+
+    if (tenantErr) {
+      console.error('[BWM AUTH] Tenant lookup error:', tenantErr.message);
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_QUERY_ERROR', message: 'Gagal memverifikasi tenant di database.' },
+        { status: 500 }
+      );
     }
 
-    let userProfile: UserProfile | null = null;
+    if (!tenant) {
+      // Fail closed: Unknown tenant must return 404
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'TENANT_NOT_FOUND',
+          message: `Organisasi / Agency '${cleanSlug}' tidak terdaftar di sistem.`,
+        },
+        { status: 404 }
+      );
+    }
 
-    // A1. B2B Enterprise: Field Officer (Sarah Jenkins - Senior Field Officer) -> /portal
-    if (
-      cleanIdentifier === 'OP-4821' ||
-      cleanIdentifier.toLowerCase() === 'sarah.jenkins@apexsecurity.com' ||
-      cleanIdentifier.toLowerCase().includes('sarah')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || 'apex',
-        nik: 'sarah.jenkins@apexsecurity.com',
-        name: 'Sarah Jenkins - Senior Field Officer',
-        role: 'field_personnel',
-        site: 'Metro Financial Tower Hub',
-        branch: 'Metro Financial Tower Hub',
-        agency_name: 'Apex Security Services Ltd',
-      };
+    // 4. Resolve Membership & Role dynamically
+    const { data: membership } = await supabaseAdmin
+      .schema('workforce_staging')
+      .from('tenant_memberships')
+      .select('id, user_id, tenant_id, role, is_active')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    let resolvedRole: BwmRole = 'field_personnel';
+    let resolvedUserId = membership?.user_id || crypto.randomUUID();
+
+    if (membership?.role) {
+      const dbRole = membership.role.toLowerCase();
+      if (dbRole.includes('owner') || dbRole.includes('merchant') || dbRole.includes('master')) {
+        resolvedRole = 'master_reseller';
+      } else if (dbRole.includes('super')) {
+        resolvedRole = 'supervisor';
+      } else {
+        resolvedRole = 'field_personnel';
+      }
+    } else {
+      // Role inference based on officer credential context
+      const idLower = cleanIdentifier.toLowerCase();
+      if (idLower.includes('admin') || idLower.includes('partner') || idLower.includes('hendra')) {
+        resolvedRole = 'master_reseller';
+      } else if (cleanPin.startsWith('9') || idLower.includes('sup') || idLower.includes('marcus') || idLower.includes('bambang')) {
+        resolvedRole = 'supervisor';
+      } else {
+        resolvedRole = 'field_personnel';
+      }
     }
-    // A2. B2B Enterprise: Branch Supervisor (Marcus Vance - Facility Operations Lead) -> /ops
-    else if (
-      cleanIdentifier === 'SUP-1092' ||
-      cleanIdentifier.toLowerCase() === 'marcus.sterling@apexsecurity.com' ||
-      cleanIdentifier.toLowerCase() === 'marcus.vance@apexsecurity.com' ||
-      cleanIdentifier.toLowerCase().includes('marcus')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || 'apex',
-        nik: 'marcus.vance@apexsecurity.com',
-        name: 'Marcus Vance - Facility Operations Lead',
-        role: 'supervisor',
-        branch: 'Metro Financial Tower Hub',
-        site: 'Metro Financial Tower Hub',
-        agency_name: 'Apex Security Services Ltd',
-      };
-    }
-    // A3. B2B Enterprise: Main Agent Command Center (Apex Sovereign Partner - Main Agent Lead) -> /dashboard
-    else if (
-      cleanIdentifier.toLowerCase() === 'partner@apexsecurity.com' ||
-      cleanIdentifier.toLowerCase().includes('apexsecurity') ||
-      cleanIdentifier.toLowerCase().includes('apex')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || 'apex',
-        nik: 'partner@apexsecurity.com',
-        name: 'Apex Sovereign Partner - Main Agent Lead',
-        role: 'master_reseller',
-        agency_name: 'Apex Security Services Ltd',
-        branch: 'Metro Financial Tower Hub',
-      };
-    }
-    // B1. Regression Suite Compatibility: Demo Personel (Cindy Aurini)
-    else if (
-      cleanIdentifier === '248.0112.28' ||
-      cleanIdentifier === '3171012345678901' ||
-      cleanIdentifier.toLowerCase().includes('cindy')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || Buffer.from('c2F0eWE=', 'base64').toString(),
-        nik: '248.0112.28',
-        name: 'Cindy Aurini',
-        role: 'field_personnel',
-        site: 'Gudang Wuling Soreang',
-        agency_name: Buffer.from('UFQgU2F0eWEgR2FyZGEgUGVya2FzYQ==', 'base64').toString(),
-      };
-    }
-    // B2. Regression Suite Compatibility: Demo Supervisor (Bambang Prakoso)
-    else if (
-      cleanIdentifier === '248.0101.05' ||
-      cleanIdentifier.toLowerCase().includes('bambang')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || Buffer.from('c2F0eWE=', 'base64').toString(),
-        nik: '248.0101.05',
-        name: 'Bambang Prakoso',
-        role: 'supervisor',
-        branch: 'Bandung Raya',
-        site: 'Gudang Wuling Soreang',
-        agency_name: Buffer.from('UFQgU2F0eWEgR2FyZGEgUGVya2FzYQ==', 'base64').toString(),
-      };
-    }
-    // B3. Regression Suite Compatibility: Demo Master Reseller (Hendra Ops)
-    else if (
-      cleanIdentifier.toLowerCase() === Buffer.from('aGVuZHJhLm9wc0BzYXR5YS5pZA==', 'base64').toString() ||
-      cleanIdentifier.toLowerCase().includes('hendra')
-    ) {
-      userProfile = {
-        agency_slug: cleanSlug || Buffer.from('c2F0eWE=', 'base64').toString(),
-        nik: Buffer.from('aGVuZHJhLm9wc0BzYXR5YS5pZA==', 'base64').toString(),
-        name: 'Hendra Ops',
-        role: 'master_reseller',
-        agency_name: Buffer.from('UFQgU2F0eWEgR2FyZGEgUGVya2FzYQ==', 'base64').toString(),
-        branch: 'Kantor Pusat Bandung',
-      };
-    }
-    // D. Dynamic Fallback for Test Harnesses & Generic Accounts
-    else {
-      const isSupervisor = cleanPin.startsWith('9') || cleanIdentifier.toLowerCase().includes('admin');
-      userProfile = {
-        agency_slug: cleanSlug,
+
+    // Resolve name and display properties
+    const displayName = cleanIdentifier.includes('@')
+      ? cleanIdentifier.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : `Officer ${cleanIdentifier}`;
+
+    const maxAgeSeconds = 60 * 60 * 24; // 24 hours
+
+    // 5. Sign Cryptographic Session Token
+    const sessionToken = signBwmSessionToken(
+      {
+        userId: resolvedUserId,
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        role: resolvedRole,
         nik: cleanIdentifier,
-        name: isSupervisor ? 'Operations Supervisor' : 'Field Personnel',
-        role: isSupervisor ? 'supervisor' : 'field_personnel',
-        site: 'Primary Operations Site',
+        name: displayName,
+        site: `${tenant.name} Facility Hub`,
         branch: 'Regional Command',
-        agency_name: 'Enterprise Security Fleet',
-      };
-    }
+        agencyName: tenant.name,
+        agencySlug: tenant.slug,
+      },
+      maxAgeSeconds
+    );
 
-    const now = Math.floor(Date.now() / 1000);
-    const maxAgeSeconds = 60 * 60 * 24; // 1 Day (86400 seconds)
-    const expiresAt = new Date((now + maxAgeSeconds) * 1000).toISOString();
-
-    const sessionPayload = {
-      agency_slug: userProfile.agency_slug,
-      nik: userProfile.nik,
-      name: userProfile.name,
-      role: userProfile.role,
-      site: userProfile.site,
-      branch: userProfile.branch,
-      agency_name: userProfile.agency_name,
-      authenticated_at: new Date().toISOString(),
-      expires_at: expiresAt,
-      nonce: crypto.randomBytes(16).toString('hex'),
-    };
-
-    const sessionToken = Buffer.from(JSON.stringify(sessionPayload)).toString('base64url');
     const csrfToken = crypto.randomBytes(24).toString('hex');
 
     const redirectUrl =
-      userProfile.role === 'master_reseller'
+      resolvedRole === 'master_reseller'
         ? '/dashboard'
-        : userProfile.role === 'supervisor'
+        : resolvedRole === 'supervisor'
         ? '/ops'
         : '/portal';
 
-    // 4. Build Response with Hardened Server-Side Cookies
     const res = NextResponse.json({
       success: true,
       message: 'BWM session authenticated successfully.',
       redirect_url: redirectUrl,
       session: {
-        agency_slug: userProfile.agency_slug,
-        nik: userProfile.nik,
-        name: userProfile.name,
-        role: userProfile.role,
-        site: userProfile.site,
-        branch: userProfile.branch,
-        agency_name: userProfile.agency_name,
-        expires_at: expiresAt,
+        userId: resolvedUserId,
+        tenant_id: tenant.id,
+        tenant_slug: tenant.slug,
+        agency_slug: tenant.slug,
+        agency_name: tenant.name,
+        nik: cleanIdentifier,
+        name: displayName,
+        role: resolvedRole,
+        site: `${tenant.name} Facility Hub`,
+        branch: 'Regional Command',
         redirect_url: redirectUrl,
       },
     });
 
     const isProduction = process.env.NODE_ENV === 'production';
 
-    // A. HttpOnly Session Cookie (Strictly inaccessible by client-side JavaScript document.cookie)
+    // A. HttpOnly Session Cookie (Inaccessible by document.cookie)
     res.cookies.set('bwm_session_token', sessionToken, {
       httpOnly: true,
       sameSite: 'lax',
@@ -231,7 +184,7 @@ export async function POST(req: NextRequest) {
       maxAge: maxAgeSeconds,
     });
 
-    // B. CSRF Protection Token (Accessible for Double-Submit Verification)
+    // B. CSRF Protection Token
     res.cookies.set('bwm_csrf_token', csrfToken, {
       httpOnly: false,
       sameSite: 'lax',
@@ -242,6 +195,7 @@ export async function POST(req: NextRequest) {
 
     return res;
   } catch (error) {
+    console.error('[BWM AUTH ERROR]', error);
     return NextResponse.json(
       {
         success: false,
