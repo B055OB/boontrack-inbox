@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const SCREENSHOTS_DIR = 'C:\\Users\\Alldy\\.gemini\\antigravity\\brain\\2c8806b4-b0d4-44cb-9099-6427d0afa6ed\\screenshots';
-const TARGET_HOST = process.env.STUDIO_PREVIEW_URL || 'https://boontrack-studio-1654hns0j-boontrack.vercel.app';
+const TARGET_HOST = process.env.STUDIO_PREVIEW_URL || 'https://boontrack-studio-ck31cz7mo-boontrack.vercel.app';
 const BYPASS_SECRET = process.env.VERCEL_BYPASS_SECRET || 'gM4eSbUfYp1PsfAaCl4kw2qqKjcGSwFZ';
 
 async function runBrowserSmoke() {
@@ -67,6 +67,9 @@ async function runBrowserSmoke() {
     ]);
 
     const page = await desktopContext.newPage();
+    await page.addInitScript(() => {
+      localStorage.setItem('studio_sandbox_credits', '50');
+    });
 
     // 1.1 Load Screen 1: Format Selection
     console.log('Navigating to /desk...');
@@ -80,7 +83,7 @@ async function runBrowserSmoke() {
 
     // 1.2 Select Carousel Format -> Advance to Screen 2
     console.log('Selecting Carousel format card...');
-    const carouselCard = page.locator('button:has-text("Carousel Post")').first();
+    const carouselCard = page.locator('h3:has-text("Carousel Slides")').first();
     await carouselCard.click();
     await page.waitForTimeout(1500);
 
@@ -91,10 +94,10 @@ async function runBrowserSmoke() {
 
     // 1.3 Fill in Product Information & Upload Image
     console.log('Filling product details in Screen 2...');
-    const nameInput = page.locator('input[placeholder*="Earphone"]').first();
+    const nameInput = page.locator('input[placeholder*="Serum Pencerah"]').first();
     await nameInput.fill('Earphone Bluetooth TWS ANC Pro');
 
-    const descInput = page.locator('textarea[placeholder*="Masukan spesifikasi"]').first();
+    const descInput = page.locator('textarea[placeholder*="Ceritakan masalah"]').first();
     await descInput.fill(
       'Audio kualitas studio dengan Active Noise Cancelling 45dB, baterai tahan 36 jam nonstop, tahan air IPX5, dan garansi resmi 12 bulan.'
     );
@@ -116,12 +119,14 @@ async function runBrowserSmoke() {
     if (fs.existsSync(samplePngPath)) {
       console.log('Uploading sample product PNG...');
       const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null);
-      const uploadArea = page.locator('label:has-text("Upload Foto Produk")').first();
-      await uploadArea.click();
-      const fileChooser = await fileChooserPromise;
-      if (fileChooser) {
-        await fileChooser.setFiles(samplePngPath);
-        await page.waitForTimeout(1500);
+      const uploadBtn = page.locator('button:has-text("Unggah Foto")').first();
+      if (await uploadBtn.isVisible()) {
+        await uploadBtn.click();
+        const fileChooser = await fileChooserPromise;
+        if (fileChooser) {
+          await fileChooser.setFiles(samplePngPath);
+          await page.waitForTimeout(1500);
+        }
       }
     }
 
@@ -132,7 +137,8 @@ async function runBrowserSmoke() {
     await page.waitForTimeout(1000);
 
     console.log('Returning to Screen 2 to verify input preservation...');
-    await carouselCard.click();
+    const carouselCardAgain = page.locator('h3:has-text("Carousel Slides")').first();
+    await carouselCardAgain.click();
     await page.waitForTimeout(1000);
 
     const preservedName = await nameInput.inputValue();
@@ -153,7 +159,7 @@ async function runBrowserSmoke() {
 
     // 1.5 Generate Content -> Advance to Screen 3
     console.log('Clicking Generate Content to advance to Screen 3...');
-    const generateBtn = page.locator('button:has-text("Generate")').first();
+    const generateBtn = page.locator('button:has-text("Lanjut ke Pratinjau")').first();
     await generateBtn.click();
     await page.waitForTimeout(4000);
 
@@ -182,19 +188,21 @@ async function runBrowserSmoke() {
 
     // 1.7 UGC Video Mockup & MP4 Download Test
     console.log('Navigating back to Screen 1 to test UGC Video format...');
-    const editBtn = page.locator('button:has-text("Edit Parameter")').first();
-    if (await editBtn.isVisible()) {
-      await editBtn.click();
-      await page.waitForTimeout(1000);
-      const backFromS2 = page.locator('button:has-text("Ganti Format")').first();
-      await backFromS2.click();
+    const newContentBtn = page.locator('button:has-text("+ Buat Konten Baru")').first();
+    if (await newContentBtn.isVisible()) {
+      await newContentBtn.click();
       await page.waitForTimeout(1000);
 
-      const ugcCard = page.locator('button:has-text("UGC Video Script")').first();
+      const ugcCard = page.locator('h3:has-text("Video Iklan UGC")').first();
       await ugcCard.click();
       await page.waitForTimeout(1000);
 
-      const genUgcBtn = page.locator('button:has-text("Generate")').first();
+      const ugcNameInput = page.locator('input[placeholder*="Serum Pencerah"]').first();
+      await ugcNameInput.fill('Smart Watch Ultra Pro Fitness');
+      const ugcDescInput = page.locator('textarea[placeholder*="Ceritakan masalah"]').first();
+      await ugcDescInput.fill('Sensor detak jantung akurat, baterai tahan 14 hari, layar AMOLED HD cerah outdoor.');
+
+      const genUgcBtn = page.locator('button:has-text("Lanjut ke Pratinjau")').first();
       await genUgcBtn.click();
       await page.waitForTimeout(4000);
 
@@ -203,25 +211,33 @@ async function runBrowserSmoke() {
       testReport.screenshots.push(s5Path);
       console.log(`Captured: 05_desktop_screen3_ugc_video_mockup.png`);
 
-      // Test MP4 Download
+      // Render Video MP4 first (Staging pipeline simulator)
+      const renderMp4Btn = page.locator('button:has-text("Render Video MP4")').first();
+      if (await renderMp4Btn.isVisible()) {
+        console.log('Clicking Render Video MP4...');
+        await renderMp4Btn.click();
+        await page.waitForTimeout(3500);
+      }
+
+      // Wait for Download Video MP4 button to become visible after rendering finishes
       const downloadMp4Btn = page.locator('button:has-text("Download Video MP4")').first();
-      if (await downloadMp4Btn.isVisible()) {
-        const mp4DownloadPromise = page.waitForEvent('download', { timeout: 15000 }).catch(() => null);
-        await downloadMp4Btn.click();
-        const mp4Download = await mp4DownloadPromise;
-        if (mp4Download) {
-          const mp4SavePath = path.resolve('artifacts_test/live_browser_ugc_video.mp4');
-          await mp4Download.saveAs(mp4SavePath);
-          const mp4Sz = fs.statSync(mp4SavePath).size;
-          console.log(`PASSED: Downloaded authentic MP4 video (${(mp4Sz / 1024).toFixed(1)} KB)`);
-          testReport.mp4Download = mp4Sz > 500000; // > 500 KB
-        }
+      await downloadMp4Btn.waitFor({ state: 'visible', timeout: 15000 });
+      console.log('Downloading MP4 video asset via browser UI...');
+      const mp4DownloadPromise = page.waitForEvent('download', { timeout: 15000 });
+      await downloadMp4Btn.click();
+      const mp4Download = await mp4DownloadPromise;
+      if (mp4Download) {
+        const mp4SavePath = path.resolve('artifacts_test/live_browser_ugc_video.mp4');
+        await mp4Download.saveAs(mp4SavePath);
+        const mp4Sz = fs.statSync(mp4SavePath).size;
+        console.log(`PASSED: Downloaded authentic MP4 video (${(mp4Sz / 1024).toFixed(1)} KB) to ${mp4SavePath}`);
+        testReport.mp4Download = mp4Sz > 500000; // > 500 KB
       }
     }
 
     // 1.8 Logout Sandbox Isolation Test
     console.log('Testing Studio Logout and Cookie Sandbox Isolation...');
-    const logoutBtn = page.locator('button:has-text("Keluar")').first();
+    const logoutBtn = page.locator('button[title*="Keluar dari Studio"]').first();
     if (await logoutBtn.isVisible()) {
       await logoutBtn.click();
       await page.waitForTimeout(3000);
@@ -263,6 +279,9 @@ async function runBrowserSmoke() {
     });
 
     const mobilePage = await mobileContext.newPage();
+    await mobilePage.addInitScript(() => {
+      localStorage.setItem('studio_sandbox_credits', '50');
+    });
     await mobilePage.goto(`${TARGET_HOST}/desk`, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await mobilePage.waitForTimeout(3000);
 
@@ -272,7 +291,7 @@ async function runBrowserSmoke() {
     console.log(`Captured: 07_mobile_375px_screen1.png`);
 
     // Select Carousel
-    const mCarouselBtn = mobilePage.locator('button:has-text("Carousel Post")').first();
+    const mCarouselBtn = mobilePage.locator('h3:has-text("Carousel Slides")').first();
     await mCarouselBtn.click();
     await mobilePage.waitForTimeout(1500);
 
@@ -282,12 +301,12 @@ async function runBrowserSmoke() {
     console.log(`Captured: 08_mobile_375px_screen2.png`);
 
     // Fill form and advance
-    const mName = mobilePage.locator('input[placeholder*="Earphone"]').first();
+    const mName = mobilePage.locator('input[placeholder*="Serum Pencerah"]').first();
     await mName.fill('Paket Skincare Glow Booster');
-    const mDesc = mobilePage.locator('textarea[placeholder*="Masukan spesifikasi"]').first();
+    const mDesc = mobilePage.locator('textarea[placeholder*="Ceritakan masalah"]').first();
     await mDesc.fill('Formula ceramide mencerahkan kulit kusam dalam 7 hari.');
 
-    const mGenBtn = mobilePage.locator('button:has-text("Generate")').first();
+    const mGenBtn = mobilePage.locator('button:has-text("Lanjut ke Pratinjau")').first();
     await mGenBtn.click();
     await mobilePage.waitForTimeout(4000);
 
