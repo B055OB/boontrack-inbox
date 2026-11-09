@@ -22,6 +22,7 @@ jest.unmock('@supabase/supabase-js');
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import { GET as getProducts } from '@/app/api/v1/tenants/[slug]/products/route';
@@ -50,6 +51,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for route exposure tests');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

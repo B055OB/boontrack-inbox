@@ -33,6 +33,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import { POST as createProduct, GET as getProducts } from '@/app/api/v1/tenants/[slug]/products/route';
@@ -62,6 +63,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Real API persistence test must run against real PostgreSQL');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

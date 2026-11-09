@@ -19,6 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
@@ -43,6 +44,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for role authorization tests');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

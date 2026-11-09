@@ -26,6 +26,7 @@ if (fs.existsSync(envPath)) {
 
 import crypto from 'crypto';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import {
@@ -56,6 +57,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for settings api tests');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 
