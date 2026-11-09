@@ -328,21 +328,21 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
     const s4Visual = `Hero shot sinematik! ${product_name} diangkat sejajar mata dengan pencahayaan hangat, efek kilau bersih dan gerakan memutar perlahan.`;
     const s4Voiceover = `Sampai akhirnya aku nemu penyelamat baru: ${product_name}. Ini game changer yang beneran ngubah rutinitas aku.`;
 
-    // Scene 5: Product In-Action Demo (4s)
-    const s5Visual = `Macro zoom tekstur/penggunaan produk saat diaplikasikan: tekstur ringan meresap cepat, bahan premium, atau build quality kokoh.`;
-    const s5Voiceover = `Lihat pas dipakai, teksturnya ringan banget, nyaman, gak ribet sama sekali dan langsung bekerja seketika.`;
+    // Scene 5: Product In-Action Demo / Practical Method (4s)
+    const s5Visual = `Demonstrasi langsung penggunaan produk atau walkthrough materi di layar: langkah praktis, mudah dipahami, dan langsung bisa diaplikasikan.`;
+    const s5Voiceover = `Metode dan cara pakainya praktis banget, gak ribet sama sekali dan langsung kelihatan hasilnya.`;
 
     // Scene 6: Key Benefit 1 (3s)
     const s6Visual = `Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.`;
     const s6Voiceover = `Manfaat utamanya langsung berasa, bikin aktivitas seharian jadi jauh lebih tenang dan pede maksimal.`;
 
     // Scene 7: Key Benefit 2 (3s)
-    const s7Visual = `Visual kemudahan dibawa bepergian (travel-friendly) atau ketahanan jangka panjang saat digunakan seharian.`;
-    const s7Voiceover = `Plus praktis banget dibawa ke mana-mana, formulanya aman dan udah teruji klinis untuk pemakaian harian.`;
+    const s7Visual = `Visual kemudahan akses kapan saja atau panduan langkah demi langkah yang fleksibel.`;
+    const s7Voiceover = `Plus praktis banget bisa diakses dari mana saja, terstruktur rapi untuk dipraktekkan hari ini.`;
 
     // Scene 8: Social Proof / Reassurance (3s)
-    const s8Visual = `Menampilkan pop-up screenshot sertifikat BPOM/Halal, rating 4.9/5 dari marketplace, dan testimoni ribuan pelanggan puas.`;
-    const s8Voiceover = `Gak heran ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. Dijamin original dan terpercaya.`;
+    const s8Visual = `Menampilkan pop-up screenshot testimoni kepuasan, rating 4.9/5, atau badge garansi akses terpercaya.`;
+    const s8Voiceover = `Materi dan kualitasnya teruji, udah banyak yang buktiin hasilnya. Dijamin kredibel dan dibimbing sampai paham.`;
 
     // Scene 9: Strong CTA (5s)
     const s9Visual = `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;

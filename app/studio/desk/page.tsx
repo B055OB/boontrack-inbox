@@ -158,16 +158,16 @@ function generateStructuredContent(
     call_to_actions: ['Beli Sekarang', 'Pesan via WhatsApp', 'Klaim Diskon Hari Ini'],
   };
 
-  // 2. 9-SCENE UGC STORYBOARD
+  // 2. 9-SCENE UGC STORYBOARD (Universal Formula: Fisik & Digital/Jasa)
   const ugcScenes: SceneItem[] = [
     {
       scene_number: 1,
       stage_name: 'Hook Interupsi Penasaran',
       duration_sec: 3,
       time_range: '00:00 - 00:03',
-      voiceover: `Stop scrolling! Jangan beli ${name} sebelum kamu tahu 3 hal penting ini!`,
-      visual_direction: 'Talent menunjuk kamera dengan ekspresi penasaran, pegang produk di depan dada.',
-      on_screen_text: 'STOP SCROLLING! JANGAN BELI INI DULU! 🛑',
+      voiceover: `Stop scrolling! Jangan ambil keputusan sebelum kamu tahu 3 hal penting tentang ${name} ini!`,
+      visual_direction: 'Talent menunjuk kamera dengan ekspresi penasaran, memperlihatkan produk atau layar materi di depan dada.',
+      on_screen_text: 'STOP SCROLLING! JANGAN LEWATKAN INI! 🛑',
     },
     {
       scene_number: 2,
@@ -175,7 +175,7 @@ function generateStructuredContent(
       duration_sec: 4,
       time_range: '00:03 - 00:07',
       voiceover: `Pernah gak sih ngerasa capek karena masalah ini gak kelar-kelar? Padahal udah coba berbagai cara.`,
-      visual_direction: 'Talent menghela napas, ekspresi lelah menghadap cermin atau meja kerja.',
+      visual_direction: 'Talent menghela napas, ekspresi lelah menghadap kamera atau meja kerja.',
       on_screen_text: 'Capek banget masalah gak kunjung beres? 😩',
     },
     {
@@ -183,8 +183,8 @@ function generateStructuredContent(
       stage_name: 'Ekspektasi vs Realita',
       duration_sec: 3,
       time_range: '00:07 - 00:10',
-      voiceover: `Banyak produk di luar sana cuma janji manis tapi hasilnya zonk.`,
-      visual_direction: 'Cut cepat ke talent menggelengkan kepala menunjukkan kekecewaan.',
+      voiceover: `Banyak solusi di luar sana cuma janji manis tapi hasilnya zonk dan buang waktu.`,
+      visual_direction: 'Cut cepat ke talent menggelengkan kepala menunjukkan kekecewaan terhadap cara lama.',
       on_screen_text: 'Udah coba macam-macam tapi nihil?',
     },
     {
@@ -192,18 +192,18 @@ function generateStructuredContent(
       stage_name: 'Penemuan Solusi (The Discovery)',
       duration_sec: 4,
       time_range: '00:10 - 00:14',
-      voiceover: `Sampai akhirnya teman aku rekomendasiin ${name} ini. Awalnya skeptis, tapi...`,
-      visual_direction: 'Unboxing cepat paket rapi, produk dikeluarkan dengan senyuman antusias.',
+      voiceover: `Sampai akhirnya teman aku rekomendasiin ${name} ini. Awalnya skeptis, tapi ternyata...`,
+      visual_direction: 'Talent memperlihatkan akses produk atau showcase layar dengan senyuman antusias.',
       on_screen_text: `Ternyata solusinya ada di ${name} ✨`,
     },
     {
       scene_number: 5,
-      stage_name: 'Demo Pemakaian Nyata',
+      stage_name: 'Solusi & Praktik Nyata',
       duration_sec: 4,
       time_range: '00:14 - 00:18',
-      voiceover: `${desc.slice(0, 80)}... Teksturnya nyaman dan langsung terasa bedanya sejak hari pertama!`,
-      visual_direction: 'Close-up detail tekstur/cara pakai produk, pencahayaan alami tajam.',
-      on_screen_text: 'Tekstur ringan & praktis digunakan ✅',
+      voiceover: `${desc.slice(0, 80)}... Metode/cara praktis yang langsung bisa dipraktekkan hari ini tanpa ribet!`,
+      visual_direction: 'Talent mendemonstrasikan langkah mudah atau menampilkan layar tutorial secara jelas.',
+      on_screen_text: 'PRAKTIS & LANGSUNG ACTION ⚡',
     },
     {
       scene_number: 6,
@@ -219,27 +219,27 @@ function generateStructuredContent(
       stage_name: 'Penawaran Spesial',
       duration_sec: 3,
       time_range: '00:22 - 00:25',
-      voiceover: `Kabar baiknya, hari ini lagi ada promo diskon spesial plus subsidi ongkir.`,
-      visual_direction: 'Grafik stiker diskon dan promo muncul di area tengah layar (aman tombol medsos).',
-      on_screen_text: 'PROMO DISKON HARI INI SAJA! 💥',
+      voiceover: `Kabar baiknya, hari ini lagi ada penawaran spesial plus bonus akses tambahan.`,
+      visual_direction: 'Grafik stiker penawaran dan promo muncul di area tengah layar (aman tombol medsos).',
+      on_screen_text: 'PENAWARAN SPESIAL HARI INI SAJA! 💥',
     },
     {
       scene_number: 8,
-      stage_name: 'Jaminan & Garansi',
+      stage_name: 'Jaminan Akses & Kredibilitas',
       duration_sec: 2,
       time_range: '00:25 - 00:27',
-      voiceover: `100% original dan ada garansi retur kalau barang gak sesuai pesanan.`,
-      visual_direction: 'Talent mengacungkan jempol dengan stiker badge 100% Original.',
-      on_screen_text: '100% Original & Garansi Pengiriman 🛡️',
+      voiceover: `Materi teruji dan dibimbing sampai paham. Cek link sekarang sebelum penawaran berakhir!`,
+      visual_direction: 'Talent mengacungkan jempol dengan badge kepercayaan dan kepuasan pengguna.',
+      on_screen_text: 'AKSES INSTAN & TERPERCAYA 🛡️',
     },
     {
       scene_number: 9,
       stage_name: 'Call to Action Mendesak',
       duration_sec: 3,
       time_range: '00:27 - 00:30',
-      voiceover: `Klik tautan di bio atau tap keranjang sekarang juga sebelum stok promo ludes!`,
-      visual_direction: 'Talent menunjuk ke arah tombol bio/keranjang belanja di pojok kiri bawah.',
-      on_screen_text: 'KLIK LINK DI BIO / ORDER SEKARANG! 🛒👇',
+      voiceover: `Klik tautan di bio atau tap tombol di bawah sekarang juga sebelum kuota promo berakhir!`,
+      visual_direction: 'Talent menunjuk ke arah tombol bio/akses di pojok kiri bawah.',
+      on_screen_text: 'KLIK LINK DI BIO / AKSES SEKARANG! 🚀👇',
     },
   ];
 

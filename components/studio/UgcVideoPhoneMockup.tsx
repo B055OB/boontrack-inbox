@@ -391,7 +391,7 @@ export default function UgcVideoPhoneMockup({
                 @{tenantSlug || 'boontrack.studio'}
               </span>
               <p className="text-[10px] text-zinc-200 line-clamp-2 leading-tight drop-shadow">
-                {productName} — Solusi terbukti tanpa ribet! Cek keranjang kuning sekarang 👇 #fyp #ugc #{productName.toLowerCase().replace(/\s+/g, '')}
+                {productName} — Solusi terbukti tanpa ribet! Cek link sekarang 👇 #fyp #edukasi #bisnis #{productName.toLowerCase().replace(/\s+/g, '')}
               </p>
               <div className="flex items-center gap-1.5 text-[9px] text-zinc-300 font-mono">
                 <Music className="w-3 h-3 text-fuchsia-400 shrink-0" />
