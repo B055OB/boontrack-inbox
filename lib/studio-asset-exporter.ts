@@ -40,6 +40,21 @@ export function calculateCrc32(buf: Uint8Array): number {
 
 // ── 2. Zero-Dependency PKZip Builder ────────────────────────────────────────
 
+/**
+ * Path-traversal safe filename sanitizer (Gate G6 Compliance).
+ * Strips directory traversal tokens (../, /), invalid OS characters, and limits string length.
+ */
+export function sanitizeSafeFilename(name: string, fallback = 'Aset'): string {
+  const cleaned = name
+    .trim()
+    .replace(/[/\\?%*:|"<>]/g, '_')   // Remove illegal filename characters
+    .replace(/\.\.+/g, '_')            // Block path traversal ('../')
+    .replace(/\s+/g, '_')             // Normalize whitespace
+    .replace(/^_+|_+$/g, '')          // Strip leading/trailing underscores
+    .slice(0, 60);                    // Enforce safe filename length
+  return cleaned || fallback;
+}
+
 export interface ZipFileInput {
   name: string;
   data: Uint8Array;
@@ -70,7 +85,12 @@ export function createZipArchive(files: ZipFileInput[]): Uint8Array {
   const localChunks: Uint8Array[] = [];
 
   for (const file of files) {
-    const nameBytes = encoder.encode(file.name);
+    // Path traversal / Zip Slip protection on internal archive entries
+    const safeInternalName = file.name
+      .replace(/^[/\\]+/, '')
+      .replace(/\.\.[/\\]/g, '')
+      .replace(/[/\\?%*:|"<>]/g, (char) => (char === '/' || char === '\\' ? '/' : '_'));
+    const nameBytes = encoder.encode(safeInternalName);
     const crc = calculateCrc32(file.data);
     const size = file.data.length;
 
@@ -511,7 +531,7 @@ export async function exportCarouselZipBundle(
 
   const zipBytes = createZipArchive(zipFiles);
   const zipBlob = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
-  const sanitizedName = options.productName.trim().replace(/\s+/g, '_') || 'Produk';
+  const sanitizedName = sanitizeSafeFilename(options.productName, 'Produk');
   triggerDownload(zipBlob, `Carousel-5-Slides-${sanitizedName}-${options.ratio === '4:5' ? '4x5' : '1x1'}.zip`);
 }
 
@@ -533,7 +553,7 @@ export async function exportSingleSlidePng(
     totalSlides: options.totalSlides,
   });
 
-  const sanitizedName = options.productName.trim().replace(/\s+/g, '_') || 'Produk';
+  const sanitizedName = sanitizeSafeFilename(options.productName, 'Produk');
   triggerDownload(
     blob,
     `Carousel-${sanitizedName}-Slide-${slide.slide_number}-${options.ratio === '4:5' ? '4x5' : '1x1'}.png`
@@ -541,6 +561,18 @@ export async function exportSingleSlidePng(
 }
 
 // ── 8. UGC Video MP4 Downloader (Authentic Vertical 1080p Asset) ────────────
+
+/**
+ * UGC Composition Architecture Levels (CTO Governance Standard - Gate G5):
+ * - Level 1 (Current Staging): Static Demo Video Packaging using authentic 1080p vertical footage (/assets/sample-ugc-1080p.mp4).
+ * - Level 2 (Post-Merge Backlog): Client-side WebCodecs / HTML5 Canvas multi-layer video compositing.
+ * - Level 3 (Post-Merge Backlog): Cloud distributed render pipeline (Remotion / FFmpeg worker queue).
+ */
+export const UGC_PACKAGING_CLASSIFICATION = {
+  CURRENT_STAGE: 'Level 1: Static Demo Video Packaging',
+  SPEC: 'H.264 / AAC / 1080x1920 (9:16) / ~1.92 MB',
+  BACKLOG_TARGET: 'Level 2/3 Dynamic Multi-Layer Composition',
+} as const;
 
 export interface UgcSceneData {
   scene_number: number;
@@ -561,7 +593,7 @@ export async function downloadUgcMp4Video(
   productName: string,
   scenes?: UgcSceneData[]
 ): Promise<void> {
-  const sanitizedName = productName.trim().replace(/\s+/g, '_') || 'UGC_Video';
+  const sanitizedName = sanitizeSafeFilename(productName, 'UGC_Video');
   const fileName = `UGC-Video-${sanitizedName}-1080p.mp4`;
 
   try {

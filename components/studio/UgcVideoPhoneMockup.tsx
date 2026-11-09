@@ -150,6 +150,15 @@ export default function UgcVideoPhoneMockup({
               className={`w-2 h-2 rounded-full ${showSafeZone ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`}
             />
           </button>
+
+          {/* Gate G5 Architecture Classification Badge */}
+          <div
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px] text-zinc-400"
+            title="Dynamic composition (Level 2/3) didefinisikan sebagai backlog pasca-merge"
+          >
+            <span className="font-mono text-fuchsia-400 font-bold">Level 1:</span>
+            <span>Static Demo Video Packaging</span>
+          </div>
         </div>
 
         {/* Primary & Secondary Action Buttons */}
@@ -249,6 +258,17 @@ export default function UgcVideoPhoneMockup({
 
       {/* ── SMARTPHONE 9:16 VERTICAL MOCKUP FRAME ──────────────── */}
       <div className="flex flex-col items-center">
+        {/* Transparent Staging Mode Indicator Badge (Gate G1 / G5 Compliance) */}
+        <div className="mb-3 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 backdrop-blur-md flex items-center gap-2 shadow-lg select-none">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-xs font-bold text-amber-300 tracking-wide">
+            Preview Sample Vertikal (Mode Demo Staging)
+          </span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/60 text-zinc-300 border border-white/10">
+            Level 1 Packaging
+          </span>
+        </div>
+
         {/* Smartphone Chassis */}
         <div className="relative w-[300px] sm:w-[330px] rounded-[48px] p-3 bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-900 border-4 border-zinc-600/80 shadow-2xl shadow-fuchsia-950/30">
           {/* Dynamic Island / Notch */}
@@ -279,6 +299,11 @@ export default function UgcVideoPhoneMockup({
                 className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none opacity-85"
               />
             )}
+
+            {/* In-Video Transparent Watermark for Demo Staging (Gate G1) */}
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-25 pointer-events-none px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-amber-400/40 text-[9px] font-bold text-amber-300 tracking-wider uppercase whitespace-nowrap shadow-md">
+              ⚡ Preview Sample Vertikal (Mode Demo Staging)
+            </div>
             {/* Top Status Bar & FYP Tabs */}
             <div className="pt-7 px-4 flex items-center justify-between text-white text-[11px] font-bold z-20">
               <span className="font-mono text-[10px]">09:41</span>

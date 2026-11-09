@@ -139,7 +139,18 @@ function generateStructuredContent(
 ): GeneratedContent {
   const name = productName.trim() || 'Produk Andalan';
   const desc = productDesc.trim() || 'Solusi terbaik untuk kebutuhan sehari-hari.';
-  const link = productUrl.trim() || 'https://boontrack.com';
+  
+  // Safe link sanitizer: prevent javascript:, data:, or private IP/SSRF addresses
+  const rawLink = productUrl.trim();
+  let link = 'https://boontrack.com';
+  if (rawLink) {
+    if (
+      !/^(javascript:|data:|vbscript:|file:)/i.test(rawLink) &&
+      !/^https?:\/\/(localhost|127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.)/i.test(rawLink)
+    ) {
+      link = rawLink.startsWith('http://') || rawLink.startsWith('https://') ? rawLink : `https://${rawLink}`;
+    }
+  }
 
   const hookAngleText = getHookStyleLabel(hookStyle);
 
@@ -385,20 +396,13 @@ export default function StudioDeskPage() {
         window.location.hostname === 'boontrack.com';
       const domainStr = isBoonTrack ? '; domain=.boontrack.com' : '';
 
-      // Clear all studio & merchant cookies and local storage
+      // Clear studio session & sandbox local storage ONLY (Strict Studio Decoupling - Never wipe merchant/store session)
       localStorage.removeItem('studio_session');
-      localStorage.removeItem('merchant_store');
-      localStorage.removeItem('merchant_session');
-      localStorage.removeItem('bt_tenant');
       localStorage.removeItem('studio_mock_session');
       localStorage.removeItem('studio_sandbox_credits');
 
       const cookiesToClear = [
         'studio_session',
-        'bt_tenant',
-        'merchant_session',
-        'merchant_store',
-        'bt_merchant_token',
         '__Host-bt_studio_session',
         'bt_studio_session',
       ];
@@ -419,10 +423,13 @@ export default function StudioDeskPage() {
     }
   };
 
-  // Image Upload Handler (1-3 images)
+  // Image Upload Handler (1-3 images with strict image/* MIME-type validation)
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    const files = Array.from(e.target.files).slice(0, 3 - productImages.length);
+    const rawFiles = Array.from(e.target.files);
+    // Strict MIME-type validation: allow only image/* formats (PNG, JPEG, WebP, GIF)
+    const validImageFiles = rawFiles.filter((file) => file.type.startsWith('image/'));
+    const files = validImageFiles.slice(0, 3 - productImages.length);
     const newImgs = files.map((file) => ({
       name: file.name,
       previewUrl: URL.createObjectURL(file),
