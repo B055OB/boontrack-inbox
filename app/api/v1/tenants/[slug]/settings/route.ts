@@ -63,11 +63,7 @@ function checkInternalMachineScope(
       };
     }
 
-    const reqTargetTenant = (
-      req.headers.get('x-target-tenant') ||
-      req.headers.get('x-tenant-slug') ||
-      req.headers.get('x-tenant-id')
-    )?.trim().toLowerCase();
+    const reqTargetTenant = req.headers.get('x-target-tenant')?.trim().toLowerCase();
 
     if (!reqTargetTenant) {
       return {
@@ -91,10 +87,7 @@ function checkInternalMachineScope(
       };
     }
 
-    const reqOperation = (
-      req.headers.get('x-machine-operation') ||
-      req.headers.get('x-internal-operation')
-    )?.trim().toUpperCase();
+    const reqOperation = req.headers.get('x-machine-operation')?.trim().toUpperCase();
 
     if (!reqOperation || reqOperation !== allowedOperation) {
       return {

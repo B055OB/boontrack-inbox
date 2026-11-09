@@ -23,6 +23,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
@@ -61,7 +62,9 @@ const mockTenantsDb: MockTenant[] = [];
 const mockProductsDb: MockProduct[] = [];
 
 jest.mock('@/lib/supabaseClient', () => {
+  const actual = jest.requireActual('@/lib/supabaseClient');
   return {
+    ...actual,
     getWorkforceSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabase: () => mockSupabaseAdmin,
@@ -379,6 +382,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for regression test');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

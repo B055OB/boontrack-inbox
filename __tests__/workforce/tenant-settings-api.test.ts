@@ -26,6 +26,7 @@ if (fs.existsSync(envPath)) {
 
 import crypto from 'crypto';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import {
@@ -56,6 +57,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for settings api tests');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 
@@ -620,6 +622,54 @@ describe('BWM Gate 1 Round 3O — Database-Backed Session Authorization & Strict
     expect(putRes.status).toBe(200);
     const putJson = await putRes.json();
     expect(putJson.success).toBe(true);
+  });
+
+  test('7e. Machine Auth Negative: Valid internal secret + legacy alias x-tenant-slug or x-tenant-id strictly fails closed (403)', async () => {
+    // Attempting M2M auth with legacy alias x-tenant-slug
+    const reqSlug = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-tenant-slug': slugA, // Legacy alias - rejected on M2M ingress
+        'x-machine-operation': 'READ_TENANT_SETTINGS',
+      },
+    });
+
+    const resSlug = await getSettings(reqSlug, { params: Promise.resolve({ slug: slugA }) });
+    expect([401, 403]).toContain(resSlug.status);
+    const jsonSlug = await resSlug.json();
+    expect(jsonSlug.success).toBe(false);
+
+    // Attempting M2M auth with legacy alias x-tenant-id
+    const reqId = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-tenant-id': slugA, // Legacy alias - rejected on M2M ingress
+        'x-machine-operation': 'READ_TENANT_SETTINGS',
+      },
+    });
+
+    const resId = await getSettings(reqId, { params: Promise.resolve({ slug: slugA }) });
+    expect([401, 403]).toContain(resId.status);
+    const jsonId = await resId.json();
+    expect(jsonId.success).toBe(false);
+  });
+
+  test('7f. Machine Auth Negative: Valid internal secret + legacy alias x-internal-operation strictly fails closed (403)', async () => {
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slugA}/settings`, {
+      method: 'GET',
+      headers: {
+        'x-internal-secret': TEST_MACHINE_SECRET,
+        'x-target-tenant': slugA,
+        'x-internal-operation': 'READ_TENANT_SETTINGS', // Legacy alias - rejected on M2M ingress
+      },
+    });
+
+    const res = await getSettings(req, { params: Promise.resolve({ slug: slugA }) });
+    expect([401, 403]).toContain(res.status);
+    const json = await res.json();
+    expect(json.success).toBe(false);
   });
 
   // ── TEST 8: GET PARITY ASSERTION FOR MERCHANT (Migration 010 Parity) ──────

@@ -21,6 +21,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
@@ -45,6 +46,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Real persistence integration test must run against real PostgreSQL');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

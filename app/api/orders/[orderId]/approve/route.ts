@@ -86,7 +86,7 @@ export async function POST(
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const authResult = await verifyOrderMutationAuthorization(req, order);
+    const authResult = await verifyOrderMutationAuthorization(req, order, undefined, 'APPROVE_ORDER');
     if (!authResult.authorized) {
       return NextResponse.json(
         { success: false, error: authResult.error || 'Unauthorized' },

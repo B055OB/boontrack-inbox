@@ -17,6 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import {
   registerOrderPreCheckout,
   bindProviderTransaction,
@@ -49,6 +50,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Persistent registry test must run against real PostgreSQL');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 

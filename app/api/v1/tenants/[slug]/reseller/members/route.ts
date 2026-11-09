@@ -3,6 +3,10 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
+import {
   resolveResellerEntitlement,
   syncDowngradeSafeResellers,
   type ResellerTier,
@@ -24,6 +28,15 @@ export async function GET(
 
     if (!slug) {
       return NextResponse.json({ success: false, error: 'Tenant slug is required' }, { status: 400 });
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(_req, slug, ['READ_RESELLER_MEMBERS']);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT', 'OPERATOR', 'CS']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const supabase = getSupabaseAdmin() || getSupabase();
@@ -131,6 +144,15 @@ export async function POST(
 
     if (!slug) {
       return NextResponse.json({ success: false, error: 'Tenant slug is required' }, { status: 400 });
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['CREATE_RESELLER_MEMBER']);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const body = await req.json().catch(() => ({}));
@@ -275,6 +297,15 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Tenant slug is required' }, { status: 400 });
     }
 
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['UPDATE_RESELLER_MEMBER']);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
+    }
+
     const body = await req.json().catch(() => ({}));
     const memberId = String(body.id || '').trim();
     const newStatus = body.status ? String(body.status).toUpperCase() : undefined;
@@ -401,6 +432,15 @@ export async function DELETE(
 
     if (!slug) {
       return NextResponse.json({ success: false, error: 'Tenant slug is required' }, { status: 400 });
+    }
+
+    // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['DELETE_RESELLER_MEMBER']);
+    if (!isInternalAuth) {
+      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+      if (!authResult.authorized) {
+        return authResult.response;
+      }
     }
 
     const { searchParams } = new URL(req.url);

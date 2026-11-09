@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, tenant_slug, ['ADD_CUSTOM_DOMAIN']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, tenant_slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
@@ -94,7 +94,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, tenantSlug, ['REMOVE_CUSTOM_DOMAIN']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, tenantSlug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {

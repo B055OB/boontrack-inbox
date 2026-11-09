@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, cleanSlug, ['SEND_BROADCAST']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, cleanSlug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {

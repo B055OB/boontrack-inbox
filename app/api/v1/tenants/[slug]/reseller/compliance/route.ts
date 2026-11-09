@@ -22,7 +22,7 @@ export async function POST(
     }
 
     // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['VALIDATE_RESELLER_COMPLIANCE']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, tenantRef, ['LINK_TELEGRAM']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, tenantRef, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
@@ -176,17 +176,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const cleanParam = tenantParam.trim();
+
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, cleanParam, ['READ_TELEGRAM_LINK']);
     if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, tenantParam, ['OWNER', 'MERCHANT']);
+      const authResult = authorizeMerchantRequest(req, cleanParam, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
       }
     }
 
     const supabase = getSupabaseAdmin();
-    const cleanParam = tenantParam.trim();
     let query: any = supabase
       .from('tenants')
       .select('id, name, slug, telegram_chat_id, metadata');

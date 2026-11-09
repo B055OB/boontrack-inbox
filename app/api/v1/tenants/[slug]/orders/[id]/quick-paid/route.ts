@@ -167,7 +167,7 @@ export async function POST(
 
     // ── STRICT SERVER-SIDE AUTHENTICATION & RBAC GUARD (P0 SECURITY MANDATE) ──
     const effectiveScopeSlug = slug || tenantSlugFromSession;
-    const authResult = await verifyOrderMutationAuthorization(req, order, effectiveScopeSlug);
+    const authResult = await verifyOrderMutationAuthorization(req, order, effectiveScopeSlug, 'QUICK_PAID_ORDER');
     if (!authResult.authorized) {
       return NextResponse.json(
         {

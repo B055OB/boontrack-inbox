@@ -40,7 +40,9 @@ export async function GET(req: NextRequest) {
     let tenantUuid: string | null = null;
 
     // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = targetSlug
+      ? isInternalMachineAuthorized(req, targetSlug, ['READ_ORDERS'])
+      : false;
     let merchantAuth: any = null;
 
     if (!isInternalAuth) {

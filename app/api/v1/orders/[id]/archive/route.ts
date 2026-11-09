@@ -68,7 +68,7 @@ export async function PATCH(
     }
 
     // 2. Validasi Tenant Isolation & Sesi Pengguna (P0 Security Guard)
-    const authRes = await verifyOrderMutationAuthorization(req, order);
+    const authRes = await verifyOrderMutationAuthorization(req, order, undefined, 'ARCHIVE_ORDER');
     if (!authRes.authorized) {
       return NextResponse.json(
         {

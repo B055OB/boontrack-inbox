@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { executeBotControl, updateBotState } from '@/lib/whatsapp/bot-control-service';
+import { isInternalMachineAuthorized } from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,20 +78,36 @@ export async function verifyUserSession(
     metadata?: any;
     pause_reason?: string | null;
   },
-  supabase: any
+  supabase: any,
+  allowedOperations: string[] = ['READ_BOT_STATUS', 'EXECUTE_BOT_CONTROL', 'UPDATE_BOT_STATE']
 ): Promise<{ authorized: boolean; error?: string; status?: number; user?: any; role?: string }> {
-  const authHeader = req.headers.get('authorization')?.trim();
-  const internalSecret = req.headers.get('x-internal-secret')?.trim();
-
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const internalSecret = req.headers.get('x-internal-secret')?.trim() || '';
   const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-  // 1. Service / Internal Admin Secret Check (Machine-to-Machine)
-  if (
-    (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
-    (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`)
-  ) {
+  // 1. Service / Internal Admin Secret Check (Machine-to-Machine via Canonical Contract)
+  const isInternal = isInternalMachineAuthorized(req, tenant.slug, allowedOperations);
+  const isServiceRole = Boolean(serviceRoleKey && (authHeader === `Bearer ${serviceRoleKey}` || authHeader === serviceRoleKey));
+  const reqTarget = req.headers.get('x-target-tenant')?.trim().toLowerCase();
+  const reqOp = req.headers.get('x-machine-operation')?.trim().toUpperCase();
+  const isScopedServiceRole = Boolean(isServiceRole && reqTarget === tenant.slug.toLowerCase() && reqOp && allowedOperations.includes(reqOp));
+
+  if (isInternal || isScopedServiceRole) {
     return { authorized: true, role: 'internal_admin' };
+  }
+
+  // If machine secret was presented but failed M2M contract, fail closed (403 Forbidden)
+  if (
+    (internalSecret && envAdminSecret && internalSecret === envAdminSecret) ||
+    (authHeader.toLowerCase().startsWith('bearer ') && envAdminSecret && authHeader.slice(7).trim() === envAdminSecret) ||
+    isServiceRole
+  ) {
+    return {
+      authorized: false,
+      status: 403,
+      error: 'Forbidden: Machine authorization failed target tenant or operation scope verification.',
+    };
   }
 
   // 2. Extract Cryptographic Supabase Auth Token (Bearer header or secure auth cookies)
@@ -207,7 +224,7 @@ export async function GET(
     }
 
     // Explicit Authorization Check via official session verification (Supabase auth / internal secret)
-    const auth = await verifyUserSession(req, tenant, supabase);
+    const auth = await verifyUserSession(req, tenant, supabase, ['READ_BOT_STATUS']);
     if (!auth.authorized) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },
@@ -310,7 +327,7 @@ export async function POST(
     }
 
     // Explicit Authorization Check via official session verification (Supabase auth / internal secret)
-    const auth = await verifyUserSession(req, tenant, supabase);
+    const auth = await verifyUserSession(req, tenant, supabase, ['EXECUTE_BOT_CONTROL', 'UPDATE_BOT_STATE']);
     if (!auth.authorized) {
       return NextResponse.json(
         { success: false, error: auth.error || 'Unauthorized' },

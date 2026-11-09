@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { ContactService } from '@/lib/crm/contact.service';
 import { toE164 } from '@/lib/crm/phone-utils';
+import {
+  authorizeMerchantRequest,
+  isInternalMachineAuthorized,
+} from '@/lib/auth/merchant-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,33 +23,61 @@ function cleanCredential(val?: string | null): string {
   }
 }
 
-function verifyTenantAuth(req: NextRequest, tenantSlug: string, tenantUuid: string): boolean {
+function verifyTenantAuth(
+  req: NextRequest,
+  tenantSlug: string,
+  tenantUuid: string,
+  operation: 'READ_CRM_CONTACTS' | 'MUTATE_CRM_CONTACTS'
+): { authorized: boolean; response?: NextResponse } {
+  // 1. Machine-to-machine path (canonical M2M contract)
+  const isInternal = isInternalMachineAuthorized(req, tenantSlug, [operation]);
+  if (isInternal) {
+    return { authorized: true };
+  }
+
+  // 2. Reject if request attempted machine authentication with internal secret but failed M2M contract
+  const internalSecret = req.headers.get('x-internal-secret')?.trim();
+  const authHeader = req.headers.get('authorization')?.trim() || '';
+  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
+  if (
+    (internalSecret && envAdminSecret && internalSecret === envAdminSecret) ||
+    (authHeader.toLowerCase().startsWith('bearer ') && envAdminSecret && authHeader.slice(7).trim() === envAdminSecret)
+  ) {
+    return {
+      authorized: false,
+      response: NextResponse.json(
+        { success: false, error: 'Forbidden: Machine authorization failed scope verification.' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  // 3. User session path: Signed token or verified merchant cookie
+  const authResult = authorizeMerchantRequest(req, tenantSlug, ['OWNER', 'MERCHANT', 'OPERATOR', 'CS']);
+  if (authResult.authorized) {
+    return { authorized: true };
+  }
+
   const cookieStore =
     cleanCredential(req.cookies.get('merchant_store')?.value) ||
     cleanCredential(req.cookies.get('merchant_session')?.value) ||
     cleanCredential(req.cookies.get('bt_tenant')?.value);
 
-  const headerTenant = cleanCredential(
-    req.headers.get('x-tenant-slug') || req.headers.get('x-tenant-id')
-  );
-
-  const authHeader = req.headers.get('authorization')?.trim();
-  const internalSecret = req.headers.get('x-internal-secret')?.trim();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const envAdminSecret = (process.env.ADMIN_INTERNAL_SECRET || process.env.INTERNAL_API_SECRET)?.trim();
-
-  const isInternalAuth =
-    (envAdminSecret && (internalSecret === envAdminSecret || authHeader === `Bearer ${envAdminSecret}`)) ||
-    (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`);
-
   const normalizedSlug = tenantSlug.toLowerCase().trim();
   const normalizedUuid = tenantUuid.toLowerCase().trim();
 
-  return Boolean(
-    isInternalAuth ||
-    (cookieStore && (cookieStore === normalizedSlug || cookieStore === normalizedUuid)) ||
-    (headerTenant && (headerTenant === normalizedSlug || headerTenant === normalizedUuid))
-  );
+  // NOTE: Zero trust on unverified client headers (x-tenant-slug / x-tenant-id) - Header spoofing eliminated!
+  if (cookieStore && (cookieStore === normalizedSlug || cookieStore === normalizedUuid)) {
+    return { authorized: true };
+  }
+
+  return {
+    authorized: false,
+    response: NextResponse.json(
+      { success: false, error: 'UNAUTHORIZED', message: 'Sesi login merchant atau otorisasi tenant diperlukan untuk mengakses kontak CRM.' },
+      { status: 401 }
+    ),
+  };
 }
 
 export interface CrmContactDto {
@@ -125,19 +157,22 @@ export async function GET(req: NextRequest) {
     const resolvedTenantSlug = String(tenantRow.slug || '');
 
     // Auth Guard & Tenant Isolation (§47.3 Invariant 3: Zero Query Parameter Authority)
-    const isAuthorized = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
-    if (!isAuthorized) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'UNAUTHORIZED',
-          message: 'Sesi login merchant atau otorisasi tenant diperlukan untuk mengakses kontak CRM.',
-          contacts: [],
-          data: [],
-          total: 0,
-          tags: [],
-        },
-        { status: 401 }
+    const authCheck = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid, 'READ_CRM_CONTACTS');
+    if (!authCheck.authorized) {
+      return (
+        authCheck.response ||
+        NextResponse.json(
+          {
+            success: false,
+            error: 'UNAUTHORIZED',
+            message: 'Sesi login merchant atau otorisasi tenant diperlukan untuk mengakses kontak CRM.',
+            contacts: [],
+            data: [],
+            total: 0,
+            tags: [],
+          },
+          { status: 401 }
+        )
       );
     }
 
@@ -396,15 +431,18 @@ export async function POST(req: NextRequest) {
     const resolvedTenantSlug = String(tenantRow.slug || '');
 
     // Auth Guard & Tenant Isolation
-    const isAuthorized = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
-    if (!isAuthorized) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'UNAUTHORIZED',
-          message: 'Sesi login merchant atau otorisasi tenant diperlukan.',
-        },
-        { status: 401 }
+    const authCheck = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid, 'MUTATE_CRM_CONTACTS');
+    if (!authCheck.authorized) {
+      return (
+        authCheck.response ||
+        NextResponse.json(
+          {
+            success: false,
+            error: 'UNAUTHORIZED',
+            message: 'Sesi login merchant atau otorisasi tenant diperlukan.',
+          },
+          { status: 401 }
+        )
       );
     }
 

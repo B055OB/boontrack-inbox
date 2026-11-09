@@ -26,6 +26,7 @@ if (fs.existsSync(envPath)) {
 
 import crypto from 'crypto';
 import { Client } from 'pg';
+import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import {
   signMerchantSessionToken,
@@ -41,6 +42,12 @@ import {
   PUT as updateProductById,
   DELETE as deleteProductById,
 } from '@/app/api/v1/tenants/[slug]/products/[id]/route';
+import {
+  GET as getResellerMembers,
+  POST as createResellerMember,
+  PATCH as updateResellerMember,
+  DELETE as deleteResellerMember,
+} from '@/app/api/v1/tenants/[slug]/reseller/members/route';
 
 function getDatabaseConnectionString(): string {
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
@@ -65,6 +72,7 @@ function getDatabaseConnectionString(): string {
   if (!connStr) {
     throw new Error('STAGING_DB_REQUIRED: Staging connection required for convergence tests');
   }
+  assertStagingDatabaseTarget(connStr);
   return connStr;
 }
 
@@ -557,6 +565,96 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
 
     const isAuth = isInternalMachineAuthorized(req, slug, ['CREATE_PRODUCT']);
     expect(isAuth).toBe(false);
+  });
+
+  test('6f. Internal machine auth rejects legacy alias headers (x-tenant-slug, x-tenant-id) on M2M ingress', () => {
+    const internalSecret = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+    process.env.ADMIN_INTERNAL_SECRET = internalSecret;
+
+    // Supplying legacy alias x-tenant-slug instead of canonical x-target-tenant
+    const reqSlug = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-tenant-slug': slug,
+        'x-machine-operation': 'CREATE_PRODUCT',
+      },
+    });
+    expect(isInternalMachineAuthorized(reqSlug, slug, ['CREATE_PRODUCT'])).toBe(false);
+
+    // Supplying legacy alias x-tenant-id instead of canonical x-target-tenant
+    const reqId = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-tenant-id': slug,
+        'x-machine-operation': 'CREATE_PRODUCT',
+      },
+    });
+    expect(isInternalMachineAuthorized(reqId, slug, ['CREATE_PRODUCT'])).toBe(false);
+  });
+
+  test('6g. Internal machine auth rejects legacy alias operation header (x-internal-operation)', () => {
+    const internalSecret = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+    process.env.ADMIN_INTERNAL_SECRET = internalSecret;
+
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-target-tenant': slug,
+        'x-internal-operation': 'CREATE_PRODUCT',
+      },
+    });
+    expect(isInternalMachineAuthorized(req, slug, ['CREATE_PRODUCT'])).toBe(false);
+  });
+
+  test('6h. Internal machine auth rejects secret-only request when targetTenantSlug or allowedOperations is empty', () => {
+    const internalSecret = 'bt_admin_internal_secret_staging_key_2026_minimum_32!';
+    process.env.ADMIN_INTERNAL_SECRET = internalSecret;
+
+    const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/products`, {
+      headers: {
+        'x-internal-secret': internalSecret,
+        'x-target-tenant': slug,
+        'x-machine-operation': 'CREATE_PRODUCT',
+      },
+    });
+
+    // Empty targetTenantSlug
+    expect(isInternalMachineAuthorized(req, '', ['CREATE_PRODUCT'])).toBe(false);
+
+    // Empty allowedOperations array
+    expect(isInternalMachineAuthorized(req, slug, [])).toBe(false);
+  });
+
+  test('6i. Reseller members 4-method authorization validation: all methods reject unauthenticated requests (401/403)', async () => {
+    // 1. GET /api/v1/tenants/[slug]/reseller/members
+    const getReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members`);
+    const getRes = await getResellerMembers(getReq, { params: Promise.resolve({ slug }) });
+    expect([401, 403]).toContain(getRes.status);
+
+    // 2. POST /api/v1/tenants/[slug]/reseller/members
+    const postReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Unauth Reseller', phone: '08123456789' }),
+    });
+    const postRes = await createResellerMember(postReq, { params: Promise.resolve({ slug }) });
+    expect([401, 403]).toContain(postRes.status);
+
+    // 3. PATCH /api/v1/tenants/[slug]/reseller/members
+    const patchReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'dummy-reseller-id', status: 'ACTIVE' }),
+    });
+    const patchRes = await updateResellerMember(patchReq, { params: Promise.resolve({ slug }) });
+    expect([401, 403]).toContain(patchRes.status);
+
+    // 4. DELETE /api/v1/tenants/[slug]/reseller/members
+    const delReq = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/${slug}/reseller/members?id=dummy-id`, {
+      method: 'DELETE',
+    });
+    const delRes = await deleteResellerMember(delReq, { params: Promise.resolve({ slug }) });
+    expect([401, 403]).toContain(delRes.status);
   });
 
   // ===========================================================================

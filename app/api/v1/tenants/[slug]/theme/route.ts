@@ -153,7 +153,7 @@ export async function PUT(
     const slug = normalizeTenantSlug(rawSlug || '');
 
     // 0. Enforce Server-Authoritative Authentication & Role Authorization (P0 Security Mandate)
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['UPDATE_THEME']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {

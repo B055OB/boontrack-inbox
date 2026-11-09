@@ -25,7 +25,7 @@ export async function PATCH(
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(req);
+    const isInternalAuth = isInternalMachineAuthorized(req, slug, ['SETTLE_RESELLER_COMMISSION']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {

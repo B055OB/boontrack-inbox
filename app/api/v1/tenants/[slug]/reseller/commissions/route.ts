@@ -22,7 +22,7 @@ export async function GET(
     }
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
-    const isInternalAuth = isInternalMachineAuthorized(_req);
+    const isInternalAuth = isInternalMachineAuthorized(_req, slug, ['READ_RESELLER_COMMISSIONS']);
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
