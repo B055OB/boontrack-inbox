@@ -1462,6 +1462,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(url, 307);
     }
 
+    // 3f-1. Root Portal: Render B2B Enterprise & Vertical Solutions Landing Page
+    if (pathname === '/' || pathname === '') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/app-portal';
+      return NextResponse.rewrite(url);
+    }
+
     // 3f. Standard Browser Navigation, Legacy Portal & Unknown Paths -> 301 to Dashboard
     const url = req.nextUrl.clone();
     url.protocol = 'https:';
