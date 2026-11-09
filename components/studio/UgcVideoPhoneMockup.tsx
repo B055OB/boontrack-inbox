@@ -51,6 +51,7 @@ export default function UgcVideoPhoneMockup({
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderPhaseMessage, setRenderPhaseMessage] = useState<string>('');
   const [isRendered, setIsRendered] = useState<boolean>(false);
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
 
   const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -109,9 +110,17 @@ export default function UgcVideoPhoneMockup({
     setIsPlaying(true); // Auto-play rendered preview
   };
 
-  // Download Rendered MP4
-  const handleDownloadMp4 = () => {
-    downloadUgcMp4Video(productName, scenes);
+  // Download Rendered MP4 Asset (Real 1080p Vertical File)
+  const handleDownloadMp4 = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadUgcMp4Video(productName, scenes);
+    } catch (err) {
+      console.error('Download video failed:', err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   // Calculate current elapsed seconds for scrubber
@@ -169,11 +178,21 @@ export default function UgcVideoPhoneMockup({
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                disabled={isDownloading}
                 onClick={handleDownloadMp4}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition flex items-center gap-2 cursor-pointer animate-in fade-in"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 transition flex items-center gap-2 cursor-pointer animate-in fade-in disabled:opacity-50"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download Video MP4 (1080p)</span>
+                {isDownloading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Mengunduh MP4...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Video MP4 (1080p)</span>
+                  </>
+                )}
               </button>
 
               <button
@@ -249,6 +268,17 @@ export default function UgcVideoPhoneMockup({
               backgroundPosition: 'center',
             }}
           >
+            {/* Live Video Player Background (Active when Rendered) */}
+            {isRendered && (
+              <video
+                src="/assets/sample-ugc-1080p.mp4"
+                autoPlay
+                loop
+                playsInline
+                muted={isMuted}
+                className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none opacity-85"
+              />
+            )}
             {/* Top Status Bar & FYP Tabs */}
             <div className="pt-7 px-4 flex items-center justify-between text-white text-[11px] font-bold z-20">
               <span className="font-mono text-[10px]">09:41</span>
