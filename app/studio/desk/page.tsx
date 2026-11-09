@@ -42,6 +42,8 @@ import {
   Share2,
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
+import CarouselVisualCanvas from '@/components/studio/CarouselVisualCanvas';
+import UgcVideoPhoneMockup from '@/components/studio/UgcVideoPhoneMockup';
 
 export type OutputFormat = 'ad_copy' | 'ugc_video' | 'carousel';
 export type TrendRange = '7d' | '30d';
@@ -321,7 +323,6 @@ export default function StudioDeskPage() {
   // Generation & Canvas State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
-  const [activeCarouselSlide, setActiveCarouselSlide] = useState<number>(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -488,7 +489,6 @@ export default function StudioDeskPage() {
       await new Promise((r) => setTimeout(r, 600));
 
       setGeneratedContent(content);
-      setActiveCarouselSlide(0);
       setCurrentScreen(3);
     } finally {
       setIsGenerating(false);
@@ -1221,196 +1221,39 @@ export default function StudioDeskPage() {
 
             {/* ── LIVE PREVIEW KANVAS BERDASARKAN FORMAT ──────────── */}
 
-            {/* 1. JIKA FORMAT CAROUSEL SLIDES: MULTI-SLIDE VIEWER */}
+            {/* 1. JIKA FORMAT CAROUSEL SLIDES: MULTI-SLIDE 1:1 & 4:5 VISUAL CANVAS */}
             {generatedContent.format === 'carousel' && generatedContent.carousel_slides && (
-              <div className="space-y-4">
-                {/* Slide Navigation Tabs */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {generatedContent.carousel_slides.map((slide, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setActiveCarouselSlide(idx)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-                        activeCarouselSlide === idx
-                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
-                          : 'bg-white/5 text-zinc-400 hover:text-white border border-white/10'
-                      }`}
-                    >
-                      Slide {slide.slide_number}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Active Slide Canvas (1:1 Ratio Glassmorphism Card) */}
-                {(() => {
-                  const slide = generatedContent.carousel_slides[activeCarouselSlide];
-                  if (!slide) return null;
-
-                  return (
-                    <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#121829] via-[#0E1424] to-[#0A0F1D] border border-emerald-500/30 shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[360px] space-y-6">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                            {slide.stage_name}
-                          </span>
-                          <span className="text-xs text-zinc-500 font-mono">
-                            Slide {slide.slide_number} dari 5
-                          </span>
-                        </div>
-
-                        <div className="space-y-2">
-                          <h3 className="text-xl sm:text-2xl font-black text-white leading-tight">
-                            {slide.title}
-                          </h3>
-                          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed whitespace-pre-line">
-                            {slide.body}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Visual Direction Notes */}
-                      <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1 text-xs">
-                        <span className="font-bold text-emerald-400 text-[11px] uppercase tracking-wider block">
-                          Catatan Arahan Visual Layout:
-                        </span>
-                        <p className="text-zinc-400 text-[11px] leading-relaxed">
-                          {slide.visual_notes}
-                        </p>
-                      </div>
-
-                      {/* Controls Prev / Next */}
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                        <button
-                          type="button"
-                          disabled={activeCarouselSlide === 0}
-                          onClick={() => setActiveCarouselSlide((prev) => Math.max(0, prev - 1))}
-                          className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <ArrowLeft className="w-3.5 h-3.5" />
-                          <span>Slide Sebelumnya</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopy(
-                              `${slide.title}\n\n${slide.body}\n\n[Arahan Visual: ${slide.visual_notes}]`,
-                              `slide-${activeCarouselSlide}`
-                            )
-                          }
-                          className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
-                        >
-                          {copiedKey === `slide-${activeCarouselSlide}` ? (
-                            <>
-                              <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Tersalin!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Salin Teks Slide Ini</span>
-                            </>
-                          )}
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={
-                            activeCarouselSlide === generatedContent.carousel_slides.length - 1
-                          }
-                          onClick={() =>
-                            setActiveCarouselSlide((prev) =>
-                              Math.min(generatedContent.carousel_slides!.length - 1, prev + 1)
-                            )
-                          }
-                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <span>Slide Berikutnya</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
+              <CarouselVisualCanvas
+                slides={generatedContent.carousel_slides}
+                productName={generatedContent.product_name}
+                productImages={productImages}
+                onCopyAllText={() => {
+                  let text = `BOONTRACK STUDIO — CAROUSEL SLIDES (1:1 & 4:5)\nProduk: ${generatedContent.product_name}\n\n`;
+                  generatedContent.carousel_slides?.forEach((s) => {
+                    text += `[${s.stage_name}]\nJudul: ${s.title}\nIsi Teks:\n${s.body}\nCatatan Visual: ${s.visual_notes}\n\n`;
+                  });
+                  handleCopy(text, 'all-carousel-text');
+                }}
+                isAllTextCopied={copiedKey === 'all-carousel-text'}
+              />
             )}
 
-            {/* 2. JIKA FORMAT VIDEO IKLAN UGC: 9-SCENE STORYBOARD VIEWER */}
+            {/* 2. JIKA FORMAT VIDEO IKLAN UGC: 9:16 VERTICAL SMARTPHONE MOCKUP & RENDER */}
             {generatedContent.format === 'ugc_video' && generatedContent.scenes && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-xs text-zinc-400">
-                  <span className="font-bold flex items-center gap-1.5">
-                    <Film className="w-4 h-4 text-fuchsia-400" />
-                    <span>Storyboard 9-Scene Vertikal 9:16 (Total Durasi: 30 Detik)</span>
-                  </span>
-                  <span className="text-[11px] text-zinc-500 font-mono">Format Reels / TikTok</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {generatedContent.scenes.map((scene) => (
-                    <div
-                      key={scene.scene_number}
-                      className="p-4 rounded-2xl bg-[#111624]/90 border border-white/10 hover:border-fuchsia-500/40 transition-all flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-fuchsia-500/20 text-fuchsia-300">
-                            Scene {scene.scene_number} [{scene.time_range}]
-                          </span>
-                          <span className="text-[10px] text-zinc-500 font-mono">
-                            {scene.duration_sec}s
-                          </span>
-                        </div>
-
-                        <h4 className="text-xs font-extrabold text-white">{scene.stage_name}</h4>
-
-                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
-                          <span className="text-[10px] font-bold text-fuchsia-400 block uppercase tracking-wider">
-                            Voiceover (Naskah Bicara):
-                          </span>
-                          <p className="text-xs text-zinc-200 italic leading-relaxed">
-                            "{scene.voiceover}"
-                          </p>
-                        </div>
-
-                        <div className="space-y-1 text-[11px] text-zinc-400">
-                          <p>
-                            <strong className="text-zinc-300">Visual:</strong> {scene.visual_direction}
-                          </p>
-                          <p>
-                            <strong className="text-zinc-300">Teks Layar:</strong>{' '}
-                            <span className="text-amber-300 font-medium">{scene.on_screen_text}</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCopy(
-                            `Scene ${scene.scene_number} [${scene.time_range}]: ${scene.stage_name}\nVoiceover: "${scene.voiceover}"\nVisual: ${scene.visual_direction}\nTeks Layar: ${scene.on_screen_text}`,
-                            `scene-${scene.scene_number}`
-                          )
-                        }
-                        className="text-[11px] font-bold text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1 pt-2 border-t border-white/5 transition cursor-pointer"
-                      >
-                        {copiedKey === `scene-${scene.scene_number}` ? (
-                          <>
-                            <CheckCheck className="w-3 h-3 text-emerald-400" />
-                            <span>Tersalin!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Salin Scene Ini</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <UgcVideoPhoneMockup
+                scenes={generatedContent.scenes}
+                productName={generatedContent.product_name}
+                productImages={productImages}
+                tenantSlug={tenantSlug}
+                onCopyAllVoiceover={() => {
+                  let text = `BOONTRACK STUDIO — NASKAH SUARA UGC VIDEO (9:16)\nProduk: ${generatedContent.product_name}\nTotal Durasi: 30 Detik (9 Adegan)\n\n`;
+                  generatedContent.scenes?.forEach((sc) => {
+                    text += `Scene ${sc.scene_number} [${sc.time_range}] - ${sc.stage_name}\nVoiceover: "${sc.voiceover}"\nVisual: ${sc.visual_direction}\nTeks Layar: ${sc.on_screen_text}\n\n`;
+                  });
+                  handleCopy(text, 'all-ugc-voiceover');
+                }}
+                isAllVoiceoverCopied={copiedKey === 'all-ugc-voiceover'}
+              />
             )}
 
             {/* 3. JIKA FORMAT AD COPY & WA BROADCAST */}
