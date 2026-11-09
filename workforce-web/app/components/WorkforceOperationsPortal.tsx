@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useTenantBranding } from '../config/tenant-branding';
 import { useTranslation } from '@/lib/i18n';
@@ -208,6 +208,79 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     | 'cetak_qr_checkpoint'
     | null
   >(null);
+
+  // WebRTC Hardware Camera Streams for Biometric Clock In & QR Scanner
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const qrVideoRef = useRef<HTMLVideoElement | null>(null);
+  const activeMediaStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let isMounted = true;
+
+    async function initCamera() {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        return;
+      }
+
+      if (modalType === 'absen_masuk') {
+        try {
+          const userStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+          });
+          if (!isMounted) {
+            userStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          stream = userStream;
+          activeMediaStreamRef.current = userStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = userStream;
+          }
+        } catch (err) {
+          console.warn('[BWM WebRTC] Face Camera permission denied or device unavailable:', err);
+        }
+      } else if (modalType === 'qr_scanner') {
+        try {
+          const envStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' },
+          });
+          if (!isMounted) {
+            envStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          stream = envStream;
+          activeMediaStreamRef.current = envStream;
+          if (qrVideoRef.current) {
+            qrVideoRef.current.srcObject = envStream;
+          }
+        } catch (err) {
+          console.warn('[BWM WebRTC] QR Scanner Camera permission denied or device unavailable:', err);
+        }
+      }
+    }
+
+    if (modalType === 'absen_masuk' || modalType === 'qr_scanner') {
+      initCamera();
+    }
+
+    return () => {
+      isMounted = false;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      if (activeMediaStreamRef.current) {
+        activeMediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeMediaStreamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      if (qrVideoRef.current) {
+        qrVideoRef.current.srcObject = null;
+      }
+    };
+  }, [modalType]);
 
   // Field checkpoints (Sarah's active shift)
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([
@@ -2491,12 +2564,19 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <p className="text-xs text-slate-400">Position camera towards rotating cryptographic QR code at checkpoint station.</p>
             </div>
 
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 text-center relative overflow-hidden">
-              <div className="w-36 h-36 mx-auto border-2 border-blue-500/60 rounded-xl relative flex items-center justify-center">
-                <span className="w-full h-0.5 bg-blue-500 absolute top-1/2 -translate-y-1/2 animate-pulse"></span>
-                <span className="text-xs font-mono text-blue-300">Scanning...</span>
+            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
+              <div className="w-48 h-48 mx-auto border-2 border-blue-500/60 rounded-xl relative overflow-hidden flex items-center justify-center bg-black">
+                <video
+                  ref={qrVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <span className="w-full h-0.5 bg-blue-500 absolute top-1/2 -translate-y-1/2 animate-pulse shadow-sm shadow-blue-400 pointer-events-none"></span>
+                <span className="absolute bottom-2 text-[10px] font-mono text-blue-300 bg-black/60 px-2 py-0.5 rounded pointer-events-none">Live Camera Feed</span>
               </div>
-              <p className="text-[10px] text-slate-500 mt-3 font-mono">Geofence accuracy: &plusmn; 2.1m &bull; Dual-Band Lock</p>
+              <p className="text-[10px] text-slate-400 mt-3 font-mono">Geofence accuracy: &plusmn; 2.1m &bull; Dual-Band Lock</p>
             </div>
 
             <div className="space-y-2">
@@ -2667,6 +2747,18 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
               <p className="text-xs text-slate-400 mt-1">
                 Position face within frame. GPS coordinates are cryptographically hashed.
               </p>
+            </div>
+            <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-48 object-cover rounded-xl border border-blue-500/30"
+              />
+              <div className="absolute inset-0 border-2 border-dashed border-blue-500/40 rounded-xl pointer-events-none flex items-center justify-center">
+                <span className="text-[10px] font-mono text-blue-300 bg-black/60 px-2 py-0.5 rounded absolute bottom-2">Biometric Frame</span>
+              </div>
             </div>
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 font-mono">
               <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
