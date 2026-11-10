@@ -219,7 +219,7 @@ describe('Task A: Dashboard Desk Authorization & Anti-Spoofing Suite', () => {
       expect(res.headers.get('location')).toContain('/login?redirectTo=');
     });
 
-    it('allows verified operator token on /margasari/desk and rewrites to /margasari/desk', async () => {
+    it('allows verified operator token on /margasari/desk and redirects to canonical dashboard', async () => {
       const validToken = signMerchantSessionToken({
         tenantId: DESK_TENANT_ID,
         tenantSlug: DESK_TENANT_SLUG,
@@ -234,8 +234,8 @@ describe('Task A: Dashboard Desk Authorization & Anti-Spoofing Suite', () => {
       });
 
       const res = await middleware(req);
-      expect(res.status).toBe(200);
-      expect(res.headers.get('x-middleware-rewrite')).toContain('/margasari/desk');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/margasari/dashboard');
     });
   });
 });

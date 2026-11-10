@@ -44,6 +44,8 @@ import {
   RenderJobRecord,
 } from '@/lib/creator/render-engine';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { signHostSessionToken } from '@/lib/auth/host-session';
+import dns from 'dns';
 import * as merchantSessionModule from '@/lib/auth/merchant-session';
 import * as supabaseClientModule from '@/lib/supabaseClient';
 
@@ -53,8 +55,21 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
   const OTHER_TENANT_ID = '00000000-0000-4000-8000-000000000002';
   const OTHER_TENANT_SLUG = 'buzzerukm';
 
+  const validStudioToken = signHostSessionToken({
+    product: 'studio',
+    userId: '00000000-0000-4000-8000-000000000099',
+    tenantId: TEST_TENANT_ID,
+    tenantSlug: TEST_TENANT_SLUG,
+    role: 'owner',
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(StudioCreditService, 'reserveCredits').mockResolvedValue({
+      success: true,
+      jobId: 'mock-job-id',
+      remainingCredits: 99,
+    });
     const defaultMockSupabase = createMockSupabase();
     jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(defaultMockSupabase as any);
     jest.spyOn(supabaseClientModule, 'getSupabase').mockReturnValue(defaultMockSupabase as any);
@@ -440,7 +455,10 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
 
       const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `__Host-bt_studio_session=${validStudioToken}`,
+        },
         body: JSON.stringify({
           product_name: 'BoonTrack CRM Pro',
           pain_point: 'Manual Excel customer tracking is error prone',
@@ -500,7 +518,10 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
 
       const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `__Host-bt_studio_session=${validStudioToken}`,
+        },
         body: JSON.stringify({
           product_name: 'Jasa Servis AC Kilat',
           pain_point: 'AC bocor dan bau apek',
@@ -557,7 +578,10 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
 
       const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `__Host-bt_studio_session=${validStudioToken}`,
+        },
         body: JSON.stringify({
           product_name: 'Glow Brightening Serum',
           pain_point: 'Kulit kusam dan noda hitam',
@@ -702,11 +726,23 @@ describe('Studio & Creator Staging Readiness Integration Suite', () => {
           'content-type': 'video/mp4',
           'content-length': '1048576',
         }),
-        body: 'mock-stream-data',
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0x00, 0x00, 0x00, 0x20]));
+            controller.close();
+          },
+        }),
       } as any);
 
+      jest.spyOn(dns.promises, 'lookup').mockResolvedValueOnce([{ address: '104.21.50.1', family: 4 }] as any);
+
       const downloadReq = new NextRequest(
-        'https://studio.boontrack.com/api/studio/download?url=https://cdn.boontrack.com/video.mp4&filename=video%0d%0aInjected:1.mp4&job_id=job_dl_01'
+        'https://studio.boontrack.com/api/studio/download?url=https://cdn.boontrack.com/video.mp4&filename=video%0d%0aInjected:1.mp4&job_id=job_dl_01',
+        {
+          headers: {
+            cookie: `__Host-bt_studio_session=${validStudioToken}`,
+          },
+        }
       );
 
       const dlRes = await getDownload(downloadReq);

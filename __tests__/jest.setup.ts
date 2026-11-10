@@ -509,6 +509,39 @@ const originalFetch = (globalThis as any).fetch;
       text: async () => '{}',
     };
   }
+  if (url.includes('api.xendit.co')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'mock-xendit-qr-id',
+        qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5919ONLINEBOOST6007JAKARTA61051234062070703A016304',
+        invoice_url: 'https://checkout.xendit.co/v2/mock-inv-123',
+      }),
+      text: async () => '{}',
+    };
+  }
+  if (url.includes('/api/v1/payments/qris/create')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5919ONLINEBOOST6007JAKARTA61051234062070703A016304',
+        qr_code_url: 'https://quickchart.io/qr?text=mock',
+        invoice_url: 'https://checkout.boontrack.com/mock-inv',
+      }),
+      text: async () => '{}',
+    };
+  }
+  if (url.includes('api.boontrack.com')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+      text: async () => '{}',
+    };
+  }
   if (url.includes('/rest/v1/tenants')) {
     const slugMatch = url.match(/slug=eq\.([^&]+)/);
     const slug = slugMatch ? decodeURIComponent(slugMatch[1]).toLowerCase().trim() : '';

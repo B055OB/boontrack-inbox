@@ -135,11 +135,11 @@ describe('CTO Master Audit Directive — Pre-Production Gate 1 Evidence Suite', 
 
       const callsServerLogout = /fetch\s*\(\s*['"]\/api\/auth\/session['"]/i.test(logoutBlock);
       const targetsHostCookie = logoutBlock.includes('__Host-bt_studio_session');
-      const redirectsToLogin = logoutBlock.includes("window.location.href = '/login'");
+      const redirectsToStudio = logoutBlock.includes("window.location.href = '/studio'");
 
       expect(callsServerLogout).toBe(true);
       expect(targetsHostCookie).toBe(true);
-      expect(redirectsToLogin).toBe(true);
+      expect(redirectsToStudio).toBe(true);
     });
 
     it('S-07 [P0 REMEDIATION VERIFIED]: Render Dispatch & Batch endpoints derive tenant server-side and reject forgery', () => {
