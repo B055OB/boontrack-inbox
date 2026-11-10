@@ -25,14 +25,14 @@ This Pull Request introduces the **BoonTrack Studio Creative Pipeline & Desk Ref
 
 | Identity Label | Value | Description |
 | :--- | :--- | :--- |
-| **Current Branch Head SHA** | `2c409bcd1b7977aad294f8cde8cdf85337fb0fed` | Current PR #94 branch tip on remote `origin` |
+| **Current Branch Head SHA** | `b795a65d5d62da5895940a486b7b47c43d4a8a65` | Current PR #94 branch tip on remote `origin` |
 | **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic tenant-facing CRUD integration test suite |
 | **Preview Deployment Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to Vercel Preview (`dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`) |
-| **Documentation Revision SHA** | `2c409bcd1b7977aad294f8cde8cdf85337fb0fed` | Documentation-only revision (zero runtime changes) |
-| **CI Verification Source SHA** | `2c409bcd1b7977aad294f8cde8cdf85337fb0fed` | Commit verified by GitHub Actions Run `42762084478` |
+| **Pre-Final Documentation Revision** | `b795a65d5d62da5895940a486b7b47c43d4a8a65` | Documentation-only revision (zero runtime changes) |
+| **CI Verification Source SHA** | `b795a65d5d62da5895940a486b7b47c43d4a8a65` | Commit verified by GitHub Actions Run `42763571558` |
 
 - **Target PR:** [PR #94](https://github.com/B055OB/boontrack-inbox/pull/94) (Status: `OPEN`, `MERGEABLE`)
-- **Changed Files:** 64 (+17,947 / -1,061)
+- **Changed Files:** 64 (+17,952 / -1,061)
 - **Vercel Deployment ID:** `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`
 - **Assigned Preview URL:** `https://boontrack-studio-fv2zzpmop-boontrack.vercel.app`
 - **Environment:** `preview` (`productionUrl: null` — Zero Production Blast Radius)
@@ -49,7 +49,7 @@ This Pull Request introduces the **BoonTrack Studio Creative Pipeline & Desk Ref
   - *Cross-Tenant Denial:* All cross-tenant mutations denied with HTTP 403 Forbidden; cross-slug querying returns HTTP 404.
   - *Anonymous Denial:* All unauthenticated requests rejected with HTTP 401 Unauthorized; plaintext cookie spoofing rejected (Zero Trust).
   - *Upload Route (`POST /api/v1/upload`):* **NOT PROVEN / OUT-OF-SCOPE** — Legacy Core Route, `tenantSlug` still sourced from client header (unsigned). Tracked via Core Issue: [B055OB/boontrack-core#27](https://github.com/B055OB/boontrack-core/issues/27).
-- **Global CI Status (GitHub Actions Run `42762084478` — AUTHORITATIVE):**
+- **Global CI Status (GitHub Actions Run `42763571558` — AUTHORITATIVE):**
   - **Typecheck:** ✅ **PASS** (`tsc --noEmit` exited code `0`).
   - **Jest Unit & Integration Tests:** 221 total suites — **215 suites passed / 6 failed** (2,697 tests passed / 10 failed / 2 skipped).
   - **Baseline Comparison (Run `42556962771`):** 215 total — 207 suites passed / 8 failed (2,553 tests passed / 12 failed). Six remaining failing suites match the six failing suites observed on the main baseline. NOT regressions introduced by PR #94. Candidate improved by -2 failing suites and -2 failing tests compared to `main`.
