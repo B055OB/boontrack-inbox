@@ -2,7 +2,7 @@ name: Inbox CI & Dispatch Test Suite
 
 on:
   push:
-    branches: [ main, 'ci/**' ]
+    branches: [ main, 'ci/**', feat/bwm-workforce-isolated ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -49,9 +49,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: |
-          npm ci || npm install --legacy-peer-deps
-          npm install -D ts-node
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck || npx tsc --noEmit
@@ -105,8 +103,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: |
-          npm ci || npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Initialize DB Schema & Run Baseline Migrations (001-012)
         run: node scripts/verify-disposable-postgres-ci.mjs
@@ -168,48 +165,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      postgrest:
-        image: postgrest/postgrest:v12.0.3
-        env:
-          PGRST_DB_URI: "postgresql://postgres:test_password_disposable_ci_2026@postgres:5432/test_workforce_ci"
-          PGRST_DB_SCHEMA: "public"
-          PGRST_DB_ANON_ROLE: "anon"
-          PGRST_JWT_SECRET: "ci-only-jwt-secret-for-bwm-workforce-pipeline-2026-xyz-32bytes"
-          PGRST_SERVER_PORT: "3000"
-        ports:
-          - 3001:3000
-        options: >-
-          --health-cmd "wget -qO- http://localhost:3000/ || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      gotrue:
-        image: supabase/gotrue:v2.158.1
-        env:
-          GOTRUE_API_HOST: "0.0.0.0"
-          GOTRUE_API_PORT: "9999"
-          GOTRUE_DB_DRIVER: "postgres"
-          GOTRUE_DB_DATABASE_URL: "postgresql://postgres:test_password_disposable_ci_2026@postgres:5432/test_workforce_ci?sslmode=disable"
-          GOTRUE_SITE_URL: "http://localhost:3000"
-          GOTRUE_URI_ALLOW_LIST: "*"
-          GOTRUE_DISABLE_SIGNUP: "false"
-          GOTRUE_JWT_SECRET: "ci-only-jwt-secret-for-bwm-workforce-pipeline-2026-xyz-32bytes"
-          GOTRUE_JWT_EXP: "3600"
-          GOTRUE_JWT_ADMIN_ROLES: "service_role"
-          GOTRUE_JWT_AUD: "authenticated"
-          GOTRUE_JWT_DEFAULT_GROUP_NAME: "authenticated"
-          GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-          GOTRUE_MAILER_AUTOCONFIRM: "true"
-          GOTRUE_LOG_LEVEL: "info"
-        ports:
-          - 9999:9999
-        options: >-
-          --health-cmd "wget -qO- http://localhost:9999/health || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       CI: "true"
       NODE_ENV: "test"
@@ -219,6 +174,7 @@ jobs:
       WORKFORCE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDB9.Rs4bVwQ_AdYuCzKpXE2AxvaLFxrdE6jNzkgdUgD-JC8"
       WORKFORCE_SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.dxvBMIvKaxIke61h0Jc2vPk9EZre-_1A3UQ5NXP9t5Y"
       BOONTRACK_HMAC_SECRET: "test_ci_secure_hmac_secret_for_pipeline_999"
+      BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP: "true"
 
     steps:
       - name: Checkout Code
@@ -233,14 +189,53 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: |
-          npm ci || npm install --legacy-peer-deps
+        run: npm ci
 
-      - name: Initialize DB Schema & Run Baseline Migrations (001-012)
+      - name: Wait for PostgreSQL Readiness
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres -d test_workforce_ci > /dev/null 2>&1; then
+              echo "[READY] Disposable PostgreSQL container is healthy on port 5432"
+              break
+            fi
+            echo "Waiting for PostgreSQL service container... ($i/30)"
+            sleep 1
+          done
+
+      - name: Bootstrap Database Schema & Run Migrations (schema-draft.sql + 007-012)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
-      - name: Start Ephemeral API Gateway (Nginx)
+      - name: Start Ephemeral GoTrue, PostgREST & Gateway Containers
         run: |
+          # 1. Start GoTrue Auth Engine
+          docker run -d --name gotrue --network host \
+            -e GOTRUE_API_HOST="0.0.0.0" \
+            -e GOTRUE_API_PORT="9999" \
+            -e GOTRUE_DB_DRIVER="postgres" \
+            -e GOTRUE_DB_DATABASE_URL="postgresql://postgres:test_password_disposable_ci_2026@127.0.0.1:5432/test_workforce_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL="http://localhost:3000" \
+            -e GOTRUE_URI_ALLOW_LIST="*" \
+            -e GOTRUE_DISABLE_SIGNUP="false" \
+            -e GOTRUE_JWT_SECRET="ci-only-jwt-secret-for-bwm-workforce-pipeline-2026-xyz-32bytes" \
+            -e GOTRUE_JWT_EXP="3600" \
+            -e GOTRUE_JWT_ADMIN_ROLES="service_role" \
+            -e GOTRUE_JWT_AUD="authenticated" \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME="authenticated" \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED="true" \
+            -e GOTRUE_MAILER_AUTOCONFIRM="true" \
+            -e GOTRUE_LOG_LEVEL="info" \
+            supabase/gotrue:v2.158.1
+
+          # 2. Start PostgREST Data Engine (Runs under least-privileged authenticator role)
+          docker run -d --name postgrest --network host \
+            -e PGRST_DB_URI="postgresql://authenticator:authenticator_password_disposable_ci_2026@127.0.0.1:5432/test_workforce_ci" \
+            -e PGRST_DB_SCHEMA="public" \
+            -e PGRST_DB_ANON_ROLE="anon" \
+            -e PGRST_JWT_SECRET="ci-only-jwt-secret-for-bwm-workforce-pipeline-2026-xyz-32bytes" \
+            -e PGRST_SERVER_PORT="3001" \
+            postgrest/postgrest:v12.0.3
+
+          # 3. Start Nginx Ephemeral API Gateway
           cat << 'EOF' > /tmp/nginx-gateway.conf
           events { worker_connections 1024; }
           http {
@@ -265,18 +260,32 @@ jobs:
           EOF
           docker run -d --name api-gateway --network host -v /tmp/nginx-gateway.conf:/etc/nginx/nginx.conf:ro nginx:alpine
 
-      - name: Wait for Ephemeral Gateway Readiness
+      - name: Wait for Ephemeral Gateway & Services Readiness
         run: |
+          READY=false
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:3000/auth/v1/health > /dev/null 2>&1; then
-              echo "[READY] Ephemeral API Gateway is responding on port 3000"
+            if curl -sf http://localhost:3000/auth/v1/health > /dev/null 2>&1 && curl -sf http://localhost:3000/rest/v1/ > /dev/null 2>&1; then
+              echo "[READY] Ephemeral API Gateway (GoTrue & PostgREST) is fully operational on port 3000"
+              READY=true
               break
             fi
-            echo "Waiting for API Gateway... ($i/30)"
+            echo "Waiting for services... ($i/30)"
             sleep 2
           done
+          if [ "$READY" != "true" ]; then
+            echo "[TIMEOUT ERROR] Ephemeral services failed to become ready within 60s"
+            docker logs gotrue || true
+            docker logs postgrest || true
+            docker logs api-gateway || true
+            exit 1
+          fi
 
       - name: Run PostgREST Boundary Suite (1 Suite)
         run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=60000 --runInBand \
             __tests__/workforce/real-data-api-exposure.test.ts
+
+      - name: Teardown Ephemeral Containers
+        if: always()
+        run: |
+          docker rm -f api-gateway postgrest gotrue || true

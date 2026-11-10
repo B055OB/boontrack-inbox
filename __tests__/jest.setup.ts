@@ -498,7 +498,7 @@ jest.mock('@supabase/supabase-js', () => ({
   SupabaseClient: jest.fn(() => globalMockSupabaseClient),
 }));
 
-// 5. Global Mock for external fetch calls (Gate A: Fail-closed, host/path/method allowlist, zero live egress)
+// 5. Global Mock for external fetch calls (Gate A: Fail-closed, exact URL parsing, zero live egress)
 const defaultGeminiResponse = {
   candidates: [
     {
@@ -513,14 +513,99 @@ const defaultGeminiResponse = {
   ],
 };
 
+// Retain genuine native fetch reference before injecting mock interceptor
+const nativeFetch: typeof fetch = (globalThis as any).__nativeFetch || globalThis.fetch;
+if (!(globalThis as any).__nativeFetch && typeof globalThis.fetch === 'function') {
+  (globalThis as any).__nativeFetch = globalThis.fetch;
+}
+
 (globalThis as any).fetch = jest.fn().mockImplementation(async (input: any, init?: any) => {
-  const url = typeof input === 'string' ? input : input?.url || '';
-  const method = (init?.method || 'GET').toUpperCase();
+  let urlString = '';
+  if (typeof input === 'string') {
+    urlString = input;
+  } else if (input && typeof input.url === 'string') {
+    urlString = input.url;
+  } else if (input && typeof input.href === 'string') {
+    urlString = input.href;
+  } else if (input && typeof input.toString === 'function') {
+    urlString = input.toString();
+  }
+
+  if (!urlString || typeof urlString !== 'string') {
+    throw new Error('[SECURITY FAIL-CLOSED] Blocked unparseable / empty URL input');
+  }
+
+  let parsedUrl: URL;
+  try {
+    if (urlString.startsWith('/')) {
+      parsedUrl = new URL(urlString, 'http://localhost:3000');
+    } else {
+      parsedUrl = new URL(urlString);
+    }
+  } catch {
+    throw new Error(`[SECURITY FAIL-CLOSED] Malformed URL rejected: ${urlString}`);
+  }
+
+  let method = 'GET';
+  if (init?.method && typeof init.method === 'string') {
+    method = init.method.toUpperCase();
+  } else if (input && typeof (input as any).method === 'string') {
+    method = (input as any).method.toUpperCase();
+  }
+
+  const protocol = parsedUrl.protocol;
+  const hostname = parsedUrl.hostname;
+  const port = parsedUrl.port;
+  const pathname = parsedUrl.pathname;
+
+  // Gate A.1: Ephemeral Supabase HTTP Gateway Passthrough for Integration Jobs
+  const isEphemeralSupabaseCandidate =
+    protocol === 'http:' &&
+    (hostname === 'localhost' || hostname === '127.0.0.1') &&
+    port === '3000' &&
+    (pathname.startsWith('/auth/v1/') || pathname.startsWith('/rest/v1/'));
+
+  if (isEphemeralSupabaseCandidate) {
+    if (process.env.BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP !== 'true') {
+      throw new Error(
+        `[SECURITY FAIL-CLOSED] Ephemeral Supabase gateway request blocked: BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP is not enabled: ${method} ${urlString}`
+      );
+    }
+
+    // Exact Endpoint + Method pairing allowlist
+    const uuidUserPathRegex = /^\/auth\/v1\/admin\/users\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+    const isAllowedEndpoint =
+      (method === 'POST' && pathname === '/auth/v1/admin/users') ||
+      (method === 'DELETE' && uuidUserPathRegex.test(pathname)) ||
+      (method === 'POST' && (pathname === '/auth/v1/token' || pathname.startsWith('/auth/v1/token'))) ||
+      ((method === 'GET' || method === 'PATCH') && pathname === '/rest/v1/tenants') ||
+      ((method === 'GET' || method === 'PATCH' || method === 'POST') && pathname === '/rest/v1/products') ||
+      ((method === 'GET' || method === 'PATCH') && pathname === '/rest/v1/storefront_tenants') ||
+      ((method === 'GET' || method === 'POST') && pathname === '/rest/v1/storefront_products');
+
+    if (!isAllowedEndpoint) {
+      throw new Error(
+        `[SECURITY FAIL-CLOSED] Unapproved endpoint or method on ephemeral gateway: ${method} ${pathname}`
+      );
+    }
+
+    // Pass through to native fetch, preventing automatic external redirects
+    const passthroughInit = {
+      ...init,
+      redirect: 'error' as RequestRedirect,
+    };
+    return await nativeFetch(input, passthroughInit);
+  }
 
   // 1. Gemini AI Mock (generativelanguage.googleapis.com)
-  if (url.includes('generativelanguage.googleapis.com')) {
-    if (!url.includes('/models/') && !url.includes(':generateContent')) {
-      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on generativelanguage.googleapis.com: ${url}`);
+  if (
+    protocol === 'https:' &&
+    hostname === 'generativelanguage.googleapis.com' &&
+    (port === '' || port === '443')
+  ) {
+    if (!/^\/v1(?:beta)?\/models\/[^/]+:(?:generateContent|streamGenerateContent)$/.test(pathname)) {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on generativelanguage.googleapis.com: ${urlString}`);
     }
     if (method !== 'POST') {
       throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for Gemini API (expected POST)`);
@@ -534,9 +619,13 @@ const defaultGeminiResponse = {
   }
 
   // 2. Telegram Bot Mock (api.telegram.org)
-  if (url.includes('api.telegram.org')) {
-    if (!url.includes('/sendMessage') && !url.includes('/sendPhoto') && !url.includes('/sendDocument')) {
-      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on api.telegram.org: ${url}`);
+  if (
+    protocol === 'https:' &&
+    hostname === 'api.telegram.org' &&
+    (port === '' || port === '443')
+  ) {
+    if (!/^\/bot[^/]+\/(?:sendMessage|sendPhoto|sendDocument)$/.test(pathname)) {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on api.telegram.org: ${urlString}`);
     }
     if (method !== 'POST') {
       throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for Telegram API (expected POST)`);
@@ -549,8 +638,12 @@ const defaultGeminiResponse = {
     };
   }
 
-  // 3. Xendit Payment Mock (api.xendit.co) — Gate A: Auth, approved endpoints, and financial assertions
-  if (url.includes('api.xendit.co')) {
+  // 3. Xendit Payment Mock (api.xendit.co)
+  if (
+    protocol === 'https:' &&
+    hostname === 'api.xendit.co' &&
+    (port === '' || port === '443')
+  ) {
     const authHeader = init?.headers?.Authorization || init?.headers?.authorization;
     if (!authHeader) {
       return {
@@ -561,8 +654,12 @@ const defaultGeminiResponse = {
       };
     }
 
-    // Gate A.5: Validate payment endpoint approval
-    if (!url.includes('/qr_codes') && !url.includes('/v2/invoices') && !url.includes('/callback_virtual_accounts')) {
+    const isApprovedXenditPath =
+      pathname === '/qr_codes' ||
+      pathname.startsWith('/v2/invoices') ||
+      pathname.startsWith('/callback_virtual_accounts');
+
+    if (!isApprovedXenditPath) {
       return {
         ok: false,
         status: 403,
@@ -580,7 +677,6 @@ const defaultGeminiResponse = {
       };
     }
 
-    // Gate A.4: Payment payload & financial assertions remain effective
     let bodyObj: any = null;
     try {
       if (typeof init?.body === 'string') {
@@ -619,30 +715,14 @@ const defaultGeminiResponse = {
     };
   }
 
-  // 4. Internal QRIS create endpoint (/api/v1/payments/qris/create)
-  if (url.includes('/api/v1/payments/qris/create') || url.includes('/payments/qris/create')) {
-    if (method !== 'POST') {
-      throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted on QRIS create (expected POST)`);
-    }
-    const mockPaymentRes = {
-      success: true,
-      order_id: 'ORD-MOCK-PAYMENT-123',
-      qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5910BOONTRACK6007JAKARTA61051234062070703A016304',
-      qr_code_url: 'https://quickchart.io/qr?text=mock-qris-data',
-      invoice_url: '/checkout/ORD-MOCK-PAYMENT-123',
-    };
-    return {
-      ok: true,
-      status: 200,
-      json: async () => mockPaymentRes,
-      text: async () => JSON.stringify(mockPaymentRes),
-    };
-  }
-
-  // 5. QuickChart QR generation (quickchart.io)
-  if (url.includes('quickchart.io')) {
-    if (!url.includes('/qr')) {
-      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on quickchart.io: ${url}`);
+  // 4. QuickChart QR generation (quickchart.io)
+  if (
+    protocol === 'https:' &&
+    hostname === 'quickchart.io' &&
+    (port === '' || port === '443')
+  ) {
+    if (pathname !== '/qr') {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on quickchart.io: ${urlString}`);
     }
     if (method !== 'GET') {
       throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for QuickChart (expected GET)`);
@@ -655,22 +735,53 @@ const defaultGeminiResponse = {
     };
   }
 
-  // 6. Authorized Internal hosts
-  if (
-    url.includes('localhost:3000') ||
-    url.includes('127.0.0.1:3000') ||
-    url.includes('api.boontrack.com') ||
-    url.includes('shop.boontrack.com')
-  ) {
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true, message: 'Mock internal response' }),
-      text: async () => JSON.stringify({ success: true, message: 'Mock internal response' }),
-    };
+  // 5. Authorized Internal Mock Routes (exact localhost:3000 / 127.0.0.1:3000 with http: OR boontrack domains with https:)
+  const isInternalLocalHost =
+    protocol === 'http:' &&
+    (hostname === 'localhost' || hostname === '127.0.0.1') &&
+    port === '3000';
+
+  const isInternalCloudHost =
+    protocol === 'https:' &&
+    (hostname === 'api.boontrack.com' || hostname === 'shop.boontrack.com') &&
+    (port === '' || port === '443');
+
+  if (isInternalLocalHost || isInternalCloudHost) {
+    // QRIS create mock endpoint
+    if (pathname === '/api/v1/payments/qris/create') {
+      if (method !== 'POST') {
+        throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted on QRIS create (expected POST)`);
+      }
+      const mockPaymentRes = {
+        success: true,
+        order_id: 'ORD-MOCK-PAYMENT-123',
+        qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5910BOONTRACK6007JAKARTA61051234062070703A016304',
+        qr_code_url: 'https://quickchart.io/qr?text=mock-qris-data',
+        invoice_url: '/checkout/ORD-MOCK-PAYMENT-123',
+      };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => mockPaymentRes,
+        text: async () => JSON.stringify(mockPaymentRes),
+      };
+    }
+
+    // Generic mock response for local internal API unit tests (must start with /api/)
+    if (pathname.startsWith('/api/')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, message: 'Mock internal response' }),
+        text: async () => JSON.stringify({ success: true, message: 'Mock internal response' }),
+      };
+    }
+
+    // Any other path on localhost:3000 (such as /admin/v1/secret or /unapproved) fails closed!
+    throw new Error(`[SECURITY FAIL-CLOSED] Unapproved internal path: ${method} ${pathname}`);
   }
 
-  // Gate A.2 & A.3: Fail-closed on all unapproved external hosts or endpoints (NO live egress)
-  throw new Error(`[SECURITY FAIL-CLOSED] Blocked unapproved network request: ${method} ${url}`);
+  // Fail-closed on all unapproved external hosts or endpoints (NO live egress)
+  throw new Error(`[SECURITY FAIL-CLOSED] Blocked unapproved network request: ${method} ${urlString}`);
 });
 

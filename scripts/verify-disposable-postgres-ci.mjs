@@ -9,13 +9,89 @@
  * Task 2: Baseline setup, Migration 011 UP, Migration 012 UP, DOWN migrations, idempotency.
  * Task 3: Credential isolation across anon, authenticated, supervisor, and service_role.
  * Task 4: Authz_version increments, single-session logout, prune procedure permissions.
- * Task 5: Logged PostgreSQL rate-limit atomic UPSERT concurrency (25 concurrent workers).
+ * Task 5: Logged PostgreSQL rate-limit atomic UPSERT concurrency (20 concurrent workers).
  * Task 6: Tenant isolation and CRUD regression across Tenant Alpha and Tenant Beta.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { Client } from 'pg';
+import { fileURLToPath } from 'url';
+import { Client, Pool } from 'pg';
+
+/**
+ * Asserts that a database connection string strictly targets the authorized disposable CI container.
+ * Strict allowlist based on WHATWG URL:
+ * - protocol: 'postgres:' or 'postgresql:'
+ * - host: ONLY 'localhost' or '127.0.0.1'
+ * - port: exactly '5432'
+ * - pathname: exactly '/test_workforce_ci'
+ * - username: 'postgres' or 'authenticator'
+ */
+export function assertDisposableDatabaseTarget(connStr) {
+  if (!connStr || typeof connStr !== 'string' || !connStr.trim()) {
+    throw new Error('[DISPOSABLE GUARD FATAL] Database connection string is empty or invalid.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(connStr.trim());
+  } catch {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Malformed database connection URL: ${connStr}`);
+  }
+
+  // 1. Protocol validation
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Invalid protocol (${parsed.protocol}). Expected postgres: or postgresql:.`);
+  }
+
+  // 2. Host validation: ONLY localhost or 127.0.0.1
+  const hostname = parsed.hostname;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Unauthorized database host (${hostname}). Only localhost or 127.0.0.1 is authorized.`);
+  }
+
+  // 3. Port validation: exact 5432
+  if (parsed.port !== '5432') {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Invalid database port (${parsed.port || 'default'}). Exactly 5432 is required.`);
+  }
+
+  // 4. Database name validation: exact /test_workforce_ci
+  if (parsed.pathname !== '/test_workforce_ci') {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Invalid database name (${parsed.pathname}). Disposable CI database must strictly be /test_workforce_ci.`);
+  }
+
+  // 5. Username validation: postgres or authenticator
+  const username = decodeURIComponent(parsed.username);
+  if (username !== 'postgres' && username !== 'authenticator') {
+    throw new Error(`[DISPOSABLE GUARD FATAL] Unauthorized database user (${username}). Only postgres or authenticator is permitted.`);
+  }
+
+  // 6. Query Parameter Security Validation (Block node-postgres connection parameter overrides via searchParams)
+  const FORBIDDEN_QUERY_PARAMS = new Set([
+    'host',
+    'hostaddr',
+    'port',
+    'dbname',
+    'database',
+    'user',
+    'username',
+    'password',
+    'options',
+    'sslrootcert',
+    'sslcert',
+    'sslkey',
+  ]);
+
+  for (const [key] of parsed.searchParams.entries()) {
+    if (FORBIDDEN_QUERY_PARAMS.has(key.toLowerCase())) {
+      throw new Error(
+        `[DISPOSABLE GUARD FATAL] Manipulative query parameter detected: "${key}". Overriding connection target via query parameters is strictly forbidden.`
+      );
+    }
+  }
+
+  return true;
+}
 
 const connectionString =
   process.env.DISPOSABLE_POSTGRES_URL ||
@@ -35,15 +111,11 @@ async function runVerification() {
     process.exit(1);
   }
 
-  // Strict safety check: Ensure the connection string does NOT target Supabase or Production
-  if (
-    connectionString.includes('supabase.co') ||
-    connectionString.includes('aws.') ||
-    connectionString.includes('railway.') ||
-    connectionString.includes('pooler.')
-  ) {
-    console.error('[FATAL SECURITY VIOLATION] Connection string targets an external or staging host!');
-    console.error('Only local/disposable CI databases (localhost/127.0.0.1/postgres) are authorized.');
+  // Strict allowlist safety check: Ensure the connection string strictly targets disposable CI database
+  try {
+    assertDisposableDatabaseTarget(connectionString);
+  } catch (guardErr) {
+    console.error(`[FATAL SECURITY VIOLATION] ${guardErr.message}`);
     process.exit(1);
   }
 
@@ -77,9 +149,18 @@ async function runVerification() {
         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
         IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticator') THEN
+          CREATE ROLE authenticator WITH LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'authenticator_password_disposable_ci_2026';
+        END IF;
       END $$;
+
+      GRANT anon TO authenticator;
+      GRANT authenticated TO authenticator;
+      GRANT USAGE ON SCHEMA public TO authenticator;
+      CREATE SCHEMA IF NOT EXISTS workforce_staging;
+      GRANT USAGE, CREATE ON SCHEMA workforce_staging TO authenticator, service_role;
     `);
-    console.log('✓ Supabase auth functions and roles (anon, authenticated, service_role) initialized.');
+    console.log('✓ Supabase auth functions and roles (anon, authenticated, service_role, authenticator) initialized.');
 
     // Helper to read and execute SQL migration files
     const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
@@ -88,6 +169,17 @@ async function runVerification() {
       const sql = fs.readFileSync(fullPath, 'utf8');
       await client.query(sql);
       console.log(`✓ Executed: ${filename}`);
+    }
+
+    // Execute baseline schema draft (prerequisites for migration 007: branch_credit_pools, credit_purchase_transactions, seat_credit_ledger)
+    console.log('\n--- Applying Prerequisite Schema Draft ---');
+    const schemaDraftPath = path.resolve('lib/workforce/schema/schema-draft.sql');
+    if (fs.existsSync(schemaDraftPath)) {
+      const schemaDraftSql = fs.readFileSync(schemaDraftPath, 'utf8');
+      await client.query(schemaDraftSql);
+      console.log('✓ Executed prerequisite schema draft: lib/workforce/schema/schema-draft.sql');
+    } else {
+      throw new Error(`Prerequisite schema draft not found: ${schemaDraftPath}`);
     }
 
     // Apply baseline migrations 007, 008, 009, 010
@@ -193,7 +285,7 @@ async function runVerification() {
     const tenantAlphaId = '11111111-1111-4111-8111-111111111111';
     const tenantBetaId = '22222222-2222-4222-8222-222222222222';
     const officerAlphaUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const supervisorAlphaUserId = 'ssssssss-ssss-4sss-8sss-ssssssssssss';
+    const supervisorAlphaUserId = '55555555-5555-4555-8555-555555555555';
     const officerBetaUserId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
     // Seed test tenants as service_role/superuser
@@ -361,49 +453,68 @@ async function runVerification() {
 
     const testRateKey = 'bwm_login_agency_ip:alpha-security:198.51.100.42';
 
-    // Atomic UPSERT function
-    async function executeAtomicRateLimit(rateKey) {
-      const res = await client.query(
-        `INSERT INTO workforce_staging.auth_rate_limits (rate_key, attempts, window_start, updated_at)
-         VALUES ($1, 1, NOW(), NOW())
-         ON CONFLICT (rate_key) DO UPDATE
-         SET attempts = CASE
-                 WHEN workforce_staging.auth_rate_limits.window_start < NOW() - INTERVAL '15 minutes' THEN 1
-                 ELSE workforce_staging.auth_rate_limits.attempts + 1
-             END,
-             window_start = CASE
-                 WHEN workforce_staging.auth_rate_limits.window_start < NOW() - INTERVAL '15 minutes' THEN NOW()
-                 ELSE workforce_staging.auth_rate_limits.window_start
-             END,
-             updated_at = NOW()
-         RETURNING attempts,
-                   GREATEST(1, CEIL(EXTRACT(EPOCH FROM (window_start + INTERVAL '15 minutes' - NOW()))))::INT AS retry_after_seconds;`,
-        [rateKey]
-      );
-      return res.rows[0];
-    }
-
-    // Execute 20 concurrent requests
+    // Acquire 20 real connections concurrently via pg.Pool
     const concurrencyCount = 20;
-    const promises = Array.from({ length: concurrencyCount }, () => executeAtomicRateLimit(testRateKey));
-    const results = await Promise.all(promises);
+    const pool = new Pool({ connectionString, max: concurrencyCount });
+    try {
+      const poolClients = await Promise.all(
+        Array.from({ length: concurrencyCount }, () => pool.connect())
+      );
 
-    const attemptNumbers = results.map((r) => r.attempts).sort((a, b) => a - b);
-    const uniqueAttempts = new Set(attemptNumbers);
+      const upsertSql = `
+        INSERT INTO workforce_staging.auth_rate_limits (rate_key, attempts, window_start, updated_at)
+        VALUES ($1, 1, NOW(), NOW())
+        ON CONFLICT (rate_key) DO UPDATE
+        SET attempts = CASE
+                WHEN workforce_staging.auth_rate_limits.window_start < NOW() - INTERVAL '15 minutes' THEN 1
+                ELSE workforce_staging.auth_rate_limits.attempts + 1
+            END,
+            window_start = CASE
+                WHEN workforce_staging.auth_rate_limits.window_start < NOW() - INTERVAL '15 minutes' THEN NOW()
+                ELSE workforce_staging.auth_rate_limits.window_start
+            END,
+            updated_at = NOW()
+        RETURNING attempts,
+                  GREATEST(1, CEIL(EXTRACT(EPOCH FROM (window_start + INTERVAL '15 minutes' - NOW()))))::INT AS retry_after_seconds;
+      `;
 
-    if (uniqueAttempts.size !== concurrencyCount) {
-      throw new Error(`Concurrency race condition detected! Expected 20 unique attempt numbers, got ${uniqueAttempts.size}`);
-    }
-    if (attemptNumbers[attemptNumbers.length - 1] !== concurrencyCount) {
-      throw new Error(`Max attempts mismatch: expected 20, got ${attemptNumbers[attemptNumbers.length - 1]}`);
-    }
+      // Synchronize start barrier timestamp so all 20 connections fire in parallel
+      const startBarrier = Date.now() + 50;
 
-    const blockedAttempts = results.filter((r) => r.attempts > 5);
-    if (blockedAttempts.length !== concurrencyCount - 5) {
-      throw new Error(`Expected ${concurrencyCount - 5} requests to exceed threshold 5, got ${blockedAttempts.length}`);
+      const results = await Promise.all(
+        poolClients.map(async (pClient) => {
+          try {
+            const delay = startBarrier - Date.now();
+            if (delay > 0) {
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+            const res = await pClient.query(upsertSql, [testRateKey]);
+            return res.rows[0];
+          } finally {
+            pClient.release();
+          }
+        })
+      );
+
+      const attemptNumbers = results.map((r) => r.attempts).sort((a, b) => a - b);
+      const uniqueAttempts = new Set(attemptNumbers);
+
+      if (uniqueAttempts.size !== concurrencyCount) {
+        throw new Error(`Concurrency race condition detected! Expected 20 unique attempt numbers, got ${uniqueAttempts.size}`);
+      }
+      if (attemptNumbers[attemptNumbers.length - 1] !== concurrencyCount) {
+        throw new Error(`Max attempts mismatch: expected 20, got ${attemptNumbers[attemptNumbers.length - 1]}`);
+      }
+
+      const blockedAttempts = results.filter((r) => r.attempts > 5);
+      if (blockedAttempts.length !== concurrencyCount - 5) {
+        throw new Error(`Expected ${concurrencyCount - 5} requests to exceed threshold 5, got ${blockedAttempts.length}`);
+      }
+      console.log(`✓ 20 concurrent requests executed atomically across 20 distinct pool connections with ZERO lost updates (attempts strictly 1 to 20).`);
+      console.log(`✓ Threshold 5 enforced: exactly 15 requests blocked with valid retry_after_seconds.`);
+    } finally {
+      await pool.end().catch(() => {});
     }
-    console.log(`✓ 20 concurrent requests executed atomically with ZERO lost updates (attempts strictly 1 to 20).`);
-    console.log(`✓ Threshold 5 enforced: exactly 15 requests blocked with valid retry_after_seconds.`);
 
     // ========================================================================
     // SECTION 7: TENANT ISOLATION AND CRUD REGRESSION (RLS PROOF)
@@ -477,7 +588,20 @@ async function runVerification() {
   }
 }
 
-runVerification().catch((err) => {
-  console.error('\n[VERIFICATION SUITE FAILED]', err);
-  process.exit(1);
-});
+const isMainModule = () => {
+  if (!process.argv[1]) return false;
+  try {
+    const currentFilePath = fileURLToPath(import.meta.url).toLowerCase();
+    const executedFilePath = path.resolve(process.argv[1]).toLowerCase();
+    return currentFilePath === executedFilePath;
+  } catch {
+    return process.argv[1]?.includes('verify-disposable-postgres-ci');
+  }
+};
+
+if (isMainModule()) {
+  runVerification().catch((err) => {
+    console.error('\n[VERIFICATION SUITE FAILED]', err);
+    process.exit(1);
+  });
+}

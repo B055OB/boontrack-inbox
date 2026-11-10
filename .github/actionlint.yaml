@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kjanat/actionlint/HEAD/actionlint.schema.json
+---
+self-hosted-runner:
+  labels: []
+
+paths:
+  .github/workflows/**/*.yml:
+    ignore:
+      - 'node20.*deprecated'
