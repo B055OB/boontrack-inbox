@@ -17,6 +17,13 @@ interface DomainCacheEntry {
 
 const domainCache = new Map<string, DomainCacheEntry>();
 const tenantSlugToIdCache = new Map<string, { id: string | null; timestamp: number }>();
+interface TenantStorefrontResolution {
+  tenantId: string | null;
+  slug: string;
+  isEligible: boolean;
+  status: 'FOUND' | 'NOT_FOUND' | 'INELIGIBLE' | 'ERROR';
+}
+const tenantStorefrontCache = new Map<string, { result: TenantStorefrontResolution; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
 // Known Custom Domains Registry (Fast-path mapping with 0ms edge latency)
@@ -160,13 +167,9 @@ async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | 
   // 2. Fallback Supabase REST (Single Source of Truth)
   if (!slug) {
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-      const currentKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-      const supabaseKey =
-        (currentKey && !currentKey.startsWith('sb_secret_'))
-          ? currentKey
-          : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M');
-      if (supabaseKey) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (supabaseUrl && supabaseKey) {
         const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,metadata&or=(metadata->>custom_domain.eq.${encodeURIComponent(hostname)},metadata->custom_domains.cs.["${encodeURIComponent(hostname)}"])&limit=1`;
         const supaRes = await fetch(supaUrl, {
           headers: {
@@ -198,44 +201,154 @@ async function lookupTenantByDomain(hostname: string): Promise<{ slug: string | 
 }
 
 /**
- * Resolves tenant_id for a given tenant slug using memory cache & Supabase REST.
+ * Resolves storefront eligibility and tenant_id using memory cache & Supabase REST.
+ * Fail-closed: returns isEligible=false for unknown, inactive, or non-commerce tenants.
  */
-async function resolveTenantIdForSlug(slug: string): Promise<string | null> {
+async function resolveTenantStorefront(slug: string): Promise<TenantStorefrontResolution> {
   const cleanSlug = slug.toLowerCase().trim();
-  if (!cleanSlug) return null;
-  const cached = tenantSlugToIdCache.get(cleanSlug);
+  if (!cleanSlug) {
+    return { tenantId: null, slug: cleanSlug, isEligible: false, status: 'NOT_FOUND' };
+  }
+
+  const cached = tenantStorefrontCache.get(cleanSlug);
   const now = Date.now();
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-    return cached.id;
+    return cached.result;
   }
-  let id: string | null = null;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('[middleware] NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing in environment');
+    const errResult: TenantStorefrontResolution = {
+      tenantId: null,
+      slug: cleanSlug,
+      isEligible: false,
+      status: 'ERROR',
+    };
+    return errResult;
+  }
+
+  let result: TenantStorefrontResolution = {
+    tenantId: null,
+    slug: cleanSlug,
+    isEligible: false,
+    status: 'NOT_FOUND',
+  };
+
   try {
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
-    const supabaseKey =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
-    if (supabaseKey) {
-      const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
-      const supaRes = await fetch(supaUrl, {
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-        next: { revalidate: 300 },
-      });
-      if (supaRes.ok) {
-        const rows = await supaRes.json().catch(() => []);
-        if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
-          id = rows[0].id;
+    const supaUrl = `${supabaseUrl}/rest/v1/tenants?select=id,slug,is_active,status,business_type,template_code,tier&slug=eq.${encodeURIComponent(cleanSlug)}&limit=1`;
+    const supaRes = await fetch(supaUrl, {
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (supaRes.ok) {
+      const rows = await supaRes.json().catch(() => []);
+      if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
+        const row = rows[0];
+        const isActive =
+          row.is_active !== false &&
+          (row.status === undefined || row.status === null || String(row.status).toLowerCase() === 'active');
+
+        const rawBusinessType = String(row.business_type || '').toUpperCase().trim();
+        const rawTemplate = String(row.template_code || row.template || '').toUpperCase().trim();
+        const rawTier = String(row.tier || '').toUpperCase().trim();
+
+        // Authoritative Commerce Tiers (ARCHITECTURE.md § 63 & AGENTS.md Rule 2)
+        // Primary: SOLO, PRO_SCALE, ADS_PERFORMANCE, ENTERPRISE, TEAM_SCALE
+        // Documented platform aliases: STARTER, CHECKOUT_LITE, LITE, BASIC, GROWTH, GROWTH_PLUS, SCALE, PRO, SPECIAL_GRANT
+        const VALID_COMMERCE_TIERS = new Set([
+          'SOLO',
+          'STARTER',
+          'PRO_SCALE',
+          'ADS_PERFORMANCE',
+          'TEAM_SCALE',
+          'ENTERPRISE',
+          'CHECKOUT_LITE',
+          'LITE',
+          'BASIC',
+          'GROWTH',
+          'GROWTH_PLUS',
+          'SCALE',
+          'PRO',
+          'SPECIAL_GRANT',
+        ]);
+
+        const NON_COMMERCE_BUSINESS_TYPES = new Set([
+          'PUBLIC_SERVICE',
+          'B2G',
+          'DESA',
+          'COMMUNITY',
+          'PELAYANAN_PUBLIK',
+        ]);
+
+        const NON_COMMERCE_TEMPLATES = new Set([
+          'PUBLIC_SERVICE_V1',
+        ]);
+
+        const NON_COMMERCE_TIERS = new Set([
+          'FREE',
+          'CIVIC',
+          'PUBLIC_SERVICE',
+          'DESA',
+        ]);
+
+        const isCommerceTier = Boolean(rawTier && VALID_COMMERCE_TIERS.has(rawTier));
+        const isNonCommerce =
+          NON_COMMERCE_BUSINESS_TYPES.has(rawBusinessType) ||
+          NON_COMMERCE_TEMPLATES.has(rawTemplate) ||
+          NON_COMMERCE_TIERS.has(rawTier) ||
+          !isCommerceTier;
+
+        if (!isActive || isNonCommerce) {
+          result = {
+            tenantId: row.id,
+            slug: cleanSlug,
+            isEligible: false,
+            status: 'INELIGIBLE',
+          };
+        } else {
+          result = {
+            tenantId: row.id,
+            slug: cleanSlug,
+            isEligible: true,
+            status: 'FOUND',
+          };
+          tenantSlugToIdCache.set(cleanSlug, { id: row.id, timestamp: now });
         }
+      } else {
+        result = {
+          tenantId: null,
+          slug: cleanSlug,
+          isEligible: false,
+          status: 'NOT_FOUND',
+        };
       }
+    } else {
+      result = {
+        tenantId: null,
+        slug: cleanSlug,
+        isEligible: false,
+        status: supaRes.status === 404 ? 'NOT_FOUND' : 'ERROR',
+      };
     }
   } catch (err) {
-    console.warn('[middleware] Failed to resolve tenant id for slug:', err);
+    console.warn('[middleware] Failed to resolve tenant storefront record:', err);
+    result = {
+      tenantId: null,
+      slug: cleanSlug,
+      isEligible: false,
+      status: 'ERROR',
+    };
   }
-  tenantSlugToIdCache.set(cleanSlug, { id, timestamp: now });
-  return id;
+
+  tenantStorefrontCache.set(cleanSlug, { result, timestamp: now });
+  return result;
 }
 
 /**
@@ -419,6 +532,20 @@ async function hasValidTenantSession(req: NextRequest, targetSlug?: string): Pro
   return Boolean(verified.valid && verified.payload);
 }
 
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const aLen = a.length;
+  const bLen = b.length;
+  let mismatch = aLen === bLen ? 0 : 1;
+  const maxLen = Math.max(aLen, bLen);
+  for (let i = 0; i < maxLen; i++) {
+    const charA = i < aLen ? a.charCodeAt(i) : 0;
+    const charB = i < bLen ? b.charCodeAt(i) : 0;
+    mismatch |= charA ^ charB;
+  }
+  return mismatch === 0;
+}
+
 async function handleRouting(req: NextRequest, hostClean: string) {
   const pathname = req.nextUrl.pathname;
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
@@ -439,14 +566,22 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     subdomain === 'studio' ||
     isStudioPreview;
 
-  // ── CACHE FLUSH TRIGGER (Flush All Shared Memory Caches on Demand) ──
+  // ── CACHE FLUSH TRIGGER (Authorized Internal Memory Cache Purge) ──
+  // P0 Security Invariant: Zero URL secret, zero CRON_SECRET fallback, fail closed when missing
+  const purgeSecret = (process.env.INTERNAL_PURGE_SECRET || '').trim();
+  const providedPurgeSecret = (req.headers.get('x-purge-secret') || '').trim();
+  const hasValidPurgeSecret =
+    purgeSecret.length >= 16 &&
+    providedPurgeSecret.length > 0 &&
+    timingSafeEqualStr(providedPurgeSecret, purgeSecret);
+
   if (
-    req.headers.get('x-purge-cache') === '1' ||
-    req.nextUrl.searchParams.get('purge_cache') === '1' ||
-    pathname === '/api/v1/cache/purge'
+    (req.headers.get('x-purge-cache') === '1' || pathname === '/api/v1/cache/purge') &&
+    hasValidPurgeSecret
   ) {
     domainCache.clear();
     tenantSlugToIdCache.clear();
+    tenantStorefrontCache.clear();
     affiliateSubdomainCache.clear();
   }
 
@@ -524,6 +659,33 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ===========================================================================
   // 1. DASHBOARD SUBDOMAIN ROUTING (dashboard.boontrack.com) - URUTAN PALING ATAS
   // ===========================================================================
+  // ===========================================================================
+  // SUBDOMAIN: desk.boontrack.com (LEGACY OPERATOR DESK REDIRECT TO DASHBOARD)
+  // ARCHITECTURE.md § 67.3 & § 69.1: desk.boontrack.com bukan topologi resmi.
+  // Sentralisasi meja kerja CS berada di https://dashboard.boontrack.com/{tenantSlug}.
+  // Redirect 301 ke dashboard.boontrack.com dengan preservasi path & query parameters.
+  // ===========================================================================
+  const isDeskHost =
+    hostClean === 'desk.boontrack.com' ||
+    hostClean === 'desk.localhost' ||
+    (hostClean.endsWith('.boontrack.com') && subdomain === 'desk');
+
+  if (isDeskHost) {
+    const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+    const dashboardBase = isProd
+      ? 'https://dashboard.boontrack.com'
+      : `${req.nextUrl.protocol}//dashboard.${hostClean.replace(/^desk\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+
+    if (pathname === '/' || pathname === '') {
+      return NextResponse.redirect(new URL(`${dashboardBase}/login`, req.url), 301);
+    }
+
+    const targetUrl = new URL(`${dashboardBase}${pathname}`, req.url);
+    req.nextUrl.searchParams.forEach((val, key) => {
+      targetUrl.searchParams.set(key, val);
+    });
+    return NextResponse.redirect(targetUrl, 301);
+  }
   const isDashboardDomain =
     host.startsWith('dashboard.boontrack.com') ||
     hostClean === 'dashboard.boontrack.com' ||
@@ -592,13 +754,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         return NextResponse.redirect(targetUrl, 307);
       }
 
-      // ── DIRECT DESK ROUTE: Direct operator access without circular redirect ──
-      if (segments[1] === 'desk') {
-        const url = req.nextUrl.clone();
-        url.pathname = `/${tenantSlug}/desk`;
-        return NextResponse.rewrite(url);
-      }
-
       // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
       // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
       if (!(await hasValidTenantSession(req, tenantSlug))) {
@@ -607,6 +762,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         const redirectTarget = pathname + (req.nextUrl.search || '');
         loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
         return NextResponse.redirect(loginUrl, 302);
+      }
+
+      // ── RETIRED MERCHANT DESK ROUTE: Compatibility redirect to canonical Dashboard ──
+      if (segments[1] === 'desk') {
+        const url = req.nextUrl.clone();
+        url.pathname = `/${tenantSlug}/dashboard`;
+        return NextResponse.redirect(url, 302);
       }
 
       const url = req.nextUrl.clone();
@@ -803,8 +965,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.next();
     }
 
-    // 2. /desk -> rewrite ke /studio/desk
+    // 2. /desk -> rewrite ke /studio/desk (Wajib Sesi Login Aktif)
     if (pathname === '/desk' || pathname.startsWith('/desk/')) {
+      if (!hasStudioAuth) {
+        url.pathname = '/login';
+        url.search = `?redirectTo=${encodeURIComponent(pathname + (req.nextUrl.search || ''))}`;
+        return NextResponse.redirect(url, 302);
+      }
       const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
       url.pathname = `/studio/desk${deskSubpath}`;
       return NextResponse.rewrite(url);
@@ -983,7 +1150,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         ? 'https://dashboard.boontrack.com'
         : `${req.nextUrl.protocol}//dashboard.${hostClean.replace(/^shop\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
 
-      const targetUrl = new URL(`${dashboardBase}/${targetSlug}/desk${subPath}`);
+      const targetUrl = new URL(`${dashboardBase}/${targetSlug}/dashboard${subPath}`);
       req.nextUrl.searchParams.forEach((val, key) => {
         targetUrl.searchParams.set(key, val);
       });
@@ -1069,23 +1236,36 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
     // 7. Tenant Storefront Routes (/[tenantSlug], /[tenantSlug]/p/..., /[tenantSlug]/pay/..., dll.)
     const tenantSlug = firstSegment;
-    const requestHeaders = new Headers(req.headers);
-    let resolvedId: string | null = null;
     if (tenantSlug) {
-      resolvedId = await resolveTenantIdForSlug(tenantSlug);
+      const resolution = await resolveTenantStorefront(tenantSlug);
+      if (!resolution.isEligible || !resolution.tenantId) {
+        // Unknown, inactive, non-commerce, or unconfigured tenant: Fail closed with /404-store-not-found rewrite
+        const url = req.nextUrl.clone();
+        url.pathname = '/404-store-not-found';
+        return NextResponse.rewrite(url);
+      }
+
+      const requestHeaders = new Headers(req.headers);
       requestHeaders.set('x-tenant-slug', tenantSlug);
-      requestHeaders.set('x-tenant-id', resolvedId || tenantSlug);
+      requestHeaders.set('x-tenant-id', resolution.tenantId);
+
+      const res = NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+
+      applyStorefrontCacheHeaders(res, tenantSlug, resolution.tenantId);
+      if (platformRef) {
+        setReferralCookies(res, platformRef, hostClean);
+      }
+      if (resellerParam) {
+        setResellerCookie(res, resellerParam, hostClean);
+      }
+      return res;
     }
 
-    const res = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
-
-    if (tenantSlug) {
-      applyStorefrontCacheHeaders(res, tenantSlug, resolvedId);
-    }
+    const res = NextResponse.next();
     if (platformRef) {
       setReferralCookies(res, platformRef, hostClean);
     }
@@ -1304,6 +1484,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(url, 307);
     }
 
+    // 3f-1. Root Portal: Render B2B Enterprise & Vertical Solutions Landing Page
+    if (pathname === '/' || pathname === '') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/app-portal';
+      return NextResponse.rewrite(url);
+    }
+
     // 3f. Standard Browser Navigation, Legacy Portal & Unknown Paths -> 301 to Dashboard
     const url = req.nextUrl.clone();
     url.protocol = 'https:';
@@ -1379,28 +1566,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.next();
   }
 
-  if (subdomain === 'shop') {
-    return NextResponse.next();
-  }
 
-
-
-  if (subdomain === 'studio') {
-    const url = req.nextUrl.clone();
-    if (pathname === '/' || pathname === '') {
-      url.pathname = '/studio';
-      return NextResponse.rewrite(url);
-    }
-    if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
-      url.pathname = `/studio${pathname}`;
-      return NextResponse.rewrite(url);
-    }
-    if (pathname.startsWith('/studio')) {
-      return NextResponse.next();
-    }
-    url.pathname = `/studio${pathname}`;
-    return NextResponse.rewrite(url);
-  }
 
   // ===========================================================================
   // SPECIAL DOMAIN: bossob.boontrack.com
@@ -1505,17 +1671,30 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   }
 
   // ===========================================================================
-  // 6. Dynamic B2B Tenant Fallback
+  // 6. Dynamic B2B Tenant Fallback (Hardened Phase 3B)
+  // Authoritative dynamic validation: unknown or ineligible subdomains fail closed.
   // ===========================================================================
   {
     // Safeguard: Jangan rewrite subdomain cadangan sistem atau host tanpa subdomain
     const RESERVED_SUBDOMAINS = new Set([
-      'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
+      'login', 'register', 'daftar', 'api', 'dashboard', 'desk', 'auth', 'admin',
       'affiliate', 'manager', 'shop', 'creator', 'studio', 'www', 'app', 'career', 'static'
     ]);
     if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
       return NextResponse.next();
     }
+
+    const resolution = await resolveTenantStorefront(subdomain);
+    if (!resolution.isEligible || !resolution.tenantId) {
+      // Unknown, inactive, non-commerce, or unconfigured tenant: Fail closed with /404-store-not-found rewrite
+      const notFoundUrl = req.nextUrl.clone();
+      notFoundUrl.pathname = '/404-store-not-found';
+      return NextResponse.rewrite(notFoundUrl);
+    }
+
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set('x-tenant-slug', subdomain);
+    requestHeaders.set('x-tenant-id', resolution.tenantId);
 
     const url = req.nextUrl.clone();
 
@@ -1534,16 +1713,34 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
     if (pathname === '/') {
       url.pathname = `/${subdomain}`;
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
+      applyStorefrontCacheHeaders(res, subdomain, resolution.tenantId);
+      return res;
     }
 
     if (pathname === '/dashboard' || pathname === '/inbox' || pathname === '/chat') {
       url.pathname = `/${subdomain}/dashboard`;
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
+      applyStorefrontCacheHeaders(res, subdomain, resolution.tenantId);
+      return res;
     }
 
     url.pathname = `/${subdomain}${pathname}`;
-    return NextResponse.rewrite(url);
+    const res = NextResponse.rewrite(url, {
+      request: {
+        headers: requestHeaders,
+      },
+    });
+    applyStorefrontCacheHeaders(res, subdomain, resolution.tenantId);
+    return res;
   }
 }
 

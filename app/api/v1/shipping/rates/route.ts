@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
-import { calculateDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
-import { resolveAreaCoordinates } from '@/app/api/v1/shipping/locations/search/route';
+import { calculateDistanceKm, calculateRoadDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
+import { resolveAreaCoordinates, geocodeDestinationAddress } from '@/app/api/v1/shipping/locations/search/route';
+import { calculateShabuAjhiRate, parseCoordinatesFromInput } from '@/lib/delivery/shabuAjhiRates';
+import { CateringItem } from '@/lib/shipping/deliveryCalculator';
 
 export interface RateOption {
   id: string;
@@ -205,6 +207,7 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const slug = (body.slug || body.tenant_slug || searchParams.get('slug') || '').trim();
 
+    const destinationAddress = (body.destination_address || body.address || '').trim();
     const destinationCity = (body.destination_city || body.city || '').trim();
     const destinationDistrict = (body.destination_district || body.district || '').trim();
     const destinationPostalCode = (body.destination_postal_code || body.postal_code || '').trim();
@@ -238,6 +241,15 @@ export async function POST(req: NextRequest) {
         : body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
         ? Number(body.longitude)
         : null;
+
+    // Ekstraksi otomatis jika pengguna menyertakan URL Google Maps / Sharelock
+    if ((destLat == null || destLon == null) && (body.maps_url || body.sharelock || body.destination_address)) {
+      const parsedFromUrl = parseCoordinatesFromInput(body.maps_url || body.sharelock || body.destination_address);
+      if (parsedFromUrl) {
+        destLat = parsedFromUrl.latitude;
+        destLon = parsedFromUrl.longitude;
+      }
+    }
 
     // Deteksi apakah produk adalah FnB / makanan segar mudah basi (termasuk jika ada item paket FnB)
     const isFnb = Boolean(
@@ -276,6 +288,7 @@ export async function POST(req: NextRequest) {
 
     let tenantLincah: any = null;
     let metaShipping: any = null;
+    let tenantMeta: any = null;
 
     if (slug) {
       try {
@@ -297,6 +310,7 @@ export async function POST(req: NextRequest) {
           const biteshipCfg = settingsRes.data?.biteship_config;
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
+          tenantMeta = meta;
           metaShipping = meta.shipping_config;
           tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
 
@@ -408,8 +422,8 @@ export async function POST(req: NextRequest) {
 
     // Selesaikan titik koordinat tujuan pembeli
     if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
-      if (destinationCity || destinationDistrict || destinationPostalCode) {
-        const destResolved = resolveAreaCoordinates(destinationCity, destinationDistrict, destinationPostalCode);
+      if (destinationAddress || destinationCity || destinationDistrict || destinationPostalCode) {
+        const destResolved = await geocodeDestinationAddress(destinationAddress, destinationCity, destinationDistrict, destinationPostalCode);
         destLat = destResolved.latitude;
         destLon = destResolved.longitude;
       }
@@ -417,8 +431,10 @@ export async function POST(req: NextRequest) {
     const finalDestLat = destLat ?? -6.9175;
     const finalDestLon = destLon ?? 107.6191;
 
-    // Hitung jarak Haversine (KM) dari toko ke pembeli
-    const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    // Hitung jarak Haversine (KM) dari toko ke pembeli & Road Distance dengan kurvatur 1.30x
+    const straightDistanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    const roadDistanceKm = calculateRoadDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+    const distanceKm = roadDistanceKm > 0 ? roadDistanceKm : straightDistanceKm;
 
     const cleanOriginCity = effectiveOriginCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
     const cleanDestCity = destinationCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
@@ -451,6 +467,85 @@ export async function POST(req: NextRequest) {
 
     let availableRates: RateOption[] = [];
     let externalRatesLoaded = false;
+
+    // Deteksi apakah tenant mengaktifkan skema FnB Catering / Home Service (13-Tier + Jemput Alat Masak Kotor)
+    const isCateringTenant = Boolean(
+      metaShipping?.tier_mode === 'CATERING_13_TIER' ||
+      metaShipping?.tier_mode === '13_TIER' ||
+      tenantMeta?.fnb_catering?.is_enabled ||
+      tenantMeta?.fnb_catering?.is_fnb_home_service ||
+      metaShipping?.internal_courier?.label?.includes('Alat Masak Kotor')
+    );
+
+    if (isCateringTenant) {
+      const cateringItems: CateringItem[] = Array.isArray(body.items)
+        ? body.items.map((it: any) => ({
+            name: it.productTitle || it.title || it.name || '',
+            qty: Number(it.quantity || it.qty || 1),
+            price: Number(it.unitPrice || it.price || 0),
+            isAddon: Boolean(it.isAddon || it.is_addon),
+            is_addon: Boolean(it.isAddon || it.is_addon),
+            requires_equipment: it.requires_equipment !== undefined ? Boolean(it.requires_equipment) : undefined,
+            category: it.category || it.category_name,
+            soupVariant: it.soupVariant || it.variant,
+            selectedSoups: it.selectedSoups,
+          }))
+        : [];
+
+      const cateringResult = calculateShabuAjhiRate(distanceKm, {
+        hasInternalDriver: true,
+        items: cateringItems.length > 0 ? cateringItems : undefined,
+      });
+
+      const isAlacarteOnly = !cateringResult.requires_pickup;
+      const officialCourierName = isAlacarteOnly
+        ? (metaShipping?.internal_courier?.label_oneway || 'Kurir Instan Toko (Pengantaran 1 Arah)')
+        : (metaShipping?.internal_courier?.label || 'Kurir Dapur Instan (Armada Toko Antar-Jemput Alat Masak)');
+
+      const cateringRateOption: RateOption = {
+        id: isAlacarteOnly ? 'alacarte_armada_internal' : 'catering_armada_internal',
+        courier_name: officialCourierName,
+        service: cateringResult.fleetDescription || (isAlacarteOnly ? 'Pengantaran Menu Makanan (Tanpa Pinjam Alat)' : 'Antar & Jemput Alat Masak Kotor H+1'),
+        price: cateringResult.totalFee,
+        etd: isAlacarteOnly ? 'Hari Ini (1 - 2 Jam Diantar Langsung)' : 'Hari Ini (Termasuk Jemput Alat Masak Kotor)',
+        type: 'instant',
+        badge: cateringResult.totalFee === 0 ? 'Gratis Ongkir' : (isAlacarteOnly ? 'Kurir 1 Arah' : (cateringResult.surchargeFee > 0 ? 'Surcharge Jarak Ekstrem' : 'Armada Toko PP')),
+        provider: 'platform',
+        max_days: 0.1,
+        is_fnb_safe: true,
+        warning: cateringResult.notes,
+        requires_pickup: cateringResult.requires_pickup,
+      } as any;
+
+      // Shabu Ajhi / Katering 100% menggunakan armada internal (Zero External Courier API)
+      return NextResponse.json({
+        success: true,
+        rates: [cateringRateOption],
+        fnb_safe: true,
+        is_fnb: true,
+        distance_km: distanceKm,
+        max_radius_km: effectiveMaxInstantRadius,
+        instant_eligible: true,
+        origin: {
+          address: originAddress,
+          city: effectiveOriginCity,
+          district: originDistrict,
+          postal_code: String(effectiveOriginPostal),
+          subdistrict_id: originSubdistrictId,
+          latitude: originLat,
+          longitude: originLon,
+        },
+        destination: {
+          city: destinationCity,
+          district: destinationDistrict,
+          postal_code: destinationPostalCode,
+          area_id: destinationAreaId,
+          latitude: finalDestLat,
+          longitude: finalDestLon,
+        },
+        weight_grams: weightInGrams,
+      });
+    }
 
     // 2. INTEGRASI BITESHIP: MENDUKUNG SELURUH KURIR (INSTAN, REGULER, KARGO)
     const biteshipKey = process.env.BITESHIP_API_KEY;

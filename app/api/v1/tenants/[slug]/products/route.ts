@@ -164,10 +164,17 @@ export async function POST(
       promo: promo || '',
       description: description || '',
       download_url: download_url || null,
-      type: type || (body?.product_type === 'PHYSICAL' ? 'physical' : (isServicePt || category === 'jasa' ? 'service' : 'digital')),
+      type: type || (body?.product_type === 'PHYSICAL' ? 'physical' : (body?.product_type === 'FOOD' ? 'fnb' : (isServicePt || category === 'jasa' ? 'service' : 'digital'))),
       product_type: body?.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
       sku: body.sku || `SKU-${finalSlug}`,
       is_active: body.is_active !== false,
+      weight_grams: body.weight_grams !== undefined && body.weight_grams !== null
+        ? Number(body.weight_grams)
+        : (body?.fulfillment_metadata?.weight_grams !== undefined ? Number(body.fulfillment_metadata.weight_grams) : undefined),
+      fulfillment_metadata: {
+        ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
+        ...(body.weight_grams !== undefined && body.weight_grams !== null ? { weight_grams: Number(body.weight_grams) } : {}),
+      },
       order_bumps: cleanOrderBumps,
       single_page_config: (body?.single_page_config && typeof body.single_page_config === 'object')
         ? (() => {
@@ -379,10 +386,11 @@ export async function POST(
           product_type: dbProductType,
           sku: productSku,
           is_active: body.is_active !== false,
-          requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL')),
+          requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL' || dbProductType === 'FOOD')),
           is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
           fulfillment_metadata: {
             ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
+            ...(body.weight_grams !== undefined && body.weight_grams !== null ? { weight_grams: Number(body.weight_grams) } : {}),
             ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
             ...(body?.single_page_config ? { single_page_config: body.single_page_config } : {}),
             ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),

@@ -150,6 +150,15 @@ const globalMockTenants: Record<string, any> = {
       },
     },
   },
+  'suspended-tenant': {
+    id: '00000000-0000-0000-0000-000000000099',
+    slug: 'suspended-tenant',
+    name: 'Suspended Merchant',
+    status: 'suspended',
+    is_active: false,
+    tier: 'PRO_SCALE',
+    business_type: 'retail',
+  },
 };
 
 const globalMockBookingSlots = [
@@ -490,6 +499,62 @@ const originalFetch = (globalThis as any).fetch;
       status: 200,
       json: async () => ({ ok: true, result: {} }),
       text: async () => JSON.stringify({ ok: true, result: {} }),
+    };
+  }
+  if (url.includes('/api/v1/store/lookup-by-domain')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      text: async () => '{}',
+    };
+  }
+  if (url.includes('/rest/v1/tenants')) {
+    const slugMatch = url.match(/slug=eq\.([^&]+)/);
+    const slug = slugMatch ? decodeURIComponent(slugMatch[1]).toLowerCase().trim() : '';
+    if (slug === 'margasari' || slug === 'kelurahan-margasari' || slug === 'pelayanan-publik') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          id: 'margasari-uuid',
+          slug: 'margasari',
+          is_active: true,
+          status: 'active',
+          business_type: 'PUBLIC_SERVICE',
+          template: 'PUBLIC_SERVICE_V1',
+          tier: 'FREE',
+        }],
+        text: async () => '[]',
+      };
+    }
+    const knownCommerceSlugs = new Set([
+      'onlineboost', 'elinor-jewelry', 'shabu-ajhi', 'shabu-ajhi-preview', 'buzzerukm', 'tumbuh-kembang-anak',
+      'toko-kreatif', 'klinik-sehat', 'warung-kopi', 'digital-pro', 'syandinaryoshop', 'boon',
+      'tokoberkah'
+    ]);
+    if (knownCommerceSlugs.has(slug) || globalMockTenants[slug]) {
+      const mock = globalMockTenants[slug] || {};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          id: mock.id || ('mock-tenant-id-' + slug),
+          slug,
+          is_active: mock.is_active !== undefined ? mock.is_active : (mock.status !== 'inactive' && mock.status !== 'suspended'),
+          status: mock.status || 'active',
+          business_type: mock.business_type || 'retail',
+          template: 'COMMERCE_TEMPLATE',
+          tier: mock.tier || 'PRO_SCALE',
+        }],
+        text: async () => '[]',
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => [],
+      text: async () => '[]',
     };
   }
   if (originalFetch) {

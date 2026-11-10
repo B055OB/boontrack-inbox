@@ -46,7 +46,8 @@ import {
   Send,
   SplitSquareVertical,
   UserCheck,
-  Compass
+  Compass,
+  Loader2
 } from 'lucide-react';
 import StudioPaywallModal from '@/components/studio/StudioPaywallModal';
 import { NormalizedInsight } from '@/lib/studio/intelligence/contracts';
@@ -73,7 +74,8 @@ interface AdsCopy {
 export default function FCDAutomatorPage() {
   // Session & Workspace Context
   const [tenantSlug, setTenantSlug] = useState<string>('studio');
-  const [renderCredits, setRenderCredits] = useState<number>(1);
+  const [renderCredits, setRenderCredits] = useState<number | null>(null);
+  const [creditsStatus, setCreditsStatus] = useState<'LOADING' | 'FRESH' | 'STALE' | 'ERROR'>('LOADING');
   const [isUnlimited, setIsUnlimited] = useState<boolean>(false);
   const [tenantTier, setTenantTier] = useState<string>('FREE');
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
@@ -101,21 +103,21 @@ export default function FCDAutomatorPage() {
   const [selectedProductSku, setSelectedProductSku] = useState<string>('');
 
   // ── LANGKAH 2: FORMULA & NASKAH STATE ────────────────────────
-  const [campaignTitle, setCampaignTitle] = useState('Serum Retinol Pro - Kampanye Flash Sale');
+  const [campaignTitle, setCampaignTitle] = useState('Kampanye Promosi Unggulan');
 
   // Mode Otomatis: 3 Multi-Hooks
-  const [hookA, setHookA] = useState('Stop scroll kalau kamu masih mikir flek hitam bisa hilang pakai sabun muka biasa!');
-  const [hookB, setHookB] = useState('Capek banget tiap ngaca flek makin tebal, padahal udah gonta-ganti skincare mahal?');
-  const [hookC, setHookC] = useState('Baru tahu ada serum retinol se-gentle ini, promo beli 1 gratis 1 tinggal hari ini!');
+  const [hookA, setHookA] = useState('Stop scroll kalau kamu masih bingung cari solusi yang paling tepat dan efisien!');
+  const [hookB, setHookB] = useState('Capek buang waktu dan biaya karena belum ketemu solusi yang benar-benar terbukti?');
+  const [hookC, setHookC] = useState('Baru tahu ada penawaran se-menarik ini, kuota promo spesial terbatas tinggal hari ini!');
 
   // Core Body
-  const [bodyText, setBodyText] = useState('Formula Micro-Encapsulated Retinol 1% aktif menembus lapisan kulit tanpa iritasi. Kulit terasa lebih halus, pori mengecil, dan flek tampak pudar dalam 14 hari pemakaian.');
+  const [bodyText, setBodyText] = useState('Dirancang dengan teknologi handal untuk memberikan hasil optimal, cepat, dan mudah diintegrasikan ke dalam aktivitas harian atau operasional bisnis Anda.');
   const [bodyAssetFile, setBodyAssetFile] = useState<string | null>(null);
   const bodyFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // 2 Multi-CTAs
-  const [cta1, setCta1] = useState('Klik bio link sekarang untuk konsultasi gratis & klaim diskon eksklusif kreator!');
-  const [cta2, setCta2] = useState('Checkout langsung di keranjang kuning sekarang sebelum promo flash sale ditutup malam ini!');
+  const [cta1, setCta1] = useState('Klik tautan bio sekarang untuk konsultasi gratis & klaim penawaran eksklusif!');
+  const [cta2, setCta2] = useState('Dapatkan sekarang juga sebelum periode promo penawaran berakhir!');
 
   // Mode Panduan Rekam Asli: 4 Adegan Syuting Manusiawi (Teleprompter-Ready)
   const [humanScenes, setHumanScenes] = useState([
@@ -175,18 +177,18 @@ export default function FCDAutomatorPage() {
   // ── LANGKAH 5: PANEL BAHAN IKLAN (SPLIT-TEST) STATE ──────────
   const [adsCopy, setAdsCopy] = useState<AdsCopy>({
     headlines: [
-      'Solusi Atasi Flek Hitam & Pori Besar Seketika!',
-      'Viral di TikTok! Rahasia Wajah Mulus Tanpa Iritasi',
-      'Jangan Beli Skincare Sebelum Tahu Formula Ini!',
+      'Tingkatkan Konversi Bisnis Anda Mulai Hari Ini',
+      'Solusi Praktis dan Efisien untuk Kebutuhan Anda',
+      'Penawaran Spesial Terbatas: Cek Selengkapnya Sekarang',
     ],
     primary_texts: [
-      'Capek tiap ngaca flek makin tebal padahal udah gonta-ganti skincare mahal? Serum Retinol Pro dengan teknologi Micro-Encapsulated 1% meresap langsung ke target tanpa bikin perih. Coba sekarang dan buktikan sendiri bedanya!',
-      'Promo Beli 1 Gratis 1 tinggal hari ini! Dapatkan kulit tampak lebih cerah, pori mengecil, dan tekstur halus dalam 14 hari. Garansi original & pengiriman kilat ke seluruh Indonesia.',
+      'Temukan kemudahan dan efisiensi terbaik dengan solusi yang dirancang khusus untuk mempercepat pertumbuhan bisnis Anda. Konsultasikan kebutuhan Anda hari ini.',
+      'Dapatkan penawaran eksklusif dengan garansi kepuasan dan dukungan penuh dari tim profesional kami.',
     ],
     call_to_actions: [
-      'Shop Now (Beli Sekarang)',
-      'Order Now (Pesan Sekarang)',
       'Learn More (Pelajari Selengkapnya)',
+      'Order Now (Pesan Sekarang)',
+      'Contact Us (Hubungi Kami)',
     ],
   });
   const [isGeneratingAdsCopy, setIsGeneratingAdsCopy] = useState(false);
@@ -215,6 +217,7 @@ export default function FCDAutomatorPage() {
           const parsed = JSON.parse(storedSession);
           if (typeof parsed.render_credits === 'number') {
             setRenderCredits(parsed.render_credits);
+            setCreditsStatus('STALE');
           }
         } catch {}
       }
@@ -244,10 +247,14 @@ export default function FCDAutomatorPage() {
           setRenderCredits(ent.credits_remaining ?? 0);
           setIsUnlimited(Boolean(ent.is_unlimited || ent.tier === 'FOUNDER'));
           setTenantTier(ent.tier || 'FREE');
+          setCreditsStatus('FRESH');
+          return;
         }
       }
+      setCreditsStatus(prev => prev === 'STALE' ? 'STALE' : 'ERROR');
     } catch (e) {
       console.warn('[FCDAutomator] Failed to fetch entitlements:', e);
+      setCreditsStatus(prev => prev === 'STALE' ? 'STALE' : 'ERROR');
     }
   }, []);
 
@@ -477,7 +484,7 @@ export default function FCDAutomatorPage() {
 
   const selectedVariations = variations.filter(v => v.selected);
   const requiredCredits = selectedVariations.length * 3; // Jalur A: Mode Video Otomatis = 3 Kredit per video
-  const hasSufficientCredits = isUnlimited || tenantTier === 'FOUNDER' || renderCredits >= requiredCredits;
+  const hasSufficientCredits = isUnlimited || tenantTier === 'FOUNDER' || ((renderCredits ?? 0) >= requiredCredits);
 
   // Dispatch Batch Render
   const handleDispatchBatch = async () => {
@@ -698,9 +705,29 @@ export default function FCDAutomatorPage() {
               <span className="text-[11px] font-mono">Founder Unlimited</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-violet-500/10 border border-violet-500/30 text-xs font-bold text-violet-300">
-              <Zap className="w-3.5 h-3.5 text-violet-400" />
-              <span className="text-[11px] font-mono">{renderCredits} Kredit</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold ${
+              creditsStatus === 'LOADING'
+                ? 'bg-zinc-800/60 border border-zinc-700/50 text-zinc-400'
+                : (renderCredits ?? 0) <= 0
+                ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                : 'bg-violet-500/10 border border-violet-500/30 text-violet-300'
+            }`}>
+              {creditsStatus === 'LOADING' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
+              ) : (
+                <Zap className={`w-3.5 h-3.5 ${(renderCredits ?? 0) <= 0 ? 'text-rose-400' : 'text-violet-400'}`} />
+              )}
+              <span className="text-[11px] font-mono">
+                {creditsStatus === 'LOADING'
+                  ? 'Memuat...'
+                  : creditsStatus === 'STALE'
+                  ? `${renderCredits ?? 0} Kredit (Sync)`
+                  : creditsStatus === 'ERROR'
+                  ? `${renderCredits ?? 0} Kredit (Offline)`
+                  : (renderCredits ?? 0) === 0
+                  ? '0 Kredit (Habis)'
+                  : `${renderCredits} Kredit`}
+              </span>
               <button
                 type="button"
                 onClick={() => setIsPaywallOpen(true)}
@@ -2017,7 +2044,7 @@ export default function FCDAutomatorPage() {
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
         tenantSlug={tenantSlug}
-        currentCredits={renderCredits}
+        currentCredits={renderCredits ?? 0}
       />
 
       {/* ── IN-PLACE VIDEO PLAYER MODAL (9:16) ────────────────── */}

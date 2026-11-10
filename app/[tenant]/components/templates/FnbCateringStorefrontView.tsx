@@ -32,9 +32,40 @@ import {
   HeartHandshake,
   Loader2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/types';
 import dynamic from 'next/dynamic';
+
+import {
+  SoupSlotSelector,
+  getSoupQuotaForPackage,
+  validateSoupSelection,
+  formatSoupSelection,
+} from '@/components/shabu-ajhi/SoupSlotSelector';
+import {
+  countCateringPackages,
+  isCateringPackage,
+  LARGE_ORDER_WARNING_MESSAGE,
+  SHABU_AJHI_HANDOVER_PHONE,
+  parseCoordinatesFromInput,
+} from '@/lib/shipping/deliveryCalculator';
+import {
+  EquipmentReturnPicker,
+  buildEquipmentReturnMetadata,
+  EQUIPMENT_RETURN_GUARANTEE,
+  EQUIPMENT_RETURN_LABELS,
+} from '@/components/shabu-ajhi/EquipmentReturnPicker';
+import {
+  LIVE_COOKING_INTERCEPT_BANNER,
+  LIVE_COOKING_CTA_TEXT,
+  validateCateringCart,
+  PickupWindow,
+  PICKUP_WINDOW_LABELS,
+  PICKUP_MICROCOPY,
+  resolveDefaultPickupWindow,
+  calculatePickupDate,
+} from '@/lib/checkout/cateringCheckoutRouting';
 
 const FloatingWebchat = dynamic(() => import('./FloatingWebchat'), { ssr: false });
 const CheckoutModal = dynamic(() => import('@/app/components/CheckoutModal'), { ssr: false });
@@ -66,7 +97,10 @@ interface CartItem {
   price: number;
   qty: number;
   soupVariant?: string;
+  selectedSoups?: Record<string, number>;
   isAddon?: boolean;
+  requires_equipment?: boolean;
+  category?: string;
   unit?: string;
   image?: string;
 }
@@ -140,7 +174,16 @@ export function buildCateringWhatsAppUrl(params: {
   locationDetails: string;
   cartItems: Array<{ name: string; qty: number; price: number; soupVariant?: string }>;
   totalPrice: number;
+  pickupWindow?: 'SAME_DAY' | 'NEXT_DAY_MORNING';
+  pickupPreference?: string;
+  pickupDate?: string;
+  formattedPickupDate?: string;
+  hasEquipment?: boolean;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  mapsUrl?: string;
 }): { message: string; waUrl: string; cleanWa: string } {
+  const hasEquipment = params.hasEquipment ?? true;
   const itemsSummary = params.cartItems
     .map((item, idx) => {
       const soupNote = item.soupVariant ? ` (Varian: ${item.soupVariant})` : '';
@@ -152,21 +195,111 @@ export function buildCateringWhatsAppUrl(params: {
     ? `${params.locationType} (${params.locationDetails.trim()})`
     : `${params.locationType} (Alamat detail dikonfirmasi di chat)`;
 
-  const message = `Halo ${params.storeName}, saya mau pesan Home Service Shabu & BBQ:\n\n` +
+  const resolvedPickupLabel =
+    params.pickupPreference ||
+    (params.pickupWindow === 'NEXT_DAY_MORNING'
+      ? 'Besok Pagi (H+1)'
+      : params.pickupWindow === 'SAME_DAY'
+      ? 'Hari yang Sama (Setelah Acara)'
+      : '');
+  const resolvedPickupDateText = params.formattedPickupDate || params.pickupDate || '';
+  const pickupScheduleLine = hasEquipment && resolvedPickupLabel
+    ? `• Penjemputan Alat: ${resolvedPickupLabel}${resolvedPickupDateText ? ` (${resolvedPickupDateText})` : ''}\n`
+    : '';
+
+  const mapsLink =
+    params.mapsUrl ||
+    (params.destinationLatitude && params.destinationLongitude
+      ? `https://www.google.com/maps?q=${params.destinationLatitude},${params.destinationLongitude}`
+      : '');
+  const mapsLine = mapsLink ? `• 📍 Titik Lokasi (Google Maps): ${mapsLink}\n` : '';
+
+  const equipmentGuaranteeText = hasEquipment
+    ? `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\nPeralatan tidak perlu dicuci. Penjemputan fleksibel, bisa dijemput hari yang sama atau besok paginya.\n\n`
+    : `✨ *Pengantaran Menu Makanan Langsung (Tanpa Pinjam Alat)*\nPesanan menu siap masak/santap diantar langsung oleh kurir ke lokasi Anda.\n\n`;
+
+  const message = `Halo ${params.storeName}, saya mau pesan ${hasEquipment ? 'Home Service Shabu & BBQ' : 'Menu Shabu & BBQ (Alacarte)'}:\n\n` +
     `📅 *Jadwal Pengantaran:*\n` +
     `• Hari / Tanggal: ${params.formattedDeliveryDate} (${params.deliveryDate})\n` +
     `• Slot Jam: ${params.selectedTimeSlot}\n` +
-    `• Tipe Lokasi: ${cleanLocation}\n\n` +
+    pickupScheduleLine +
+    `• Tipe Lokasi: ${cleanLocation}\n` +
+    mapsLine + `\n` +
     `🍲 *Rincian Pesanan:*\n` +
     `${itemsSummary}\n\n` +
     `💰 *Estimasi Total: Rp ${params.totalPrice.toLocaleString('id-ID')}*\n` +
-    `✨ *100% Alat Dipinjamkan Bebas Cuci (Diambil Kotor)*\n\n` +
+    equipmentGuaranteeText +
     `Mohon konfirmasi ketersediaan slot jam & kirimkan tautan/faktur Dynamic QRIS untuk pembayarannya. Terima kasih!`;
 
   const cleanWa = params.waNumber.replace(/\D/g, '') || '6285861091103';
   const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(message)}`;
 
   return { message, waUrl, cleanWa };
+}
+
+export function buildLiveCookingWhatsAppUrl(params: {
+  storeName?: string;
+  waNumber?: string;
+  deliveryDate?: string;
+  formattedDeliveryDate?: string;
+  selectedTimeSlot?: string;
+  locationAddress?: string;
+  cartItems?: Array<{ name: string; qty: number; price?: number; soupVariant?: string; selectedSoups?: Record<string, number> }>;
+  totalPackages?: number;
+  totalPrice?: number;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  mapsUrl?: string;
+}): { waUrl: string; message: string; targetPhone: string } {
+  const targetPhone = (params.waNumber || '6289617799878').replace(/\D/g, '') || '6289617799878';
+  const storeName = params.storeName || 'Shabu Ajhi';
+  const dateStr = params.formattedDeliveryDate || params.deliveryDate || 'Segera';
+  const slotStr = params.selectedTimeSlot || 'Fleksibel / Sesuai Jadwal';
+  const address = params.locationAddress?.trim() || 'Alamat detail dikonfirmasi di chat';
+
+  let itemsSummary = '';
+  if (params.cartItems && params.cartItems.length > 0) {
+    itemsSummary = params.cartItems
+      .map((item, idx) => {
+        let soupNote = '';
+        if (item.selectedSoups && Object.keys(item.selectedSoups).length > 0) {
+          const soups = Object.entries(item.selectedSoups)
+            .filter(([_, qty]) => qty > 0)
+            .map(([v, q]) => `${v}: ${q}`)
+            .join(', ');
+          if (soups) soupNote = ` (Kuah: ${soups})`;
+        } else if (item.soupVariant) {
+          soupNote = ` (Varian: ${item.soupVariant})`;
+        }
+        const itemPrice = item.price ? ` — Rp ${(item.price * item.qty).toLocaleString('id-ID')}` : '';
+        return `${idx + 1}. ${item.name} x${item.qty}${soupNote}${itemPrice}`;
+      })
+      .join('\n');
+  } else {
+    itemsSummary = `Pesanan Partai Besar (${params.totalPackages || 5}+ paket)`;
+  }
+
+  const mapsLink =
+    params.mapsUrl ||
+    (params.destinationLatitude && params.destinationLongitude
+      ? `https://www.google.com/maps?q=${params.destinationLatitude},${params.destinationLongitude}`
+      : '');
+  const mapsLine = mapsLink ? `📍 *Titik Lokasi (Google Maps):* ${mapsLink}\n\n` : '';
+
+  const message =
+    `Halo ${storeName}, saya ingin berkonsultasi pemesanan catering partai besar (5+ paket / ~50+ porsi) untuk layanan Live Cooking & Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi:\n\n` +
+    `📦 *Jumlah Paket:* ${params.totalPackages || '>= 5'} paket (~50+ porsi)\n` +
+    `📅 *Perkiraan Tanggal:* ${dateStr}\n` +
+    `⏰ *Slot Jam:* ${slotStr}\n` +
+    `📍 *Lokasi Acara:* ${address}\n\n` +
+    mapsLine +
+    `🍲 *Rincian Paket:*\n` +
+    `${itemsSummary}\n\n` +
+    (params.totalPrice ? `💰 *Estimasi Total Menu:* Rp ${params.totalPrice.toLocaleString('id-ID')}\n\n` : '') +
+    `Mohon info ketersediaan tim chef & jadwal live cooking untuk acara kami. Terima kasih!`;
+
+  const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`;
+  return { waUrl, message, targetPhone };
 }
 
 export default function FnbCateringStorefrontView({
@@ -193,6 +326,118 @@ export default function FnbCateringStorefrontView({
   const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(true);
   const [locationType, setLocationType] = useState<'Rumah Tinggal' | 'Villa / Glamping'>('Villa / Glamping');
   const [locationDetails, setLocationDetails] = useState<string>('');
+  // ── JADWAL PENJEMPUTAN ALAT MASAK STATE ──
+  const [pickupWindow, setPickupWindow] = useState<PickupWindow>('SAME_DAY');
+
+  // ── LOKASI PENGANTARAN PRESISI & AUTOCOMPLETE STATE ──
+  const [destinationDistrict, setDestinationDistrict] = useState<string>('');
+  const [destinationCity, setDestinationCity] = useState<string>('');
+  const [destinationPostalCode, setDestinationPostalCode] = useState<string>('');
+  const [destinationLatitude, setDestinationLatitude] = useState<number | null>(null);
+  const [destinationLongitude, setDestinationLongitude] = useState<number | null>(null);
+  const [locationQuery, setLocationQuery] = useState<string>('');
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [selectedLocationObj, setSelectedLocationObj] = useState<any | null>(null);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsStatusNotice, setGpsStatusNotice] = useState<string | null>(null);
+  const [sharelockInput, setSharelockInput] = useState<string>('');
+  const [showSharelockInput, setShowSharelockInput] = useState(false);
+  const locationDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Autocomplete pencarian lokasi via endpoint /api/v1/shipping/locations/search (Debounced 280ms)
+  useEffect(() => {
+    const q = locationQuery.trim();
+    if (q.length < 3 || (selectedLocationObj && locationQuery.includes(selectedLocationObj.district))) {
+      setLocationSuggestions([]);
+      setIsLoadingLocations(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsLoadingLocations(true);
+      try {
+        const res = await fetch(`/api/v1/shipping/locations/search?input=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.areas) && data.areas.length > 0) {
+            setLocationSuggestions(data.areas);
+            setIsLocationDropdownOpen(true);
+          } else {
+            setLocationSuggestions([]);
+          }
+        }
+      } catch (err) {
+        console.warn('[Location Autocomplete Error]:', err);
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [locationQuery, selectedLocationObj]);
+
+  // Tutup dropdown jika user klik di luar dropdown area
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(e.target as Node)) {
+        setIsLocationDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectLocation = (area: any) => {
+    setSelectedLocationObj(area);
+    setDestinationDistrict(area.district || '');
+    setDestinationCity(area.city || '');
+    setDestinationPostalCode(area.postal_code || '');
+    if (area.latitude !== undefined && area.latitude !== null && area.latitude !== '') {
+      setDestinationLatitude(Number(area.latitude));
+    }
+    if (area.longitude !== undefined && area.longitude !== null && area.longitude !== '') {
+      setDestinationLongitude(Number(area.longitude));
+    }
+    setGpsStatusNotice(null);
+    setLocationQuery(`Kec. ${area.district}, ${area.city}`);
+    setIsLocationDropdownOpen(false);
+  };
+
+  const handleDetectGpsCoordinates = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setGpsStatusNotice('Browser Anda tidak mendukung deteksi GPS.');
+      return;
+    }
+    setIsDetectingGps(true);
+    setGpsStatusNotice(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setDestinationLatitude(lat);
+        setDestinationLongitude(lng);
+        setIsDetectingGps(false);
+        setGpsStatusNotice(`Titik GPS presisi terdeteksi: (${lat}, ${lng})`);
+      },
+      () => {
+        setIsDetectingGps(false);
+        setGpsStatusNotice('Gagal mendeteksi lokasi GPS. Pastikan izin lokasi aktif.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSharelockChange = (val: string) => {
+    setSharelockInput(val);
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setDestinationLatitude(parsed.latitude);
+      setDestinationLongitude(parsed.longitude);
+      setGpsStatusNotice(`Titik koordinat berhasil diekstrak: (${parsed.latitude.toFixed(5)}, ${parsed.longitude.toFixed(5)})`);
+    }
+  };
 
   // ── REAKTIF FETCHING BOOKING SLOTS BERDASARKAN TANGGAL & SLUG ──
   useEffect(() => {
@@ -220,6 +465,7 @@ export default function FnbCateringStorefrontView({
 
             if (currentValid) {
               setSelectedTimeSlot(currentValid.slot_name);
+              setPickupWindow(resolveDefaultPickupWindow(currentValid.slot_name));
               return currentValid.id;
             }
 
@@ -229,6 +475,7 @@ export default function FnbCateringStorefrontView({
 
             if (firstAvailable) {
               setSelectedTimeSlot(firstAvailable.slot_name);
+              setPickupWindow(resolveDefaultPickupWindow(firstAvailable.slot_name));
               return firstAvailable.id;
             }
 
@@ -257,6 +504,8 @@ export default function FnbCateringStorefrontView({
   const [activeTabKey, setActiveTabKey] = useState<string>('Paket Alat Hemat');
   // Store chosen soup variant per product id (default: Kuah Kaldu Gurih)
   const [selectedSoups, setSelectedSoups] = useState<Record<string, string>>({});
+  // Multi-slot soup allocations per product: { [productId]: { [soupVariant]: count } }
+  const [productSoupAllocations, setProductSoupAllocations] = useState<Record<string, Record<string, number>>>({});
 
   // ── 3. CART & ADDONS STATE ──
   const [cart, setCart] = useState<Record<string, CartItem>>({});
@@ -342,46 +591,54 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     'Kuah Mercon',
   ];
 
-  // Add-ons list
+  // Dynamic Add-ons & Alacarte list from database (Fail-Closed, zero mock fallback)
   const addonsList = useMemo(() => {
-    return fnbCatering?.addons || [
-      {
-        id: 'addon-daging-slice',
-        name: 'Ekstra Daging Slice 200g',
-        price: 45000,
-        image: 'https://assets.boontrack.com/products/1791444520662_b93965c1-050a-41e5-90ed-9f89cc94a56c.webp',
-        unit: '200 gram (US Beef Slice)',
-      },
-      {
-        id: 'addon-sayur-campur',
-        name: 'Sayur Campur Segar',
-        price: 25000,
-        image: 'https://assets.boontrack.com/products/1791444095486_a2b76f37-e1b1-4f1b-85c2-4999beb4d9c1.webp',
-        unit: 'Pakcoy, Sawi & Aneka Jamur',
-      },
-      {
-        id: 'addon-bakso-suki',
-        name: 'Aneka Bakso & Suki Seafood',
-        price: 30000,
-        image: 'https://assets.boontrack.com/products/1791444770642_9efd7a52-282d-4a8b-9f3e-61e50dd9948a.webp',
-        unit: '12 pcs Fishball & Chikuwa Mix',
-      },
-      {
-        id: 'addon-kuah-1l',
-        name: 'Ekstra Kuah 1 Liter',
-        price: 20000,
-        image: 'https://assets.boontrack.com/products/1791444324625_90e00db8-cf97-48cb-be5d-8ec767b5e4a2.webp',
-        unit: 'Botol 1.000 ml Kaldu / Tom Yum',
-      },
-      {
-        id: 'addon-gas-kaleng',
-        name: 'Gas Kaleng Portabel',
-        price: 15000,
-        image: 'https://assets.boontrack.com/products/1791443819009_e981d827-05cd-455c-af52-f3287b8e2445.webp',
-        unit: '1 Kaleng Gas Butane Siap Pakai',
-      },
-    ];
-  }, [fnbCatering]);
+    if (!Array.isArray(products) || products.length === 0) {
+      return [];
+    }
+
+    const matching = products.filter((p: Product) => {
+      if (!p) return false;
+      if ((p as any).is_active === false) return false;
+      const cat = (p.category || '').toLowerCase().trim();
+      return (
+        cat.includes('alacarte') ||
+        cat.includes('addon') ||
+        cat.includes('tambahan') ||
+        cat.includes('ekstra') ||
+        cat.includes('minuman')
+      );
+    });
+
+    // Priority sort: Alacarte food items first, followed by Minuman
+    return matching
+      .sort((a, b) => {
+        const catA = (a.category || '').toLowerCase();
+        const catB = (b.category || '').toLowerCase();
+        const isDrinkA = catA.includes('minuman');
+        const isDrinkB = catB.includes('minuman');
+        if (isDrinkA && !isDrinkB) return 1;
+        if (!isDrinkA && isDrinkB) return -1;
+        return 0;
+      })
+      .map((p: Product) => {
+        const cat = (p.category || '').toLowerCase().trim();
+        const rawDesc = typeof p.description === 'string' ? p.description.trim() : '';
+        const fallbackUnit = cat.includes('minuman') ? 'Kemasan Botol 1 Liter' : 'Porsi Tambahan';
+        const unit = rawDesc.length > 0 ? rawDesc : fallbackUnit;
+
+        return {
+          id: String(p.id),
+          name: p.name || (p as any).title || '',
+          price: Number(p.price || 0),
+          image: p.image_url || p.image || '/placeholder-product.png',
+          unit,
+          description: rawDesc,
+          category: p.category || 'Alacarte (Additional)',
+          requires_equipment: false,
+        };
+      });
+  }, [products]);
 
   // Group products into 4 categories:
   // 1. Paket Alat Hemat (10 Pax Mabar)
@@ -464,6 +721,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     const isBbqOnly = checkIsBbqOnly(p as any);
     const isShabuRelated = !isBbqOnly;
 
+    const quota = getSoupQuotaForPackage(p.name, 2);
+    const allocation = productSoupAllocations[pId] || (chosenSoup ? { [chosenSoup]: quota } : {});
+    const isSoupAllocComplete = isShabuRelated ? validateSoupSelection(allocation, quota).isComplete : true;
+
+    if (isShabuRelated && !isSoupAllocComplete) {
+      alert(`Silakan pilih kuota kuah (${quota} slot) untuk ${p.name} terlebih dahulu.`);
+      return;
+    }
+
+    const formattedSoup = isShabuRelated
+      ? (formatSoupSelection(allocation) || chosenSoup)
+      : undefined;
+
     setCart((prev) => {
       const existing = prev[pId];
       if (existing) {
@@ -482,8 +752,11 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           name: p.name,
           price: Number(p.price || 0),
           qty: 1,
-          soupVariant: isShabuRelated ? chosenSoup : undefined,
+          soupVariant: formattedSoup,
+          selectedSoups: isShabuRelated ? allocation : undefined,
           isAddon: false,
+          category: (p as any).category,
+          requires_equipment: (p as any).requires_equipment,
           image: p.image_url || p.image,
         },
       };
@@ -532,6 +805,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           price: Number(addon.price || 0),
           qty: 1,
           isAddon: true,
+          category: (addon as any).category || 'Alacarte (Additional)',
+          requires_equipment: false,
           unit: addon.unit,
           image: addon.image,
         },
@@ -550,6 +825,13 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     return { totalItems: itemsCount, totalPrice: sum };
   }, [cart]);
 
+  // Total catering packages count & large party order flag (>= 5 packages)
+  const totalCateringPackages = useMemo(() => {
+    return countCateringPackages(Object.values(cart));
+  }, [cart]);
+
+  const isLargePartyOrder = totalCateringPackages >= 5;
+
   // Format date helper (e.g. "Senin, 20 Oktober 2026")
   const formattedDeliveryDate = useMemo(() => {
     if (!deliveryDate) return 'Hari Ini';
@@ -566,6 +848,26 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
     }
   }, [deliveryDate]);
 
+  // Hitung tanggal penjemputan alat & format teks (H+1 jika NEXT_DAY_MORNING)
+  const pickupDate = useMemo(() => {
+    return calculatePickupDate(deliveryDate, pickupWindow);
+  }, [deliveryDate, pickupWindow]);
+
+  const formattedPickupDate = useMemo(() => {
+    if (!pickupDate) return 'Hari Ini';
+    try {
+      const dateObj = new Date(pickupDate);
+      return new Intl.DateTimeFormat('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(dateObj);
+    } catch (_) {
+      return pickupDate;
+    }
+  }, [pickupDate]);
+
   // ── 5. WHATSAPP CONVERSATIONAL FLOW BUILDER ──
   const handleCheckoutViaWhatsApp = () => {
     if (totalItems === 0) {
@@ -578,16 +880,58 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       return;
     }
 
+        // Large order handoff routing (>= 5 packages -> Live Cooking & Event Catering)
+    const mapsUrl = (destinationLatitude && destinationLongitude)
+      ? `https://www.google.com/maps?q=${destinationLatitude},${destinationLongitude}`
+      : (sharelockInput.trim().startsWith('http') ? sharelockInput.trim() : '');
+
+    const resolvedLocationStr = [
+      locationDetails.trim(),
+      selectedLocationObj ? `Kec. ${selectedLocationObj.district}, ${selectedLocationObj.city}` : '',
+    ].filter(Boolean).join(' - ') || locationType;
+
+    if (isLargePartyOrder) {
+      const { waUrl } = buildLiveCookingWhatsAppUrl({
+        storeName: effectiveName,
+        waNumber: '6289617799878',
+        deliveryDate,
+        formattedDeliveryDate,
+        selectedTimeSlot,
+        locationAddress: `${locationType} - ${resolvedLocationStr}`,
+        cartItems: Object.values(cart),
+        totalPackages: totalCateringPackages,
+        totalPrice,
+        destinationLatitude,
+        destinationLongitude,
+        mapsUrl,
+      });
+
+      if (typeof window !== 'undefined') {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    const hasEquipmentInCart = Object.values(cart).some((c) => isCateringPackage(c));
+
     const { waUrl } = buildCateringWhatsAppUrl({
       storeName: effectiveName,
       waNumber,
       deliveryDate,
       formattedDeliveryDate,
       selectedTimeSlot,
+      pickupWindow,
+      pickupPreference: PICKUP_WINDOW_LABELS[pickupWindow],
+      pickupDate,
+      formattedPickupDate,
       locationType,
-      locationDetails,
+      locationDetails: resolvedLocationStr,
       cartItems: Object.values(cart),
       totalPrice,
+      hasEquipment: hasEquipmentInCart,
+      destinationLatitude,
+      destinationLongitude,
+      mapsUrl,
     });
 
     if (typeof window !== 'undefined') {
@@ -599,11 +943,26 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
   const handleDirectQrisCheckout = () => {
     if (totalItems === 0) return;
 
+    if (isLargePartyOrder) {
+      alert(LARGE_ORDER_WARNING_MESSAGE);
+      return;
+    }
+
     if (!selectedTimeSlot) {
       alert('Silakan pilih slot jam pengantaran yang masih tersedia terlebih dahulu.');
       return;
     }
 
+    const mapsUrl = (destinationLatitude && destinationLongitude)
+      ? `https://www.google.com/maps?q=${destinationLatitude},${destinationLongitude}`
+      : (sharelockInput.trim().startsWith('http') ? sharelockInput.trim() : '');
+
+    const resolvedAddress = [
+      locationDetails.trim(),
+      selectedLocationObj ? `Kec. ${selectedLocationObj.district}, ${selectedLocationObj.city}` : '',
+    ].filter(Boolean).join(' - ') || locationType;
+
+    const hasEquipmentInCart = Object.values(cart).some((c) => isCateringPackage(c));
     const combinedTitles = Object.values(cart)
       .map((c) => `${c.name} (x${c.qty}${c.soupVariant ? ` - ${c.soupVariant}` : ''})`)
       .join(', ');
@@ -618,11 +977,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       items: Object.values(cart).map((c) => ({
         productId: c.id,
         productTitle: c.name,
+        name: c.name,
         unitPrice: c.price,
+        price: c.price,
         quantity: c.qty,
         variant: c.soupVariant,
+        isAddon: Boolean(c.isAddon),
+        is_addon: Boolean(c.isAddon),
+        category: c.category,
+        requires_equipment: c.requires_equipment,
       })),
-      notes: `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${locationDetails}`,
+      notes: hasEquipmentInCart
+        ? `Jadwal: ${formattedDeliveryDate} (${selectedTimeSlot}) | Ambil Alat: ${PICKUP_WINDOW_LABELS[pickupWindow]} (${formattedPickupDate}) | Lokasi: ${locationType} - ${resolvedAddress}${mapsUrl ? ` | Maps: ${mapsUrl}` : ''}`
+        : `Jadwal Pengantaran: ${formattedDeliveryDate} (${selectedTimeSlot}) | Lokasi: ${locationType} - ${resolvedAddress} (Menu Alacarte / Tanpa Alat)${mapsUrl ? ` | Maps: ${mapsUrl}` : ''}`,
       metadata: {
         booking: {
           event_date: deliveryDate,
@@ -630,13 +997,35 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           slot_id: selectedSlotId,
           slot_name: selectedTimeSlot,
           time_slot: selectedTimeSlot,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+          pickup_preference: PICKUP_WINDOW_LABELS[pickupWindow],
           location_type: locationType,
           location_details: locationDetails,
+          destination_address: resolvedAddress,
+          destination_district: destinationDistrict,
+          destination_city: destinationCity,
+          destination_postal_code: destinationPostalCode,
+          destination_latitude: destinationLatitude,
+          destination_longitude: destinationLongitude,
+          latitude: destinationLatitude,
+          longitude: destinationLongitude,
+          maps_url: mapsUrl,
+          sharelock: sharelockInput || mapsUrl,
         },
         delivery_slot: {
           slot_id: selectedSlotId,
           slot_name: selectedTimeSlot,
           event_date: deliveryDate,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+        },
+        rental_schedule: {
+          delivery_date: deliveryDate,
+          time_slot: selectedTimeSlot,
+          pickup_date: pickupDate,
+          pickup_window: pickupWindow,
+          pickup_preference: PICKUP_WINDOW_LABELS[pickupWindow],
         },
       },
     });
@@ -841,19 +1230,189 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
             </div>
           </div>
 
-          {/* Input Teks Nama Villa / Alamat */}
-          <div>
-            <input
-              type="text"
-              value={locationDetails}
-              onChange={(e) => setLocationDetails(e.target.value)}
-              placeholder={
-                locationType === 'Villa / Glamping'
-                  ? 'Ketik Nama Villa / Blok Glamping (Contoh: Villa Istana Bunga Blok V1-No 8, Parongpong Lembang)...'
-                  : 'Ketik Alamat Lengkap / Patokan Rumah (Contoh: Jl. Dago Asri No. 12, Coblong Bandung)...'
-              }
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition"
-            />
+          {/* 3. Wilayah Pengantaran & Titik Lokasi Presisi */}
+          <div className="space-y-2.5 pt-1 border-t border-amber-100">
+            {/* Location Autocomplete Selector */}
+            <div className="space-y-1.5 relative" ref={locationDropdownRef}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Kecamatan &amp; Wilayah Tujuan:</span>
+                </label>
+                {selectedLocationObj && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationObj(null);
+                      setLocationQuery('');
+                      setDestinationCity('');
+                      setDestinationDistrict('');
+                      setDestinationPostalCode('');
+                      setDestinationLatitude(null);
+                      setDestinationLongitude(null);
+                      setGpsStatusNotice(null);
+                    }}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 font-medium cursor-pointer"
+                  >
+                    Ubah Wilayah
+                  </button>
+                )}
+              </div>
+
+              {!selectedLocationObj ? (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="w-3.5 h-3.5 text-rose-600" />
+                  </div>
+                  <input
+                    type="text"
+                    value={locationQuery}
+                    onChange={(e) => setLocationQuery(e.target.value)}
+                    onFocus={() => {
+                      if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
+                    }}
+                    placeholder="Ketik minimal 3 huruf (cth: Parongpong, Lembang, Coblong, Bojongsoang)..."
+                    className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition font-sans"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                    {isLoadingLocations && (
+                      <Loader2 className="w-3.5 h-3.5 text-rose-600 animate-spin" />
+                    )}
+                  </div>
+
+                  {/* Dropdown Hasil Pencarian Area */}
+                  {isLocationDropdownOpen && locationSuggestions.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-amber-200 rounded-xl shadow-xl divide-y divide-amber-50">
+                      <div className="p-2 bg-amber-50/80 text-[10px] text-slate-600 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-rose-600" />
+                          Pilih Wilayah Tujuan
+                        </span>
+                        <span>{locationSuggestions.length} Opsi</span>
+                      </div>
+                      {locationSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectLocation(item)}
+                          className="w-full text-left p-2.5 hover:bg-rose-50/70 transition flex items-center justify-between gap-2 text-xs group cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 group-hover:text-rose-700 truncate">
+                              Kec. {item.district}, {item.city}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {item.province || 'Jawa Barat'}
+                            </p>
+                          </div>
+                          {item.postal_code && (
+                            <span className="shrink-0 font-mono text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                              {item.postal_code}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-950 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs text-emerald-950">
+                        Kec. {selectedLocationObj.district}, {selectedLocationObj.city}
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        {selectedLocationObj.postal_code ? `Kode Pos: ${selectedLocationObj.postal_code}` : 'Wilayah Bandung Raya Terverifikasi'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
+                    Terkunci
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions: GPS Presisi & Sharelock / Maps Link */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={handleDetectGpsCoordinates}
+                disabled={isDetectingGps}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                {isDetectingGps ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Mendeteksi GPS...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🎯 Gunakan GPS Presisi</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSharelockInput((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3 text-slate-500" />
+                <span>{showSharelockInput ? 'Tutup Input Sharelock' : '📍 Tempel Link Sharelock / Maps'}</span>
+              </button>
+
+              {destinationLatitude && destinationLongitude && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-medium">
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>GPS: {destinationLatitude.toFixed(4)}, {destinationLongitude.toFixed(4)}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Input Sharelock / Google Maps URL */}
+            {showSharelockInput && (
+              <div className="space-y-1 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <label className="text-[11px] font-semibold text-slate-600 block">
+                  Tempel URL Google Maps / Link Sharelock WhatsApp:
+                </label>
+                <input
+                  type="text"
+                  value={sharelockInput}
+                  onChange={(e) => handleSharelockChange(e.target.value)}
+                  placeholder="https://maps.app.goo.gl/... atau https://www.google.com/maps?q=-6.7967,107.5817"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-rose-500 font-mono"
+                />
+              </div>
+            )}
+
+            {/* Feedback Status Notice GPS / Koordinat */}
+            {gpsStatusNotice && (
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>{gpsStatusNotice}</span>
+              </div>
+            )}
+
+            {/* Input Teks Nama Villa / Detail Patokan */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                {locationType === 'Villa / Glamping' ? 'Nama Villa & Patokan Spesifik:' : 'Detail Patokan Rumah & No. Rumah:'}
+              </label>
+              <input
+                type="text"
+                value={locationDetails}
+                onChange={(e) => setLocationDetails(e.target.value)}
+                placeholder={
+                  locationType === 'Villa / Glamping'
+                    ? 'Ketik Nama Villa / Blok Glamping (Contoh: Villa Istana Bunga Blok V1-No 8, Parongpong Lembang)...'
+                    : 'Ketik Alamat Lengkap / Patokan Rumah (Contoh: Jl. Dago Asri No. 12, RT 02 RW 05, pagar hitam)...'
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:border-rose-500 transition"
+              />
+            </div>
           </div>
 
           {/* 3. Slot Jam Pengantaran & Ketersediaan Trip Kurir */}
@@ -914,6 +1473,7 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                       onClick={() => {
                         setSelectedSlotId(slot.id);
                         setSelectedTimeSlot(slot.slot_name);
+                        setPickupWindow(resolveDefaultPickupWindow(slot.slot_name));
                       }}
                       className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
                         isFull
@@ -955,6 +1515,79 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 })}
               </div>
             )}
+          </div>
+
+          {/* 4. Pilihan Jadwal Penjemputan Alat Masak */}
+          <div className="space-y-2 pt-3 border-t border-amber-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <HeartHandshake className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Jadwal Penjemputan Alat Masak Kotor:</span>
+              </label>
+              <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                Bebas Cuci 100%
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              {EQUIPMENT_RETURN_GUARANTEE}
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <label
+                data-testid="pickup-window-same-day"
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
+                  pickupWindow === 'SAME_DAY'
+                    ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                    : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="pickup_window"
+                    value="SAME_DAY"
+                    checked={pickupWindow === 'SAME_DAY'}
+                    onChange={() => setPickupWindow('SAME_DAY')}
+                    className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
+                  />
+                  <div>
+                    <span className="block font-black">Same Day (Malam)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      Untuk pengantaran siang yang ingin langsung diambil malam hari
+                    </span>
+                  </div>
+                </div>
+                {pickupWindow === 'SAME_DAY' && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+              </label>
+
+              <label
+                data-testid="pickup-window-next-day"
+                className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between cursor-pointer transition ${
+                  pickupWindow === 'NEXT_DAY_MORNING'
+                    ? 'bg-rose-50 border-rose-500 shadow-xs ring-2 ring-rose-500/30 text-rose-950'
+                    : 'bg-white border-amber-200 hover:border-amber-300 hover:bg-amber-50/50 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="pickup_window"
+                    value="NEXT_DAY_MORNING"
+                    checked={pickupWindow === 'NEXT_DAY_MORNING'}
+                    onChange={() => setPickupWindow('NEXT_DAY_MORNING')}
+                    className="text-rose-600 focus:ring-rose-500 h-4 w-4 border-slate-300 cursor-pointer"
+                  />
+                  <div>
+                    <span className="block font-black">Next Day Morning (H+1 Pagi)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      Penjemputan keesokan harinya pukul 08.00 – 11.00 WIB ({formattedPickupDate})
+                    </span>
+                  </div>
+                </div>
+                {pickupWindow === 'NEXT_DAY_MORNING' && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+              </label>
+            </div>
           </div>
         </div>
       </section>
@@ -1078,34 +1711,25 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     </p>
                   )}
 
-                  {/* ── Pemilih Varian Kuah Instan (Khusus Menu Shabu) ── */}
+                  {/* ── Pemilih Varian Kuah Multi-Slot (Khusus Menu Shabu) ── */}
                   {isShabuRelated && (
-                    <div className="mt-4 p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-slate-700 flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-amber-600" />
-                          <span>Pilihan Kuah:</span>
-                        </span>
-                        <span className="text-amber-800 font-mono text-[10px] font-bold">
-                          {chosenSoup}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {soupOptions.map((soup) => (
-                          <button
-                            key={soup}
-                            type="button"
-                            onClick={() => handleSelectSoup(pId, soup)}
-                            className={`py-1 px-2 rounded-lg text-[10px] font-bold transition cursor-pointer text-center truncate ${
-                              chosenSoup === soup
-                                ? 'bg-amber-400 text-amber-950 font-black shadow-xs'
-                                : 'bg-white text-slate-700 hover:text-slate-900 border border-amber-200 hover:bg-amber-50'
-                            }`}
-                          >
-                            {soup}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="mt-4">
+                      <SoupSlotSelector
+                        packageName={item.name}
+                        quotaLimit={getSoupQuotaForPackage(item.name, 2)}
+                        availableSoups={soupOptions}
+                        value={
+                          productSoupAllocations[pId] ||
+                          (chosenSoup ? { [chosenSoup]: getSoupQuotaForPackage(item.name, 2) } : undefined)
+                        }
+                        onChange={(selection) => {
+                          setProductSoupAllocations((prev) => ({
+                            ...prev,
+                            [pId]: selection,
+                          }));
+                        }}
+                        showSubmitButton={false}
+                      />
                     </div>
                   )}
 
@@ -1130,36 +1754,60 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                     )}
                   </div>
 
-                  {currentQty === 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => handleAddProduct(item)}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Pilih Paket</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleDecreaseProduct(pId)}
-                        className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer"
-                      >
-                        <Minus className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="font-mono font-bold text-sm text-slate-900 w-5 text-center">
-                        {currentQty}
-                      </span>
+                  {(() => {
+                    const quota = getSoupQuotaForPackage(item.name, 2);
+                    const currentAlloc =
+                      productSoupAllocations[pId] ||
+                      (chosenSoup ? { [chosenSoup]: quota } : {});
+                    const isSoupAllocComplete = isShabuRelated
+                      ? validateSoupSelection(currentAlloc, quota).isComplete
+                      : true;
+
+                    return currentQty === 0 ? (
                       <button
                         type="button"
                         onClick={() => handleAddProduct(item)}
-                        className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+                        disabled={!isSoupAllocComplete}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                          isSoupAllocComplete
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-200'
+                        }`}
+                        title={
+                          !isSoupAllocComplete
+                            ? `Pilih ${quota} slot kuah terlebih dahulu`
+                            : 'Tambahkan ke pesanan'
+                        }
                       >
                         <Plus className="w-3.5 h-3.5" />
+                        <span>
+                          {isSoupAllocComplete
+                            ? 'Pilih Paket'
+                            : `Lengkapi Kuah (${validateSoupSelection(currentAlloc, quota).allocatedSlots}/${quota})`}
+                        </span>
                       </button>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDecreaseProduct(pId)}
+                          className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition cursor-pointer"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-mono font-bold text-sm text-slate-900 w-5 text-center">
+                          {currentQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddProduct(item)}
+                          className="w-8 h-8 rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer shadow-sm"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -1168,7 +1816,8 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
       </section>
 
       {/* ── 4. SEKSI ADD-ONS CEPAT (HORIZONTAL SCROLL) ── */}
-      <section className="max-w-5xl mx-auto px-4 pt-12">
+      {addonsList.length > 0 && (
+        <section className="max-w-5xl mx-auto px-4 pt-12">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 font-mono">
@@ -1253,10 +1902,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
           })}
         </div>
       </section>
+      )}
 
       {/* ── 5. STICKY BOTTOM CHECKOUT BAR (WHATSAPP CONVERSATIONAL FLOW) ── */}
       {totalItems > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-amber-200/80 shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-amber-200/80 shadow-2xl animate-in slide-in-from-bottom duration-200">
+          {/* Warning Banner Pesanan Partai Besar (>= 5 Paket) */}
+          {isLargePartyOrder && (
+            <div className="w-full bg-amber-500/15 border-b border-amber-500/30 text-amber-900 text-xs font-bold py-2 px-4 flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Pesanan 5 paket atau lebih (~50+ porsi) dialihkan ke layanan Live Cooking &amp; Event Catering khusus bersama tim dan peralatan profesional Shabu Ajhi.</span>
+            </div>
+          )}
+          <div className="p-3 sm:p-4">
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             {/* Ringkasan Pesanan */}
             <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
@@ -1283,13 +1941,19 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
               <button
                 type="button"
                 onClick={handleDirectQrisCheckout}
-                disabled={!selectedTimeSlot}
-                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95 shrink-0 ${
-                  selectedTimeSlot
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20'
+                disabled={!selectedTimeSlot || isLargePartyOrder}
+                className={`py-3 px-3.5 sm:px-4 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 ${
+                  isLargePartyOrder
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                    : selectedTimeSlot
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-800 shadow-slate-900/20 cursor-pointer shadow-xs active:scale-95'
                     : 'bg-slate-100/50 text-slate-400 border-slate-200 cursor-not-allowed'
                 }`}
-                title="Buka Faktur Pembayaran QRIS Dinamis"
+                title={
+                  isLargePartyOrder
+                    ? 'Pesanan di atas 4 paket memerlukan koordinasi armada manual'
+                    : 'Buka Faktur Pembayaran QRIS Dinamis'
+                }
               >
                 <QrCode className="w-4 h-4 text-emerald-400" />
                 <span>Bayar QRIS</span>
@@ -1301,18 +1965,29 @@ Rencana Kolaborasi: ${partnerNotes.trim() || '-'}`;
                 disabled={!selectedTimeSlot}
                 className={`flex-1 sm:flex-initial py-3 px-4 sm:px-6 rounded-2xl text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 shadow-md active:scale-98 cursor-pointer ${
                   selectedTimeSlot
-                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
+                    ? isLargePartyOrder
+                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-900/20'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20'
                     : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
-                title="Pesan Langsung via WhatsApp Kasir (0858-6109-1103)"
+                title={
+                  isLargePartyOrder
+                    ? 'Konsultasi Tim Live Cooking via WhatsApp (+62 896-1779-9878)'
+                    : 'Pesan Langsung via WhatsApp Kasir'
+                }
               >
                 <MessageSquare className="w-4 h-4 fill-white" />
                 <span>
-                  {selectedTimeSlot ? 'WhatsApp Kasir / CS' : 'Pilih Slot Jam Dahulu'}
+                  {!selectedTimeSlot
+                    ? 'Pilih Slot Jam Dahulu'
+                    : isLargePartyOrder
+                    ? 'Konsultasi Tim Live Cooking via WhatsApp'
+                    : 'WhatsApp Kasir / CS'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

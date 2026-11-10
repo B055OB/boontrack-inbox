@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Zap,
@@ -17,13 +17,30 @@ import {
   ArrowLeft,
   Clock,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   getStudioTokenPackage,
   StudioPackageId,
   StudioTokenPackage,
 } from '@/lib/config/studio-pricing';
 import ShopUpgradeBanner from '@/components/studio/ShopUpgradeBanner';
+import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+
+const STATIC_QRIS =
+  process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
+  '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+
+export type TopupState =
+  | 'IDLE'
+  | 'LOADING'
+  | 'HELD'
+  | 'PENDING'
+  | 'FAILED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'CONFIRMED';
 
 interface StudioPaywallModalProps {
   isOpen: boolean;
@@ -32,6 +49,7 @@ interface StudioPaywallModalProps {
   currentCredits?: number;
   isShopMember?: boolean;
   onSuccess?: (addedCredits: number, newTotal: number) => void;
+  onPaymentSuccess?: (newCredits: number) => void;
 }
 
 export default function StudioPaywallModal({
@@ -41,6 +59,7 @@ export default function StudioPaywallModal({
   currentCredits = 0,
   isShopMember,
   onSuccess,
+  onPaymentSuccess,
 }: StudioPaywallModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<StudioPackageId>('creator');
   const [loadingPlan, setLoadingPlan] = useState<StudioPackageId | null>(null);
@@ -63,6 +82,16 @@ export default function StudioPaywallModal({
       window.location.hostname.endsWith('.localhost') ||
       tenantSlug === 'creator' ||
       tenantSlug === 'sandbox');
+
+  // Top-Up QRIS Lifecycle State
+  const [topupState, setTopupState] = useState<TopupState>('IDLE');
+  const [qrisPayload, setQrisPayload] = useState<string>('');
+  const [invoiceAmount, setInvoiceAmount] = useState<number>(0);
+  const [activePackageName, setActivePackageName] = useState<string>('');
+  const [activePackageCredits, setActivePackageCredits] = useState<number>(0);
+  const [expiresInSeconds, setExpiresInSeconds] = useState<number>(900); // 15 menit
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync prop or dynamically fetch entitlement from database SSOT
   useEffect(() => {
@@ -87,7 +116,7 @@ export default function StudioPaywallModal({
           }
         }
       } catch {
-        // Fallback gracefully to public tier
+        // Fallback gracefully
       }
     }
 
@@ -107,30 +136,124 @@ export default function StudioPaywallModal({
     }
   }, [isOpen]);
 
+  // Countdown timer when topupState === 'PENDING'
+  useEffect(() => {
+    if (topupState !== 'PENDING') return;
+
+    const timer = setInterval(() => {
+      setExpiresInSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setTopupState('EXPIRED');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [topupState]);
+
+  // Trusted Server-side Payment Polling: Only confirm when server authoritatively returns updated balance
+  const checkPaymentStatus = useCallback(async () => {
+    if (!tenantSlug || topupState !== 'PENDING' || isVerifying) return;
+    setIsVerifying(true);
+    try {
+      const res = await fetch(`/api/tenants/${encodeURIComponent(tenantSlug)}/entitlements`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const serverCredits = json.data.credits_remaining ?? 0;
+          if (serverCredits > currentCredits) {
+            setTopupState('CONFIRMED');
+            const added = serverCredits - (currentCredits || 0);
+            onSuccess?.(added, serverCredits);
+            onPaymentSuccess?.(serverCredits);
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          }
+        }
+      }
+    } catch {
+      // transient network poll failure
+    } finally {
+      setIsVerifying(false);
+    }
+  }, [tenantSlug, topupState, isVerifying, currentCredits, onSuccess, onPaymentSuccess]);
+
+  // Setup periodic polling
+  useEffect(() => {
+    if (topupState === 'PENDING') {
+      pollIntervalRef.current = setInterval(() => {
+        checkPaymentStatus();
+      }, 5000);
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [topupState, checkPaymentStatus]);
+
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loadingPlan) onClose();
+      if (e.key === 'Escape' && !loadingPlan) {
+        if (topupState === 'PENDING') {
+          setTopupState('CANCELLED');
+        } else {
+          onClose();
+        }
+      }
     };
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, loadingPlan]);
+  }, [isOpen, onClose, loadingPlan, topupState]);
 
   if (!isOpen) return null;
 
-  // Resolve packages based on member status
   const ketenganPkg = getStudioTokenPackage('ketengan', isMember)!;
   const starterPkg = getStudioTokenPackage('starter', isMember)!;
   const creatorPkg = getStudioTokenPackage('creator', isMember)!;
-
   const packagesList = [ketenganPkg, starterPkg, creatorPkg];
 
+  // Initiate Dynamic QRIS Top-Up
   const handleCheckout = async (planKey: StudioPackageId) => {
-    const pkg = packagesList.find((p) => p.id === planKey) || creatorPkg;
+    // Prevent duplicate clicks
+    if (loadingPlan !== null || topupState === 'LOADING') return;
     setLoadingPlan(planKey);
     setErrorMessage(null);
+    setTopupState('LOADING');
+
+    const pkg = getStudioTokenPackage(planKey, isMember);
+    if (!pkg) {
+      setErrorMessage('Paket tidak valid.');
+      setTopupState('FAILED');
+      setLoadingPlan(null);
+      return;
+    }
+
+    setActivePackageName(pkg.name);
+    setActivePackageCredits(pkg.credits);
+    setInvoiceAmount(pkg.price);
+
+    // 1. Check Payment Strict Hold Guard (ADR § 71 Compliance)
+    const isPaymentStrictHeld =
+      typeof process !== 'undefined' &&
+      (process.env.NEXT_PUBLIC_PAYMENT_STRICT_HOLD === 'true' ||
+       process.env.ONLINEBOOST_PAYMENT_STRICT_HOLD === 'true');
+
+    if (isPaymentStrictHeld) {
+      setTopupState('HELD');
+      setLoadingPlan(null);
+      return;
+    }
 
     // Staging / Preview / Sandbox: Switch to Mock QRIS Generator
     if (isPreviewOrSandbox) {
@@ -157,18 +280,26 @@ export default function StudioPaywallModal({
 
       if (!res.ok || !data.success || !data.invoice_url) {
         // If sandbox prohibited or missing live credentials, gracefully fallback to Mock QRIS
-        if (data.error === 'SANDBOX_PROHIBITED' || res.status === 403 || res.status === 503) {
+        if (isPreviewOrSandbox || data.error === 'SANDBOX_PROHIBITED' || res.status === 403 || res.status === 503) {
           setSimulatedPackage(pkg);
           setSimulatedTransactionId(`QRIS-SIM-${Date.now().toString(36).toUpperCase()}`);
           setIsSimulatingQris(true);
           setLoadingPlan(null);
           return;
         }
-        throw new Error(data.error || 'Gagal menerbitkan invoice pembayaran QRIS. Silakan coba lagi.');
+        if (data.error?.includes('HOLD') || data.message?.includes('HOLD')) {
+          setTopupState('HELD');
+          setLoadingPlan(null);
+          return;
+        }
+        throw new Error(data.error || data.message || 'Gagal menerbitkan invoice pembayaran QRIS. Silakan coba lagi.');
       }
 
-      // Redirect langsung ke URL checkout invoice QRIS Instan resmi
-      window.location.href = data.invoice_url;
+      // Generate localized Dynamic QRIS string
+      const dynamicQr = generateDynamicQRIS(STATIC_QRIS, pkg.price);
+      setQrisPayload(dynamicQr);
+      setExpiresInSeconds(900); // 15 menit
+      setTopupState('PENDING');
     } catch (err: unknown) {
       if (isPreviewOrSandbox) {
         setSimulatedPackage(pkg);
@@ -179,6 +310,8 @@ export default function StudioPaywallModal({
       }
       const msg = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke sistem pembayaran QRIS Instan.';
       setErrorMessage(msg);
+      setTopupState('FAILED');
+    } finally {
       setLoadingPlan(null);
     }
   };
@@ -203,10 +336,24 @@ export default function StudioPaywallModal({
     if (onSuccess) {
       onSuccess(added, newTotal);
     }
+    if (onPaymentSuccess) {
+      onPaymentSuccess(newTotal);
+    }
 
     setTimeout(() => {
       onClose();
     }, 1500);
+  };
+
+  const handleCancelTopup = () => {
+    setTopupState('CANCELLED');
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -218,7 +365,7 @@ export default function StudioPaywallModal({
         {/* Close Button */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={topupState === 'PENDING' ? handleCancelTopup : onClose}
           disabled={loadingPlan !== null}
           className="absolute top-5 right-5 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           title="Tutup"
@@ -399,7 +546,138 @@ export default function StudioPaywallModal({
             )}
           </div>
         ) : (
-          /* ── PACKAGE SELECTION VIEW ────────────────────────────── */
+          <>
+        {/* ─── DYNAMIC QRIS MODAL VIEW (PENDING / HELD / CONFIRMED / EXPIRED) ─── */}
+        {topupState === 'PENDING' && (
+          <div className="space-y-6 text-center py-4 animate-in zoom-in-95 duration-200">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-bold">
+                <Clock className="w-3.5 h-3.5 text-violet-400" />
+                <span>Berlaku hingga: {formatTime(expiresInSeconds)}</span>
+              </div>
+              <h3 className="text-xl font-black text-white">Scan QRIS untuk Membayar</h3>
+              <p className="text-xs text-slate-400">
+                Top-up <strong className="text-white">{activePackageName}</strong> (+{activePackageCredits} Kredit) &bull; Total: <strong className="text-emerald-400">Rp {invoiceAmount.toLocaleString('id-ID')}</strong>
+              </p>
+            </div>
+
+            {/* QR Code Container */}
+            <div className="flex flex-col items-center justify-center space-y-3">
+              <div className="p-4 bg-white rounded-2xl shadow-xl shadow-black/50 border border-slate-200">
+                <QRCodeSVG
+                  value={qrisPayload || STATIC_QRIS}
+                  size={200}
+                  level="M"
+                  includeMargin={true}
+                />
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Dukungan Semua Pembayaran: BCA, GoPay, OVO, Dana, ShopeePay, LinkAja</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={checkPaymentStatus}
+                disabled={isVerifying}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isVerifying ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memverifikasi Pembayaran...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Cek Status Pembayaran</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCancelTopup}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              Saldo kredit akan bertambah secara otomatis setelah notifikasi pembayaran terkonfirmasi oleh server.
+            </p>
+          </div>
+        )}
+
+        {topupState === 'HELD' && (
+          <div className="p-6 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-center space-y-4 animate-in fade-in">
+            <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-amber-300">Pembayaran Ditahan (Payment Strict Hold Aktif)</h3>
+              <p className="text-xs text-slate-300 max-w-lg mx-auto leading-relaxed">
+                Sesuai kebijakan rilis sistem dan proteksi integritas transaksi, kanal pembayaran top-up live saat ini sedang dalam status <strong>HOLD</strong>. Transaksi tidak didebet ke rekening langsung.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTopupState('IDLE')}
+              className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition cursor-pointer"
+            >
+              Kembali ke Pilihan Paket
+            </button>
+          </div>
+        )}
+
+        {topupState === 'CONFIRMED' && (
+          <div className="p-6 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 text-center space-y-4 animate-in fade-in">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-emerald-300">Pembayaran Terverifikasi!</h3>
+              <p className="text-xs text-slate-300">
+                Saldo kredit telah berhasil ditambahkan ke workspace Anda (+{activePackageCredits} Kredit).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs transition cursor-pointer"
+            >
+              Lanjutkan ke Studio
+            </button>
+          </div>
+        )}
+
+        {topupState === 'EXPIRED' && (
+          <div className="p-6 rounded-2xl bg-rose-950/30 border border-rose-500/40 text-center space-y-4 animate-in fade-in">
+            <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-rose-300">Sesi QRIS Kedaluwarsa</h3>
+              <p className="text-xs text-slate-300">
+                Waktu pembayaran 15 menit telah habis. Silakan buat kode QRIS baru untuk melanjutkan transaksi.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTopupState('IDLE')}
+              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition cursor-pointer"
+            >
+              Buat Kode QRIS Baru
+            </button>
+          </div>
+        )}
+
+        {/* ─── DEFAULT PACKAGE SELECTION VIEW (IDLE / CANCELLED / FAILED) ─── */}
+        {(topupState === 'IDLE' || topupState === 'CANCELLED' || topupState === 'FAILED') && (
           <>
             {/* Modal Header */}
             <div className="space-y-2 text-center sm:text-left pr-8">
@@ -426,7 +704,7 @@ export default function StudioPaywallModal({
                 Top-Up Kredit Video Studio
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-                Beli kredit fleksibel via QRIS Instan. Kredit langsung masuk ke akun Anda tanpa masa tunggu dan aktif hingga 12 bulan.
+                Beli kredit fleksibel via Dynamic QRIS. Kredit langsung masuk ke akun toko Anda tanpa masa tunggu dan aktif hingga 12 bulan.
               </p>
             </div>
 
@@ -449,7 +727,7 @@ export default function StudioPaywallModal({
             <div className="flex items-center justify-between text-xs pt-1">
               <span className="font-bold text-slate-300 flex items-center gap-1.5">
                 <QrCode className="w-3.5 h-3.5 text-violet-400" />
-                <span>Pilihan Paket Top-Up (Bayar via QRIS Instan)</span>
+                <span>Pilihan Paket Top-Up (Bayar via Dynamic QRIS)</span>
               </span>
               <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -459,12 +737,12 @@ export default function StudioPaywallModal({
 
             {/* Aturan Konversi Pemakaian Kredit Info Box */}
             <div className="flex items-center justify-center p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-200 text-xs font-semibold text-center tracking-wide">
-              <span>ℹ️ 1 Video UGC (9:16) = 3 Kredit | 1 Ad Copy / Carousel = 1 Kredit</span>
+              <span>ℹ️ 1 Video Otomatis Jadi = 3 Kredit | 1 Panduan Naskah Asli = 1 Kredit</span>
             </div>
 
             {/* 3 Top-Up Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {packagesList.map((pkg) => {
+              {packagesList.map(pkg => {
                 const isSelected = selectedPlan === pkg.id;
                 const isPopular = Boolean(pkg.isPopular);
 
@@ -531,7 +809,7 @@ export default function StudioPaywallModal({
                       <button
                         type="button"
                         disabled={loadingPlan !== null}
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
                           handleCheckout(pkg.id);
                         }}
@@ -548,7 +826,7 @@ export default function StudioPaywallModal({
                           </>
                         ) : (
                           <>
-                            <span>Beli via QRIS Instan</span>
+                            <span>Beli via Dynamic QRIS</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </>
                         )}
@@ -563,7 +841,7 @@ export default function StudioPaywallModal({
             <div className="border-t border-white/5 pt-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
               <div className="flex items-center gap-2 text-[11px] text-slate-400">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Pembayaran diverifikasi otomatis via QRIS Instan. Saldo kredit berlaku 12 bulan.</span>
+                <span>Pembayaran diverifikasi otomatis via Dynamic QRIS. Saldo kredit berlaku 12 bulan.</span>
               </div>
 
               <button
@@ -577,6 +855,8 @@ export default function StudioPaywallModal({
             </div>
           </>
         )}
+      </>
+    )}
       </div>
     </div>
   );

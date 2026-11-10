@@ -183,6 +183,42 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [proofUploadFeedback, setProofUploadFeedback] = useState<string | null>(null);
 
+  // Deteksi konteks FnB / booking / koordinat presisi
+  const booking = React.useMemo(() => {
+    return (product as any)?.metadata?.booking || (product as any)?.booking || (product as any)?.metadata || null;
+  }, [product]);
+
+  const isFnbOrHasCoords = React.useMemo(() => {
+    return Boolean(
+      booking?.latitude ||
+      booking?.destination_latitude ||
+      booking?.maps_url ||
+      booking?.sharelock ||
+      (product as any)?.isFnb ||
+      (product as any)?.is_fnb ||
+      (product as any)?.product_type === 'FOOD' ||
+      (product as any)?.type === 'food' ||
+      tenantData?.business_type === 'FNB'
+    );
+  }, [booking, product, tenantData]);
+
+  // Inisialisasi otomatis alamat dan kecamatan/kota dari booking metadata
+  useEffect(() => {
+    if (isOpen && product) {
+      const b = (product as any)?.metadata?.booking || (product as any)?.booking || (product as any)?.metadata;
+      if (b) {
+        const addr = b.destination_address || b.location_details;
+        if (addr && !shippingAddress) {
+          setShippingAddress(String(addr));
+        }
+        const city = b.destination_city || b.destination_district;
+        if (city && !shippingCity) {
+          setShippingCity(String(city));
+        }
+      }
+    }
+  }, [isOpen, product, shippingAddress, shippingCity]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -324,15 +360,16 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
       setShippingCost(0);
       return;
     }
-    const hasCity = shippingCity.trim().length >= 3;
+    const hasCoordinates = Boolean(booking?.latitude || booking?.destination_latitude || booking?.maps_url || booking?.sharelock);
+    const hasDestination = hasCoordinates || shippingCity.trim().length >= 3 || shippingAddress.trim().length >= 3;
     if (courierServiceType === 'instant') {
-      setShippingCost(hasCity ? instantRate : 0);
+      setShippingCost(hasDestination ? instantRate : 0);
       setShippingCourier(instantCourierName);
     } else {
-      setShippingCost(hasCity ? regularRate : 0);
+      setShippingCost(hasDestination ? regularRate : 0);
       setShippingCourier(regularCourierName);
     }
-  }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity]);
+  }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity, shippingAddress, booking]);
 
   // Resolusi Scarcity / Kuota Badge Dedikasi dari Metadata Produk
   const scarcityBadge = React.useMemo(() => {
@@ -375,15 +412,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
   }, [product]);
 
   // LAZY SHIPPING: DILARANG dipicu saat modal pertama kali dimuat.
-  // Hanya dipanggil saat pembeli selesai mengisi kecamatan/kota tujuan (debounce 400ms).
+  // Hanya dipanggil saat pembeli selesai mengisi kecamatan/kota tujuan atau memiliki koordinat presisi (debounce 400ms).
   useEffect(() => {
     if (!isOpen || !isPhysical) {
       setShippingCost(0);
       return;
     }
 
+    const hasCoordinates = Boolean(booking?.latitude || booking?.destination_latitude || booking?.maps_url || booking?.sharelock);
     const trimmedDest = shippingCity.trim();
-    if (trimmedDest.length < 3) {
+    const trimmedAddress = shippingAddress.trim();
+    if (!hasCoordinates && trimmedDest.length < 3 && trimmedAddress.length < 3) {
       setShippingCost(0);
       return;
     }
@@ -391,14 +430,41 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     const timer = setTimeout(async () => {
       setIsLoadingShipping(true);
       try {
+        const destLat = booking?.destination_latitude ?? booking?.latitude;
+        const destLon = booking?.destination_longitude ?? booking?.longitude;
         const res = await fetch('/api/v1/shipping/rates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            destination_city: trimmedDest,
+            destination_city: trimmedDest || (booking?.destination_city || booking?.destination_district || trimmedAddress),
+            destination_address: trimmedAddress || (booking?.destination_address || booking?.location_details || ''),
+            destination_latitude: destLat !== undefined && destLat !== null && destLat !== '' ? Number(destLat) : undefined,
+            destination_longitude: destLon !== undefined && destLon !== null && destLon !== '' ? Number(destLon) : undefined,
+            maps_url: booking?.maps_url,
+            sharelock: booking?.sharelock || booking?.maps_url,
+            is_fnb: isFood,
             tenant_slug: tenantSlug,
             weight_grams: packageTotalWeight,
-            items: isMultiItem ? resolvedItems : undefined,
+            items: Array.isArray(resolvedItems) && resolvedItems.length > 0
+              ? resolvedItems.map((it: any) => ({
+                  name: it.name || it.productTitle || it.title || '',
+                  quantity: Number(it.quantity || it.qty || 1),
+                  price: Number(it.price || it.unitPrice || 0),
+                  isAddon: Boolean(it.isAddon || it.is_addon),
+                  is_addon: Boolean(it.isAddon || it.is_addon),
+                  requires_equipment: it.requires_equipment !== undefined ? Boolean(it.requires_equipment) : undefined,
+                  category: it.category || it.category_name,
+                  soupVariant: it.soupVariant || it.variant,
+                  selectedSoups: it.selectedSoups,
+                }))
+              : (product ? [{
+                  name: product.title || (product as any).name || '',
+                  quantity: quantity || 1,
+                  price: product.price || 0,
+                  isAddon: Boolean((product as any).isAddon || (product as any).is_addon),
+                  requires_equipment: (product as any).requires_equipment !== undefined ? Boolean((product as any).requires_equipment) : undefined,
+                  category: (product as any).category,
+                }] : undefined),
           }),
         });
 
@@ -413,11 +479,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               String(r.service || '').toLowerCase().includes('instant') ||
               String(r.courier_name || '').toLowerCase().includes('instan') ||
               String(r.courier_name || '').toLowerCase().includes('gosend') ||
-              String(r.courier_name || '').toLowerCase().includes('grab')
+              String(r.courier_name || '').toLowerCase().includes('grab') ||
+              String(r.courier_name || '').toLowerCase().includes('armada')
             );
             if (instOpt) {
-              setInstantRate(instOpt.price || 20000);
-              setInstantCourierName(instOpt.courier_name || 'Kurir Dapur Instan (GoSend / GrabExpress)');
+              setInstantRate(instOpt.price);
+              setInstantCourierName(instOpt.courier_name || 'Kurir Dapur Instan');
               foundInstant = true;
             }
 
@@ -437,8 +504,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }
 
         if (!foundInstant) {
-          setInstantRate(isFood ? 18000 : 25000);
-          setInstantCourierName('Kurir Dapur Instan (GoSend / GrabExpress)');
+          setInstantRate(isFood ? 25000 : 25000);
+          setInstantCourierName('Kurir Dapur Instan');
         }
         if (!foundRegular) {
           setRegularRate(15000);
@@ -446,7 +513,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         }
       } catch (err) {
         console.warn('[CheckoutModal] Lazy shipping rate note:', err);
-        setInstantRate(isFood ? 18000 : 25000);
+        setInstantRate(isFood ? 25000 : 25000);
         setRegularRate(15000);
       } finally {
         setIsLoadingShipping(false);
@@ -454,7 +521,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPhysical, shippingCity, tenantSlug, isFood]);
+  }, [isOpen, isPhysical, shippingCity, shippingAddress, tenantSlug, isFood, packageTotalWeight, isMultiItem, booking, product]);
 
   // Load tenant metadata, bank accounts, and default pixel IDs
   useEffect(() => {
@@ -910,9 +977,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
         shippingAddress: isFood
           ? (foodDiningOption === 'PICKUP'
               ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
-              : shippingAddress)
+              : (shippingAddress || booking?.destination_address || booking?.location_details || 'Alamat Terkunci via GPS'))
           : isPhysical
-          ? (isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : shippingAddress)
+          ? (isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : (shippingAddress || booking?.destination_address || booking?.location_details || 'Alamat Terkunci via GPS'))
           : undefined,
         shippingCourier: isFood
           ? (foodDiningOption === 'PICKUP'
@@ -1001,8 +1068,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
             customerPhone: cleanPhoneE164,
             productTitle: product.title,
             amount: totalAmount,
-            shippingAddress: isPhysical ? shippingAddress : undefined,
-            shippingCity: isPhysical ? shippingCity : undefined,
+            shippingAddress: isPhysical ? (shippingAddress || booking?.destination_address || booking?.location_details) : undefined,
+            shippingCity: isPhysical ? (shippingCity || booking?.destination_district || booking?.destination_city || 'Bandung') : undefined,
             shippingCourier: isPhysical ? shippingCourier : undefined,
             briefingUrl: cleanBriefingUrl || undefined,
             paymentMethod,
@@ -1487,8 +1554,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               const isMockOrder = isBatch1MockCheckout(product, tenantSlug) || Boolean((paymentData as any)?.isMock);
               const isDynamicQrisFromGateway =
                 isMockOrder ||
-                candidateQris.startsWith('000201010212') ||
-                Boolean(paymentData.qr_string || paymentData.qrString);
+                candidateQris.startsWith('000201010212');
 
               const finalQrValue = isDynamicQrisFromGateway
                 ? candidateQris
@@ -1666,7 +1732,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
               );
             })()}
 
-            {/* Upload Bukti Transfer Box & WhatsApp Fallback */}
+            {/* Upload Bukti Transfer Box & WhatsApp Fallback: Golden Flow khusus manual transfer */}
+            {paymentData.paymentMethod === 'manual_transfer' && (
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 text-left text-xs shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -1756,6 +1823,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 </a>
               </div>
             </div>
+            )}
 
             {paymentData.invoiceUrl && (
               <a
@@ -2056,31 +2124,45 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                         />
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
-                        <input
-                          type="text"
-                          required={foodDiningOption === 'INSTANT'}
-                          value={shippingCity}
-                          onChange={(e) => setShippingCity(e.target.value)}
-                          placeholder="Contoh: Sukasari, Kota Bandung"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-xs"
-                        />
-                      </div>
+                      {isFnbOrHasCoords ? (
+                        <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between text-xs text-emerald-300">
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-400 font-bold">✓</span>
+                            <span>Titik Pengantaran Terkunci via GPS / Peta</span>
+                          </div>
+                          {(booking?.destination_district || booking?.destination_city) && (
+                            <span className="text-[10px] text-emerald-400/80 font-medium">
+                              {booking.destination_district || booking.destination_city}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
+                          <input
+                            type="text"
+                            required={foodDiningOption === 'INSTANT'}
+                            value={shippingCity}
+                            onChange={(e) => setShippingCity(e.target.value)}
+                            placeholder="Contoh: Sukasari, Kota Bandung"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-xs"
+                          />
+                        </div>
+                      )}
 
                       {/* Kurir Instan Only */}
                       <div className="p-3 rounded-2xl border border-emerald-500 bg-emerald-950/30">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5 font-bold text-slate-200">
                             <Zap className="w-4 h-4 text-amber-400" />
-                            <span>Kurir Dapur Instan</span>
+                            <span>{instantCourierName.toLowerCase().includes('1 arah') ? 'Kurir Instan 1 Arah' : 'Kurir Dapur Instan'}</span>
                           </div>
                           <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            Hari Ini (1-2 Jam)
+                            {instantCourierName.toLowerCase().includes('1 arah') ? '1 - 2 Jam (Diantar Langsung)' : 'Hari Ini (1-2 Jam)'}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
+                          {instantCourierName.toLowerCase().includes('armada') || instantCourierName.toLowerCase().includes('internal') || instantCourierName.toLowerCase().includes('1 arah') ? instantCourierName : `${instantCourierName} (GoSend / Grab)`}
                         </p>
                         <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
                           <span>Ongkir:</span>
@@ -2089,8 +2171,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                               <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                             ) : instantRate > 0 ? (
                               `Rp ${instantRate.toLocaleString("id-ID")}`
-                            ) : shippingCity.trim().length >= 3 ? (
-                              "Rp 20.000"
+                            ) : isFnbOrHasCoords ? (
+                              <span className="text-emerald-400 font-bold">Rp 0 (Gratis Ongkir)</span>
                             ) : (
                               "-"
                             )}
@@ -2197,20 +2279,34 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                         />
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
-                        <input
-                          type="text"
-                          required={fulfillmentType === 'DELIVERY'}
-                          value={shippingCity}
-                          onChange={(e) => setShippingCity(e.target.value)}
-                          placeholder="Contoh: Sukasari, Kota Bandung"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
-                        />
-                        <span className="text-[10px] text-slate-500 block">
-                          💡 Masukkan kecamatan/kota untuk kalkulasi otomatis ongkos kirim standar.
-                        </span>
-                      </div>
+                      {isFnbOrHasCoords ? (
+                        <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between text-xs text-emerald-300">
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-400 font-bold">✓</span>
+                            <span>Titik Pengantaran Terkunci via GPS / Peta</span>
+                          </div>
+                          {(booking?.destination_district || booking?.destination_city) && (
+                            <span className="text-[10px] text-emerald-400/80 font-medium">
+                              {booking.destination_district || booking.destination_city}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
+                          <input
+                            type="text"
+                            required={fulfillmentType === 'DELIVERY'}
+                            value={shippingCity}
+                            onChange={(e) => setShippingCity(e.target.value)}
+                            placeholder="Contoh: Sukasari, Kota Bandung"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                          />
+                          <span className="text-[10px] text-slate-500 block">
+                            💡 Masukkan kecamatan/kota untuk kalkulasi otomatis ongkos kirim standar.
+                          </span>
+                        </div>
+                      )}
 
                       {/* Opsi Ongkir: Instant vs Regular Courier (Produk Fisik Non-Food) */}
                       <div className="space-y-2">
@@ -2244,8 +2340,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                                   <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                                 ) : instantRate > 0 ? (
                                   `Rp ${instantRate.toLocaleString("id-ID")}`
-                                ) : shippingCity.trim().length >= 3 ? (
-                                  "Rp 20.000"
                                 ) : (
                                   "-"
                                 )}
@@ -2380,11 +2474,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 ) : (
                   <div className="flex justify-between">
                     <span>Ongkos Kirim ({courierServiceType === 'instant' ? 'Kurir Instan' : 'Ekspedisi Reguler'})</span>
-                    <span className={shippingCost > 0 ? "text-slate-200 font-semibold" : "text-slate-500"}>
+                    <span className={shippingCost > 0 || (isFnbOrHasCoords && instantRate === 0) ? "text-emerald-400 font-semibold" : "text-slate-500"}>
                       {isLoadingShipping
                         ? "Menghitung..."
                         : shippingCost > 0
                         ? `Rp ${shippingCost.toLocaleString("id-ID")}`
+                        : (isFnbOrHasCoords && instantRate === 0)
+                        ? "Gratis Ongkir"
                         : shippingCity.trim().length >= 3
                         ? "Rp 15.000"
                         : "Menunggu kota tujuan"}

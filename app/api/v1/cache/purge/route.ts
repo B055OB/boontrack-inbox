@@ -1,11 +1,66 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import crypto from 'crypto';
 import { getSupabase } from '@/lib/supabaseClient';
 import { clearAllBotSessionCache } from '@/lib/bot/tenant-bot-isolation';
 
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ */
+function constantTimeCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export async function POST(req: NextRequest) {
   try {
+    // ── P0 INTERNAL PURGE AUTHENTICATION GUARD ──
+    // Strictly requires x-purge-secret matching INTERNAL_PURGE_SECRET (min 16 chars).
+    // Zero URL parameter vectors, zero CRON_SECRET fallback, fail-closed when secret is missing.
+
+    // 1. Reject URL query parameter vectors explicitly
+    const searchParams = req.nextUrl.searchParams;
+    if (
+      searchParams.has('secret') ||
+      searchParams.has('purge_secret') ||
+      searchParams.has('x-purge-secret') ||
+      searchParams.has('key') ||
+      searchParams.has('token')
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized: URL query parameter secret is strictly forbidden. Use x-purge-secret header.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
+    }
+
+    const purgeSecret = (process.env.INTERNAL_PURGE_SECRET || '').trim();
+    const providedPurgeSecret = (req.headers.get('x-purge-secret') || '').trim();
+
+    // 2. Fail-closed: missing, empty, short, or invalid secret
+    if (
+      !purgeSecret ||
+      purgeSecret.length < 16 ||
+      !providedPurgeSecret ||
+      !constantTimeCompare(providedPurgeSecret, purgeSecret)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized: Kredensial internal cache purge tidak valid atau belum dikonfigurasi.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
+    }
+
     clearAllBotSessionCache();
 
     const results: Record<string, any> = {
@@ -110,6 +165,13 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
-  return POST(req);
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'Method Not Allowed: Cache purge must be invoked via POST with x-purge-secret header.',
+      code: 'METHOD_NOT_ALLOWED',
+    },
+    { status: 405 }
+  );
 }

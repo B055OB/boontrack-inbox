@@ -654,6 +654,8 @@ function SingleProductContent() {
                   '$1 id="tools"'
                 );
               }
+              // Ensure smooth scroll is preserved across anchor navigation
+              resolvedCustomHtml = resolvedCustomHtml.replace(/behavior:\s*['"]instant['"]/gi, "behavior: 'smooth'");
 
               if (isOnlineBoostBatch1) {
                 // Resolusi referral code untuk tautan CTA awal
@@ -776,6 +778,12 @@ function SingleProductContent() {
                 );
                 // Pastikan tidak ada atribut data-bt-checkout tersisa pada tag <a>
                 resolvedCustomHtml = resolvedCustomHtml.replace(/(<a\b[^>]*)\bdata-bt-checkout\b([^>]*>)/gi, '$1$2');
+
+                // 3. Suppress & strip Mock Checkout Drawer and its script from DOM to prevent FOUC / visual flash
+                resolvedCustomHtml = resolvedCustomHtml
+                  .replace(/<div\b[^>]*\bid=["']bt-mock-backdrop["'][^>]*>(?:[\s\S]*?<\/div>)?/gi, '')
+                  .replace(/<aside\b[^>]*\bid=["']bt-mock-drawer["'][^>]*>[\s\S]*?<\/aside>/gi, '')
+                  .replace(/<script\b[^>]*\bsrc=["'][^"']*mock-checkout\.js[^"']*["'][^>]*>(?:[\s\S]*?<\/script>)?/gi, '');
               }
 
               resolvedCustomHtml = resolvedCustomHtml
@@ -793,14 +801,32 @@ function SingleProductContent() {
 
               const darkStyleOverride = `
 <style id="ob-batch1-dark-theme-override">
+  html,
+  body {
+    background-color: #0a0a0a !important;
+    color: #f4f4f5 !important;
+    color-scheme: dark !important;
+    scroll-behavior: smooth !important;
+  }
   #custom-html-section,
   #onlineboost-landing-root,
   .ob-sec10-wrap {
     background-color: #0a0a0a !important;
     color: #f4f4f5 !important;
   }
+  #bt-mock-backdrop,
+  #bt-mock-drawer,
+  .bt-mock-backdrop,
+  .bt-mock-drawer {
+    display: none !important;
+    visibility: hidden !important;
+  }
   #tools,
   .comparison-section {
+    scroll-margin-top: 100px !important;
+  }
+  .comparison-panel,
+  .comparison-table-wrap {
     scroll-margin-top: 100px !important;
   }
   .site-header {
@@ -2029,6 +2055,7 @@ function SingleProductContent() {
 
   const cartState = useCart(tenant);
   const isCartDisabled =
+    isOnlineBoostBatch1 ||
     isCustomHtmlActivePage ||
     product.metadata?.enable_cart === false ||
     (product as any).enable_cart === false ||
@@ -2305,14 +2332,16 @@ function SingleProductContent() {
     ? 'WHATSAPP'
     : (config.checkout_action_mode || (rawStoreWhatsApp ? 'HYBRID' : 'DIRECT'));
 
-  const handleWhatsAppConsultation = () => {
+  const handleWhatsAppConsultation = (e?: React.MouseEvent) => {
     if (!wabaConsultationUrl) return;
     trackWhatsAppConsultation({
       name: product.name,
       price: basePrice
     });
     trackContactEvent('WhatsApp Consultation');
-    if (typeof window !== 'undefined') {
+    const targetEl = e?.currentTarget as HTMLElement | null;
+    const hasNativeHref = targetEl?.tagName === 'A' && Boolean(targetEl.getAttribute('href'));
+    if (!hasNativeHref && typeof window !== 'undefined') {
       window.open(wabaConsultationUrl, '_blank', 'noopener,noreferrer');
     }
   };
@@ -2456,7 +2485,8 @@ function SingleProductContent() {
       e.stopPropagation();
     }
     if (isOnlineBoostBatch1) {
-      handleWhatsAppConsultation();
+      // Fail closed: OnlineBoost Batch 1 CTAs navigate directly to WhatsApp
+      // without invoking handleOpenCheckout, creating an order, or calling a payment endpoint.
       return;
     }
     if (isCustomLinkMode) {
@@ -2528,9 +2558,12 @@ function SingleProductContent() {
   // Universal Headless Checkout Trigger ([data-bt-checkout], [href="#checkout"], and window 'open-checkout' event)
   useEffect(() => {
     const handleGlobalCheckoutClick = (e: MouseEvent) => {
-      const selector = isOnlineBoostBatch1
-        ? '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn, a[href*="wa.me"], a[href*="whatsapp.com"]'
-        : '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn';
+      if (isOnlineBoostBatch1) {
+        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp natively;
+        // do not intercept, hijack, or invoke checkout for Batch 1.
+        return;
+      }
+      const selector = '[data-bt-checkout], a[href="#checkout"], [href*="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .sbp-btn';
       const target = (e.target as HTMLElement)?.closest(selector) as HTMLElement | null;
       if (!target) return;
 
@@ -2545,11 +2578,6 @@ function SingleProductContent() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-
-      if (isOnlineBoostBatch1) {
-        handleWhatsAppConsultation();
-        return;
-      }
 
       // Read optional overrides from attributes
       const variantAttr = target.getAttribute('data-variant');
@@ -2588,7 +2616,6 @@ function SingleProductContent() {
 
     const handleCustomOpenCheckout = () => {
       if (isOnlineBoostBatch1) {
-        handleWhatsAppConsultation();
         return;
       }
       if (!hasTrackedAddToCart) {
@@ -2658,9 +2685,13 @@ function SingleProductContent() {
     };
     scrollToTarget();
     const timer = setTimeout(scrollToTarget, 200);
+    const retryTimer1 = setTimeout(scrollToTarget, 500);
+    const retryTimer2 = setTimeout(scrollToTarget, 1000);
     window.addEventListener('hashchange', scrollToTarget);
     return () => {
       clearTimeout(timer);
+      clearTimeout(retryTimer1);
+      clearTimeout(retryTimer2);
       window.removeEventListener('hashchange', scrollToTarget);
     };
   }, [config.custom_html]);
@@ -5375,6 +5406,19 @@ function SingleProductContent() {
                             <span>{ctaCustomLabel}</span>
                             <ArrowRight className="w-4 h-4" />
                           </button>
+                        ) : isOnlineBoostBatch1 ? (
+                          <a
+                            href={wabaConsultationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => handleWhatsAppConsultation(e)}
+                            id="hero-whatsapp-cta-button"
+                            data-testid="hero-whatsapp-cta-button"
+                            className="w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer text-sm no-underline"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                            <span>Daftar via WhatsApp</span>
+                          </a>
                         ) : (
                           <button
                             type="button"
@@ -5382,9 +5426,7 @@ function SingleProductContent() {
                             className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
                           >
                             <span>
-                              {isOnlineBoostBatch1
-                                ? 'Daftar via WhatsApp'
-                                : basePrice === 0
+                              {basePrice === 0
                                 ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
                                 : dynamicCtaPrefix.toLowerCase().includes('rp')
                                 ? dynamicCtaPrefix
@@ -5598,7 +5640,13 @@ function SingleProductContent() {
                     </div>
 
                     {config.testimonials && config.testimonials.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div
+                        className={
+                          config.testimonials.length === 1
+                            ? "max-w-md sm:max-w-lg mx-auto w-full pt-1"
+                            : "grid grid-cols-1 md:grid-cols-2 gap-6 pt-1"
+                        }
+                      >
                         {config.testimonials.map((t) => (
                           <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
                             <div>
@@ -5631,21 +5679,30 @@ function SingleProductContent() {
                     )}
 
                     {config.testimonial_images && config.testimonial_images.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                      <div
+                        className={
+                          config.testimonial_images.length === 1
+                            ? "max-w-md sm:max-w-lg mx-auto w-full pt-1"
+                            : "grid grid-cols-1 md:grid-cols-2 gap-6 pt-1"
+                        }
+                      >
                         {config.testimonial_images.map((imgUrl, idx) => (
-                          <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
-                            <div className="overflow-hidden bg-slate-100">
+                          <div
+                            key={idx}
+                            className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group flex flex-col justify-between"
+                          >
+                            <div className="w-full h-auto overflow-hidden rounded-2xl bg-slate-50">
                               <img 
                                 src={imgUrl} 
                                 alt={`Bukti Testimoni ${idx + 1}`} 
-                                className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
+                                className="w-full h-auto object-contain group-hover:scale-[1.02] transition duration-300"
                                 loading="lazy"
                               />
                             </div>
-                            <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
+                            <div className="p-3 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
                               <span className="font-semibold text-slate-700">{categoryLabels.verifiedUserLabel}</span>
                               <span className="text-emerald-600 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> {categoryLabels.verifiedStatusLabel}
+                                <CheckCircle2 className="w-3.5 h-3.5" /> {categoryLabels.verifiedStatusLabel}
                               </span>
                             </div>
                           </div>
@@ -5836,7 +5893,11 @@ function SingleProductContent() {
                     className="w-full min-h-screen p-0 m-0"
                     dangerouslySetInnerHTML={{ __html: config.custom_html }}
                     onClick={(e) => {
-                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger');
+                      if (isOnlineBoostBatch1) {
+                        // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp without invoking handleOpenCheckout
+                        return;
+                      }
+                      const target = (e.target as HTMLElement).closest('[data-bt-checkout], a[href="#checkout"], button[href="#checkout"], #ob-sec10-cta-btn, .hero-sub-checkout-trigger, .btn-cta-onlineboost');
                       if (target) {
                         e.preventDefault();
                         handleOpenCheckout();
@@ -5874,7 +5935,7 @@ function SingleProductContent() {
           externalAffiliateUrl={externalAffiliateUrl}
           affiliateCtaLabel={affiliateCtaLabel}
           targetFormId="checkout-form"
-          onOpenCheckout={handleOpenCheckout}
+          onOpenCheckout={isOnlineBoostBatch1 ? undefined : handleOpenCheckout}
           onExternalClick={handleExternalProductClick}
           isWhatsAppMode={isOnlineBoostBatch1 || actionMode === 'WHATSAPP'}
           whatsAppUrl={wabaConsultationUrl}
@@ -5922,7 +5983,7 @@ function SingleProductContent() {
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
-      {checkoutOpen && (!isCheckoutSectionDisabled || isObBatch1Target) && (
+      {!isOnlineBoostBatch1 && checkoutOpen && !isCheckoutSectionDisabled && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 sticky top-0 bg-white z-10">
@@ -6002,7 +6063,7 @@ function SingleProductContent() {
 
 export default function SingleProductPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Memuat penawaran eksklusif...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] text-zinc-400 p-8 text-center text-xs font-mono">Memuat penawaran eksklusif...</div>}>
       <SingleProductContent />
     </Suspense>
   );

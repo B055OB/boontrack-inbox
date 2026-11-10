@@ -106,9 +106,13 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(rewriteHeader).toContain('/branding/studio/manifest.json');
     });
 
-    it('8. Rewrites /desk to /studio/desk on studio.boontrack.com', async () => {
+    it('8. Rewrites /desk to /studio/desk on studio.boontrack.com when authenticated', async () => {
+      const validToken = signMerchantSessionToken({ tenantSlug: 'my-studio-brand', role: 'OWNER' });
       const req = new NextRequest('https://studio.boontrack.com/desk', {
-        headers: { host: 'studio.boontrack.com' },
+        headers: {
+          host: 'studio.boontrack.com',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
       });
 
       const res = await middleware(req);
@@ -116,6 +120,18 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       const rewriteHeader = res.headers.get('x-middleware-rewrite');
       expect(rewriteHeader).toBeDefined();
       expect(rewriteHeader).toContain('/studio/desk');
+    });
+
+    it('8b. [P0 SECURITY] Redirects unauthenticated /desk access to /login on studio.boontrack.com', async () => {
+      const req = new NextRequest('https://studio.boontrack.com/desk', {
+        headers: { host: 'studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(302);
+      const location = res.headers.get('location');
+      expect(location).toBeDefined();
+      expect(location).toContain('/login?redirectTo=');
     });
 
     it('9. Rewrites /register to /studio/register on studio.boontrack.com', async () => {

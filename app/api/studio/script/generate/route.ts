@@ -261,7 +261,33 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
             `\nCatatan: Jangan copy-paste secara mentah, melainkan terapkan pola psikologi di atas secara kontekstual untuk ${product_name}.\n`;
         }
 
-        const promptWithRadar = prompt + radarConstraintText;
+      const cleanCategory = String(category || '').toLowerCase().trim();
+      const isSaaS = cleanCategory.includes('saas') || cleanCategory.includes('software') || cleanCategory.includes('digital') || cleanCategory.includes('aplikasi') || cleanCategory.includes('app');
+      const isService = cleanCategory.includes('service') || cleanCategory.includes('jasa') || cleanCategory.includes('agency') || cleanCategory.includes('konsultasi') || cleanCategory.includes('field');
+      const isCosmetics = cleanCategory.includes('skincare') || cleanCategory.includes('cosmetic') || cleanCategory.includes('beauty') || cleanCategory.includes('serum') || cleanCategory.includes('flek');
+
+      let categoryGuidelines = '';
+      if (isSaaS) {
+        categoryGuidelines = `\nPEDOMAN KHUSUS KATEGORI SOFTWARE / SAAS (WAJIB DIPATUHI):
+1. Fokus penuh pada fitur produk software, alur kerja (workflow), nilai bisnis (ROI, efisiensi waktu, otomatisasi), dan demonstrasi visual antarmuka/layar dashboard.
+2. Scene 5 (Product In-Action Demo) WAJIB berupa demonstrasi langsung navigasi software / aplikasi / dashboard di layar laptop/HP, BUKAN penggunaan produk fisik atau tekstur krim.
+3. Scene 7 (Key Benefit 2) WAJIB menyoroti skalabilitas, kemudahan integrasi, kecepatan setup, atau keamanan data cloud.
+4. Scene 8 (Social Proof) WAJIB berupa adopsi pengguna, testimoni bisnis, atau metrik penghematan waktu/biaya. DILARANG KERAS mencantumkan sertifikat BPOM, Halal, atau klaim medis skincare!
+5. Scene 9 (Strong CTA) dan Ads Copy WAJIB berorientasi pada ajakan SaaS seperti: "Mulai Uji Coba Gratis / Free Trial", "Aktivasi Akun", "Coba Sekarang". DILARANG KERAS menggunakan istilah keranjang kuning (Shopee/TikTok Cart)!\n`;
+      } else if (isService) {
+        categoryGuidelines = `\nPEDOMAN KHUSUS KATEGORI LAYANAN / JASA (WAJIB DIPATUHI):
+1. Fokus penuh pada solusi masalah klien, keahlian teknisi/konsultan profesional, keandalan jadwal, garansi pengerjaan, dan kemudahan booking.
+2. Scene 5 (Product In-Action Demo) WAJIB memperlihatkan proses pengerjaan layanan secara profesional di lapangan. DILARANG membahas tekstur krim/kulit.
+3. Scene 8 (Social Proof) WAJIB berupa testimoni kepuasan klien/pelanggan yang telah menggunakan jasa. DILARANG mencantumkan sertifikasi BPOM jika tidak relevan.
+4. Scene 9 (Strong CTA) WAJIB berupa ajakan booking jadwal, reservasi konsultasi, atau chat WhatsApp resmi.\n`;
+      } else if (isCosmetics) {
+        categoryGuidelines = `\nPEDOMAN KHUSUS KATEGORI SKINCARE / KOSMETIK:
+1. Fokus pada kenyamanan tekstur, kelembutan formula harian, bahan aktif ramah kulit, dan hasil nyata kulit tampak lebih sehat/cerah.
+2. DILARANG mengarang nomor izin edar BPOM palsu atau klaim medis yang berlebihan.
+3. Gunakan CTA yang jelas menuju toko resmi atau checkout produk.\n`;
+      }
+
+      const promptWithRadar = prompt + categoryGuidelines + radarConstraintText;
 
         const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanApiKey}`;
         const geminiRes = await fetch(geminiEndpoint, {
@@ -297,58 +323,126 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
       }
     }
 
-    // Dynamic 9-Scene Formula Generation Engine (Deterministic baseline & fallback)
-    const isUnboxing = (hook_angle || '').toLowerCase().includes('unboxing');
-    const isBeforeAfter = (hook_angle || '').toLowerCase().includes('sebelum-sesudah') || (hook_angle || '').toLowerCase().includes('before');
-    const isHemat = (hook_angle || '').toLowerCase().includes('hemat') || (hook_angle || '').toLowerCase().includes('boncos');
+    // Dynamic 9-Scene Formula Generation Engine (Fallback & Deterministic baseline)
+    const cleanCat = String(category || '').toLowerCase().trim();
+    const isSaaSMode = cleanCat.includes('saas') || cleanCat.includes('software') || cleanCat.includes('digital') || cleanCat.includes('aplikasi') || cleanCat.includes('app');
+    const isServiceMode = cleanCat.includes('service') || cleanCat.includes('jasa') || cleanCat.includes('agency') || cleanCat.includes('konsultasi') || cleanCat.includes('field');
+
+    const cleanHookAngle = String(hook_angle || '').toLowerCase();
+    const isUnboxing = cleanHookAngle.includes('unboxing');
+    const isBeforeAfter = cleanHookAngle.includes('sebelum-sesudah') || cleanHookAngle.includes('before');
+    const isHemat = cleanHookAngle.includes('hemat') || cleanHookAngle.includes('boncos');
 
     // Scene 1: Visual Pattern Interrupt (3s)
-    let s1Visual = `Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan ${product_name}. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.`;
-    let s1Voiceover = `Stop scroll dulu! Sumpah kalau kamu masih mikir masalah ${pain_point.slice(0, 45)} nggak ada jalan keluarnya, kamu wajib tahu ini!`;
-    if (isUnboxing) {
+    let s1Visual = isSaaSMode
+      ? `Kamera selfie handheld close-up ekspresi antusias menatap layar laptop sambil menunjukkan dashboard ${product_name}. Transisi zoom in cepat ke antarmuka aplikasi.`
+      : isServiceMode
+      ? `Kamera handheld mengarah ke teknisi profesional berseragam rapi yang bersiap menangani pekerjaan di lokasi pelanggan.`
+      : `Kamera selfie handheld close-up ekspresi kaget menatap lensa sambil mengacungkan ${product_name}. Gerakan kamera cepat stop-scroll dengan sound effect whoosh.`;
+
+    let s1Voiceover = isSaaSMode
+      ? `Stop scroll dulu! Kalau tim kamu masih ngerjain ${pain_point.slice(0, 45)} secara manual yang makan waktu berjam-jam, kamu wajib coba sistem ini!`
+      : isServiceMode
+      ? `Stop scroll dulu! Jangan biarkan masalah ${pain_point.slice(0, 45)} makin parah dan bikin biaya perbaikan bengkak!`
+      : `Stop scroll dulu! Sumpah kalau kamu masih mikir masalah ${pain_point.slice(0, 45)} nggak ada jalan keluarnya, kamu wajib tahu ini!`;
+
+    if (isUnboxing && !isSaaSMode && !isServiceMode) {
       s1Visual = `POV kamera menunduk membuka paket bubble wrap dengan suara renyah ASMR. Menampakkan kemasan elegan ${product_name} dalam 1 detik pertama.`;
       s1Voiceover = `Akhirnya paket viral yang lagi rame di TikTok nyampe juga! Kita bongkar bareng, beneran sebagus itu gak sih?`;
     } else if (isBeforeAfter) {
-      s1Visual = `Split screen kilat (0.5s): Kiri foto kondisi buruk sebelum, Kanan wajah glowing/puas setelah pakai ${product_name}. Transisi zoom in cepat.`;
-      s1Voiceover = `Liat sendiri bedanya! Ini kondisi aku sebelum vs sekarang setelah rutin pakai ${product_name}.`;
+      s1Visual = isSaaSMode
+        ? `Split screen kilat (0.5s): Kiri spreadsheet berantakan manual, Kanan dashboard otomatis ${product_name}.`
+        : `Split screen kilat (0.5s): Kiri kondisi bermasalah sebelum, Kanan hasil rapi dan memuaskan setelah pakai ${product_name}.`;
+      s1Voiceover = `Liat sendiri bedanya! Ini kondisi sebelum vs sekarang setelah pakai ${product_name}.`;
     } else if (isHemat) {
-      s1Visual = `Kreator memegang dompet atau bukti struk belanjaan mahal, lalu menggelengkan kepala dramatis sebelum mengangkat ${product_name}.`;
-      s1Voiceover = `Nyesel banget baru tahu sekarang! Ternyata buat beresin ${pain_point.slice(0, 40)} nggak perlu keluar uang jutaan!`;
+      s1Visual = `Kreator menunjukkan perbandingan efisiensi biaya dan waktu dramatis sebelum mengangkat ${product_name}.`;
+      s1Voiceover = `Nyesel banget baru tahu sekarang! Ternyata buat beresin ${pain_point.slice(0, 40)} nggak perlu keluar biaya mahal!`;
     }
 
     // Scene 2: Hook Problem (3s)
-    const s2Visual = `Kreator menatap cermin atau layar dengan ekspresi lelah. Tangan menunjuk area masalah (${category}) secara jelas dan natural.`;
+    const s2Visual = `Kreator menatap layar atau area kerja dengan ekspresi lelah. Menyoroti masalah (${category}) secara jelas dan natural.`;
     const s2Voiceover = `Pasti capek banget kan tiap hari harus ngadepin ${pain_point.slice(0, 60)} yang gak kelar-kelar?`;
 
     // Scene 3: Agitation / Relatability (3s)
-    const s3Visual = `B-roll footage cepat: Menyingkirkan produk-produk lama yang tidak efektif ke meja, gestur menghela napas geleng kepala.`;
-    const s3Voiceover = `Udah coba macam-macam cara, gonta-ganti produk lain tapi hasilnya zonk dan bikin kantong jebol.`;
+    const s3Visual = `B-roll footage cepat: Menggambarkan frustrasi akibat cara-cara lama yang tidak efektif.`;
+    const s3Voiceover = isSaaSMode
+      ? `Udah coba macam-macam spreadsheet dan tools lain tapi tetap ribet dan bikin tim pusing.`
+      : `Udah coba macam-macam cara lain tapi hasilnya zonk dan cuma buang-buang biaya.`;
 
     // Scene 4: Introduction Solution (3s)
-    const s4Visual = `Hero shot sinematik! ${product_name} diangkat sejajar mata dengan pencahayaan hangat, efek kilau bersih dan gerakan memutar perlahan.`;
-    const s4Voiceover = `Sampai akhirnya aku nemu penyelamat baru: ${product_name}. Ini game changer yang beneran ngubah rutinitas aku.`;
+    const s4Visual = isSaaSMode
+      ? `Hero shot sinematik! Layar laptop menampilkan halaman utama ${product_name} yang bersih dan modern.`
+      : `Hero shot sinematik! ${product_name} ditampilkan jelas dengan pencahayaan hangat dan kesan profesional.`;
+    const s4Voiceover = `Sampai akhirnya aku nemu solusi baru: ${product_name}. Ini game changer yang beneran ngubah alur kerja aku.`;
 
-    // Scene 5: Product In-Action Demo / Practical Method (4s)
-    const s5Visual = `Demonstrasi langsung penggunaan produk atau walkthrough materi di layar: langkah praktis, mudah dipahami, dan langsung bisa diaplikasikan.`;
-    const s5Voiceover = `Metode dan cara pakainya praktis banget, gak ribet sama sekali dan langsung kelihatan hasilnya.`;
+    // Scene 5: Product In-Action Demo (4s)
+    const s5Visual = isSaaSMode
+      ? `Screen recording antarmuka ${product_name}: navigasi menu intuitif, klik satu tombol langsung memproses data secara otomatis tanpa error.`
+      : isServiceMode
+      ? `Footage pengerjaan layanan secara langsung oleh tim profesional: pengerjaan teliti, peralatan berstandar tinggi, dan hasil rapi.`
+      : `Demonstrasi langsung penggunaan ${product_name}: langkah praktis, mudah dipahami, build quality premium, dan langsung terlihat hasilnya.`;
+    const s5Voiceover = isSaaSMode
+      ? `Lihat pas dipakai, dashboard-nya simpel banget, setup cuma 2 menit langsung jalan, dan otomatis beresin alur kerja kamu seketika.`
+      : isServiceMode
+      ? `Lihat tim ahli saat bekerja, pengerjaannya detail, rapi, tepat waktu, dan langsung beres tanpa bikin kamu pusing.`
+      : `Metode dan cara pakainya praktis banget, nyaman, gak ribet sama sekali dan langsung bekerja seketika.`;
+    const s5OnScreenText = isSaaSMode
+      ? 'Alur Kerja Otomatis & Cepat! ⚡'
+      : isServiceMode
+      ? 'Pengerjaan Profesional & Tuntas! 🛠️'
+      : 'Praktis, mudah & langsung terasa! ✨';
 
     // Scene 6: Key Benefit 1 (3s)
-    const s6Visual = `Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri yang meningkat.`;
+    const s6Visual = `Demonstrasi hasil langsung di kamera. Senyum puas kreator menunjukkan rasa percaya diri dan kepuasan tinggi.`;
     const s6Voiceover = `Manfaat utamanya langsung berasa, bikin aktivitas seharian jadi jauh lebih tenang dan pede maksimal.`;
 
     // Scene 7: Key Benefit 2 (3s)
-    const s7Visual = `Visual kemudahan akses kapan saja atau panduan langkah demi langkah yang fleksibel.`;
-    const s7Voiceover = `Plus praktis banget bisa diakses dari mana saja, terstruktur rapi untuk dipraktekkan hari ini.`;
+    const s7Visual = isSaaSMode
+      ? `Visual akses multi-device (laptop, tablet, HP) dengan enkripsi cloud aman dan sinkronisasi real-time 24 jam.`
+      : isServiceMode
+      ? `Dokumentasi jaminan garansi pengerjaan dan kemudahan penjadwalan fleksibel.`
+      : `Visual kemudahan akses dan penggunaan sehari-hari yang fleksibel serta praktis untuk aktivitas harian.`;
+    const s7Voiceover = isSaaSMode
+      ? `Plus fleksibel diakses dari mana saja, aman terenkripsi, dan siap di-scale seiring perkembangan bisnis kamu.`
+      : isServiceMode
+      ? `Plus ada jaminan garansi kepuasan dan tim berpengalaman yang siap melayani sesuai jadwal kamu.`
+      : `Plus praktis banget digunakan kapan saja, terstruktur rapi dan aman untuk kebutuhan harian kamu.`;
+    const s7OnScreenText = isSaaSMode
+      ? 'Akses Cloud Aman & Terenkripsi 24 Jam ☁️'
+      : isServiceMode
+      ? 'Garansi Pengerjaan & Tim Terpercaya 🛡️'
+      : 'Praktis, aman & nyaman seharian 🌟';
 
     // Scene 8: Social Proof / Reassurance (3s)
-    const s8Visual = `Menampilkan pop-up screenshot testimoni kepuasan, rating 4.9/5, atau badge garansi akses terpercaya.`;
-    const s8Voiceover = `Materi dan kualitasnya teruji, udah banyak yang buktiin hasilnya. Dijamin kredibel dan dibimbing sampai paham.`;
+    const s8Visual = isSaaSMode
+      ? `Menampilkan deretan logo brand/bisnis yang telah memakai ${product_name}, rating kepuasan 4.9/5, dan kutipan testimoni profesional.`
+      : isServiceMode
+      ? `Dokumentasi testimoni kepuasan pelanggan dan foto pengerjaan sebelum vs sesudah.`
+      : `Menampilkan pop-up screenshot testimoni kepuasan, rating 4.9/5, atau badge garansi kualitas terpercaya.`;
+    const s8Voiceover = isSaaSMode
+      ? `Gak heran udah ratusan bisnis aktif mempercayakan sistem ini dan ngerasain efisiensi nyata setiap hari.`
+      : isServiceMode
+      ? `Sudah dipercaya ribuan pelanggan puas dengan reputasi terbukti. Dijamin amanah dan berkualitas.`
+      : `Kualitasnya teruji, ratingnya tembus 4.9/5 dan udah ribuan orang ngerasain hasilnya sendiri. Terbukti terpercaya.`;
 
     // Scene 9: Strong CTA (5s)
-    const s9Visual = `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;
-    const s9Voiceover = (cta_goal || '').toLowerCase().includes('bio')
+    const s9Visual = isSaaSMode
+      ? `Kreator tersenyum menunjuk tombol CTA di bawah layar (Mulai Uji Coba Gratis / Coba Sekarang).`
+      : isServiceMode
+      ? `Kreator tersenyum sopan menunjuk ke arah tombol kontak WhatsApp atau tautan bio.`
+      : `Kreator tersenyum ramah menatap lensa, tangan menunjuk langsung ke pojok kiri bawah (tombol checkout / link bio) dengan grafis panah bergerak.`;
+    const s9Voiceover = isSaaSMode
+      ? `Yuk klik link di bawah sekarang untuk mulai uji coba gratis dan buktikan sendiri kemudahannya!`
+      : isServiceMode
+      ? `Jadwal terbatas minggu ini! Langsung klik tautan di bio profil atau hubungi kami untuk booking jadwal sekarang!`
+      : String(cta_goal || '').toLowerCase().includes('bio')
       ? `Khusus hari ini lagi ada diskon bundling terbatas! Langsung klik tautan di Bio profil sekarang sebelum kehabisan!`
-      : `Stok promo terbatas banget dan bisa habis sewaktu-waktu. Yuk tap keranjang kuning di bawah sekarang juga!`;
+      : `Stok promo terbatas banget dan bisa habis sewaktu-waktu. Yuk amankan pesanan kamu sekarang juga!`;
+    const s9OnScreenText = isSaaSMode
+      ? '👉 Coba Gratis Sekarang Tanpa Kartu Kredit! 🚀'
+      : isServiceMode
+      ? '👉 Booking Jadwal Sekarang Lewat WhatsApp / Bio! 📲'
+      : '👉 Klaim Promo Spesial Hari Ini! 🛒';
 
     const scenes = generatedScenes || [
       {
@@ -394,7 +488,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
         time_range: '12-16s',
         voiceover: s5Voiceover,
         visual_direction: s5Visual,
-        on_screen_text: 'Langsung meresap & nyaman banget! 💧',
+        on_screen_text: s5OnScreenText,
       },
       {
         scene_number: 6,
@@ -412,7 +506,7 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
         time_range: '19-22s',
         voiceover: s7Voiceover,
         visual_direction: s7Visual,
-        on_screen_text: 'Praktis, aman & nyaman seharian 🌟',
+        on_screen_text: s7OnScreenText,
       },
       {
         scene_number: 8,
@@ -430,26 +524,55 @@ Format output WAJIB berupa JSON murni dengan 9 adegan lengkap (scene 1 s/d 9) se
         time_range: '25-30s',
         voiceover: s9Voiceover,
         visual_direction: s9Visual,
-        on_screen_text: '👉 Klaim Promo Spesial Hari Ini! 🛒',
+        on_screen_text: s9OnScreenText,
       },
     ];
 
     // Ads Copy Meta & TikTok
     const defaultAdsCopy = {
-      headlines: [
-        `Solusi Atasi ${pain_point.slice(0, 32)} Seketika!`,
-        `Viral di TikTok! Rahasia Baru ${product_name}`,
-        `Jangan Beli ${category} Sebelum Lihat Ini!`,
-      ],
-      primary_texts: [
-        `Capek ngadepin ${pain_point}? Kini hadir ${product_name} yang dirancang khusus untuk memberikan hasil nyata tanpa ribet. Coba sekarang dan buktikan sendiri perbedaannya!`,
-        `Promo bundling terbatas hari ini! Dapatkan ${product_name} dengan penawaran harga spesial sebelum kehabisan stok. Garansi original & pengiriman kilat.`,
-      ],
-      call_to_actions: [
-        'Shop Now (Beli Sekarang)',
-        'Order Now (Pesan Sekarang)',
-        'Learn More (Pelajari Selengkapnya)',
-      ],
+      headlines: isSaaSMode
+        ? [
+            `Tingkatkan Efisiensi Bisnis dengan ${product_name}!`,
+            `Otomatisasi Workflow & Solusi Cepat ${pain_point.slice(0, 25)}`,
+            `Software Cloud Terbaik: Coba ${product_name} Hari Ini`,
+          ]
+        : isServiceMode
+        ? [
+            `Solusi Profesional Mengatasi ${pain_point.slice(0, 25)}`,
+            `Layanan Terpercaya Bergaransi Resmi - ${product_name}`,
+            `Booking Praktis Tanpa Ribet Bersama Tim Ahli`,
+          ]
+        : [
+            `Solusi Atasi ${pain_point.slice(0, 32)} Seketika!`,
+            `Viral di TikTok! Rahasia Baru ${product_name}`,
+            `Jangan Beli ${category} Sebelum Lihat Ini!`,
+          ],
+      primary_texts: isSaaSMode
+        ? [
+            `Tinggalkan cara manual yang memakan waktu! ${product_name} membantu tim Anda bekerja lebih cepat, akurat, dan terintegrasi dalam satu platform cloud yang aman.`,
+            `Mulai uji coba gratis Anda hari ini dan rasakan peningkatan produktivitas nyata sejak hari pertama. Setup instan tanpa instalasi rumit!`,
+          ]
+        : [
+            `Capek ngadepin ${pain_point}? Kini hadir ${product_name} yang dirancang khusus untuk memberikan hasil nyata tanpa ribet. Coba sekarang dan buktikan sendiri perbedaannya!`,
+            `Promo terbatas hari ini! Dapatkan ${product_name} dengan penawaran harga spesial sebelum kehabisan. Garansi kualitas terbaik.`,
+          ],
+      call_to_actions: isSaaSMode
+        ? [
+            'Start Free Trial (Mulai Uji Coba Gratis)',
+            'Learn More (Pelajari Selengkapnya)',
+            'Sign Up (Daftar Sekarang)',
+          ]
+        : isServiceMode
+        ? [
+            'Book Now (Booking Sekarang)',
+            'Contact Us (Hubungi Kami)',
+            'Learn More (Pelajari Selengkapnya)',
+          ]
+        : [
+            'Shop Now (Beli Sekarang)',
+            'Order Now (Pesan Sekarang)',
+            'Learn More (Pelajari Selengkapnya)',
+          ],
     };
 
     const finalAdsCopy = {

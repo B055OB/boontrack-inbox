@@ -38,9 +38,19 @@ export default function FnbCulinaryProductForm({
               type="number"
               required
               min={1}
-              value={safeForm.weight_grams || 500}
-              onChange={(e) => setProductForm((p) => ({ ...(p || {}), weight_grams: Number(e.target.value) }))}
-              placeholder="Contoh: 500 gram (Porsi Standar)"
+              value={safeForm.weight_grams !== undefined && safeForm.weight_grams !== null ? safeForm.weight_grams : (safeForm.fulfillment_metadata?.weight_grams ?? '')}
+              onChange={(e) => {
+                const val = e.target.value === '' ? '' : Number(e.target.value);
+                setProductForm((p) => ({
+                  ...(p || {}),
+                  weight_grams: typeof val === 'number' ? val : undefined,
+                  fulfillment_metadata: {
+                    ...(p?.fulfillment_metadata || {}),
+                    weight_grams: typeof val === 'number' ? val : undefined,
+                  },
+                }));
+              }}
+              placeholder="Contoh: 250 gram"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-orange-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
@@ -54,7 +64,7 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={safeForm.variants || 'Level 1, Level 2, Level 3 / Extra Sambal'}
+              value={safeForm.variants || ''}
               onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: Manis, Pedas Sedang, Super Pedas"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
@@ -69,8 +79,21 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={safeForm.promo || '2 Hari Suhu Ruang • 1 Bulan Freezer'}
-              onChange={(e) => setProductForm((p) => ({ ...(p || {}), promo: e.target.value }))}
+              value={safeForm.metadata?.shelf_life || safeForm.fulfillment_metadata?.shelf_life || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setProductForm((p) => ({
+                  ...(p || {}),
+                  metadata: {
+                    ...(p?.metadata || {}),
+                    shelf_life: val,
+                  },
+                  fulfillment_metadata: {
+                    ...(p?.fulfillment_metadata || {}),
+                    shelf_life: val,
+                  },
+                }));
+              }}
               placeholder="Contoh: 2 Hari Suhu Ruang • 1 Bulan Freezer"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
             />
@@ -82,8 +105,21 @@ export default function FnbCulinaryProductForm({
             </label>
             <input
               type="text"
-              value={safeForm.description || 'Kemasan Vacum Food Grade'}
-              onChange={(e) => setProductForm((p) => ({ ...(p || {}), description: e.target.value }))}
+              value={safeForm.metadata?.packaging_notes || safeForm.fulfillment_metadata?.packaging_notes || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setProductForm((p) => ({
+                  ...(p || {}),
+                  metadata: {
+                    ...(p?.metadata || {}),
+                    packaging_notes: val,
+                  },
+                  fulfillment_metadata: {
+                    ...(p?.fulfillment_metadata || {}),
+                    packaging_notes: val,
+                  },
+                }));
+              }}
               placeholder="Contoh: Kemasan Vacum Food Grade Kedap Udara"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
             />
