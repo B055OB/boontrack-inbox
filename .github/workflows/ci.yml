@@ -20,6 +20,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: "https://mock-project.supabase.co"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-test"
       SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-test"
+      WORKFORCE_SUPABASE_URL: "https://mock-project.supabase.co"
+      WORKFORCE_SUPABASE_ANON_KEY: "dummy-workforce-anon-key"
       R2_ACCESS_KEY_ID: "dummy-r2-key"
       R2_SECRET_ACCESS_KEY: "dummy-r2-secret"
       TELEGRAM_BOT_TOKEN: "dummy-telegram-token"
@@ -53,12 +55,11 @@ jobs:
         run: npm run typecheck || npx tsc --noEmit
 
       - name: Run Jest Test Suite
-        run: npm test -- --coverage
+        run: npm test -- --coverage --maxWorkers=2
 
   postgres_integration:
     name: Ephemeral PostgreSQL Migration & Security Boundary Proof
     runs-on: ubuntu-latest
-    needs: test
     services:
       postgres:
         image: postgres:15-alpine
