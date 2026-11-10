@@ -20,7 +20,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: "https://mock-project.supabase.co"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-test"
       SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-test"
-      WORKFORCE_SUPABASE_URL: "https://mock-project.supabase.co"
+      WORKFORCE_SUPABASE_URL: "https://tjkbgxrckaocgosvmzmj.supabase.co"
       WORKFORCE_SUPABASE_ANON_KEY: "dummy-workforce-anon-key"
       R2_ACCESS_KEY_ID: "dummy-r2-key"
       R2_SECRET_ACCESS_KEY: "dummy-r2-secret"
@@ -82,7 +82,7 @@ jobs:
       NODE_ENV: "test"
       DISPOSABLE_POSTGRES_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
       WORKFORCE_DATABASE_DIRECT_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
-      WORKFORCE_SUPABASE_URL: "https://mock-project.supabase.co"
+      WORKFORCE_SUPABASE_URL: "https://tjkbgxrckaocgosvmzmj.supabase.co"
       WORKFORCE_SUPABASE_ANON_KEY: "dummy-workforce-anon-key"
       WORKFORCE_SUPABASE_SERVICE_ROLE_KEY: "dummy-workforce-service-role"
       NEXT_PUBLIC_SUPABASE_URL: "https://mock-project.supabase.co"
@@ -105,7 +105,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Initialize DB Schema & Run Baseline Migrations (001-012)
+      - name: Initialize DB Schema & Run Migrations (schema-draft.sql + 007-012)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
       - name: Run PostgreSQL Integration Batch 1 (Schema & RLS — 5 Suites)

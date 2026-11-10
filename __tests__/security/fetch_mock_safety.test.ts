@@ -20,6 +20,13 @@ describe('BWM Phase 6.1N.2 — Gate A: Global Fetch Mock Safety', () => {
     );
   });
 
+  it('A.1b Rejects live Supabase staging hostname and fails closed with zero egress', async () => {
+    const liveStagingRestUrl = 'https://tjkbgxrckaocgosvmzmj.supabase.co/rest/v1/tenants?select=*';
+    await expect(fetch(liveStagingRestUrl)).rejects.toThrow(
+      '[SECURITY FAIL-CLOSED] Blocked unapproved network request: GET https://tjkbgxrckaocgosvmzmj.supabase.co/rest/v1/tenants?select=*'
+    );
+  });
+
   it('A.2 Rejects unapproved path on an allowlisted host (Gemini & Telegram fail-closed)', async () => {
     // Unapproved path on generativelanguage.googleapis.com
     await expect(

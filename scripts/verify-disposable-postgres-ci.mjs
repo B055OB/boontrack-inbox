@@ -311,7 +311,13 @@ async function runVerification() {
     );
     const membershipAlphaId = memAlphaRes.rows[0].id;
 
-    // Seed personnel profile
+    const memBetaRes = await client.query(
+      `SELECT id FROM workforce_staging.tenant_memberships WHERE user_id = $1`,
+      [officerBetaUserId]
+    );
+    const membershipBetaId = memBetaRes.rows[0].id;
+
+    // Seed personnel profiles (Alpha & Beta)
     const personnelAlphaRes = await client.query(`
       INSERT INTO workforce_staging.personnel (tenant_id, tenant_slug, user_id, membership_id, name, nik, role)
       VALUES ('${tenantAlphaId}', 'alpha-security', '${officerAlphaUserId}', '${membershipAlphaId}', 'Officer Alpha', 'NIK-001', 'field_personnel')
@@ -319,45 +325,91 @@ async function runVerification() {
     `);
     const personnelAlphaId = personnelAlphaRes.rows[0].id;
 
+    const personnelBetaRes = await client.query(`
+      INSERT INTO workforce_staging.personnel (tenant_id, tenant_slug, user_id, membership_id, name, nik, role)
+      VALUES ('${tenantBetaId}', 'beta-defense', '${officerBetaUserId}', '${membershipBetaId}', 'Officer Beta', 'NIK-002', 'field_personnel')
+      RETURNING id;
+    `);
+    const personnelBetaId = personnelBetaRes.rows[0].id;
+
+    // Fixture verification: Confirm both Alpha and Beta personnel records exist in base table
+    const fixtureCheck = await client.query(`
+      SELECT count(*) as count FROM workforce_staging.personnel
+      WHERE id IN ('${personnelAlphaId}', '${personnelBetaId}');
+    `);
+    if (Number(fixtureCheck.rows[0].count) !== 2) {
+      throw new Error('Fixture integrity failure: Both Alpha and Beta personnel records must exist in DB.');
+    }
+
     // Seed credentials as service_role
     await client.query(`
       INSERT INTO workforce_staging.personnel_credentials (personnel_id, tenant_id, pin_hash, pin_algo)
       VALUES ('${personnelAlphaId}', '${tenantAlphaId}', '$argon2id$v=19$m=65536,t=3,p=1$c29tZXNhbHQ$RdescudvJCsgqlfreSdK7PvJRhkX', 'argon2id');
     `);
-    console.log('✓ Seeded test personnel and Argon2id credential hash.');
+    console.log('✓ Seeded test personnel (Alpha & Beta) and Argon2id credential hash.');
 
-    // Test 1: Anonymous cannot read credentials
+    // Test 1: Anonymous cannot read credentials (SQLSTATE 42501)
     await client.query(`SET ROLE anon;`);
     let anonBlocked = false;
+    let anonErrCode = '';
     try {
       await client.query(`SELECT * FROM workforce_staging.personnel_credentials;`);
     } catch (err) {
+      anonErrCode = err.code;
       if (err.code === '42501') anonBlocked = true; // permission denied
     }
-    if (!anonBlocked) throw new Error('Security failure: Anonymous was able to query personnel_credentials!');
+    if (!anonBlocked) throw new Error(`Security failure: Anonymous was able to query personnel_credentials! (code: ${anonErrCode})`);
     console.log('✓ Anonymous role rejected with SQLSTATE 42501 when querying personnel_credentials.');
 
-    // Test 2: Ordinary Authenticated Member cannot read credentials
+    // Test 2: Ordinary Authenticated Member cannot read credentials (SQLSTATE 42501)
     await client.query(`SET ROLE authenticated;`);
     await client.query(`SET request.jwt.claim.sub = '${officerAlphaUserId}';`);
     await client.query(`SET request.jwt.claim.role = 'authenticated';`);
 
     let memberCredBlocked = false;
+    let memberErrCode = '';
     try {
       await client.query(`SELECT * FROM workforce_staging.personnel_credentials;`);
     } catch (err) {
+      memberErrCode = err.code;
       if (err.code === '42501') memberCredBlocked = true;
     }
-    if (!memberCredBlocked) throw new Error('Security failure: Authenticated member queried personnel_credentials!');
+    if (!memberCredBlocked) throw new Error(`Security failure: Authenticated member queried personnel_credentials! (code: ${memberErrCode})`);
     console.log('✓ Authenticated member rejected with SQLSTATE 42501 on personnel_credentials.');
 
-    // Test 3: Public view public.workforce_personnel projects zero credential fields
+    // Test 3: Public view public.workforce_personnel reads own record with zero credential fields
     const viewRows = await client.query(`SELECT * FROM public.workforce_personnel WHERE tenant_id = '${tenantAlphaId}';`);
-    if (viewRows.rows.length === 0) throw new Error('Authenticated member unable to view own personnel profile');
+    if (viewRows.rows.length === 0) throw new Error('Authenticated member unable to view own personnel profile via view');
     if ('pin_hash' in viewRows.rows[0] || 'pin' in viewRows.rows[0]) {
       throw new Error('Critical security failure: public.workforce_personnel view leaks pin_hash!');
     }
     console.log('✓ public.workforce_personnel successfully accessed by member with ZERO credential fields exposed.');
+
+    // Test 3b: Tenant isolation via public view (Alpha member cannot read Beta personnel)
+    const betaViaView = await client.query(`SELECT * FROM public.workforce_personnel WHERE tenant_id = '${tenantBetaId}';`);
+    if (betaViaView.rows.length !== 0) {
+      throw new Error('Tenant isolation breach: Officer Alpha observed Beta personnel via public view!');
+    }
+    const allViaView = await client.query(`SELECT * FROM public.workforce_personnel;`);
+    const leakedBetaInView = allViaView.rows.filter(r => r.tenant_id === tenantBetaId);
+    if (leakedBetaInView.length > 0) {
+      throw new Error('Tenant isolation breach: Unfiltered public view returned Beta rows to Officer Alpha!');
+    }
+    console.log('✓ Tenant isolation confirmed on public.workforce_personnel: Beta rows invisible to Alpha member.');
+
+    // Test 3c: RLS remains effective when querying workforce_staging.personnel directly
+    const alphaDirect = await client.query(`SELECT * FROM workforce_staging.personnel WHERE tenant_id = '${tenantAlphaId}';`);
+    if (alphaDirect.rows.length === 0) throw new Error('Authenticated member unable to read own personnel directly under RLS');
+    const betaDirect = await client.query(`SELECT * FROM workforce_staging.personnel WHERE tenant_id = '${tenantBetaId}';`);
+    if (betaDirect.rows.length !== 0) {
+      throw new Error('RLS breach: Officer Alpha observed Beta personnel directly on workforce_staging.personnel!');
+    }
+    const allDirect = await client.query(`SELECT * FROM workforce_staging.personnel;`);
+    const leakedBetaDirect = allDirect.rows.filter(r => r.tenant_id === tenantBetaId);
+    if (leakedBetaDirect.length > 0) {
+      throw new Error('RLS breach: Unfiltered query on workforce_staging.personnel returned Beta rows to Officer Alpha!');
+    }
+    console.log('✓ RLS verified on workforce_staging.personnel: Direct queries strictly tenant-scoped.');
 
     // Test 4: Supervisor cannot tamper with or read credentials
     await client.query(`SET request.jwt.claim.sub = '${supervisorAlphaUserId}';`);
@@ -372,6 +424,45 @@ async function runVerification() {
 
     // Reset role to superuser/service_role
     await client.query(`RESET ROLE;`);
+
+    // Test 5: Privilege Audit on Migration 011 Operational Tables
+    const viewSourceTables = ['facilities', 'personnel', 'incidents', 'checkpoints', 'attendance_logs', 'checkpoint_scans'];
+    for (const tbl of viewSourceTables) {
+      const privRes = await client.query(`
+        SELECT has_table_privilege('authenticated', 'workforce_staging.' || $1, 'SELECT') AS has_select;
+      `, [tbl]);
+      if (!privRes.rows[0].has_select) {
+        throw new Error(`Privilege failure: authenticated role must have SELECT on workforce_staging.${tbl}`);
+      }
+    }
+    console.log('✓ Verified: Minimum required SELECT privilege granted to authenticated on all 6 view source tables.');
+
+    const nonViewTables = ['shift_handovers', 'notification_outbox', 'credential_audit_logs', 'personnel_credentials'];
+    for (const tbl of nonViewTables) {
+      const privRes = await client.query(`
+        SELECT has_table_privilege('authenticated', 'workforce_staging.' || $1, 'SELECT') AS has_select;
+      `, [tbl]);
+      if (privRes.rows[0].has_select) {
+        throw new Error(`Privilege breach: authenticated role must NOT have SELECT on workforce_staging.${tbl}`);
+      }
+    }
+    console.log('✓ Verified: Zero SELECT privilege for authenticated on restricted tables (handovers, outbox, audit logs, credentials).');
+
+    const allOperationalTables = [
+      'facilities', 'personnel', 'incidents', 'checkpoints', 'attendance_logs',
+      'checkpoint_scans', 'shift_handovers', 'notification_outbox', 'credential_audit_logs', 'personnel_credentials'
+    ];
+    for (const tbl of allOperationalTables) {
+      for (const action of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        const privRes = await client.query(`
+          SELECT has_table_privilege('authenticated', 'workforce_staging.' || $1, $2) AS has_priv;
+        `, [tbl, action]);
+        if (privRes.rows[0].has_priv) {
+          throw new Error(`Privilege breach: authenticated role must NOT have ${action} on workforce_staging.${tbl}`);
+        }
+      }
+    }
+    console.log('✓ Verified: Zero INSERT/UPDATE/DELETE/TRUNCATE privileges for authenticated on all 10 operational tables.');
 
     // ========================================================================
     // SECTION 5: REVOCATION & AUTHZ_VERSION FUNCTIONALITY

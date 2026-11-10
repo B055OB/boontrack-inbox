@@ -287,6 +287,15 @@ CREATE POLICY rls_credential_audit_logs_insert ON workforce_staging.credential_a
 GRANT ALL ON ALL TABLES IN SCHEMA workforce_staging TO postgres, service_role;
 REVOKE ALL ON ALL TABLES IN SCHEMA workforce_staging FROM anon;
 
+-- Minimum SELECT privileges on underlying tables to support public security_invoker views for authenticated tenant members
+-- (Data access remains strictly filtered by RLS policies using is_trusted_tenant_member)
+GRANT SELECT ON workforce_staging.facilities TO authenticated;
+GRANT SELECT ON workforce_staging.personnel TO authenticated;
+GRANT SELECT ON workforce_staging.incidents TO authenticated;
+GRANT SELECT ON workforce_staging.checkpoints TO authenticated;
+GRANT SELECT ON workforce_staging.attendance_logs TO authenticated;
+GRANT SELECT ON workforce_staging.checkpoint_scans TO authenticated;
+
 -- Explicitly revoke personnel_credentials from authenticated tenant roles
 REVOKE ALL ON workforce_staging.personnel_credentials FROM public, authenticated, anon;
 GRANT ALL ON workforce_staging.personnel_credentials TO postgres, service_role;
