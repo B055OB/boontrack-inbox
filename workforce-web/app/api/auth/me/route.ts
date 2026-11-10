@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyBwmSessionToken } from '@/workforce-web/lib/auth/session';
+import { getAuthenticatedWorkforceSession } from '@/workforce-web/lib/auth/session';
 
 export async function GET(req: NextRequest) {
   const tokenCookie = req.cookies.get('bwm_session_token')?.value;
@@ -16,20 +16,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const verification = verifyBwmSessionToken(tokenCookie);
+  const authResult = await getAuthenticatedWorkforceSession(req);
 
-  if (!verification.valid || !verification.payload) {
+  if (!authResult.session) {
     return NextResponse.json(
       {
         authenticated: false,
         session: null,
-        error: verification.error || 'INVALID_SESSION_TOKEN',
+        error: authResult.error || 'INVALID_SESSION_TOKEN',
       },
-      { status: verification.statusCode || 401 }
+      { status: authResult.status || 401 }
     );
   }
 
-  const payload = verification.payload;
+  const payload = authResult.session;
 
   return NextResponse.json({
     authenticated: true,

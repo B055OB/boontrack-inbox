@@ -30,6 +30,48 @@ export interface BwmSessionPayload {
   nonce: string;
 }
 
+// In-Memory Revocation Registry for Explicit Logouts and Revoked Sessions
+const revokedTokens = new Set<string>();
+const revokedNonces = new Set<string>();
+
+/**
+ * Explicitly revokes a session token (e.g. on logout or administrative session revocation).
+ */
+export function revokeBwmSessionToken(token: string): void {
+  if (!token || typeof token !== 'string') return;
+  const trimmed = token.trim();
+  revokedTokens.add(trimmed);
+  try {
+    const parts = trimmed.split('.');
+    if (parts.length === 3) {
+      const rawPayload = Buffer.from(parts[1], 'base64url').toString('utf8');
+      const payload: BwmSessionPayload = JSON.parse(rawPayload);
+      if (payload.nonce) {
+        revokedNonces.add(payload.nonce);
+      }
+    }
+  } catch {
+    // Ignore malformed token payloads during revocation
+  }
+}
+
+/**
+ * Checks whether a token or its cryptographic nonce has been revoked.
+ */
+export function isSessionRevoked(token: string, payload?: BwmSessionPayload): boolean {
+  if (revokedTokens.has(token.trim())) return true;
+  if (payload?.nonce && revokedNonces.has(payload.nonce)) return true;
+  return false;
+}
+
+/**
+ * Resets the revocation registry (primarily for test suite isolation).
+ */
+export function clearRevocationRegistry(): void {
+  revokedTokens.clear();
+  revokedNonces.clear();
+}
+
 /**
  * Resolves the server-only secret key for HMAC-SHA256 session signing.
  * Fails closed if no secret is available.
@@ -120,7 +162,14 @@ export function verifyBwmSessionToken(token: string | undefined | null): Verific
     return { valid: false, error: 'MISSING_TOKEN', statusCode: 401 };
   }
 
-  const parts = token.trim().split('.');
+  const cleanToken = token.trim();
+
+  // Revocation registry check (Logout invalidation)
+  if (isSessionRevoked(cleanToken)) {
+    return { valid: false, error: 'SESSION_REVOKED_LOGGED_OUT', statusCode: 401 };
+  }
+
+  const parts = cleanToken.split('.');
   if (parts.length !== 3) {
     return { valid: false, error: 'MALFORMED_TOKEN_STRUCTURE', statusCode: 401 };
   }
@@ -143,6 +192,11 @@ export function verifyBwmSessionToken(token: string | undefined | null): Verific
     const rawPayload = Buffer.from(encodedPayload, 'base64url').toString('utf8');
     const payload: BwmSessionPayload = JSON.parse(rawPayload);
 
+    // Check nonce revocation
+    if (isSessionRevoked(cleanToken, payload)) {
+      return { valid: false, error: 'SESSION_REVOKED_LOGGED_OUT', statusCode: 401 };
+    }
+
     // Validate required claims
     if (!payload.userId || !payload.tenantId || !payload.role || !payload.exp) {
       return { valid: false, error: 'MISSING_REQUIRED_CLAIMS', statusCode: 401 };
@@ -161,12 +215,96 @@ export function verifyBwmSessionToken(token: string | undefined | null): Verific
 }
 
 /**
+ * Live authority verification against the database SSOT (workforce_staging.tenants & tenant_memberships).
+ * Enforces immediate rejection when membership is revoked, user is deactivated, or tenant is suspended.
+ */
+export async function verifySessionAuthority(
+  payload: BwmSessionPayload
+): Promise<{
+  authorized: boolean;
+  error?: string;
+  status?: number;
+  authoritativeRole?: BwmRole;
+}> {
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+
+    // 1. Verify Tenant Authority & Non-Suspension
+    const { data: tenant, error: tenantErr } = await supabaseAdmin
+      .schema('workforce_staging')
+      .from('tenants')
+      .select('id, slug, tier, metadata')
+      .eq('id', payload.tenantId)
+      .maybeSingle();
+
+    if (tenantErr) {
+      console.error('[BWM AUTH] Tenant authority check DB error:', tenantErr.message);
+      return { authorized: false, error: 'DATABASE_LOOKUP_FAILED', status: 503 };
+    }
+
+    if (!tenant) {
+      return { authorized: false, error: 'TENANT_NOT_FOUND', status: 404 };
+    }
+
+    const tenantMeta = tenant.metadata || {};
+    if (
+      tenantMeta.status === 'SUSPENDED' ||
+      tenantMeta.is_active === false ||
+      tenantMeta.suspended === true
+    ) {
+      return { authorized: false, error: 'TENANT_SUSPENDED', status: 403 };
+    }
+
+    // 2. Verify Active Membership Authority in workforce_staging.tenant_memberships
+    const { data: membership, error: memErr } = await supabaseAdmin
+      .schema('workforce_staging')
+      .from('tenant_memberships')
+      .select('id, user_id, tenant_id, role, is_active')
+      .eq('user_id', payload.userId)
+      .eq('tenant_id', payload.tenantId)
+      .maybeSingle();
+
+    if (memErr) {
+      console.error('[BWM AUTH] Membership authority check DB error:', memErr.message);
+      return { authorized: false, error: 'DATABASE_LOOKUP_FAILED', status: 503 };
+    }
+
+    if (!membership) {
+      return { authorized: false, error: 'MEMBERSHIP_NOT_FOUND', status: 403 };
+    }
+
+    if (membership.is_active !== true) {
+      return { authorized: false, error: 'MEMBERSHIP_REVOKED', status: 403 };
+    }
+
+    let authoritativeRole: BwmRole = 'field_personnel';
+    const dbRole = (membership.role || '').toLowerCase();
+    if (dbRole.includes('owner') || dbRole.includes('merchant') || dbRole.includes('master')) {
+      authoritativeRole = 'master_reseller';
+    } else if (dbRole.includes('super')) {
+      authoritativeRole = 'supervisor';
+    }
+
+    return { authorized: true, authoritativeRole };
+  } catch (err: any) {
+    console.error('[BWM AUTH] Authority check exception:', err);
+    return { authorized: false, error: 'AUTHORITY_CHECK_EXCEPTION', status: 503 };
+  }
+}
+
+export interface AuthenticatedSessionOptions {
+  skipDatabaseLookup?: boolean;
+}
+
+/**
  * Authorizes a request in Next.js App Router API routes.
  * Extracts token from HttpOnly cookie or Authorization Bearer header.
  * Derives tenant, role, and user identity strictly from verified session.
+ * Live-checks membership and tenant authority to enforce immediate revocation.
  */
 export async function getAuthenticatedWorkforceSession(
-  req: NextRequest | Request
+  req: NextRequest | Request,
+  options?: AuthenticatedSessionOptions
 ): Promise<{
   session: BwmSessionPayload | null;
   error?: string;
@@ -202,7 +340,24 @@ export async function getAuthenticatedWorkforceSession(
     return { session: null, error: result.error || 'UNAUTHORIZED_INVALID_TOKEN', status: result.statusCode || 401 };
   }
 
-  return { session: result.payload };
+  const payload: BwmSessionPayload = { ...result.payload };
+
+  // 3. Live Authority Verification against Database (SSOT)
+  if (!options?.skipDatabaseLookup) {
+    const authorityCheck = await verifySessionAuthority(payload);
+    if (!authorityCheck.authorized) {
+      return {
+        session: null,
+        error: authorityCheck.error || 'UNAUTHORIZED_REVOKED_AUTHORITY',
+        status: authorityCheck.status || 403,
+      };
+    }
+    if (authorityCheck.authoritativeRole) {
+      payload.role = authorityCheck.authoritativeRole;
+    }
+  }
+
+  return { session: payload };
 }
 
 /**
