@@ -1,18 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StudioPurgeService } from '@/lib/services/studio-purge.service';
+import { getAuthenticatedStudioSession } from '@/lib/auth/studio-session-guard';
+import { safeFetchMediaAsset } from '@/lib/security/ssrf-guard';
 
 export const runtime = 'nodejs';
 
 /**
  * GET /api/studio/download
- * Internal Same-Origin Streaming Download Proxy for Studio Media Assets.
- * 
- * Solves HTML5 Cross-Origin Download Policy:
- * Forces browsers (Chrome, Safari, Edge, Mobile) to trigger a native file download
- * instead of opening/playing cross-origin MP4 files in a new tab.
+ * Hardened Internal Same-Origin Streaming Download Proxy for Studio Media Assets.
+ * Remediates Finding: SEC-P0-01 (SSRF, Unauthenticated Access & DNS Rebinding Defenses)
+ *
+ * Security Controls:
+ * 1. Authoritative Studio host-session authentication required (RFC 6265bis).
+ * 2. Restricts download sources to explicitly approved storage origins (R2, Supabase Storage, BoonTrack Media).
+ * 3. Proactive DNS resolution and complete rejection of loopback, RFC 1918 private, link-local, and cloud metadata addresses.
+ * 4. Manual redirect validation on every hop to eliminate redirect-based SSRF.
+ * 5. Rejection of arbitrary non-media upstream payloads without echoing sensitive error messages.
  */
 export async function GET(req: NextRequest) {
   try {
+    // 1. Enforce Authenticated Studio Host Session
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk mengunduh berkas media.',
+        },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const fileUrl = searchParams.get('url');
     const rawFilename = searchParams.get('filename') || 'studio-video.mp4';
@@ -20,12 +39,12 @@ export async function GET(req: NextRequest) {
 
     if (!fileUrl) {
       return NextResponse.json(
-        { success: false, message: 'Parameter "url" berkas video wajib disertakan.' },
+        { success: false, error: 'MISSING_URL', message: 'Parameter "url" berkas video wajib disertakan.' },
         { status: 400 }
       );
     }
 
-    // Sanitize filename to prevent header injection
+    // 2. Sanitize filename to prevent header injection and directory traversal
     let cleanFilename = rawFilename
       .replace(/[\r\n\t]/g, '')
       .replace(/[/\\?%*:|"<>]/g, '_')
@@ -35,43 +54,41 @@ export async function GET(req: NextRequest) {
       cleanFilename += '.mp4';
     }
 
-    // Track download in background if job ID is provided
+    // 3. Track download in background if job ID is provided
     if (jobId) {
       StudioPurgeService.trackDownload(jobId).catch(err => {
         console.warn('[Studio Download Proxy] Warning tracking download:', err);
       });
     }
 
-    // Stream from source URL
-    const upstreamRes = await fetch(fileUrl, {
-      headers: {
-        'User-Agent': 'BoonTrack-Studio-Download-Proxy/1.0',
-      },
-    });
+    // 4. Secure Fetch with SSRF & DNS Rebinding Guards
+    const fetchResult = await safeFetchMediaAsset(fileUrl, 3);
 
-    if (!upstreamRes.ok || !upstreamRes.body) {
+    if (!fetchResult.success || !fetchResult.body) {
       return NextResponse.json(
         {
           success: false,
-          message: `Gagal mengambil berkas video dari server penyedia (Status ${upstreamRes.status}).`,
+          error: fetchResult.status === 403 ? 'BLOCKED_STORAGE_DESTINATION' : 'UPSTREAM_FETCH_FAILED',
+          message: fetchResult.error || 'Gagal mengambil berkas media dari server penyimpanan resmi.',
         },
-        { status: upstreamRes.status >= 500 ? 502 : 404 }
+        { status: fetchResult.status }
       );
     }
 
+    // 5. Construct Safe Streaming Response Headers
     const headers = new Headers();
     headers.set('Content-Disposition', `attachment; filename="${cleanFilename}"`);
-    headers.set('Content-Type', upstreamRes.headers.get('content-type') || 'video/mp4');
-    
-    const contentLength = upstreamRes.headers.get('content-length');
-    if (contentLength) {
-      headers.set('Content-Length', contentLength);
+    headers.set('Content-Type', fetchResult.contentType || 'video/mp4');
+
+    if (fetchResult.contentLength) {
+      headers.set('Content-Length', fetchResult.contentLength);
     }
 
-    headers.set('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
     headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('X-Frame-Options', 'DENY');
 
-    return new NextResponse(upstreamRes.body as any, {
+    return new NextResponse(fetchResult.body as any, {
       status: 200,
       headers,
     });
@@ -80,7 +97,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: err.message || 'Terjadi kesalahan sistem saat mengunduh berkas video.',
+        error: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan sistem saat memproses pengunduhan berkas media.',
       },
       { status: 500 }
     );

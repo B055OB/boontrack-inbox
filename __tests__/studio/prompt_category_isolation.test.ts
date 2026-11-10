@@ -16,9 +16,12 @@
  */
 
 import { POST } from '@/app/api/studio/script/generate/route';
+import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { signHostSessionToken } from '@/lib/auth/host-session';
 
 describe('Studio AI Script & Prompt Category Isolation Suite', () => {
   const originalEnv = process.env;
+  let authCookie: string;
 
   beforeEach(() => {
     process.env = {
@@ -26,6 +29,19 @@ describe('Studio AI Script & Prompt Category Isolation Suite', () => {
       GEMINI_API_KEY_STUDIO: 'mock-gemini-studio-api-key',
     };
     jest.clearAllMocks();
+
+    authCookie = signHostSessionToken({
+      product: 'studio',
+      userId: 'user-prompt-test',
+      tenantId: '11111111-2222-3333-4444-555555555555',
+      tenantSlug: 'test-studio-tenant',
+    });
+
+    jest.spyOn(StudioCreditService, 'reserveCredits').mockResolvedValue({
+      success: true,
+      credits_remaining: 50,
+      transaction_id: 'mock-tx-001',
+    } as any);
   });
 
   afterEach(() => {
@@ -78,7 +94,10 @@ describe('Studio AI Script & Prompt Category Isolation Suite', () => {
 
     const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: `__Host-bt_studio_session=${authCookie}`,
+      },
       body: JSON.stringify({
         product_name: 'BoonTrack Analytics Cloud',
         pain_point: 'Manual Excel reporting takes 5 hours daily',
@@ -144,7 +163,10 @@ describe('Studio AI Script & Prompt Category Isolation Suite', () => {
 
     const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: `__Host-bt_studio_session=${authCookie}`,
+      },
       body: JSON.stringify({
         product_name: 'Shabu Ajhi Home Catering',
         pain_point: 'Repot masak dan cuci piring saat acara kumpul keluarga',
@@ -166,7 +188,10 @@ describe('Studio AI Script & Prompt Category Isolation Suite', () => {
 
     const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: `__Host-bt_studio_session=${authCookie}`,
+      },
       body: JSON.stringify({
         product_name: 'POS Kasir Cloud Enterprise',
         pain_point: 'Antrean kasir membludak dan pembukuan sering selisih',
@@ -206,7 +231,10 @@ describe('Studio AI Script & Prompt Category Isolation Suite', () => {
 
     const req = new Request('https://studio.boontrack.com/api/studio/script/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: `__Host-bt_studio_session=${authCookie}`,
+      },
       body: JSON.stringify({
         product_name: 'Jasa Servis AC Bersih Kilat',
         pain_point: 'AC bocor dan bau apek',

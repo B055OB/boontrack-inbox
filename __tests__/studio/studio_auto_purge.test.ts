@@ -6,6 +6,7 @@
 import { StudioPurgeService } from '@/lib/services/studio-purge.service';
 import { POST as trackDownloadHandler } from '@/app/api/studio/renders/[id]/track-download/route';
 import { GET as autoPurgeCronHandler } from '@/app/api/studio/cron/auto-purge/route';
+import { signHostSessionToken } from '@/lib/auth/host-session';
 import type { NextRequest } from 'next/server';
 
 interface MockJob {
@@ -51,7 +52,12 @@ function createMockSupabase() {
         maybeSingle: async () => {
           const idFilter = filters.find(f => f.field === 'id');
           if (idFilter) {
-            const found = mockJobs.find(j => j.id === idFilter.val);
+            const tenantFilter = filters.find(f => f.field === 'tenant_id');
+            const found = mockJobs.find(j => {
+              if (j.id !== idFilter.val) return false;
+              if (tenantFilter && j.tenant_id !== tenantFilter.val) return false;
+              return true;
+            });
             return { data: found || null, error: null };
           }
           return { data: mockJobs[0] || null, error: null };
@@ -150,6 +156,14 @@ describe('Studio Auto-Purge Storage & Download Tracking Suite', () => {
 
     const req = {
       url: `https://studio.boontrack.com/api/studio/renders/${testJobId}/track-download`,
+      headers: new Headers({
+        cookie: `__Host-bt_studio_session=${signHostSessionToken({
+          product: 'studio',
+          userId: 'user-purge-001',
+          tenantId: 'tenant-123',
+          tenantSlug: 'tenant-123-store',
+        })}`,
+      }),
       method: 'POST',
     } as unknown as NextRequest;
 

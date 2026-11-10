@@ -410,5 +410,59 @@ describe('studio.boontrack.com & creator.boontrack.com Routing Middleware', () =
       expect(location).toBe('https://creator.boontrack.com/@suzieray');
     });
   });
+
+  describe('D. Preview & Staging Studio Host Bypass (*.vercel.app & staging-studio)', () => {
+    it('1. Rewrites root / to /studio on Vercel preview deployment host', async () => {
+      const previewHost = 'boontrack-studio-cruz1u10e-boontrack.vercel.app';
+      const req = new NextRequest(`https://${previewHost}/`, {
+        headers: { host: previewHost },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(new URL(rewriteHeader!).pathname).toBe('/studio');
+    });
+
+    it('2. Rewrites /fcd-automator to /studio/fcd-automator on Vercel preview host', async () => {
+      const previewHost = 'boontrack-studio-cruz1u10e-boontrack.vercel.app';
+      const req = new NextRequest(`https://${previewHost}/fcd-automator`, {
+        headers: { host: previewHost },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio/fcd-automator');
+    });
+
+    it('3. Rewrites root / to /studio on staging-studio.boontrack.com', async () => {
+      const req = new NextRequest('https://staging-studio.boontrack.com/', {
+        headers: { host: 'staging-studio.boontrack.com' },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      expect(rewriteHeader).toContain('/studio');
+    });
+
+    it('4. Preserves tenant subdomain resolution for non-studio *.vercel.app hosts', async () => {
+      const nonStudioPreviewHost = 'shabu-ajhi-preview.vercel.app';
+      const req = new NextRequest(`https://${nonStudioPreviewHost}/`, {
+        headers: { host: nonStudioPreviewHost },
+      });
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      const rewriteHeader = res.headers.get('x-middleware-rewrite');
+      expect(rewriteHeader).toBeDefined();
+      // Should rewrite to tenant slug, NOT /studio
+      expect(new URL(rewriteHeader!).pathname).toBe('/shabu-ajhi-preview');
+    });
+  });
 });
 

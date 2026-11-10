@@ -15,6 +15,7 @@ const config: Config = {
     // Resolve Next.js path aliases
     '^@/(.*)$': '<rootDir>/$1',
     '\\.(css|less|sass|scss)$': '<rootDir>/__tests__/__mocks__/styleMock.js',
+    '^qrcode$': '<rootDir>/node_modules/qrcode/lib/index.js',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {

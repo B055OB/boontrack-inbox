@@ -94,8 +94,14 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
     return true;
   }
 
-  // studio.boontrack.com
-  if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+  // studio.boontrack.com & staging-studio
+  if (
+    hostClean === 'studio.boontrack.com' ||
+    hostClean.startsWith('studio.') ||
+    hostClean === 'staging-studio.boontrack.com' ||
+    hostClean.startsWith('staging-studio.') ||
+    hostClean.includes('boontrack-studio')
+  ) {
     return true;
   }
 
@@ -485,6 +491,14 @@ function extractSubdomain(hostWithPort: string): string | null {
     return parts[parts.length - 1] || null;
   }
 
+  // Studio preview hosts must never be treated as tenant subdomains
+  if (
+    (hostClean.endsWith('.vercel.app') && hostClean.includes('boontrack-studio')) ||
+    hostClean.includes('staging-studio')
+  ) {
+    return null;
+  }
+
   if (hostClean.endsWith('.boontrack.com')) {
     const parts = hostClean.replace('.boontrack.com', '').split('.');
     return parts[parts.length - 1] || null;
@@ -535,6 +549,22 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 async function handleRouting(req: NextRequest, hostClean: string) {
   const pathname = req.nextUrl.pathname;
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const subdomain = extractSubdomain(host);
+
+  // ── PREVIEW & STAGING STUDIO HOST DETECTION (P0 STUDIO GATE) ──
+  // Bypass multi-tenant store resolver strictly for boontrack-studio preview instances
+  // and staging-studio domain, preserving tenant resolution for all other hosts.
+  const isStudioPreview =
+    (hostClean.endsWith('.vercel.app') && hostClean.includes('boontrack-studio')) ||
+    hostClean === 'staging-studio.boontrack.com' ||
+    hostClean.startsWith('staging-studio.') ||
+    hostClean.includes('staging-studio');
+
+  const isStudioHost =
+    hostClean === 'studio.boontrack.com' ||
+    hostClean.startsWith('studio.') ||
+    subdomain === 'studio' ||
+    isStudioPreview;
 
   // ── CACHE FLUSH TRIGGER (Authorized Internal Memory Cache Purge) ──
   // P0 Security Invariant: Zero URL secret, zero CRON_SECRET fallback, fail closed when missing
@@ -583,7 +613,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         url.pathname = '/branding/creator/favicon.ico';
         return NextResponse.rewrite(url);
       }
-      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+      if (isStudioHost) {
         const url = req.nextUrl.clone();
         url.pathname = '/branding/studio/favicon.ico';
         return NextResponse.rewrite(url);
@@ -600,7 +630,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         url.pathname = '/branding/creator/icon.png';
         return NextResponse.rewrite(url);
       }
-      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+      if (isStudioHost) {
         const url = req.nextUrl.clone();
         url.pathname = '/branding/studio/icon.png';
         return NextResponse.rewrite(url);
@@ -612,7 +642,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         url.pathname = '/branding/creator/manifest.json';
         return NextResponse.rewrite(url);
       }
-      if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+      if (isStudioHost) {
         const url = req.nextUrl.clone();
         url.pathname = '/branding/studio/manifest.json';
         return NextResponse.rewrite(url);
@@ -629,8 +659,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ===========================================================================
   // 1. DASHBOARD SUBDOMAIN ROUTING (dashboard.boontrack.com) - URUTAN PALING ATAS
   // ===========================================================================
-  const subdomain = extractSubdomain(host);
-
   // ===========================================================================
   // SUBDOMAIN: desk.boontrack.com (LEGACY OPERATOR DESK REDIRECT TO DASHBOARD)
   // ARCHITECTURE.md § 67.3 & § 69.1: desk.boontrack.com bukan topologi resmi.
@@ -658,7 +686,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     });
     return NextResponse.redirect(targetUrl, 301);
   }
-
   const isDashboardDomain =
     host.startsWith('dashboard.boontrack.com') ||
     hostClean === 'dashboard.boontrack.com' ||
@@ -666,11 +693,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean === 'dashboard.localhost' ||
     host.startsWith('dashboard.') ||
     subdomain === 'dashboard';
-
-  const isStudioHost =
-    hostClean === 'studio.boontrack.com' ||
-    hostClean.startsWith('studio.') ||
-    subdomain === 'studio';
 
   // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
   // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
@@ -1653,12 +1675,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // Authoritative dynamic validation: unknown or ineligible subdomains fail closed.
   // ===========================================================================
   {
-    // Safeguard: Jangan rewrite subdomain cadangan sistem
+    // Safeguard: Jangan rewrite subdomain cadangan sistem atau host tanpa subdomain
     const RESERVED_SUBDOMAINS = new Set([
       'login', 'register', 'daftar', 'api', 'dashboard', 'desk', 'auth', 'admin',
       'affiliate', 'manager', 'shop', 'creator', 'studio', 'www', 'app', 'career', 'static'
     ]);
-    if (RESERVED_SUBDOMAINS.has(subdomain)) {
+    if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
       return NextResponse.next();
     }
 

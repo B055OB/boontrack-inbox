@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import {
+  getAuthenticatedStudioSession,
+  validateTenantOwnership,
+  extractStudioSessionToken,
+} from '@/lib/auth/studio-session-guard';
 
 export const runtime = 'nodejs';
 
@@ -43,18 +48,76 @@ async function resolveTenantUuid(supabase: any, tenantIdentifier?: string | null
 /**
  * POST /api/studio/scripts
  * Persists a new UGC 9-scene script into public.studio_scripts (ADR § 53)
+ * Remediates Finding: SEC-P1-02 (Authorized Tenant & User Scoping)
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const {
       tenant_id,
+      tenant_slug,
       product_name,
       brief,
       scenes,
       status = 'draft',
       user_id,
     } = body;
+
+    const rawTenant = String(tenant_id || tenant_slug || '').trim().toLowerCase();
+    if (rawTenant === 'creator' || rawTenant === 'sandbox') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'TENANT_NOT_FOUND',
+          message: 'Tenant tidak ditemukan di basis data Supabase.',
+        },
+        { status: 404 }
+      );
+    }
+
+    const supabase = getSupabaseAdmin();
+    if (tenant_id && supabase) {
+      const initialTenantId = await resolveTenantUuid(supabase, tenant_id);
+      if (!initialTenantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'TENANT_NOT_FOUND',
+            message: 'Tenant tidak ditemukan di basis data Supabase.',
+          },
+          { status: 404 }
+        );
+      }
+    }
+
+    // 1. Enforce Authenticated Studio Session
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk menyimpan naskah.',
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Reject Client-Supplied Tenant Forgery
+    const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', tenant_id || tenant_slug);
+    if (!tenantCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN_TENANT_MISMATCH',
+          message: tenantCheck.reason,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Derive Tenant and User Exclusively from Session Claims
+    const authorizedTenantId = session.tenantId;
 
     if (!product_name || !scenes || !Array.isArray(scenes) || scenes.length === 0) {
       return NextResponse.json(
@@ -67,8 +130,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
-    const resolvedTenantId = await resolveTenantUuid(supabase, tenant_id);
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database admin tidak tersedia.' },
+        { status: 500 }
+      );
+    }
+
+    const resolvedTenantId = await resolveTenantUuid(supabase, authorizedTenantId);
 
     if (!resolvedTenantId) {
       return NextResponse.json(
@@ -81,12 +150,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Resolve user_id to valid UUID format
-    let validUserId = '00000000-0000-0000-0000-000000000001';
-    if (user_id && IS_UUID_REGEX.test(user_id)) {
-      validUserId = user_id;
-    } else if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      validUserId = crypto.randomUUID();
+    // Resolve user_id from session or valid UUID
+    let validUserId = session.userId;
+    if (!validUserId || !IS_UUID_REGEX.test(validUserId)) {
+      if (user_id && IS_UUID_REGEX.test(user_id)) {
+        validUserId = user_id;
+      } else {
+        validUserId = crypto.randomUUID();
+      }
     }
 
     const insertPayload = {
@@ -138,23 +209,64 @@ export async function POST(req: Request) {
 
 /**
  * GET /api/studio/scripts
- * Retrieves saved scripts for the active tenant
+ * Retrieves saved scripts scoped strictly to the authenticated tenant.
+ * Remediates Finding: SEC-P1-02 (Tenant Script Isolation & Zero Trust on Caller Slug)
  */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantParam = searchParams.get('tenant_id') || searchParams.get('slug');
-    if (!tenantParam || !tenantParam.trim()) {
+    const clientTenantParam = searchParams.get('tenant_id') || searchParams.get('slug');
+    const token = extractStudioSessionToken(req);
+
+    // Fail closed if no tenant parameter and no session token present
+    if (!clientTenantParam && !token) {
       return NextResponse.json(
         { success: false, error: 'TENANT_REQUIRED', message: 'Parameter tenant_id atau slug wajib disertakan.' },
         { status: 400 }
       );
     }
 
+    // 1. Enforce Authenticated Studio Session
+    const session = await getAuthenticatedStudioSession(req);
+    if (!session.authenticated || !session.tenantId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'Autentikasi sesi Studio diperlukan untuk membaca naskah.',
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Reject Client-Supplied Tenant Forgery / Slug Poisoning
+    if (clientTenantParam) {
+      const tenantCheck = validateTenantOwnership(session.tenantId, session.tenantSlug || '', clientTenantParam);
+      if (!tenantCheck.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'FORBIDDEN_TENANT_MISMATCH',
+            message: tenantCheck.reason,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 3. Query Scoped Exclusively to Session Tenant ID
+    const authorizedTenantId = session.tenantId;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
 
     const supabase = getSupabaseAdmin();
-    const resolvedTenantId = await resolveTenantUuid(supabase, tenantParam);
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: 'DATABASE_UNAVAILABLE', message: 'Koneksi database admin tidak tersedia.' },
+        { status: 500 }
+      );
+    }
+
+    const resolvedTenantId = await resolveTenantUuid(supabase, authorizedTenantId);
 
     if (!resolvedTenantId) {
       return NextResponse.json({
@@ -179,7 +291,7 @@ export async function GET(req: Request) {
         {
           success: false,
           error: selectError.code,
-          message: selectError.message || 'Gagal memuat daftar naskah studio.',
+          message: selectError.message || 'Gagal memuat naskah dari basis data.',
         },
         { status: 500 }
       );
@@ -188,7 +300,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       data: scripts || [],
-      count: scripts?.length || 0,
+      count: (scripts || []).length,
     });
   } catch (err: any) {
     console.error('[Studio Scripts API] Fatal GET error:', err);
@@ -196,7 +308,7 @@ export async function GET(req: Request) {
       {
         success: false,
         error: 'INTERNAL_ERROR',
-        message: err.message || 'Terjadi kesalahan saat memuat naskah.',
+        message: err.message || 'Terjadi kesalahan sistem internal.',
       },
       { status: 500 }
     );

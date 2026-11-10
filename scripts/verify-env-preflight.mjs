@@ -167,6 +167,20 @@ export function runPreflightChecks(env = resolveEnv()) {
     });
   }
 
+  // Strict Staging / Production Isolation Guard (SEC-PROD-GUARD)
+  const isStagingOrPreview =
+    (env.VERCEL_ENV || process.env.VERCEL_ENV) === 'preview' ||
+    env.NEXT_PUBLIC_APP_ENV === 'staging';
+
+  if (isStagingOrPreview && supabaseUrl.includes('mpluzajlzpregmjwpjqr')) {
+    errors.push({
+      field: 'NEXT_PUBLIC_SUPABASE_URL',
+      message: 'CRITICAL SECURITY VIOLATION: Production Supabase Project (mpluzajlzpregmjwpjqr) detected in Staging/Preview environment!',
+      fix: 'Use dedicated staging project (xkhqirhurnjqglmajghn) for Preview scope.',
+      isSecurityViolation: true,
+    });
+  }
+
   const serviceKey = (env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   const anonKey = (env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
   if (!serviceKey && !anonKey) {
@@ -184,6 +198,21 @@ export function runPreflightChecks(env = resolveEnv()) {
       console.log(`   - [${w.field}]: ${w.message}`);
     }
     console.log('');
+  }
+
+  // Critical Security Violations are FAIL-CLOSED under all environments (including preview/CI)
+  const securityViolations = errors.filter((e) => e.isSecurityViolation);
+  if (securityViolations.length > 0) {
+    console.error("🛑 [CRITICAL SECURITY VIOLATION] Execution aborted immediately:");
+    for (const v of securityViolations) {
+      console.error(`\n   • Field : ${v.field}`);
+      console.error(`     Pesan : ${v.message}`);
+      if (v.fix) {
+        console.error(`     Solusi: ${v.fix}`);
+      }
+    }
+    console.error("\n🚫 Build dibatalkan untuk mencegah kontaminasi atau kebocoran target produksi.\n");
+    return false;
   }
 
   if (errors.length > 0) {
