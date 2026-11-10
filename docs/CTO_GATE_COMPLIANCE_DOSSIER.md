@@ -8,14 +8,17 @@
 - **Worktree Directory:** `C:\boontrack-studio-deploy`  
 - **Feature Branch:** `feat/studio-ui-creative-pipeline`  
 - **Target Pull Request:** [PR #94](https://github.com/B055OB/boontrack-inbox/pull/94) (Status: `OPEN`, `MERGEABLE`)  
-- **Candidate Head SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5`  
+- **Candidate Head SHA:** `6733d58931a1f07992d6659681f20763c4426833` (docs sync commit — current remote branch tip)
+- **Application/Test Source SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5` (dynamic CRUD test commit)
+- **New Documentation Commit SHA:** *(to be recorded after Phase F commit)*
 - **Previous Test Alignment SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2`  
 - **Previous Merge Commit SHA:** `737df627ad9e9f0adca1be28c1dabaf28e998e09`  
 - **GitHub Commit URL:** [e4c7488d on GitHub](https://github.com/B055OB/boontrack-inbox/commit/e4c7488df859622d9c65b26b414ee9b1232651b5)  
 - **Latest Vercel Preview Deployment ID:** `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`  
+- **Vercel Preview Source SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2`
 - **Assigned Preview URL:** `https://boontrack-studio-fv2zzpmop-boontrack.vercel.app`  
 - **Environment:** `preview` (`productionUrl: null` — Zero Production Blast Radius)  
-- **Validation Timestamp (Last Updated):** 2026-11-10T09:18:00+07:00  
+- **Validation Timestamp (Last Updated):** 2026-11-10T12:00:00+07:00  
 
 ---
 
@@ -36,25 +39,38 @@
 
 ## 1. RECONCILED TECHNICAL PROVENANCE & GIT INTEGRITY (GATE G7)
 
-### A. Local Working Tree & Branch Verification
+### A. SHA Semantics (Authoritative Separation — CTO Mandate)
+
+> [!IMPORTANT]
+> These four SHA identities are distinct. No single SHA serves multiple roles.
+
+| SHA Identity | Value | Role |
+| :--- | :--- | :--- |
+| **Candidate Head SHA** | `6733d58931a1f07992d6659681f20763c4426833` | Current remote branch tip / PR head |
+| **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic CRUD test suite |
+| **Vercel Preview Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4` |
+| **New Doc Commit SHA** | *(to be recorded post Phase F)* | Commit recording this provenance reconciliation |
+
+### B. Local Working Tree & Branch Verification
 ```bash
 $ git rev-parse HEAD
-e4c7488df859622d9c65b26b414ee9b1232651b5
+6733d58931a1f07992d6659681f20763c4426833
 
 $ git branch --show-current
 feat/studio-ui-creative-pipeline
 
 $ git status --short
-# (100% CLEAN - Zero dirty files, zero untracked artifacts, zero ghost code)
+ M PR_BODY_UPDATE.md
+# (Dirty: PR_BODY_UPDATE.md — doc-only Phase D update, no source code changes)
 ```
 
-### B. Remote GitHub Provenance Verification
+### C. Remote GitHub Provenance Verification
 ```bash
 $ git ls-remote origin refs/heads/feat/studio-ui-creative-pipeline
-e4c7488df859622d9c65b26b414ee9b1232651b5    refs/heads/feat/studio-ui-creative-pipeline
+6733d58931a1f07992d6659681f20763c4426833    refs/heads/feat/studio-ui-creative-pipeline
 ```
-- **Provenance Status:** Remote branch points to the **EXACT** local commit SHA (`e4c7488df859622d9c65b26b414ee9b1232651b5`).
-- **Push Action:** Pushed cleanly without force-push (`62f9665d..e4c7488d`).
+- **Provenance Status:** Remote branch points to the **EXACT** local HEAD SHA (`6733d58931a1f07992d6659681f20763c4426833`). ✅ MATCH
+- **Push Action:** Pushed cleanly without force-push.
 - **Merge Prohibition:** STRICTLY preserved; PR #94 is kept OPEN and NOT merged into `main`.
 
 ### C. Commit Ancestry (Commits Ahead of Main)
@@ -218,19 +234,22 @@ $ npx jest __tests__/middleware/ __tests__/studio/ tests/studio_master_audit_evi
 
 | Metric | Baseline (`main`) | Candidate (PR #94 head) |
 | :--- | :--- | :--- |
-| **Workflow Run ID** | `42556962771` | `42747065667` (prior: `42734019081`) |
+| **Workflow Run ID** | `42556962771` | `42757939968` (authoritative; prior runs: `42747065667`, `42734019081`) |
 | **Workflow Name** | `Inbox CI & Dispatch Test Suite` | `Inbox CI & Dispatch Test Suite` |
 | **Source SHA** | `6cdd4e751829c4822652ee12c510ced685059dd3` | `e4c7488df859622d9c65b26b414ee9b1232651b5` |
 | **Status** | `completed` / `failure` | `completed` / `failure` |
 | **Typecheck** | ✅ PASS | ✅ PASS |
+| **Total Suites** | 215 | **221** |
 | **Suites Failed** | **8** | **6** (baseline legacy debt) |
-| **Suites Passed** | 212 | **215** (+3 vs baseline, includes dynamic CRUD suite) |
+| **Suites Passed** | **207** | **215** (+8 vs baseline, includes dynamic CRUD suite) |
 | **Tests Failed** | **12** | **10** (-2 vs baseline) |
 | **Tests Skipped** | 2 | 2 |
-| **Tests Passed** | 2,678 | **2,697** (+19 vs baseline, includes 17 dynamic CRUD tests) |
-| **CI Run URL** | [Run 42556962771](https://github.com/B055OB/boontrack-inbox/actions/runs/42556962771) | [Run 42747065667](https://github.com/B055OB/boontrack-inbox/actions/runs/42747065667) |
+| **Tests Passed** | **2,553** | **2,697** (+144 vs baseline, includes 17 dynamic CRUD tests) |
+| **CI Run URL** | [Run 42556962771](https://github.com/B055OB/boontrack-inbox/actions/runs/42556962771) | [Run 42757939968](https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968) |
 
-**Net result: Candidate improved over baseline by −2 failing suites, −2 failing tests, with 215 suites and 2,697 tests passing.**
+**Net result: Candidate improved over baseline by −2 failing suites, −2 failing tests (IMPROVEMENT), with 215 suites and 2,697 tests passing.**
+
+> Six remaining failing suites match the six failing suites observed on the main baseline.
 
 ---
 
@@ -282,7 +301,7 @@ $ node node_modules/jest/bin/jest.js __tests__/integration/tenant_facing_dynamic
 | `GET /api/v1/tenants/[slug]/settings` | Read Merchant Settings | Tenant A (`role: OWNER`, `slug: tenant-alpha`) | HTTP 200 — Data konfigurasi toko terbaca lengkap | ✅ **PASS** |
 | `GET /api/v1/tenants/[slug]/products` | Read Public/Merchant Catalog | Tenant A (`slug: tenant-alpha`) | HTTP 200 — Daftar produk scoped murni ke Tenant A | ✅ **PASS** |
 | `GET /api/v1/tenants/[slug]/products/[id]` | Read Single Product Detail | Tenant A (`slug: tenant-alpha`) | HTTP 200 — Detail produk terbaca sesuai ID | ✅ **PASS** |
-| `POST /api/v1/upload` | Legacy Core Asset Upload | Tenant A (`x-tenant-slug: tenant-alpha`) | HTTP 200 pada route handler mock S3 | ⚠️ **NOT PROVEN / OUT-OF-SCOPE**<br>*(Legacy Core Route — Delegated to Separate Core PR)* |
+| `POST /api/v1/upload` | Legacy Core Asset Upload | Tenant A (`x-tenant-slug: tenant-alpha`) | HTTP 200 pada route handler mock S3 | ⚠️ **NOT PROVEN / OUT-OF-SCOPE**<br>*(Legacy Core Route — Terdaftar sebagai Planned Core Remediation Backlog: `core/upload-auth-hardening`, belum diklaim aktif)* |
 | `POST /api/v1/tenants/[slug]/products` | Cross-Tenant Create Injection | Attacker Token (`tenantSlug: tenant-beta`) | **HTTP 403 Forbidden** — Zero DB mutation pada Tenant A | ✅ **PASS (DENIED)** |
 | `PUT /api/v1/tenants/[slug]/products/[id]` | Cross-Tenant Product Tampering | Attacker Token (`tenantSlug: tenant-beta`) | **HTTP 403 Forbidden** — Data produk tidak berubah | ✅ **PASS (DENIED)** |
 | `PUT /api/v1/tenants/[slug]/settings` | Cross-Tenant Settings Hijack | Attacker Token (`tenantSlug: tenant-beta`) | **HTTP 403 Forbidden** — Profil toko tidak berubah | ✅ **PASS (DENIED)** |
@@ -325,7 +344,7 @@ $ node node_modules/jest/bin/jest.js __tests__/integration/tenant_facing_dynamic
   - **File:** `app/api/v1/upload/route.ts`
   - **Scope Audit:** File ini adalah file core legacy yang tidak tersentuh dalam PR #94 (`git diff origin/main` = 0 changes pada file ini).
   - **CTO Directive Mandate:** DILARANG melakukan refactoring atau penambahan auth guard pada core file ini di dalam scope PR #94 agar tidak melanggar Zero Core Mutation Protocol.
-  - **Status Formal:** **NOT PROVEN / OUT-OF-SCOPE (Legacy Core Route - Delegated to Separate Core PR)**. Isu mitigasi upload diarahkan ke ticket `core/upload-auth-hardening` pada sprint backend terpisah.
+  - **Status Formal:** **NOT PROVEN / OUT-OF-SCOPE (Legacy Core Route - Terdaftar sebagai Planned Core Remediation Backlog: `core/upload-auth-hardening`, belum diklaim aktif)**. Isu mitigasi upload diarahkan ke backlog ticket `core/upload-auth-hardening` pada sprint backend terpisah.
 
 ---
 
@@ -541,11 +560,16 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
 4. Pushed without force-push to `feat/studio-ui-creative-pipeline`.
 
 ### B. GitHub Actions CI Provenance
-- **Workflow Run ID:** `42734019081`  
-- **URL:** [https://github.com/B055OB/boontrack-inbox/actions/runs/42734019081](https://github.com/B055OB/boontrack-inbox/actions/runs/42734019081)  
-- **Source SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` ✅ (matches PR head)
+- **Authoritative CI Workflow Run ID:** `42757939968`
+- **URL:** [https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968](https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968)
+- **Source SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5` (application/test source commit)
 - **Typecheck:** ✅ **PASSED**
-- **Jest:** 2,680 tests passed / 10 failed (all 6 failing suites are pre-existing baseline regressions, see Section 8)
+- **Jest:** 221 total suites — **215 passed, 6 failed** (2,697 tests passed / 10 failed / 2 skipped)
+- **Prior CI Runs (reference only):**
+  - `42747065667` (SHA `e4c7488d`) — superseded by run `42757939968`
+  - `42734019081` (SHA `62f9665d`) — superseded
+
+> Six remaining failing suites match the six failing suites observed on the main baseline.
 
 ### C. Final PR Status
 ```json
@@ -554,11 +578,11 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
   "state": "OPEN",
   "mergeable": "MERGEABLE",
   "mergeStateStatus": "UNSTABLE",
-  "headRefOid": "62f9665dbd06da6ae159da9609b5cbb18f26a4e2",
+  "headRefOid": "6733d58931a1f07992d6659681f20763c4426833",
   "baseRefOid": "6cdd4e751829c4822652ee12c510ced685059dd3",
-  "additions": 16485,
+  "additions": 17912,
   "deletions": 1061,
-  "changedFiles": 61,
+  "changedFiles": 64,
   "title": "feat(studio): studio desk progressive disclosure 3-screen pipeline & enterprise security gates",
   "url": "https://github.com/B055OB/boontrack-inbox/pull/94"
 }
@@ -575,27 +599,33 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
 =============================================================================
               CTO GATE COMPLIANCE DOSSIER — FINAL SUBMISSION
 =============================================================================
-  SUBMISSION DATE:                    2026-11-10T10:05:00+07:00
+  SUBMISSION DATE:                    2026-11-10T12:00:00+07:00
 
   ── GIT PROVENANCE ──────────────────────────────────────────────────────────
   PR NUMBER:                          #94
   PR URL:                             https://github.com/B055OB/boontrack-inbox/pull/94
-  CANDIDATE HEAD SHA:                 e4c7488df859622d9c65b26b414ee9b1232651b5
-  REMOTE BRANCH TIP:                  e4c7488df859622d9c65b26b414ee9b1232651b5 ✅ MATCH
+  APPLICATION/TEST SOURCE SHA:        e4c7488df859622d9c65b26b414ee9b1232651b5
+  DOCUMENTATION SYNC SHA (prior):     6733d58931a1f07992d6659681f20763c4426833
+  VERCEL PREVIEW SOURCE SHA:          62f9665dbd06da6ae159da9609b5cbb18f26a4e2
+  NEW DOC COMMIT SHA:                 (to be recorded after Phase F commit)
+  REMOTE BRANCH TIP:                  6733d58931a1f07992d6659681f20763c4426833 ✅ MATCH
   PR MERGE STATE:                     OPEN / MERGEABLE / UNSTABLE (pre-existing CI noise)
   FORCE PUSH PROHIBITION:             ✅ HONORED — All pushes via standard git push
   MERGE PROHIBITION:                  ✅ HONORED — PR #94 NOT merged into main
 
   ── CI EVIDENCE ─────────────────────────────────────────────────────────────
-  NEWEST CI WORKFLOW RUN:             42747065667 (triggered on SHA e4c7488d)
-  PRIOR CI RUN:                       42734019081 (SHA 62f9665d)
+  AUTHORITATIVE CI WORKFLOW RUN:      42757939968 (triggered on SHA e4c7488d)
+  PRIOR CI RUNS (superseded):         42747065667, 42734019081
   CANDIDATE TYPECHECK:                ✅ PASS
-  CANDIDATE JEST (GLOBAL):            215 suites passed / 6 failed (2,697 tests passed / 10 failed / 2 skipped)
+  CANDIDATE TOTAL SUITES:             221 total (215 passed / 6 failed)
+  CANDIDATE JEST (GLOBAL):            2,697 tests passed / 10 failed / 2 skipped
   BASELINE CI RUN:                    42556962771
-  BASELINE JEST (GLOBAL):             212 suites passed / 8 failed (2,678 tests passed / 12 failed)
-  NET CHANGE:                         -2 failing suites, -2 failing tests (IMPROVEMENT), +19 passing tests
+  BASELINE JEST (GLOBAL):             207 suites passed / 8 failed (2,553 tests passed / 12 failed)
+  NET CHANGE:                         -2 failing suites, -2 failing tests (IMPROVEMENT), +144 passing tests
   REMAINING FAILURES:                 6 pre-existing legacy failures from baseline main (NOT regressions)
   NEW REGRESSIONS INTRODUCED:         0
+  SIX FAILING SUITES MATCH:          Six remaining failing suites match the six failing suites
+                                      observed on the main baseline.
 
   ── DYNAMIC TENANT CRUD & ISOLATION GATE ────────────────────────────────────
   DYNAMIC INTEGRATION TEST SUITE:     __tests__/integration/tenant_facing_dynamic_crud_isolation.test.ts
@@ -607,7 +637,7 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
   SELF-DATA ACCESS (GET):             ✅ PROVEN (Route handlers executed, data verified)
   CROSS-TENANT ACCESS DENIAL:         ✅ PROVEN (403 Forbidden on create/update/read; 404 on cross-query)
   ANONYMOUS & SPOOF DENIAL:           ✅ PROVEN (401 Unauthorized across all protected endpoints)
-  OFFICIAL PRODUCT UPLOAD:            ⚠️ NOT PROVEN / OUT-OF-SCOPE (Legacy Core Route - Delegated to Separate Core PR)
+  OFFICIAL PRODUCT UPLOAD:            ⚠️ NOT PROVEN / OUT-OF-SCOPE (Legacy Core Route - Terdaftar sebagai Planned Core Remediation Backlog: core/upload-auth-hardening, belum diklaim aktif)
   EXISTING CHECKOUT REGRESSION:       ✅ PROVEN (6 suites, 84/84 tests PASS)
 
   ── PREVIEW DEPLOYMENT ──────────────────────────────────────────────────────
@@ -646,9 +676,10 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
 =============================================================================
   STRICT HOLD STATUS:                 ENFORCED — PR #94 NOT MERGED
   AUTHORIZED NEXT ACTION:             AWAITING EXPLICIT CTO MERGE AUTHORIZATION
+  DOSSIER VERSION:                    FINAL v4.0 — CTO Provenance Reconciliation
 =============================================================================
 ```
 
 ---
 
-*Dossier compiled by: Engineering Agent (Antigravity) | Sprint: Studio UI Creative Pipeline | Dossier Version: FINAL v3.0*
+*Dossier compiled by: Engineering Agent (Antigravity) | Sprint: Studio UI Creative Pipeline | Dossier Version: FINAL v4.0 — CTO Provenance Reconciliation*
