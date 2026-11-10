@@ -17,22 +17,21 @@ This Pull Request introduces the **BoonTrack Studio Creative Pipeline & Desk Ref
    - Clears studio session while preserving `merchant_session` and `bt_tenant` cookies untouched.
 5. **Zero Core Mutation Protocol & Upload Issue Delegation:**
    - `app/api/v1/upload/route.ts` is an untouched legacy core file outside PR #94 scope (`git diff origin/main` = 0 changes).
-   - Per CTO Directive and Zero Core Mutation Protocol, upload authentication hardening is formally quarantined and delegated to a dedicated Core remediation PR (`core/upload-auth-hardening`).
+   - Per CTO Directive and Zero Core Mutation Protocol, upload authentication hardening is formally quarantined and tracked as Core remediation issue: [B055OB/boontrack-core#27](https://github.com/B055OB/boontrack-core/issues/27).
 
 ---
 
 ## Technical Provenance & Deployment Mapping
 
-| SHA Identity | Value | Role |
+| Identity Label | Value | Description |
 | :--- | :--- | :--- |
-| **Candidate Head SHA** | `6733d58931a1f07992d6659681f20763c4426833` | Current remote branch tip / PR head |
-| **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic CRUD test suite |
-| **Vercel Preview Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to preview |
-| **New Doc Commit SHA** | *(to be recorded after Phase F commit)* | Provenance reconciliation commit |
+| **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic tenant-facing CRUD integration test suite |
+| **Preview Deployment Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to Vercel Preview (`dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`) |
+| **Previous Documentation Snapshot SHA** | `6733d58931a1f07992d6659681f20763c4426833` | Previous documentation synchronization snapshot |
+| **Documentation Revision** | Resolved through Git history | Live commit SHA resolved dynamically via repository git history |
 
-- **Candidate Head SHA:** `6733d58931a1f07992d6659681f20763c4426833`
-- **Changed Files:** 64 (+17,912 / -1,061)
-- **Remote Branch:** `origin/feat/studio-ui-creative-pipeline` — remote tip `6733d58931a1f07992d6659681f20763c4426833` ✅ MATCH
+- **Target PR:** [PR #94](https://github.com/B055OB/boontrack-inbox/pull/94) (Status: `OPEN`, `MERGEABLE`)
+- **Changed Files:** 64 (+17,953 / -1,061)
 - **Vercel Deployment ID:** `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`
 - **Assigned Preview URL:** `https://boontrack-studio-fv2zzpmop-boontrack.vercel.app`
 - **Environment:** `preview` (`productionUrl: null` — Zero Production Blast Radius)
@@ -48,8 +47,8 @@ This Pull Request introduces the **BoonTrack Studio Creative Pipeline & Desk Ref
   - *Self-Data Access:* `GET` settings, catalogue, and product verified.
   - *Cross-Tenant Denial:* All cross-tenant mutations denied with HTTP 403 Forbidden; cross-slug querying returns HTTP 404.
   - *Anonymous Denial:* All unauthenticated requests rejected with HTTP 401 Unauthorized; plaintext cookie spoofing rejected (Zero Trust).
-  - *Upload Route (`POST /api/v1/upload`):* **NOT PROVEN / OUT-OF-SCOPE** — Legacy Core Route, `tenantSlug` still sourced from client header (unsigned). Terdaftar sebagai Planned Core Remediation Backlog: `core/upload-auth-hardening` (status: backlog perencanaan terpisah, belum diklaim aktif).
-- **Global CI Status (GitHub Actions Run `42757939968` — AUTHORITATIVE):**
+  - *Upload Route (`POST /api/v1/upload`):* **NOT PROVEN / OUT-OF-SCOPE** — Legacy Core Route, `tenantSlug` still sourced from client header (unsigned). Terdaftar sebagai Planned Core Remediation Backlog: `core/upload-auth-hardening` ([B055OB/boontrack-core#27](https://github.com/B055OB/boontrack-core/issues/27), status: backlog terpisah, belum diklaim aktif).
+- **Global CI Status (GitHub Actions Run `42760960391` — AUTHORITATIVE):**
   - **Typecheck:** ✅ **PASS** (`tsc --noEmit` exited code `0`).
   - **Jest Unit & Integration Tests:** 221 total suites — **215 suites passed / 6 failed** (2,697 tests passed / 10 failed / 2 skipped).
   - **Baseline Comparison (Run `42556962771`):** 215 total — 207 suites passed / 8 failed (2,553 tests passed / 12 failed). Six remaining failing suites match the six failing suites observed on the main baseline. NOT regressions introduced by PR #94. Candidate improved by -2 failing suites and -2 failing tests compared to `main`.

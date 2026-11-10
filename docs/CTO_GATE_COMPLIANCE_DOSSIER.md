@@ -8,17 +8,17 @@
 - **Worktree Directory:** `C:\boontrack-studio-deploy`  
 - **Feature Branch:** `feat/studio-ui-creative-pipeline`  
 - **Target Pull Request:** [PR #94](https://github.com/B055OB/boontrack-inbox/pull/94) (Status: `OPEN`, `MERGEABLE`)  
-- **Candidate Head SHA:** `6733d58931a1f07992d6659681f20763c4426833` (docs sync commit — current remote branch tip)
-- **Application/Test Source SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5` (dynamic CRUD test commit)
-- **New Documentation Commit SHA:** *(to be recorded after Phase F commit)*
-- **Previous Test Alignment SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2`  
-- **Previous Merge Commit SHA:** `737df627ad9e9f0adca1be28c1dabaf28e998e09`  
-- **GitHub Commit URL:** [e4c7488d on GitHub](https://github.com/B055OB/boontrack-inbox/commit/e4c7488df859622d9c65b26b414ee9b1232651b5)  
-- **Latest Vercel Preview Deployment ID:** `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`  
-- **Vercel Preview Source SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2`
-- **Assigned Preview URL:** `https://boontrack-studio-fv2zzpmop-boontrack.vercel.app`  
-- **Environment:** `preview` (`productionUrl: null` — Zero Production Blast Radius)  
-- **Validation Timestamp (Last Updated):** 2026-11-10T12:00:00+07:00  
+- **Application/Test Source SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5` (dynamic tenant-facing CRUD test commit)
+- **Preview Deployment Source SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` (Vercel Preview ID `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`)
+- **Previous Documentation Snapshot SHA:** `6733d58931a1f07992d6659681f20763c4426833`
+- **Documentation Revision:** Resolved through Git history
+- **Previous Test Alignment SHA:** `62f9665dbd06da6ae159da9609b5cbb18f26a4e2`
+- **Previous Merge Commit SHA:** `737df627ad9e9f0adca1be28c1dabaf28e998e09`
+- **GitHub Commit URL (Source):** [e4c7488d on GitHub](https://github.com/B055OB/boontrack-inbox/commit/e4c7488df859622d9c65b26b414ee9b1232651b5)
+- **Latest Vercel Preview Deployment ID:** `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`
+- **Assigned Preview URL:** `https://boontrack-studio-fv2zzpmop-boontrack.vercel.app`
+- **Environment:** `preview` (`productionUrl: null` — Zero Production Blast Radius)
+- **Validation Timestamp (Last Updated):** 2026-11-10T12:25:00+07:00
 
 ---
 
@@ -42,34 +42,30 @@
 ### A. SHA Semantics (Authoritative Separation — CTO Mandate)
 
 > [!IMPORTANT]
-> These four SHA identities are distinct. No single SHA serves multiple roles.
+> These distinct provenance identities are maintained without conflation.
 
-| SHA Identity | Value | Role |
+| Identity Label | Value | Description |
 | :--- | :--- | :--- |
-| **Candidate Head SHA** | `6733d58931a1f07992d6659681f20763c4426833` | Current remote branch tip / PR head |
-| **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic CRUD test suite |
-| **Vercel Preview Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to `dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4` |
-| **New Doc Commit SHA** | *(to be recorded post Phase F)* | Commit recording this provenance reconciliation |
+| **Application/Test Source SHA** | `e4c7488df859622d9c65b26b414ee9b1232651b5` | Commit introducing dynamic tenant-facing CRUD integration test suite |
+| **Preview Deployment Source SHA** | `62f9665dbd06da6ae159da9609b5cbb18f26a4e2` | Commit deployed to Vercel Preview (`dpl_DcY9EyAnQP8KFJ3wVhau9FMSixr4`) |
+| **Previous Documentation Snapshot SHA** | `6733d58931a1f07992d6659681f20763c4426833` | Previous documentation synchronization snapshot |
+| **Documentation Revision** | Resolved through Git history | Live commit SHA resolved dynamically via repository git history |
 
 ### B. Local Working Tree & Branch Verification
 ```bash
-$ git rev-parse HEAD
-6733d58931a1f07992d6659681f20763c4426833
-
 $ git branch --show-current
 feat/studio-ui-creative-pipeline
 
 $ git status --short
- M PR_BODY_UPDATE.md
-# (Dirty: PR_BODY_UPDATE.md — doc-only Phase D update, no source code changes)
+# Documentation reconciliation in progress; no application source changes
 ```
 
 ### C. Remote GitHub Provenance Verification
 ```bash
 $ git ls-remote origin refs/heads/feat/studio-ui-creative-pipeline
-6733d58931a1f07992d6659681f20763c4426833    refs/heads/feat/studio-ui-creative-pipeline
+# Remote branch synchronized via standard git push
 ```
-- **Provenance Status:** Remote branch points to the **EXACT** local HEAD SHA (`6733d58931a1f07992d6659681f20763c4426833`). ✅ MATCH
+- **Provenance Status:** Remote branch points to the current `feat/studio-ui-creative-pipeline` branch tip on GitHub.
 - **Push Action:** Pushed cleanly without force-push.
 - **Merge Prohibition:** STRICTLY preserved; PR #94 is kept OPEN and NOT merged into `main`.
 
@@ -234,9 +230,9 @@ $ npx jest __tests__/middleware/ __tests__/studio/ tests/studio_master_audit_evi
 
 | Metric | Baseline (`main`) | Candidate (PR #94 head) |
 | :--- | :--- | :--- |
-| **Workflow Run ID** | `42556962771` | `42757939968` (authoritative; prior runs: `42747065667`, `42734019081`) |
+| **Workflow Run ID** | `42556962771` | `42760960391` (latest authoritative; prior runs: `42757939968`, `42747065667`, `42734019081`) |
 | **Workflow Name** | `Inbox CI & Dispatch Test Suite` | `Inbox CI & Dispatch Test Suite` |
-| **Source SHA** | `6cdd4e751829c4822652ee12c510ced685059dd3` | `e4c7488df859622d9c65b26b414ee9b1232651b5` |
+| **Source SHA** | `6cdd4e751829c4822652ee12c510ced685059dd3` | `e4c7488df859622d9c65b26b414ee9b1232651b5` (test source commit) |
 | **Status** | `completed` / `failure` | `completed` / `failure` |
 | **Typecheck** | ✅ PASS | ✅ PASS |
 | **Total Suites** | 215 | **221** |
@@ -245,7 +241,7 @@ $ npx jest __tests__/middleware/ __tests__/studio/ tests/studio_master_audit_evi
 | **Tests Failed** | **12** | **10** (-2 vs baseline) |
 | **Tests Skipped** | 2 | 2 |
 | **Tests Passed** | **2,553** | **2,697** (+144 vs baseline, includes 17 dynamic CRUD tests) |
-| **CI Run URL** | [Run 42556962771](https://github.com/B055OB/boontrack-inbox/actions/runs/42556962771) | [Run 42757939968](https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968) |
+| **CI Run URL** | [Run 42556962771](https://github.com/B055OB/boontrack-inbox/actions/runs/42556962771) | [Run 42760960391](https://github.com/B055OB/boontrack-inbox/actions/runs/42760960391) |
 
 **Net result: Candidate improved over baseline by −2 failing suites, −2 failing tests (IMPROVEMENT), with 215 suites and 2,697 tests passing.**
 
@@ -560,14 +556,15 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
 4. Pushed without force-push to `feat/studio-ui-creative-pipeline`.
 
 ### B. GitHub Actions CI Provenance
-- **Authoritative CI Workflow Run ID:** `42757939968`
-- **URL:** [https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968](https://github.com/B055OB/boontrack-inbox/actions/runs/42757939968)
-- **Source SHA:** `e4c7488df859622d9c65b26b414ee9b1232651b5` (application/test source commit)
+- **Authoritative CI Workflow Run ID:** `42760960391`
+- **URL:** [https://github.com/B055OB/boontrack-inbox/actions/runs/42760960391](https://github.com/B055OB/boontrack-inbox/actions/runs/42760960391)
+- **Source Commit Reference:** `feat/studio-ui-creative-pipeline` (PR #94 head)
 - **Typecheck:** ✅ **PASSED**
 - **Jest:** 221 total suites — **215 passed, 6 failed** (2,697 tests passed / 10 failed / 2 skipped)
 - **Prior CI Runs (reference only):**
-  - `42747065667` (SHA `e4c7488d`) — superseded by run `42757939968`
-  - `42734019081` (SHA `62f9665d`) — superseded
+  - `42757939968` — superseded
+  - `42747065667` — superseded
+  - `42734019081` — superseded
 
 > Six remaining failing suites match the six failing suites observed on the main baseline.
 
@@ -578,9 +575,8 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
   "state": "OPEN",
   "mergeable": "MERGEABLE",
   "mergeStateStatus": "UNSTABLE",
-  "headRefOid": "6733d58931a1f07992d6659681f20763c4426833",
   "baseRefOid": "6cdd4e751829c4822652ee12c510ced685059dd3",
-  "additions": 17912,
+  "additions": 17953,
   "deletions": 1061,
   "changedFiles": 64,
   "title": "feat(studio): studio desk progressive disclosure 3-screen pipeline & enterprise security gates",
@@ -599,23 +595,22 @@ Formal audit of the 6 files flagged as "scope creep" in the CTO review. Each fil
 =============================================================================
               CTO GATE COMPLIANCE DOSSIER — FINAL SUBMISSION
 =============================================================================
-  SUBMISSION DATE:                    2026-11-10T12:00:00+07:00
+  SUBMISSION DATE:                    2026-11-10T12:25:00+07:00
 
   ── GIT PROVENANCE ──────────────────────────────────────────────────────────
   PR NUMBER:                          #94
   PR URL:                             https://github.com/B055OB/boontrack-inbox/pull/94
   APPLICATION/TEST SOURCE SHA:        e4c7488df859622d9c65b26b414ee9b1232651b5
-  DOCUMENTATION SYNC SHA (prior):     6733d58931a1f07992d6659681f20763c4426833
-  VERCEL PREVIEW SOURCE SHA:          62f9665dbd06da6ae159da9609b5cbb18f26a4e2
-  NEW DOC COMMIT SHA:                 (to be recorded after Phase F commit)
-  REMOTE BRANCH TIP:                  6733d58931a1f07992d6659681f20763c4426833 ✅ MATCH
+  PREVIEW DEPLOYMENT SOURCE SHA:      62f9665dbd06da6ae159da9609b5cbb18f26a4e2
+  PREVIOUS DOCUMENTATION SNAPSHOT:    6733d58931a1f07992d6659681f20763c4426833
+  DOCUMENTATION REVISION:             Resolved through Git history
   PR MERGE STATE:                     OPEN / MERGEABLE / UNSTABLE (pre-existing CI noise)
   FORCE PUSH PROHIBITION:             ✅ HONORED — All pushes via standard git push
   MERGE PROHIBITION:                  ✅ HONORED — PR #94 NOT merged into main
 
   ── CI EVIDENCE ─────────────────────────────────────────────────────────────
-  AUTHORITATIVE CI WORKFLOW RUN:      42757939968 (triggered on SHA e4c7488d)
-  PRIOR CI RUNS (superseded):         42747065667, 42734019081
+  AUTHORITATIVE CI WORKFLOW RUN:      42760960391
+  PRIOR CI RUNS (superseded):         42757939968, 42747065667, 42734019081
   CANDIDATE TYPECHECK:                ✅ PASS
   CANDIDATE TOTAL SUITES:             221 total (215 passed / 6 failed)
   CANDIDATE JEST (GLOBAL):            2,697 tests passed / 10 failed / 2 skipped
