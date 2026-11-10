@@ -53,9 +53,16 @@ describe('Workforce Isolated Middleware Routing Suite', () => {
   });
 
   it('should allow authenticated access to internal routes with bwm_session_token', () => {
+    const validJwt = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({
+      sub: '00000000-0000-0000-0000-000000000001',
+      tenant_id: 'tenant_satya_001',
+      role: 'field_personnel',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })).toString('base64url')}.mock_sig`;
+
     const req = new NextRequest('https://workforce.boontrack.com/portal', {
       headers: {
-        cookie: 'bwm_session_token=valid_session_token_123',
+        cookie: `bwm_session_token=${validJwt}`,
       },
     });
     const res = middleware(req);

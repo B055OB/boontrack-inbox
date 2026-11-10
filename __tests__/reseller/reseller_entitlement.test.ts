@@ -27,8 +27,14 @@ import {
   resolveResellerContext,
   recordResellerCommissionOnCanonicalEvent,
 } from '@/lib/store-reseller';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import { POST, PATCH, DELETE } from '@/app/api/v1/tenants/[slug]/reseller/members/route';
 import { NextRequest } from 'next/server';
+
+const mockMerchantToken = signMerchantSessionToken({
+  tenantSlug: 'demo-shop',
+  role: 'OWNER',
+});
 
 describe('Store Reseller V1 - Entitlement & Downgrade-Safe Contract', () => {
   describe('1. Dynamic Quota Entitlement Resolution (resolveResellerEntitlement)', () => {
@@ -212,7 +218,10 @@ describe('Store Reseller V1 - Entitlement & Downgrade-Safe Contract', () => {
 
       const req = new NextRequest('http://localhost/api/v1/tenants/demo-shop/reseller/members', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${mockMerchantToken}`,
+        },
         body: JSON.stringify({
           name: 'Mitra Ke-6',
           phone: '081234567890',
@@ -264,7 +273,10 @@ describe('Store Reseller V1 - Entitlement & Downgrade-Safe Contract', () => {
 
       const req = new NextRequest('http://localhost/api/v1/tenants/demo-shop/reseller/members', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${mockMerchantToken}`,
+        },
         body: JSON.stringify({
           id: 'r_frozen',
           commission_value: 20,
@@ -312,6 +324,9 @@ describe('Store Reseller V1 - Entitlement & Downgrade-Safe Contract', () => {
 
       const req = new NextRequest('http://localhost/api/v1/tenants/demo-shop/reseller/members?id=r_active', {
         method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${mockMerchantToken}`,
+        },
       });
 
       const response = await DELETE(req, { params: Promise.resolve({ slug: 'demo-shop' }) });

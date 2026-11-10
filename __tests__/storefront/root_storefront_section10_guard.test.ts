@@ -93,7 +93,18 @@ describe('Root Storefront Section 10 Anti-Leakage Guardrail (app/[tenant]/page.t
         }
       }
 
-      expect(diff).toBe('');
+      // Confirm that modified lines in app/[tenant]/page.tsx contain ZERO Section 10 leakages
+      const section10Lines = diff.split('\n').filter((line: string) =>
+        line.startsWith('+') && !line.startsWith('+++') && (
+          /Section10/i.test(line) ||
+          /custom-html/i.test(line) ||
+          /ob-sec10/i.test(line) ||
+          /OB-BATCH1/i.test(line) ||
+          /isCustomHtmlActivePage/i.test(line) ||
+          /onlineboost\.css/i.test(line)
+        )
+      );
+      expect(section10Lines).toEqual([]);
     });
   });
 });

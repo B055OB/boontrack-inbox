@@ -26,6 +26,7 @@ jest.mock('@/lib/supabaseClient', () => {
   return {
     ...original,
     getSupabaseAdmin: jest.fn(),
+    getWorkforceSupabaseAdmin: jest.fn(),
     getSupabase: jest.fn(),
   };
 });
@@ -216,6 +217,7 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
     };
 
     (supabaseClientModule.getSupabaseAdmin as jest.Mock).mockReturnValue(mockSupabase);
+    (supabaseClientModule.getWorkforceSupabaseAdmin as jest.Mock).mockReturnValue(mockSupabase);
     (supabaseClientModule.getSupabase as jest.Mock).mockReturnValue(mockSupabase);
   });
 
@@ -484,28 +486,54 @@ describe('Onboarding Register & Transactional Outbox (P1 Clearance)', () => {
 
   describe('7. Products Endpoint Non-Regression Smoke Test', () => {
     it('verifies GET /api/v1/tenants/[slug]/products returns 200 without regression', async () => {
-      mockSupabase.from = jest.fn(() => ({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
-          data: {
-            id: 'tenant-onlineboost-id',
-            slug: 'onlineboost',
-            name: 'OnlineBoost ID',
-            metadata: {
-              products: [
-                {
-                  id: 'prod-1',
-                  name: 'Jasa Setup AI Sales Rep',
-                  price: 1500000,
-                  active: true,
-                },
-              ],
-            },
-          },
-          error: null,
-        }),
-      }));
+      const mockProds = [
+        {
+          id: 'prod-1',
+          name: 'Jasa Setup AI Sales Rep',
+          title: 'Jasa Setup AI Sales Rep',
+          slug: 'jasa-setup-ai-sales-rep',
+          price: 1500000,
+          category: 'digital',
+          product_type: 'DIGITAL_FILE',
+          is_active: true,
+          status: 'ACTIVE',
+          is_publicly_published: true,
+        },
+      ];
+
+      mockSupabase.from = jest.fn((table: string) => {
+        if (table === 'tenants') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: {
+                id: 'tenant-onlineboost-id',
+                slug: 'onlineboost',
+                name: 'OnlineBoost ID',
+                status: 'active',
+                is_active: true,
+                public_storefront_enabled: true,
+              },
+              error: null,
+            }),
+          };
+        }
+        if (table === 'products') {
+          const builder: any = {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            order: jest.fn().mockReturnThis(),
+            then: (resolve: any) => resolve({ data: mockProds, error: null }),
+          };
+          return builder;
+        }
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+        };
+      });
 
       const req = new NextRequest('http://localhost:3000/api/v1/tenants/onlineboost/products');
       const res = await getTenantProducts(req, {

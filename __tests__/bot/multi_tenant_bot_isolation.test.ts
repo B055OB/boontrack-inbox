@@ -154,6 +154,7 @@ jest.mock('@/lib/supabaseClient', () => {
   return {
     getSupabaseAdmin: () => mockSupabase,
     getSupabase: () => mockSupabase,
+    verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => client),
   };
 });
 

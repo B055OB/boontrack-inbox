@@ -155,6 +155,7 @@ jest.mock('@/lib/supabaseClient', () => {
     getSupabaseAdmin: jest.fn(() => require('@supabase/supabase-js').createClient()),
     getSupabase: jest.fn(() => require('@supabase/supabase-js').createClient()),
     supabase: require('@supabase/supabase-js').createClient(),
+    verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => client),
   };
 });
 

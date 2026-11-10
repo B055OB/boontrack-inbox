@@ -51,8 +51,8 @@ describe('TASK: FIX WABA METADATA MAPPING & UNLOCK META CLOUD API TAB FOR TENANT
   });
 
   describe('2. WhatsAppWabaConfig Component Hardening', () => {
-    it('falls back to tenants table metadata and direct columns when settings are empty', () => {
-      expect(wabaConfigCode).toContain(".from('tenants')");
+    it('falls back to tenants settings API metadata and direct columns when settings are empty', () => {
+      expect(wabaConfigCode).toContain('/settings');
       expect(wabaConfigCode).toContain('meta.waba_configured === true');
       expect(wabaConfigCode).toContain('meta.waba_active === true');
       expect(wabaConfigCode).toContain('meta.waba_account_id');

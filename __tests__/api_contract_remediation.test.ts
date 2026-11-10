@@ -26,6 +26,8 @@ const mockTenantRow = {
   category: null, // Test null normalization
   tier: null,     // Test null normalization
   status: 'active',
+  is_active: true,
+  public_storefront_enabled: true,
   metadata: null, // Test null normalization
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -150,6 +152,7 @@ const mockSupabase = {
 };
 
 jest.mock('@/lib/supabaseClient', () => ({
+  getWorkforceSupabaseAdmin: jest.fn(() => mockSupabase),
   getSupabaseAdmin: jest.fn(() => mockSupabase),
   getSupabase: jest.fn(() => mockSupabase),
   supabase: mockSupabase,

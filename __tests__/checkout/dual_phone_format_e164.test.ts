@@ -10,9 +10,11 @@ import { createOrderAndInvoice } from '@/lib/checkout-service';
 jest.mock('@/lib/supabaseClient', () => {
   const getMockClient = () => ({
     from: jest.fn(() => ({
+      schema: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       or: jest.fn().mockReturnThis(),
+      gt: jest.fn().mockReturnThis(),
       gte: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
@@ -33,6 +35,7 @@ jest.mock('@/lib/supabaseClient', () => {
   return {
     getSupabase: jest.fn(getMockClient),
     getSupabaseAdmin: jest.fn(getMockClient),
+    getWorkforceSupabaseAdmin: jest.fn(getMockClient),
     isValidUuid: jest.fn(() => false),
     safeUuidOrNull: jest.fn(() => null),
   };

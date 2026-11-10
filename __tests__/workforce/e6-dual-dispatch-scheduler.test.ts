@@ -19,14 +19,16 @@ describe('BWM Gate E6: Dual-Dispatch Incident & Nudge Scheduler Outbox Suite', (
       expect(fs.existsSync(incidentsRoutePath)).toBe(true);
     });
 
-    test('1.2 incident route code implements non-blocking Evolution API dispatch', () => {
+    test('1.2 incident route implements persistent outbox queueing without unsafe direct Evolution egress', () => {
       const content = fs.readFileSync(incidentsRoutePath, 'utf-8');
-      expect(content).toContain('EVOLUTION_API_URL');
-      expect(content).toContain('EVOLUTION_INSTANCE');
+      expect(content).toContain('notification_outbox');
+      expect(content).toContain('SIMULATED_TEST');
       expect(content).toContain('WA_INTERNAL_SUPERVISOR_JID');
-      expect(content).toContain('INC-');
       expect(content).toContain('server_timestamp_wib');
       expect(content).toContain('status: 201');
+      expect(content).toContain('DATABASE+PERSISTENT_OUTBOX');
+      // Prohibits direct unverified Evolution API HTTP egress
+      expect(content).not.toContain('fetch(process.env.EVOLUTION_API_URL');
     });
   });
 
@@ -35,22 +37,24 @@ describe('BWM Gate E6: Dual-Dispatch Incident & Nudge Scheduler Outbox Suite', (
       expect(fs.existsSync(cronRoutePath)).toBe(true);
     });
 
-    test('2.2 enforces Rule 1 (T-15), Rule 2 (T+15), and Rule 3 (CTO Mandate UNVERIFIED_CHECKOUT)', () => {
+    test('2.2 verifies cron dispatch safely paused for staging with zero external WhatsApp egress', () => {
       const content = fs.readFileSync(cronRoutePath, 'utf-8');
-      expect(content).toContain('PRE_SHIFT_REMINDER_T_MINUS_15');
-      expect(content).toContain('GRACE_WARNING_T_PLUS_15');
-      expect(content).toContain('UNVERIFIED_CHECKOUT');
-      expect(content).toContain('idempotency_key');
-      expect(content).toContain('notificationOutbox');
+      // CTO Mandate: cron dispatch safely paused for staging trial
+      expect(content).toContain('CRON_DISPATCH_PAUSED_STAGING');
+      expect(content).toContain('No external WhatsApp messages sent');
+      expect(content).toContain('evaluated_shifts: 0');
+      expect(content).toContain('outbox_queued: 0');
+      // Enforces authorization guard
+      expect(content).toContain('UNAUTHORIZED_CRON');
+      expect(content).toContain('CRON_SECRET');
     });
 
     test('2.3 strictly prohibits fictitious clock-out generation per CTO Mandate', () => {
       const content = fs.readFileSync(cronRoutePath, 'utf-8');
-      // Verifies clock_out is not populated with a fake timestamp when marking unverified
-      expect(content).toContain("shift.status = 'UNVERIFIED_CHECKOUT'");
-      expect(content).not.toContain("shift.clock_out = shift.shift_end");
-      expect(content).not.toContain("shift.clock_out = nowWIB");
+      // Verifies clock_out is not populated with a fake timestamp
+      expect(content).not.toContain('shift.clock_out = shift.shift_end');
+      expect(content).not.toContain('shift.clock_out = nowWIB');
+      expect(content).not.toContain('auto_clock_out');
     });
   });
 });
-

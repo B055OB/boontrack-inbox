@@ -123,6 +123,7 @@ jest.mock('@/lib/supabaseClient', () => ({
     }),
   })),
   getSupabaseAdmin: jest.fn(() => null),
+  verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => client),
 }));
 
 describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {

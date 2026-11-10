@@ -7,6 +7,27 @@ import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
 describe('Live Fulfillment Dual Email Dispatch Verification', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn(async (input: any, init?: any) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (url.includes('api.resend.com')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'resend_mock_email_1790483266787' }),
+          text: async () => JSON.stringify({ id: 'resend_mock_email_1790483266787' }),
+        } as any;
+      }
+      return originalFetch(input, init);
+    });
+  });
+
+  afterAll(() => {
+    global.fetch = originalFetch;
+  });
+
   it('successfully dispatches dual emails for Maulidiyatul Izzah (ORD-1790483266787-7715)', async () => {
     const supabase = getSupabaseAdmin();
 

@@ -150,6 +150,17 @@ const globalMockTenants: Record<string, any> = {
       },
     },
   },
+  satya: {
+    id: 'tenant_satya_001',
+    slug: 'satya',
+    name: 'PT Satya Mandiri Perkasa',
+    status: 'active',
+    tier: 'ENTERPRISE',
+    business_type: 'security_workforce',
+    metadata: {
+      features: ['workforce_management', 'attendance', 'checkpoints'],
+    },
+  },
 };
 
 const globalMockBookingSlots = [
@@ -258,6 +269,7 @@ function createGlobalMockBuilder(tableName: string) {
   let isMaybeSingle = false;
 
   const builder: any = {
+    schema: () => builder,
     select: () => builder,
     eq: (col: string, val: any) => {
       filters.push({ type: 'eq', col, val });
@@ -338,6 +350,22 @@ function createGlobalMockBuilder(tableName: string) {
       let rows: any[] = [];
       if (tableName === 'tenants') {
         rows = Object.values(globalMockTenants);
+      } else if (tableName === 'products') {
+        rows = Object.values(globalMockTenants).flatMap((t: any) =>
+          (t.metadata?.products || []).map((p: any) => ({
+            id: p.id || 'prod-default',
+            tenant_id: t.id,
+            name: p.name || 'Produk Default',
+            title: p.name || 'Produk Default',
+            slug: p.id || 'prod-default',
+            price: p.price || 100000,
+            category: p.product_type || 'digital',
+            product_type: p.product_type || 'DIGITAL_FILE',
+            is_active: true,
+            is_publicly_published: true,
+            status: 'ACTIVE',
+          }))
+        );
       } else if (tableName === 'contacts') {
         rows = [...globalMockContacts];
       } else if (tableName === 'tags') {
@@ -402,6 +430,7 @@ function createGlobalMockBuilder(tableName: string) {
 }
 
 export const globalMockSupabaseClient = {
+  schema: jest.fn(() => globalMockSupabaseClient),
   from: jest.fn((tableName: string) => createGlobalMockBuilder(tableName)),
   rpc: jest.fn(async () => ({ data: null, error: null })),
   channel: jest.fn(() => ({
@@ -436,12 +465,17 @@ export const globalMockSupabaseClient = {
 
 // 3. Global Mock for @/lib/supabaseClient
 jest.mock('@/lib/supabaseClient', () => {
+  const actual = jest.requireActual('@/lib/supabaseClient');
   return {
     getWorkforceSupabaseAdmin: jest.fn(() => globalMockSupabaseClient),
     getSupabaseAdmin: jest.fn(() => globalMockSupabaseClient),
     getSupabase: jest.fn(() => globalMockSupabaseClient),
     assertSharedRestUrlTarget: jest.fn((url: string) => url),
     assertStagingRestUrlTarget: jest.fn((url: string) => url),
+    assertStagingDatabaseTarget: jest.fn((conn: string) => {
+      actual.assertStagingDatabaseTarget(conn);
+      return conn;
+    }),
     verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => {
       if (client === globalMockSupabaseClient) return;
     }),
@@ -464,7 +498,7 @@ jest.mock('@supabase/supabase-js', () => ({
   SupabaseClient: jest.fn(() => globalMockSupabaseClient),
 }));
 
-// 5. Global Mock for external fetch calls (Gemini AI, Telegram API)
+// 5. Global Mock for external fetch calls (Gate A: Fail-closed, host/path/method allowlist, zero live egress)
 const defaultGeminiResponse = {
   candidates: [
     {
@@ -479,10 +513,18 @@ const defaultGeminiResponse = {
   ],
 };
 
-const originalFetch = (globalThis as any).fetch;
 (globalThis as any).fetch = jest.fn().mockImplementation(async (input: any, init?: any) => {
   const url = typeof input === 'string' ? input : input?.url || '';
+  const method = (init?.method || 'GET').toUpperCase();
+
+  // 1. Gemini AI Mock (generativelanguage.googleapis.com)
   if (url.includes('generativelanguage.googleapis.com')) {
+    if (!url.includes('/models/') && !url.includes(':generateContent')) {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on generativelanguage.googleapis.com: ${url}`);
+    }
+    if (method !== 'POST') {
+      throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for Gemini API (expected POST)`);
+    }
     return {
       ok: true,
       status: 200,
@@ -490,7 +532,15 @@ const originalFetch = (globalThis as any).fetch;
       text: async () => JSON.stringify(defaultGeminiResponse),
     };
   }
+
+  // 2. Telegram Bot Mock (api.telegram.org)
   if (url.includes('api.telegram.org')) {
+    if (!url.includes('/sendMessage') && !url.includes('/sendPhoto') && !url.includes('/sendDocument')) {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on api.telegram.org: ${url}`);
+    }
+    if (method !== 'POST') {
+      throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for Telegram API (expected POST)`);
+    }
     return {
       ok: true,
       status: 200,
@@ -498,23 +548,129 @@ const originalFetch = (globalThis as any).fetch;
       text: async () => JSON.stringify({ ok: true, result: {} }),
     };
   }
-  if (originalFetch) {
-    try {
-      return await originalFetch(input, init);
-    } catch {
+
+  // 3. Xendit Payment Mock (api.xendit.co) — Gate A: Auth, approved endpoints, and financial assertions
+  if (url.includes('api.xendit.co')) {
+    const authHeader = init?.headers?.Authorization || init?.headers?.authorization;
+    if (!authHeader) {
       return {
-        ok: true,
-        status: 200,
-        json: async () => ({}),
-        text: async () => '',
+        ok: false,
+        status: 401,
+        json: async () => ({ error_code: 'UNAUTHORIZED', message: 'Missing Authorization header' }),
+        text: async () => JSON.stringify({ error_code: 'UNAUTHORIZED', message: 'Missing Authorization header' }),
       };
     }
+
+    // Gate A.5: Validate payment endpoint approval
+    if (!url.includes('/qr_codes') && !url.includes('/v2/invoices') && !url.includes('/callback_virtual_accounts')) {
+      return {
+        ok: false,
+        status: 403,
+        json: async () => ({ error_code: 'UNAPPROVED_ENDPOINT', message: 'Unapproved Xendit payment endpoint' }),
+        text: async () => JSON.stringify({ error_code: 'UNAPPROVED_ENDPOINT', message: 'Unapproved Xendit payment endpoint' }),
+      };
+    }
+
+    if (method !== 'POST') {
+      return {
+        ok: false,
+        status: 405,
+        json: async () => ({ error_code: 'METHOD_NOT_ALLOWED', message: `Method ${method} not allowed on Xendit endpoint` }),
+        text: async () => JSON.stringify({ error_code: 'METHOD_NOT_ALLOWED', message: `Method ${method} not allowed on Xendit endpoint` }),
+      };
+    }
+
+    // Gate A.4: Payment payload & financial assertions remain effective
+    let bodyObj: any = null;
+    try {
+      if (typeof init?.body === 'string') {
+        bodyObj = JSON.parse(init.body);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (bodyObj && bodyObj.amount !== undefined && Number(bodyObj.amount) <= 0) {
+      return {
+        ok: false,
+        status: 400,
+        json: async () => ({ error_code: 'INVALID_AMOUNT', message: 'Amount must be greater than 0' }),
+        text: async () => JSON.stringify({ error_code: 'INVALID_AMOUNT', message: 'Amount must be greater than 0' }),
+      };
+    }
+
+    const amount = bodyObj?.amount || 249000;
+    const refId = bodyObj?.reference_id || bodyObj?.external_id || 'mock-order-ref';
+    const mockXenditQr = {
+      id: 'xnd_qr_mock_12345',
+      reference_id: refId,
+      type: 'DYNAMIC',
+      currency: 'IDR',
+      amount,
+      status: 'ACTIVE',
+      qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5910BOONTRACK6007JAKARTA61051234062070703A016304',
+      invoice_url: 'https://checkout.xendit.co/v2/mock_invoice_123',
+    };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => mockXenditQr,
+      text: async () => JSON.stringify(mockXenditQr),
+    };
   }
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({}),
-    text: async () => '',
-  };
+
+  // 4. Internal QRIS create endpoint (/api/v1/payments/qris/create)
+  if (url.includes('/api/v1/payments/qris/create') || url.includes('/payments/qris/create')) {
+    if (method !== 'POST') {
+      throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted on QRIS create (expected POST)`);
+    }
+    const mockPaymentRes = {
+      success: true,
+      order_id: 'ORD-MOCK-PAYMENT-123',
+      qr_string: '00020101021226670016ID.CO.QRIS.WWW011893600918000000000002150000000000000005204581253033605802ID5910BOONTRACK6007JAKARTA61051234062070703A016304',
+      qr_code_url: 'https://quickchart.io/qr?text=mock-qris-data',
+      invoice_url: '/checkout/ORD-MOCK-PAYMENT-123',
+    };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => mockPaymentRes,
+      text: async () => JSON.stringify(mockPaymentRes),
+    };
+  }
+
+  // 5. QuickChart QR generation (quickchart.io)
+  if (url.includes('quickchart.io')) {
+    if (!url.includes('/qr')) {
+      throw new Error(`[SECURITY FAIL-CLOSED] Unapproved path on quickchart.io: ${url}`);
+    }
+    if (method !== 'GET') {
+      throw new Error(`[SECURITY FAIL-CLOSED] Method ${method} not permitted for QuickChart (expected GET)`);
+    }
+    return {
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(['mock-qr-png'], { type: 'image/png' }),
+      text: async () => 'mock-qr-png',
+    };
+  }
+
+  // 6. Authorized Internal hosts
+  if (
+    url.includes('localhost:3000') ||
+    url.includes('127.0.0.1:3000') ||
+    url.includes('api.boontrack.com') ||
+    url.includes('shop.boontrack.com')
+  ) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, message: 'Mock internal response' }),
+      text: async () => JSON.stringify({ success: true, message: 'Mock internal response' }),
+    };
+  }
+
+  // Gate A.2 & A.3: Fail-closed on all unapproved external hosts or endpoints (NO live egress)
+  throw new Error(`[SECURITY FAIL-CLOSED] Blocked unapproved network request: ${method} ${url}`);
 });
 

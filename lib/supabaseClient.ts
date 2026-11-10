@@ -608,8 +608,26 @@ export function assertStagingDatabaseTarget(connectionString: string): void {
     );
   }
 
-  // 2. Database validation (Supabase standard default database is 'postgres')
+  // 2. Database validation (Supabase standard default database is 'postgres', disposable CI strictly requires 'test_workforce_ci')
   const dbName = parsed.pathname.replace(/^\//, '');
+
+  const isDisposableLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  if (isDisposableLocal) {
+    if (dbName !== 'test_workforce_ci') {
+      throw new Error(
+        `[STAGING GUARD FATAL] Invalid database name (${dbName}) for disposable local container. ` +
+        `Disposable CI database must strictly use dedicated name 'test_workforce_ci'. Generic databases (e.g. 'postgres') are rejected. Abort.`
+      );
+    }
+    if (parsed.port && parsed.port !== '5432') {
+      throw new Error(
+        `[STAGING GUARD FATAL] Invalid port (${parsed.port}) for disposable local container. Expected 5432. Abort.`
+      );
+    }
+    // Disposable local container verified
+    return;
+  }
+
   if (dbName !== 'postgres') {
     throw new Error(
       `[STAGING GUARD FATAL] Invalid database name (${dbName}). Expected postgres. Abort.`

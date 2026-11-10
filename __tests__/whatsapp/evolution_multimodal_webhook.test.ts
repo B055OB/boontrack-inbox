@@ -105,6 +105,7 @@ const mockSupabaseClient = {
 jest.mock('@/lib/supabaseClient', () => ({
   getSupabaseAdmin: jest.fn(() => mockSupabaseClient),
   getSupabase: jest.fn(() => mockSupabaseClient),
+  verifyFactoryClient: jest.fn((client: any, _expectedContext: string) => client),
 }));
 
 // Mock global fetch
