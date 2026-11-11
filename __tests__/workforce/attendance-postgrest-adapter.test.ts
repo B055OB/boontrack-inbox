@@ -207,7 +207,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     await pgClient.connect();
     pgConnected = true;
 
-    // 1. Create real GoTrue user so PostgREST receives a genuine signed `authenticated` JWT
+    // 1. Create real GoTrue user using an isolated bootstrap client so anonClient never stores a user session
     const testEmail = `pgrst-officer-alpha-${ts}@workforce-ci.invalid`;
     const testPassword = `BwmCiPass!${ts}`;
     const createUserRes = await serviceRoleClient.auth.admin.createUser({
@@ -221,7 +221,10 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     createdAuthUserId = createUserRes.data.user.id;
     officerAlphaUserId = createdAuthUserId;
 
-    const signInRes = await anonClient.auth.signInWithPassword({
+    const authBootstrapClient = createClient(config.supabaseUrl, config.anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const signInRes = await authBootstrapClient.auth.signInWithPassword({
       email: testEmail,
       password: testPassword,
     });
@@ -579,11 +582,11 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     expect(concCnt).toBe(1);
   });
 
-  it('4. Propagates PostgreSQL 23503 FK and PostgREST PGRST202 errors cleanly without swallowing failures', async () => {
+  it('4. Propagates Migration 013 FACILITY_REJECTED domain contract and PostgREST PGRST202 errors cleanly without swallowing failures', async () => {
     const store = createSupabaseServiceRoleOperationalStore(serviceRoleClient);
 
-    // Real FK violation through PostgREST RPC when passing non-existent facility UUID
-    const fkResult = await store.recordAttendanceWithStateTransition({
+    // Pre-insert facility guard in Migration 013 returns FACILITY_NOT_FOUND before raw FK INSERT when facility UUID does not exist
+    const facilityResult = await store.recordAttendanceWithStateTransition({
       row: {
         id: crypto.randomUUID(),
         tenant_id: tenantAlphaId,
@@ -596,15 +599,15 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
         geofence_verified: true,
         biometric_mode: 'NONE_UNVERIFIED',
         photo_url: null,
-        idempotency_key: `pgrst-fk-err-${ts}`,
+        idempotency_key: `pgrst-fac-not-found-${ts}`,
       },
       checkTransition: (currentState, eventType) => ({
         allowed: ALLOWED_TRANSITIONS[currentState]?.includes(eventType) ?? false,
       }),
     });
-    expect(fkResult.kind).toBe('ERROR');
-    if (fkResult.kind === 'ERROR') {
-      expect(fkResult.error.code).toBe('23503');
+    expect(facilityResult.kind).toBe('FACILITY_REJECTED');
+    if (facilityResult.kind === 'FACILITY_REJECTED') {
+      expect(facilityResult.errorCode).toBe('FACILITY_NOT_FOUND');
     }
 
     // Real PostgREST missing-RPC propagation
@@ -727,6 +730,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
       .select('id');
     expect(anonSelect.error).not.toBeNull();
     expect(anonSelect.error?.code).toBe('42501');
+    expect(anonSelect.data).toBeNull();
 
     // Direct PostgREST RPC facility negatives (bypassing app checks)
     const directFieldSwitch = await store.recordAttendanceWithStateTransition({
