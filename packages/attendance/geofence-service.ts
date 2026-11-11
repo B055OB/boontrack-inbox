@@ -35,8 +35,12 @@ export function calculateDistanceMeters(coord1: Coordinates, coord2: Coordinates
 }
 
 /**
- * Evaluates whether a subject's coordinates fall within a geofence boundary.
- * Also validates GPS mock indicators and accuracy tolerance.
+ * Evaluates whether client-reported coordinates fall within a geofence boundary.
+ * Never defaults missing accuracy to 0; omitted accuracy remains undefined and
+ * fails closed when requireAccuracyMeters is enabled.
+ *
+ * NOTE: Client-supplied isMockGpsSignal and accuracyMeters are unverified telemetry,
+ * not cryptographic device attestation or physical anti-spoof proof.
  */
 export function evaluateGeofence(
   subjectCoords: Coordinates,
@@ -45,15 +49,25 @@ export function evaluateGeofence(
     rejectMockGps?: boolean;
     isMockGpsSignal?: boolean;
     maxAccuracyMeters?: number;
+    requireAccuracyMeters?: boolean;
   }
 ): GeofenceEvaluation {
   const distanceMeters = calculateDistanceMeters(subjectCoords, boundary.center);
   const maxAccuracy = options?.maxAccuracyMeters ?? 100;
-  const accuracy = subjectCoords.accuracyMeters ?? 0;
+  const hasAccuracy =
+    typeof subjectCoords.accuracyMeters === 'number' &&
+    Number.isFinite(subjectCoords.accuracyMeters) &&
+    subjectCoords.accuracyMeters >= 0;
+  const accuracy = hasAccuracy ? subjectCoords.accuracyMeters : undefined;
 
   const mockDetected = Boolean(options?.isMockGpsSignal);
   const withinRadius = distanceMeters <= boundary.radiusMeters;
-  const accuracyAcceptable = accuracy <= maxAccuracy;
+  const accuracyAcceptable =
+    accuracy !== undefined
+      ? accuracy <= maxAccuracy
+      : options?.requireAccuracyMeters
+        ? false
+        : true;
 
   const isWithinBoundary = withinRadius && accuracyAcceptable && (!options?.rejectMockGps || !mockDetected);
 
@@ -62,6 +76,8 @@ export function evaluateGeofence(
     distanceMeters,
     radiusMeters: boundary.radiusMeters,
     accuracyMeters: accuracy,
+    accuracyProvided: accuracy !== undefined,
+    accuracyAcceptable,
     mockGpsDetected: mockDetected,
   };
 }

@@ -575,14 +575,29 @@ if (!(globalThis as any).__nativeFetch && typeof globalThis.fetch === 'function'
     // Exact Endpoint + Method pairing allowlist
     const uuidUserPathRegex = /^\/auth\/v1\/admin\/users\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
+    const isDedicatedPostgrestIntegration =
+      process.env.NODE_ENV === 'test' &&
+      process.env.APP_ENV !== 'staging' &&
+      process.env.APP_ENV !== 'production' &&
+      process.env.BWM_POSTGREST_INTEGRATION_TEST === 'true' &&
+      (pathname.startsWith('/auth/v1/') || pathname.startsWith('/rest/v1/'));
+
     const isAllowedEndpoint =
+      isDedicatedPostgrestIntegration ||
       (method === 'POST' && pathname === '/auth/v1/admin/users') ||
       (method === 'DELETE' && uuidUserPathRegex.test(pathname)) ||
       (method === 'POST' && (pathname === '/auth/v1/token' || pathname.startsWith('/auth/v1/token'))) ||
       ((method === 'GET' || method === 'PATCH') && pathname === '/rest/v1/tenants') ||
       ((method === 'GET' || method === 'PATCH' || method === 'POST') && pathname === '/rest/v1/products') ||
       ((method === 'GET' || method === 'PATCH') && pathname === '/rest/v1/storefront_tenants') ||
-      ((method === 'GET' || method === 'POST') && pathname === '/rest/v1/storefront_products');
+      ((method === 'GET' || method === 'POST') && pathname === '/rest/v1/storefront_products') ||
+      (method === 'GET' && pathname === '/rest/v1/tenant_memberships') ||
+      (method === 'GET' && pathname === '/rest/v1/facilities') ||
+      (method === 'GET' && pathname === '/rest/v1/personnel') ||
+      (method === 'GET' && pathname === '/rest/v1/checkpoints') ||
+      ((method === 'GET' || method === 'POST') && pathname === '/rest/v1/attendance_logs') ||
+      ((method === 'GET' || method === 'POST') && pathname === '/rest/v1/checkpoint_scans') ||
+      (method === 'POST' && pathname === '/rest/v1/rpc/record_attendance_atomic');
 
     if (!isAllowedEndpoint) {
       throw new Error(

@@ -1,4 +1,4 @@
-name: Inbox CI & Dispatch Test Suite
+name: BoonTrack Workforce CI — Unit & Integration
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test:
-    name: Jest Unit & Mock Test Suite (213 Suites)
+    name: Jest Unit & Mock Test Suite
     runs-on: ubuntu-latest
 
     env:
@@ -54,13 +54,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck || npx tsc --noEmit
 
-      - name: Run Jest Unit & Mock Suites (213 Suites)
+      - name: Jest Unit & Mock Test Suite
         run: |
           node ./node_modules/jest/bin/jest.js --coverage --maxWorkers=2 \
-            --testPathIgnorePatterns="__tests__/e2e/|__tests__/workforce/(api-authorization-convergence|biteship-courier-config|database-rls-adversarial|e6-chargeback-dispute|e6-consumption-concurrency|e6-preview-readiness|e6-purchase-concurrency|e6-staging-db|e6-workforce-e2e|e8-staging-sandbox-integration|e9-dynamic-branding-pilot|e9-white-label-pilot|marginal-pricing-and-ledger|membership-revocation|persistent-registry-authority|public-route-exposure|public-tenant-dto-and-ingress|real-api-persistence|real-data-api-exposure|real-persistence-integration|role-authorization|rsc-and-dashboard-remediation|safe-migration-rollback|tenant-settings-api)"
+            --testPathIgnorePatterns="__tests__/e2e/|__tests__/workforce/(api-authorization-convergence|attendance-checkpoint-postgres|attendance-postgrest-adapter|biteship-courier-config|database-rls-adversarial|e6-chargeback-dispute|e6-consumption-concurrency|e6-preview-readiness|e6-purchase-concurrency|e6-staging-db|e6-workforce-e2e|e8-staging-sandbox-integration|e9-dynamic-branding-pilot|e9-white-label-pilot|marginal-pricing-and-ledger|membership-revocation|persistent-registry-authority|public-route-exposure|public-tenant-dto-and-ingress|real-api-persistence|real-data-api-exposure|real-persistence-integration|role-authorization|rsc-and-dashboard-remediation|safe-migration-rollback|tenant-settings-api|tenant-operational-regression)"
 
   postgres_integration:
-    name: Ephemeral PostgreSQL Integration (23 Suites)
+    name: Ephemeral PostgreSQL Integration (24 Suites)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -105,13 +105,16 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Initialize DB Schema & Run Migrations (schema-draft.sql + 007-012)
+      - name: Initialize DB Schema & Run Migrations (schema-draft.sql + 007-013)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
-      - name: Run PostgreSQL Integration Batch 1 (Schema & RLS — 5 Suites)
+      - name: Run PostgreSQL Integration Batch 1 (Schema & RLS — 6 Suites)
+        env:
+          WORKFORCE_USE_DISPOSABLE_PG: "true"
         run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/api-authorization-convergence.test.ts \
+            __tests__/workforce/attendance-checkpoint-postgres.test.ts \
             __tests__/workforce/database-rls-adversarial.test.ts \
             __tests__/workforce/membership-revocation.test.ts \
             __tests__/workforce/role-authorization.test.ts \
@@ -147,8 +150,8 @@ jobs:
             __tests__/workforce/rsc-and-dashboard-remediation.test.ts \
             __tests__/workforce/tenant-settings-api.test.ts
 
-  postgrest_integration:
-    name: PostgREST & Auth Boundary Integration (1 Suite)
+  tenant_regression_integration:
+    name: Tenant Operational Regression Integration (1 Suite)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -168,13 +171,16 @@ jobs:
     env:
       CI: "true"
       NODE_ENV: "test"
+      NODE_OPTIONS: "--experimental-vm-modules"
       DISPOSABLE_POSTGRES_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
       WORKFORCE_DATABASE_DIRECT_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
-      WORKFORCE_SUPABASE_URL: "http://localhost:3000"
-      WORKFORCE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDB9.Rs4bVwQ_AdYuCzKpXE2AxvaLFxrdE6jNzkgdUgD-JC8"
-      WORKFORCE_SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.dxvBMIvKaxIke61h0Jc2vPk9EZre-_1A3UQ5NXP9t5Y"
+      WORKFORCE_SUPABASE_URL: "https://mock-project.supabase.co"
+      WORKFORCE_SUPABASE_ANON_KEY: "dummy-workforce-anon-key"
+      WORKFORCE_SUPABASE_SERVICE_ROLE_KEY: "dummy-workforce-service-role"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mock-project.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-test"
+      SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-test"
       BOONTRACK_HMAC_SECRET: "test_ci_secure_hmac_secret_for_pipeline_999"
-      BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP: "true"
 
     steps:
       - name: Checkout Code
@@ -202,7 +208,71 @@ jobs:
             sleep 1
           done
 
-      - name: Bootstrap Database Schema & Run Migrations (schema-draft.sql + 007-012)
+      - name: Bootstrap Tenant Regression Schema & Constraints
+        run: node scripts/bootstrap-tenant-regression-ci.mjs
+
+      - name: Run Tenant Operational Regression Suite (1 Suite)
+        run: |
+          node ./node_modules/jest/bin/jest.js --forceExit --runInBand \
+            __tests__/workforce/tenant-operational-regression.test.ts
+
+  postgrest_integration:
+    name: PostgREST & Auth Boundary Integration (2 Suites)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_password_disposable_ci_2026
+          POSTGRES_DB: test_workforce_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      CI: "true"
+      NODE_ENV: "test"
+      DISPOSABLE_POSTGRES_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
+      WORKFORCE_DATABASE_DIRECT_URL: "postgresql://postgres:test_password_disposable_ci_2026@localhost:5432/test_workforce_ci"
+      WORKFORCE_SUPABASE_URL: "http://localhost:3000"
+      WORKFORCE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDB9.Rs4bVwQ_AdYuCzKpXE2AxvaLFxrdE6jNzkgdUgD-JC8"
+      WORKFORCE_SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.dxvBMIvKaxIke61h0Jc2vPk9EZre-_1A3UQ5NXP9t5Y"
+      BOONTRACK_HMAC_SECRET: "test_ci_secure_hmac_secret_for_pipeline_999"
+      BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP: "true"
+      BWM_POSTGREST_INTEGRATION_TEST: "true"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Wait for PostgreSQL Readiness
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres -d test_workforce_ci > /dev/null 2>&1; then
+              echo "[READY] Disposable PostgreSQL container is healthy on port 5432"
+              break
+            fi
+            echo "Waiting for PostgreSQL service container... ($i/30)"
+            sleep 1
+          done
+
+      - name: Bootstrap Database Schema & Run Migrations (schema-draft.sql + 007-013)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
       - name: Start Ephemeral GoTrue, PostgREST & Gateway Containers
@@ -229,7 +299,7 @@ jobs:
           # 2. Start PostgREST Data Engine (Runs under least-privileged authenticator role)
           docker run -d --name postgrest --network host \
             -e PGRST_DB_URI="postgresql://authenticator:authenticator_password_disposable_ci_2026@127.0.0.1:5432/test_workforce_ci" \
-            -e PGRST_DB_SCHEMA="public" \
+            -e PGRST_DB_SCHEMA="public,workforce_staging" \
             -e PGRST_DB_ANON_ROLE="anon" \
             -e PGRST_JWT_SECRET="ci-only-jwt-secret-for-bwm-workforce-pipeline-2026-xyz-32bytes" \
             -e PGRST_SERVER_PORT="3001" \
@@ -280,10 +350,11 @@ jobs:
             exit 1
           fi
 
-      - name: Run PostgREST Boundary Suite (1 Suite)
+      - name: Run PostgREST Boundary Suite (2 Suites)
         run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=60000 --runInBand \
-            __tests__/workforce/real-data-api-exposure.test.ts
+            __tests__/workforce/real-data-api-exposure.test.ts \
+            __tests__/workforce/attendance-postgrest-adapter.test.ts
 
       - name: Teardown Ephemeral Containers
         if: always()

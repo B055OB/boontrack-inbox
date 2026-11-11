@@ -8,9 +8,39 @@
 
 import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
-import { getSupabaseAdmin } from '@/workforce-web/lib/supabase';
+import {
+  getWorkforceOperationalStore,
+  type WorkforceOperationalStore,
+} from '@/workforce-web/lib/workforce/operational-store';
 
-export type BwmRole = 'field_personnel' | 'supervisor' | 'master_reseller' | 'owner' | 'merchant' | 'admin';
+export type BwmRole = 'field_personnel' | 'supervisor' | 'master_reseller';
+
+/**
+ * Own-property-safe Map from persisted database `tenant_memberships.role` tokens
+ * to the three runtime roles actually issued by verifySessionAuthority() & /api/auth/login.
+ * Immune to Object.prototype property collisions (`constructor`, `toString`, `__proto__`, `valueOf`).
+ * Unrecognized role strings or non-string values return null (fail-closed).
+ */
+export const AUTHORIZED_DB_MEMBERSHIP_ROLE_MAP: ReadonlyMap<string, BwmRole> = new Map<string, BwmRole>([
+  ['field_personnel', 'field_personnel'],
+  ['operator', 'field_personnel'],
+  ['cs', 'field_personnel'],
+  ['supervisor', 'supervisor'],
+  ['owner', 'master_reseller'],
+  ['merchant', 'master_reseller'],
+  ['master_reseller', 'master_reseller'],
+]);
+
+export function resolveAuthoritativeBwmRole(dbMembershipRole: unknown): BwmRole | null {
+  if (typeof dbMembershipRole !== 'string') {
+    return null;
+  }
+  const normalized = dbMembershipRole.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return AUTHORIZED_DB_MEMBERSHIP_ROLE_MAP.get(normalized) ?? null;
+}
 
 export interface BwmSessionPayload {
   userId: string;
@@ -219,7 +249,8 @@ export function verifyBwmSessionToken(token: string | undefined | null): Verific
  * Enforces immediate rejection when membership is revoked, user is deactivated, or tenant is suspended.
  */
 export async function verifySessionAuthority(
-  payload: BwmSessionPayload
+  payload: BwmSessionPayload,
+  options?: { store?: WorkforceOperationalStore }
 ): Promise<{
   authorized: boolean;
   error?: string;
@@ -227,15 +258,10 @@ export async function verifySessionAuthority(
   authoritativeRole?: BwmRole;
 }> {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
+    const store = options?.store || (await getWorkforceOperationalStore());
 
-    // 1. Verify Tenant Authority & Non-Suspension
-    const { data: tenant, error: tenantErr } = await supabaseAdmin
-      .schema('workforce_staging')
-      .from('tenants')
-      .select('id, slug, tier, metadata')
-      .eq('id', payload.tenantId)
-      .maybeSingle();
+    // 1. Verify Tenant Authority & Non-Suspension (top-level status/is_active and metadata)
+    const { data: tenant, error: tenantErr } = await store.getTenantById(payload.tenantId);
 
     if (tenantErr) {
       console.error('[BWM AUTH] Tenant authority check DB error:', tenantErr.message);
@@ -247,8 +273,12 @@ export async function verifySessionAuthority(
     }
 
     const tenantMeta = tenant.metadata || {};
+    const topStatus = String(tenant.status || '').trim().toLowerCase();
+    const metaStatus = String(tenantMeta.status || '').trim().toLowerCase();
     if (
-      tenantMeta.status === 'SUSPENDED' ||
+      tenant.is_active === false ||
+      ['suspended', 'inactive', 'revoked', 'disabled'].includes(topStatus) ||
+      ['suspended', 'inactive', 'revoked', 'disabled'].includes(metaStatus) ||
       tenantMeta.is_active === false ||
       tenantMeta.suspended === true
     ) {
@@ -256,13 +286,7 @@ export async function verifySessionAuthority(
     }
 
     // 2. Verify Active Membership Authority in workforce_staging.tenant_memberships
-    const { data: membership, error: memErr } = await supabaseAdmin
-      .schema('workforce_staging')
-      .from('tenant_memberships')
-      .select('id, user_id, tenant_id, role, is_active')
-      .eq('user_id', payload.userId)
-      .eq('tenant_id', payload.tenantId)
-      .maybeSingle();
+    const { data: membership, error: memErr } = await store.getMembership(payload.tenantId, payload.userId);
 
     if (memErr) {
       console.error('[BWM AUTH] Membership authority check DB error:', memErr.message);
@@ -277,12 +301,9 @@ export async function verifySessionAuthority(
       return { authorized: false, error: 'MEMBERSHIP_REVOKED', status: 403 };
     }
 
-    let authoritativeRole: BwmRole = 'field_personnel';
-    const dbRole = (membership.role || '').toLowerCase();
-    if (dbRole.includes('owner') || dbRole.includes('merchant') || dbRole.includes('master')) {
-      authoritativeRole = 'master_reseller';
-    } else if (dbRole.includes('super')) {
-      authoritativeRole = 'supervisor';
+    const authoritativeRole = resolveAuthoritativeBwmRole(membership.role);
+    if (!authoritativeRole) {
+      return { authorized: false, error: 'UNRECOGNIZED_MEMBERSHIP_ROLE', status: 403 };
     }
 
     return { authorized: true, authoritativeRole };
@@ -294,6 +315,8 @@ export async function verifySessionAuthority(
 
 export interface AuthenticatedSessionOptions {
   skipDatabaseLookup?: boolean;
+  /** Test-only store dependency injection (never user-controllable over HTTP). */
+  store?: WorkforceOperationalStore;
 }
 
 /**
@@ -344,7 +367,10 @@ export async function getAuthenticatedWorkforceSession(
 
   // 3. Live Authority Verification against Database (SSOT)
   if (!options?.skipDatabaseLookup) {
-    const authorityCheck = await verifySessionAuthority(payload);
+    const authorityCheck = await verifySessionAuthority(
+      payload,
+      options?.store ? { store: options.store } : undefined
+    );
     if (!authorityCheck.authorized) {
       return {
         session: null,

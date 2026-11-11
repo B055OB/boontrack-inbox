@@ -31,6 +31,8 @@ export interface GeofenceEvaluation {
   distanceMeters: number;
   radiusMeters: number;
   accuracyMeters?: number;
+  accuracyProvided?: boolean;
+  accuracyAcceptable?: boolean;
   mockGpsDetected?: boolean;
 }
 
@@ -82,6 +84,8 @@ export interface AttendanceResult {
     | 'GEOFENCE_BREACH'
     | 'INVALID_STATE_TRANSITION'
     | 'MOCK_GPS_DETECTED'
+    | 'GPS_ACCURACY_REQUIRED'
+    | 'GPS_ACCURACY_TOO_LOW'
     | 'EVIDENCE_REQUIRED'
     | 'SHIFT_NOT_FOUND'
     | 'INTERNAL_ERROR';

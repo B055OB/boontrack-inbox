@@ -17,13 +17,21 @@ import { evaluateGeofence } from './geofence-service';
 import { evaluateShiftCompliance } from './shift-policy';
 
 // Allowed state transitions
-const ALLOWED_TRANSITIONS: Record<string, AttendanceEventType[]> = {
+export const ALLOWED_TRANSITIONS: Record<AttendanceEventType | 'INITIAL', AttendanceEventType[]> = {
   INITIAL: ['CLOCK_IN'],
   CLOCK_OUT: ['CLOCK_IN'],
   CLOCK_IN: ['BREAK_START', 'CLOCK_OUT'],
   BREAK_START: ['BREAK_END'],
   BREAK_END: ['BREAK_START', 'CLOCK_OUT'],
 };
+
+export function isAttendanceTransitionAllowed(
+  currentState: AttendanceEventType | 'INITIAL',
+  nextType: AttendanceEventType
+): boolean {
+  const allowedNext = ALLOWED_TRANSITIONS[currentState] || [];
+  return allowedNext.includes(nextType);
+}
 
 export interface ProcessAttendanceParams {
   subjectId: string;
@@ -38,6 +46,8 @@ export interface ProcessAttendanceParams {
   options?: {
     enforceGeofence?: boolean;
     rejectMockGps?: boolean;
+    maxAccuracyMeters?: number;
+    requireAccuracyMeters?: boolean;
   };
 }
 
@@ -48,8 +58,7 @@ export function processAttendanceEvent(params: ProcessAttendanceParams): Attenda
   const currentState = params.currentState || 'INITIAL';
 
   // 1. Validate State Transition
-  const allowedNext = ALLOWED_TRANSITIONS[currentState] || [];
-  if (!allowedNext.includes(params.type)) {
+  if (!isAttendanceTransitionAllowed(currentState, params.type)) {
     return {
       success: false,
       error: `Transisi status tidak valid: '${currentState}' tidak dapat berpindah ke '${params.type}'.`,
@@ -57,11 +66,11 @@ export function processAttendanceEvent(params: ProcessAttendanceParams): Attenda
     };
   }
 
-  // 2. Validate Mock GPS
+  // 2. Reject self-reported mock GPS signal when configured
   if (params.options?.rejectMockGps && params.evidence?.isMockGpsDetected) {
     return {
       success: false,
-      error: 'Sinyal lokasi mock GPS / spoofing terdeteksi. Presensi ditolak.',
+      error: 'Sinyal lokasi mock GPS dilaporkan oleh klien. Presensi ditolak.',
       errorCode: 'MOCK_GPS_DETECTED',
     };
   }
@@ -72,7 +81,27 @@ export function processAttendanceEvent(params: ProcessAttendanceParams): Attenda
     geofenceEval = evaluateGeofence(params.coordinates, params.boundary, {
       rejectMockGps: params.options?.rejectMockGps,
       isMockGpsSignal: params.evidence?.isMockGpsDetected,
+      maxAccuracyMeters: params.options?.maxAccuracyMeters,
+      requireAccuracyMeters: params.options?.requireAccuracyMeters,
     });
+
+    if (params.options?.requireAccuracyMeters && !geofenceEval.accuracyProvided) {
+      return {
+        success: false,
+        geofenceEvaluation: geofenceEval,
+        error: 'Data accuracy_meters GPS wajib dilaporkan oleh klien untuk evaluasi geofence.',
+        errorCode: 'GPS_ACCURACY_REQUIRED',
+      };
+    }
+
+    if (geofenceEval.accuracyProvided && geofenceEval.accuracyAcceptable === false) {
+      return {
+        success: false,
+        geofenceEvaluation: geofenceEval,
+        error: `Akurasi GPS yang dilaporkan klien (${geofenceEval.accuracyMeters}m) melebihi batas maksimal.`,
+        errorCode: 'GPS_ACCURACY_TOO_LOW',
+      };
+    }
 
     if (!geofenceEval.isWithinBoundary) {
       return {

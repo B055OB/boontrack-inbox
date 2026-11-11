@@ -274,6 +274,37 @@ describe('BWM Phase 6.1N.7.1 — Mission C: Adversarial Fetch Interceptor Harden
       '[SECURITY FAIL-CLOSED] Unapproved endpoint or method on ephemeral gateway: DELETE /rest/v1/tenants'
     );
   });
+
+  it('C.13 Rejects unapproved methods on Workforce endpoints and blocks external hosts even inside PostgREST integration context', async () => {
+    process.env.BWM_ALLOW_EPHEMERAL_SUPABASE_HTTP = 'true';
+    await expect(
+      fetch('http://localhost:3000/rest/v1/attendance_logs', { method: 'DELETE' })
+    ).rejects.toThrow(
+      '[SECURITY FAIL-CLOSED] Unapproved endpoint or method on ephemeral gateway: DELETE /rest/v1/attendance_logs'
+    );
+    await expect(
+      fetch('http://localhost:3000/rest/v1/rpc/record_attendance_atomic', { method: 'GET' })
+    ).rejects.toThrow(
+      '[SECURITY FAIL-CLOSED] Unapproved endpoint or method on ephemeral gateway: GET /rest/v1/rpc/record_attendance_atomic'
+    );
+
+    const prevCtx = process.env.BWM_POSTGREST_INTEGRATION_TEST;
+    try {
+      process.env.BWM_POSTGREST_INTEGRATION_TEST = 'true';
+      await expect(
+        fetch('https://tjkbgxrckaocgosvmzmj.supabase.co/rest/v1/attendance_logs', { method: 'GET' })
+      ).rejects.toThrow('[SECURITY FAIL-CLOSED] Blocked unapproved network request');
+      await expect(
+        fetch('http://localhost:3001/rest/v1/attendance_logs', { method: 'GET' })
+      ).rejects.toThrow('[SECURITY FAIL-CLOSED] Blocked unapproved network request');
+      await expect(
+        fetch('http://localhost:3000/admin/v1/secret', { method: 'GET' })
+      ).rejects.toThrow('[SECURITY FAIL-CLOSED] Unapproved internal path: GET /admin/v1/secret');
+    } finally {
+      if (prevCtx === undefined) delete process.env.BWM_POSTGREST_INTEGRATION_TEST;
+      else process.env.BWM_POSTGREST_INTEGRATION_TEST = prevCtx;
+    }
+  });
 });
 
 describe('BWM Phase 6.1N.2 — Gate B: Database Target Safety Guard (Real Implementation)', () => {

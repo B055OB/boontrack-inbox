@@ -575,6 +575,34 @@ describe('CTO WORK ORDER — BWM PHASE 6.1B ZERO-TRUST AUTHENTICATION CLOSURE', 
       expect(json.session.userId).toBe(userUuid);
       expect(json.session.role).toBe('master_reseller'); // Authoritative DB mapping
     });
+
+    test('2.10: Rejects prototype property names and unissued role tokens fail-closed (HTTP 403)', async () => {
+      for (const badRole of ['constructor', 'toString', '__proto__', 'valueOf', 'super']) {
+        mockMemberships = [
+          {
+            id: 'mem-alpha',
+            user_id: userUuid,
+            tenant_id: alphaTenantId,
+            tenant_slug: 'tenant-api-alpha-1794053601886',
+            role: badRole,
+            is_active: true,
+          },
+        ];
+
+        const req = createLoginRequest({
+          slug: 'tenant-api-alpha-1794053601886',
+          nik: userUuid,
+          pin: validPin,
+        });
+
+        const res = await loginRoute(req);
+        const json = await res.json();
+
+        expect(res.status).toBe(403);
+        expect(json.success).toBe(false);
+        expect(json.error).toBe('UNRECOGNIZED_MEMBERSHIP_ROLE');
+      }
+    });
   });
 
   // ==========================================================================

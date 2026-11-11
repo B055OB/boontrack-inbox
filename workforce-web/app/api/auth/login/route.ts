@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '@/workforce-web/lib/supabase';
-import { signBwmSessionToken, BwmRole } from '@/workforce-web/lib/auth/session';
+import { signBwmSessionToken, resolveAuthoritativeBwmRole } from '@/workforce-web/lib/auth/session';
 import {
   enforceLoginRateLimit,
   recordLoginFailure,
@@ -292,15 +292,18 @@ export async function POST(req: NextRequest) {
 
     const resolvedUserId = matchingMembership.user_id;
 
-    // Authoritative role resolution from database
-    let resolvedRole: BwmRole = 'field_personnel';
-    const dbRole = (matchingMembership.role || '').toLowerCase();
-    if (dbRole.includes('owner') || dbRole.includes('merchant') || dbRole.includes('master')) {
-      resolvedRole = 'master_reseller';
-    } else if (dbRole.includes('super')) {
-      resolvedRole = 'supervisor';
-    } else {
-      resolvedRole = 'field_personnel';
+    // Authoritative role resolution from database (fail-closed on unissued/unknown roles)
+    const resolvedRole = resolveAuthoritativeBwmRole(matchingMembership.role);
+    if (!resolvedRole) {
+      recordLoginFailure(req, cleanSlug, cleanIdentifier);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'UNRECOGNIZED_MEMBERSHIP_ROLE',
+          message: 'Peran keanggotaan organisasi tidak dikenali oleh otoritas resmi.',
+        },
+        { status: 403 }
+      );
     }
 
     // Resolve name and display properties

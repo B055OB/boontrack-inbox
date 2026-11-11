@@ -20,10 +20,7 @@
  * 4. Safe test data cleanup in isolated staging environment.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { Client } from 'pg';
-import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
@@ -62,12 +59,13 @@ const mockTenantsDb: MockTenant[] = [];
 const mockProductsDb: MockProduct[] = [];
 
 jest.mock('@/lib/supabaseClient', () => {
-  const actual = jest.requireActual('@/lib/supabaseClient');
+  const { isValidUuid, safeUuidOrNull } = jest.requireActual('@/lib/uuid-guard');
   return {
-    ...actual,
     getWorkforceSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabaseAdmin: () => mockSupabaseAdmin,
     getSupabase: () => mockSupabaseAdmin,
+    isValidUuid,
+    safeUuidOrNull,
   };
 });
 
@@ -359,39 +357,16 @@ import {
 } from '@/app/api/v1/tenants/[slug]/settings/route';
 import { GET as getTenantBySlug } from '@/app/api/v1/tenants/[slug]/route';
 
-function getDatabaseConnectionString(): string {
-  let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-  let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-  if (!directUrl || !poolerUrl) {
-    try {
-      const envPath = path.resolve('.env.local');
-      if (fs.existsSync(envPath)) {
-        const envFile = fs.readFileSync(envPath, 'utf8');
-        const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-        const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-        if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-        if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const connStr = directUrl || poolerUrl;
-  if (!connStr) {
-    throw new Error('STAGING_DB_REQUIRED: Staging connection required for regression test');
-  }
-  assertStagingDatabaseTarget(connStr);
-  return connStr;
-}
+import {
+  getDisposableDatabaseConnectionString,
+} from '../../scripts/disposable-database-guard.mjs';
 
 describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closure', () => {
   const ts = Date.now();
   const tenantSlugA = `tenant-regress-a-${ts}`;
   const tenantSlugB = `tenant-regress-b-${ts}`;
-  const tenantIdA = `uuid-alpha-${ts}`;
-  const tenantIdB = `uuid-beta-${ts}`;
+  const tenantIdA = `a0000000-0000-4000-8000-${String(ts).slice(-12).padStart(12, '0')}`;
+  const tenantIdB = `b0000000-0000-4000-8000-${String(ts).slice(-12).padStart(12, '0')}`;
   const targetSchema = process.env.WORKFORCE_TARGET_SCHEMA || 'workforce_staging';
 
   let tokenA: string;
@@ -402,9 +377,9 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
   let createdProductIdA: string;
 
   beforeAll(async () => {
-    // 0. Intercept outbound network calls to external Core Backend to enforce DB SSOT in tests
+    // 0. Intercept outbound HTTP calls via fetch-level interception in integration test
     originalFetch = global.fetch;
-    global.fetch = jest.fn(async (url: any, ...args: any[]) => {
+    global.fetch = jest.fn(async (url: any) => {
       const urlStr = String(url);
       if (urlStr.includes('/api/v1/tenants/')) {
         return {
@@ -413,7 +388,11 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
           json: async () => ({ error: 'CORE_BACKEND_OFFLINE_SSOT_FALLTHROUGH' }),
         } as any;
       }
-      return originalFetch(url, ...args);
+      // Deterministic fail-closed fetch interception: unapproved outbound fetch requests denied
+      throw new Error(
+        `[FETCH INTERCEPTION DENIED] Unapproved outbound request to "${urlStr}". ` +
+        'External fetch requests are strictly forbidden in tenant-operational-regression integration suite.'
+      );
     });
 
     // 1. Mint authentic HMAC-signed session tokens bound strictly to tenant slugs
@@ -454,10 +433,10 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
       }
     );
 
-    // 3. Connect to live PostgreSQL staging database for workforce authority invariants
+    // 3. Connect to live PostgreSQL disposable database for workforce authority invariants
     pgClient = new Client({
-      connectionString: getDatabaseConnectionString(),
-      ssl: { rejectUnauthorized: false },
+      connectionString: getDisposableDatabaseConnectionString(),
+      ssl: false,
     });
     await pgClient.connect();
   });
@@ -850,7 +829,10 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
       expect(json.error).toBe('TENANT_NOT_FOUND');
     });
 
-    test('2h. Database RLS & Scoping Verification: Cross-tenant queries return exactly zero records', async () => {
+    test('2h. SQL Predicate Sanity Verification: Direct privileged queries with explicit tenant WHERE clause return zero cross-tenant records', async () => {
+      // NOTE: This is a SQL predicate sanity test on non-RLS registry tables via direct privileged connection.
+      // It verifies that explicit WHERE tenant_id predicates correctly filter records and prevent cross-tenant data leakage or mutation.
+      // This is NOT an RLS proof and is NOT an independent authorization proof (which requires authenticated role + JWT claims on RLS-enabled tables).
       // Insert domain profile for Tenant B
       const hostB = `beta-${ts}.workforce.boontrack.com`;
       await pgClient.query(
