@@ -283,6 +283,7 @@ jobs:
             -e GOTRUE_API_PORT="9999" \
             -e GOTRUE_DB_DRIVER="postgres" \
             -e GOTRUE_DB_DATABASE_URL="postgresql://postgres:test_password_disposable_ci_2026@127.0.0.1:5432/test_workforce_ci?sslmode=disable" \
+            -e API_EXTERNAL_URL="http://localhost:3000" \
             -e GOTRUE_SITE_URL="http://localhost:3000" \
             -e GOTRUE_URI_ALLOW_LIST="*" \
             -e GOTRUE_DISABLE_SIGNUP="false" \
@@ -334,7 +335,7 @@ jobs:
         run: |
           READY=false
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:3000/auth/v1/health > /dev/null 2>&1 && curl -sf http://localhost:3000/rest/v1/ > /dev/null 2>&1; then
+            if test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/auth/v1/health)" = "200" && curl -sf http://localhost:3000/rest/v1/ > /dev/null 2>&1; then
               echo "[READY] Ephemeral API Gateway (GoTrue & PostgREST) is fully operational on port 3000"
               READY=true
               break

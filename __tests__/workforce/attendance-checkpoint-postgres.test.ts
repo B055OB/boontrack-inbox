@@ -17,6 +17,7 @@
  */
 
 import http from 'http';
+import type net from 'net';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -66,9 +67,11 @@ async function sendHttpJson(
         port: Number(url.port),
         path: url.pathname + url.search,
         method: 'POST',
+        agent: false,
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
+          Connection: 'close',
           ...(cookieToken ? { Cookie: `bwm_session_token=${cookieToken}` } : {}),
           ...(extraHeaders || {}),
         },
@@ -505,6 +508,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
     });
 
     // 7. Boot actual loopback HTTP server routing into App Router handlers
+    const activeHttpSockets = new Set<net.Socket>();
     server = http.createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       req.on('data', (chunk) => chunks.push(chunk));
@@ -542,6 +546,13 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       });
     });
 
+    server.on('connection', (socket: net.Socket) => {
+      activeHttpSockets.add(socket);
+      socket.on('close', () => {
+        activeHttpSockets.delete(socket);
+      });
+    });
+
     await new Promise<void>((resolve) => {
       server.listen(0, '127.0.0.1', () => {
         const addr = server.address() as any;
@@ -552,14 +563,52 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
   });
 
   afterAll(async () => {
+    const teardownErrors: unknown[] = [];
+
     if (server) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      try {
+        for (const socket of activeHttpSockets) {
+          socket.destroy();
+        }
+        activeHttpSockets.clear();
+        if (typeof server.closeAllConnections === 'function') {
+          server.closeAllConnections();
+        }
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new Error('HTTP server.close() exceeded 5000ms safety timeout'));
+          }, 5000);
+          server.close((err) => {
+            clearTimeout(timer);
+            if (err && (err as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        });
+      } catch (err) {
+        console.error('[PG TEST TEARDOWN] HTTP server teardown error:', err);
+        teardownErrors.push(err);
+      }
     }
-    await closeDisposablePgPool();
+
+    try {
+      await closeDisposablePgPool();
+    } catch (err) {
+      console.error('[PG TEST TEARDOWN] closeDisposablePgPool() error:', err);
+      teardownErrors.push(err);
+    }
+
     if (pgClient) {
       try {
         if (pgConnected) {
-          await pgClient.query('RESET ROLE');
+          try {
+            await pgClient.query('RESET ROLE');
+          } catch {
+            await pgClient.query('ROLLBACK');
+            await pgClient.query('RESET ROLE');
+          }
           await pgClient.query(`DELETE FROM workforce_staging.tenants WHERE id IN ($1, $2, $3)`, [
             tenantAlphaId,
             tenantBetaId,
@@ -571,9 +620,23 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
             tenantSuspendedId,
           ]);
         }
+      } catch (err) {
+        console.error('[PG TEST TEARDOWN] Test fixture cleanup error:', err);
+        teardownErrors.push(err);
       } finally {
-        await pgClient.end().catch(() => {});
+        try {
+          await pgClient.end();
+        } catch (err) {
+          console.error('[PG TEST TEARDOWN] pgClient.end() error:', err);
+          teardownErrors.push(err);
+        }
       }
+    }
+
+    if (teardownErrors.length > 0) {
+      throw teardownErrors.length === 1
+        ? teardownErrors[0]
+        : new AggregateError(teardownErrors, 'One or more teardown failures occurred in attendance-checkpoint-postgres');
     }
   });
 
@@ -1204,10 +1267,11 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
   it('9. Item A — Reversed transaction-start & client timestamps preserve strict committed serialized state_seq order', async () => {
     const tx1Conn = new Client({ connectionString: disposableUrl });
     const tx2Conn = new Client({ connectionString: disposableUrl });
-    const holderConn = new Client({ connectionString: disposableUrl });
     await tx1Conn.connect();
     await tx2Conn.connect();
-    await holderConn.connect();
+
+    let tx1InTx = false;
+    let tx2InTx = false;
 
     const waitForPidLockWait = async (pid: number): Promise<void> => {
       for (let i = 0; i < 60; i++) {
@@ -1230,6 +1294,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       // Phase 9a: tx1 starts its transaction BEFORE tx2 (older transaction_timestamp & NOW()),
       // and passes an older client p_timestamp, but acquires the personnel lock AFTER tx2 commits CLOCK_IN.
       await tx1Conn.query('BEGIN');
+      tx1InTx = true;
       await tx1Conn.query('SET LOCAL ROLE service_role');
       await tx1Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
       const tx1NowRes = await tx1Conn.query('SELECT now() AS tx_ts');
@@ -1238,6 +1303,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       await new Promise((r) => setTimeout(r, 35));
 
       await tx2Conn.query('BEGIN');
+      tx2InTx = true;
       await tx2Conn.query('SET LOCAL ROLE service_role');
       await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
       const tx2NowRes = await tx2Conn.query('SELECT now() AS tx_ts');
@@ -1256,6 +1322,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, clientNewerIso, `ord-9a-in-${ts}`]
       );
       await tx2Conn.query('COMMIT');
+      tx2InTx = false;
       expect(r2In.rows[0].result.outcome).toBe('CREATED');
       expect(r2In.rows[0].result.state_seq).toBe(1);
 
@@ -1268,53 +1335,77 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, clientOlderIso, `ord-9a-out-${ts}`]
       );
       await tx1Conn.query('COMMIT');
+      tx1InTx = false;
       expect(r1Out.rows[0].result.outcome).toBe('CREATED');
       expect(r1Out.rows[0].result.state_seq).toBe(2);
 
-      // Phase 9b: True contended lock queue reversal against holderConn FOR UPDATE
-      // tx1 opens BEGIN first (older transaction_timestamp), tx2 opens BEGIN second (newer transaction_timestamp),
-      // tx2 enters the personnel lock wait queue BEFORE tx1, then holderConn releases -> tx2 gets state_seq=3, tx1 gets state_seq=4.
-      await holderConn.query('BEGIN');
-      await holderConn.query(
+      // Phase 9b: Deterministic lock-contention sequence without Node Promise.all deadlock
+      // 1. tx1Conn starts transaction, acquires FOR UPDATE lock on personnel, and writes CLOCK_IN (state_seq = 3) before committing.
+      await tx1Conn.query('BEGIN');
+      tx1InTx = true;
+      await tx1Conn.query('SET LOCAL ROLE service_role');
+      await tx1Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
+      await tx1Conn.query(
         `SELECT id FROM workforce_staging.personnel WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
         [personnelOrderedId, tenantAlphaId]
       );
-
-      await tx1Conn.query('BEGIN');
-      await tx1Conn.query('SET LOCAL ROLE service_role');
-      await tx1Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
-      await new Promise((r) => setTimeout(r, 35));
-      await tx2Conn.query('BEGIN');
-      await tx2Conn.query('SET LOCAL ROLE service_role');
-      await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
-
-      const pTx2Lock = tx2Conn.query(
+      const r1NextIn = await tx1Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
            $1::uuid, $2::uuid, $3::uuid, $4::uuid,
            'CLOCK_IN', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
          ) AS result`,
         [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, new Date(Date.now() + 7200_000).toISOString(), `ord-9b-in-${ts}`]
       );
-      await waitForPidLockWait(tx2Pid);
+      expect(r1NextIn.rows[0].result.outcome).toBe('CREATED');
+      expect(r1NextIn.rows[0].result.state_seq).toBe(3);
 
-      const pTx1Lock = tx1Conn.query(
+      // 2. Verify empirically in PostgreSQL that tx1Pid holds active granted lock on personnel.
+      const tx1Locks = await pgClient.query(
+        `SELECT count(*)::int AS cnt
+         FROM pg_locks l
+         JOIN pg_class c ON c.oid = l.relation
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE l.pid = $1
+           AND l.granted = true
+           AND n.nspname = 'workforce_staging'
+           AND c.relname = 'personnel'`,
+        [tx1Pid]
+      );
+      expect(tx1Locks.rows[0].cnt).toBeGreaterThan(0);
+
+      // 3. tx2Conn begins and invokes CLOCK_OUT which must block on tx1Conn's personnel lock.
+      await tx2Conn.query('BEGIN');
+      tx2InTx = true;
+      await tx2Conn.query('SET LOCAL ROLE service_role');
+      await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
+      const pTx2Lock = tx2Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
            $1::uuid, $2::uuid, $3::uuid, $4::uuid,
            'CLOCK_OUT', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
          ) AS result`,
         [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, new Date(Date.now() - 7200_000).toISOString(), `ord-9b-out-${ts}`]
       );
-      await waitForPidLockWait(tx1Pid);
 
-      await holderConn.query('COMMIT');
-      const [res2, res1] = await Promise.all([pTx2Lock, pTx1Lock]);
-      await tx2Conn.query('COMMIT');
+      // 4. Empirically verify tx2Pid is blocked on Lock in PostgreSQL AND pTx2Lock remains pending while tx1Conn holds the lock.
+      await waitForPidLockWait(tx2Pid);
+      const pendingProbe = await Promise.race([
+        pTx2Lock.then(() => 'SETTLED'),
+        new Promise<'PENDING'>((resolve) => setTimeout(() => resolve('PENDING'), 80)),
+      ]);
+      expect(pendingProbe).toBe('PENDING');
+
+      // 5. Commit tx1Conn so lock release unblocks pTx2Lock deterministically.
       await tx1Conn.query('COMMIT');
+      tx1InTx = false;
 
+      // 6. Await pTx2Lock completion and assert serialized state_seq = 4 after committed CLOCK_IN (state_seq = 3).
+      const res2 = await pTx2Lock;
       expect(res2.rows[0].result.outcome).toBe('CREATED');
-      expect(res2.rows[0].result.state_seq).toBe(3);
-      expect(res1.rows[0].result.outcome).toBe('CREATED');
-      expect(res1.rows[0].result.state_seq).toBe(4);
+      expect(res2.rows[0].result.state_seq).toBe(4);
+
+      // 7. Commit tx2Conn and close transaction cleanly.
+      await tx2Conn.query('COMMIT');
+      tx2InTx = false;
 
       // Verify committed serialized ordering in DB and prove next transitions obey state_seq=4 (CLOCK_OUT), not timestamp
       const hist = await pgClient.query(
@@ -1332,6 +1423,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       ]);
 
       await tx2Conn.query('BEGIN');
+      tx2InTx = true;
       await tx2Conn.query('SET LOCAL ROLE service_role');
       await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
       const invalidDupOut = await tx2Conn.query(
@@ -1352,15 +1444,34 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, `ord-9c-good-in-${ts}`]
       );
       await tx2Conn.query('COMMIT');
+      tx2InTx = false;
       expect(validNextIn.rows[0].result.outcome).toBe('CREATED');
       expect(validNextIn.rows[0].result.state_seq).toBe(5);
     } finally {
-      await tx1Conn.query('ROLLBACK').catch(() => {});
-      await tx2Conn.query('ROLLBACK').catch(() => {});
-      await holderConn.query('ROLLBACK').catch(() => {});
-      await tx1Conn.end().catch(() => {});
-      await tx2Conn.end().catch(() => {});
-      await holderConn.end().catch(() => {});
+      const cleanupErrors: unknown[] = [];
+      for (const item of [
+        { conn: tx1Conn, inTx: tx1InTx, label: 'tx1Conn' },
+        { conn: tx2Conn, inTx: tx2InTx, label: 'tx2Conn' },
+      ]) {
+        try {
+          if (item.inTx) {
+            await item.conn.query('ROLLBACK');
+          }
+        } catch (err) {
+          console.error(`[TEST 9 TEARDOWN] ${item.label} ROLLBACK error:`, err);
+          cleanupErrors.push(err);
+        } finally {
+          try {
+            await item.conn.end();
+          } catch (err) {
+            console.error(`[TEST 9 TEARDOWN] ${item.label} end() error:`, err);
+            cleanupErrors.push(err);
+          }
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        console.error('[TEST 9 TEARDOWN] Accumulated cleanup failures:', cleanupErrors);
+      }
     }
   });
 

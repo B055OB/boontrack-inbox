@@ -20,6 +20,8 @@
  * 4. Safe test data cleanup in isolated staging environment.
  */
 
+import path from 'path';
+import { pathToFileURL } from 'url';
 import { Client } from 'pg';
 import { NextRequest } from 'next/server';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
@@ -357,9 +359,21 @@ import {
 } from '@/app/api/v1/tenants/[slug]/settings/route';
 import { GET as getTenantBySlug } from '@/app/api/v1/tenants/[slug]/route';
 
-import {
-  getDisposableDatabaseConnectionString,
-} from '../../scripts/disposable-database-guard.mjs';
+interface DisposableDatabaseGuardModule {
+  assertDisposableDatabaseTarget: (connStr: string) => string;
+  getDisposableDatabaseConnectionString: () => string;
+}
+
+async function loadDisposableDatabaseGuard(): Promise<DisposableDatabaseGuardModule> {
+  const guardModuleUrl = pathToFileURL(
+    path.resolve(__dirname, '../../scripts/disposable-database-guard.mjs')
+  ).href;
+  const dynamicImport = new Function(
+    'specifier',
+    'return import(specifier)'
+  ) as (specifier: string) => Promise<DisposableDatabaseGuardModule>;
+  return dynamicImport(guardModuleUrl);
+}
 
 describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closure', () => {
   const ts = Date.now();
@@ -433,9 +447,15 @@ describe('BWM Gate 1 Round 3D: Tenant Operational Regression & Final Gate Closur
       }
     );
 
-    // 3. Connect to live PostgreSQL disposable database for workforce authority invariants
+    // 3. Dynamically load native ESM guard (immune to ts-jest CommonJS require() compilation on Node 22)
+    //    and validate disposable PostgreSQL connection string strictly before connecting.
+    const { assertDisposableDatabaseTarget, getDisposableDatabaseConnectionString } =
+      await loadDisposableDatabaseGuard();
+    const connectionString = assertDisposableDatabaseTarget(
+      getDisposableDatabaseConnectionString()
+    );
     pgClient = new Client({
-      connectionString: getDisposableDatabaseConnectionString(),
+      connectionString,
       ssl: false,
     });
     await pgClient.connect();
