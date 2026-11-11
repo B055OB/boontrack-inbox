@@ -102,8 +102,9 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
   const { connectionString: disposableUrl } = getVerifiedDisposableTestConfig();
   let pgClient: Client;
   let pgConnected = false;
-  let server: http.Server;
+  let server: http.Server | null = null;
   let baseUrl: string;
+  const activeHttpSockets = new Set<net.Socket>();
 
   const ts = Date.now();
   const tenantAlphaId = crypto.randomUUID();
@@ -508,8 +509,8 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
     });
 
     // 7. Boot actual loopback HTTP server routing into App Router handlers
-    const activeHttpSockets = new Set<net.Socket>();
-    server = http.createServer(async (req, res) => {
+    activeHttpSockets.clear();
+    const httpServer = http.createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       req.on('data', (chunk) => chunks.push(chunk));
       req.on('end', async () => {
@@ -545,8 +546,9 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         }
       });
     });
+    server = httpServer;
 
-    server.on('connection', (socket: net.Socket) => {
+    httpServer.on('connection', (socket: net.Socket) => {
       activeHttpSockets.add(socket);
       socket.on('close', () => {
         activeHttpSockets.delete(socket);
@@ -554,8 +556,8 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
     });
 
     await new Promise<void>((resolve) => {
-      server.listen(0, '127.0.0.1', () => {
-        const addr = server.address() as any;
+      httpServer.listen(0, '127.0.0.1', () => {
+        const addr = httpServer.address() as any;
         baseUrl = `http://127.0.0.1:${addr.port}`;
         resolve();
       });
@@ -565,20 +567,24 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
   afterAll(async () => {
     const teardownErrors: unknown[] = [];
 
-    if (server) {
+    const httpServer = server;
+    if (httpServer) {
       try {
         for (const socket of activeHttpSockets) {
-          socket.destroy();
+          try {
+            socket.destroy();
+          } catch {
+            // Ignore individual socket destroy failures during teardown
+          }
         }
-        activeHttpSockets.clear();
-        if (typeof server.closeAllConnections === 'function') {
-          server.closeAllConnections();
+        if (typeof httpServer.closeAllConnections === 'function') {
+          httpServer.closeAllConnections();
         }
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => {
             reject(new Error('HTTP server.close() exceeded 5000ms safety timeout'));
           }, 5000);
-          server.close((err) => {
+          httpServer.close((err) => {
             clearTimeout(timer);
             if (err && (err as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
               reject(err);
@@ -590,6 +596,9 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       } catch (err) {
         console.error('[PG TEST TEARDOWN] HTTP server teardown error:', err);
         teardownErrors.push(err);
+      } finally {
+        activeHttpSockets.clear();
+        server = null;
       }
     }
 

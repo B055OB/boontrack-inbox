@@ -49,11 +49,41 @@ function getDatabaseConnectionString(): string {
 describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
   let client: Client;
 
-  const upSqlPath = path.resolve('packages/workforce-billing/schema/migrations/010_strict_storefront_opt_in_and_role_authorization.sql');
-  const downSqlPath = path.resolve('packages/workforce-billing/schema/migrations/010_strict_storefront_opt_in_and_role_authorization.down.sql');
+  const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+  const readMigrationSql = (filename: string): string =>
+    fs.readFileSync(path.join(migrationsDir, filename), 'utf8');
 
-  const upSql = fs.readFileSync(upSqlPath, 'utf8');
-  const downSql = fs.readFileSync(downSqlPath, 'utf8');
+  const up009Sql = readMigrationSql('009_trusted_tenant_identity_and_safe_views.sql');
+  const down009Sql = readMigrationSql('009_trusted_tenant_identity_and_safe_views.down.sql');
+  const upSql = readMigrationSql('010_strict_storefront_opt_in_and_role_authorization.sql');
+  const downSql = readMigrationSql('010_strict_storefront_opt_in_and_role_authorization.down.sql');
+  const up011Sql = readMigrationSql('011_create_workforce_operational_tables.sql');
+  const down011Sql = readMigrationSql('011_create_workforce_operational_tables.down.sql');
+  const up012Sql = readMigrationSql('012_create_workforce_revocation_and_authz_versioning.sql');
+  const down012Sql = readMigrationSql('012_create_workforce_revocation_and_authz_versioning.down.sql');
+  const up013Sql = readMigrationSql('013_attendance_atomic_state_rpc.sql');
+  const down013Sql = readMigrationSql('013_attendance_atomic_state_rpc.down.sql');
+
+  async function ensureFullMigrationsRestored(pgClient: Client): Promise<void> {
+    await pgClient.query('RESET ROLE');
+    await pgClient.query(up009Sql);
+    await pgClient.query(upSql);
+
+    // Migration 011 creates rls_credential_audit_logs_insert without DROP POLICY IF EXISTS;
+    // execute 011 UP whenever operational tables were rolled back so re-apply stays idempotent.
+    const opsCheck = await pgClient.query(`
+      SELECT count(*)::int AS cnt
+      FROM information_schema.tables
+      WHERE table_schema = 'workforce_staging'
+        AND table_name IN ('personnel', 'credential_audit_logs')
+    `);
+    if (opsCheck.rows[0].cnt < 2) {
+      await pgClient.query(up011Sql);
+    }
+
+    await pgClient.query(up012Sql);
+    await pgClient.query(up013Sql);
+  }
 
   beforeAll(async () => {
     client = new Client({ connectionString: getDatabaseConnectionString() });
@@ -62,14 +92,10 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
   }, 30000);
 
   afterAll(async () => {
-    // ALWAYS ensure migration 009 & 010 UP are applied and verified at completion
+    // ALWAYS ensure migrations 009-013 UP are applied and verified at completion
     if (client) {
       try {
-        await client.query('RESET ROLE');
-        const up009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.sql');
-        const up009Sql = fs.readFileSync(up009Path, 'utf8');
-        await client.query(up009Sql);
-        await client.query(upSql);
+        await ensureFullMigrationsRestored(client);
       } finally {
         await client.end();
       }
@@ -831,39 +857,46 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
   });
 
   test('5. Safe Migration 009 Rollback: Eliminates GUC Impersonation & Fails Closed (Round 3I)', async () => {
-    const down009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.down.sql');
-    const up009Path = path.resolve('packages/workforce-billing/schema/migrations/009_trusted_tenant_identity_and_safe_views.sql');
-    const down009Sql = fs.readFileSync(down009Path, 'utf8');
-    const up009Sql = fs.readFileSync(up009Path, 'utf8');
-
     await client.query('RESET ROLE');
-    // First rollback 010, then rollback 009
-    await client.query(downSql);
-    await expect(client.query(down009Sql)).resolves.toBeDefined();
 
-    // Verify in 009 rolled-back state that GUC-only impersonation does NOT grant access
-    await client.query('SET ROLE authenticated');
-    await client.query("SET app.current_tenant_id = 'solusi-ads'");
-    let gucBlocked = false;
     try {
-      const res = await client.query('SELECT * FROM workforce_staging.tenants');
-      if (res.rows.length === 0) gucBlocked = true;
-    } catch (err: any) {
-      if (err.code === '42501') gucBlocked = true;
+      // Symmetrical FK-safe rollback order: 013 -> 012 -> 011 -> 010 -> 009
+      await expect(client.query(down013Sql)).resolves.toBeDefined();
+      await expect(client.query(down012Sql)).resolves.toBeDefined();
+      await expect(client.query(down011Sql)).resolves.toBeDefined();
+      await expect(client.query(downSql)).resolves.toBeDefined();
+      await expect(client.query(down009Sql)).resolves.toBeDefined();
+
+      // Verify in 009 rolled-back state that GUC-only impersonation does NOT grant access
+      await client.query('SET ROLE authenticated');
+      await client.query("SET app.current_tenant_id = 'solusi-ads'");
+      let gucBlocked = false;
+      try {
+        const res = await client.query('SELECT * FROM workforce_staging.tenants');
+        if (res.rows.length === 0) gucBlocked = true;
+      } catch (err: any) {
+        if (err.code === '42501') gucBlocked = true;
+      }
+      expect(gucBlocked).toBe(true);
+    } finally {
+      // Symmetrical re-migration UP (009 -> 013) even if an assertion fails mid-test
+      await ensureFullMigrationsRestored(client);
     }
-    expect(gucBlocked).toBe(true);
 
-    // Reapply 009 UP and 010 UP cleanly
-    await client.query('RESET ROLE');
-    await expect(client.query(up009Sql)).resolves.toBeDefined();
-    await expect(client.query(upSql)).resolves.toBeDefined();
-
-    // Verify database views restored
+    // Verify database views and operational RPC restored
     const viewCheck = await client.query(`
       SELECT table_name FROM information_schema.views 
       WHERE table_schema = 'public' 
         AND table_name IN ('tenants', 'products', 'tenant_memberships', 'storefront_tenants', 'storefront_products')
     `);
     expect(viewCheck.rows.length).toBe(5);
+
+    const rpcCheck = await client.query(`
+      SELECT count(*)::int AS cnt
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname = 'workforce_staging' AND p.proname = 'record_attendance_atomic'
+    `);
+    expect(rpcCheck.rows[0].cnt).toBe(1);
   });
 });
