@@ -1,13 +1,67 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import {
+  sanitizeNavigationUrl,
+  sanitizeSection10Html,
+  validateCustomHtmlPayload,
+} from '@/lib/security/html-sanitizer';
+import {
+  computeChangedKeys,
+  recordTenantConfigAudit,
+  redactSensitiveValues,
+} from '@/lib/security/tenant-config-audit';
+
+const FORBIDDEN_ENTITLEMENT_FIELDS = [
+  'tier',
+  'plan_tier',
+  'features',
+  'capabilities',
+  'subscription_status',
+  'subscription_ends_at',
+  'trial_ends_at',
+  'status',
+  'is_active',
+] as const;
+
+function detectForbiddenEntitlementKeys(body: Record<string, any>): string[] {
+  const found: string[] = [];
+  for (const key of FORBIDDEN_ENTITLEMENT_FIELDS) {
+    if (body[key] !== undefined) found.push(key);
+    if (body.metadata && typeof body.metadata === 'object' && body.metadata[key] !== undefined) {
+      found.push(`metadata.${key}`);
+    }
+    if (body.entitlements && typeof body.entitlements === 'object' && body.entitlements[key] !== undefined) {
+      found.push(`entitlements.${key}`);
+    }
+  }
+  return found;
+}
+
+function extractSection10Payload(body: Record<string, any>): any {
+  return (
+    body.section_10 ??
+    body.theme?.section_10 ??
+    body.sections?.section_10 ??
+    body.theme_config?.section_10 ??
+    body.metadata?.section_10 ??
+    body.metadata?.theme?.section_10 ??
+    body.metadata?.sections?.section_10 ??
+    body.metadata?.theme_config?.section_10
+  );
+}
+
+function hasSection10Payload(body: Record<string, any>): boolean {
+  return extractSection10Payload(body) !== undefined;
+}
 
 export type VisualThemeType =
   | 'clean_minimal'
@@ -60,14 +114,28 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    const supabase = getSupabase();
-    const { data: tenantRow, error } = await supabase
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
+      );
+    }
+
+    const { data: tenantRow, error } = await supabaseAdmin
       .from('tenants')
       .select('id, slug, tier, metadata')
       .eq('slug', slug)
       .maybeSingle();
 
-    if (error || !tenantRow) {
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: error.message },
+        { status: 503 }
+      );
+    }
+
+    if (!tenantRow) {
       return NextResponse.json(
         { success: false, error: 'Tenant tidak ditemukan' },
         { status: 404 }
@@ -117,12 +185,23 @@ export async function GET(
       metadata.microsite_show_products ??
       true;
 
-    const section10 =
+    const rawSection10 =
       metadata.theme_config?.section_10 ||
       metadata.storefront_sections?.section_10 ||
       metadata.sections?.section_10 ||
       metadata.section_10 ||
       null;
+
+    const section10 =
+      rawSection10 && typeof rawSection10 === 'object'
+        ? {
+            ...rawSection10,
+            custom_html:
+              typeof rawSection10.custom_html === 'string'
+                ? sanitizeSection10Html(rawSection10.custom_html)
+                : '',
+          }
+        : null;
 
     return NextResponse.json({
       success: true,
@@ -154,10 +233,65 @@ export async function PUT(
 
     // 0. Enforce Server-Authoritative Authentication & Role Authorization (P0 Security Mandate)
     const isInternalAuth = isInternalMachineAuthorized(req);
-    if (!isInternalAuth) {
-      const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
-      if (!authResult.authorized) {
-        return authResult.response;
+    let actorId = 'INTERNAL_MACHINE';
+    let actorRole = 'INTERNAL_SERVICE';
+    let isSuperAdmin = false;
+
+    let merchantAuth = isInternalAuth
+      ? null
+      : authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
+
+    if (!isInternalAuth && (!merchantAuth || !merchantAuth.authorized)) {
+      const superAdminCheck = await verifySuperAdminAccess(req, { allowMachine: false });
+      if (superAdminCheck.authorized) {
+        isSuperAdmin = true;
+        actorId = superAdminCheck.userId;
+        actorRole = superAdminCheck.role;
+      } else {
+        return merchantAuth!.response;
+      }
+    } else if (!isInternalAuth && merchantAuth?.authorized) {
+      actorId = merchantAuth.payload.userId || merchantAuth.payload.name || 'merchant';
+      actorRole = merchantAuth.payload.role || 'MERCHANT';
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
+      );
+    }
+
+    const { data: tenantRow, error: fetchErr } = await supabaseAdmin
+      .from('tenants')
+      .select('id, slug, tier, metadata')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: fetchErr.message },
+        { status: 503 }
+      );
+    }
+
+    if (!tenantRow) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    if (!isInternalAuth && !isSuperAdmin) {
+      const canonicalCheck = authorizeMerchantRequest(
+        req,
+        slug,
+        ['OWNER', 'MERCHANT'],
+        { id: tenantRow.id, slug: tenantRow.slug }
+      );
+      if (!canonicalCheck.authorized) {
+        return canonicalCheck.response;
       }
     }
 
@@ -167,24 +301,88 @@ export async function PUT(
       return perm.response;
     }
 
-    const body = await req.json();
+    let body: Record<string, any>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'INVALID_JSON' }, { status: 400 });
+    }
+
+    // Reject mass-assignment attempts against tier/entitlements
+    if (!isInternalAuth && !isSuperAdmin) {
+      const forbiddenFields = detectForbiddenEntitlementKeys(body);
+      if (forbiddenFields.length > 0) {
+        await recordTenantConfigAudit({
+          tenantId: tenantRow.id,
+          tenantSlug: tenantRow.slug,
+          actorId,
+          actorRole,
+          authMethod: 'merchant_session',
+          action: 'THEME_UPDATE',
+          resourceType: 'tenants.entitlements',
+          resourceId: tenantRow.id,
+          status: 'BLOCKED',
+          changedKeys: forbiddenFields,
+          diffSummary: { reason: 'FORBIDDEN_MASS_ASSIGNMENT', rejected_fields: forbiddenFields },
+          req,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'MASS_ASSIGNMENT_FORBIDDEN',
+            message: `Tidak diizinkan mengubah field entitlement/status melalui API tema (${forbiddenFields.join(', ')}).`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Q-SEC-01 Option B: Section 10 custom HTML write requires SUPERADMIN or verified internal machine auth
+    const hasSection10Write = hasSection10Payload(body);
+    let canWriteSection10 = isInternalAuth || isSuperAdmin;
+    let effectiveAuthMethod = isInternalAuth
+      ? 'internal_machine'
+      : isSuperAdmin
+        ? 'admin_session'
+        : 'merchant_session';
+    if (hasSection10Write && !canWriteSection10) {
+      const saCheck = await verifySuperAdminAccess(req, { allowMachine: true });
+      if (saCheck.authorized) {
+        canWriteSection10 = true;
+        actorId = saCheck.userId;
+        actorRole = saCheck.role;
+        effectiveAuthMethod = saCheck.authMethod || 'admin_session';
+      }
+    }
+
+    if (hasSection10Write && !canWriteSection10) {
+      await recordTenantConfigAudit({
+        tenantId: tenantRow.id,
+        tenantSlug: tenantRow.slug,
+        actorId,
+        actorRole,
+        authMethod: effectiveAuthMethod,
+        action: 'SECTION_10_WRITE',
+        resourceType: 'tenants.theme_config.section_10',
+        resourceId: tenantRow.id,
+        status: 'BLOCKED',
+        changedKeys: ['section_10'],
+        diffSummary: { reason: 'Q_SEC_01_SECTION_10_FORBIDDEN' },
+        req,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'SECTION_10_FORBIDDEN',
+          message: 'Section 10 Custom HTML hanya dapat ditulis oleh SUPERADMIN atau layanan internal terverifikasi (Q-SEC-01).',
+        },
+        { status: 403 }
+      );
+    }
+
     const { template, visual_theme, theme_id, chat_enabled, chat_position, featured_product_ids } = body;
     const rawShowProducts = body.show_products !== undefined ? body.show_products : body.display_catalog;
     const showProducts = rawShowProducts !== undefined ? Boolean(rawShowProducts) : undefined;
-
-    const supabase = getSupabase();
-    const { data: tenantRow, error: fetchErr } = await supabase
-      .from('tenants')
-      .select('id, slug, tier, metadata')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (fetchErr || !tenantRow) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant tidak ditemukan' },
-        { status: 404 }
-      );
-    }
 
     const existingMetadata = tenantRow.metadata || {};
     const existingTheme = existingMetadata.theme || resolveDefaultTheme();
@@ -246,8 +444,16 @@ export async function PUT(
 
     if (Array.isArray(body.buttons)) {
       if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
-      updatedMetadata.microsite.buttons = body.buttons;
-      updatedMetadata.buttons = body.buttons;
+      const sanitizedButtons = body.buttons.map((btn: any) =>
+        btn && typeof btn === 'object'
+          ? {
+              ...btn,
+              url: typeof btn.url === 'string' ? sanitizeNavigationUrl(btn.url) : btn.url,
+            }
+          : btn
+      );
+      updatedMetadata.microsite.buttons = sanitizedButtons;
+      updatedMetadata.buttons = sanitizedButtons;
     }
 
     if (Array.isArray(featured_product_ids)) {
@@ -272,20 +478,34 @@ export async function PUT(
       updatedMetadata.sections.products = { is_active: showProducts };
     }
 
-    if (body.section_10 && typeof body.section_10 === 'object') {
-      const isSec10Active = Boolean(body.section_10.is_enabled ?? body.section_10.is_active);
+    const incomingSection10 = extractSection10Payload(body);
+
+    if (incomingSection10 && typeof incomingSection10 === 'object') {
+      const isSec10Active = Boolean(incomingSection10.is_enabled ?? incomingSection10.is_active);
       const rawSec10Html =
-        typeof body.section_10.custom_html === 'string'
-          ? body.section_10.custom_html
-          : typeof body.section_10.html_content === 'string'
-          ? body.section_10.html_content
-          : body.section_10.html || '';
+        typeof incomingSection10.custom_html === 'string'
+          ? incomingSection10.custom_html
+          : typeof incomingSection10.html_content === 'string'
+          ? incomingSection10.html_content
+          : incomingSection10.html || '';
+
+      const htmlValidation = validateCustomHtmlPayload(rawSec10Html);
+      if (!htmlValidation.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: htmlValidation.error || 'HTML_VALIDATION_FAILED',
+            message: `Custom HTML Section 10 melewati batas atau format tidak valid (${htmlValidation.byteLength ?? 0} bytes).`,
+          },
+          { status: htmlValidation.status }
+        );
+      }
 
       const sec10Config = {
         is_enabled: isSec10Active,
         is_active: isSec10Active,
-        custom_html: rawSec10Html,
-        title: body.section_10.title || 'Section 10 Custom HTML',
+        custom_html: sanitizeSection10Html(htmlValidation.html),
+        title: typeof incomingSection10.title === 'string' ? incomingSection10.title : 'Section 10 Custom HTML',
       };
 
       if (!updatedMetadata.theme_config) updatedMetadata.theme_config = {};
@@ -295,12 +515,12 @@ export async function PUT(
       updatedMetadata.sections.section_10 = sec10Config;
     }
 
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await supabaseAdmin
       .from('tenants')
       .update({
         metadata: updatedMetadata,
       })
-      .eq('slug', slug);
+      .eq('id', tenantRow.id);
 
     if (updateErr) {
       return NextResponse.json(
@@ -308,6 +528,26 @@ export async function PUT(
         { status: 500 }
       );
     }
+
+    const changedKeys = computeChangedKeys(body);
+    await recordTenantConfigAudit({
+      tenantId: tenantRow.id,
+      tenantSlug: tenantRow.slug,
+      actorId,
+      actorRole,
+      authMethod: effectiveAuthMethod,
+      action: hasSection10Write ? 'SECTION_10_WRITE' : 'THEME_UPDATE',
+      resourceType: hasSection10Write ? 'tenants.theme_config.section_10' : 'tenants.theme',
+      resourceId: tenantRow.id,
+      status: 'SUCCESS',
+      changedKeys,
+      diffSummary: {
+        changed_summary: redactSensitiveValues(
+          Object.fromEntries(changedKeys.map((k) => [k, k.includes('section_10') ? '[HTML_SANITIZED]' : updatedMetadata[k] ?? body[k]]))
+        ),
+      },
+      req,
+    });
 
     // Next.js Cache Revalidation: instant storefront update for visitors & incognito
     try {

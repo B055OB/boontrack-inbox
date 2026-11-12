@@ -80,27 +80,30 @@ const mockOnlineBoostTenant = {
   },
 };
 
-jest.mock('@/lib/supabaseClient', () => ({
-  getSupabase: () => ({
-    from: (table: string) => ({
-      select: () => ({
-        eq: (field: string, value: string) => ({
-          maybeSingle: async () => {
-            if (table === 'tenants' && field === 'slug' && value === 'onlineboost') {
-              return { data: mockOnlineBoostTenant, error: null };
-            }
-            return { data: null, error: null };
-          },
-          single: async () => {
-            if (table === 'tenants' && field === 'slug' && value === 'onlineboost') {
-              return { data: mockOnlineBoostTenant, error: null };
-            }
-            return { data: null, error: new Error('Tenant tidak ditemukan') };
-          },
-        }),
+const mockDbClient = () => ({
+  from: (table: string) => ({
+    select: () => ({
+      eq: (field: string, value: string) => ({
+        maybeSingle: async () => {
+          if (table === 'tenants' && field === 'slug' && value === 'onlineboost') {
+            return { data: mockOnlineBoostTenant, error: null };
+          }
+          return { data: null, error: null };
+        },
+        single: async () => {
+          if (table === 'tenants' && field === 'slug' && value === 'onlineboost') {
+            return { data: mockOnlineBoostTenant, error: null };
+          }
+          return { data: null, error: new Error('Tenant tidak ditemukan') };
+        },
       }),
     }),
   }),
+});
+
+jest.mock('@/lib/supabaseClient', () => ({
+  getSupabase: () => mockDbClient(),
+  getSupabaseAdmin: () => mockDbClient(),
 }));
 
 import { GET as getTenantTheme, PUT as putTenantTheme } from '@/app/api/v1/tenants/[slug]/theme/route';
@@ -293,46 +296,37 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
       expect(section10Code).not.toContain("rawHtml.includes('onlineboost')");
     });
 
-    it('preserves script re-hydration with sequential script order', () => {
-      expect(section10Code).toContain("container.querySelectorAll('script')");
-      expect(section10Code).toContain("document.createElement('script')");
-      expect(section10Code).toContain("oldScript.parentNode?.replaceChild(newScript, oldScript)");
-      expect(section10Code).toContain("newScript.async = false;");
-      expect(section10Code).toContain("dangerouslySetInnerHTML={{ __html: rawHtml }}");
+    it('sanitizes HTML via DOMPurify and forbids runtime script re-hydration (Q-SEC-01 Option B)', () => {
+      expect(section10Code).toContain('sanitizeSection10Html');
+      expect(section10Code).toContain('dangerouslySetInnerHTML={{ __html: sanitizedHtml }}');
+      expect(section10Code).not.toContain("container.querySelectorAll('script')");
+      expect(section10Code).not.toContain("document.createElement('script')");
     });
   });
 
-  describe('D. Dashboard ThemeTab Synchronization & Section 10 Form Control', () => {
+  describe('D. Dashboard ThemeTab Synchronization (Section 10 Removed per Q-SEC-01 Option B)', () => {
     const themeTabPath = path.resolve(
       process.cwd(),
       'app/[tenant]/dashboard/components/tabs/ThemeTab.tsx'
     );
     const themeTabCode = fs.readFileSync(themeTabPath, 'utf-8');
 
-    it('includes Section 10 state and Supabase hydration in ThemeTab', () => {
-      expect(themeTabCode).toContain('isSection10Active');
-      expect(themeTabCode).toContain('section10Html');
-      expect(themeTabCode).toContain('setIsSection10Active(Boolean(sec10.is_enabled ?? sec10.is_active));');
-      expect(themeTabCode).toContain('setSection10Html(sec10.custom_html');
+    it('excludes raw HTML/JS Section 10 editor controls from regular merchant ThemeTab', () => {
+      expect(themeTabCode).not.toContain('handleSaveSection10');
+      expect(themeTabCode).not.toContain('section10Html');
+      expect(themeTabCode).not.toContain('Simpan Section 10');
+      expect(themeTabCode).not.toContain('Section 10 (Custom HTML');
     });
 
-    it('implements handleSaveSection10 syncing to Supabase and Theme API with res.ok verification', () => {
-      expect(themeTabCode).toContain('handleSaveSection10');
+    it('retains visual theme selector and showProducts controls intact for merchants', () => {
+      expect(themeTabCode).toContain('handleSelectTheme');
+      expect(themeTabCode).toContain('handleToggleShowProducts');
       expect(themeTabCode).toContain('fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`');
-      expect(themeTabCode).toContain('if (!res.ok)');
-      expect(themeTabCode).toContain('section_10: sec10Data');
-    });
-
-    it('renders Section 10 Custom HTML card with toggle, editor, and save button in ThemeTab UI', () => {
-      expect(themeTabCode).toContain('Section 10 (Custom HTML');
-      expect(themeTabCode).toContain('checked={isSection10Active}');
-      expect(themeTabCode).toContain('value={section10Html}');
-      expect(themeTabCode).toContain('Simpan Section 10');
     });
   });
 
   describe('E. Theme API & Store Theme Gateway Persistence', () => {
-    it('returns section_10 in GET /api/v1/tenants/[slug]/theme for onlineboost', async () => {
+    it('returns sanitized section_10 in GET /api/v1/tenants/[slug]/theme for onlineboost', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/tenants/onlineboost/theme');
       const res = await getTenantTheme(req, { params: Promise.resolve({ slug: 'onlineboost' }) });
       expect(res.status).toBe(200);
@@ -342,9 +336,8 @@ describe('OnlineBoost Batch 1: Tenant Theme Injection & Section 10 Synchronizati
       expect(json.slug).toBe('onlineboost');
       expect(json.section_10).toBeDefined();
       expect(json.section_10.is_enabled).toBe(true);
-      expect(json.section_10.custom_html).toBeDefined();
-      expect(json.section_10.custom_html).toContain('data-bt-checkout');
-      expect(json.section_10.custom_html).toContain('LP-CTWA-BOT-01');
+      expect(typeof json.section_10.custom_html).toBe('string');
+      expect(json.section_10.custom_html).not.toContain('<script');
     });
 
     it('delegates to tenant theme via gateway GET /api/v1/store/theme?slug=onlineboost', async () => {

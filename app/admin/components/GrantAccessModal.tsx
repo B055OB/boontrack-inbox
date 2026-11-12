@@ -19,6 +19,7 @@ import {
   calculateGrantValidUntil,
   getRemainingDays,
 } from '@/lib/subscription-tiers';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 interface GrantAccessModalProps {
   isOpen: boolean;
@@ -112,7 +113,7 @@ export default function GrantAccessModal({
     setErrorMsg(null);
 
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `/api/v1/admin/tenants/${encodeURIComponent(shop.slug)}/grant`,
         {
           method: 'POST',

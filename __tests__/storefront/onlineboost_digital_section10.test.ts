@@ -91,13 +91,11 @@ describe('OnlineBoost Digital Product Conversion & Section 10 Custom HTML Inject
       expect(isSectionActive(sections.section_10)).toBe(false);
     });
 
-    it('ensures Section10CustomHtml preserves <script> and <style> tags without stripping', () => {
-      // Must use raw dangerouslySetInnerHTML without sanitizers stripping script tags
-      expect(section10Code).toContain('dangerouslySetInnerHTML={{ __html: rawHtml }}');
-      // Must dynamically re-hydrate scripts per HTML5 specification
-      expect(section10Code).toContain("container.querySelectorAll('script')");
-      expect(section10Code).toContain("document.createElement('script')");
-      expect(section10Code).toContain("oldScript.parentNode?.replaceChild(newScript, oldScript)");
+    it('ensures Section10CustomHtml sanitizes HTML with DOMPurify and removes <script> re-hydration (Q-SEC-01 Option B)', () => {
+      expect(section10Code).toContain('sanitizeSection10Html');
+      expect(section10Code).toContain('dangerouslySetInnerHTML={{ __html: sanitizedHtml }}');
+      expect(section10Code).not.toContain("container.querySelectorAll('script')");
+      expect(section10Code).not.toContain("document.createElement('script')");
     });
 
     it('integrates Section10CustomHtml into MicrositeBioTemplate, StorefrontTemplate, and PersonalAuthorityTemplate with strict multi-tenant guards', () => {

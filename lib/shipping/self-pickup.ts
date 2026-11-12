@@ -286,7 +286,22 @@ export async function saveStoreShippingConfig(
 
       if (tenantRow) {
         const currentMeta = tenantRow.metadata || {};
-        const updatedMeta = {
+        const prevShippingCfg = currentMeta.shipping_config && typeof currentMeta.shipping_config === 'object'
+          ? { ...currentMeta.shipping_config }
+          : {};
+        if (prevShippingCfg.lincah && typeof prevShippingCfg.lincah === 'object') {
+          prevShippingCfg.lincah = {
+            provider: prevShippingCfg.lincah.provider || 'lincah',
+            status: prevShippingCfg.lincah.status || 'connected',
+            is_connected: Boolean(prevShippingCfg.lincah.is_connected || prevShippingCfg.lincah.api_key),
+            has_api_key: Boolean(prevShippingCfg.lincah.api_key || prevShippingCfg.lincah.has_api_key),
+          };
+        }
+        delete prevShippingCfg.api_key;
+        delete prevShippingCfg.secret;
+        delete prevShippingCfg.api_key_read_only;
+
+        const updatedMeta: Record<string, any> = {
           ...currentMeta,
           pickup_address: pickupAddress,
           pickup_maps_url: config.pickup_maps_url || null,
@@ -300,7 +315,7 @@ export async function saveStoreShippingConfig(
             pickup_instructions: config.pickup_instructions || null,
           },
           shipping_config: {
-            ...(currentMeta.shipping_config || {}),
+            ...prevShippingCfg,
             is_self_pickup_enabled: isEnabled,
             pickup_address: pickupAddress,
             pickup_maps_url: config.pickup_maps_url || null,
@@ -315,6 +330,11 @@ export async function saveStoreShippingConfig(
             },
           },
         };
+        delete updatedMeta.lincah_config;
+        if (updatedMeta.shipping_settings && typeof updatedMeta.shipping_settings === 'object') {
+          const { api_key: _ak, secret: _sec, api_key_read_only: _ro, ...safeShipSettings } = updatedMeta.shipping_settings;
+          updatedMeta.shipping_settings = safeShipSettings;
+        }
 
         await supabase
           .from('tenants')

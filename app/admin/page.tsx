@@ -35,8 +35,8 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import OfflinePaymentModal from '@/app/admin/components/OfflinePaymentModal';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 interface LiveFeedEvent {
   id: string;
@@ -50,8 +50,6 @@ interface LiveFeedEvent {
 
 export default function SuperAdminExecutiveCenter() {
   const [isAdminAuth, setIsAdminAuth] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
 
   // Dropdown States
   const [activeDropdown, setActiveDropdown] = useState<'directories' | 'operations' | null>(null);
@@ -88,14 +86,6 @@ export default function SuperAdminExecutiveCenter() {
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
   const [selectedTenantForOffline, setSelectedTenantForOffline] = useState<any | null>(null);
 
-  // Auth Initialization
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isAuth = sessionStorage.getItem('super_admin_auth') === 'true';
-      setIsAdminAuth(isAuth);
-    }
-  }, []);
-
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -107,19 +97,11 @@ export default function SuperAdminExecutiveCenter() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
+  const handleLogout = async () => {
+    const supabase = getSupabase();
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
     }
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('super_admin_auth');
     setIsAdminAuth(false);
   };
 
@@ -409,7 +391,7 @@ export default function SuperAdminExecutiveCenter() {
       const targetTier = grantScheme === 'FOUNDER' ? 'FOUNDER' : grantScheme === 'PRO' ? 'PRO_SCALE' : 'SPECIAL_GRANT';
 
       // 1. Call Admin Entitlements API (writes to tenant_entitlements & logs to tenant_credit_ledger)
-      const resEntitlement = await fetch(`/api/admin/tenants/${encodeURIComponent(selectedTenantForGrant.id)}/entitlements`, {
+      const resEntitlement = await adminFetch(`/api/admin/tenants/${encodeURIComponent(selectedTenantForGrant.id)}/entitlements`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -422,7 +404,7 @@ export default function SuperAdminExecutiveCenter() {
 
       // 2. Also call shop subscription grant if merchant
       try {
-        await fetch(`/api/v1/admin/tenants/${encodeURIComponent(selectedTenantForGrant.slug)}/grant`, {
+        await adminFetch(`/api/v1/admin/tenants/${encodeURIComponent(selectedTenantForGrant.slug)}/grant`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -477,35 +459,11 @@ export default function SuperAdminExecutiveCenter() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl text-center">
-          <div className="w-14 h-14 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-4 font-bold text-2xl shadow-lg shadow-blue-500/10">
-            ⚡
-          </div>
-          <h1 className="text-xl font-black text-white mb-1">Executive Control Plane</h1>
-          <p className="text-xs text-slate-400 mb-6">
-            Otorisasi Super Admin diperlukan untuk mengakses Executive Command Center BoonTrack.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              required
-            />
-            {pinError && <p className="text-xs text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
-            >
-              Buka Command Center
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Executive Control Plane"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengakses Executive Command Center BoonTrack."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

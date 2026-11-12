@@ -74,10 +74,10 @@ describe('Landing Page Custom HTML State & Auto-Switch Persistence', () => {
       expect(storefrontCode).toContain('return null;');
     });
 
-    it('renders custom_html section properly when active', () => {
+    it('renders custom_html section properly through DOMPurify sanitization when active', () => {
       expect(storefrontCode).toContain("case 'custom_html':");
       expect(storefrontCode).toContain('config.custom_html');
-      expect(storefrontCode).toContain('dangerouslySetInnerHTML={{ __html: config.custom_html }}');
+      expect(storefrontCode).toContain('dangerouslySetInnerHTML={{ __html: sanitizeSection10Html(config.custom_html) }}');
     });
   });
 

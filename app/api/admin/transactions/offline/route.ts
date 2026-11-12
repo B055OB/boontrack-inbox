@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +12,11 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const body = await req.json();
     const {
       tenant_id,
@@ -217,6 +224,20 @@ export async function POST(req: NextRequest) {
     } catch (subErr) {
       console.warn('[Offline Transaction] Warning recording shop subscription:', subErr);
     }
+
+    await recordTenantConfigAudit({
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_RECORD_OFFLINE_TRANSACTION',
+      resourceType: 'credit_transactions',
+      resourceId: cleanRefNo,
+      changedKeys: ['amount_idr', 'payment_channel', 'category', 'reference_no'],
+      diffSummary: { amount_idr: numericAmount, payment_channel: channel, category: cat, reference_no: cleanRefNo },
+      req,
+    });
 
     // 6. Non-blocking: Pemicu Komisi Afiliasi jika Tenant Terdaftar di Bawah Jaringan Mitra
     try {

@@ -5,6 +5,8 @@ import {
   executeTenantAnnouncementBroadcast,
   buildFeatureAnnouncementHtml,
 } from '@/scripts/broadcast-tenant-announcement';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const { searchParams } = new URL(req.url);
     const previewEmail = searchParams.get('preview');
 
@@ -57,6 +64,11 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const body = await req.json().catch(() => ({}));
     const dryRun = body.dryRun ?? true;
     const targetEmail = typeof body.targetEmail === 'string' ? body.targetEmail.trim() : undefined;
@@ -67,6 +79,18 @@ export async function POST(req: NextRequest) {
       targetEmail,
       limit,
       auditSource: 'ADMIN_API_BROADCAST',
+    });
+
+    await recordTenantConfigAudit({
+      tenantSlug: '_platform_admin',
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_BROADCAST_ANNOUNCEMENT',
+      resourceType: 'announcement_broadcast',
+      changedKeys: ['dryRun', 'targetEmail', 'limit'],
+      diffSummary: { dryRun, hasTargetEmail: Boolean(targetEmail), limit, success: report.success },
+      req,
     });
 
     return NextResponse.json({

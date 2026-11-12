@@ -19,8 +19,7 @@ import {
   Award,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
 
 interface TenantLeaderboardItem {
   id: string;
@@ -34,14 +33,7 @@ interface TenantLeaderboardItem {
 }
 
 export default function SuperAdminTelemetryPage() {
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
 
   // Live metrics simulation & live data
   const [rpsRate, setRpsRate] = useState(38.4);
@@ -52,18 +44,6 @@ export default function SuperAdminTelemetryPage() {
   const [leaderboard, setLeaderboard] = useState<TenantLeaderboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Authenticate PIN
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
 
   // Pulse effect simulation for realistic live telemetry
   useEffect(() => {
@@ -142,35 +122,11 @@ export default function SuperAdminTelemetryPage() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-blue-500/10">
-            📊
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">Cockpit Telemetri Trafik</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Otorisasi diperlukan untuk mengakses telemetri real-time. Masukkan PIN Master Super Admin.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
-            >
-              Buka Cockpit Telemetri
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Cockpit Telemetri Trafik"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengakses telemetri real-time."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

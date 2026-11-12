@@ -9,6 +9,9 @@ import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 import { recordResellerCommissionOnCanonicalEvent } from '@/lib/store-reseller';
 import { verifyOrderMutationAuthorization } from '@/lib/auth/order-auth-guard';
+import { isInternalMachineAuthorized } from '@/lib/auth/merchant-session';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export async function POST(
   req: NextRequest,
@@ -175,6 +178,42 @@ export async function POST(
           error: authResult.error || 'Unauthorized: Anda tidak memiliki wewenang untuk mengubah status finansial pesanan ini.',
         },
         { status: authResult.status || 401 }
+      );
+    }
+
+    const isSubscriptionOrder =
+      order.is_subscription === true ||
+      order.product_type === 'SUBSCRIPTION' ||
+      order.metadata?.is_subscription === true;
+
+    let canActivateSubscription =
+      authResult.callerType === 'machine_internal' || isInternalMachineAuthorized(req);
+
+    if (isSubscriptionOrder && !canActivateSubscription && authResult.callerType === 'supabase_user') {
+      const superCheck = await verifySuperAdminAccess(req, { allowMachine: true });
+      canActivateSubscription = superCheck.authorized;
+    }
+
+    if (isSubscriptionOrder && !canActivateSubscription) {
+      await recordTenantConfigAudit({
+        tenantId: order.tenant_id || null,
+        tenantSlug: slug || order.tenant_slug || '_unknown',
+        actorRole: authResult.callerType || 'MERCHANT',
+        authMethod: 'quick_paid_subscription_guard',
+        action: 'QUICK_PAID_SUBSCRIPTION_ESCALATION_BLOCKED',
+        resourceType: 'tenants',
+        resourceId: String(order.id || ''),
+        changedKeys: ['tier', 'plan_tier', 'subscription_status'],
+        status: 'BLOCKED',
+        req,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN_SUBSCRIPTION_ACTIVATION',
+          message: 'Aktivasi langganan platform hanya diizinkan via webhook pembayaran resmi atau Super Admin.',
+        },
+        { status: 403 }
       );
     }
 
@@ -364,8 +403,8 @@ export async function POST(
       })
       .catch((capiErr) => console.warn('[Quick-Paid] CAPI purchase dispatch note:', capiErr));
 
-    // 2b. Update Langganan Tenant ke Tier jika order bertipe subscription platform
-    if (order.is_subscription === true || order.product_type === 'SUBSCRIPTION' || order.metadata?.is_subscription === true) {
+    // 2b. Update Langganan Tenant ke Tier jika order bertipe subscription platform DAN terverifikasi Super Admin / Internal Machine
+    if (isSubscriptionOrder && canActivateSubscription) {
       try {
         const { data: tRow } = await supabase
           .from('tenants')
@@ -384,6 +423,17 @@ export async function POST(
             metadata: meta,
           })
           .eq('slug', slug);
+
+        await recordTenantConfigAudit({
+          tenantId: order.tenant_id || null,
+          tenantSlug: slug,
+          actorRole: authResult.callerType === 'machine_internal' ? 'INTERNAL_SERVICE' : 'SUPERADMIN',
+          authMethod: 'quick_paid_verified_subscription',
+          action: 'QUICK_PAID_SUBSCRIPTION_ACTIVATED',
+          resourceType: 'tenants',
+          changedKeys: ['tier', 'plan_tier', 'subscription_status'],
+          req,
+        });
       } catch (tierErr) {
         console.warn('[Quick-Paid Tier Sync Note]:', tierErr);
       }

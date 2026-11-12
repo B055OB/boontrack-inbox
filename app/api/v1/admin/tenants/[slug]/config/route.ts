@@ -1,7 +1,38 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { resolveCanonicalTier } from '@/lib/subscription-tiers';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit, redactSensitiveValues, computeChangedKeys } from '@/lib/security/tenant-config-audit';
+
+function asNextRequest(req: Request | NextRequest): NextRequest {
+  if (req instanceof NextRequest) return req;
+  return new NextRequest(req.url, { headers: req.headers, method: req.method });
+}
+
+function maskGatewayConfig(paymentConfig: any): any {
+  if (!paymentConfig || typeof paymentConfig !== 'object') return paymentConfig;
+  const gw = paymentConfig.gateway_config && typeof paymentConfig.gateway_config === 'object'
+    ? paymentConfig.gateway_config
+    : null;
+  const rawKey = gw?.api_key || paymentConfig.api_key || '';
+  const hasKey = typeof rawKey === 'string' && rawKey.trim().length > 0;
+  const maskedKey = hasKey ? `••••${rawKey.trim().slice(-4)}` : '';
+
+  return {
+    ...paymentConfig,
+    ...(gw
+      ? {
+          gateway_config: {
+            ...gw,
+            api_key: maskedKey,
+            has_api_key: hasKey,
+          },
+        }
+      : {}),
+    ...(paymentConfig.api_key !== undefined ? { api_key: maskedKey } : {}),
+    has_api_key: hasKey,
+  };
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -79,12 +110,11 @@ async function findTenant(supabaseAdmin: any, identifier: string) {
   return null;
 }
 
-// OPTIONS: Handle CORS preflight
+// OPTIONS: Fail-closed preflight without wildcard CORS
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
@@ -93,10 +123,15 @@ export async function OPTIONS() {
 
 // GET: Fetch existing configuration for the tenant
 export async function GET(
-  _req: Request | NextRequest,
+  req: Request | NextRequest,
   { params }: { params: Promise<{ slug: string }> | { slug: string } }
 ) {
   try {
+    const auth = await verifySuperAdminAccess(asNextRequest(req), { allowMachine: true });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const resolvedParams = await params;
     const slug = resolvedParams?.slug;
     if (!slug) {
@@ -153,9 +188,12 @@ export async function GET(
       regular_couriers: meta.regular_couriers || ['JNE', 'J&T', 'SiCepat'],
     };
 
+    const sanitizedPaymentConfig = maskGatewayConfig(payment_config);
+    const sanitizedMetadata = redactSensitiveValues(meta) as Record<string, unknown>;
+
     return NextResponse.json({
       success: true,
-      data: tenant.metadata,
+      data: sanitizedMetadata,
       tenant: {
         id: tenant.id,
         slug: tenant.slug,
@@ -169,9 +207,9 @@ export async function GET(
         max_monthly_messages: tenant.max_monthly_messages,
         subscription_ends_at: tenant.subscription_ends_at,
         grant_type: tenant.grant_type,
-        payment_config,
+        payment_config: sanitizedPaymentConfig,
         shipping_config,
-        metadata: meta,
+        metadata: sanitizedMetadata,
       },
     });
   } catch (err: any) {
@@ -189,6 +227,12 @@ export async function PATCH(
   { params }: { params: Promise<{ slug: string }> | { slug: string } }
 ) {
   try {
+    const nextReq = asNextRequest(req);
+    const auth = await verifySuperAdminAccess(nextReq, { allowMachine: true });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const resolvedParams = await params;
     const slug = resolvedParams?.slug;
     if (!slug) {
@@ -228,6 +272,17 @@ export async function PATCH(
       const manual = payment_config.manual_config || {};
       const gateway = payment_config.gateway_config || {};
 
+      const existingGatewayKey =
+        currentMeta.payment_config?.gateway_config?.api_key ||
+        currentMeta.payment_config?.api_key ||
+        '';
+      const incomingGatewayKey = gateway.api_key ?? payment_config.api_key;
+      const isMaskedPlaceholder =
+        typeof incomingGatewayKey === 'string' &&
+        (incomingGatewayKey.startsWith('••••') || incomingGatewayKey.startsWith('[REDACTED'));
+      const resolvedGatewayKey =
+        incomingGatewayKey && !isMaskedPlaceholder ? incomingGatewayKey : existingGatewayKey;
+
       updatedPaymentConfig = {
         mode,
         manual_config: {
@@ -237,7 +292,7 @@ export async function PATCH(
         gateway_config: {
           provider: gateway.provider || payment_config.provider || 'duitku',
           merchant_code: gateway.merchant_code || payment_config.merchant_code || '',
-          api_key: gateway.api_key || payment_config.api_key || '',
+          api_key: resolvedGatewayKey,
           is_sandbox: gateway.is_sandbox ?? payment_config.is_sandbox ?? true,
         },
         // Mirror flat fields so legacy adapters reading flat keys also work
@@ -245,7 +300,7 @@ export async function PATCH(
         qris_image_url: manual.qris_image_url || payment_config.qris_image_url || '',
         provider: gateway.provider || payment_config.provider || 'duitku',
         merchant_code: gateway.merchant_code || payment_config.merchant_code || '',
-        api_key: gateway.api_key || payment_config.api_key || '',
+        api_key: resolvedGatewayKey,
         is_sandbox: gateway.is_sandbox ?? payment_config.is_sandbox ?? true,
         updated_at: new Date().toISOString(),
       };
@@ -345,6 +400,20 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    await recordTenantConfigAudit({
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_PATCH_TENANT_CONFIG',
+      resourceType: 'tenants',
+      resourceId: tenant.id,
+      changedKeys: computeChangedKeys(body),
+      diffSummary: body,
+      req: nextReq,
+    });
 
     // 6. Sinkronkan ke tabel shop_subscriptions jika tier diubah
     if (canonical) {

@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { verifyAffiliateAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await verifyAffiliateAdminAccess(req);
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json({ success: false, detail: 'Database Supabase tidak terhubung.' }, { status: 500 });
@@ -88,8 +95,25 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifyAffiliateAdminAccess(req);
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const body = await req.json();
     const { name, email, phone, referral_code, region } = body;
+
+    await recordTenantConfigAudit({
+      tenantSlug: '_platform_affiliates',
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_CREATE_AFFILIATE_MANAGER',
+      resourceType: 'affiliates',
+      changedKeys: ['name', 'email', 'phone', 'referral_code', 'region'],
+      diffSummary: { name, email, referral_code, region },
+      req,
+    });
 
     if (!name || !name.trim()) {
       return NextResponse.json({ success: false, detail: 'Nama Affiliate Manager wajib diisi.' }, { status: 400 });

@@ -156,29 +156,30 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
     setFeedback(null);
 
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        // Cari order berdasarkan id atau invoice_no
-        const targetShipment = shipments.find(
-          (s) =>
-            (s.orderId || '').toLowerCase() === cleanOrderId.toLowerCase() ||
-            (s.id || '').toLowerCase() === cleanOrderId.toLowerCase()
-        );
+      const targetShipment = shipments.find(
+        (s) =>
+          (s.orderId || '').toLowerCase() === cleanOrderId.toLowerCase() ||
+          (s.id || '').toLowerCase() === cleanOrderId.toLowerCase()
+      );
 
-        const targetId = targetShipment?.id || cleanOrderId;
-
-        const { error: updateErr } = await supabase
-          .from('orders')
-          .update({
+      const targetId = targetShipment?.id || cleanOrderId;
+      const res = await fetch(
+        `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(targetId)}/fulfill`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             tracking_number: cleanResi,
+            invoice_no: cleanOrderId,
             shipping_status: 'SHIPPED',
-            status: 'SHIPPED',
-          })
-          .or(`id.eq.${targetId},invoice_no.eq.${cleanOrderId}`);
-
-        if (updateErr) {
-          console.warn('[PhysicalRetailShippingTab] Update order error:', updateErr.message);
+          }),
         }
+      );
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || json?.error || `Gagal menyimpan resi (HTTP ${res.status})`);
       }
 
       // Update state lokal seketika
@@ -197,9 +198,9 @@ export default function PhysicalRetailShippingTab({ tenantSlug }: { tenantSlug: 
       setFeedback({ type: 'success', text: `Nomor resi ${cleanResi} berhasil disimpan!` });
       setInputOrderId('');
       setInputResi('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('[PhysicalRetailShippingTab] Error updating resi:', err);
-      setFeedback({ type: 'error', text: 'Gagal menyimpan resi. Coba lagi.' });
+      setFeedback({ type: 'error', text: err?.message || 'Gagal menyimpan resi. Coba lagi.' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setFeedback(null), 4000);

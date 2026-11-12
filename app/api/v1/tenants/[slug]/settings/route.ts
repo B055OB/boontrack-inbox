@@ -2,13 +2,209 @@ import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
+import {
+  computeChangedKeys,
+  recordTenantConfigAudit,
+  redactSensitiveValues,
+} from '@/lib/security/tenant-config-audit';
+import { sanitizeNavigationUrl } from '@/lib/security/html-sanitizer';
+
+const FORBIDDEN_ENTITLEMENT_FIELDS = [
+  'tier',
+  'plan_tier',
+  'features',
+  'capabilities',
+  'subscription_status',
+  'subscription_ends_at',
+  'trial_ends_at',
+  'status',
+  'is_active',
+] as const;
+
+const CS_REDACTED_METADATA_KEYS = new Set([
+  'capi_token',
+  'meta_capi_token',
+  'tiktok_access_token',
+  'waba_access_token',
+  'access_token',
+  'permanent_access_token',
+  'bank',
+  'bank_settings',
+  'bank_transfer',
+  'bank_accounts',
+  'manual_bank_accounts',
+  'accounts',
+  'payment_config',
+  'payment_settings',
+  'qris_payload',
+  'qris_static_string',
+  'raw_qris_string',
+  'static_qris_payload',
+  'lincah_config',
+  'shipping_config',
+  'shipping_settings',
+  'biteship_config',
+  'gateway_config',
+]);
+
+function sanitizeTrackingForRole(trackingObj: any, isCsRole: boolean): any {
+  if (!trackingObj || typeof trackingObj !== 'object') return trackingObj ?? null;
+  if (!isCsRole) return trackingObj;
+  const clone = { ...trackingObj };
+  delete clone.meta_capi_token;
+  delete clone.capi_token;
+  delete clone.tiktok_access_token;
+  delete clone.access_token;
+  delete clone.api_secret;
+  return clone;
+}
+
+function sanitizeWabaForRole(wabaObj: any, isCsRole: boolean): any {
+  if (!wabaObj || typeof wabaObj !== 'object') return wabaObj ?? null;
+  if (!isCsRole) return wabaObj;
+  return {
+    ...wabaObj,
+    access_token: null,
+    permanent_access_token: null,
+    api_key: null,
+    app_secret: null,
+  };
+}
+
+function sanitizeShippingMetadataObj(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = { ...obj };
+  delete clone.api_key;
+  delete clone.secret_key;
+  delete clone.token;
+  delete clone.api_secret;
+  if (clone.lincah && typeof clone.lincah === 'object') {
+    clone.lincah = {
+      ...clone.lincah,
+      has_api_key: Boolean(clone.lincah.api_key || clone.lincah.has_api_key),
+    };
+    delete clone.lincah.api_key;
+    delete clone.lincah.secret_key;
+    delete clone.lincah.token;
+  }
+  return clone;
+}
+
+function sanitizeGatewayConfigForRole(gatewayObj: any, isCsRole: boolean): any {
+  if (!gatewayObj || typeof gatewayObj !== 'object') return gatewayObj ?? null;
+  if (!isCsRole) return gatewayObj;
+  const clone = { ...gatewayObj };
+  delete clone.api_key;
+  delete clone.token;
+  delete clone.secret;
+  if (clone.metadata && typeof clone.metadata === 'object') {
+    const safeMeta = { ...clone.metadata };
+    delete safeMeta.api_key;
+    delete safeMeta.token;
+    delete safeMeta.secret;
+    delete safeMeta.evolution_api_key;
+    clone.metadata = safeMeta;
+  }
+  return clone;
+}
+
+function sanitizeMetadataForRole(rawMetadata: any, isCsRole: boolean): Record<string, any> {
+  if (!rawMetadata || typeof rawMetadata !== 'object') return {};
+  const sanitized: Record<string, any> = {};
+  for (const [key, val] of Object.entries(rawMetadata)) {
+    if (isCsRole && CS_REDACTED_METADATA_KEYS.has(key)) {
+      continue;
+    }
+    if (key === 'lincah_config' || key === 'shipping_config' || key === 'shipping_settings' || key === 'biteship_config') {
+      sanitized[key] = sanitizeShippingMetadataObj(val);
+      continue;
+    }
+    if (key === 'tracking' || key === 'ads_tracking_config') {
+      sanitized[key] = sanitizeTrackingForRole(val, isCsRole);
+      continue;
+    }
+    if (key === 'waba_config') {
+      sanitized[key] = sanitizeWabaForRole(val, isCsRole);
+      continue;
+    }
+    sanitized[key] = val;
+  }
+  return sanitized;
+}
+
+function redactSettingsForRole(settingsObj: Record<string, any>, callerRole: string): Record<string, any> {
+  const isCsRole = callerRole === 'CS' || callerRole === 'OPERATOR';
+  const result: Record<string, any> = { ...settingsObj };
+
+  // Strip raw Lincah / shipping courier secret keys for all roles
+  if (result.lincah_config) result.lincah_config = sanitizeShippingMetadataObj(result.lincah_config);
+  if (result.shipping_config) result.shipping_config = sanitizeShippingMetadataObj(result.shipping_config);
+  if (result.shipping_settings) result.shipping_settings = sanitizeShippingMetadataObj(result.shipping_settings);
+
+  if (result.metadata && typeof result.metadata === 'object') {
+    result.metadata = sanitizeMetadataForRole(result.metadata, isCsRole);
+  }
+
+  if (isCsRole) {
+    result.capi_token = null;
+    result.meta_capi_token = null;
+    result.tiktok_access_token = null;
+    result.waba_access_token = null;
+    result.waba_config = sanitizeWabaForRole(result.waba_config, true);
+    result.tracking = sanitizeTrackingForRole(result.tracking, true);
+    result.ads_tracking_config = sanitizeTrackingForRole(result.ads_tracking_config, true);
+    result.gateway_config = sanitizeGatewayConfigForRole(result.gateway_config, true);
+    result.whatsapp_connection = sanitizeGatewayConfigForRole(result.whatsapp_connection, true);
+    result.bank = null;
+    result.bank_settings = null;
+    result.bank_transfer = null;
+    result.bank_accounts = [];
+    result.manual_bank_accounts = [];
+    result.payment_config = null;
+    result.payment_settings = null;
+    result.lincah_config = null;
+    result.shipping_config = null;
+    result.shipping_settings = null;
+    result.qris_payload = null;
+    result.qris_static_string = null;
+  }
+
+  return result;
+}
+
+function detectForbiddenEntitlementKeys(body: Record<string, any>): string[] {
+  const found: string[] = [];
+  for (const key of FORBIDDEN_ENTITLEMENT_FIELDS) {
+    if (body[key] !== undefined) found.push(key);
+    if (body.metadata && typeof body.metadata === 'object' && body.metadata[key] !== undefined) {
+      found.push(`metadata.${key}`);
+    }
+    if (body.entitlements && typeof body.entitlements === 'object' && body.entitlements[key] !== undefined) {
+      found.push(`entitlements.${key}`);
+    }
+  }
+  return found;
+}
+
+function hasForbiddenSection10Payload(body: Record<string, any>): boolean {
+  return Boolean(
+    body.section_10 !== undefined ||
+      body.theme?.section_10 !== undefined ||
+      body.sections?.section_10 !== undefined ||
+      body.theme_config?.section_10 !== undefined ||
+      body.metadata?.section_10 !== undefined ||
+      body.metadata?.theme?.section_10 !== undefined ||
+      body.metadata?.sections?.section_10 !== undefined ||
+      body.metadata?.theme_config?.section_10 !== undefined
+  );
+}
 
 export function sanitizePhoneNumber(raw: unknown): string {
   if (!raw) return '';
@@ -41,7 +237,7 @@ export async function GET(
 
     // ── AUTH GUARD (P0 SECURITY MANDATE) ──
     const isInternalAuth = isInternalMachineAuthorized(_req);
-    let callerRole: string = 'OWNER';
+    let callerRole: string = isInternalAuth ? 'INTERNAL_SERVICE' : 'OWNER';
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(_req, slug, ['OWNER', 'MERCHANT', 'CS', 'OPERATOR']);
       if (!authResult.authorized) {
@@ -50,56 +246,13 @@ export async function GET(
       callerRole = authResult.payload.role || 'MERCHANT';
     }
 
-    // 1. Coba sync dari Core Backend (Railway) jika online
-    try {
-      const coreRes = await fetch(
-        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
-        {
-          headers: { 'X-Tenant-ID': slug },
-          cache: 'no-store',
-        }
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
       );
-      if (coreRes.ok) {
-        const data = await coreRes.json();
-        const settingsObj = data?.settings || (data?.slug || data?.name ? data : null);
-        if (settingsObj) {
-          try {
-            const supabase = getSupabase();
-            const { data: tenantRow } = await supabase
-              .from('tenants')
-              .select('metadata')
-              .eq('slug', slug)
-              .maybeSingle();
-            if (tenantRow?.metadata?.boonpilot_proposal) {
-              settingsObj.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
-              settingsObj.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
-            }
-            if (tenantRow?.metadata?.faqs) {
-              settingsObj.faqs = tenantRow.metadata.faqs;
-            }
-            if (tenantRow?.metadata?.interactive_menu) {
-              settingsObj.interactive_menu = tenantRow.metadata.interactive_menu;
-              settingsObj.interactive_menus = Array.isArray(tenantRow.metadata.interactive_menu?.items)
-                ? tenantRow.metadata.interactive_menu.items
-                : (Array.isArray(tenantRow.metadata.interactive_menu) ? tenantRow.metadata.interactive_menu : []);
-              settingsObj.bot_mode = tenantRow.metadata.interactive_menu?.mode || settingsObj.bot_mode || 'HYBRID';
-            } else if (tenantRow?.metadata?.interactive_menus) {
-              settingsObj.interactive_menus = tenantRow.metadata.interactive_menus;
-            }
-            if (tenantRow?.metadata) {
-              settingsObj.metadata = tenantRow.metadata;
-            }
-          } catch {}
-          return NextResponse.json({ success: true, settings: settingsObj });
-        }
-      }
-    } catch {
-      // Lanjut ke Supabase database murni
     }
-
-    // 2. Query murni ke Supabase Database menggunakan Admin Client (Bypass RLS)
-    let supabase = getSupabaseAdmin();
-    if (!supabase) supabase = getSupabase();
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     let tenantRow: any = null;
@@ -117,12 +270,73 @@ export async function GET(
     }
 
     if (dbError) {
-      return NextResponse.json({ success: false, error: dbError.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'SERVICE_UNAVAILABLE', message: dbError.message }, { status: 503 });
     }
 
     if (!tenantRow) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
+
+    if (!isInternalAuth) {
+      const canonicalCheck = authorizeMerchantRequest(
+        _req,
+        slug,
+        ['OWNER', 'MERCHANT', 'CS', 'OPERATOR'],
+        { id: tenantRow.id, slug: tenantRow.slug }
+      );
+      if (!canonicalCheck.authorized) {
+        return canonicalCheck.response;
+      }
+      callerRole = canonicalCheck.payload.role || callerRole;
+    }
+
+    // 1. Coba sync dari Core Backend (Railway) jika online
+    try {
+      const coreRes = await fetch(
+        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
+        {
+          headers: { 'X-Tenant-ID': slug },
+          cache: 'no-store',
+        }
+      );
+      if (coreRes.ok) {
+        const data = await coreRes.json();
+        const settingsObj = data?.settings || (data?.slug || data?.name ? data : null);
+        if (settingsObj) {
+          if (tenantRow.metadata?.boonpilot_proposal) {
+            settingsObj.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
+            settingsObj.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
+          }
+          if (tenantRow.metadata?.faqs) {
+            settingsObj.faqs = tenantRow.metadata.faqs;
+          }
+          if (tenantRow.metadata?.auto_replies) {
+            settingsObj.auto_replies = tenantRow.metadata.auto_replies;
+          }
+          if (tenantRow.metadata?.interactive_menu) {
+            settingsObj.interactive_menu = tenantRow.metadata.interactive_menu;
+            settingsObj.interactive_menus = Array.isArray(tenantRow.metadata.interactive_menu?.items)
+              ? tenantRow.metadata.interactive_menu.items
+              : (Array.isArray(tenantRow.metadata.interactive_menu) ? tenantRow.metadata.interactive_menu : []);
+            settingsObj.bot_mode = tenantRow.metadata.interactive_menu?.mode || settingsObj.bot_mode || 'HYBRID';
+          } else if (tenantRow.metadata?.interactive_menus) {
+            settingsObj.interactive_menus = tenantRow.metadata.interactive_menus;
+          }
+          if (tenantRow.metadata) {
+            settingsObj.metadata = tenantRow.metadata;
+          }
+          return NextResponse.json({
+            success: true,
+            settings: redactSettingsForRole(settingsObj, callerRole),
+          });
+        }
+      }
+    } catch {
+      // Lanjut ke Supabase database murni
+    }
+
+    // 2. Query murni ke Supabase Database menggunakan Admin Client (Bypass RLS)
+    // `tenantRow` telah dimuat dan diverifikasi di atas.
 
     // 2b. Dynamic Gateway Config from whatsapp_connections
     let gatewayConfig: any = {
@@ -247,97 +461,100 @@ export async function GET(
       ? { ...wabaConfig, access_token: null, permanent_access_token: null }
       : wabaConfig;
 
-    // 4. Return data asli database tanpa data dummy
-    return NextResponse.json({
-      success: true,
-      settings: {
-        slug: tenantRow.slug,
-        name: tenantRow.name,
-        store_name: metadata.store_name || tenantRow.name,
-        category: tenantRow.category || 'retail',
-        tier: tenantRow.tier,
-        plan_tier: planTier,
-        is_suspended: isSuspended,
-        subscription_status: resolvedSubStatus,
-        suspension_reason: perm.reason || null,
-        trial_ends_at: tenantRow.trial_ends_at || metadata.trial_ends_at || null,
-        subscription_ends_at: tenantRow.subscription_ends_at || metadata.subscription_ends_at || null,
-        visual_theme: metadata.visual_theme || metadata.theme?.visual_theme || metadata.theme?.theme_id || 'clean_minimal',
-        features,
-        bot_strategy: metadata.bot_strategy || 'trust_builder',
-        bot_mode: metadata.bot_mode || 'HYBRID',
-        is_bot_active: metadata.is_bot_active !== false,
-        bot_paused: Boolean(metadata.bot_paused === true),
-        product: metadata.product || null,
-        products: Array.isArray(metadata.products) ? metadata.products : (metadata.product ? [metadata.product] : []),
-        ai_knowledge: metadata.ai_knowledge || {
-          ai_name: `${tenantRow.name} Assistant`,
-          system_prompt: `Anda adalah asisten resmi untuk ${tenantRow.name}.`,
-        },
-        boonpilot_proposal: metadata.boonpilot_proposal || metadata.boonpilot_configuration || null,
-        boonpilot_configuration: metadata.boonpilot_configuration || metadata.boonpilot_proposal || null,
-        sales_policy: metadata.sales_policy || metadata.playbook || metadata.seller_playbook || null,
-        playbook: metadata.playbook || metadata.seller_playbook || metadata.sales_policy || null,
-        bank: isCsRole ? null : (metadata.bank || null),
-        bank_settings: isCsRole ? null : (metadata.bank_settings || metadata.bank_transfer || null),
-        bank_transfer: isCsRole ? null : (metadata.bank_transfer || metadata.bank_settings || null),
-        bank_accounts: isCsRole ? [] : (Array.isArray(metadata.bank_accounts) ? metadata.bank_accounts : []),
-        is_bank_transfer_active: metadata.is_bank_transfer_active ?? metadata.enable_manual_transfer ?? metadata.payment_config?.enable_manual_transfer ?? metadata.bank_settings?.is_active ?? metadata.bank_transfer?.is_active ?? true,
-        integration: metadata.integration || {
-          whatsapp_status: 'DISCONNECTED',
-          webhook_verified: false,
-        },
-        qris_image_url: metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.payment_settings?.qris || metadata.payment_config?.qris_image_url || tenantRow.qris_image_url || null,
-        is_qris_active: metadata.is_qris_active ?? metadata.qris_enabled ?? Boolean(metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.raw_qris_string),
-        qris_enabled: metadata.qris_enabled ?? metadata.is_qris_active ?? Boolean(metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.raw_qris_string),
-        logo_url: metadata.logo_url || metadata.store_logo_url || metadata.avatar_url || tenantRow.logo_url || tenantRow.avatar_url || null,
-        store_logo_url: metadata.store_logo_url || metadata.logo_url || metadata.avatar_url || null,
-        avatar_url: metadata.avatar_url || metadata.logo_url || null,
-        bio: metadata.bio || null,
-        phone: tenantRow.phone || tenantRow.whatsapp_number || metadata.phone || metadata.whatsapp_number || metadata.whatsapp || null,
-        whatsapp_number: tenantRow.whatsapp_number || tenantRow.phone || metadata.whatsapp_number || metadata.whatsapp || metadata.whatsapp_cs || null,
-        faqs: Array.isArray(metadata.faqs)
-          ? metadata.faqs
-          : (Array.isArray(metadata.boonpilot_proposal?.knowledge)
-              ? metadata.boonpilot_proposal.knowledge
-                  .filter((k: any) => k.category === 'FAQ')
-                  .map((k: any) => ({
-                    id: k.id || `faq_${Math.random().toString(36).substring(2, 7)}`,
-                    question: k.title,
-                    answer: k.content,
-                  }))
-              : []),
-        interactive_menu: metadata.interactive_menu || null,
-        interactive_menus: Array.isArray(metadata.interactive_menu?.items)
-          ? metadata.interactive_menu.items
-          : (Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : []),
-        greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
-        custom_greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
-        metadata: {
-          ...metadata,
-          tracking: adsTrackingConfig || metadata.tracking,
-          ads_tracking_config: adsTrackingConfig || metadata.ads_tracking_config,
-          waba_config: sanitizedWabaConfig || metadata.waba_config,
-          pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
-          capi_token: effectiveCapiToken,
-        },
-        ads_tracking_config: adsTrackingConfig,
-        tracking: adsTrackingConfig,
+    // 4. Return data asli database yang ter-redaksi sesuai role pemanggil
+    const rawSettingsPayload: Record<string, any> = {
+      slug: tenantRow.slug,
+      name: tenantRow.name,
+      store_name: metadata.store_name || tenantRow.name,
+      category: tenantRow.category || 'retail',
+      tier: tenantRow.tier,
+      plan_tier: planTier,
+      is_suspended: isSuspended,
+      subscription_status: resolvedSubStatus,
+      suspension_reason: perm.reason || null,
+      trial_ends_at: tenantRow.trial_ends_at || metadata.trial_ends_at || null,
+      subscription_ends_at: tenantRow.subscription_ends_at || metadata.subscription_ends_at || null,
+      visual_theme: metadata.visual_theme || metadata.theme?.visual_theme || metadata.theme?.theme_id || 'clean_minimal',
+      features,
+      bot_strategy: metadata.bot_strategy || 'trust_builder',
+      bot_mode: metadata.bot_mode || 'HYBRID',
+      is_bot_active: metadata.is_bot_active !== false,
+      bot_paused: Boolean(metadata.bot_paused === true),
+      product: metadata.product || null,
+      products: Array.isArray(metadata.products) ? metadata.products : (metadata.product ? [metadata.product] : []),
+      ai_knowledge: metadata.ai_knowledge || {
+        ai_name: `${tenantRow.name} Assistant`,
+        system_prompt: `Anda adalah asisten resmi untuk ${tenantRow.name}.`,
+      },
+      boonpilot_proposal: metadata.boonpilot_proposal || metadata.boonpilot_configuration || null,
+      boonpilot_configuration: metadata.boonpilot_configuration || metadata.boonpilot_proposal || null,
+      sales_policy: metadata.sales_policy || metadata.playbook || metadata.seller_playbook || null,
+      playbook: metadata.playbook || metadata.seller_playbook || metadata.sales_policy || null,
+      auto_replies: Array.isArray(metadata.auto_replies) ? metadata.auto_replies : [],
+      bank: metadata.bank || null,
+      bank_settings: metadata.bank_settings || metadata.bank_transfer || null,
+      bank_transfer: metadata.bank_transfer || metadata.bank_settings || null,
+      bank_accounts: Array.isArray(metadata.bank_accounts) ? metadata.bank_accounts : [],
+      is_bank_transfer_active: metadata.is_bank_transfer_active ?? metadata.enable_manual_transfer ?? metadata.payment_config?.enable_manual_transfer ?? metadata.bank_settings?.is_active ?? metadata.bank_transfer?.is_active ?? true,
+      integration: metadata.integration || {
+        whatsapp_status: 'DISCONNECTED',
+        webhook_verified: false,
+      },
+      qris_image_url: metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.payment_settings?.qris || metadata.payment_config?.qris_image_url || tenantRow.qris_image_url || null,
+      is_qris_active: metadata.is_qris_active ?? metadata.qris_enabled ?? Boolean(metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.raw_qris_string),
+      qris_enabled: metadata.qris_enabled ?? metadata.is_qris_active ?? Boolean(metadata.qris_image_url || metadata.qris_url || metadata.qris_image || metadata.raw_qris_string),
+      logo_url: metadata.logo_url || metadata.store_logo_url || metadata.avatar_url || tenantRow.logo_url || tenantRow.avatar_url || null,
+      store_logo_url: metadata.store_logo_url || metadata.logo_url || metadata.avatar_url || null,
+      avatar_url: metadata.avatar_url || metadata.logo_url || null,
+      bio: metadata.bio || null,
+      phone: tenantRow.phone || tenantRow.whatsapp_number || metadata.phone || metadata.whatsapp_number || metadata.whatsapp || null,
+      whatsapp_number: tenantRow.whatsapp_number || tenantRow.phone || metadata.whatsapp_number || metadata.whatsapp || metadata.whatsapp_cs || null,
+      faqs: Array.isArray(metadata.faqs)
+        ? metadata.faqs
+        : (Array.isArray(metadata.boonpilot_proposal?.knowledge)
+            ? metadata.boonpilot_proposal.knowledge
+                .filter((k: any) => k.category === 'FAQ')
+                .map((k: any) => ({
+                  id: k.id || `faq_${Math.random().toString(36).substring(2, 7)}`,
+                  question: k.title,
+                  answer: k.content,
+                }))
+            : []),
+      interactive_menu: metadata.interactive_menu || null,
+      interactive_menus: Array.isArray(metadata.interactive_menu?.items)
+        ? metadata.interactive_menu.items
+        : (Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : []),
+      greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
+      custom_greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
+      metadata: {
+        ...metadata,
+        tracking: adsTrackingConfig || metadata.tracking,
+        ads_tracking_config: adsTrackingConfig || metadata.ads_tracking_config,
+        waba_config: sanitizedWabaConfig || metadata.waba_config,
         pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
         capi_token: effectiveCapiToken,
-        waba_config: sanitizedWabaConfig,
-        waba_phone_number_id: tenantRow.waba_phone_number_id || metadata.waba_phone_number_id || wabaConfig?.phone_number_id || null,
-        theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
-        microsite: metadata.microsite || { buttons: [] },
-        rotator: metadata.rotator || null,
-        total_omzet: metadata.total_omzet || null,
-        telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
-        telegram_group_config: metadata.telegram_group_config || null,
-        followup_rules: metadata.followup_rules || null,
-        gateway_config: gatewayConfig,
-        whatsapp_connection: gatewayConfig,
-        whatsapp_instance: gatewayConfig.instance_name,
       },
+      ads_tracking_config: adsTrackingConfig,
+      tracking: adsTrackingConfig,
+      pixel_id: metadata.pixel_id || adsTrackingConfig?.meta_pixel_id || adsTrackingConfig?.facebook_pixel_id || null,
+      capi_token: effectiveCapiToken,
+      waba_config: sanitizedWabaConfig,
+      waba_phone_number_id: tenantRow.waba_phone_number_id || metadata.waba_phone_number_id || wabaConfig?.phone_number_id || null,
+      theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
+      microsite: metadata.microsite || { buttons: [] },
+      rotator: metadata.rotator || null,
+      total_omzet: metadata.total_omzet || null,
+      telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
+      telegram_group_config: metadata.telegram_group_config || null,
+      followup_rules: metadata.followup_rules || null,
+      gateway_config: gatewayConfig,
+      whatsapp_connection: gatewayConfig,
+      whatsapp_instance: gatewayConfig.instance_name,
+    };
+
+    return NextResponse.json({
+      success: true,
+      settings: redactSettingsForRole(rawSettingsPayload, callerRole),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching settings';
@@ -355,10 +572,51 @@ export async function PUT(
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
     const isInternalAuth = isInternalMachineAuthorized(req);
+    let actorId = 'INTERNAL_MACHINE';
+    let actorRole = 'INTERNAL_SERVICE';
+
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
+      }
+      actorId = authResult.payload.userId || authResult.payload.name || 'merchant';
+      actorRole = authResult.payload.role || 'MERCHANT';
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
+      );
+    }
+
+    const isUuidPut = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+    const { data: existing, error: existingErr } = isUuidPut
+      ? await supabaseAdmin.from('tenants').select('*').eq('id', slug).maybeSingle()
+      : await supabaseAdmin.from('tenants').select('*').eq('slug', slug).maybeSingle();
+
+    if (existingErr) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: existingErr.message },
+        { status: 503 }
+      );
+    }
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    if (!isInternalAuth) {
+      const canonicalCheck = authorizeMerchantRequest(
+        req,
+        slug,
+        ['OWNER', 'MERCHANT'],
+        { id: existing.id, slug: existing.slug }
+      );
+      if (!canonicalCheck.authorized) {
+        return canonicalCheck.response;
       }
     }
 
@@ -366,7 +624,66 @@ export async function PUT(
     if (!perm.allowed && perm.response) {
       return perm.response;
     }
-    const body = await req.json();
+
+    let body: Record<string, any>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'INVALID_JSON' }, { status: 400 });
+    }
+
+    if (!isInternalAuth) {
+      const forbiddenFields = detectForbiddenEntitlementKeys(body);
+      if (forbiddenFields.length > 0) {
+        await recordTenantConfigAudit({
+          tenantId: existing.id,
+          tenantSlug: existing.slug,
+          actorId,
+          actorRole,
+          authMethod: 'merchant_session',
+          action: 'SETTINGS_UPDATE',
+          resourceType: 'tenants.entitlements',
+          resourceId: existing.id,
+          status: 'BLOCKED',
+          changedKeys: forbiddenFields,
+          diffSummary: { reason: 'FORBIDDEN_MASS_ASSIGNMENT', rejected_fields: forbiddenFields },
+          req,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'MASS_ASSIGNMENT_FORBIDDEN',
+            message: `Tidak diizinkan mengubah field entitlement/status dari endpoint pengaturan (${forbiddenFields.join(', ')}).`,
+          },
+          { status: 403 }
+        );
+      }
+
+      if (hasForbiddenSection10Payload(body)) {
+        await recordTenantConfigAudit({
+          tenantId: existing.id,
+          tenantSlug: existing.slug,
+          actorId,
+          actorRole,
+          authMethod: 'merchant_session',
+          action: 'SETTINGS_UPDATE',
+          resourceType: 'tenants.section_10',
+          resourceId: existing.id,
+          status: 'BLOCKED',
+          changedKeys: ['section_10'],
+          diffSummary: { reason: 'Q_SEC_01_SECTION_10_FORBIDDEN' },
+          req,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'SECTION_10_FORBIDDEN',
+            message: 'Section 10 custom HTML hanya dapat dikelola oleh SUPERADMIN atau layanan internal terverifikasi.',
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     const {
       name,
@@ -422,18 +739,8 @@ export async function PUT(
       waba_phone_number_id,
       waba_account_id,
       waba_access_token,
+      auto_replies,
     } = body;
-
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data: existing } = await supabaseAdmin
-      .from('tenants')
-      .select('*')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (!existing) {
-      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
-    }
 
     // ── ADS TRACKING & CAPI MERGE (Server-Side SSOT) ──
     const incomingTracking = ads_tracking_config || tracking || body.metadata?.tracking || body.metadata?.ads_tracking_config;
@@ -508,8 +815,37 @@ export async function PUT(
 
     const sanitizedPhone = rawIncomingPhone !== undefined ? sanitizePhoneNumber(rawIncomingPhone) : undefined;
 
-    const updatedTier = plan_tier || existing.tier;
-    const updatedFeatures = features || existing.metadata?.features || {};
+    const updatedTier = isInternalAuth && plan_tier ? plan_tier : existing.tier;
+    const updatedFeatures = isInternalAuth && features ? features : (existing.metadata?.features || {});
+
+    const sanitizedMicrosite =
+      microsite && typeof microsite === 'object'
+        ? {
+            ...microsite,
+            ...(Array.isArray(microsite.buttons)
+              ? {
+                  buttons: microsite.buttons.map((btn: any) =>
+                    btn && typeof btn === 'object'
+                      ? { ...btn, url: typeof btn.url === 'string' ? sanitizeNavigationUrl(btn.url) : btn.url }
+                      : btn
+                  ),
+                }
+              : {}),
+            ...(Array.isArray(microsite.links)
+              ? {
+                  links: microsite.links.map((lnk: any) =>
+                    lnk && typeof lnk === 'object'
+                      ? { ...lnk, url: typeof lnk.url === 'string' ? sanitizeNavigationUrl(lnk.url) : lnk.url }
+                      : lnk
+                  ),
+                }
+              : {}),
+          }
+        : microsite;
+
+    const sanitizedShippingConfig = shipping_config !== undefined ? sanitizeShippingMetadataObj(shipping_config) : undefined;
+    const sanitizedLincahConfig = lincah_config !== undefined ? sanitizeShippingMetadataObj(lincah_config) : undefined;
+    const sanitizedShippingSettings = shipping_settings !== undefined ? sanitizeShippingMetadataObj(shipping_settings) : undefined;
 
     let updatedProposal = existing.metadata?.boonpilot_proposal || existing.metadata?.boonpilot_configuration || null;
     if (faqs !== undefined && updatedProposal) {
@@ -538,7 +874,7 @@ export async function PUT(
       ...(bot_mode ? { bot_mode } : {}),
       is_bot_active: is_bot_active !== undefined ? Boolean(is_bot_active) : (existing.metadata?.is_bot_active !== false),
       bot_paused: bot_paused !== undefined ? Boolean(bot_paused) : Boolean(existing.metadata?.bot_paused === true),
-      ...(plan_tier ? { plan_tier } : {}),
+      ...(isInternalAuth && plan_tier ? { plan_tier } : {}),
       features: updatedFeatures,
       ...(product ? { product } : {}),
       ...(products !== undefined ? { products } : {}),
@@ -625,11 +961,12 @@ export async function PUT(
         custom_greeting_message: custom_greeting_message !== undefined ? custom_greeting_message : greeting_message,
       } : {}),
       ...(sales_policy !== undefined ? { sales_policy, playbook: sales_policy } : (playbook !== undefined ? { sales_policy: playbook, playbook } : {})),
-      ...(microsite !== undefined ? { microsite } : {}),
+      ...(sanitizedMicrosite !== undefined ? { microsite: sanitizedMicrosite } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
-      ...(shipping_config !== undefined ? { shipping_config } : {}),
-      ...(lincah_config !== undefined ? { lincah_config } : {}),
-      ...(shipping_settings !== undefined ? { shipping_settings } : {}),
+      ...(sanitizedShippingConfig !== undefined ? { shipping_config: sanitizedShippingConfig } : {}),
+      ...(sanitizedLincahConfig !== undefined ? { lincah_config: sanitizedLincahConfig } : {}),
+      ...(sanitizedShippingSettings !== undefined ? { shipping_settings: sanitizedShippingSettings } : {}),
+      ...(Array.isArray(auto_replies) ? { auto_replies } : {}),
       ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
       ...(telegram_group_config !== undefined || body.telegram_group_config !== undefined
         ? { telegram_group_config: telegram_group_config ?? body.telegram_group_config }
@@ -659,7 +996,7 @@ export async function PUT(
     const updateFields: Record<string, any> = {
       name: effectiveStoreName || existing.name,
       category: category || existing.category,
-      tier: updatedTier,
+      ...(isInternalAuth ? { tier: updatedTier } : {}),
       bot_paused: updatedMetadata.bot_paused,
       is_bot_active: updatedMetadata.is_bot_active,
       metadata: updatedMetadata,
@@ -859,6 +1196,26 @@ export async function PUT(
       // Non-fatal if backend is offline
     }
 
+    const changedKeys = computeChangedKeys(body);
+    await recordTenantConfigAudit({
+      tenantId: existing.id,
+      tenantSlug: existing.slug,
+      actorId,
+      actorRole,
+      authMethod: isInternalAuth ? 'internal_machine' : 'merchant_session',
+      action: 'SETTINGS_UPDATE',
+      resourceType: 'tenants.metadata',
+      resourceId: existing.id,
+      status: 'SUCCESS',
+      changedKeys,
+      diffSummary: {
+        changed_summary: redactSensitiveValues(
+          Object.fromEntries(changedKeys.map((k) => [k, updatedMetadata[k] ?? body[k]]))
+        ),
+      },
+      req,
+    });
+
     // Revalidasi cache storefront publik seketika
     try {
       revalidatePath(`/${slug}`);
@@ -886,6 +1243,7 @@ export async function PUT(
         bot_strategy,
         bot_mode: updatedMetadata.bot_mode || 'HYBRID',
         faqs: updatedMetadata.faqs || [],
+        auto_replies: updatedMetadata.auto_replies || [],
         interactive_menus: updatedMetadata.interactive_menus || [],
         theme: updatedMetadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: updatedMetadata.microsite || { buttons: [] },

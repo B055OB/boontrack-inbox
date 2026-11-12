@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { 
-  resolveSinglePageProduct, 
-  resolveCustomHtmlTenantAssets, 
+import {
+  resolveSinglePageProduct,
+  resolveCustomHtmlTenantAssets,
   DEFAULT_ONLINEBOOST_PRODUCTS,
   DEFAULT_PRODUCTS
 } from '@/lib/product-catalog';
@@ -152,8 +152,10 @@ describe('OnlineBoost Section 10 Product Routing Contract Tests', () => {
       expect(pageSource).toContain('isObBatch1Product ? 249000');
     });
 
-    it('rehydrates script elements with async = false to guarantee execution order', () => {
-      expect(pageSource).toContain('newScript.async = false;');
+    it('sanitizes Section 10 HTML via sanitizeSection10Html and disables runtime <script> re-hydration (SEC-XSS-04)', () => {
+      expect(pageSource).toContain('sanitizeSection10Html');
+      expect(pageSource).not.toContain("createElement('script')");
+      expect(pageSource).not.toContain('newScript.async');
     });
 
     it('binds CTA triggers to open the mock checkout modal on #ob-sec10-cta-btn and [data-bt-checkout]', () => {

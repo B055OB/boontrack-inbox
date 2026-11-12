@@ -94,6 +94,7 @@ import {
   isDigitalProduct
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
+import { sanitizeSection10Html } from '@/lib/security/html-sanitizer';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
 import WhatsAppChatTestimonials from '@/components/storefront/WhatsAppChatTestimonials';
@@ -926,7 +927,7 @@ function SingleProductContent() {
               enable_custom_html: isCustomHtmlActive,
               is_custom_html_enabled: isCustomHtmlActive,
               use_custom_html: isCustomHtmlActive,
-              custom_html: resolvedCustomHtml,
+              custom_html: sanitizeSection10Html(resolvedCustomHtml),
               sections_override: isCustomHtmlActive ? false : (cfg.sections_override ?? true),
               active_section: isCustomHtmlActive ? 'custom_html' : ((cfg as any).active_section || undefined),
               checkout_mode: (cfg as any).checkout_mode || (match?.fulfillment_metadata?.single_page_config as any)?.checkout_mode || (match?.metadata as any)?.checkout_mode || (isCustomHtmlActive ? 'modal' : 'inline'),
@@ -2645,31 +2646,7 @@ function SingleProductContent() {
     };
   }, [slug, product.name, basePrice, hasTrackedAddToCart, hasTrackedInitiateCheckout, isOnlineBoostBatch1, wabaConsultationUrl]);
 
-  // Re-hydrate & execute scripts inside Custom HTML (HTML5 spec prevents innerHTML/dangerouslySetInnerHTML from running script tags)
-  useEffect(() => {
-    if (!config.custom_html) return;
-    const timer = setTimeout(() => {
-      const container = document.getElementById('custom-html-section');
-      if (!container) return;
-
-      const scripts = container.querySelectorAll('script');
-      scripts.forEach((oldScript) => {
-        if (oldScript.dataset.hydrated === 'true') return;
-        const newScript = document.createElement('script');
-        Array.from(oldScript.attributes).forEach((attr) => {
-          newScript.setAttribute(attr.name, attr.value);
-        });
-        newScript.dataset.hydrated = 'true';
-        newScript.async = false;
-        if (oldScript.innerHTML) {
-          newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-        }
-        oldScript.parentNode?.replaceChild(newScript, oldScript);
-      });
-    }, 60);
-
-    return () => clearTimeout(timer);
-  }, [config.custom_html]);
+  // Script re-hydration removed per Q-SEC-01 Option B (no executable <script> in custom HTML)
 
   // Deep-link anchor scroll support for #tools or other section hashes
   useEffect(() => {
@@ -5891,7 +5868,7 @@ function SingleProductContent() {
                     key="section-custom-html"
                     id="custom-html-section"
                     className="w-full min-h-screen p-0 m-0"
-                    dangerouslySetInnerHTML={{ __html: config.custom_html }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeSection10Html(config.custom_html) }}
                     onClick={(e) => {
                       if (isOnlineBoostBatch1) {
                         // OnlineBoost Batch 1 CTAs navigate directly to WhatsApp without invoking handleOpenCheckout

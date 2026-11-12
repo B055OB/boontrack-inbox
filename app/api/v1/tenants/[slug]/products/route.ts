@@ -17,6 +17,11 @@ import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,
 } from '@/lib/auth/merchant-session';
+import {
+  sanitizeSection10Html,
+  validateCustomHtmlPayload,
+} from '@/lib/security/html-sanitizer';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
@@ -61,10 +66,54 @@ export async function POST(
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
     const isInternalAuth = isInternalMachineAuthorized(req);
+    let actorId = 'INTERNAL_MACHINE';
+    let actorRole = 'INTERNAL_SERVICE';
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
+      }
+      actorId = authResult.payload.userId || authResult.payload.name || 'merchant';
+      actorRole = authResult.payload.role || 'MERCHANT';
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
+      );
+    }
+
+    const { data: canonicalTenant, error: canonicalErr } = await supabaseAdmin
+      .from('tenants')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (canonicalErr) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: canonicalErr.message },
+        { status: 503 }
+      );
+    }
+
+    if (!canonicalTenant) {
+      return NextResponse.json(
+        { success: false, error: 'TENANT_NOT_FOUND', message: 'Tenant tidak ditemukan.' },
+        { status: 404 }
+      );
+    }
+
+    if (!isInternalAuth) {
+      const canonicalCheck = authorizeMerchantRequest(
+        req,
+        slug,
+        ['OWNER', 'MERCHANT'],
+        { id: canonicalTenant.id, slug: canonicalTenant.slug }
+      );
+      if (!canonicalCheck.authorized) {
+        return canonicalCheck.response;
       }
     }
 
@@ -74,6 +123,48 @@ export async function POST(
     }
     const rawBody = await req.json();
     const body = sanitizeProductPayload(rawBody);
+
+    // Validate & sanitize any landing page custom HTML payloads (64 KB limit + DOMPurify)
+    const htmlCandidates = [
+      body?.single_page_config?.custom_html,
+      body?.fulfillment_metadata?.single_page_config?.custom_html,
+      body?.metadata?.custom_html,
+      body?.custom_html,
+    ];
+    for (const candidate of htmlCandidates) {
+      if (candidate !== undefined && candidate !== null && candidate !== '') {
+        const check = validateCustomHtmlPayload(candidate);
+        if (!check.valid) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: check.error || 'HTML_VALIDATION_FAILED',
+              message: `Konten HTML produk melebihi batas ukuran atau format tidak valid (${check.byteLength ?? 0} bytes).`,
+            },
+            { status: check.status }
+          );
+        }
+      }
+    }
+
+    if (typeof body.custom_html === 'string') {
+      body.custom_html = sanitizeSection10Html(body.custom_html);
+    }
+    if (body.metadata && typeof body.metadata.custom_html === 'string') {
+      body.metadata = {
+        ...body.metadata,
+        custom_html: sanitizeSection10Html(body.metadata.custom_html),
+      };
+    }
+    if (body.fulfillment_metadata?.single_page_config && typeof body.fulfillment_metadata.single_page_config.custom_html === 'string') {
+      body.fulfillment_metadata = {
+        ...body.fulfillment_metadata,
+        single_page_config: {
+          ...body.fulfillment_metadata.single_page_config,
+          custom_html: sanitizeSection10Html(body.fulfillment_metadata.single_page_config.custom_html),
+        },
+      };
+    }
 
     const {
       id,
@@ -179,6 +270,9 @@ export async function POST(
       single_page_config: (body?.single_page_config && typeof body.single_page_config === 'object')
         ? (() => {
             const spc = { ...(body.single_page_config ?? {}), slug: finalSlug };
+            if (typeof spc.custom_html === 'string') {
+              spc.custom_html = sanitizeSection10Html(spc.custom_html);
+            }
             const isCustomHtml = Boolean(
               (spc.enable_custom_html || spc.is_custom_html_enabled || spc.use_custom_html) &&
               spc.custom_html?.trim()
@@ -216,12 +310,7 @@ export async function POST(
     let updatedProducts: ProductItem[] = [];
 
     try {
-      const supabaseAdmin = getSupabaseAdmin();
-      const { data: existing } = await supabaseAdmin
-        .from('tenants')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
+      const existing = canonicalTenant;
 
       const existingProducts: ProductItem[] = Array.isArray(existing?.metadata?.products)
         ? existing.metadata.products
@@ -392,7 +481,7 @@ export async function POST(
             ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
             ...(body.weight_grams !== undefined && body.weight_grams !== null ? { weight_grams: Number(body.weight_grams) } : {}),
             ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
-            ...(body?.single_page_config ? { single_page_config: body.single_page_config } : {}),
+            ...(newProduct.single_page_config ? { single_page_config: newProduct.single_page_config } : {}),
             ...(Array.isArray(body?.facilities) ? { facilities: body.facilities } : {}),
             ...(Array.isArray(body?.features) ? { features: body.features } : {}),
           },
@@ -465,6 +554,21 @@ export async function POST(
       );
     }
 
+    await recordTenantConfigAudit({
+      tenantId: canonicalTenant.id,
+      tenantSlug: canonicalTenant.slug,
+      actorId,
+      actorRole,
+      authMethod: isInternalAuth ? 'internal_machine' : 'merchant_session',
+      action: 'PRODUCT_UPSERT',
+      resourceType: 'products',
+      resourceId: String(productId),
+      status: 'SUCCESS',
+      changedKeys: ['products'],
+      diffSummary: { product_id: productId, slug: finalSlug },
+      req,
+    });
+
     // Forward/Sync to Railway Production Core Backend
     try {
       await fetch(
@@ -517,10 +621,48 @@ export async function DELETE(
 
     // ── AUTH GUARD & RBAC (P0 SECURITY MANDATE) ──
     const isInternalAuth = isInternalMachineAuthorized(req);
+    let actorId = 'INTERNAL_MACHINE';
+    let actorRole = 'INTERNAL_SERVICE';
     if (!isInternalAuth) {
       const authResult = authorizeMerchantRequest(req, slug, ['OWNER', 'MERCHANT']);
       if (!authResult.authorized) {
         return authResult.response;
+      }
+      actorId = authResult.payload.userId || authResult.payload.name || 'merchant';
+      actorRole = authResult.payload.role || 'MERCHANT';
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database admin client is unavailable' },
+        { status: 503 }
+      );
+    }
+
+    const { data: canonicalTenant, error: canonicalErr } = await supabaseAdmin
+      .from('tenants')
+      .select('id, slug, metadata')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (canonicalErr) {
+      return NextResponse.json({ success: false, error: 'SERVICE_UNAVAILABLE' }, { status: 503 });
+    }
+
+    if (!canonicalTenant) {
+      return NextResponse.json({ success: false, error: 'TENANT_NOT_FOUND' }, { status: 404 });
+    }
+
+    if (!isInternalAuth) {
+      const canonicalCheck = authorizeMerchantRequest(
+        req,
+        slug,
+        ['OWNER', 'MERCHANT'],
+        { id: canonicalTenant.id, slug: canonicalTenant.slug }
+      );
+      if (!canonicalCheck.authorized) {
+        return canonicalCheck.response;
       }
     }
 
@@ -541,12 +683,7 @@ export async function DELETE(
     let remainingProducts: ProductItem[] = [];
 
     try {
-      const supabaseAdmin = getSupabaseAdmin();
-      const { data: existing } = await supabaseAdmin
-        .from('tenants')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
+      const existing = canonicalTenant;
 
       const existingProducts: ProductItem[] = Array.isArray(existing?.metadata?.products)
         ? existing.metadata.products
@@ -601,7 +738,22 @@ export async function DELETE(
       console.warn('Supabase product delete error:', dbErr);
     }
 
-    // Forward/Sync to Railway Production Core Backend
+    await recordTenantConfigAudit({
+      tenantId: canonicalTenant.id,
+      tenantSlug: canonicalTenant.slug,
+      actorId,
+      actorRole,
+      authMethod: isInternalAuth ? 'internal_machine' : 'merchant_session',
+      action: 'PRODUCT_DELETE',
+      resourceType: 'products',
+      resourceId: String(id),
+      status: 'SUCCESS',
+      changedKeys: ['products'],
+      diffSummary: { product_id: id },
+      req,
+    });
+
+    // Forward/Sync DELETE to Railway Production Core Backend
     try {
       await fetch(
         getBackendApiUrl(

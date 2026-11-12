@@ -18,18 +18,10 @@ import {
   Coins,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
 
 export default function SuperAdminEconomicsPage() {
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
 
   // Live data metrics (loaded dynamically from Supabase)
   const [merchantCount, setMerchantCount] = useState(0);
@@ -76,18 +68,6 @@ export default function SuperAdminEconomicsPage() {
   const simNet = simGross - simCost;
   const simMarginPct = simGross > 0 ? ((simNet / simGross) * 100).toFixed(1) : '0';
 
-  // Authenticate PIN
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
-
   useEffect(() => {
     if (!isAdminAuth) return;
     const fetchStats = async () => {
@@ -123,35 +103,11 @@ export default function SuperAdminEconomicsPage() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-emerald-500/10">
-            💰
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">Unit Economics & Cost Meter</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Otorisasi diperlukan untuk mengakses telemetri biaya operasional platform.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-emerald-600/30 cursor-pointer"
-            >
-              Buka Unit Economics
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Unit Economics & Cost Meter"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengakses telemetri biaya operasional platform."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

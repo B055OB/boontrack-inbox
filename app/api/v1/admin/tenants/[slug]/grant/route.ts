@@ -6,12 +6,19 @@ import {
   calculateGrantValidUntil,
   CANONICAL_TIERS,
 } from '@/lib/subscription-tiers';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const { slug } = await params;
     if (!slug) {
       return NextResponse.json(
@@ -198,6 +205,20 @@ export async function POST(
     } catch (subLogErr) {
       console.warn('[Subscription Grant] shop_subscriptions sync note:', subLogErr);
     }
+
+    await recordTenantConfigAudit({
+      tenantId: tenant.id,
+      tenantSlug: slug,
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_GRANT_SUBSCRIPTION',
+      resourceType: 'tenants',
+      resourceId: tenant.id,
+      changedKeys: ['tier', 'subscription_tier', 'subscription_status', 'subscription_ends_at', 'grant_type'],
+      diffSummary: { tier: canonical.key, months, valid_until: validUntil, notes },
+      req,
+    });
 
     return NextResponse.json({
       success: true,

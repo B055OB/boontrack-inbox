@@ -41,7 +41,18 @@ export async function checkTenantMutationPermission(
   try {
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
-      return { allowed: true };
+      return {
+        allowed: false,
+        reason: 'SERVICE_UNAVAILABLE',
+        response: NextResponse.json(
+          {
+            success: false,
+            error: 'SERVICE_UNAVAILABLE',
+            message: 'Layanan verifikasi langganan tidak tersedia sementara.',
+          },
+          { status: 503 }
+        ),
+      };
     }
 
     const { data: tenant, error } = await supabase
@@ -50,8 +61,24 @@ export async function checkTenantMutationPermission(
       .eq('slug', slug)
       .maybeSingle();
 
-    if (error || !tenant) {
-      // If tenant not found, let route handler handle 404
+    if (error) {
+      console.warn('[MutationGuard] Fail-closed on database error:', error.message);
+      return {
+        allowed: false,
+        reason: 'DATABASE_ERROR',
+        response: NextResponse.json(
+          {
+            success: false,
+            error: 'SERVICE_UNAVAILABLE',
+            message: 'Gagal memverifikasi status langganan toko. Silakan coba beberapa saat lagi.',
+          },
+          { status: 503 }
+        ),
+      };
+    }
+
+    if (!tenant) {
+      // Tenant does not exist — let route handler return 404
       return { allowed: true };
     }
 
@@ -152,7 +179,18 @@ export async function checkTenantMutationPermission(
 
     return { allowed: true, tenant };
   } catch (err) {
-    console.warn('[MutationGuard] Permission check error:', err);
-    return { allowed: true };
+    console.warn('[MutationGuard] Fail-closed permission check error:', err);
+    return {
+      allowed: false,
+      reason: 'VERIFICATION_EXCEPTION',
+      response: NextResponse.json(
+        {
+          success: false,
+          error: 'SERVICE_UNAVAILABLE',
+          message: 'Terjadi gangguan saat memverifikasi izin mutasi toko.',
+        },
+        { status: 503 }
+      ),
+    };
   }
 }

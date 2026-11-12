@@ -17,7 +17,6 @@ import {
   Search,
   ExternalLink,
 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabaseClient';
 
 export interface AutoReplyRule {
   id: string;
@@ -66,34 +65,18 @@ export default function WhatsAppAutoReplyManager({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Load Rules from Supabase tenants.metadata.auto_replies
+  // Load Rules via authenticated tenant settings endpoint
   const loadRules = async () => {
     if (!tenantSlug) return;
     setIsLoading(true);
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('tenants')
-          .select('id, slug, metadata')
-          .eq('slug', tenantSlug.toLowerCase())
-          .maybeSingle();
-
-        if (data && data.metadata) {
-          const loaded = data.metadata.auto_replies;
-          if (Array.isArray(loaded)) {
-            setRules(loaded);
-            setIsLoading(false);
-            return;
-          }
-        }
-      }
-
-      // Fallback via API route
-      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`);
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
       if (res.ok) {
         const json = await res.json();
-        const loaded = json?.data?.auto_replies || json?.tenant?.metadata?.auto_replies;
+        const loaded = json?.settings?.auto_replies ?? json?.settings?.metadata?.auto_replies;
         if (Array.isArray(loaded)) {
           setRules(loaded);
         }
@@ -109,7 +92,7 @@ export default function WhatsAppAutoReplyManager({
     loadRules();
   }, [tenantSlug]);
 
-  // Save Rules to Supabase
+  // Save Rules via authenticated server settings gateway
   const handleSaveRules = async () => {
     if (!tenantSlug) return;
     setIsSaving(true);
@@ -119,43 +102,16 @@ export default function WhatsAppAutoReplyManager({
     const cleanRules = rules.filter((r) => r.trigger.trim() !== '' || r.reply_text.trim() !== '');
 
     try {
-      let savedSuccessfully = false;
-      const supabase = getSupabase();
-
-      if (supabase) {
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .eq('slug', tenantSlug.toLowerCase())
-          .maybeSingle();
-
-        if (tenantData) {
-          const currentMeta = tenantData.metadata || {};
-          const updatedMeta = {
-            ...currentMeta,
-            auto_replies: cleanRules,
-            auto_replies_updated_at: new Date().toISOString(),
-          };
-
-          const { error: updateErr } = await supabase
-            .from('tenants')
-            .update({ metadata: updatedMeta })
-            .eq('id', tenantData.id);
-
-          if (!updateErr) {
-            savedSuccessfully = true;
-          }
-        }
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_replies: cleanRules }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || json?.error || 'Gagal menyimpan aturan auto-reply.');
       }
-
-      // Also call config API endpoint to ensure cache invalidation & server sync
-      try {
-        await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auto_replies: cleanRules }),
-        });
-      } catch {}
 
       setRules(cleanRules);
       setFeedback({

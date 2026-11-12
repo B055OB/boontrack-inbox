@@ -21,6 +21,8 @@ import {
   Boxes,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 interface StudioTenantItem {
   id: string;
@@ -45,9 +47,6 @@ interface LedgerItem {
 
 export default function DirectoryStudioPage() {
   const [isAdminAuth, setIsAdminAuth] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [studios, setStudios] = useState<StudioTenantItem[]>([]);
@@ -67,44 +66,6 @@ export default function DirectoryStudioPage() {
   const [editNotes, setEditNotes] = useState<string>('');
   const [savingEntitlement, setSavingEntitlement] = useState(false);
   const [alertBanner, setAlertBanner] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isAuth = sessionStorage.getItem('super_admin_auth') === 'true';
-      setIsAdminAuth(isAuth);
-    }
-  }, []);
-
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminPin.trim()) {
-      setPinError('PIN Super Admin wajib diisi!');
-      return;
-    }
-
-    setIsVerifyingPin(true);
-    setPinError('');
-
-    try {
-      const res = await fetch('/api/admin/studio/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: adminPin.trim() }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        sessionStorage.setItem('super_admin_auth', 'true');
-        setIsAdminAuth(true);
-      } else {
-        setPinError(data.message || 'PIN Super Admin salah atau tidak valid!');
-      }
-    } catch (err: any) {
-      setPinError('Gagal memverifikasi PIN: ' + (err.message || 'Kesalahan jaringan.'));
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  };
 
   const fetchStudioTenants = async () => {
     setLoading(true);
@@ -170,7 +131,7 @@ export default function DirectoryStudioPage() {
     setSelectedLedgerTenant(tenant);
     setLoadingLedger(true);
     try {
-      const res = await fetch(`/api/admin/tenants/${encodeURIComponent(tenant.id)}/entitlements`);
+      const res = await adminFetch(`/api/admin/tenants/${encodeURIComponent(tenant.id)}/entitlements`);
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
@@ -200,7 +161,7 @@ export default function DirectoryStudioPage() {
 
     setSavingEntitlement(true);
     try {
-      const res = await fetch(`/api/admin/tenants/${encodeURIComponent(editingTenant.id)}/entitlements`, {
+      const res = await adminFetch(`/api/admin/tenants/${encodeURIComponent(editingTenant.id)}/entitlements`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,7 +194,7 @@ export default function DirectoryStudioPage() {
     const nextTier = nextUnlimited ? 'FOUNDER' : (tenant.tier === 'FOUNDER' ? 'PRO' : tenant.tier);
 
     try {
-      const res = await fetch(`/api/admin/tenants/${encodeURIComponent(tenant.id)}/entitlements`, {
+      const res = await adminFetch(`/api/admin/tenants/${encodeURIComponent(tenant.id)}/entitlements`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -274,43 +235,11 @@ export default function DirectoryStudioPage() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl">
-            🎬
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">Directory Studio Superadmin</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Otorisasi diperlukan untuk mengelola kuota render, founder bypass, dan ledger studio.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              disabled={isVerifyingPin}
-              className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer flex items-center justify-center gap-2"
-            >
-              {isVerifyingPin ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Memverifikasi PIN...</span>
-                </>
-              ) : (
-                <span>Buka Directory Studio</span>
-              )}
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Directory Studio Superadmin"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengelola kuota render & ledger studio."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

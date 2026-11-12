@@ -25,6 +25,7 @@
     "@supabase/supabase-js": "^2.112.4",
     "bcryptjs": "^3.0.3",
     "html5-qrcode": "^2.3.8",
+    "isomorphic-dompurify": "2.26.0",
     "lucide-react": "^1.33.0",
     "next": "16.3.2",
     "qrcode": "^1.5.4",

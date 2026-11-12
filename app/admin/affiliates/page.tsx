@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { adminFetch } from '@/lib/auth/admin-client';
 import {
   Users,
   Search,
@@ -80,7 +81,7 @@ export default function AdminAffiliateManagersPage() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch('/api/v1/admin/affiliates/am', { cache: 'no-store' });
+      const res = await adminFetch('/api/v1/admin/affiliates/am', { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.detail || 'Gagal mengambil data Affiliate Manager.');
@@ -116,7 +117,7 @@ export default function AdminAffiliateManagersPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/v1/admin/affiliates/am', {
+      const res = await adminFetch('/api/v1/admin/affiliates/am', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

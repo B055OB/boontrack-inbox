@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const { slug } = await params;
     if (!slug) {
       return NextResponse.json(
@@ -96,6 +103,18 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    await recordTenantConfigAudit({
+      tenantSlug: slug,
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_PATCH_TENANT_STATUS',
+      resourceType: 'tenants',
+      changedKeys: ['status', 'is_active'],
+      diffSummary: { slug },
+      req,
+    });
 
     return NextResponse.json({
       success: true,

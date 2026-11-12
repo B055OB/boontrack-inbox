@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import { calculateDistanceKm, calculateRoadDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
 import { resolveAreaCoordinates, geocodeDestinationAddress } from '@/app/api/v1/shipping/locations/search/route';
 import { calculateShabuAjhiRate, parseCoordinatesFromInput } from '@/lib/delivery/shabuAjhiRates';
@@ -292,7 +292,7 @@ export async function POST(req: NextRequest) {
 
     if (slug) {
       try {
-        const supabase = getSupabase();
+        const supabase = getSupabaseAdmin();
         if (supabase) {
           const [settingsRes, tenantRes] = await Promise.all([
             supabase
@@ -312,7 +312,8 @@ export async function POST(req: NextRequest) {
           const meta = tenantRes.data?.metadata || {};
           tenantMeta = meta;
           metaShipping = meta.shipping_config;
-          tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
+          // Lincah credentials reside authoritatively in server-side tenant_settings.biteship_config.lincah (Item E)
+          tenantLincah = biteshipCfg?.lincah || metaShipping?.lincah || meta.lincah_config || meta.shipping_settings || null;
 
           if (biteshipCfg) {
             isShippingActive = biteshipCfg.is_enabled ?? true;

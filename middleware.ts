@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { extractMerchantSessionToken, verifyMerchantSessionToken } from '@/lib/auth/merchant-session-edge';
+import { STOREFRONT_CSP_HEADER } from '@/lib/security/csp-headers';
 
 /**
  * ============================================================
@@ -358,6 +359,7 @@ function applyStorefrontCacheHeaders(
     res.headers.set('Cache-Tag', `tenant-${slug}`);
     res.headers.set('x-tenant-id', tenantId || slug);
   }
+  res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
   return res;
 }
 
@@ -1493,6 +1495,26 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
     const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();
     const res = NextResponse.next();
+
+    const rootNonStorefrontPrefixes = new Set([
+      'api', '_next', 'static', 'branding', 'admin', 'dashboard', 'inbox', 'chat',
+      'login', 'register', 'daftar', 'auth', 'checkout', 'affiliate', 'manager',
+      'pricing', 'app', 'app-portal', 'onboarding', 'pilot-onboarding', 'enterprise',
+      'career', 'terms', 'privacy', 'privacy-policy', 'data-deletion',
+      'acceptable-use', 'refund', 'store-original', '404-store-not-found',
+      'favicon.ico', 'icon.png', 'apple-touch-icon.png',
+    ]);
+    const pathSegments = pathname.split('/').filter(Boolean);
+    const rootFirstSeg = pathSegments[0]?.toLowerCase() || '';
+    const isTenantDashboardSubpath = /^\/[^/]+\/(dashboard|inbox|chat)(\/|$)/.test(pathname);
+    if (
+      rootFirstSeg &&
+      !rootNonStorefrontPrefixes.has(rootFirstSeg) &&
+      !isTenantDashboardSubpath
+    ) {
+      res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
+    }
+
     if (platformRef) {
       setReferralCookies(res, platformRef, hostClean);
     }
@@ -1612,7 +1634,9 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
     if (pathname === '/') {
       url.pathname = `/${subdomain}`;
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url);
+      applyStorefrontCacheHeaders(res, subdomain, null);
+      return res;
     }
 
     if (pathname === '/dashboard' || pathname === '/inbox' || pathname === '/chat') {
@@ -1621,7 +1645,9 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     }
 
     url.pathname = `/${subdomain}${pathname}`;
-    return NextResponse.rewrite(url);
+    const res = NextResponse.rewrite(url);
+    applyStorefrontCacheHeaders(res, subdomain, null);
+    return res;
   }
 
   // ===========================================================================
@@ -1723,7 +1749,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 }
 
 export async function middleware(req: NextRequest) {
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl?.host || '';
   const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
 
   const res = await handleRouting(req, hostClean);

@@ -1,80 +1,81 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { GET as getSubscribeRoute, POST as postSubscribeRoute } from '@/app/api/v1/push/subscribe/route';
 import { GET as getBroadcastRoute, POST as postBroadcastRoute } from '@/app/api/v1/admin/push/broadcast/route';
+import { verifyManagerRole } from '@/lib/auth/rbac-guard';
 import webpush from 'web-push';
 
 let mockPushSubscriptions: any[] = [];
 let mockTenants: any[] = [];
 
-jest.mock('@/lib/supabaseClient', () => {
-  return {
-    getSupabase: () => ({
-      from: (table: string) => {
-        if (table === 'push_subscriptions') {
-          return {
-            select: (cols: string) => {
-              return {
-                order: (field: string) => ({
-                  data: [...mockPushSubscriptions],
-                  error: null,
-                }),
-                then: (resolve: any) => resolve({ data: [...mockPushSubscriptions], error: null }),
-                eq: (col: string, val: any) => {
-                  const filtered = mockPushSubscriptions.filter((s) => s[col] === val);
-                  return Promise.resolve({ data: filtered, error: null });
-                },
-              };
-            },
-            upsert: (payload: any, opts: any) => {
-              const existingIdx = mockPushSubscriptions.findIndex(
-                (s) => s.endpoint === payload.endpoint
-              );
-              const saved = {
-                id: payload.id || `sub-${Date.now()}`,
-                ...payload,
-                created_at: new Date().toISOString(),
-              };
-              if (existingIdx >= 0) {
-                mockPushSubscriptions[existingIdx] = saved;
-              } else {
-                mockPushSubscriptions.push(saved);
-              }
-              return {
-                select: () => ({
-                  single: () => Promise.resolve({ data: saved, error: null }),
-                }),
-              };
-            },
-            delete: () => {
-              return {
-                eq: (col: string, val: any) => {
-                  mockPushSubscriptions = mockPushSubscriptions.filter((s) => s[col] !== val);
-                  return Promise.resolve({ error: null });
-                },
-                in: (col: string, vals: any[]) => {
-                  mockPushSubscriptions = mockPushSubscriptions.filter((s) => !vals.includes(s[col]));
-                  return Promise.resolve({ error: null });
-                },
-              };
-            },
+const createMockSupabaseClient = () => ({
+  from: (table: string) => {
+    if (table === 'push_subscriptions') {
+      return {
+        select: () => ({
+          order: () => ({
+            data: [...mockPushSubscriptions],
+            error: null,
+          }),
+          then: (resolve: any) => resolve({ data: [...mockPushSubscriptions], error: null }),
+          eq: (col: string, val: any) => {
+            const filtered = mockPushSubscriptions.filter((s) => s[col] === val);
+            return Promise.resolve({ data: filtered, error: null });
+          },
+        }),
+        upsert: (payload: any) => {
+          const existingIdx = mockPushSubscriptions.findIndex(
+            (s) => s.endpoint === payload.endpoint
+          );
+          const saved = {
+            id: payload.id || `sub-${Date.now()}`,
+            ...payload,
+            created_at: new Date().toISOString(),
           };
-        }
-
-        if (table === 'tenants') {
+          if (existingIdx >= 0) {
+            mockPushSubscriptions[existingIdx] = saved;
+          } else {
+            mockPushSubscriptions.push(saved);
+          }
           return {
-            select: () => {
-              return Promise.resolve({ data: [...mockTenants], error: null });
-            },
+            select: () => ({
+              single: () => Promise.resolve({ data: saved, error: null }),
+            }),
           };
-        }
+        },
+        delete: () => ({
+          eq: (col: string, val: any) => {
+            mockPushSubscriptions = mockPushSubscriptions.filter((s) => s[col] !== val);
+            return Promise.resolve({ error: null });
+          },
+          in: (col: string, vals: any[]) => {
+            mockPushSubscriptions = mockPushSubscriptions.filter((s) => !vals.includes(s[col]));
+            return Promise.resolve({ error: null });
+          },
+        }),
+      };
+    }
 
-        return {
-          select: () => Promise.resolve({ data: [], error: null }),
-        };
-      },
-    }),
-  };
+    if (table === 'tenants') {
+      return {
+        select: () => Promise.resolve({ data: [...mockTenants], error: null }),
+      };
+    }
+
+    return {
+      select: () => Promise.resolve({ data: [], error: null }),
+      insert: () => Promise.resolve({ error: null }),
+    };
+  },
 });
+
+jest.mock('@/lib/supabaseClient', () => ({
+  getSupabase: () => createMockSupabaseClient(),
+  getSupabaseAdmin: () => createMockSupabaseClient(),
+}));
+
+jest.mock('@/lib/auth/rbac-guard', () => ({
+  verifyManagerRole: jest.fn(),
+}));
 
 jest.mock('web-push', () => ({
   setVapidDetails: jest.fn(),
@@ -84,6 +85,30 @@ jest.mock('web-push', () => ({
 describe('Admin Web Push & Subscription Persistence Test Suite', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (verifyManagerRole as jest.Mock).mockImplementation(async (req: NextRequest) => {
+      const authHeader = req?.headers?.get('authorization');
+      if (authHeader === 'Bearer superadmin-jwt') {
+        return {
+          authorized: true,
+          role: 'SUPERADMIN',
+          userId: 'sa-uuid-1',
+          email: 'founder@boontrack.com',
+        };
+      }
+      if (authHeader === 'Bearer affiliate-jwt') {
+        return {
+          authorized: true,
+          role: 'AFFILIATE_MANAGER',
+          userId: 'am-uuid-1',
+          email: 'manager@boontrack.com',
+        };
+      }
+      return {
+        authorized: false,
+        errorStatus: 401,
+        errorMessage: 'Unauthorized',
+      };
+    });
     mockPushSubscriptions = [
       {
         id: 'sub-active-1',
@@ -174,8 +199,24 @@ describe('Admin Web Push & Subscription Persistence Test Suite', () => {
   });
 
   describe('2. Broadcast & Auto-Cleanup (/api/v1/admin/push/broadcast)', () => {
-    it('returns list of subscribers and total count on GET', async () => {
-      const res = await getBroadcastRoute();
+    it('rejects unauthenticated GET and AFFILIATE_MANAGER role cleanly', async () => {
+      const unauthRes = await getBroadcastRoute();
+      expect(unauthRes.status).toBe(401);
+
+      const affiliateReq = new NextRequest('http://localhost:3000/api/v1/admin/push/broadcast', {
+        method: 'GET',
+        headers: { authorization: 'Bearer affiliate-jwt' },
+      });
+      const affiliateRes = await getBroadcastRoute(affiliateReq);
+      expect(affiliateRes.status).toBe(403);
+    });
+
+    it('returns list of subscribers and total count on GET when SUPERADMIN authenticated', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/admin/push/broadcast', {
+        method: 'GET',
+        headers: { authorization: 'Bearer superadmin-jwt' },
+      });
+      const res = await getBroadcastRoute(req);
       const data = await res.json();
 
       expect(res.status).toBe(200);
@@ -187,6 +228,7 @@ describe('Admin Web Push & Subscription Persistence Test Suite', () => {
     it('rejects broadcast with empty message', async () => {
       const req = new NextRequest('http://localhost:3000/api/v1/admin/push/broadcast', {
         method: 'POST',
+        headers: { authorization: 'Bearer superadmin-jwt' },
         body: JSON.stringify({
           title: 'Halo',
           message: '   ',
@@ -215,6 +257,7 @@ describe('Admin Web Push & Subscription Persistence Test Suite', () => {
 
       const req = new NextRequest('http://localhost:3000/api/v1/admin/push/broadcast', {
         method: 'POST',
+        headers: { authorization: 'Bearer superadmin-jwt' },
         body: JSON.stringify({
           title: '🚀 Rilis Fitur Baru',
           message: 'Fitur F&B dan Ongkir Instan kini aktif.',
@@ -256,6 +299,7 @@ describe('Admin Web Push & Subscription Persistence Test Suite', () => {
 
       const req = new NextRequest('http://localhost:3000/api/v1/admin/push/broadcast', {
         method: 'POST',
+        headers: { authorization: 'Bearer superadmin-jwt' },
         body: JSON.stringify({
           title: 'Test Broadcast',
           message: 'Pesan uji coba',

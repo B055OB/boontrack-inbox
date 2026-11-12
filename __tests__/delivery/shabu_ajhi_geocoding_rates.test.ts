@@ -52,23 +52,26 @@ jest.mock('@/lib/supabaseClient', () => {
     },
   };
 
-  return {
-    getSupabase: jest.fn(() => ({
-      from: jest.fn((table: string) => ({
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            maybeSingle: jest.fn(async () => {
-              if (table === 'tenants') return { data: mockTenant, error: null };
-              return { data: null, error: null };
-            }),
-            single: jest.fn(async () => {
-              if (table === 'tenants') return { data: mockTenant, error: null };
-              return { data: null, error: null };
-            }),
-          })),
+  const mockSupabaseClient = {
+    from: jest.fn((table: string) => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          maybeSingle: jest.fn(async () => {
+            if (table === 'tenants') return { data: mockTenant, error: null };
+            return { data: null, error: null };
+          }),
+          single: jest.fn(async () => {
+            if (table === 'tenants') return { data: mockTenant, error: null };
+            return { data: null, error: null };
+          }),
         })),
       })),
     })),
+  };
+
+  return {
+    getSupabase: jest.fn(() => mockSupabaseClient),
+    getSupabaseAdmin: jest.fn(() => mockSupabaseClient),
   };
 });
 

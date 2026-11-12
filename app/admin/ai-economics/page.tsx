@@ -23,8 +23,8 @@ import {
   ChevronDown,
   Download,
 } from 'lucide-react';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FeatureBreakdown {
@@ -128,14 +128,7 @@ function fmtM(n: number) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SuperAdminAIEconomicsPage() {
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
 
   const [period, setPeriod] = useState<'MTD' | 'LAST30' | 'ALL'>('MTD');
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -143,24 +136,11 @@ export default function SuperAdminAIEconomicsPage() {
   const [error, setError] = useState('');
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(
-        `/api/v1/admin/ai-economics?period=${period}&pin=${MASTER_PIN}`,
-      );
+      const res = await adminFetch(`/api/v1/admin/ai-economics?period=${period}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -181,34 +161,11 @@ export default function SuperAdminAIEconomicsPage() {
   // ── Login gate ──────────────────────────────────────────────────────────────
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center mx-auto mb-3 text-xl shadow-lg shadow-violet-500/10">
-            🤖
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">AI Cost & Revenue Telemetry</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Dashboard biaya AI real-time: konsumsi token, gross margin, dan audit per tenant.
-          </p>
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-violet-600/30 cursor-pointer"
-            >
-              Buka AI Telemetry
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="AI Cost & Revenue Telemetry"
+        subtitle="Dashboard biaya AI real-time: konsumsi token, gross margin, dan audit per tenant."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

@@ -35,8 +35,8 @@ import {
 import { BankAccount, PaymentConfig, ShippingConfig } from '@/app/api/v1/admin/tenants/[slug]/config/route';
 import { getSupabase } from '@/lib/supabaseClient';
 import TelegramGroupMappingSection from '@/app/admin/components/TelegramGroupMappingSection';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 const POPULAR_BANKS = [
   'BCA',
@@ -71,14 +71,7 @@ export default function ShopConfigPage() {
   const shopId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string);
 
   // Authentication State
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
 
   // Page Data & State
   const [loading, setLoading] = useState(true);
@@ -120,22 +113,11 @@ export default function ShopConfigPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      setIsAdminAuth(true);
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
-
   const loadShopConfig = useCallback(async () => {
     if (!shopId || !isAdminAuth) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(shopId)}/config`, {
+      const res = await adminFetch(`/api/v1/admin/tenants/${encodeURIComponent(shopId)}/config`, {
         cache: 'no-store',
       });
       
@@ -396,7 +378,7 @@ export default function ShopConfigPage() {
         regular_couriers: regularCouriers,
       };
 
-      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenant.slug)}/config`, {
+      const res = await adminFetch(`/api/v1/admin/tenants/${encodeURIComponent(tenant.slug)}/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -445,35 +427,11 @@ export default function ShopConfigPage() {
   // Auth Gate
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-blue-500/10">
-            ⚡
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">BoonTrack Shop Config</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Konfigurasi gateway pembayaran & logistik ekspedisi toko. Masukkan PIN Super Admin.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
-            >
-              Buka Konfigurasi Toko
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="BoonTrack Shop Config"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk konfigurasi payment & logistik toko."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

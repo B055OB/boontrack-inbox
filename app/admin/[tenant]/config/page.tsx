@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { adminFetch } from '@/lib/auth/admin-client';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -74,7 +75,7 @@ export default function TenantConfigEditorPage() {
 
     async function loadDbConfig() {
       try {
-        const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`);
+        const res = await adminFetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`);
         if (!res.ok) return;
         const json = await res.json();
         if (json.success && json.tenant && !isCancelled) {
@@ -148,7 +149,7 @@ export default function TenantConfigEditorPage() {
       setHistory(updatedHist);
 
       // 2. Persist & sinkronkan langsung ke database Supabase (SSOT Utama)
-      const dbRes = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`, {
+      const dbRes = await adminFetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

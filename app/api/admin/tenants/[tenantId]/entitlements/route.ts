@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StudioCreditService } from '@/lib/services/studio-credit.service';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit, computeChangedKeys } from '@/lib/security/tenant-config-audit';
 
 export const runtime = 'nodejs';
 
@@ -14,10 +16,15 @@ interface RouteContext {
  * Retrieves tenant entitlement and recent transaction history from tenant_credit_ledger
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: RouteContext
 ) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: true });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const { tenantId } = await context.params;
 
     if (!tenantId) {
@@ -62,10 +69,15 @@ export async function PATCH(
   context: RouteContext
 ) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: true });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const { tenantId } = await context.params;
     const body = await req.json();
 
-    const { credits_remaining, is_unlimited, tier, notes, admin_id } = body;
+    const { credits_remaining, is_unlimited, tier, notes } = body;
 
     const entitlements = await StudioCreditService.getEntitlements(tenantId);
     if (!entitlements) {
@@ -81,7 +93,7 @@ export async function PATCH(
       is_unlimited: is_unlimited !== undefined ? Boolean(is_unlimited) : undefined,
       tier: tier !== undefined ? String(tier) : undefined,
       notes: notes || 'Admin adjustment via bossob control plane',
-      adminId: admin_id,
+      adminId: auth.userId,
     });
 
     if (!result.success) {
@@ -90,6 +102,20 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
+    await recordTenantConfigAudit({
+      tenantId: entitlements.tenant_id,
+      tenantSlug: tenantId,
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_UPDATE_ENTITLEMENTS',
+      resourceType: 'tenant_entitlements',
+      resourceId: entitlements.tenant_id,
+      changedKeys: computeChangedKeys({ credits_remaining, is_unlimited, tier, notes }),
+      diffSummary: { credits_remaining, is_unlimited, tier, notes },
+      req,
+    });
 
     const updatedLedger = await StudioCreditService.getLedgerHistory(entitlements.tenant_id, 50);
 

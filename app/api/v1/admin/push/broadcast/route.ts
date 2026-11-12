@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import webpush from 'web-push';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
+import { recordTenantConfigAudit } from '@/lib/security/tenant-config-audit';
 import {
   DEFAULT_VAPID_PUBLIC_KEY,
   initWebPush,
@@ -13,9 +15,20 @@ import {
 // Ensure VAPID credentials are initialized
 initWebPush();
 
-export async function GET() {
+export async function GET(req?: NextRequest) {
   try {
-    const supabase = getSupabase();
+    if (!req) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Super Admin authentication required' },
+        { status: 401 }
+      );
+    }
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
+    const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json({ success: false, error: 'Database unavailable' }, { status: 500 });
     }
@@ -54,6 +67,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
     const body = await req.json();
     const {
       title,
@@ -74,7 +92,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin() || getSupabase();
     let subscriptions: any[] = [];
 
     if (supabase) {
@@ -237,6 +255,18 @@ export async function POST(req: NextRequest) {
         })
       );
     }
+
+    await recordTenantConfigAudit({
+      tenantSlug: '_platform_push',
+      actorId: auth.userId,
+      actorRole: auth.role,
+      authMethod: auth.authMethod,
+      action: 'ADMIN_PUSH_BROADCAST',
+      resourceType: 'push_subscriptions',
+      changedKeys: ['title', 'target_type'],
+      diffSummary: { subscriber_count: subscriptions?.length || 0 },
+      req,
+    });
 
     return NextResponse.json({
       success: true,

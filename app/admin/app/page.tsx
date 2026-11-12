@@ -21,8 +21,7 @@ import {
   Printer,
   Key,
 } from 'lucide-react';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
 
 interface AppRegistryItem {
   id: string;
@@ -107,30 +106,10 @@ const APPS_DATA: AppRegistryItem[] = [
 
 export default function DirectoryAppPage() {
   const [isAdminAuth, setIsAdminAuth] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
 
   const [apps, setApps] = useState<AppRegistryItem[]>(APPS_DATA);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isAuth = sessionStorage.getItem('super_admin_auth') === 'true';
-      setIsAdminAuth(isAuth);
-    }
-  }, []);
-
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
 
   const filteredApps = apps.filter((app) => {
     const matchesSearch =
@@ -145,35 +124,11 @@ export default function DirectoryAppPage() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl">
-            📦
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">Directory App Superadmin</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Otorisasi diperlukan untuk mengakses app registry ekosistem app.boontrack.com.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-orange-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-orange-600/30 cursor-pointer"
-            >
-              Buka Directory App
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Directory App Superadmin"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengakses app registry ekosistem."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

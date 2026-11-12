@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
-
-const MASTER_PIN = '998877';
+import { verifySuperAdminAccess } from '@/lib/security/admin-auth';
 
 // ── Shared type for tenant audit rows ────────────────────────────────────────
 interface TenantAuditRow {
@@ -22,13 +21,9 @@ const GEMINI_COST_PER_MILLION_USD = 0.175;
 const META_FEE_PER_MSG_IDR = 350;
 
 export async function GET(req: NextRequest) {
-  // PIN-gated — checked via header X-Admin-Pin or query param
-  const pin =
-    req.headers.get('x-admin-pin') ||
-    req.nextUrl.searchParams.get('pin');
-
-  if (pin !== MASTER_PIN) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await verifySuperAdminAccess(req, { allowMachine: false });
+  if (!auth.authorized) {
+    return auth.response;
   }
 
   const period = req.nextUrl.searchParams.get('period') || 'MTD'; // MTD | LAST30 | ALL

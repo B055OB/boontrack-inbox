@@ -19,8 +19,8 @@ import {
   Store,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-
-const MASTER_PIN = '998877';
+import AdminSessionGate from '@/app/admin/components/AdminSessionGate';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 interface BroadcastLog {
   id: string;
@@ -34,14 +34,7 @@ interface BroadcastLog {
 }
 
 export default function SuperAdminPushNotificationPage() {
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
 
   // Form states
   const [title, setTitle] = useState('🚀 Pengumuman Fitur Baru BoonTrack');
@@ -71,22 +64,10 @@ export default function SuperAdminPushNotificationPage() {
     message: string;
   } | null>(null);
 
-  // Authenticate PIN
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setIsAdminAuth(true);
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
-
   // Refresh total active push subscriptions from database
   const refreshDatabaseSubscribers = async () => {
     try {
-      const res = await fetch('/api/v1/admin/push/broadcast');
+      const res = await adminFetch('/api/v1/admin/push/broadcast');
       if (res.ok) {
         const data = await res.json();
         setTotalSubscribers(data.total_subscriptions ?? 0);
@@ -209,7 +190,7 @@ export default function SuperAdminPushNotificationPage() {
       targetType === 'tenant' ? (selectedTenant || 'ALL_SHOPS') : targetType === 'tier' ? selectedTier : 'ALL_SHOPS';
 
     try {
-      const res = await fetch('/api/v1/admin/push/broadcast', {
+      const res = await adminFetch('/api/v1/admin/push/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -352,35 +333,11 @@ export default function SuperAdminPushNotificationPage() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-purple-500/10">
-            🔔
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">Superadmin Web Push Sender</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Otorisasi diperlukan untuk mengakses Web Push Broadcaster. Masukkan PIN Master Super Admin.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer"
-            >
-              Buka Web Push Panel
-            </button>
-          </form>
-        </div>
-      </main>
+      <AdminSessionGate
+        title="Superadmin Web Push Sender"
+        subtitle="Otorisasi akun Super Admin diperlukan untuk mengakses Web Push Broadcaster."
+        onAuthenticated={() => setIsAdminAuth(true)}
+      />
     );
   }
 

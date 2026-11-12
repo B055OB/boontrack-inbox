@@ -18,6 +18,7 @@ import {
   downloadInvoicePdf,
   InvoicePdfData,
 } from '@/lib/utils/invoicePdfGenerator';
+import { adminFetch } from '@/lib/auth/admin-client';
 
 interface OfflinePaymentModalProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ export default function OfflinePaymentModal({
     setFeedback(null);
 
     try {
-      const res = await fetch('/api/admin/transactions/offline', {
+      const res = await adminFetch('/api/admin/transactions/offline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
