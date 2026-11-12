@@ -11,8 +11,8 @@ import {
   DbProductType,
   sanitizeProductPayload,
   safeJsonStringify,
-  sanitizePublicProduct,
 } from '@/lib/product-catalog';
+import { sanitizePublicProduct } from '@/lib/security/public-catalog-sanitizer';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,

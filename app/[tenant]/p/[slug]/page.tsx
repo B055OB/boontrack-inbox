@@ -94,7 +94,7 @@ import {
   isDigitalProduct
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
-import { sanitizeSection10Html } from '@/lib/security/html-sanitizer';
+import { sanitizeSection10Html } from '@/lib/security/html-sanitizer-client';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
 import WhatsAppChatTestimonials from '@/components/storefront/WhatsAppChatTestimonials';

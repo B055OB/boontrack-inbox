@@ -8,8 +8,8 @@ import {
   slugify,
   mapToDbProductType,
   sanitizeProductPayload,
-  sanitizePublicProduct,
 } from '@/lib/product-catalog';
+import { sanitizePublicProduct } from '@/lib/security/public-catalog-sanitizer';
 import {
   authorizeMerchantRequest,
   isInternalMachineAuthorized,

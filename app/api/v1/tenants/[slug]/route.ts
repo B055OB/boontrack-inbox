@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
-import { sanitizePublicTenantMetadata } from '@/lib/product-catalog';
+import { sanitizePublicTenantMetadata } from '@/lib/security/public-catalog-sanitizer';
 
 export const dynamic = 'force-dynamic';
 

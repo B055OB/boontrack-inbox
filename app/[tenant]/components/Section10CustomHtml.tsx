@@ -3,7 +3,7 @@
 import React, { useRef } from 'react';
 import { useParams, usePathname } from 'next/navigation';
 import { resolveCustomHtmlTenantAssets, isSection10TakeoverEligible } from '@/lib/product-catalog';
-import { sanitizeSection10Html } from '@/lib/security/html-sanitizer';
+import { sanitizeSection10Html } from '@/lib/security/html-sanitizer-client';
 
 export interface Section10Config {
   is_enabled?: boolean;

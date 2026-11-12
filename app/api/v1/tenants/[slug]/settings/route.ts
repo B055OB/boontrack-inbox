@@ -14,7 +14,7 @@ import {
   recordTenantConfigAudit,
   redactSensitiveValues,
 } from '@/lib/security/tenant-config-audit';
-import { sanitizeNavigationUrl } from '@/lib/security/html-sanitizer';
+import { sanitizeNavigationUrl } from '@/lib/security/html-sanitizer-policy';
 
 const FORBIDDEN_ENTITLEMENT_FIELDS = [
   'tier',

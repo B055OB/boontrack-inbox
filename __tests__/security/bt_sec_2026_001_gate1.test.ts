@@ -8,7 +8,12 @@ import {
   MAX_CUSTOM_HTML_BYTES,
   STOREFRONT_CSP_HEADER,
 } from '@/lib/security/html-sanitizer';
-import { sanitizePublicTenantMetadata } from '@/lib/product-catalog';
+import { sanitizePublicTenantMetadata } from '@/lib/security/public-catalog-sanitizer';
+import {
+  redactSensitiveValues,
+  recordTenantConfigAudit,
+} from '@/lib/security/tenant-config-audit';
+import { sanitizeSection10Html as sanitizeSection10ClientHtml } from '@/lib/security/html-sanitizer-client';
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import { verifyManagerRole } from '@/lib/auth/rbac-guard';
@@ -28,7 +33,9 @@ import {
   POST as postProductsRoute,
 } from '@/app/api/v1/tenants/[slug]/products/route';
 import {
+  GET as getProductByIdRoute,
   PATCH as patchProductByIdRoute,
+  DELETE as deleteProductByIdRoute,
 } from '@/app/api/v1/tenants/[slug]/products/[id]/route';
 import {
   GET as getPublicTenantRoute,
@@ -1446,6 +1453,460 @@ describe('BT-SEC-2026-001 Gate 1 Comprehensive Security & Regression Verificatio
       expect(updateThemeRes.status).toBe(200);
       const updatedTheme = await updateThemeRes.json();
       expect(updatedTheme.success).toBe(true);
+    });
+  });
+
+  describe('Suite 7: Audit Log Redaction, Telemetry Resilience & Client/Server Sanitizer Boundary', () => {
+    it('SEC-AUDIT-01: redactSensitiveValues masks nested secrets, truncates long strings, and caps recursion depth', () => {
+      const longBio = 'A'.repeat(600);
+      const input = {
+        bio: longBio,
+        nested: {
+          api_key: 'live-api-key-12345',
+          client_secret: 'meta-secret-999',
+          lincah_api_key: 'lincah-token-abc',
+          webhook_secret: 'whsec-xyz',
+          bank_account: { account_number: '9988776655' },
+          pin: 123456,
+          emptyToken: '',
+          items: [
+            { publicLabel: 'Safe', access_token: 'bearer-secret-token' },
+          ],
+        },
+        d1: { d2: { d3: { d4: { d5: { d6: { d7: { tooDeep: 'value' } } } } } } },
+      };
+
+      const redacted = redactSensitiveValues(input) as any;
+
+      expect(redacted.bio).toBe(`${'A'.repeat(128)}...[len:600]`);
+      expect(redacted.nested.api_key).toBe('[REDACTED:len=18]');
+      expect(redacted.nested.client_secret).toBe('[REDACTED:len=15]');
+      expect(redacted.nested.lincah_api_key).toBe('[REDACTED:len=16]');
+      expect(redacted.nested.webhook_secret).toBe('[REDACTED:len=9]');
+      expect(redacted.nested.bank_account).toBe('[REDACTED]');
+      expect(redacted.nested.pin).toBe('[REDACTED]');
+      expect(redacted.nested.emptyToken).toBeNull();
+      expect(redacted.nested.items[0].publicLabel).toBe('Safe');
+      expect(redacted.nested.items[0].access_token).toBe('[REDACTED:len=19]');
+      expect(redacted.d1.d2.d3.d4.d5.d6.d7).toBe('[TRUNCATED]');
+
+      const serialized = JSON.stringify(redacted);
+      expect(serialized).not.toContain('live-api-key-12345');
+      expect(serialized).not.toContain('meta-secret-999');
+      expect(serialized).not.toContain('lincah-token-abc');
+      expect(serialized).not.toContain('whsec-xyz');
+      expect(serialized).not.toContain('9988776655');
+      expect(serialized).not.toContain('bearer-secret-token');
+    });
+
+    it('SEC-AUDIT-02: PUT /settings & recordTenantConfigAudit write redacted diff_summary and zero plaintext secrets in logs', async () => {
+      const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const res = await putSettingsRoute(
+          makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/settings', {
+            method: 'PUT',
+            role: 'OWNER',
+            tenantSlug: 'toko-alpha',
+            tenantId: TENANT_A_ID,
+            body: {
+              bio: 'Aman Bio',
+              lincah_api_key: 'lincah-live-secret-999',
+              webhook_secret: 'whsec-supersecret',
+              access_token: 'waba-token-xyz-123',
+            },
+          }),
+          { params: Promise.resolve({ slug: 'toko-alpha' }) }
+        );
+        expect(res.status).toBe(200);
+        expect(state.auditLogs.length).toBeGreaterThan(0);
+
+        const auditSerialized = JSON.stringify(state.auditLogs);
+        expect(auditSerialized).not.toContain('lincah-live-secret-999');
+        expect(auditSerialized).not.toContain('whsec-supersecret');
+        expect(auditSerialized).not.toContain('waba-token-xyz-123');
+
+        await recordTenantConfigAudit({
+          tenantId: TENANT_A_ID,
+          tenantSlug: 'toko-alpha',
+          actorId: 'owner-alpha',
+          actorRole: 'OWNER',
+          authMethod: 'merchant_session',
+          action: 'UPDATE_INTEGRATION_SECRET',
+          resourceType: 'tenant_settings',
+          changedKeys: ['client_secret', 'bank_account'],
+          diffSummary: {
+            client_secret: 'meta-client-secret-777',
+            bank_account: '1234567890',
+            updated_field: 'ok',
+          },
+        });
+
+        const latestAudit = state.auditLogs[state.auditLogs.length - 1];
+        expect(latestAudit.diff_summary.client_secret).toBe('[REDACTED:len=22]');
+        expect(latestAudit.diff_summary.bank_account).toBe('[REDACTED:len=10]');
+        expect(latestAudit.diff_summary.updated_field).toBe('ok');
+
+        const infoCalls = infoSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+        expect(infoCalls).toContain('[TENANT_CONFIG_AUDIT]');
+        expect(infoCalls).not.toContain('meta-client-secret-777');
+        expect(infoCalls).not.toContain('1234567890');
+        expect(infoCalls).not.toContain('lincah-live-secret-999');
+      } finally {
+        infoSpy.mockRestore();
+      }
+    });
+
+    it('SEC-AUDIT-03: recordTenantConfigAudit fails gracefully (non-fatal) when audit DB insert errors or throws', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        // Case 1: insert rejects (throws)
+        (getSupabaseAdmin as jest.Mock).mockReturnValueOnce({
+          from: jest.fn(() => ({
+            insert: jest.fn().mockRejectedValue(new Error('audit DB offline')),
+          })),
+        });
+        await expect(
+          recordTenantConfigAudit({
+            tenantSlug: 'toko-alpha',
+            actorRole: 'OWNER',
+            authMethod: 'merchant_session',
+            action: 'TEST_RESILIENCE',
+            resourceType: 'tenant_settings',
+            diffSummary: { api_key: 'secret-never-logged' },
+          })
+        ).resolves.toBeUndefined();
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[TenantConfigAudit] Non-fatal audit write failure:',
+          'audit DB offline'
+        );
+
+        // Case 2: insert returns non-missing-table error
+        (getSupabaseAdmin as jest.Mock).mockReturnValueOnce({
+          from: jest.fn(() => ({
+            insert: jest.fn().mockResolvedValue({ error: { message: 'permission denied' } }),
+          })),
+        });
+        await expect(
+          recordTenantConfigAudit({
+            tenantSlug: 'toko-alpha',
+            actorRole: 'OWNER',
+            authMethod: 'merchant_session',
+            action: 'TEST_RESILIENCE_2',
+            resourceType: 'tenant_settings',
+          })
+        ).resolves.toBeUndefined();
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[TenantConfigAudit] Insert error:',
+          'permission denied'
+        );
+      } finally {
+        warnSpy.mockRestore();
+        infoSpy.mockRestore();
+      }
+    });
+
+    it('SEC-AUDIT-04: separates client/server DOMPurify boundaries cleanly without leaking jsdom into lib/product-catalog', () => {
+      const productCatalogSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'lib/product-catalog.ts'),
+        'utf8'
+      );
+      const section10Src = fs.readFileSync(
+        path.resolve(process.cwd(), 'app/[tenant]/components/Section10CustomHtml.tsx'),
+        'utf8'
+      );
+      const pSlugSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'app/[tenant]/p/[slug]/page.tsx'),
+        'utf8'
+      );
+      const settingsRouteSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'app/api/v1/tenants/[slug]/settings/route.ts'),
+        'utf8'
+      );
+      const nextConfigSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'next.config.ts'),
+        'utf8'
+      );
+
+      expect(productCatalogSrc).not.toContain('html-sanitizer');
+      expect(productCatalogSrc).not.toContain('isomorphic-dompurify');
+      expect(section10Src).toContain('@/lib/security/html-sanitizer-client');
+      expect(pSlugSrc).toContain('@/lib/security/html-sanitizer-client');
+      expect(settingsRouteSrc).toContain('@/lib/security/html-sanitizer-policy');
+      expect(nextConfigSrc).toContain('serverExternalPackages');
+      expect(nextConfigSrc).toContain('isomorphic-dompurify');
+      expect(nextConfigSrc).toContain('jsdom');
+
+      // SSR fails closed when window is absent (node test env), while browser relies on pure dompurify
+      expect(sanitizeSection10ClientHtml('<script>alert(1)</script><p>Hi</p>')).toBe('');
+    });
+
+    it('SEC-XSS-CLIENT-01: browser DOMPurify wrapper sanitizes XSS vectors when window exists and isolates SSR', () => {
+      const { JSDOM } = require('jsdom');
+      const dom = new JSDOM('<!doctype html><html><body></body></html>');
+      const prevWindow = (globalThis as any).window;
+      try {
+        (globalThis as any).window = dom.window;
+
+        const clean = sanitizeSection10ClientHtml(
+          '<section><h2>Safe Title</h2><p>Hi</p><script>alert(1)</script><img src="https://assets.boontrack.com/a.png" onerror="alert(2)"><a href="javascript:alert(3)">Bad</a><a href="https://boontrack.com" target="_blank">Good</a><iframe src="https://evil.com"></iframe></section>'
+        );
+
+        expect(clean).toContain('<h2>Safe Title</h2>');
+        expect(clean).toContain('href="https://boontrack.com"');
+        expect(clean).not.toContain('<script');
+        expect(clean).not.toContain('onerror');
+        expect(clean).not.toContain('javascript:');
+        expect(clean).not.toContain('<iframe');
+
+        const malformed = sanitizeSection10ClientHtml('<div><b>Unclosed<img src="x" onerror=prompt(1)>');
+        expect(malformed).not.toContain('onerror');
+        expect(malformed).not.toContain('prompt(1)');
+
+        // Oversized (>64KB) payload rejected fail-closed even in browser context
+        expect(sanitizeSection10ClientHtml(`<p>${'x'.repeat(66000)}</p>`)).toBe('');
+      } finally {
+        if (prevWindow === undefined) {
+          delete (globalThis as any).window;
+        } else {
+          (globalThis as any).window = prevWindow;
+        }
+        dom.window.close();
+      }
+    });
+  });
+
+  describe('Suite 8: Cross-Tenant Read/Write Isolation & Complete Legitimate Tenant CRUD Lifecycle', () => {
+    it('SEC-ISOLATION-01: Tenant B cannot read or mutate Tenant A settings, theme, shipping config, products, or orders (even via slug casing/encoding)', async () => {
+      // Seed a Tenant B product so cross-tenant UUID targeting can be verified
+      state.products.push({
+        id: '66666666-6666-4666-8666-666666666666',
+        tenant_id: TENANT_B_ID,
+        name: 'Produk Beta',
+        slug: 'produk-beta',
+        price: 99000,
+        is_active: true,
+      });
+
+      const betaGetSettings = await getSettingsRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/settings', {
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha' }) }
+      );
+      expect(betaGetSettings.status).toBe(403);
+
+      const betaPutSettings = await putSettingsRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/Toko-Alpha/settings', {
+          method: 'PUT',
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+          body: { bio: 'Hijacked' },
+        }),
+        { params: Promise.resolve({ slug: 'Toko-Alpha' }) }
+      );
+      expect(betaPutSettings.status).toBe(403);
+
+      // GET /theme is a public storefront read endpoint (strips private secrets), while PUT /theme enforces tenant RBAC
+      const betaGetTheme = await getThemeRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/theme', {
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha' }) }
+      );
+      expect(betaGetTheme.status).toBe(200);
+      const betaGetThemeStr = JSON.stringify(await betaGetTheme.json());
+      expect(betaGetThemeStr).not.toContain('EAAG-CAPI-SECRET');
+      expect(betaGetThemeStr).not.toContain('LINCAH-PLAIN-SECRET-KEY-9999');
+
+      const betaPutTheme = await putThemeRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/theme', {
+          method: 'PUT',
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+          body: { visual_theme: 'editorial_shop' },
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha' }) }
+      );
+      expect(betaPutTheme.status).toBe(403);
+
+      const betaQuickPaid = await postQuickPaidRoute(
+        makeMerchantReq(
+          `http://localhost:3000/api/v1/tenants/toko-alpha/orders/${ORDER_A_ID}/quick-paid`,
+          {
+            method: 'POST',
+            role: 'OWNER',
+            tenantSlug: 'toko-beta',
+            tenantId: TENANT_B_ID,
+            body: {},
+          }
+        ),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: ORDER_A_ID }) }
+      );
+      expect(betaQuickPaid.status).toBe(403);
+
+      const betaPatchProduct = await patchProductByIdRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/products/prod-a1', {
+          method: 'PATCH',
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+          body: { price: 1 },
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: 'prod-a1' }) }
+      );
+      expect(betaPatchProduct.status).toBe(403);
+      expect(state.products.find((p) => p.id === 'prod-a1')?.price).toBe(150000);
+
+      const betaDeleteProduct = await deleteProductByIdRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/products/prod-a1', {
+          method: 'DELETE',
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: 'prod-a1' }) }
+      );
+      expect(betaDeleteProduct.status).toBe(403);
+      expect(state.products.some((p) => p.id === 'prod-a1')).toBe(true);
+
+      const betaShippingGet = await getShippingConfigRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/shipping/config?tenant_slug=toko-alpha', {
+          role: 'OWNER',
+          tenantSlug: 'toko-beta',
+          tenantId: TENANT_B_ID,
+        })
+      );
+      expect(betaShippingGet.status).toBe(403);
+
+      // Tenant A OWNER using valid Tenant A slug cannot mutate Tenant B product UUID via tenant_id scope
+      const alphaMutateBetaProduct = await patchProductByIdRoute(
+        makeMerchantReq(
+          'http://localhost:3000/api/v1/tenants/toko-alpha/products/66666666-6666-4666-8666-666666666666',
+          {
+            method: 'PATCH',
+            role: 'OWNER',
+            tenantSlug: 'toko-alpha',
+            tenantId: TENANT_A_ID,
+            body: { price: 1 },
+          }
+        ),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: '66666666-6666-4666-8666-666666666666' }) }
+      );
+      expect(alphaMutateBetaProduct.status).toBe(400);
+      expect(
+        state.products.find((p) => p.id === '66666666-6666-4666-8666-666666666666')?.price
+      ).toBe(99000);
+    });
+
+    it('SEC-CRUD-01: authorized OWNER completes Create/Read/Edit/Delete product, profile edit, and non-subscription quick-paid', async () => {
+      // 1. Create / upload product
+      const createRes = await postProductsRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/products', {
+          method: 'POST',
+          role: 'OWNER',
+          tenantSlug: 'toko-alpha',
+          tenantId: TENANT_A_ID,
+          body: {
+            name: 'Serum Vit C',
+            price: 120000,
+            category: 'physical',
+            description: 'Serum harian',
+            image_url: 'https://assets.boontrack.com/serum.png',
+          },
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha' }) }
+      );
+      expect(createRes.status).toBe(200);
+      const createdJson = await createRes.json();
+      const createdId = createdJson.product.id;
+      expect(createdId).toBeTruthy();
+
+      // 2. Public GET product by slug returns product DTO without private links
+      const readRes = await getProductByIdRoute(
+        new NextRequest('http://localhost:3000/api/v1/tenants/toko-alpha/products/serum-vit-c'),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: 'serum-vit-c' }) }
+      );
+      expect(readRes.status).toBe(200);
+      const readJson = await readRes.json();
+      expect(readJson.product.download_url).toBeNull();
+      const productSlugKey = 'serum-vit-c';
+
+      // 3. Edit product (PATCH by slug)
+      const patchRes = await patchProductByIdRoute(
+        makeMerchantReq(`http://localhost:3000/api/v1/tenants/toko-alpha/products/${productSlugKey}`, {
+          method: 'PATCH',
+          role: 'OWNER',
+          tenantSlug: 'toko-alpha',
+          tenantId: TENANT_A_ID,
+          body: {
+            name: 'Serum Vit C Gold',
+            price: 145000,
+            stock: 25,
+          },
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: productSlugKey }) }
+      );
+      expect(patchRes.status).toBe(200);
+      const updatedSlugKey = 'serum-vit-c-gold';
+      expect(state.products.find((p) => p.slug === updatedSlugKey)?.price).toBe(145000);
+
+      // 4. Edit profile & merchant settings (PUT /settings)
+      const profileRes = await putSettingsRoute(
+        makeMerchantReq('http://localhost:3000/api/v1/tenants/toko-alpha/settings', {
+          method: 'PUT',
+          role: 'OWNER',
+          tenantSlug: 'toko-alpha',
+          tenantId: TENANT_A_ID,
+          body: {
+            store_name: 'Toko Alpha Skincare',
+            bio: 'Toko resmi skincare terpercaya',
+            whatsapp_number: '628123456789',
+            greeting_message: 'Halo Kak, ada yang bisa dibantu?',
+          },
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha' }) }
+      );
+      expect(profileRes.status).toBe(200);
+      expect(state.tenants.find((t) => t.id === TENANT_A_ID)?.metadata.bio).toBe(
+        'Toko resmi skincare terpercaya'
+      );
+
+      // 5. Confirm payment (quick-paid) for legitimate non-subscription tenant order
+      const quickPaidRes = await postQuickPaidRoute(
+        makeMerchantReq(
+          `http://localhost:3000/api/v1/tenants/toko-alpha/orders/${ORDER_A_ID}/quick-paid`,
+          {
+            method: 'POST',
+            role: 'OWNER',
+            tenantSlug: 'toko-alpha',
+            tenantId: TENANT_A_ID,
+            body: {},
+          }
+        ),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: ORDER_A_ID }) }
+      );
+      expect(quickPaidRes.status).toBe(200);
+      expect(state.orders.find((o) => o.id === ORDER_A_ID)?.status).toBe('PAID');
+
+      // 6. Delete product (DELETE by updated slug)
+      const deleteRes = await deleteProductByIdRoute(
+        makeMerchantReq(`http://localhost:3000/api/v1/tenants/toko-alpha/products/${updatedSlugKey}`, {
+          method: 'DELETE',
+          role: 'OWNER',
+          tenantSlug: 'toko-alpha',
+          tenantId: TENANT_A_ID,
+        }),
+        { params: Promise.resolve({ slug: 'toko-alpha', id: updatedSlugKey }) }
+      );
+      expect(deleteRes.status).toBe(200);
+      expect(state.products.some((p) => p.slug === updatedSlugKey)).toBe(false);
     });
   });
 });
