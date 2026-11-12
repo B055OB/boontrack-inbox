@@ -379,13 +379,13 @@ export default function UpgradePaymentModal({
   if (pendingDowngradeTier) {
     const warn = DOWNGRADE_WARNINGS[pendingDowngradeTier];
     return (
-      <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
-        <div className="relative w-full max-w-md bg-slate-900 border border-amber-700/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-100 animate-in zoom-in-95 duration-200">
+      <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="relative w-full max-w-md bg-white dark:bg-[#0D1117] border border-amber-200 dark:border-amber-700/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-900 dark:text-white animate-in zoom-in-95 duration-200">
           {/* Close */}
           <button
             type="button"
             onClick={() => { setPendingDowngradeTier(null); setDowngradeAcknowledged(false); }}
-            className="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+            className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition cursor-pointer"
             aria-label="Batal"
           >
             <X className="w-4 h-4" />
@@ -393,26 +393,26 @@ export default function UpgradePaymentModal({
 
           {/* Warning Header */}
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30">
-              <TriangleAlert className="w-6 h-6 text-amber-400" />
+            <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30">
+              <TriangleAlert className="w-6 h-6 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 block">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 block">
                 Konfirmasi Downgrade
               </span>
-              <h3 className="font-black text-base text-white">{warn?.title ?? `Downgrade ke ${TIER_LABEL[pendingDowngradeTier]}`}</h3>
+              <h3 className="font-black text-base text-slate-900 dark:text-white">{warn?.title ?? `Downgrade ke ${TIER_LABEL[pendingDowngradeTier]}`}</h3>
             </div>
           </div>
 
           {/* Consequences list */}
-          <div className="rounded-2xl border border-amber-700/30 bg-amber-950/30 p-4 space-y-2.5">
-            <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider block">
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-700/30 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-2.5">
+            <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
               Fitur & Data yang Akan Disesuaikan:
             </span>
             <ul className="space-y-2">
               {(warn?.consequences ?? []).map((c, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-amber-100">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <li key={i} className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-100">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <span>{c}</span>
                 </li>
               ))}
@@ -427,7 +427,7 @@ export default function UpgradePaymentModal({
               onChange={(e) => setDowngradeAcknowledged(e.target.checked)}
               className="mt-0.5 w-4 h-4 accent-amber-500 cursor-pointer shrink-0"
             />
-            <span className="text-xs text-slate-300 group-hover:text-white transition">
+            <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition">
               Saya mengerti fitur dan data di atas akan disesuaikan setelah downgrade dikonfirmasi.
             </span>
           </label>
@@ -437,7 +437,7 @@ export default function UpgradePaymentModal({
             <button
               type="button"
               onClick={() => { setPendingDowngradeTier(null); setDowngradeAcknowledged(false); }}
-              className="flex-1 py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 text-xs font-bold transition cursor-pointer"
+              className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 text-xs font-bold transition cursor-pointer"
             >
               Batal, Tetap di Paket Ini
             </button>
@@ -476,35 +476,35 @@ export default function UpgradePaymentModal({
     // Color palette per tier
     const palette = {
       checkout_lite: {
-        ring: 'border-slate-500/50 shadow-slate-500/10 ring-slate-500/20',
-        badge: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-        btn: 'from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 shadow-slate-600/20',
-        check: 'text-slate-400',
-        icon: <ShieldCheck className="w-4 h-4 text-slate-400" />,
+        ring: 'border-slate-400 dark:border-slate-500/50 shadow-slate-500/10 ring-slate-400/25 dark:ring-slate-500/20',
+        badge: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/30',
+        btn: 'from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 shadow-slate-600/20',
+        check: 'text-slate-600 dark:text-slate-400',
+        icon: <ShieldCheck className="w-4 h-4 text-slate-600 dark:text-slate-400" />,
         badgeText: 'ENTRY · INSTANT CHECKOUT',
       },
       solo: {
-        ring: 'border-amber-500/50 shadow-amber-500/10 ring-amber-500/20',
-        badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        ring: 'border-amber-400 dark:border-amber-500/50 shadow-amber-500/10 ring-amber-400/25 dark:ring-amber-500/20',
+        badge: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30',
         btn: 'from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-600/20',
-        check: 'text-amber-400',
-        icon: <TrendingUp className="w-4 h-4 text-amber-400" />,
+        check: 'text-amber-600 dark:text-amber-400',
+        icon: <TrendingUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
         badgeText: 'STARTER · KATALOG PENUH',
       },
       ads_performance: {
-        ring: 'border-blue-500/50 shadow-blue-500/10 ring-blue-500/30',
-        badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+        ring: 'border-blue-500 dark:border-blue-500/50 shadow-blue-500/10 ring-blue-500/20 dark:ring-blue-500/30',
+        badge: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30',
         btn: 'from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/20',
-        check: 'text-emerald-400',
-        icon: <TrendingUp className="w-4 h-4 text-blue-400" />,
+        check: 'text-emerald-600 dark:text-emerald-400',
+        icon: <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />,
         badgeText: 'PALING POPULER · ADVERTISER',
       },
       team_scale: {
-        ring: 'border-purple-500/50 shadow-purple-500/10 ring-purple-500/30',
-        badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+        ring: 'border-purple-500 dark:border-purple-500/50 shadow-purple-500/10 ring-purple-500/20 dark:ring-purple-500/30',
+        badge: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30',
         btn: 'from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/20',
-        check: 'text-purple-400',
-        icon: <Radio className="w-4 h-4 text-purple-400" />,
+        check: 'text-purple-600 dark:text-purple-400',
+        icon: <Radio className="w-4 h-4 text-purple-600 dark:text-purple-400" />,
         badgeText: 'SKALA BESAR · OFFICIAL WABA',
       },
     }[tier];
@@ -551,14 +551,14 @@ export default function UpgradePaymentModal({
     // Badge overlay: trial-activate, downgrade, or normal
     const badgeOverlay = isCurrentTrialTier ? (
       <div className="absolute top-3 right-3">
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">
           <CheckCircle2 className="w-2.5 h-2.5" />
           Paket Saat Ini (Trial)
         </span>
       </div>
     ) : isDg ? (
       <div className="absolute top-3 right-3">
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 text-[9px] font-black uppercase tracking-wider">
           <ChevronDown className="w-2.5 h-2.5" />
           Downgrade
         </span>
@@ -570,8 +570,8 @@ export default function UpgradePaymentModal({
         onClick={() => setSelectedTier(tier)}
         className={`relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 border transition-all duration-200 cursor-pointer ${
           isSelected
-            ? `bg-gradient-to-b from-slate-800/60 via-slate-900 to-slate-900 ${palette.ring} shadow-xl ring-1`
-            : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+            ? `bg-gradient-to-b from-slate-50 to-white dark:from-slate-800/60 dark:via-slate-900 dark:to-slate-900 ${palette.ring} shadow-xl ring-1`
+            : 'bg-slate-50/70 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
         }`}
       >
         {/* Badge overlay */}
@@ -579,37 +579,37 @@ export default function UpgradePaymentModal({
 
         <div className="space-y-4">
           {/* Badge Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${palette.badge}`}>
               {palette.badgeText}
             </span>
-            <span className="text-[10px] font-mono text-slate-500 font-bold">{dbKey}</span>
+            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 font-bold">{dbKey}</span>
           </div>
 
           <div>
-            <h3 className="text-lg font-black text-white flex items-center gap-1.5">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
               {palette.icon}
               <span>{label}</span>
             </h3>
           </div>
 
           {/* Harga */}
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-1">
+          <div className="bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-1">
             <div className="flex items-baseline justify-between">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-xl sm:text-2xl font-black text-white font-mono">
+                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   {displayPrice}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">{priceLabel}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{priceLabel}</span>
               </div>
               {isSelected && hasProrataCredit && (
-                <span className="text-[10px] text-slate-500 line-through font-mono">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 line-through font-mono">
                   Rp {price.toLocaleString('id-ID')}
                 </span>
               )}
             </div>
             {isSelected && isLoadingPreview && (
-              <div className="text-[10px] text-blue-400 flex items-center gap-1">
+              <div className="text-[10px] text-blue-600 dark:text-blue-400 flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span>Menghitung kalkulasi prorata...</span>
               </div>
@@ -618,10 +618,10 @@ export default function UpgradePaymentModal({
 
           {/* Feature list */}
           <div className="space-y-2.5 pt-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               {isDg ? 'Yang Tetap Tersedia:' : 'Kelebihan Utama:'}
             </span>
-            <ul className="space-y-2 text-xs text-slate-300">
+            <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
               {features[tier].map((f, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <Check className={`w-4 h-4 shrink-0 mt-0.5 ${palette.check}`} />
@@ -687,11 +687,11 @@ export default function UpgradePaymentModal({
   // ─── Main render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className={`relative w-full ${
           viewMode === 'cards' ? 'max-w-5xl' : 'max-w-md'
-        } bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 text-slate-100 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto transition-all`}
+        } bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 text-slate-900 dark:text-white animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto transition-all`}
       >
         {/* Tombol Tutup */}
         <button
@@ -700,7 +700,7 @@ export default function UpgradePaymentModal({
             stopAll();
             onClose();
           }}
-          className="absolute top-4 right-4 p-2 rounded-full bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer z-10"
+          className="absolute top-4 right-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition cursor-pointer z-10"
           aria-label="Tutup"
         >
           <X className="w-4 h-4" />
@@ -709,41 +709,41 @@ export default function UpgradePaymentModal({
         {/* Sukses */}
         {pollStatus === 'paid' ? (
           <div className="text-center py-10 space-y-4">
-            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full flex items-center justify-center mx-auto animate-bounce">
+            <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 rounded-full flex items-center justify-center mx-auto animate-bounce">
               <CheckCircle2 className="w-9 h-9" />
             </div>
             <div>
-              <h3 className="text-xl font-black text-white">Pembayaran Berhasil Dikonfirmasi!</h3>
-              <p className="text-xs text-slate-300 mt-1">
-                Paket toko <span className="font-bold text-emerald-400">{tenantSlug}</span> telah aktif di tier{' '}
-                <span className="font-bold text-white">{tierName}</span>.
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Pembayaran Berhasil Dikonfirmasi!</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                Paket toko <span className="font-bold text-emerald-600 dark:text-emerald-400">{tenantSlug}</span> telah aktif di tier{' '}
+                <span className="font-bold text-slate-900 dark:text-white">{tierName}</span>.
               </p>
             </div>
-            <p className="text-[11px] text-slate-500">Memperbarui fitur dashboard Anda...</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Memperbarui fitur dashboard Anda...</p>
           </div>
         ) : viewMode === 'cards' ? (
           /* ===== TAMPILAN KARTU PILIHAN ===== */
           <div className="space-y-6">
             {/* Header */}
             <div className="text-center space-y-1.5 max-w-2xl mx-auto pr-6 sm:pr-0">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-wider mb-1">
-                <Sparkles className="w-3 h-3 text-yellow-400" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-gradient-to-r dark:from-blue-500/20 dark:to-indigo-500/20 border border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 text-[10px] font-black uppercase tracking-wider mb-1">
+                <Sparkles className="w-3 h-3 text-amber-500 dark:text-yellow-400" />
                 <span>Pilihan Paket Resmi &bull; Pembayaran Aman Xendit</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 {isTrialActive ? 'Aktivasi Langganan Toko Anda' : 'Kelola Langganan Toko Anda'}
               </h2>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 {isTrialActive ? (
                   <>
                     Toko Anda saat ini dalam{' '}
-                    <strong className="text-emerald-400">Masa Trial ({TIER_LABEL[currentTierKey] ?? currentTier})</strong>.
+                    <strong className="text-emerald-600 dark:text-emerald-400">Masa Trial ({TIER_LABEL[currentTierKey] ?? currentTier})</strong>.
                     Aktifkan langganan resmi untuk melanjutkan tanpa jeda, atau pilih paket lain di bawah ini.
                   </>
                 ) : (
                   <>
                     Paket saat ini:{' '}
-                    <strong className="text-slate-200">{TIER_LABEL[currentTierKey] ?? currentTier}</strong>.
+                    <strong className="text-slate-900 dark:text-slate-200">{TIER_LABEL[currentTierKey] ?? currentTier}</strong>.
                     Pilih paket upgrade atau downgrade di bawah ini.
                   </>
                 )}
@@ -751,8 +751,8 @@ export default function UpgradePaymentModal({
             </div>
 
             {checkoutError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 dark:text-rose-400" />
                 <span>{checkoutError}</span>
               </div>
             )}
@@ -760,7 +760,7 @@ export default function UpgradePaymentModal({
             {/* Upgrade tiers */}
             {upgradeTiers.length > 0 && (
               <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-3">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
                   {isTrialActive ? 'Aktivasi Resmi & Upgrade Paket' : 'Upgrade Paket'}
                 </p>
                 <div className={`grid grid-cols-1 ${upgradeTiers.length >= 2 ? 'md:grid-cols-2' : ''} gap-4 sm:gap-5`}>
@@ -774,7 +774,7 @@ export default function UpgradePaymentModal({
             {/* Downgrade tiers */}
             {downgradeTiers.length > 0 && (
               <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-600/80 mb-3 flex items-center gap-1.5">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-500/90 mb-3 flex items-center gap-1.5">
                   <ChevronDown className="w-3 h-3" />
                   Downgrade Paket
                 </p>
@@ -788,37 +788,37 @@ export default function UpgradePaymentModal({
 
             {/* Rincian prorata */}
             {previewData && (
-              <div className="rounded-2xl border p-4 transition-all duration-200 bg-slate-950/70 border-slate-800">
+              <div className="rounded-2xl border p-4 transition-all duration-200 bg-slate-50 dark:bg-slate-950/70 border-slate-200 dark:border-slate-800">
                 {hasProrataCredit ? (
                   <div className="space-y-2.5">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
-                        <Calculator className="w-4 h-4 text-indigo-400" />
+                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                      <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-wider">
+                        <Calculator className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                         <span>Rincian Tagihan Prorata Transparan</span>
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                      <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-800 px-2 py-0.5 rounded">
                         Paket: {previewData.target_tier}
                       </span>
                     </div>
-                    <div className="space-y-1.5 text-xs text-slate-300">
+                    <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-400">• Sisa Periode Aktif:</span>
-                        <span className="font-mono font-bold text-white">{previewData.days_remaining} Hari</span>
+                        <span className="text-slate-500 dark:text-slate-400">• Sisa Periode Aktif:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">{previewData.days_remaining} Hari</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-400">• Kredit Paket Lama:</span>
-                        <span className="font-mono font-bold text-emerald-400">
+                        <span className="text-slate-500 dark:text-slate-400">• Kredit Paket Lama:</span>
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                           -Rp {previewData.credit_amount.toLocaleString('id-ID')}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center border-t border-slate-800/80 pt-2 text-sm font-black">
-                        <span className="text-white">• Total Biaya:</span>
-                        <span className="font-mono text-emerald-400 text-base">
+                      <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-800/80 pt-2 text-sm font-black">
+                        <span className="text-slate-900 dark:text-white">• Total Biaya:</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 text-base">
                           Rp {previewData.final_upgrade_amount.toLocaleString('id-ID')}
                         </span>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 pt-1 leading-relaxed">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 pt-1 leading-relaxed">
                       *Formula: <code>(sisa_hari / 30) × (harga_baru - harga_lama)</code>. Perpanjangan siklus Anda tetap berlaku pada{' '}
                       {previewData.renewal_date
                         ? new Date(previewData.renewal_date).toLocaleDateString('id-ID', {
@@ -833,12 +833,12 @@ export default function UpgradePaymentModal({
                 ) : (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
+                      <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200 dark:border-amber-500/20">
                         <Sparkles className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <span className="text-slate-200 font-bold block">Periode Langganan Penuh 30 Hari</span>
-                        <span className="text-[11px] text-slate-400">
+                        <span className="text-slate-900 dark:text-slate-200 font-bold block">Periode Langganan Penuh 30 Hari</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
                           {previewData.is_trial
                             ? 'Masa Trial aktif. Mengupgrade sekarang akan mengaktifkan paket penuh 30 hari resmi.'
                             : `Harga normal 30 hari untuk paket ${previewData.target_tier}.`}
@@ -846,10 +846,10 @@ export default function UpgradePaymentModal({
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="text-base font-black text-emerald-400 font-mono">
+                      <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
                         Rp {previewData.final_upgrade_amount.toLocaleString('id-ID')}
                       </span>
-                      <span className="text-[10px] text-slate-400 block">/ 30 hari</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 block">/ 30 hari</span>
                     </div>
                   </div>
                 )}
@@ -857,20 +857,20 @@ export default function UpgradePaymentModal({
             )}
 
             {/* Alternatif */}
-            <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
               <button
                 type="button"
                 onClick={() => setViewMode('qris_direct')}
-                className="hover:text-blue-400 underline underline-offset-4 flex items-center gap-1.5 transition cursor-pointer"
+                className="hover:text-blue-600 dark:hover:text-blue-400 underline underline-offset-4 flex items-center gap-1.5 transition cursor-pointer"
               >
-                <QrCode className="w-3.5 h-3.5 text-blue-400" />
+                <QrCode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Atau scan QRIS langsung di sini (M-Banking / E-Wallet)</span>
               </button>
               <a
                 href={`https://wa.me/${getPlatformWhatsApp()}?text=${waConfirmText}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
+                className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1 transition"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Bantuan CS WhatsApp</span>
@@ -881,11 +881,11 @@ export default function UpgradePaymentModal({
           /* ===== TAMPILAN QRIS DIRECT ===== */
           <>
             {/* Header QRIS */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 pr-6">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 pr-6">
               <button
                 type="button"
                 onClick={() => setViewMode('cards')}
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-bold cursor-pointer"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 font-bold cursor-pointer"
               >
                 <span>&larr; Kembali ke Pilihan Paket</span>
               </button>
@@ -897,10 +897,10 @@ export default function UpgradePaymentModal({
                       key={t}
                       type="button"
                       onClick={() => setSelectedTier(t)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
                         selectedTier === t
                           ? 'bg-blue-600 text-white border-blue-500'
-                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200/70 dark:hover:bg-slate-700'
                       }`}
                     >
                       {TIER_LABEL[t]} (
@@ -914,29 +914,29 @@ export default function UpgradePaymentModal({
             </div>
 
             <div className="text-center space-y-1">
-              <h2 className="text-lg font-black text-white">Scan QRIS {tierName}</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">Scan QRIS {tierName}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Mendukung GoPay, OVO, Dana, ShopeePay, BCA, Mandiri &amp; Seluruh M-Banking.
               </p>
             </div>
 
             {/* Nominal */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-slate-400 font-medium">Total Tagihan:</span>
+                <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Total Tagihan:</span>
                 {hasProrataCredit && (
-                  <span className="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-500/20">
                     Prorata
                   </span>
                 )}
               </div>
-              <span className="text-base font-black text-emerald-400 font-mono">
+              <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
                 Rp {activeAmount.toLocaleString('id-ID')}
               </span>
             </div>
 
             {/* QRIS Card */}
-            <div className="bg-white rounded-2xl p-4 text-center space-y-3 shadow-inner">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center space-y-3 shadow-inner">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <div className="flex items-center gap-1.5 text-slate-800 font-extrabold text-[11px]">
                   <QrCode className="w-3.5 h-3.5 text-blue-600" />
@@ -956,13 +956,13 @@ export default function UpgradePaymentModal({
             </div>
 
             {/* Polling */}
-            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 bg-slate-800/40 py-2 rounded-xl border border-slate-800/60">
-              <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/40 py-2 rounded-xl border border-slate-200 dark:border-slate-800/60">
+              <RefreshCw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-spin" />
               <span>Menunggu pembayaran... Sistem mengecek otomatis</span>
             </div>
 
             {/* Actions */}
-            <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 flex flex-col gap-2">
               <button
                 type="button"
                 disabled={loadingCheckoutTier !== null}
@@ -976,7 +976,7 @@ export default function UpgradePaymentModal({
                 href={`https://wa.me/${getPlatformWhatsApp()}?text=${waConfirmText}`}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full py-2.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-2 transition text-center"
+                className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 dark:text-emerald-300 dark:border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-2 transition text-center"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Konfirmasi via WhatsApp Resmi</span>

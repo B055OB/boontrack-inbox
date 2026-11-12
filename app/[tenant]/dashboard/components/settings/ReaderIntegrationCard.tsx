@@ -77,7 +77,7 @@ export function AndroidBatteryOptimizationCard({
 
   return (
     <div
-      className={`bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-orange-500/10 border border-amber-300/90 dark:border-amber-500/30 rounded-2xl p-4 text-slate-800 transition shadow-xs ${className}`}
+      className={`bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-orange-500/10 border border-amber-300/90 dark:border-amber-500/30 rounded-2xl p-4 text-slate-800 dark:text-slate-200 transition shadow-xs ${className}`}
     >
       {/* Header */}
       <div
@@ -85,22 +85,22 @@ export function AndroidBatteryOptimizationCard({
         onClick={collapsible ? () => setIsExpanded(!isExpanded) : undefined}
       >
         <div className="flex items-start gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-700 font-bold shrink-0 mt-0.5 shadow-2xs">
-            <BatteryCharging className="w-5 h-5 text-amber-600" />
+          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold shrink-0 mt-0.5 shadow-2xs">
+            <BatteryCharging className="w-5 h-5 text-amber-600 dark:text-amber-400" />
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-600 text-white shadow-2xs">
                 Tips 24 Jam Non-Stop
               </span>
-              <span className="text-[11px] font-bold text-amber-900">
+              <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300">
                 Tips Agar Pembacaan Notifikasi Tetap Stabil 24 Jam
               </span>
             </div>
-            <h4 className="font-black text-xs sm:text-sm text-slate-900 mt-1">
+            <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-white mt-1">
               Wajib: Pengaturan Baterai &amp; Latar Belakang HP Android
             </h4>
-            <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed mt-0.5">
               Meskipun ponsel dalam kondisi diisi daya (di-charge) terus-menerus, sistem operasi Android tetap dapat menutup paksa background service jika optimasi baterai aktif.
             </p>
           </div>
@@ -109,7 +109,7 @@ export function AndroidBatteryOptimizationCard({
         {collapsible && (
           <button
             type="button"
-            className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-amber-100/60 shrink-0 mt-1 transition cursor-pointer"
+            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-lg hover:bg-amber-100/60 dark:hover:bg-amber-950/50 shrink-0 mt-1 transition cursor-pointer"
             aria-label="Toggle panduan baterai"
           >
             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -119,63 +119,63 @@ export function AndroidBatteryOptimizationCard({
 
       {/* Accordion Content */}
       {(!collapsible || isExpanded) && (
-        <div className="mt-3.5 pt-3.5 border-t border-amber-200/80 space-y-2 text-xs">
+        <div className="mt-3.5 pt-3.5 border-t border-amber-200/80 dark:border-amber-500/20 space-y-2 text-xs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             {/* Poin 1 */}
-            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-500/20 shadow-2xs">
               <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                 1
               </span>
               <div className="space-y-0.5">
-                <p className="font-bold text-slate-900 text-[11px]">
+                <p className="font-bold text-slate-900 dark:text-white text-[11px]">
                   Ubah Status Baterai ke &apos;Unrestricted&apos;
                 </p>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   Masuk ke <strong>Settings &gt; Apps &gt; BoonTrack Reader &gt; Battery</strong> &gt; pilih <strong>&quot;Unrestricted&quot; / &quot;Tidak Dibatasi&quot;</strong>.
                 </p>
               </div>
             </div>
 
             {/* Poin 2 */}
-            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-500/20 shadow-2xs">
               <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                 2
               </span>
               <div className="space-y-0.5">
-                <p className="font-bold text-slate-900 text-[11px]">
+                <p className="font-bold text-slate-900 dark:text-white text-[11px]">
                   Kunci Aplikasi di Recent Apps
                 </p>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   Buka menu <strong>Recent Apps (Multitasking)</strong>, tekan lama pada kartu BoonTrack Reader, lalu pilih ikon <strong>Gembok (Lock)</strong> agar tidak terhapus saat membersihkan RAM.
                 </p>
               </div>
             </div>
 
             {/* Poin 3 */}
-            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-500/20 shadow-2xs">
               <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                 3
               </span>
               <div className="space-y-0.5">
-                <p className="font-bold text-slate-900 text-[11px]">
+                <p className="font-bold text-slate-900 dark:text-white text-[11px]">
                   Izinkan Autostart (Khusus Xiaomi/MIUI, Oppo/ColorOS, Vivo)
                 </p>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   Aktifkan toggle <strong>&quot;Autostart&quot; / &quot;Mulai Otomatis&quot;</strong> di menu info aplikasi agar tetap aktif otomatis setelah HP restart.
                 </p>
               </div>
             </div>
 
             {/* Poin 4 */}
-            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 dark:bg-slate-900/80 rounded-xl border border-amber-200/60 dark:border-amber-500/20 shadow-2xs">
               <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                 4
               </span>
               <div className="space-y-0.5">
-                <p className="font-bold text-slate-900 text-[11px]">
+                <p className="font-bold text-slate-900 dark:text-white text-[11px]">
                   Tips Tambahan (Stay Awake)
                 </p>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                   Aktifkan opsi <strong>&quot;Stay Awake&quot;</strong> di Opsi Pengembang (<em>Developer Options</em>) agar layar ponsel selalu aktif selama terhubung kabel charger.
                 </p>
               </div>
@@ -411,23 +411,23 @@ export default function ReaderIntegrationCard({
   };
 
   return (
-    <div className="w-full bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5">
+    <div className="w-full bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs space-y-5 text-slate-900 dark:text-slate-100">
       {/* ── HEADER KARTU ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div className="flex items-start gap-3">
           <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-xs shrink-0">
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm sm:text-base font-black text-slate-900">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
                 Integrasi HP Reader (Automasi Mutasi)
               </h3>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 uppercase tracking-wider">
                 Verifikasi Otomatis • Bebas Potongan Marketplace
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Verifikasi pembayaran QRIS &amp; transfer bank otomatis dalam hitungan detik via aplikasi Android BoonTrack Reader.
             </p>
           </div>
@@ -448,9 +448,9 @@ export default function ReaderIntegrationCard({
             <button
               type="button"
               onClick={handleOpenPairingModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               <span>Pairing Ulang Perangkat</span>
             </button>
           )}
@@ -459,23 +459,21 @@ export default function ReaderIntegrationCard({
 
       {/* ── KARTU STATUS PERANGKAT TERHUBUNG (DEVICE STATUS CARD) ─────────────── */}
       <div
-        className={`p-4 rounded-2xl border transition-all ${
-          device.is_connected
-            ? 'bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-white border-emerald-200'
-            : 'bg-slate-50/80 border-slate-200'
-        }`}
+        className={`p-4 rounded-2xl border transition-all ${device.is_connected
+            ? 'bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-white dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-slate-900 border-emerald-200 dark:border-emerald-800/60'
+            : 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800'
+          }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div
-              className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
-                device.is_connected
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-slate-200/70 text-slate-500'
-              }`}
+              className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${device.is_connected
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}
             >
               {device.is_connected ? (
-                <Radio className="w-5 h-5 text-emerald-600 animate-pulse" />
+                <Radio className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
               ) : (
                 <Smartphone className="w-5 h-5 text-slate-400" />
               )}
@@ -483,7 +481,7 @@ export default function ReaderIntegrationCard({
 
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-500">Status Gateway Reader:</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Status Gateway Reader:</span>
                 {isLoadingStatus ? (
                   <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" /> Memeriksa status...
@@ -494,7 +492,7 @@ export default function ReaderIntegrationCard({
                     <span>Terhubung (Online)</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-600">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                     <span className="w-2 h-2 rounded-full bg-slate-400" />
                     <span>Terputus / Belum Ditautkan</span>
                   </span>
@@ -503,22 +501,22 @@ export default function ReaderIntegrationCard({
 
               {device.is_connected ? (
                 <div className="pt-0.5 space-y-0.5">
-                  <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <span>📱 {device.device_name || 'BoonTrack Reader Android'}</span>
                   </p>
-                  <p className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3 text-slate-400" />
-                      Aktif: <strong className="text-slate-700">{formatRelativeTime(device.last_active_at)}</strong>
+                      Aktif: <strong className="text-slate-700 dark:text-slate-200">{formatRelativeTime(device.last_active_at)}</strong>
                     </span>
                     <span>•</span>
                     <span>
-                      Ditautkan: <strong className="text-slate-700">{formatRelativeTime(device.paired_at)}</strong>
+                      Ditautkan: <strong className="text-slate-700 dark:text-slate-200">{formatRelativeTime(device.paired_at)}</strong>
                     </span>
                   </p>
                 </div>
               ) : (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Belum ada smartphone Android toko yang terhubung. Hubungkan HP Anda menggunakan tombol &quot;Hubungkan HP Reader&quot; di atas untuk mengaktifkan verifikasi mutasi real-time.
                 </p>
               )}
@@ -548,31 +546,31 @@ export default function ReaderIntegrationCard({
 
       {/* ── FITUR & BENEFIT HIGHLIGHT ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-start gap-2.5">
           <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-zinc-900 dark:text-zinc-100">Verifikasi 1–3 Detik</p>
-            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
+            <p className="font-bold text-slate-900 dark:text-slate-100">Verifikasi 1–3 Detik</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
               Order lunas otomatis seketika saat SMS / push notifikasi bank terdeteksi di HP toko.
             </p>
           </div>
         </div>
 
-        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-zinc-900 dark:text-zinc-100">Dukung Semua QRIS Populer</p>
-            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
+            <p className="font-bold text-slate-900 dark:text-slate-100">Dukung Semua QRIS Populer</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
               Kompatibel dengan DANA Bisnis, BCA Mobile/myBCA, GoPay Usaha, Livin Mandiri &amp; BRImo.
             </p>
           </div>
         </div>
 
-        <div className="p-3 bg-card border border-border rounded-2xl flex items-start gap-2.5">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-zinc-900 dark:text-zinc-100">Anti Bukti Transfer Palsu</p>
-            <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
+            <p className="font-bold text-slate-900 dark:text-slate-100">Anti Bukti Transfer Palsu</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
               Sistem mencocokkan nominal pasti + kode unik langsung dari mutasi riil, bukan screenshot struk.
             </p>
           </div>
@@ -580,44 +578,44 @@ export default function ReaderIntegrationCard({
       </div>
 
       {/* ── PANDUAN RINGKAS 3 LANGKAH PEMAKAIAN ───────────────────────────── */}
-      <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-2xl space-y-3">
+      <div className="p-4 bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+          <span className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
             <span>🚀</span>
             <span>Panduan 3 Langkah Menghubungkan BoonTrack Reader</span>
           </span>
-          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
             Setup Sekali • Otomatis Selamanya
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+          <div className="p-3 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">1</span>
-              <p className="font-bold text-slate-900">Unduh &amp; Pasang APK</p>
+              <p className="font-bold text-slate-900 dark:text-white">Unduh &amp; Pasang APK</p>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed pl-7">
               Unduh dan pasang aplikasi BoonTrack Reader di HP Android kasir / DANA toko Anda.
             </p>
           </div>
 
-          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+          <div className="p-3 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">2</span>
-              <p className="font-bold text-slate-900">Izinkan Notifikasi</p>
+              <p className="font-bold text-slate-900 dark:text-white">Izinkan Notifikasi</p>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed pl-7">
               Aktifkan izin akses notifikasi untuk BoonTrack Reader di menu pengaturan Android Anda.
             </p>
           </div>
 
-          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+          <div className="p-3 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">3</span>
-              <p className="font-bold text-slate-900">Scan QR Pairing</p>
+              <p className="font-bold text-slate-900 dark:text-white">Scan QR Pairing</p>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed pl-7">
               Buka aplikasi, klik <strong>&quot;Hubungkan ke Toko&quot;</strong>, lalu scan QR Pairing di atas.
             </p>
           </div>
@@ -642,7 +640,7 @@ export default function ReaderIntegrationCard({
           <button
             type="button"
             onClick={() => setIsGuideModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
           >
             <span>Buka Detail Petunjuk Instalasi</span>
           </button>
@@ -653,19 +651,19 @@ export default function ReaderIntegrationCard({
       {/* ── MODAL PAIRING QR CODE (ONE-TIME TOKEN TTL 5 MENIT) ───────────────── */}
       {/* ===================================================================== */}
       {isPairingModalOpen && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150 relative">
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#0D1117] text-slate-900 dark:text-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 duration-150 relative">
             {/* Header Modal */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 font-bold">
+                <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold">
                   <QrCode className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white">
                     Hubungkan HP Reader Toko
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Scan QR dengan aplikasi BoonTrack Reader di Android
                   </p>
                 </div>
@@ -673,7 +671,7 @@ export default function ReaderIntegrationCard({
               <button
                 type="button"
                 onClick={handleClosePairingModal}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -683,14 +681,14 @@ export default function ReaderIntegrationCard({
             {isPairingSuccess ? (
               /* Success State */
               <div className="py-8 flex flex-col items-center justify-center text-center space-y-3 animate-in zoom-in-90 duration-200">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
                 <div>
-                  <h4 className="text-base font-black text-slate-900">
+                  <h4 className="text-base font-black text-slate-900 dark:text-white">
                     HP Reader Berhasil Ditautkan!
                   </h4>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Gateway pembayaran mutasi otomatis toko Anda sudah aktif 100%.
                   </p>
                 </div>
@@ -698,8 +696,8 @@ export default function ReaderIntegrationCard({
             ) : isGeneratingPairing ? (
               /* Loading State */
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                <p className="text-xs font-bold text-slate-700">
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-600 dark:text-emerald-400" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                   Membuat Sesi Pairing Aman (One-Time Token)...
                 </p>
               </div>
@@ -707,7 +705,7 @@ export default function ReaderIntegrationCard({
               /* Error State */
               <div className="py-6 flex flex-col items-center justify-center text-center space-y-3">
                 <AlertCircle className="w-10 h-10 text-rose-500" />
-                <p className="text-xs font-bold text-slate-800">{pairingError}</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{pairingError}</p>
                 <button
                   type="button"
                   onClick={generatePairingSession}
@@ -720,23 +718,22 @@ export default function ReaderIntegrationCard({
               /* Normal Pairing QR & Timer State */
               <div className="space-y-4">
                 {/* Security Tag */}
-                <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-[11px] font-bold">
                   <span className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>One-Time Pairing Token (TTL 5 Menit)</span>
                   </span>
-                  <span className="font-mono text-emerald-900 bg-white px-2 py-0.5 rounded-md border border-emerald-100">
+                  <span className="font-mono text-emerald-900 dark:text-emerald-200 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-800">
                     {secondsLeft > 0 ? formatTimer(secondsLeft) : 'EXPIRED'}
                   </span>
                 </div>
 
                 {/* QR Code Container with Blur on Expiry */}
-                <div className="relative flex flex-col items-center justify-center p-5 bg-white border border-slate-200 rounded-2xl shadow-inner min-h-[260px]">
+                <div className="relative flex flex-col items-center justify-center p-5 bg-white border border-slate-200 dark:border-slate-700 rounded-2xl shadow-inner min-h-[260px]">
                   {qrUri && (
                     <div
-                      className={`transition-all duration-300 ${
-                        secondsLeft <= 0 ? 'blur-md opacity-30 select-none' : ''
-                      }`}
+                      className={`transition-all duration-300 ${secondsLeft <= 0 ? 'blur-md opacity-30 select-none' : ''
+                        }`}
                     >
                       <QRCodeSVG
                         value={qrUri}
@@ -773,18 +770,18 @@ export default function ReaderIntegrationCard({
                 {/* Countdown Progress & Live Poller Indicator */}
                 {secondsLeft > 0 && (
                   <div className="text-center space-y-1">
-                    <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                       <span>Menunggu pemindaian dari HP...</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Arahkan kamera aplikasi Reader ke QR code di atas sebelum waktu habis ({formatTimer(secondsLeft)}).
                     </p>
                   </div>
                 )}
 
                 {/* 3 Step Instruction */}
-                <div className="space-y-1.5 text-[11px] text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/70">
+                <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-emerald-600 text-white font-black text-[9px] flex items-center justify-center shrink-0">1</span>
                     <span>Buka aplikasi <strong>BoonTrack Reader</strong> di HP Android toko.</span>
@@ -800,8 +797,8 @@ export default function ReaderIntegrationCard({
                 </div>
 
                 {/* Tips Singkat Baterai */}
-                <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-200 rounded-xl text-[11px] text-amber-950">
-                  <BatteryCharging className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl text-[11px] text-amber-950 dark:text-amber-200">
+                  <BatteryCharging className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <p className="leading-snug">
                     <strong>Penting:</strong> Ubah setelan baterai ke <em>&quot;Unrestricted / Tidak Dibatasi&quot;</em> dan kunci di Recent Apps agar verifikasi mutasi QRIS aktif stabil 24 jam.
                   </p>
@@ -809,16 +806,16 @@ export default function ReaderIntegrationCard({
 
                 {/* Manual Token Fallback */}
                 {pairingToken && (
-                  <div className="flex items-center justify-between px-3 py-2 bg-slate-100/70 rounded-xl text-[10px] text-slate-500">
+                  <div className="flex items-center justify-between px-3 py-2 bg-slate-100/70 dark:bg-slate-800/80 rounded-xl text-[10px] text-slate-500 dark:text-slate-300">
                     <span className="font-mono truncate max-w-[240px]">Token: {pairingToken}</span>
                     <button
                       type="button"
                       onClick={copyTokenToClipboard}
-                      className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+                      className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
                     >
                       {copiedToken ? (
                         <>
-                          <Check className="w-3 h-3 text-emerald-600" />
+                          <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           <span>Tersalin</span>
                         </>
                       ) : (
@@ -840,18 +837,18 @@ export default function ReaderIntegrationCard({
       {/* ── MODAL PANDUAN INSTALASI BOONTRACK READER APK ────────────────────── */}
       {/* ===================================================================== */}
       {isGuideModalOpen && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#0D1117] text-slate-900 dark:text-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 font-bold">
+                <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold">
                   <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white">
                     Panduan &amp; Pasang BoonTrack Reader
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Verifikasi mutasi QRIS otomatis 100% langsung ke rekening Anda
                   </p>
                 </div>
@@ -859,18 +856,18 @@ export default function ReaderIntegrationCard({
               <button
                 type="button"
                 onClick={() => setIsGuideModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
                 <div>
-                  <p className="font-bold text-slate-900">Unduh &amp; Pasang Aplikasi</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  <p className="font-bold text-slate-900 dark:text-white">Unduh &amp; Pasang Aplikasi</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
                     Unduh dan pasang aplikasi BoonTrack Reader di HP Android kasir / DANA toko Anda melalui tombol download di bawah.
                   </p>
                 </div>
@@ -879,8 +876,8 @@ export default function ReaderIntegrationCard({
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
                 <div>
-                  <p className="font-bold text-slate-900">Aktifkan Izin Akses Notifikasi</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  <p className="font-bold text-slate-900 dark:text-white">Aktifkan Izin Akses Notifikasi</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
                     Buka Pengaturan Android &gt; Notifikasi &gt; Akses Notifikasi (Notification Access), lalu aktifkan izin untuk BoonTrack Reader agar aplikasi dapat membaca mutasi pembayaran masuk secara instan.
                   </p>
                 </div>
@@ -889,8 +886,8 @@ export default function ReaderIntegrationCard({
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
                 <div>
-                  <p className="font-bold text-slate-900">Hubungkan via Scan QR Pairing</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  <p className="font-bold text-slate-900 dark:text-white">Hubungkan via Scan QR Pairing</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
                     Buka aplikasi BoonTrack Reader, tekan tombol <strong>&quot;Hubungkan ke Toko&quot;</strong>, lalu scan QR Pairing yang ada di dashboard ini. Perangkat Anda akan langsung online dan siap menerima verifikasi otomatis!
                   </p>
                 </div>
@@ -913,7 +910,7 @@ export default function ReaderIntegrationCard({
               <button
                 type="button"
                 onClick={() => setIsGuideModalOpen(false)}
-                className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer"
               >
                 Tutup
               </button>

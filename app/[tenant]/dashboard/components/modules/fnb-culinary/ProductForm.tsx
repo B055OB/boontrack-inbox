@@ -18,20 +18,20 @@ export default function FnbCulinaryProductForm({
   const safeForm = productForm || ({} as ProductItem);
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-orange-50/70 border border-orange-200 rounded-2xl space-y-3">
+      <div className="p-4 bg-orange-50/70 dark:bg-orange-950/25 border border-orange-200 dark:border-orange-900/60 rounded-2xl space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-orange-900 font-bold text-xs">
-            <UtensilsCrossed className="w-4 h-4 text-orange-700" />
+          <div className="flex items-center gap-2 text-orange-900 dark:text-orange-200 font-bold text-xs">
+            <UtensilsCrossed className="w-4 h-4 text-orange-700 dark:text-orange-400" />
             <span>Spesifikasi Menu Kuliner, Ketahanan & Porsi</span>
           </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-100 text-orange-800">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300">
             Kuliner & F&B
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Berat Paket Makanan (Gram) *
             </label>
             <input
@@ -51,15 +51,15 @@ export default function FnbCulinaryProductForm({
                 }));
               }}
               placeholder="Contoh: 250 gram"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-orange-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold font-mono focus:outline-none focus:border-orange-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <span className="text-[10px] text-slate-500 mt-1 block">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
               Dibutuhkan untuk penentuan kapasitas motor kurir instan (GoSend/Grab).
             </span>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Pilihan Varian / Level Pedas / Topping
             </label>
             <input
@@ -67,14 +67,14 @@ export default function FnbCulinaryProductForm({
               value={safeForm.variants || ''}
               onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: Manis, Pedas Sedang, Super Pedas"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-orange-600"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Daya Tahan & Suhu Penyimpanan
             </label>
             <input
@@ -95,12 +95,12 @@ export default function FnbCulinaryProductForm({
                 }));
               }}
               placeholder="Contoh: 2 Hari Suhu Ruang • 1 Bulan Freezer"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-orange-600"
             />
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Catatan Kemasan & Penyajian
             </label>
             <input
@@ -121,7 +121,7 @@ export default function FnbCulinaryProductForm({
                 }));
               }}
               placeholder="Contoh: Kemasan Vacum Food Grade Kedap Udara"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-600"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-orange-600"
             />
           </div>
         </div>

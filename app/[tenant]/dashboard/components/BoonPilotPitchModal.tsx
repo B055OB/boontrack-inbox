@@ -109,23 +109,23 @@ export default function BoonPilotPitchModal({
   // ── Entitlement block for CHECKOUT_LITE ──────────────────────────────────
   if (isCheckoutLite) {
     return (
-      <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           <div className="p-6 text-center space-y-4">
-            <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto">
-              <Lock className="w-7 h-7 text-amber-600" />
+            <div className="w-14 h-14 bg-amber-100 dark:bg-amber-950/60 rounded-2xl flex items-center justify-center mx-auto">
+              <Lock className="w-7 h-7 text-amber-600 dark:text-amber-400" />
             </div>
-            <h3 className="font-black text-slate-900 text-base">Fitur Premium</h3>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <h3 className="font-black text-slate-900 dark:text-white text-base">Fitur Premium</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               <strong>BoonPilot Product Pitch Architect</strong> hanya tersedia untuk paket{' '}
-              <strong className="text-blue-700">Starter, Pro Scale,</strong> dan di atasnya.
+              <strong className="text-blue-700 dark:text-blue-400">Starter, Pro Scale,</strong> dan di atasnya.
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Upgrade sekarang untuk generate deskripsi produk, tagline, dan fasilitas secara otomatis menggunakan AI.
             </p>
             <button
               onClick={onClose}
-              className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition cursor-pointer"
+              className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold transition cursor-pointer"
             >
               Tutup
             </button>
@@ -242,11 +242,11 @@ export default function BoonPilotPitchModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-2xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-slate-100">
 
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-violet-600 to-indigo-600 text-white shrink-0">
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-violet-600 to-indigo-600 text-white shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
               <Wand2 className="w-5 h-5" />
@@ -276,7 +276,7 @@ export default function BoonPilotPitchModal({
 
           {/* Step 1: Vertical selector */}
           <div>
-            <label className="text-xs font-black text-slate-700 block mb-2">
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200 block mb-2">
               1. Pilih Tipe Produk / Vertikal Bisnis *
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -287,15 +287,15 @@ export default function BoonPilotPitchModal({
                   onClick={() => setVertical(v.key)}
                   className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                     vertical === v.key
-                      ? 'bg-violet-50 border-violet-500 ring-2 ring-violet-500/20'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/80'
+                      ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-500 ring-2 ring-violet-500/20'
+                      : 'bg-slate-50 dark:bg-slate-900/70 border-slate-200 dark:border-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                   }`}
                 >
                   <div className="text-base mb-0.5">{v.icon}</div>
-                  <div className={`text-[11px] font-bold ${vertical === v.key ? 'text-violet-900' : 'text-slate-800'}`}>
+                  <div className={`text-[11px] font-bold ${vertical === v.key ? 'text-violet-900 dark:text-violet-200' : 'text-slate-800 dark:text-slate-100'}`}>
                     {v.label}
                   </div>
-                  <div className="text-[10px] text-slate-500 leading-tight mt-0.5">{v.hint}</div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">{v.hint}</div>
                 </button>
               ))}
             </div>
@@ -303,47 +303,47 @@ export default function BoonPilotPitchModal({
 
           {/* Step 2: Product info */}
           <div className="space-y-3">
-            <label className="text-xs font-black text-slate-700 block">
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200 block">
               2. Informasi Produk
             </label>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Produk *</label>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Nama Produk *</label>
               <input
                 type="text"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
                 placeholder="Contoh: Ecourse Ads Masterclass, Kopi Arabika Gayo 250g..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-violet-500 focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-violet-500 focus:bg-white dark:focus:bg-slate-950"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga (Rp) — Opsional</label>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Harga (Rp) — Opsional</label>
                 <input
                   type="number"
                   min="0"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   placeholder="Contoh: 250000"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-violet-500 focus:bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-violet-500 focus:bg-white dark:focus:bg-slate-950 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Target Pembeli — Opsional</label>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Target Pembeli — Opsional</label>
                 <input
                   type="text"
                   value={targetAudience}
                   onChange={(e) => setTargetAudience(e.target.value)}
                   placeholder="Contoh: Ibu rumah tangga, pebisnis UMKM..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-violet-500 focus:bg-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-violet-500 focus:bg-white dark:focus:bg-slate-950"
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-600 block mb-1">
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
                 Keunggulan & Benefit Utama — Opsional
               </label>
               <textarea
@@ -351,14 +351,14 @@ export default function BoonPilotPitchModal({
                 value={keyBenefits}
                 onChange={(e) => setKeyBenefits(e.target.value)}
                 placeholder="Contoh: bahan organik, garansi 30 hari, lifetime access, sertifikat, gratis ongkir..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-violet-500 focus:bg-white resize-none"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-violet-500 focus:bg-white dark:focus:bg-slate-950 resize-none"
               />
             </div>
           </div>
 
           {/* Step 3: Tone */}
           <div>
-            <label className="text-xs font-black text-slate-700 block mb-2">3. Gaya Penulisan (Tone)</label>
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200 block mb-2">3. Gaya Penulisan (Tone)</label>
             <div className="grid grid-cols-3 gap-2">
               {TONE_OPTIONS.map((t) => (
                 <button
@@ -367,14 +367,14 @@ export default function BoonPilotPitchModal({
                   onClick={() => setTone(t.key)}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
                     tone === t.key
-                      ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/20'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/80'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-500 ring-2 ring-indigo-500/20'
+                      : 'bg-slate-50 dark:bg-slate-900/70 border-slate-200 dark:border-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
                   }`}
                 >
-                  <div className={`text-[11px] font-bold ${tone === t.key ? 'text-indigo-900' : 'text-slate-800'}`}>
+                  <div className={`text-[11px] font-bold ${tone === t.key ? 'text-indigo-900 dark:text-indigo-200' : 'text-slate-800 dark:text-slate-100'}`}>
                     {t.label}
                   </div>
-                  <div className="text-[10px] text-slate-500 leading-tight mt-0.5">{t.desc}</div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">{t.desc}</div>
                 </button>
               ))}
             </div>
@@ -382,34 +382,34 @@ export default function BoonPilotPitchModal({
 
           {/* Error */}
           {error && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-2xl">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-800 font-medium">{error}</p>
+            <div className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-2xl">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-800 dark:text-red-200 font-medium">{error}</p>
             </div>
           )}
 
           {/* Generated pitch result */}
           {pitch && (
-            <div className="space-y-3 p-4 bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-200 rounded-2xl">
+            <div className="space-y-3 p-4 bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-950/35 dark:to-indigo-950/35 border border-violet-200 dark:border-violet-800/60 rounded-2xl">
               <div className="flex items-center gap-2 mb-1">
-                <CheckCircle2 className="w-4 h-4 text-violet-600" />
-                <span className="text-xs font-black text-violet-900">Pitch Berhasil Digenerate!</span>
+                <CheckCircle2 className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                <span className="text-xs font-black text-violet-900 dark:text-violet-200">Pitch Berhasil Digenerate!</span>
               </div>
 
               {/* Tagline */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tagline</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tagline</span>
                   <button
                     type="button"
                     onClick={() => copyText(pitch.tagline, 'tagline')}
-                    className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 font-bold cursor-pointer"
+                    className="flex items-center gap-1 text-[10px] text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 font-bold cursor-pointer"
                   >
                     {copiedField === 'tagline' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     {copiedField === 'tagline' ? 'Disalin!' : 'Salin'}
                   </button>
                 </div>
-                <p className="text-sm font-black text-slate-900 bg-white rounded-xl px-3 py-2 border border-violet-200">
+                <p className="text-sm font-black text-slate-900 dark:text-white bg-white dark:bg-slate-900 rounded-xl px-3 py-2 border border-violet-200 dark:border-violet-800/60">
                   {pitch.tagline}
                 </p>
               </div>
@@ -417,17 +417,17 @@ export default function BoonPilotPitchModal({
               {/* Description */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Deskripsi Produk</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Deskripsi Produk</span>
                   <button
                     type="button"
                     onClick={() => copyText(pitch.description, 'desc')}
-                    className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 font-bold cursor-pointer"
+                    className="flex items-center gap-1 text-[10px] text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 font-bold cursor-pointer"
                   >
                     {copiedField === 'desc' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     {copiedField === 'desc' ? 'Disalin!' : 'Salin'}
                   </button>
                 </div>
-                <p className="text-xs text-slate-700 bg-white rounded-xl px-3 py-2.5 border border-violet-200 leading-relaxed">
+                <p className="text-xs text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 rounded-xl px-3 py-2.5 border border-violet-200 dark:border-violet-800/60 leading-relaxed">
                   {pitch.description}
                 </p>
               </div>
@@ -435,13 +435,13 @@ export default function BoonPilotPitchModal({
               {/* Facilities */}
               {pitch.facilities?.length > 0 && (
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1.5">
                     Fasilitas / Benefit ({pitch.facilities.length} poin)
                   </span>
                   <ul className="space-y-1">
                     {pitch.facilities.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs text-slate-700 bg-white rounded-lg px-3 py-1.5 border border-violet-100">
-                        <span className="text-violet-500 font-bold shrink-0">✓</span>
+                      <li key={i} className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 rounded-lg px-3 py-1.5 border border-violet-100 dark:border-violet-800/50">
+                        <span className="text-violet-500 dark:text-violet-400 font-bold shrink-0">✓</span>
                         <span>{f}</span>
                       </li>
                     ))}
@@ -452,28 +452,28 @@ export default function BoonPilotPitchModal({
               {/* Inline meta */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
                 {pitch.promo_label && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
-                    <div className="text-amber-700 font-bold mb-0.5">Label Promo</div>
-                    <div className="text-amber-900 font-black">{pitch.promo_label}</div>
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-2">
+                    <div className="text-amber-700 dark:text-amber-300 font-bold mb-0.5">Label Promo</div>
+                    <div className="text-amber-900 dark:text-amber-200 font-black">{pitch.promo_label}</div>
                   </div>
                 )}
                 {pitch.cta_label && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                    <div className="text-emerald-700 font-bold mb-0.5">Teks CTA</div>
-                    <div className="text-emerald-900 font-black">{pitch.cta_label}</div>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-lg p-2">
+                    <div className="text-emerald-700 dark:text-emerald-300 font-bold mb-0.5">Teks CTA</div>
+                    <div className="text-emerald-900 dark:text-emerald-200 font-black">{pitch.cta_label}</div>
                   </div>
                 )}
                 {pitch.seo_slug_suggestion && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                    <div className="text-blue-700 font-bold mb-0.5">Slug URL</div>
-                    <div className="text-blue-900 font-mono text-[9px] break-all">{pitch.seo_slug_suggestion}</div>
+                  <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-lg p-2">
+                    <div className="text-blue-700 dark:text-blue-300 font-bold mb-0.5">Slug URL</div>
+                    <div className="text-blue-900 dark:text-blue-200 font-mono text-[9px] break-all">{pitch.seo_slug_suggestion}</div>
                   </div>
                 )}
               </div>
 
               {pitch.vertical_notes && (
-                <div className="flex items-start gap-2 p-2.5 bg-slate-100 rounded-xl text-[10px] text-slate-600">
-                  <Sparkles className="w-3 h-3 text-violet-500 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 p-2.5 bg-slate-100 dark:bg-slate-900/90 rounded-xl text-[10px] text-slate-600 dark:text-slate-300">
+                  <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400 shrink-0 mt-0.5" />
                   <span>{pitch.vertical_notes}</span>
                 </div>
               )}
@@ -482,7 +482,7 @@ export default function BoonPilotPitchModal({
         </div>
 
         {/* Footer actions */}
-        <div className="p-4 border-t border-slate-100 flex gap-3 shrink-0 bg-slate-50">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex gap-3 shrink-0 bg-slate-50 dark:bg-slate-900/80">
           <button
             type="button"
             onClick={handleGenerate}

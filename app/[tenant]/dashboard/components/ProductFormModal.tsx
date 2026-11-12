@@ -757,11 +757,11 @@ export default function ProductFormModal({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-            <Package className="w-4 h-4 text-blue-600" />
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-slate-100">
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/70">
+          <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Package className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             <span>{editingProductId ? 'Edit Produk' : 'Tambah Produk Baru'}</span>
           </h3>
           <div className="flex items-center gap-2">
@@ -777,7 +777,7 @@ export default function ProductFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60 cursor-pointer"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -787,7 +787,7 @@ export default function ProductFormModal({
         <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
           {/* Error Feedback Banner */}
           {errorMessage && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 font-semibold flex items-center justify-between gap-2 animate-in fade-in">
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl text-xs text-rose-900 dark:text-rose-200 font-semibold flex items-center justify-between gap-2 animate-in fade-in">
               <div className="flex items-center gap-2">
                 <span className="text-rose-500 font-bold">⚠️</span>
                 <span>{errorMessage}</span>
@@ -795,7 +795,7 @@ export default function ProductFormModal({
               <button
                 type="button"
                 onClick={() => setErrorMessage(null)}
-                className="text-rose-400 hover:text-rose-600 cursor-pointer"
+                className="text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -804,8 +804,8 @@ export default function ProductFormModal({
 
           {/* Quota Limit Warning Banner for Checkout Lite */}
           {isCheckoutLite && !editingProductId && activeProductsCount >= 3 && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 font-medium space-y-1">
-              <div className="font-bold flex items-center gap-1.5 text-amber-950">
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl text-xs text-amber-900 dark:text-amber-200 font-medium space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-950 dark:text-amber-100">
                 <span>⚠️</span>
                 <span>Batas Kuota Tercapai</span>
               </div>
@@ -817,7 +817,7 @@ export default function ProductFormModal({
 
           {/* 1. Nama Produk */}
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1.5">
               Nama Produk / Layanan *
             </label>
             <input
@@ -842,21 +842,21 @@ export default function ProductFormModal({
                 });
               }}
               placeholder="Contoh: Ecourse Ads Masterclass 2026 / Paket Kopi Arabika"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950 font-medium"
             />
           </div>
 
           {/* 1b. Slug URL Salespage */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <LinkIcon className="w-3.5 h-3.5 text-blue-600" />
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                <LinkIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>URL / Slug Salespage Produk</span>
               </label>
               <button
                 type="button"
                 onClick={() => handleSyncSlug()}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-100/60 dark:hover:bg-blue-950/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
                 title="Sinkronkan slug dengan judul produk terbaru"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -864,7 +864,7 @@ export default function ProductFormModal({
               </button>
             </div>
             <div className="flex items-center gap-1 font-mono text-xs">
-              <span className="text-slate-400 shrink-0 font-medium">
+              <span className="text-slate-400 dark:text-slate-500 shrink-0 font-medium">
                 {customDomain ? `/${customDomain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')}/p/` : `/${tenantSlug || 'store'}/p/`}
               </span>
               <input
@@ -889,27 +889,27 @@ export default function ProductFormModal({
                   }
                 }}
                 placeholder="nama-slug-produk"
-                className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-none focus:border-blue-600 font-mono"
+                className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 font-mono"
               />
             </div>
-            <p className="text-[10px] text-slate-400 font-sans">
-              Akses publik: <code className="text-blue-600 font-bold font-mono">{getProductPageUrl(tenantSlug || 'store', productForm?.slug || slugify(productForm?.name || 'produk'), customDomain)}</code>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-sans">
+              Akses publik: <code className="text-blue-600 dark:text-blue-400 font-bold font-mono">{getProductPageUrl(tenantSlug || 'store', productForm?.slug || slugify(productForm?.name || 'produk'), customDomain)}</code>
             </p>
           </div>
 
           {/* 2. Kategori / Label Produk (Opsional) - Full Width */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
                 Kategori / Label Produk (Opsional)
               </label>
               <button
                 type="button"
                 onClick={() => handleSetBadge(String(activeVerticalMeta.defaultBadge))}
-                className="text-[11px] text-slate-500 hover:text-blue-600 font-medium transition cursor-pointer"
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition cursor-pointer"
                 title="Klik untuk gunakan badge default ini"
               >
-                Badge default: <strong className="text-blue-600 font-bold hover:underline">"{activeVerticalMeta.defaultBadge}"</strong>
+                Badge default: <strong className="text-blue-600 dark:text-blue-400 font-bold hover:underline">"{activeVerticalMeta.defaultBadge}"</strong>
               </button>
             </div>
             <input
@@ -917,11 +917,11 @@ export default function ProductFormModal({
               value={typeof productForm.custom_badge === 'string' ? productForm.custom_badge : ''}
               onChange={(e) => handleCustomBadgeChange(e.target.value)}
               placeholder="Contoh: Cuci AC, Kuras Toren, Aksesoris, dsb. (Biarkan kosong untuk label default)"
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
+              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 shadow-xs"
             />
             {/* Saran Kategori & Label Cepat (Primitive Strings Only) */}
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              <span className="text-[10px] text-slate-400 font-bold shrink-0">Saran Label:</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold shrink-0">Saran Label:</span>
               {[
                 activeVerticalMeta.defaultBadge,
                 'Terlaris',
@@ -940,7 +940,7 @@ export default function ProductFormModal({
                     key={String(badgeText)}
                     type="button"
                     onClick={() => handleSetBadge(String(badgeText))}
-                    className="px-2 py-0.5 rounded-md bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-700 text-[10px] font-bold border border-slate-200 hover:border-blue-300 transition cursor-pointer"
+                    className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-300 text-[10px] font-bold border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800 transition cursor-pointer"
                   >
                     +{String(badgeText)}
                   </button>
@@ -949,38 +949,38 @@ export default function ProductFormModal({
                 <button
                   type="button"
                   onClick={() => handleSetBadge('')}
-                  className="text-[10px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer ml-1"
+                  className="text-[10px] text-rose-500 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-bold hover:underline cursor-pointer ml-1"
                 >
                   Reset Default
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+            <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 pt-0.5">
               <button
                 type="button"
                 onClick={() => handleSetBadge(typeof productForm.custom_badge === 'string' && productForm.custom_badge.trim() ? productForm.custom_badge.trim() : String(activeVerticalMeta.defaultBadge))}
-                className="text-left hover:text-blue-600 transition cursor-pointer"
+                className="text-left hover:text-blue-600 dark:hover:text-blue-400 transition cursor-pointer"
                 title="Klik untuk memilih badge etalase"
               >
-                Badge etalase: <strong className="text-slate-700 hover:underline">{typeof productForm.custom_badge === 'string' && productForm.custom_badge.trim() ? productForm.custom_badge.trim() : activeVerticalMeta.defaultBadge}</strong>
+                Badge etalase: <strong className="text-slate-700 dark:text-slate-200 hover:underline">{typeof productForm.custom_badge === 'string' && productForm.custom_badge.trim() ? productForm.custom_badge.trim() : activeVerticalMeta.defaultBadge}</strong>
               </button>
-              <span className="text-[10px] text-slate-400">
-                Vertikal toko: <span className="text-slate-600 font-semibold">{activeVerticalMeta.label}</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                Vertikal toko: <span className="text-slate-600 dark:text-slate-300 font-semibold">{activeVerticalMeta.label}</span>
               </span>
             </div>
           </div>
 
           {/* 2b. Pilihan Tipe Produk: Fisik (Default) vs Digital */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-blue-600" />
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Tipe Produk</span>
               </label>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                 isDigital
-                  ? 'bg-purple-100 text-purple-700 border-purple-200'
-                  : 'bg-blue-100 text-blue-700 border-blue-200'
+                  ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/70'
+                  : 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/70'
               }`}>
                 {isDigital ? '⚡ Produk Digital' : '📦 Produk Fisik (Default)'}
               </span>
@@ -992,8 +992,8 @@ export default function ProductFormModal({
                 onClick={() => handleSelectProductType('physical')}
                 className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
                   !isDigital
-                    ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 text-blue-950 shadow-xs'
-                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                    ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20 text-blue-950 dark:text-blue-100 shadow-xs'
+                    : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -1001,10 +1001,10 @@ export default function ProductFormModal({
                     📦 Produk Fisik (Default)
                   </span>
                   {!isDigital && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                    <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
                   Barang ritel fisik yang memerlukan alamat pengiriman kurir/ekspedisi &amp; kalkulasi ongkir.
                 </p>
               </button>
@@ -1014,8 +1014,8 @@ export default function ProductFormModal({
                 onClick={() => handleSelectProductType('digital')}
                 className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
                   isDigital
-                    ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 shadow-xs'
-                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                    ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 dark:text-purple-100 shadow-xs'
+                    : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -1023,10 +1023,10 @@ export default function ProductFormModal({
                     ⚡ Produk Digital
                   </span>
                   {isDigital && (
-                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                    <span className="w-2 h-2 rounded-full bg-purple-600 dark:bg-purple-400"></span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
                   E-course, file, webinar, tiket event, atau pendaftaran gratis/berbayar tanpa kurir fisik.
                 </p>
               </button>
@@ -1037,10 +1037,10 @@ export default function ProductFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
                   Harga Normal (Rp) *
                 </label>
-                <span className="text-[10px] text-slate-500 font-medium">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                   (Isi 0 jika Gratis)
                 </span>
               </div>
@@ -1054,12 +1054,12 @@ export default function ProductFormModal({
                   setProductForm((p) => ({ ...p, price: val === '' ? 0 : Number(val) }));
                 }}
                 placeholder="Contoh: 250000 atau 0"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1.5">
                 Harga Promo (Rp)
               </label>
               <input
@@ -1071,19 +1071,19 @@ export default function ProductFormModal({
                   setProductForm((p) => ({ ...p, promo_price: val === '' ? undefined : Number(val) }));
                 }}
                 placeholder="Opsional (harga coret)"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
           </div>
 
           {/* 3b. Tipe Transaksi / Alur Checkout (BoonTrack vs Affiliate Eksternal) */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+              <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <ExternalLink className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Tipe Transaksi / Alur Checkout</span>
               </label>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
                 {productForm.checkout_type === 'external' ? 'Mitra / Affiliate' : 'BoonTrack Internal'}
               </span>
             </div>
@@ -1094,17 +1094,17 @@ export default function ProductFormModal({
                 onClick={() => setProductForm((p) => ({ ...p, checkout_type: 'internal' }))}
                 className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
                   (productForm.checkout_type || 'internal') === 'internal'
-                    ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 text-blue-950'
-                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                    ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20 text-blue-950 dark:text-blue-100'
+                    : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold">BoonTrack Checkout</span>
                   {(productForm.checkout_type || 'internal') === 'internal' && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                    <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400"></span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
                   Checkout standar via QRIS / VA langsung di toko BoonTrack Anda.
                 </p>
               </button>
@@ -1114,17 +1114,17 @@ export default function ProductFormModal({
                 onClick={() => setProductForm((p) => ({ ...p, checkout_type: 'external' }))}
                 className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
                   productForm.checkout_type === 'external'
-                    ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 text-purple-950'
-                    : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                    ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20 text-purple-950 dark:text-purple-100'
+                    : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold">Link Eksternal / Affiliate</span>
                   {productForm.checkout_type === 'external' && (
-                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                    <span className="w-2 h-2 rounded-full bg-purple-600 dark:bg-purple-400"></span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-tight">
                   Produk Affiliate / Mitra Luar (Shopee, TikTok, Mayar, Sejoli, dll).
                 </p>
               </button>
@@ -1132,9 +1132,9 @@ export default function ProductFormModal({
 
             {/* Input khusus bila memilih Link Eksternal */}
             {productForm.checkout_type === 'external' && (
-              <div className="space-y-3 pt-2.5 border-t border-slate-200/80">
+              <div className="space-y-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800">
                 <div>
-                  <label className="text-xs font-bold text-slate-800 block mb-1">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-100 block mb-1">
                     URL Tujuan Eksternal / Link Affiliate *
                   </label>
                   <input
@@ -1143,9 +1143,9 @@ export default function ProductFormModal({
                     value={productForm.external_url || ''}
                     onChange={(e) => setProductForm((p) => ({ ...p, external_url: e.target.value }))}
                     placeholder="https://shope.ee/..., https://vt.tiktok.com/..., atau link Sejoli"
-                    className="w-full px-3.5 py-2 bg-white border border-purple-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600/30"
+                    className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-800/80 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600/30"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                     Produk Affiliate / Mitra Luar (Shopee, TikTok, Mayar, Sejoli, dll). Pembeli yang menekan tombol beli akan langsung dialihkan ke URL ini.
                   </p>
                 </div>
@@ -1154,14 +1154,14 @@ export default function ProductFormModal({
           </div>
 
           {/* 3c. Teks Tombol Aksi / CTA Label (Universal untuk Semua Tipe Produk) */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Teks Tombol Aksi / CTA Label</span>
               </label>
-              <span className="text-[10px] text-slate-500 font-medium">
-                Default: <strong className="text-blue-600 font-bold">"{smartDefaultCta}"</strong>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                Default: <strong className="text-blue-600 dark:text-blue-400 font-bold">"{smartDefaultCta}"</strong>
               </span>
             </div>
             <input
@@ -1169,30 +1169,30 @@ export default function ProductFormModal({
               value={ctaTextValue}
               onChange={(e) => handleCtaTextChange(e.target.value)}
               placeholder={`Contoh: ${smartDefaultCta} / Beli Sekarang / Daftar Kelas Sekarang / Pesan Sekarang`}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
+              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 shadow-xs"
             />
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
               Label tombol aksi pembeli di etalase &amp; landing page. Jika dikosongkan, otomatis menggunakan default cerdas: "{smartDefaultCta}".
             </p>
           </div>
 
           {/* 3d. Fitur Keranjang Belanja (Add to Cart / Direct Checkout) */}
           {productForm.checkout_type !== 'external' && (
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5 pr-2">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
-                    <ShoppingCart className="w-3.5 h-3.5 text-blue-600" />
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
+                    <ShoppingCart className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>Aktifkan Fitur Keranjang Belanja</span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isCartEnabled 
-                        ? 'text-emerald-700 bg-emerald-100' 
-                        : 'text-slate-600 bg-slate-200'
+                      isCartEnabled
+                        ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
+                        : 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-800'
                     }`}>
                       {isCartEnabled ? 'Keranjang Aktif' : 'Direct Checkout (1-Click)'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
                     {isCartEnabled
                       ? 'Pembeli dapat menambahkan produk ini ke keranjang belanja (+ Keranjang) dan checkout beberapa item sekaligus.'
                       : 'Fokus 100% pada Direct Checkout (1-Click). Tombol keranjang disembunyikan agar alur checkout instan dan fokus.'}
@@ -1207,7 +1207,7 @@ export default function ProductFormModal({
                     onChange={(e) => handleToggleEnableCart(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
             </div>
@@ -1216,34 +1216,34 @@ export default function ProductFormModal({
           {/* 4. Promo Label & SKU */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">Label Promo Singkat</label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1.5">Label Promo Singkat</label>
               <input
                 type="text"
                 value={productForm.promo || ''}
                 onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
                 placeholder="Contoh: Diskon 50%"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">SKU / Kode Barang</label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1.5">SKU / Kode Barang</label>
               <input
                 type="text"
                 value={productForm.sku || ''}
                 onChange={(e) => setProductForm((p) => ({ ...p, sku: e.target.value }))}
                 placeholder="Contoh: OB-FSK-001"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950"
               />
             </div>
           </div>
 
           {/* 5. Stok Barang (Hanya untuk Retail Fisik dan FnB) */}
           {isPhysicalStockVertical && (
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex-1">
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
                     Jumlah Stok Tersedia *
                   </label>
                   <input
@@ -1251,7 +1251,7 @@ export default function ProductFormModal({
                     disabled={productForm.is_unlimited}
                     value={productForm.is_unlimited ? 9999 : (productForm.stock ?? 100)}
                     onChange={(e) => setProductForm((p) => ({ ...p, stock: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
 
@@ -1268,7 +1268,7 @@ export default function ProductFormModal({
                     }
                     className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                   />
-                  <span className="text-xs text-slate-700 font-semibold">Stok Tak Terbatas (Unlimited)</span>
+                  <span className="text-xs text-slate-700 dark:text-slate-200 font-semibold">Stok Tak Terbatas (Unlimited)</span>
                 </label>
               </div>
             </div>
@@ -1287,24 +1287,24 @@ export default function ProductFormModal({
           {safeForm?.checkout_type !== 'external' && (
             <div className="space-y-3.5">
               {/* A. Metode Pembayaran Checkout (Selalu Mandiri & Aktif) */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
-                      <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                    <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                       <span>Metode Pembayaran Checkout</span>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
                         Fee Rp0
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Metode bayar aktif mandiri tanpa bergantung pada status voucher promo.
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-600 transition">
                     <input
                       type="checkbox"
                       checked={paymentMethods.enable_qris}
@@ -1316,12 +1316,12 @@ export default function ProductFormModal({
                       className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block text-xs">QRIS Instan Otomatis</span>
-                      <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) &amp; verifikasi kilat.</span>
+                      <span className="font-bold text-slate-900 dark:text-white block text-xs">QRIS Instan Otomatis</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Bebas biaya admin (Fee Rp0) &amp; verifikasi kilat.</span>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-blue-400 dark:hover:border-blue-600 transition">
                     <input
                       type="checkbox"
                       checked={paymentMethods.enable_manual_transfer}
@@ -1333,27 +1333,27 @@ export default function ProductFormModal({
                       className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block text-xs">Transfer Bank Manual</span>
-                      <span className="text-[10px] text-slate-500">BCA / Mandiri dengan kode unik verifikasi acak.</span>
+                      <span className="font-bold text-slate-900 dark:text-white block text-xs">Transfer Bank Manual</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">BCA / Mandiri dengan kode unik verifikasi acak.</span>
                     </div>
                   </label>
                 </div>
               </div>
 
               {/* B. Pengaturan Voucher Promo (Toggle Switch Mandiri) */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
-                      <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                    <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
+                      <Tag className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                       <span>Pengaturan Voucher Promo</span>
                       {voucherEnabled && (
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full uppercase">
+                        <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full uppercase">
                           {voucherForm.code || 'AKTIF'}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Aktifkan kupon diskon atau potongan harga khusus untuk pembeli produk ini.
                     </p>
                   </div>
@@ -1376,16 +1376,16 @@ export default function ProductFormModal({
                       }}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                    <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
                 </div>
 
                 {/* Form Voucher: HANYA MUNCUL JIKA TOGGLE VOUCHER AKTIF */}
                 {voucherEnabled ? (
-                  <div className="space-y-3 pt-2.5 border-t border-slate-200/80">
+                  <div className="space-y-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                           Kode Voucher Promo *
                         </label>
                         <input
@@ -1398,12 +1398,12 @@ export default function ProductFormModal({
                             syncVoucherToProductForm(true, updated);
                           }}
                           placeholder="Contoh: HEMAT50, PROMO2026"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                           Minimal Belanja (Opsional, Rp)
                         </label>
                         <input
@@ -1418,14 +1418,14 @@ export default function ProductFormModal({
                             syncVoucherToProductForm(true, updated);
                           }}
                           placeholder="0 (Tanpa minimum)"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-indigo-600"
                         />
                       </div>
                     </div>
 
                     {/* Pilihan Tipe Diskon Produk */}
-                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
-                      <label className="text-[11px] font-bold text-slate-700 block">
+                    <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block">
                         Tipe Diskon Produk
                       </label>
                       <div className="grid grid-cols-2 gap-2">
@@ -1443,7 +1443,7 @@ export default function ProductFormModal({
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
                             voucherForm.discount_type === 'nominal'
                               ? 'bg-indigo-600 text-white shadow-xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           Diskon Nominal (Rp)
@@ -1463,7 +1463,7 @@ export default function ProductFormModal({
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
                             voucherForm.discount_type === 'percentage'
                               ? 'bg-indigo-600 text-white shadow-xs'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           Diskon Persentase (%)
@@ -1471,7 +1471,7 @@ export default function ProductFormModal({
                       </div>
 
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold block mb-1">
+                        <label className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold block mb-1">
                           {voucherForm.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
                         </label>
                         <div className="relative">
@@ -1487,9 +1487,9 @@ export default function ProductFormModal({
                               syncVoucherToProductForm(true, updated);
                             }}
                             placeholder={voucherForm.discount_type === 'percentage' ? '10' : '20000'}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-10"
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-indigo-600 pr-10"
                           />
-                          <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">
+                          <span className="absolute right-3 top-2 text-xs font-bold text-slate-400 dark:text-slate-500">
                             {voucherForm.discount_type === 'percentage' ? '%' : 'Rp'}
                           </span>
                         </div>
@@ -1498,8 +1498,8 @@ export default function ProductFormModal({
 
                     {/* Subsidi Ongkir jika produk fisik */}
                     {isPhysicalStockVertical && (
-                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
-                        <label className="text-[11px] font-bold text-slate-700 block">
+                      <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block">
                           Diskon Ongkir Ekspedisi (Produk Fisik)
                         </label>
                         <div className="grid grid-cols-3 gap-1.5 text-xs">
@@ -1522,7 +1522,7 @@ export default function ProductFormModal({
                               className={`py-1.5 px-2 rounded-lg text-center font-bold text-[10px] transition cursor-pointer ${
                                 (voucherForm.shipping_discount_type || 'none') === item.id
                                   ? 'bg-blue-600 text-white shadow-xs'
-                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                               }`}
                             >
                               {item.label}
@@ -1544,16 +1544,16 @@ export default function ProductFormModal({
                                 syncVoucherToProductForm(true, updated);
                               }}
                               placeholder="Nominal subsidi (mis: 10000)"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-10"
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-indigo-600 pr-10"
                             />
-                            <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">Rp</span>
+                            <span className="absolute right-3 top-3 text-xs font-bold text-slate-400 dark:text-slate-500">Rp</span>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400 italic bg-white p-2.5 rounded-xl border border-dashed border-slate-200">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900/80 p-2.5 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                     Voucher promo dinonaktifkan. Kotak input voucher tidak akan muncul di halaman checkout pembeli.
                   </p>
                 )}
@@ -1575,28 +1575,28 @@ export default function ProductFormModal({
 
           {/* 9. Deskripsi Produk */}
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">Deskripsi Produk</label>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1.5">Deskripsi Produk</label>
             <textarea
               rows={3}
               value={productForm.description}
               onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
               placeholder="Penjelasan ringkas materi, spesifikasi, atau layanan..."
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-950"
             />
           </div>
 
           {/* 10. Materi & Fasilitas Utama (Khusus Digital/Course) */}
-          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+          <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <label className="text-xs font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Materi &amp; Fasilitas Utama (Khusus Digital/Course)</span>
               </label>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/70 px-2 py-0.5 rounded-full">
                 1 Baris = 1 Poin
               </span>
             </div>
-            <p className="text-[11px] text-emerald-800/80 leading-relaxed">
+            <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 leading-relaxed">
               Tuliskan daftar modul materi, fasilitas, bonus, atau benefit yang didapat pembeli (1 baris per poin). Poin-poin ini otomatis ter-render di landing page checkout produk.
             </p>
             <textarea
@@ -1604,22 +1604,22 @@ export default function ProductFormModal({
               value={facilitiesString}
               onChange={(e) => handleFacilitiesChange(e.target.value)}
               placeholder="Contoh:&#10;Akses Selamanya Video Tutorial HD&#10;Template Notion &amp; Spreadsheet Siap Pakai&#10;Grup Diskusi &amp; Support Eksklusif&#10;Gratis Update Modul Materi Berikutnya"
-              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300/80 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20 font-medium leading-relaxed"
+              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-emerald-300/80 dark:border-emerald-800/70 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20 font-medium leading-relaxed"
             />
           </div>
 
           {/* 11. Penawaran Tambahan (Order Bump / Cross-Selling) - 100% Opsional */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
                   <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                   <span>Penawaran Tambahan (Order Bump / Cross-Selling)</span>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                     Opsional
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-snug">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
                   Tawarkan produk pendukung / add-on di halaman checkout dengan 1x klik centang sebelum pembeli membayar.
                 </p>
               </div>
@@ -1632,21 +1632,21 @@ export default function ProductFormModal({
                   onChange={(e) => handleToggleMasterOrderBumps(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
               </label>
             </div>
 
             {/* Form Penawaran - HANYA TAMPIL JIKA MASTER TOGGLE AKTIF */}
             {orderBumpsEnabled && (
-              <div className="space-y-3 pt-2 border-t border-slate-200/80">
+              <div className="space-y-3 pt-2 border-t border-slate-200/80 dark:border-slate-800">
                 {orderBumpItems.map((bump, index) => (
                   <div
                     key={bump.id || index}
-                    className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs relative"
+                    className="p-3.5 bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 rounded-xl space-y-3 shadow-2xs relative"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-black flex items-center justify-center">
                           {index + 1}
                         </span>
                         <span>Item Add-on #{index + 1}</span>
@@ -1654,7 +1654,7 @@ export default function ProductFormModal({
 
                       <div className="flex items-center gap-3">
                         {/* Toggle Aktif/Nonaktif per Item */}
-                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={bump.is_active}
@@ -1668,7 +1668,7 @@ export default function ProductFormModal({
                         <button
                           type="button"
                           onClick={() => handleRemoveBumpItem(index)}
-                          className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                          className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/50 transition cursor-pointer"
                           title="Hapus penawaran add-on ini"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1679,11 +1679,11 @@ export default function ProductFormModal({
                     {/* Quick Select dari Produk Toko (Jika ada) */}
                     {availableStoreProducts.length > 0 && (
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                           Pilih Dari Produk Toko (Opsional untuk isi otomatis)
                         </label>
                         <select
-                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-amber-500"
+                          className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:border-amber-500"
                           onChange={(e) => {
                             const sel = availableStoreProducts.find((p) => String(p?.id) === e.target.value);
                             if (sel) {
@@ -1710,7 +1710,7 @@ export default function ProductFormModal({
 
                     {/* 1. Nama Add-on */}
                     <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                         Nama Produk / Layanan Add-on *
                       </label>
                       <input
@@ -1718,14 +1718,14 @@ export default function ProductFormModal({
                         value={bump.name}
                         onChange={(e) => handleUpdateBumpItem(index, { name: e.target.value })}
                         placeholder="Contoh: Checklist & Template Copywriting Siap Pakai"
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium focus:outline-none focus:border-amber-500"
                       />
                     </div>
 
                     {/* 2. Harga Normal & Promo Bundling */}
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                           Harga Normal (Rp)
                         </label>
                         <input
@@ -1734,11 +1734,11 @@ export default function ProductFormModal({
                           value={bump.original_price ?? ''}
                           onChange={(e) => handleUpdateBumpItem(index, { original_price: e.target.value ? Number(e.target.value) : undefined })}
                           placeholder="Coret (mis: 150000)"
-                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                           Harga Promo Bundling (Rp) *
                         </label>
                         <input
@@ -1747,14 +1747,14 @@ export default function ProductFormModal({
                           value={bump.price !== undefined && bump.price !== null ? bump.price : ''}
                           onChange={(e) => handleUpdateBumpItem(index, { price: Number(e.target.value) })}
                           placeholder="Bayar (mis: 49000)"
-                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-bold focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-bold focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     </div>
 
                     {/* 3. Teks Badge / Callout Opsional */}
                     <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                         Teks Badge / Callout (Opsional)
                       </label>
                       <input
@@ -1762,13 +1762,13 @@ export default function ProductFormModal({
                         value={bump.badge_text || ''}
                         onChange={(e) => handleUpdateBumpItem(index, { badge_text: e.target.value })}
                         placeholder="Contoh: Penawaran Spesial 1x Klik / Hemat 70%"
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                       />
                     </div>
 
                     {/* 4. Deskripsi Singkat Penawaran */}
                     <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block mb-1">
                         Deskripsi Singkat Penawaran
                       </label>
                       <textarea
@@ -1776,7 +1776,7 @@ export default function ProductFormModal({
                         value={bump.description || ''}
                         onChange={(e) => handleUpdateBumpItem(index, { description: e.target.value })}
                         placeholder="Penjelasan singkat benefit add-on ini..."
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
@@ -1785,7 +1785,7 @@ export default function ProductFormModal({
                 <button
                   type="button"
                   onClick={handleAddBumpItem}
-                  className="w-full py-2 bg-amber-50 hover:bg-amber-100/80 border border-dashed border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100/80 dark:hover:bg-amber-950/50 border border-dashed border-amber-300 dark:border-amber-800/70 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Penawaran Add-on Lainnya</span>

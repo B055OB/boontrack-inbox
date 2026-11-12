@@ -227,42 +227,42 @@ export default function FollowUpRulesConfig({
 
   if (isLoading) {
     return (
-      <div className="p-6 bg-white rounded-2xl border border-slate-200 text-center py-12">
+      <div className="p-6 bg-white dark:bg-[#0D1117] rounded-2xl border border-slate-200 dark:border-slate-800 text-center py-12">
         <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-        <p className="text-xs font-semibold text-slate-500">Memuat konfigurasi follow-up...</p>
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Memuat konfigurasi follow-up...</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+    <div className="bg-white dark:bg-[#0D1117] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden text-slate-900 dark:text-slate-100">
       {/* Header Banner */}
-      <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-indigo-50/40 border-b border-emerald-100/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-indigo-50/40 dark:from-emerald-950/30 dark:via-slate-900 dark:to-indigo-950/20 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-xs shrink-0">
             <CalendarClock className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Aturan Otomasi Follow-Up &amp; Siklus Pelanggan
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                 Dinamis &amp; Multi-Tenant
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Atur jeda hari intervensi pasca-kunjungan dan kustomisasi template WhatsApp ucapan ulang tahun serta evaluasi berkala.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={handleResetDefault}
             disabled={isSaving}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
             title="Kembalikan ke standar H+3 & H+7"
           >
             <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
@@ -272,7 +272,7 @@ export default function FollowUpRulesConfig({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
             <span>{isSaving ? 'Menyimpan...' : 'Simpan Aturan'}</span>
@@ -282,16 +282,15 @@ export default function FollowUpRulesConfig({
 
       {saveStatus && (
         <div
-          className={`px-5 py-2.5 text-xs font-semibold flex items-center gap-2 border-b ${
-            saveStatus.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-red-50 text-red-800 border-red-200'
-          }`}
+          className={`px-5 py-2.5 text-xs font-semibold flex items-center gap-2 border-b ${saveStatus.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+              : 'bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800'
+            }`}
         >
           {saveStatus.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
           )}
           <span>{saveStatus.message}</span>
         </div>
@@ -301,25 +300,25 @@ export default function FollowUpRulesConfig({
         {/* Section 1: Jeda Hari Follow-Up Dinamis */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Clock className="w-4 h-4 text-emerald-600" />
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
               1. Konfigurasi Jeda Hari Pasca Kunjungan / Transaksi
             </h4>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Rule 1: First Follow-Up (H+X) */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900/80 transition space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 text-xs font-black flex items-center justify-center">
+                  <span className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center justify-center">
                     1
                   </span>
                   <div>
-                    <span className="text-xs font-bold text-slate-800">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                       Follow-Up Pertama (Check-in Awal)
                     </span>
-                    <p className="text-[11px] text-slate-500">Evaluasi respon/kondisi awal</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Evaluasi respon/kondisi awal</p>
                   </div>
                 </div>
 
@@ -332,12 +331,12 @@ export default function FollowUpRulesConfig({
                     }
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
                 </label>
               </div>
 
               <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
                   Jeda Hari (H +):
                 </label>
                 <div className="flex items-center gap-2">
@@ -353,38 +352,38 @@ export default function FollowUpRulesConfig({
                         h1Days: isNaN(val) ? 1 : Math.max(1, val),
                       }));
                     }}
-                    className="w-20 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-center text-slate-900 focus:outline-hidden focus:border-amber-500"
+                    className="w-20 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-center text-slate-900 dark:text-white focus:outline-hidden focus:border-amber-500"
                   />
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     hari pasca kunjungan (Default: 3)
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
+              <div className="space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-800">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-700">
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     Template Pesan WhatsApp H+{rules.h1Days}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => insertVariable('h1Template', '[nama]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[nama]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('h1Template', '[toko]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[toko]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('h1Template', '[hari]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[hari]
                     </button>
@@ -397,23 +396,23 @@ export default function FollowUpRulesConfig({
                     setRules((prev) => ({ ...prev, h1Template: e.target.value }))
                   }
                   placeholder="Halo Ayah/Bunda [nama], bagaimana perkembangan si kecil setelah sesi..."
-                  className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-hidden focus:border-amber-500 font-sans leading-relaxed"
+                  className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-amber-500 font-sans leading-relaxed"
                 />
               </div>
             </div>
 
             {/* Rule 2: Second Follow-Up (H+Y) */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900/80 transition space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-800 text-xs font-black flex items-center justify-center">
+                  <span className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 text-xs font-black flex items-center justify-center">
                     2
                   </span>
                   <div>
-                    <span className="text-xs font-bold text-slate-800">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                       Follow-Up Kedua (Sesi Lanjutan)
                     </span>
-                    <p className="text-[11px] text-slate-500">Evaluasi berkala / reservasi sesi</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Evaluasi berkala / reservasi sesi</p>
                   </div>
                 </div>
 
@@ -426,12 +425,12 @@ export default function FollowUpRulesConfig({
                     }
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
 
               <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
                   Jeda Hari (H +):
                 </label>
                 <div className="flex items-center gap-2">
@@ -447,38 +446,38 @@ export default function FollowUpRulesConfig({
                         h2Days: isNaN(val) ? rules.h1Days + 1 : Math.max(rules.h1Days + 1, val),
                       }));
                     }}
-                    className="w-20 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-center text-slate-900 focus:outline-hidden focus:border-blue-500"
+                    className="w-20 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-center text-slate-900 dark:text-white focus:outline-hidden focus:border-blue-500"
                   />
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     hari pasca kunjungan (Default: 7)
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
+              <div className="space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-800">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-700">
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     Template Pesan WhatsApp H+{rules.h2Days}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => insertVariable('h2Template', '[nama]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[nama]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('h2Template', '[toko]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[toko]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('h2Template', '[hari]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[hari]
                     </button>
@@ -491,7 +490,7 @@ export default function FollowUpRulesConfig({
                     setRules((prev) => ({ ...prev, h2Template: e.target.value }))
                   }
                   placeholder="Halo Ayah/Bunda [nama], sudah 1 minggu sejak sesi kunjungan terakhir..."
-                  className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-hidden focus:border-blue-500 font-sans leading-relaxed"
+                  className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-blue-500 font-sans leading-relaxed"
                 />
               </div>
             </div>
@@ -502,24 +501,24 @@ export default function FollowUpRulesConfig({
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Cake className="w-4 h-4 text-rose-500" />
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
               2. Ucapan Ulang Tahun &amp; Re-Aktivasi Pelanggan Lama
             </h4>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Birthday Reminder */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900/80 transition space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                  <span className="p-1.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
                     <Cake className="w-4 h-4" />
                   </span>
                   <div>
-                    <span className="text-xs font-bold text-slate-800">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                       Birthday Greeting &amp; Voucher
                     </span>
-                    <p className="text-[11px] text-slate-500">Trigger otomatis saat tanggal lahir hari ini</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Trigger otomatis saat tanggal lahir hari ini</p>
                   </div>
                 </div>
 
@@ -532,27 +531,27 @@ export default function FollowUpRulesConfig({
                     }
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-500"></div>
+                  <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-500"></div>
                 </label>
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-700">
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     Template Ucapan Ulang Tahun
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => insertVariable('birthdayTemplate', '[nama]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[nama]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('birthdayTemplate', '[toko]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[toko]
                     </button>
@@ -565,23 +564,23 @@ export default function FollowUpRulesConfig({
                     setRules((prev) => ({ ...prev, birthdayTemplate: e.target.value }))
                   }
                   placeholder="Halo Kak [nama], Selamat Ulang Tahun! 🎂🎉..."
-                  className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-hidden focus:border-rose-500 font-sans leading-relaxed"
+                  className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-rose-500 font-sans leading-relaxed"
                 />
               </div>
             </div>
 
             {/* Retention / Re-activation */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900/80 transition space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                  <span className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
                     <HeartHandshake className="w-4 h-4" />
                   </span>
                   <div>
-                    <span className="text-xs font-bold text-slate-800">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                       Re-Aktivasi Pelanggan Lama (Retensi)
                     </span>
-                    <p className="text-[11px] text-slate-500">Untuk kunjungan / pesanan &gt; {rules.h2Days * 2} hari lalu</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Untuk kunjungan / pesanan &gt; {rules.h2Days * 2} hari lalu</p>
                   </div>
                 </div>
 
@@ -594,27 +593,27 @@ export default function FollowUpRulesConfig({
                     }
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-700">
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     Template Sapaan Re-Aktivasi
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => insertVariable('retentionTemplate', '[nama]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[nama]
                     </button>
                     <button
                       type="button"
                       onClick={() => insertVariable('retentionTemplate', '[toko]')}
-                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono transition cursor-pointer"
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono transition cursor-pointer"
                     >
                       +[toko]
                     </button>
@@ -627,7 +626,7 @@ export default function FollowUpRulesConfig({
                     setRules((prev) => ({ ...prev, retentionTemplate: e.target.value }))
                   }
                   placeholder="Halo Ayah/Bunda [nama], apa kabar si kecil? Sudah cukup lama sejak kunjungan terakhir..."
-                  className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500 font-sans leading-relaxed"
+                  className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-indigo-500 font-sans leading-relaxed"
                 />
               </div>
             </div>
@@ -635,56 +634,52 @@ export default function FollowUpRulesConfig({
         </div>
 
         {/* Section 3: WhatsApp Chat Preview Box */}
-        <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/40 space-y-3">
-          <div className="flex items-center justify-between">
+        <div className="p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <MessageCircle className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-bold text-slate-800">
+              <MessageCircle className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                 Simulasi Tampilan Pesan WhatsApp (Live Preview)
               </span>
             </div>
-            <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => setPreviewTab('h1')}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
-                  previewTab === 'h1'
-                    ? 'bg-amber-100 text-amber-900'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${previewTab === 'h1'
+                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                  }`}
               >
                 H+{rules.h1Days}
               </button>
               <button
                 type="button"
                 onClick={() => setPreviewTab('h2')}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
-                  previewTab === 'h2'
-                    ? 'bg-blue-100 text-blue-900'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${previewTab === 'h2'
+                    ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-900 dark:text-blue-200'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                  }`}
               >
                 H+{rules.h2Days}
               </button>
               <button
                 type="button"
                 onClick={() => setPreviewTab('birthday')}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
-                  previewTab === 'birthday'
-                    ? 'bg-rose-100 text-rose-900'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${previewTab === 'birthday'
+                    ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-900 dark:text-rose-200'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                  }`}
               >
                 🎂 Ulang Tahun
               </button>
               <button
                 type="button"
                 onClick={() => setPreviewTab('retention')}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
-                  previewTab === 'retention'
-                    ? 'bg-indigo-100 text-indigo-900'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${previewTab === 'retention'
+                    ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-900 dark:text-indigo-200'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                  }`}
               >
                 Retensi
               </button>
@@ -692,23 +687,23 @@ export default function FollowUpRulesConfig({
           </div>
 
           {/* WhatsApp Chat Bubble */}
-          <div className="p-3.5 bg-emerald-700/5 rounded-xl border border-emerald-600/10">
-            <div className="max-w-md bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-xs border border-emerald-100 space-y-1.5">
+          <div className="p-3.5 bg-emerald-700/5 dark:bg-emerald-950/30 rounded-xl border border-emerald-600/10 dark:border-emerald-800/30">
+            <div className="max-w-md bg-white dark:bg-slate-900 rounded-2xl rounded-tl-xs p-3.5 shadow-xs border border-emerald-100 dark:border-slate-800 space-y-1.5">
               <div className="flex items-center justify-between text-[10px] text-slate-400">
-                <span className="font-bold text-emerald-800">{currentStore} (Official)</span>
+                <span className="font-bold text-emerald-800 dark:text-emerald-400">{currentStore} (Official)</span>
                 <span>09:00</span>
               </div>
-              <p className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
+              <p className="text-xs text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">
                 {previewText}
               </p>
               <div className="flex justify-end items-center gap-1 text-[10px] text-slate-400">
                 <span>09:00</span>
-                <span className="text-emerald-600 font-bold">✓✓</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓✓</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
             <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span>
               Variabel <code>[nama]</code> akan otomatis diganti nama pelanggan, <code>[toko]</code> diganti nama klinik/toko Anda, dan <code>[hari]</code> diganti jumlah hari selisih.

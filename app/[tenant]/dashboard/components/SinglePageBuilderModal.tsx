@@ -70,7 +70,7 @@ function SectionToggleHeader({
     <div
       className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
         enabled
-          ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-200'
+          ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-500/30 text-indigo-950 dark:text-indigo-200'
           : 'bg-slate-100 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200'
       }`}
     >
@@ -106,7 +106,7 @@ function SectionToggleHeader({
           onChange={(e) => onChange(e.target.checked)}
           className="sr-only peer"
         />
-        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
       </label>
     </div>
   );
@@ -271,8 +271,8 @@ export default function SinglePageBuilderModal({
   if (!isOpen || !activeProduct) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-950 rounded-3xl max-w-5xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[850px] my-auto text-slate-800 dark:text-slate-100">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-5xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[850px] my-auto text-slate-900 dark:text-slate-100">
         {/* MODAL HEADER */}
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/90 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -283,8 +283,8 @@ export default function SinglePageBuilderModal({
               <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-tight">
                 🎨 Desain Halaman Produk (Landing Page)
               </h3>
-              <p className="text-[11px] text-slate-400 font-medium">
-                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-200">{activeProduct?.name || 'Produk'}</strong>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-800 dark:text-slate-200">{activeProduct?.name || 'Produk'}</strong>
               </p>
             </div>
           </div>
@@ -523,8 +523,8 @@ export default function SinglePageBuilderModal({
               </div>
 
               {singlePageForm.banner_url && (
-                <div className="p-2 bg-slate-100 rounded-xl border border-slate-200 inline-block">
-                  <span className="text-[10px] text-slate-500 block mb-1 font-semibold">Preview Banner Hero:</span>
+                <div className="p-2 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 inline-block">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1 font-semibold">Preview Banner Hero:</span>
                   <img
                     src={singlePageForm.banner_url}
                     alt="Preview Banner"
@@ -536,10 +536,10 @@ export default function SinglePageBuilderModal({
               {/* Input URL Video Banner Utama */}
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700 block text-xs">
+                  <label className="font-bold text-slate-700 dark:text-slate-200 block text-xs">
                     URL Video Utama / Banner (YouTube / Shorts / MP4 embed)
                   </label>
-                  <span className="text-[10px] text-blue-600 bg-blue-50 font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                  <span className="text-[10px] text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 font-bold px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/60">
                     Video Hero
                   </span>
                 </div>
@@ -550,12 +550,12 @@ export default function SinglePageBuilderModal({
                   placeholder="https://www.youtube.com/watch?v=... atau https://youtube.com/shorts/... atau link .mp4"
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono rounded-xl text-xs focus:outline-none focus:border-indigo-500"
                 />
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   Mendukung YouTube, YouTube Shorts, atau video MP4. Jika diisi, video akan disematkan di banner utama hero landing page.
                 </p>
                 {singlePageForm.video_url && (
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 mt-2">
-                    <span className="text-[10px] font-bold text-slate-600 block">Preview Video Hero:</span>
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5 mt-2">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block">Preview Video Hero:</span>
                     <div className="max-w-md">
                       <VideoEmbedPlayer url={singlePageForm.video_url} title="Preview Video Hero" />
                     </div>
@@ -576,12 +576,12 @@ export default function SinglePageBuilderModal({
               />
 
               {/* Input URL Video Galeri Media */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-800 block text-xs">
+                  <label className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                     URL Video Galeri / Showcase (YouTube / Shorts / MP4)
                   </label>
-                  <span className="text-[10px] text-purple-600 bg-purple-50 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                  <span className="text-[10px] text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 font-bold px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800/60">
                     Video Showcase
                   </span>
                 </div>
@@ -590,9 +590,9 @@ export default function SinglePageBuilderModal({
                   value={singlePageForm.gallery_video_url || ''}
                   onChange={(e) => setSinglePageForm((p) => ({ ...p, gallery_video_url: e.target.value }))}
                   placeholder="https://www.youtube.com/watch?v=... atau https://youtu.be/... atau link .mp4"
-                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-purple-600"
+                  className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono focus:outline-none focus:border-purple-600"
                 />
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   Sematkan video unboxing, demo produk, atau review customer yang akan ditampilkan di section galeri media.
                 </p>
                 {singlePageForm.gallery_video_url && (
@@ -604,8 +604,8 @@ export default function SinglePageBuilderModal({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Koleksi Foto Produk &amp; Varian</h4>
-                  <p className="text-[10px] text-slate-500">Mendukung upload langsung atau paste link gambar JPG/PNG/WebP. Maksimal 8 foto.</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">Koleksi Foto Produk &amp; Varian</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Mendukung upload langsung atau paste link gambar JPG/PNG/WebP. Maksimal 8 foto.</p>
                 </div>
                 <button
                   type="button"
@@ -633,10 +633,10 @@ export default function SinglePageBuilderModal({
               {/* Grid / List of gallery images */}
               <div className="space-y-3">
                 {(!singlePageForm.gallery_images || singlePageForm.gallery_images.length === 0) ? (
-                  <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-2">
+                  <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
                     <span className="text-2xl block">📸</span>
-                    <p className="text-xs text-slate-700 font-bold">Belum ada foto galeri tambahan</p>
-                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                    <p className="text-xs text-slate-700 dark:text-slate-200 font-bold">Belum ada foto galeri tambahan</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                       Tambahkan 5–8 foto untuk varian rasa makanan, sudut foto produk fisik, atau detail modul materi agar pembeli semakin tertarik &amp; percaya.
                     </p>
                     <button
@@ -649,7 +649,7 @@ export default function SinglePageBuilderModal({
                           ],
                         }));
                       }}
-                      className="mt-2 px-3 py-1.5 bg-white border border-slate-300 hover:border-blue-500 hover:text-blue-600 rounded-xl text-xs font-bold transition cursor-pointer"
+                      className="mt-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl text-xs font-bold transition cursor-pointer"
                     >
                       + Tambah Foto Pertama
                     </button>
@@ -658,21 +658,21 @@ export default function SinglePageBuilderModal({
                   singlePageForm.gallery_images.map((img, idx) => (
                     <div
                       key={idx}
-                      className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center gap-3.5"
+                      className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center gap-3.5"
                     >
                       {/* Thumbnail Preview */}
-                      <div className="w-20 h-20 rounded-xl bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                      <div className="w-20 h-20 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                         {img.url ? (
                           <img src={img.url} alt={img.title || `Foto ${idx + 1}`} className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-[10px] text-slate-400 font-mono text-center px-1">Belum Ada URL</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono text-center px-1">Belum Ada URL</span>
                         )}
                       </div>
 
                       {/* Inputs */}
                       <div className="flex-1 min-w-0 space-y-2 w-full">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-600 block mb-0.5">URL Foto / Gambar *</label>
+                          <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-0.5">URL Foto / Gambar *</label>
                           <input
                             type="url"
                             value={img.url}
@@ -688,7 +688,7 @@ export default function SinglePageBuilderModal({
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Keterangan / Judul Foto (Opsional)</label>
+                            <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-0.5">Keterangan / Judul Foto (Opsional)</label>
                             <input
                               type="text"
                               value={img.title || ''}
@@ -703,7 +703,7 @@ export default function SinglePageBuilderModal({
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Label Kategori (Opsional)</label>
+                            <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-0.5">Label Kategori (Opsional)</label>
                             <input
                               type="text"
                               value={img.category || ''}
@@ -750,8 +750,8 @@ export default function SinglePageBuilderModal({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Daftar Logo Klien & Brand Partner</h4>
-                  <p className="text-[10px] text-slate-500">Tambahkan logo brand/klien yang pernah bekerja sama atau menggunakan layanan Anda.</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">Daftar Logo Klien & Brand Partner</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Tambahkan logo brand/klien yang pernah bekerja sama atau menggunakan layanan Anda.</p>
                 </div>
                 <button
                   type="button"
@@ -772,7 +772,7 @@ export default function SinglePageBuilderModal({
                 {(singlePageForm.client_logos || []).map((logo, idx) => (
                   <div key={idx} className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-700 text-[11px]">Klien / Partner #{idx + 1}</span>
+                      <span className="font-bold text-slate-700 dark:text-slate-200 text-[11px]">Klien / Partner #{idx + 1}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -787,7 +787,7 @@ export default function SinglePageBuilderModal({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Nama Brand / Klien *</label>
+                        <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Nama Brand / Klien *</label>
                         <input
                           type="text"
                           value={logo?.name || ''}
@@ -802,7 +802,7 @@ export default function SinglePageBuilderModal({
                       </div>
 
                       <div>
-                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Kategori (Opsional)</label>
+                        <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Kategori (Opsional)</label>
                         <input
                           type="text"
                           value={logo.category || ''}
@@ -832,7 +832,7 @@ export default function SinglePageBuilderModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-slate-600 font-bold block mb-1">URL Website / Profil Klien (Opsional)</label>
+                      <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">URL Website / Profil Klien (Opsional)</label>
                       <input
                         type="url"
                         value={logo.link_url || ''}
@@ -849,15 +849,15 @@ export default function SinglePageBuilderModal({
                 ))}
 
                 {(!singlePageForm.client_logos || singlePageForm.client_logos.length === 0) && (
-                  <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
-                    <p className="text-xs text-slate-500 font-medium">Belum ada logo klien yang ditambahkan.</p>
+                  <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/60 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Belum ada logo klien yang ditambahkan.</p>
                     <button
                       type="button"
                       onClick={() => setSinglePageForm(p => ({
                         ...p,
                         client_logos: [{ name: '', logo_url: '', category: '', link_url: '' }]
                       }))}
-                      className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 cursor-pointer"
+                      className="mt-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> Tambah Logo Pertama
                     </button>
@@ -877,9 +877,9 @@ export default function SinglePageBuilderModal({
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_problem_solution: val }))}
               />
 
-              <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-4 space-y-3">
+              <div className="bg-rose-50/50 dark:bg-rose-950/25 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
+                  <span className="font-bold text-rose-900 dark:text-rose-200 text-xs flex items-center gap-1.5">
                     <span>⚠️</span> Poin Masalah Audiens (Pain Points)
                   </span>
                   <button
@@ -888,14 +888,14 @@ export default function SinglePageBuilderModal({
                       ...p,
                       pain_points: [...(p.pain_points || []), '']
                     }))}
-                    className="text-[11px] bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                    className="text-[11px] bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/70 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
                   >
                     <Plus className="w-3 h-3" /> Tambah Poin
                   </button>
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-600 font-semibold block mb-1">Judul Masalah</label>
+                  <label className="text-[11px] text-slate-600 dark:text-slate-300 font-semibold block mb-1">Judul Masalah</label>
                   <input
                     type="text"
                     value={singlePageForm.problem_title || ''}
@@ -926,7 +926,7 @@ export default function SinglePageBuilderModal({
                           const newPoints = (singlePageForm.pain_points || []).filter((_, i) => i !== idx);
                           setSinglePageForm(p => ({ ...p, pain_points: newPoints }));
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/60 rounded-lg transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -945,9 +945,9 @@ export default function SinglePageBuilderModal({
                 </div>
               </div>
 
-              <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+              <div className="bg-emerald-50/50 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
+                  <span className="font-bold text-emerald-900 dark:text-emerald-200 text-xs flex items-center gap-1.5">
                     <span>✅</span> Poin Solusi & Fitur Unggulan
                   </span>
                   <button
@@ -956,14 +956,14 @@ export default function SinglePageBuilderModal({
                       ...p,
                       solution_points: [...(p.solution_points || []), '']
                     }))}
-                    className="text-[11px] bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-100 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                    className="text-[11px] bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
                   >
                     <Plus className="w-3 h-3" /> Tambah Solusi
                   </button>
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-600 font-semibold block mb-1">Judul Solusi</label>
+                  <label className="text-[11px] text-slate-600 dark:text-slate-300 font-semibold block mb-1">Judul Solusi</label>
                   <input
                     type="text"
                     value={singlePageForm.solution_title || ''}
@@ -976,7 +976,7 @@ export default function SinglePageBuilderModal({
                 <div className="space-y-2">
                   {(singlePageForm.solution_points || []).map((point, idx) => (
                     <div key={idx} className="flex items-center gap-2">
-                      <span className="text-emerald-600 font-bold text-xs shrink-0">✨ #{idx + 1}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs shrink-0">✨ #{idx + 1}</span>
                       <input
                         type="text"
                         value={point}
@@ -994,7 +994,7 @@ export default function SinglePageBuilderModal({
                           const newPoints = (singlePageForm.solution_points || []).filter((_, i) => i !== idx);
                           setSinglePageForm(p => ({ ...p, solution_points: newPoints }));
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/60 rounded-lg transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1017,8 +1017,8 @@ export default function SinglePageBuilderModal({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Tabel Perbandingan (Us vs Them)</h4>
-                  <p className="text-[10px] text-slate-500">Buktikan keunggulan produk Anda dibandingkan cara lama atau kompetitor.</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">Tabel Perbandingan (Us vs Them)</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Buktikan keunggulan produk Anda dibandingkan cara lama atau kompetitor.</p>
                 </div>
                 <button
                   type="button"
@@ -1037,12 +1037,12 @@ export default function SinglePageBuilderModal({
 
               {/* Kustomisasi Header & Judul Kolom */}
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl space-y-3">
-                <span className="font-bold text-slate-800 block text-xs">
+                <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                   Kustomisasi Header &amp; Judul Kolom
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Modul Perbandingan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Judul Modul Perbandingan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.comparison_title || ''}
@@ -1058,7 +1058,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Subjudul Modul Perbandingan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Subjudul Modul Perbandingan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.comparison_subtitle || ''}
@@ -1074,9 +1074,9 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-slate-200 dark:border-slate-800">
                   <div>
-                    <label className="text-[10px] font-bold text-rose-600 flex items-center gap-1 mb-1">
+                    <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 mb-1">
                       <span>❌</span> Judul Kolom Kompetitor (Them)
                     </label>
                     <input
@@ -1094,7 +1094,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mb-1">
+                    <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-1">
                       <span>✅</span> Judul Kolom Produk Anda (Us)
                     </label>
                     <input
@@ -1118,7 +1118,7 @@ export default function SinglePageBuilderModal({
                 {(singlePageForm.comparison_rows || []).map((row, idx) => (
                   <div key={row.id || idx} className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-700 text-[11px]">Kriteria #{idx + 1}</span>
+                      <span className="font-bold text-slate-700 dark:text-slate-200 text-[11px]">Kriteria #{idx + 1}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1147,7 +1147,7 @@ export default function SinglePageBuilderModal({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-rose-600 flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
                           <span>❌</span> {singlePageForm.labels?.comparison_them_label || (activeProduct.category === 'fisik' ? 'Produk Pasaran' : 'Cara Lain / Lama (Them)')}
                         </span>
                         <textarea
@@ -1164,7 +1164,7 @@ export default function SinglePageBuilderModal({
                       </div>
 
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                           <span>✅</span> {singlePageForm.labels?.comparison_us_label || (activeProduct.category === 'fisik' ? 'Kelebihan Produk Ini' : 'Solusi Produk Ini (Us)')}
                         </span>
                         <textarea
@@ -1197,18 +1197,18 @@ export default function SinglePageBuilderModal({
               />
 
               <div>
-                <h4 className="font-bold text-slate-900 text-xs">Galeri Testimoni Visual (Hingga 3 Screenshot)</h4>
-                <p className="text-[10px] text-slate-500">Masukkan tautan gambar tangkapan layar chat WhatsApp, hasil omset, atau review pelanggan.</p>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs">Galeri Testimoni Visual (Hingga 3 Screenshot)</h4>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Masukkan tautan gambar tangkapan layar chat WhatsApp, hasil omset, atau review pelanggan.</p>
               </div>
 
               {/* Kustomisasi Header & Label Ulasan */}
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl space-y-3">
-                <span className="font-bold text-slate-800 block text-xs">
+                <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                   Kustomisasi Header &amp; Badge Ulasan
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Modul Ulasan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Judul Modul Ulasan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.testimonials_title || ''}
@@ -1224,7 +1224,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Subjudul Modul Ulasan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Subjudul Modul Ulasan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.testimonials_subtitle || ''}
@@ -1240,7 +1240,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Badge Header Ulasan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Badge Header Ulasan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.social_proof_badge || ''}
@@ -1256,7 +1256,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Verifikasi Kartu</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Label Verifikasi Kartu</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.verified_user_label || ''}
@@ -1318,8 +1318,8 @@ export default function SinglePageBuilderModal({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Bonus Spesial Pembelian Hari Ini</h4>
-                  <p className="text-[10px] text-slate-500">Tingkatkan value produk Anda dengan bonus gratis yang memiliki estimasi nilai tinggi.</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">Bonus Spesial Pembelian Hari Ini</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Tingkatkan value produk Anda dengan bonus gratis yang memiliki estimasi nilai tinggi.</p>
                 </div>
                 <button
                   type="button"
@@ -1338,9 +1338,9 @@ export default function SinglePageBuilderModal({
 
               <div className="space-y-3">
                 {(singlePageForm.bonus_items || []).map((bonus, idx) => (
-                  <div key={bonus.id || idx} className="bg-indigo-50/40 border border-indigo-100 p-3.5 rounded-2xl space-y-2">
+                  <div key={bonus.id || idx} className="bg-indigo-50/40 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 p-3.5 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-indigo-900 text-[11px]">Bonus Gratis #{idx + 1}</span>
+                      <span className="font-bold text-indigo-900 dark:text-indigo-200 text-[11px]">Bonus Gratis #{idx + 1}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1355,7 +1355,7 @@ export default function SinglePageBuilderModal({
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="sm:col-span-2">
-                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Nama / Judul Bonus</label>
+                        <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Nama / Judul Bonus</label>
                         <input
                           type="text"
                           value={bonus.title}
@@ -1370,7 +1370,7 @@ export default function SinglePageBuilderModal({
                       </div>
 
                       <div>
-                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Taksiran Nilai (Rp)</label>
+                        <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Taksiran Nilai (Rp)</label>
                         <input
                           type="number"
                           step={5000}
@@ -1403,9 +1403,9 @@ export default function SinglePageBuilderModal({
                 ))}
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between text-xs">
-                <span className="font-bold text-amber-900">Total Nilai Bonus Tambahan:</span>
-                <span className="font-black text-amber-700">
+              <div className="bg-amber-50 dark:bg-amber-950/35 border border-amber-200 dark:border-amber-800/60 p-3 rounded-xl flex items-center justify-between text-xs">
+                <span className="font-bold text-amber-900 dark:text-amber-200">Total Nilai Bonus Tambahan:</span>
+                <span className="font-black text-amber-700 dark:text-amber-300">
                   Rp {(singlePageForm.bonus_items || []).reduce((acc, b) => acc + (b.value || 0), 0).toLocaleString('id-ID')}
                 </span>
               </div>
@@ -1424,8 +1424,8 @@ export default function SinglePageBuilderModal({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Daftar Tanya Jawab (FAQ)</h4>
-                  <p className="text-[10px] text-slate-500">Tambahkan FAQ untuk mengantisipasi pertanyaan calon pembeli.</p>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs">Daftar Tanya Jawab (FAQ)</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Tambahkan FAQ untuk mengantisipasi pertanyaan calon pembeli.</p>
                 </div>
                 <button
                   type="button"
@@ -1446,8 +1446,8 @@ export default function SinglePageBuilderModal({
                 {(singlePageForm.faqs || []).map((faq, idx) => (
                   <div key={idx} className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-700 text-[11px] flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] flex items-center justify-center font-bold">
+                      <span className="font-bold text-slate-700 dark:text-slate-200 text-[11px] flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 text-[10px] flex items-center justify-center font-bold">
                           Q
                         </span>
                         FAQ #{idx + 1}
@@ -1465,7 +1465,7 @@ export default function SinglePageBuilderModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-slate-600 font-bold block mb-1">Pertanyaan (Question) *</label>
+                      <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Pertanyaan (Question) *</label>
                       <input
                         type="text"
                         value={faq.question}
@@ -1480,7 +1480,7 @@ export default function SinglePageBuilderModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-slate-600 font-bold block mb-1">Jawaban (Answer) *</label>
+                      <label className="text-[10px] text-slate-600 dark:text-slate-300 font-bold block mb-1">Jawaban (Answer) *</label>
                       <textarea
                         rows={2}
                         value={faq.answer}
@@ -1497,15 +1497,15 @@ export default function SinglePageBuilderModal({
                 ))}
 
                 {(!singlePageForm.faqs || singlePageForm.faqs.length === 0) && (
-                  <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
-                    <p className="text-xs text-slate-500 font-medium">Belum ada pertanyaan FAQ yang ditambahkan.</p>
+                  <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/60 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Belum ada pertanyaan FAQ yang ditambahkan.</p>
                     <button
                       type="button"
                       onClick={() => setSinglePageForm(p => ({
                         ...p,
                         faqs: [{ question: '', answer: '' }]
                       }))}
-                      className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 cursor-pointer"
+                      className="mt-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> Tambah Pertanyaan Pertama
                     </button>
@@ -1526,16 +1526,16 @@ export default function SinglePageBuilderModal({
               />
 
               {/* SELEKTOR TIPE AKSI / CALL TO ACTION (CTA) CHECKOUT */}
-              <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-xs">
+              <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 dark:from-slate-900/70 dark:to-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold leading-none">🎯</span>
                     <div>
-                      <h4 className="font-bold text-slate-900 text-xs">Tipe Aksi Transaksi / Call to Action (CTA)</h4>
-                      <p className="text-[10px] text-slate-500">Pilih alur transaksi utama yang dialami calon pembeli saat mengunjungi landing page produk ini.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-xs">Tipe Aksi Transaksi / Call to Action (CTA)</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Pilih alur transaksi utama yang dialami calon pembeli saat mengunjungi landing page produk ini.</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase tracking-wide">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 uppercase tracking-wide">
                     {(singlePageForm.checkout_action_mode || 'DIRECT') === 'DIRECT' ? 'Direct Order' : (singlePageForm.checkout_action_mode === 'WHATSAPP' ? 'Direct WhatsApp' : 'Hybrid')}
                   </span>
                 </div>
@@ -1546,8 +1546,8 @@ export default function SinglePageBuilderModal({
                     onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'DIRECT' }))}
                     className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
                       (singlePageForm.checkout_action_mode || 'DIRECT') === 'DIRECT'
-                        ? 'border-blue-600 bg-white shadow-sm ring-2 ring-blue-500/20'
-                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                        ? 'border-blue-600 bg-white dark:bg-slate-900 shadow-sm ring-2 ring-blue-500/20'
+                        : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/40 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900/80'
                     }`}
                   >
                     <div className="space-y-1.5">
@@ -1562,13 +1562,13 @@ export default function SinglePageBuilderModal({
                           className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
                         />
                       </div>
-                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                      <h5 className="font-black text-xs text-slate-900 dark:text-white leading-snug">
                         Form Checkout Langsung
                       </h5>
-                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                         Direct Order
                       </span>
-                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
                         Form checkout instan di halaman lengkap dengan rincian data pembeli &amp; pembayaran QRIS/Transfer.
                       </p>
                     </div>
@@ -1579,8 +1579,8 @@ export default function SinglePageBuilderModal({
                     onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'WHATSAPP' }))}
                     className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
                       singlePageForm.checkout_action_mode === 'WHATSAPP'
-                        ? 'border-emerald-600 bg-emerald-50/40 shadow-sm ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                        ? 'border-emerald-600 bg-emerald-50/40 dark:bg-emerald-950/30 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/40 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900/80'
                     }`}
                   >
                     <div className="space-y-1.5">
@@ -1595,13 +1595,13 @@ export default function SinglePageBuilderModal({
                           className="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500"
                         />
                       </div>
-                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                      <h5 className="font-black text-xs text-slate-900 dark:text-white leading-snug">
                         Konsultasi / Order via WhatsApp
                       </h5>
-                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
                         Chat to Close
                       </span>
-                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
                         Tombol utama langsung mengarahkan buyer ke WhatsApp CS/seller dengan template pesan otomatis.
                       </p>
                     </div>
@@ -1612,8 +1612,8 @@ export default function SinglePageBuilderModal({
                     onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'HYBRID' }))}
                     className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
                       singlePageForm.checkout_action_mode === 'HYBRID'
-                        ? 'border-indigo-600 bg-indigo-50/40 shadow-sm ring-2 ring-indigo-500/20'
-                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                        ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/30 shadow-sm ring-2 ring-indigo-500/20'
+                        : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/40 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900/80'
                     }`}
                   >
                     <div className="space-y-1.5">
@@ -1628,13 +1628,13 @@ export default function SinglePageBuilderModal({
                           className="h-3.5 w-3.5 text-indigo-600 focus:ring-indigo-500"
                         />
                       </div>
-                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                      <h5 className="font-black text-xs text-slate-900 dark:text-white leading-snug">
                         Keduanya (Form + WA Melayang)
                       </h5>
-                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300">
                         Rekomendasi
                       </span>
-                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
                         Form checkout aktif di halaman, ditambah tombol WhatsApp melayang agar buyer bisa bertanya jika ragu.
                       </p>
                     </div>
@@ -1643,20 +1643,20 @@ export default function SinglePageBuilderModal({
 
                 {/* SINKRONISASI KONFIGURASI WHATSAPP & PRE-FILLED DRAFT */}
                 {(singlePageForm.checkout_action_mode === 'WHATSAPP' || singlePageForm.checkout_action_mode === 'HYBRID') && (
-                  <div className="p-3.5 bg-slate-900/60 border border-emerald-800/60 rounded-xl space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                  <div className="p-3.5 bg-emerald-50/70 dark:bg-slate-900/60 border border-emerald-200 dark:border-emerald-800/60 rounded-xl space-y-3 animate-fadeIn">
+                    <div className="flex items-center justify-between border-b border-emerald-200/80 dark:border-emerald-800/50 pb-2">
                       <div className="flex items-center gap-1.5">
-                        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span className="font-bold text-slate-900 text-xs">Pengaturan WhatsApp CS &amp; Pesan Otomatis</span>
+                        <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span className="font-bold text-slate-900 dark:text-white text-xs">Pengaturan WhatsApp CS &amp; Pesan Otomatis</span>
                       </div>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60">
                         WhatsApp Terhubung
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="font-bold text-slate-700 block text-[11px] mb-1">
+                        <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px] mb-1">
                           Nomor WhatsApp CS / Seller (Opsional)
                         </label>
                         <input
@@ -1666,14 +1666,14 @@ export default function SinglePageBuilderModal({
                           placeholder="Contoh: 081234567890 (Gunakan nomor toko jika kosong)"
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs font-medium focus:outline-none focus:border-emerald-500"
                         />
-                        <span className="text-[10px] text-slate-400 mt-1 block">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
                           Jika dikosongkan, sistem otomatis memakai nomor WhatsApp resmi toko.
                         </span>
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="font-bold text-slate-700 block text-[11px]">
+                          <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px]">
                             Teks Pesan WhatsApp Otomatis
                           </label>
                           <button
@@ -1682,7 +1682,7 @@ export default function SinglePageBuilderModal({
                               ...p,
                               whatsapp_custom_message: 'Halo Admin, saya tertarik dengan produk {nama_produk}. Boleh minta info lebih detail?'
                             }))}
-                            className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                            className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 font-bold underline cursor-pointer"
                           >
                             Gunakan Template
                           </button>
@@ -1694,8 +1694,8 @@ export default function SinglePageBuilderModal({
                           placeholder="Halo Admin, saya tertarik dengan produk {nama_produk}..."
                           className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs font-medium focus:outline-none focus:border-emerald-500"
                         />
-                        <span className="text-[10px] text-slate-400 mt-1 block">
-                          Gunakan variabel <code className="text-emerald-700 font-bold">{"{nama_produk}"}</code> untuk otomatis diisi nama produk saat buyer mengklik tombol.
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+                          Gunakan variabel <code className="text-emerald-700 dark:text-emerald-400 font-bold">{"{nama_produk}"}</code> untuk otomatis diisi nama produk saat buyer mengklik tombol.
                         </span>
                       </div>
                     </div>
@@ -1704,12 +1704,12 @@ export default function SinglePageBuilderModal({
               </div>
 
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
-                <span className="font-bold text-slate-800 block text-xs">
+                <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                   Opsi Metode Pembayaran di Checkout
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer hover:border-emerald-500 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer hover:border-emerald-500 transition">
                     <input
                       type="checkbox"
                       checked={singlePageForm.enable_qris}
@@ -1717,12 +1717,12 @@ export default function SinglePageBuilderModal({
                       className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block">QRIS Instan Otomatis</span>
-                      <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) & aktivasi tercepat.</span>
+                      <span className="font-bold text-slate-900 dark:text-white block">QRIS Instan Otomatis</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Bebas biaya admin (Fee Rp0) & aktivasi tercepat.</span>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer hover:border-indigo-500 transition">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer hover:border-indigo-500 transition">
                     <input
                       type="checkbox"
                       checked={singlePageForm.enable_manual_transfer}
@@ -1730,25 +1730,25 @@ export default function SinglePageBuilderModal({
                       className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block">Transfer Bank Manual</span>
-                      <span className="text-[10px] text-slate-500">BCA / Mandiri (Bebas Biaya Admin) & kode unik acak.</span>
+                      <span className="font-bold text-slate-900 dark:text-white block">Transfer Bank Manual</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">BCA / Mandiri (Bebas Biaya Admin) & kode unik acak.</span>
                     </div>
                   </label>
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3.5">
+              <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 dark:from-indigo-950/35 dark:to-slate-900/70 border border-indigo-100 dark:border-indigo-900/50 rounded-2xl p-4 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-indigo-600 text-white rounded-lg text-xs">🎟️</span>
                     <div>
-                      <h4 className="font-bold text-slate-900 text-xs">Pengaturan Voucher & Promo Produk</h4>
-                      <p className="text-[10px] text-slate-500">Konfigurasi potongan harga produk dan/atau subsidi ongkir khusus landing page ini.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-xs">Pengaturan Voucher & Promo Produk</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Konfigurasi potongan harga produk dan/atau subsidi ongkir khusus landing page ini.</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {singlePageForm.voucher?.is_enabled !== false && (
-                      <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
+                      <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-full uppercase">
                         {singlePageForm.voucher?.code || 'NO-CODE'}
                       </span>
                     )}
@@ -1775,20 +1775,20 @@ export default function SinglePageBuilderModal({
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                     </label>
                   </div>
                 </div>
 
                 {singlePageForm.voucher?.is_enabled === false ? (
-                  <p className="text-[11px] text-slate-500 italic bg-white p-3 rounded-xl border border-dashed border-indigo-200">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/80 p-3 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/60">
                     Voucher promo dinonaktifkan. Kotak input kupon tidak akan muncul di halaman checkout pembeli.
                   </p>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
+                        <label className="font-bold text-slate-700 dark:text-slate-200 block text-xs mb-1">Kode Voucher</label>
                         <input
                           type="text"
                           value={singlePageForm.voucher?.code || ''}
@@ -1817,7 +1817,7 @@ export default function SinglePageBuilderModal({
                       </div>
 
                       <div>
-                        <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
+                        <label className="font-bold text-slate-700 dark:text-slate-200 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
                         <input
                           type="number"
                           min={0}
@@ -1847,8 +1847,8 @@ export default function SinglePageBuilderModal({
                       </div>
                     </div>
 
-                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-indigo-900/50 space-y-2.5">
-                      <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
+                    <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 space-y-2.5">
+                      <label className="font-bold text-slate-800 dark:text-slate-100 block text-xs">Pilihan Tipe Diskon Produk</label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -1870,7 +1870,7 @@ export default function SinglePageBuilderModal({
                           className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                             singlePageForm.voucher?.discount_type === 'nominal'
                               ? 'bg-indigo-600 text-white shadow-sm'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           <span>Diskon Nominal (Rp)</span>
@@ -1896,7 +1896,7 @@ export default function SinglePageBuilderModal({
                           className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                             singlePageForm.voucher?.discount_type === 'percentage'
                               ? 'bg-indigo-600 text-white shadow-sm'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           <span>Diskon Persentase (%)</span>
@@ -1904,7 +1904,7 @@ export default function SinglePageBuilderModal({
                       </div>
 
                       <div>
-                        <label className="text-[11px] text-slate-500 font-semibold block mb-1">
+                        <label className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold block mb-1">
                           {singlePageForm.voucher?.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
                         </label>
                         <div className="relative">
@@ -1932,18 +1932,18 @@ export default function SinglePageBuilderModal({
                             }}
                             className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
-                          <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
+                          <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 dark:text-slate-500">
                             {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-slate-900/80 p-3.5 rounded-xl border border-indigo-900/50 space-y-2.5">
+                    <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
+                        <label className="font-bold text-slate-800 dark:text-slate-100 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
                         {activeProduct.category === 'fisik' && (
-                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                          <span className="text-[10px] bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 rounded-full">
                             📦 Produk Fisik
                           </span>
                         )}
@@ -1975,7 +1975,7 @@ export default function SinglePageBuilderModal({
                             className={`py-2 px-2 rounded-lg text-center font-bold text-[11px] transition cursor-pointer ${
                               (singlePageForm.voucher?.shipping_discount_type || 'none') === item.id
                                 ? 'bg-blue-600 text-white shadow-sm'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                           >
                             {item.label}
@@ -1985,7 +1985,7 @@ export default function SinglePageBuilderModal({
 
                       {singlePageForm.voucher?.shipping_discount_type === 'flat' && (
                         <div>
-                          <label className="text-[11px] text-slate-500 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
+                          <label className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
                           <div className="relative">
                             <input
                               type="number"
@@ -2011,7 +2011,7 @@ export default function SinglePageBuilderModal({
                               }}
                               className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
-                            <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                            <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 dark:text-slate-500">Rp</span>
                           </div>
                         </div>
                       )}
@@ -2024,20 +2024,20 @@ export default function SinglePageBuilderModal({
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3">
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-black tracking-tight text-slate-900">
+                    <h4 className="text-xs font-black tracking-tight text-slate-900 dark:text-white">
                       Batasi Pembelian Maksimal 1 Item
                     </h4>
                     <span
                       className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
                         singlePageForm.limit_single_item
                           ? 'bg-blue-600 text-white'
-                          : 'bg-slate-200 text-slate-600'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                       }`}
                     >
                       {singlePageForm.limit_single_item ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
                     Jika diaktifkan, selector tombol [- 1 +] disembunyikan dan otomatis mengunci kuantitas = 1 pada checkout.
                   </p>
                 </div>
@@ -2049,7 +2049,7 @@ export default function SinglePageBuilderModal({
                     onChange={(e) => setSinglePageForm((p) => ({ ...p, limit_single_item: e.target.checked }))}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
 
@@ -2089,18 +2089,18 @@ export default function SinglePageBuilderModal({
                     }}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                 </label>
               </div>
 
               {/* C. Dynamic CTA Button Text Input */}
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800 block text-xs">
+                  <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                     Teks Tombol Aksi / CTA Label
                   </span>
-                  <span className="text-[10px] text-slate-500 font-medium">
-                    Default: <strong className="text-blue-600 font-bold">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    Default: <strong className="text-blue-600 dark:text-blue-400 font-bold">
                       {singlePageForm.checkout_action_mode === 'WHATSAPP'
                         ? '"Order via WhatsApp Langsung"'
                         : `"${activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'}"`}
@@ -2114,7 +2114,7 @@ export default function SinglePageBuilderModal({
                   placeholder={`Contoh: ${activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'} / Pesan Sekarang`}
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500"
                 />
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
                   Label tombol aksi pembeli di landing page &amp; formulir checkout.
                 </p>
               </div>
@@ -2122,14 +2122,14 @@ export default function SinglePageBuilderModal({
               {/* D. Kustomisasi Label Finansial & Checkout Multi-Kategori */}
               <div className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
                 <div>
-                  <span className="font-bold text-slate-800 block text-xs">
+                  <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
                     Kustomisasi Label Checkout &amp; Finansial Multi-Kategori
                   </span>
-                  <p className="text-[10px] text-slate-500">Sesuaikan label harga, judul form, dan badge toko agar cocok dengan produk fisik, digital, atau kuliner/jasa.</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Sesuaikan label harga, judul form, dan badge toko agar cocok dengan produk fisik, digital, atau kuliner/jasa.</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Harga di Sticky Bar</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Label Harga di Sticky Bar</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.price_label || ''}
@@ -2145,7 +2145,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Judul Formulir Pemesanan</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Judul Formulir Pemesanan</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.checkout_section_title || ''}
@@ -2161,7 +2161,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Badge Keamanan Header</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Badge Keamanan Header</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.header_security_badge || ''}
@@ -2177,7 +2177,7 @@ export default function SinglePageBuilderModal({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Label Tombol Tambah Keranjang</label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Label Tombol Tambah Keranjang</label>
                     <input
                       type="text"
                       value={singlePageForm.labels?.add_to_cart_label || ''}
@@ -2196,11 +2196,11 @@ export default function SinglePageBuilderModal({
               </div>
 
               <div className="p-3.5 bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                  <Store className="w-3.5 h-3.5 text-blue-600" />
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <Store className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   <span>Model Penjualan Toko Langsung (Direct Store)</span>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   Sistem berjalan murni direct store ke rekening merchant tanpa potongan komisi affiliate produk ritel. Seluruh omset 100% dialokasikan ke toko Anda.
                 </p>
               </div>
@@ -2262,16 +2262,16 @@ export default function SinglePageBuilderModal({
                       <Code className="w-4 h-4" />
                     </span>
                     <div>
-                      <label htmlFor="custom-html-textarea" className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <label htmlFor="custom-html-textarea" className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
                         <span>Kode HTML / AI Landing Page (v0 / Lovable / Custom)</span>
                         <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
                       </label>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
                         Tempel struktur HTML mentah dari builder AI favorit Anda.
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-wide">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 uppercase tracking-wide">
                     HTML + CTA Hook
                   </span>
                 </div>
@@ -2283,11 +2283,11 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.custom_html || ''}
                     onChange={(e) => setSinglePageForm((p) => ({ ...p, custom_html: e.target.value }))}
                     placeholder="Tempel kode HTML lengkap di sini... Tambahkan atribut data-bt-checkout atau href='#checkout' pada tombol CTA Anda."
-                    className="w-full min-h-[300px] p-3.5 bg-slate-900 text-emerald-400 placeholder:text-slate-500 font-mono text-xs rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y shadow-inner leading-relaxed"
+                    className="w-full min-h-[300px] p-3.5 bg-slate-900 dark:bg-slate-950 text-emerald-400 placeholder:text-slate-500 font-mono text-xs rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y shadow-inner leading-relaxed"
                     spellCheck={false}
                   />
-                  <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
-                    Jika section ini aktif, template akan merender HTML ini secara visual dan menghubungkan semua tombol CTA <code className="text-indigo-600 font-bold bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200">[data-bt-checkout]</code> langsung ke modal checkout native BoonTrack.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    Jika section ini aktif, template akan merender HTML ini secara visual dan menghubungkan semua tombol CTA <code className="text-indigo-600 dark:text-indigo-300 font-bold bg-indigo-50 dark:bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/70">[data-bt-checkout]</code> langsung ke modal checkout native BoonTrack.
                   </p>
                 </div>
               </div>

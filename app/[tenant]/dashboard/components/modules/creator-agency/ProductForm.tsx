@@ -25,26 +25,26 @@ export default function CreatorAgencyProductForm({
 
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-2xl space-y-3">
+      <div className="p-4 bg-purple-50/70 dark:bg-purple-950/25 border border-purple-200 dark:border-purple-900/60 rounded-2xl space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-purple-900 font-bold text-xs">
-            <Sparkles className="w-4 h-4 text-purple-700" />
+          <div className="flex items-center gap-2 text-purple-900 dark:text-purple-200 font-bold text-xs">
+            <Sparkles className="w-4 h-4 text-purple-700 dark:text-purple-400" />
             <span>Paket Kreator, Live Streaming & Campaign Agency</span>
           </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">
             Agency & Kreator
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Alur Pengumpulan Brief Klien
             </label>
             <select
               value={metadata.delivery_type || 'BRIEF_FORM'}
               onChange={(e) => onMetadataChange('delivery_type', e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-purple-600 cursor-pointer"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-semibold focus:outline-none focus:border-purple-600 cursor-pointer"
             >
               <option value="BRIEF_FORM">📝 Google Form / Airtable Briefing Konten</option>
               <option value="WHATSAPP_GROUP">💬 Diskusi Grup WhatsApp Project & Tim Talent</option>
@@ -53,11 +53,11 @@ export default function CreatorAgencyProductForm({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Link Form Briefing / Google Form *
             </label>
             <div className="relative">
-              <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 value={metadata.access_url || safeForm.download_url || ''}
@@ -68,7 +68,7 @@ export default function CreatorAgencyProductForm({
                   }
                 }}
                 placeholder="https://forms.gle/... atau https://airtable.com/..."
-                className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-medium"
+                className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple-600 font-medium"
               />
             </div>
           </div>
@@ -76,7 +76,7 @@ export default function CreatorAgencyProductForm({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Format Konten / Durasi Live
             </label>
             <input
@@ -84,12 +84,12 @@ export default function CreatorAgencyProductForm({
               value={safeForm.variants || '1 Video Reels/TikTok (60 Detik)'}
               onChange={(e) => setProductForm((p) => ({ ...(p || {}), variants: e.target.value }))}
               placeholder="Contoh: 1 Video TikTok + 3 IG Story / 2 Jam Sesi Live"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple-600"
             />
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
               Batas Revisi & Waktu Pengerjaan
             </label>
             <input
@@ -97,13 +97,13 @@ export default function CreatorAgencyProductForm({
               value={safeForm.promo || 'Maks. 2x Revisi Minor • 5 Hari Kerja'}
               onChange={(e) => setProductForm((p) => ({ ...(p || {}), promo: e.target.value }))}
               placeholder="Contoh: Maks. 2x Revisi Minor • 5 Hari Kerja"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple-600"
             />
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700 block mb-1">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-200 block mb-1">
             Instruksi Pengiriman Sampel Produk Fisik Klien (Jika Ada)
           </label>
           <textarea
@@ -111,7 +111,7 @@ export default function CreatorAgencyProductForm({
             value={metadata.instructions || ''}
             onChange={(e) => onMetadataChange('instructions', e.target.value)}
             placeholder="Contoh: Kirimkan 2 pcs sampel produk ke alamat studio kami. Sertakan kartu panduan selling point produk dan cantumkan kode pesanan di label paket."
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 leading-relaxed"
+            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple-600 leading-relaxed"
           />
         </div>
       </div>

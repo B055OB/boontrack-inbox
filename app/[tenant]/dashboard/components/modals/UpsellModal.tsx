@@ -30,8 +30,8 @@ export default function UpsellModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden text-slate-900 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-lg bg-white dark:bg-[#0D1117] rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden text-slate-900 dark:text-white animate-in zoom-in-95 duration-200">
         {/* HEADER GRADIENT ACCENT */}
         <div className="relative bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 p-6 text-white overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -63,29 +63,29 @@ export default function UpsellModal({
 
         {/* BODY BENEFIT LIST */}
         <div className="p-6 space-y-4">
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
             Fitur AI Knowledge & Auto-Reply Bot dirancang khusus untuk membalas calon pembeli 24/7 dan mengonversi lead menjadi pesanan secara instan dengan panduan produk akurat.
           </p>
 
-          <div className="space-y-2.5 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+          <div className="space-y-2.5 bg-slate-50 dark:bg-slate-900/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
               Yang Anda Dapatkan di Paket Ads Performance:
             </h4>
-            <div className="space-y-2 text-xs text-slate-700">
+            <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>AI Sales Assistant 24/7</strong> — Auto-closing pelanggan dengan persona brand toko Anda.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Meta CAPI Server-Side Tracking</strong> — Sinyal akurat untuk optimasi performa Facebook & Instagram Ads.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Custom Strategy Respon</strong> — Pilihan mode Trust Builder, Balanced, hingga Hard Selling.
                 </span>
@@ -93,8 +93,8 @@ export default function UpsellModal({
             </div>
           </div>
 
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-900">
-            <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700/40 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <p>
               Paket Anda saat ini belum memiliki akses ke modul AI Bot. Aktifkan sekarang mulai dari <strong>Rp 299.000/bulan</strong>.
             </p>
@@ -106,7 +106,7 @@ export default function UpsellModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             Nanti Saja
           </button>

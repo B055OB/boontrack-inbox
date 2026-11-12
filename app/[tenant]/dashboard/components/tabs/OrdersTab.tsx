@@ -3,7 +3,6 @@ import {
   ShoppingBag, 
   RefreshCw, 
   Search, 
-  Filter, 
   Eye, 
   EyeOff,
   Archive,
@@ -136,6 +135,56 @@ export function getDigitalWhatsAppResendUrl(order: OrderItem, storeName: string)
   message += `\n\nJika membutuhkan bantuan lebih lanjut, silakan balas pesan ini. Terima kasih!`;
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+const EXPIRED_ORDER_STATUSES = new Set(['EXPIRED', 'FAILED', 'CANCELLED', 'VOID']);
+
+function isExpiredOrderStatus(rawStatus?: string | null): boolean {
+  if (!rawStatus) return false;
+  return EXPIRED_ORDER_STATUSES.has(String(rawStatus).trim().toUpperCase());
+}
+
+function resolveOrderStatusMeta(rawStatus?: string | null): {
+  key: 'PAID' | 'VERIFICATION' | 'PENDING' | 'EXPIRED';
+  label: string;
+  badgeClass: string;
+} {
+  const normalized = String(rawStatus || 'PENDING').trim().toUpperCase();
+  if (isValidPaidStatus(normalized)) {
+    return {
+      key: 'PAID',
+      label: 'PAID',
+      badgeClass:
+        'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/70',
+    };
+  }
+  if (isExpiredOrderStatus(normalized)) {
+    return {
+      key: 'EXPIRED',
+      label:
+        normalized === 'FAILED'
+          ? 'FAILED'
+          : normalized === 'CANCELLED'
+          ? 'CANCELLED'
+          : 'EXPIRED',
+      badgeClass:
+        'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/70',
+    };
+  }
+  if (isPendingVerificationStatus(normalized)) {
+    return {
+      key: 'VERIFICATION',
+      label: 'VERIFIKASI',
+      badgeClass:
+        'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/70',
+    };
+  }
+  return {
+    key: 'PENDING',
+    label: normalized === 'UNPAID' ? 'UNPAID' : 'PENDING',
+    badgeClass:
+      'bg-amber-50/80 text-amber-700 border-amber-200 dark:bg-amber-950/35 dark:text-amber-300 dark:border-amber-800/60',
+  };
 }
 
 export default function OrdersTab({
@@ -451,21 +500,15 @@ export default function OrdersTab({
   };
 
   const safeOrdersList = Array.isArray(orders) ? orders : [];
-  const filteredOrders = safeOrdersList.filter((o) => {
+  const baseScopedOrders = safeOrdersList.filter((o) => {
     if (!o) return false;
     const query = (searchQuery || '').toLowerCase();
     const matchSearch =
       !searchQuery ||
       Boolean(o.invoice_no && o.invoice_no.toLowerCase().includes(query)) ||
       Boolean(o.customer_name && o.customer_name.toLowerCase().includes(query)) ||
-      Boolean(o.customer_phone && o.customer_phone.includes(searchQuery));
-    
-    const pStatus = o.payment_status || o.status;
-    const matchStatus = 
-      statusFilter === 'ALL' || 
-      (statusFilter === 'PAID' && isValidPaidStatus(pStatus)) ||
-      (statusFilter === 'VERIFICATION' && isPendingVerificationStatus(pStatus)) ||
-      (statusFilter === 'UNPAID' && !isValidPaidStatus(pStatus) && !isPendingVerificationStatus(pStatus));
+      Boolean(o.customer_phone && o.customer_phone.includes(searchQuery)) ||
+      Boolean(o.items_summary && o.items_summary.toLowerCase().includes(query));
 
     // Filter Soft-Archive:
     // 1. "ACTIVE" (Default): hanya tampilkan yang is_archived !== true
@@ -476,12 +519,49 @@ export default function OrdersTab({
       (archiveFilter === 'ACTIVE' && !o.is_archived) ||
       (archiveFilter === 'ARCHIVED' && Boolean(o.is_archived));
 
-    const createdMs = new Date(o.created_at || Date.now()).getTime();
+    const createdMs = o.created_at ? new Date(o.created_at).getTime() : NaN;
     const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
     const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
-    const matchDate = createdMs >= startMs && createdMs <= endMs;
+    const matchDate =
+      (!dateRange.startDate && !dateRange.endDate) ||
+      (!Number.isNaN(createdMs) && createdMs >= startMs && createdMs <= endMs);
 
-    return matchSearch && matchStatus && matchArchive && matchDate;
+    return matchSearch && matchArchive && matchDate;
+  });
+
+  const statusCounts = baseScopedOrders.reduce(
+    (acc, o) => {
+      const pStatus = o.payment_status || o.status;
+      if (isValidPaidStatus(pStatus)) {
+        acc.PAID += 1;
+      } else if (isExpiredOrderStatus(pStatus)) {
+        acc.EXPIRED += 1;
+      } else {
+        acc.PENDING += 1;
+        if (isPendingVerificationStatus(pStatus)) {
+          acc.VERIFICATION += 1;
+        }
+      }
+      acc.ALL += 1;
+      return acc;
+    },
+    { ALL: 0, PAID: 0, PENDING: 0, EXPIRED: 0, VERIFICATION: 0 }
+  );
+
+  const filteredOrders = baseScopedOrders.filter((o) => {
+    const pStatus = o.payment_status || o.status;
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'PAID') return isValidPaidStatus(pStatus);
+    if (statusFilter === 'EXPIRED') return isExpiredOrderStatus(pStatus);
+    if (statusFilter === 'VERIFICATION') return isPendingVerificationStatus(pStatus);
+    if (statusFilter === 'PENDING') {
+      return !isValidPaidStatus(pStatus) && !isExpiredOrderStatus(pStatus);
+    }
+    return (
+      !isValidPaidStatus(pStatus) &&
+      !isPendingVerificationStatus(pStatus) &&
+      !isExpiredOrderStatus(pStatus)
+    );
   });
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -671,41 +751,49 @@ export default function OrdersTab({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
-      {/* Header Tab Pesanan Toko */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h2 className="text-lg font-black text-foreground flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-blue-600" />
-            <span>Daftar Pesanan Toko ({filteredOrders.length})</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pantau seluruh transaksi checkout masuk, verifikasi konfirmasi pembayaran manual, dan pemenuhan pesanan instan.
+    <div className="flex-1 p-4 sm:p-6 overflow-y-auto max-w-7xl mx-auto w-full space-y-4">
+      {/* Header Ringkas Tab Transaksi & Pesanan */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2
+              id="orders-table-heading"
+              className="text-base sm:text-lg font-semibold tracking-tight text-slate-900 dark:text-white flex items-center gap-2"
+            >
+              <ShoppingBag className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>Transaksi &amp; Pesanan</span>
+            </h2>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 tabular-nums">
+              {filteredOrders.length}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+            Pantau transaksi checkout, verifikasi pembayaran manual, ekspor laporan, dan pemenuhan pesanan.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
           {/* BULK IMPORT EXCEL / CSV ACTIONS */}
           <a
             href="/api/orders/bulk-import/template?format=xlsx"
             download="template-import-pesanan-boontrack.xlsx"
             id="orders-download-template-btn"
-            className="bg-card hover:bg-muted text-foreground border border-border font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+            className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-medium px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Download format standar kolom pesanan (.xlsx)"
           >
-            <Download className="w-3.5 h-3.5 text-muted-foreground" />
-            <span>⬇️ Unduh Template Excel</span>
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span>Template .xlsx</span>
           </a>
 
           <button
             type="button"
             id="orders-import-excel-btn"
             onClick={() => setIsImportModalOpen(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+            className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-medium px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Import pesanan massal dari file Excel (.xlsx) atau CSV"
           >
-            <Upload className="w-3.5 h-3.5" />
-            <span>⬆️ Import Pesanan Excel/CSV</span>
+            <Upload className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span>Import Excel/CSV</span>
           </button>
 
           {/* BULK EXPORT: Meta Offline Conversions & CAPI CSV */}
@@ -718,7 +806,7 @@ export default function OrdersTab({
               setIsExportSummaryModalOpen(true);
             }}
             disabled={filteredOrders.length === 0}
-            className="bg-card hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-semibold px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             title="Export pesanan ke format CSV Meta Offline Events / CAPI (kompatibel Ads Manager)"
           >
             <Download className="w-3.5 h-3.5" />
@@ -742,7 +830,7 @@ export default function OrdersTab({
               )
             }
             disabled={filteredOrders.length === 0}
-            className="bg-card hover:bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="bg-white dark:bg-slate-900 hover:bg-purple-50 dark:hover:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-semibold px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             title="Export pesanan fisik ke format CSV Lincah.id (Mass Upload)"
           >
             <Download className="w-3.5 h-3.5" />
@@ -754,39 +842,94 @@ export default function OrdersTab({
             id="orders-refresh-btn"
             onClick={() => fetchOrders({ isBackground: false })}
             disabled={loading}
-            className="bg-card hover:bg-muted text-foreground border border-border font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-medium px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Segarkan Data</span>
+            <span>Segarkan</span>
           </button>
         </div>
       </div>
 
-      {/* Filter Bar & Tabel Pesanan */}
-      <div className="bg-card rounded-2xl border border-border shadow-xs overflow-hidden">
-        <div className="p-3 sm:p-4 border-b border-border flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari invoice, nama, WhatsApp..."
-              className="w-full bg-background border border-border rounded-xl pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 font-medium"
-            />
+      {/* Filter Bar & Dense Transaction Table */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2.5 relative z-20 overflow-visible">
+          {/* Row 1: Pencarian, Filter Status Pembayaran, & Rentang Tanggal */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            <div className="relative flex-1 w-full lg:max-w-sm">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari no. invoice, nama pelanggan, WhatsApp..."
+                aria-label="Cari no. invoice atau pelanggan"
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-400 focus:outline-none focus:border-blue-600 font-medium"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
+              {/* Segmented Filter Status Pembayaran: Semua, Paid, Pending, Expired (+ Verifikasi bila ada) */}
+              <div
+                role="group"
+                aria-label="Filter status pembayaran"
+                className="inline-flex flex-wrap items-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900 p-0.5 gap-0.5"
+              >
+                {[
+                  { id: 'ALL', label: 'Semua', count: statusCounts.ALL },
+                  { id: 'PAID', label: 'Paid', count: statusCounts.PAID },
+                  { id: 'PENDING', label: 'Pending', count: statusCounts.PENDING },
+                  { id: 'EXPIRED', label: 'Expired', count: statusCounts.EXPIRED },
+                ].map((opt) => {
+                  const isSelected = statusFilter === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setStatusFilter(opt.id)}
+                      aria-pressed={isSelected}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      <span className="text-[10px] opacity-70 tabular-nums">{opt.count}</span>
+                    </button>
+                  );
+                })}
+                {statusCounts.VERIFICATION > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('VERIFICATION')}
+                    aria-pressed={statusFilter === 'VERIFICATION'}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      statusFilter === 'VERIFICATION'
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                    }`}
+                  >
+                    <span>Verifikasi</span>
+                    <span className="text-[10px] opacity-85 tabular-nums">{statusCounts.VERIFICATION}</span>
+                  </button>
+                )}
+              </div>
+
+              <DateRangePicker value={dateRange} onChange={setDateRange} />
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
-            {/* Opsi Tampilan Soft-Archive (SPRINT 3) */}
-            <div className="flex items-center gap-1 bg-muted p-1 rounded-xl text-xs font-bold border border-border">
+          {/* Row 2: Soft-Archive Filter & Ringkasan Jumlah */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-0.5 bg-slate-100/80 dark:bg-slate-900 p-0.5 rounded-lg text-[11px] font-medium border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 id="orders-filter-active-btn"
                 onClick={() => setArchiveFilter('ACTIVE')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   archiveFilter === 'ACTIVE'
-                    ? 'bg-card text-blue-600 dark:text-blue-400 border border-border shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan hanya pesanan aktif (default)"
               >
@@ -796,10 +939,10 @@ export default function OrdersTab({
                 type="button"
                 id="orders-filter-archived-btn"
                 onClick={() => setArchiveFilter('ARCHIVED')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
                   archiveFilter === 'ARCHIVED'
-                    ? 'bg-card text-purple-600 dark:text-purple-400 border border-border shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-2xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan pesanan yang disembunyikan/diarsipkan"
               >
@@ -810,10 +953,10 @@ export default function OrdersTab({
                 type="button"
                 id="orders-filter-all-btn"
                 onClick={() => setArchiveFilter('ALL')}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   archiveFilter === 'ALL'
-                    ? 'bg-card text-foreground border border-border shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 title="Tampilkan semua pesanan tanpa terkecuali"
               >
@@ -821,169 +964,95 @@ export default function OrdersTab({
               </button>
             </div>
 
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
-
-            <div className="flex items-center gap-2">
-              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground font-bold focus:outline-none cursor-pointer"
-              >
-                <option value="ALL">Semua Status</option>
-                <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
-                <option value="VERIFICATION">Menunggu Verifikasi Manual (ORDER_PENDING_VERIFICATION)</option>
-                <option value="PAID">Lunas (Paid / Verified)</option>
-              </select>
-            </div>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium tabular-nums">
+              Menampilkan {filteredOrders.length} transaksi
+            </span>
           </div>
         </div>
 
-        <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[640px] text-left border-collapse text-sm text-foreground bg-card">
-            <thead>
-              <tr className="bg-muted/50 text-zinc-700 dark:text-zinc-300 font-semibold text-xs tracking-wider uppercase border-b border-border">
-                <th className="py-3 px-3">Invoice</th>
-                <th className="py-3 px-3">Pelanggan</th>
-                <th className="py-3 px-3">Tipe / Pemenuhan</th>
-                <th className="py-3 px-3">Nominal</th>
-                <th className="py-3 px-3">Metode</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border font-sans">
-              {loading && orders.length === 0 ? (
+        {/* TABLE SHELL */}
+        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D1117] rounded-xl overflow-hidden">
+          {/* DESKTOP DENSE TRANSACTION TABLE */}
+          <div
+            tabIndex={0}
+            role="region"
+            aria-labelledby="orders-table-heading"
+            className="hidden md:block overflow-x-auto focus:outline-none"
+          >
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 z-10 bg-slate-50/90 dark:bg-slate-900/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                      <span>Memuat transaksi pesanan...</span>
-                    </div>
-                  </td>
+                  <th scope="col" className="py-2.5 px-3 whitespace-nowrap">
+                    No. Invoice
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 whitespace-nowrap">
+                    Tanggal / Waktu (WIB)
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 whitespace-nowrap">
+                    Pelanggan &amp; Kontak
+                  </th>
+                  <th scope="col" className="py-2.5 px-3">
+                    Rincian Item Produk
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 whitespace-nowrap">
+                    Metode Bayar
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 text-right whitespace-nowrap">
+                    Total Nominal
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 text-center whitespace-nowrap">
+                    Status
+                  </th>
+                  <th scope="col" className="py-2.5 px-3 text-right whitespace-nowrap">
+                    Rincian
+                  </th>
                 </tr>
-              ) : filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">
-                    Belum ada data pesanan yang cocok.
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((ord) => {
-                  if (!ord) return null;
-                  const reqs = resolveFulfillmentRequirements(
-                    ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
-                  );
-                  const isPaid = ord.payment_status === 'PAID' || ord.status === 'PAID';
-                  const needsManualConfirm = isManualPendingPayment(ord);
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+                {loading && orders.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-10 text-slate-500 dark:text-slate-400 text-xs">
+                      <div className="flex items-center justify-center gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                        <span>Memuat transaksi pesanan...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-10 text-slate-500 dark:text-slate-400 text-xs">
+                      Belum ada data pesanan yang cocok.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOrders.map((ord) => {
+                    if (!ord) return null;
+                    const reqs = resolveFulfillmentRequirements(
+                      ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+                    );
+                    const isPaid = isValidPaidStatus(ord.payment_status || ord.status);
+                    const needsManualConfirm = isManualPendingPayment(ord);
+                    const statusMeta = resolveOrderStatusMeta(ord.payment_status || ord.status);
+                    const normType = String(ord?.product_type || '').toUpperCase();
+                    const isDigitalOrServiceType =
+                      normType === 'DIGITAL' ||
+                      normType === 'SERVICE' ||
+                      normType === 'FIELD_SERVICE' ||
+                      normType === 'AGENCY' ||
+                      normType === 'JASA' ||
+                      normType === 'CREATOR';
+                    const canPrintLabel = !isDigitalOrServiceType && reqs.requiresShipping;
+                    const canResendWaDigital =
+                      (isDigitalOrServiceType || !reqs.requiresShipping) &&
+                      getDigitalWhatsAppResendUrl(ord, storeDisplayName || tenantSlug);
 
-                  return (
-                    <tr key={ord.id} className="border-b border-border text-foreground text-sm hover:bg-muted/40 transition-colors">
-                      <td className="py-2.5 px-3">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedOrder(ord);
-                          }}
-                          className="font-mono text-zinc-900 dark:text-zinc-100 font-medium hover:text-blue-500 dark:hover:text-blue-400 hover:underline cursor-pointer text-left"
-                        >
-                          {ord.invoice_no}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="text-zinc-900 dark:text-zinc-100 font-medium">{ord.customer_name || 'Pelanggan Toko'}</div>
-                        <div className="text-[11px] text-muted-foreground font-mono">{ord.customer_phone || '-'}</div>
-                        {ord.items_summary && (
-                          <div className="text-[10px] text-muted-foreground font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
-                            <span className="truncate">{ord.items_summary}</span>
-                            {ord.quantity && ord.quantity > 1 ? (
-                              <span className="bg-muted text-foreground font-bold px-1 rounded text-[9px] border border-border">
-                                x{ord.quantity}
-                              </span>
-                            ) : null}
-                          </div>
-                        )}
-                        {ord.briefing_url ? (
-                          <div className="mt-1">
-                            <a
-                              href={normalizeBriefingUrl(ord.briefing_url)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30 transition cursor-pointer"
-                              title="Buka Dokumen Briefing Klien"
-                            >
-                              <FileText className="w-2.5 h-2.5 text-indigo-500" />
-                              <span>Briefing Klien ↗</span>
-                            </a>
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {reqs.requiresShipping ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
-                            <Truck className="w-3 h-3 text-amber-500" />
-                            <span>{ord.shipping_courier || 'Ekspedisi'}</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/30">
-                            <Sparkles className="w-3 h-3 text-indigo-500" />
-                            <span>Digital / Direct</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-zinc-900 dark:text-zinc-50 font-bold font-mono whitespace-nowrap">
-                        Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-muted-foreground">
-                        {ord.payment_method || 'QRIS / TRANSFER'}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                              isPaid
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
-                                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
-                            }`}
-                          >
-                            {isPaid
-                              ? 'PAID'
-                              : (ord.payment_status === 'UNPAID' || ord.status === 'UNPAID')
-                              ? 'UNPAID'
-                              : isPendingVerificationStatus(ord.payment_status || ord.status)
-                              ? 'MENUNGGU VERIFIKASI'
-                              : 'PENDING'}
-                          </span>
-                          {ord.is_archived && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-muted text-muted-foreground border border-border">
-                              <Archive className="w-2.5 h-2.5 text-muted-foreground" />
-                              Diarsipkan
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                          {/* TOMBOL AKSI MANUAL: KONFIRMASI BAYAR / TANDAI LUNAS */}
-                          {needsManualConfirm && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setOrderToConfirm(ord);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-black text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer shrink-0"
-                              title="Konfirmasi Pembayaran Manual / Tandai Lunas"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Konfirmasi Bayar</span>
-                            </button>
-                          )}
-
+                    return (
+                      <tr
+                        key={ord.id}
+                        className="border-b last:border-b-0 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        {/* 1. No. Invoice */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -991,146 +1060,361 @@ export default function OrdersTab({
                               e.stopPropagation();
                               setSelectedOrder(ord);
                             }}
-                            className="p-1.5 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400 hover:bg-muted rounded-lg transition cursor-pointer"
-                            title="Lihat Rincian Pesanan"
+                            className="font-mono font-semibold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 hover:underline cursor-pointer text-left"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            {ord.invoice_no}
                           </button>
+                        </td>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (typeof window !== 'undefined') {
-                                const invUrl = getStorefrontInvoiceUrl(tenantSlug, ord.invoice_no || ord.id);
-                                window.open(invUrl, '_blank', 'noopener,noreferrer');
-                              }
-                            }}
-                            className="p-1.5 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-muted rounded-lg transition cursor-pointer"
-                            title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </button>
+                        {/* 2. Tanggal / Waktu (WIB) */}
+                        <td className="py-2.5 px-3 whitespace-nowrap text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                          {ord.created_at ? formatWIBDateTime(ord.created_at) : '-'}
+                        </td>
 
-                          {/* Toggle Paid / Unpaid inline */}
-                          <button
-                            type="button"
-                            title={isPaid ? 'Tandai Unpaid' : 'Tandai Paid'}
-                            disabled={togglingId === ord.id}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              togglePaymentStatus(ord, e);
-                            }}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] border transition cursor-pointer disabled:opacity-50 ${
-                              isPaid
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/60 dark:hover:text-rose-300'
-                                : 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300'
-                            }`}
-                          >
-                            {togglingId === ord.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : isPaid ? (
-                              <><ToggleRight className="w-3.5 h-3.5" /><span>PAID</span></>
-                            ) : (
-                              <><ToggleLeft className="w-3.5 h-3.5" /><span>UNPAID</span></>
-                            )}
-                          </button>
-
-                          {/* Tombol Arsipkan (Soft-Archive) atau Pulihkan */}
-                          {ord.is_archived ? (
-                            <button
-                              type="button"
-                              disabled={archivingId === ord.id}
-                              onClick={(e) => handleToggleArchive(ord, false, e)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-muted hover:bg-muted/80 text-foreground border border-border transition cursor-pointer disabled:opacity-50"
-                              title="Pulihkan / Batalkan Arsip Pesanan"
-                            >
-                              {archivingId === ord.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <ArchiveRestore className="w-3.5 h-3.5 text-muted-foreground" />
-                              )}
-                              <span>Pulihkan</span>
-                            </button>
-                          ) : !isPaid ? (
-                            <button
-                              type="button"
-                              disabled={archivingId === ord.id}
-                              onClick={(e) => handleToggleArchive(ord, true, e)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 transition cursor-pointer disabled:opacity-50"
-                              title="Arsipkan Pesanan (Sembunyikan Unpaid/Pending/Dobel)"
-                            >
-                              {archivingId === ord.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <EyeOff className="w-3.5 h-3.5 text-rose-500" />
-                              )}
-                              <span>Arsipkan</span>
-                            </button>
-                          ) : null}
-
-                          {/* Quick Print Label Resi (HANYA jika produk fisik & requires_shipping === true, BUKAN DIGITAL / SERVICE) */}
-                          {(() => {
-                            const normType = String(ord?.product_type || '').toUpperCase();
-                            const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
-                            const reqs = resolveFulfillmentRequirements(ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
-                            return !isDigitalOrService && reqs.requiresShipping;
-                          })() && (
-                            <button
-                              type="button"
-                              id={`orders-print-label-${ord.id}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                printThermalShippingLabel(ord, {
-                                  name: storeDisplayName || tenantSlug,
-                                  phone: storePhone,
-                                  city: storeCity,
-                                });
-                              }}
-                              className="p-1.5 text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 hover:bg-muted rounded-lg transition cursor-pointer"
-                              title="Cetak Label Resi Thermal 10x15cm"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          {/* Quick Kirim Ulang WA Akses Digital */}
-                          {(() => {
-                            const normType = String(ord?.product_type || '').toUpperCase();
-                            const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
-                            const reqs = resolveFulfillmentRequirements(ord?.product_type || (ord?.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
-                            const isDigital = isDigitalOrService || !reqs.requiresShipping;
-                            const waUrl = getDigitalWhatsAppResendUrl(ord, storeDisplayName || tenantSlug);
-                            return isDigital && waUrl ? (
+                        {/* 3. Nama Pelanggan & Kontak */}
+                        <td className="py-2.5 px-3 max-w-[180px]">
+                          <div className="font-medium text-slate-900 dark:text-white truncate">
+                            {ord.customer_name || 'Pelanggan Toko'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
+                            {ord.customer_phone || '-'}
+                          </div>
+                          {ord.briefing_url ? (
+                            <div className="mt-1">
                               <a
-                                href={waUrl}
+                                href={normalizeBriefingUrl(ord.briefing_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1.5 text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-muted rounded-lg transition cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60 transition cursor-pointer"
+                                title="Buka Dokumen Briefing Klien"
+                              >
+                                <FileText className="w-2.5 h-2.5" />
+                                <span>Briefing ↗</span>
+                              </a>
+                            </div>
+                          ) : null}
+                        </td>
+
+                        {/* 4. Rincian Item Produk */}
+                        <td className="py-2.5 px-3 max-w-[230px]">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="font-medium text-slate-800 dark:text-slate-200 truncate"
+                              title={ord.items_summary || 'Pesanan Produk'}
+                            >
+                              {ord.items_summary || 'Pesanan Produk'}
+                            </span>
+                            {ord.quantity && ord.quantity > 1 ? (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 shrink-0 tabular-nums">
+                                x{ord.quantity}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-0.5">
+                            {reqs.requiresShipping ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                <Truck className="w-3 h-3 shrink-0" />
+                                <span>{ord.shipping_courier || 'Ekspedisi'}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+                                <Sparkles className="w-3 h-3 shrink-0" />
+                                <span>Digital / Direct</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 5. Metode Pembayaran */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono font-semibold uppercase text-slate-700 dark:text-slate-300">
+                            {ord.payment_method || 'QRIS / TRANSFER'}
+                          </span>
+                        </td>
+
+                        {/* 6. Total Nominal */}
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono font-semibold tabular-nums text-slate-900 dark:text-white">
+                          Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
+                        </td>
+
+                        {/* 7. Status Transaksi */}
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="inline-flex flex-col items-center gap-1">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusMeta.badgeClass}`}
+                            >
+                              {statusMeta.label}
+                            </span>
+                            {ord.is_archived && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                <Archive className="w-2.5 h-2.5" />
+                                <span>Diarsipkan</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 8. Tombol Rincian & Aksi Cepat */}
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            {needsManualConfirm && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setOrderToConfirm(ord);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer shrink-0"
+                                title="Konfirmasi Pembayaran Manual / Tandai Lunas"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Konfirmasi Bayar</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedOrder(ord);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 text-[11px] font-medium transition-colors cursor-pointer"
+                              title="Lihat Rincian Pesanan"
+                            >
+                              <Eye className="w-3 h-3 shrink-0" />
+                              <span>Rincian</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (typeof window !== 'undefined') {
+                                  const invUrl = getStorefrontInvoiceUrl(tenantSlug, ord.invoice_no || ord.id);
+                                  window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                              title="Buka Lembar Invoice Resmi"
+                              aria-label={`Buka invoice ${ord.invoice_no}`}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={isPaid ? 'Tandai Unpaid' : 'Tandai Paid'}
+                              disabled={togglingId === ord.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                togglePaymentStatus(ord, e);
+                              }}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold text-[10px] border transition-colors cursor-pointer disabled:opacity-50 ${
+                                isPaid
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/60 dark:hover:text-rose-300'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300'
+                              }`}
+                            >
+                              {togglingId === ord.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : isPaid ? (
+                                <>
+                                  <ToggleRight className="w-3 h-3" />
+                                  <span>PAID</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ToggleLeft className="w-3 h-3" />
+                                  <span>UNPAID</span>
+                                </>
+                              )}
+                            </button>
+
+                            {ord.is_archived ? (
+                              <button
+                                type="button"
+                                disabled={archivingId === ord.id}
+                                onClick={(e) => handleToggleArchive(ord, false, e)}
+                                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Pulihkan / Batalkan Arsip Pesanan"
+                                aria-label={`Pulihkan ${ord.invoice_no}`}
+                              >
+                                {archivingId === ord.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <ArchiveRestore className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            ) : !isPaid ? (
+                              <button
+                                type="button"
+                                disabled={archivingId === ord.id}
+                                onClick={(e) => handleToggleArchive(ord, true, e)}
+                                className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Arsipkan Pesanan"
+                                aria-label={`Arsipkan ${ord.invoice_no}`}
+                              >
+                                {archivingId === ord.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            ) : null}
+
+                            {canPrintLabel && (
+                              <button
+                                type="button"
+                                id={`orders-print-label-${ord.id}`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  printThermalShippingLabel(ord, {
+                                    name: storeDisplayName || tenantSlug,
+                                    phone: storePhone,
+                                    city: storeCity,
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Cetak Label Resi Thermal 10x15cm"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {canResendWaDigital && (
+                              <a
+                                href={canResendWaDigital}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
                                 title="Kirim Ulang Akses / Lisensi via WhatsApp"
                               >
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <MessageCircle className="w-3.5 h-3.5" />
                               </a>
-                            ) : null;
-                          })()}
+                            )}
 
-                          <GodPayButton
-                            order={ord as GodPayOrderItem}
-                            tenantSlug={tenantSlug}
-                            onSuccess={handleOrderUpdated}
-                          />
+                            <GodPayButton
+                              order={ord as GodPayOrderItem}
+                              tenantSlug={tenantSlug}
+                              onSuccess={handleOrderUpdated}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* MOBILE COMPACT TRANSACTIONS LIST */}
+          <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+            {loading && orders.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                <span>Memuat transaksi pesanan...</span>
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                Belum ada data pesanan yang cocok.
+              </div>
+            ) : (
+              filteredOrders.map((ord) => {
+                if (!ord) return null;
+                const statusMeta = resolveOrderStatusMeta(ord.payment_status || ord.status);
+                const needsManualConfirm = isManualPendingPayment(ord);
+                const isPaid = isValidPaidStatus(ord.payment_status || ord.status);
+
+                return (
+                  <div
+                    key={ord.id}
+                    className="p-3 bg-white dark:bg-[#0D1117] hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrder(ord)}
+                          className="font-mono text-xs font-semibold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          {ord.invoice_no}
+                        </button>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                          {ord.created_at ? formatWIBDateTime(ord.created_at) : '-'}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </div>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border shrink-0 ${statusMeta.badgeClass}`}
+                      >
+                        {statusMeta.label}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900 dark:text-white truncate">
+                          {ord.customer_name || 'Pelanggan Toko'}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {ord.items_summary || 'Pesanan Produk'}
+                          {ord.quantity && ord.quantity > 1 ? ` (x${ord.quantity})` : ''}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-mono font-semibold tabular-nums text-slate-900 dark:text-white">
+                          Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
+                        </div>
+                        <div className="text-[10px] font-mono uppercase text-slate-500 dark:text-slate-400">
+                          {ord.payment_method || 'QRIS'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end flex-wrap gap-1.5">
+                      {needsManualConfirm && (
+                        <button
+                          type="button"
+                          onClick={() => setOrderToConfirm(ord)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold text-[11px] bg-emerald-600 text-white cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Konfirmasi Bayar</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrder(ord)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[11px] font-medium cursor-pointer"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Rincian</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={togglingId === ord.id}
+                        onClick={(e) => togglePaymentStatus(ord, e)}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold text-[10px] border cursor-pointer disabled:opacity-50 ${
+                          isPaid
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80'
+                            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80'
+                        }`}
+                      >
+                        <span>{isPaid ? 'PAID' : 'UNPAID'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
 
@@ -1142,12 +1426,15 @@ export default function OrdersTab({
           selectedOrder?.product_type || (selectedOrder?.shipping_address ? 'PHYSICAL' : 'DIGITAL')
         );
         const meta = selectedOrder.fulfillment_metadata;
-        const isOrderPaid = selectedOrder.payment_status === 'PAID' || selectedOrder.status === 'PAID';
+        const isOrderPaid = isValidPaidStatus(selectedOrder.payment_status || selectedOrder.status);
         const needsManualConfirm = isManualPendingPayment(selectedOrder);
+        const detailStatusMeta = resolveOrderStatusMeta(
+          selectedOrder.payment_status || selectedOrder.status
+        );
 
         return (
           <div
-            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1155,19 +1442,21 @@ export default function OrdersTab({
             }}
           >
             <div
-              className="bg-card rounded-3xl max-w-lg w-full border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-foreground"
+              className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-900 dark:text-white"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-4 border-b border-border flex items-center justify-between bg-muted/40">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/70">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-foreground">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
                       Rincian Pesanan: {selectedOrder.invoice_no}
                     </h3>
-                    <p className="text-[11px] text-muted-foreground font-mono">ID: {selectedOrder.id}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      ID: {selectedOrder.id}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1177,7 +1466,7 @@ export default function OrdersTab({
                     e.stopPropagation();
                     setSelectedOrder(null);
                   }}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1185,45 +1474,41 @@ export default function OrdersTab({
 
               <div className="p-5 overflow-y-auto space-y-4 text-xs">
                 {/* 1. Status & Finansial */}
-                <div className="p-3.5 bg-muted/30 rounded-2xl border border-border space-y-2">
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground font-medium">Status Pembayaran:</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">Status Pembayaran:</span>
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                        isOrderPaid
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800'
-                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
-                      }`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${detailStatusMeta.badgeClass}`}
                     >
-                      {isOrderPaid
-                        ? 'PAID'
-                        : (selectedOrder.payment_status === 'UNPAID' || selectedOrder.status === 'UNPAID')
-                        ? 'UNPAID'
-                        : isPendingVerificationStatus(selectedOrder.payment_status || selectedOrder.status)
-                        ? 'MENUNGGU VERIFIKASI'
-                        : 'PENDING'}
+                      {detailStatusMeta.label}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground font-medium">Metode Pembayaran:</span>
-                    <span className="font-bold text-foreground uppercase font-mono">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">Waktu (WIB):</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {selectedOrder.created_at ? formatWIBDateTime(selectedOrder.created_at) : '-'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">Metode Pembayaran:</span>
+                    <span className="font-bold text-slate-900 dark:text-white uppercase font-mono">
                       {selectedOrder.payment_method || 'QRIS / TRANSFER'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground font-medium">Produk:</span>
-                    <span className="font-bold text-foreground flex items-center gap-1.5 text-right">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium shrink-0">Produk:</span>
+                    <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 text-right">
                       <span>{selectedOrder.items_summary}</span>
                       {selectedOrder.quantity && selectedOrder.quantity > 1 ? (
-                        <span className="bg-muted text-foreground text-[10px] font-black px-1.5 py-0.5 rounded border border-border">
+                        <span className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 text-[10px] font-black px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                           x{selectedOrder.quantity}
                         </span>
                       ) : null}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between border-t border-border pt-1.5">
-                    <span className="font-bold text-foreground">Total Nominal:</span>
-                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                    <span className="font-bold text-slate-900 dark:text-white">Total Nominal:</span>
+                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
                       Rp {selectedOrder.total_amount?.toLocaleString('id-ID')}
                     </span>
                   </div>
@@ -1231,17 +1516,19 @@ export default function OrdersTab({
 
                 {/* 2. Informasi Pelanggan */}
                 <div className="space-y-1.5">
-                  <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
                     <Package className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>Data Pelanggan</span>
                   </h4>
-                  <div className="bg-card border border-border rounded-xl p-3 space-y-1.5 text-[11px]">
+                  <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-1.5 text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Nama:</span>
-                      <span className="font-bold text-foreground">{selectedOrder.customer_name || 'Pelanggan Toko'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Nama:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {selectedOrder.customer_name || 'Pelanggan Toko'}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">WhatsApp:</span>
+                      <span className="text-slate-500 dark:text-slate-400">WhatsApp:</span>
                       <a
                         href={`https://wa.me/${(selectedOrder.customer_phone || '').replace(/\D/g, '')}`}
                         target="_blank"
@@ -1254,27 +1541,27 @@ export default function OrdersTab({
                     </div>
                     {selectedOrder.customer_email && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Email:</span>
-                        <span className="font-mono text-foreground">{selectedOrder.customer_email}</span>
+                        <span className="text-slate-500 dark:text-slate-400">Email:</span>
+                        <span className="font-mono text-slate-900 dark:text-slate-200">{selectedOrder.customer_email}</span>
                       </div>
                     )}
 
                     {/* Dokumen Briefing Klien */}
-                    <div className="pt-2 border-t border-border flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-muted-foreground font-medium">Dokumen Briefing:</span>
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-slate-500 dark:text-slate-400 font-medium">Dokumen Briefing:</span>
                       {selectedOrder.briefing_url ? (
                         <a
                           href={normalizeBriefingUrl(selectedOrder.briefing_url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 border border-purple-500/30 transition shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/80 border border-purple-200 dark:border-purple-800/70 transition cursor-pointer"
                         >
-                          <FileText className="w-3.5 h-3.5 text-purple-500" />
+                          <FileText className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
                           <span>Buka Briefing Klien (External Link ↗)</span>
-                          <ExternalLink className="w-3 h-3 text-purple-500" />
+                          <ExternalLink className="w-3 h-3 text-purple-500 dark:text-purple-400" />
                         </a>
                       ) : (
-                        <span className="text-xs text-muted-foreground italic">
+                        <span className="text-xs text-slate-400 dark:text-slate-500 italic">
                           Tidak menyertakan dokumen briefing
                         </span>
                       )}
@@ -1284,7 +1571,7 @@ export default function OrdersTab({
 
                 {/* 3. Fulfillment Strategy Boundary Section (Deterministik: Fisik vs Non-Fisik) */}
                 <div className="space-y-1.5">
-                  <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
                     {orderReqs.requiresShipping ? (
                       <>
                         <Truck className="w-3.5 h-3.5 text-amber-500" />
@@ -1292,46 +1579,46 @@ export default function OrdersTab({
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                        <Sparkles className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
                         <span>Pengiriman Non-Fisik &amp; Akses Langsung</span>
                       </>
                     )}
                   </h4>
 
                   {orderReqs.requiresShipping ? (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 space-y-2">
+                    <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-3.5 space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground font-medium">Layanan Ekspedisi:</span>
-                        <span className="font-bold text-amber-800 dark:text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded text-[11px]">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">Layanan Ekspedisi:</span>
+                        <span className="font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded text-[11px]">
                           {selectedOrder.shipping_courier || 'Ekspedisi Reguler'}
                         </span>
                       </div>
-                      <div className="flex flex-col gap-0.5 pt-1 border-t border-amber-500/20">
-                        <span className="text-muted-foreground text-[10px] font-semibold">Alamat Tujuan:</span>
-                        <p className="text-foreground leading-snug font-medium">
+                      <div className="flex flex-col gap-0.5 pt-1 border-t border-amber-200/80 dark:border-amber-800/40">
+                        <span className="text-slate-500 dark:text-slate-400 text-[10px] font-semibold">Alamat Tujuan:</span>
+                        <p className="text-slate-900 dark:text-slate-100 leading-snug font-medium">
                           {selectedOrder.shipping_address || 'Belum mencantumkan alamat lengkap'}
                         </p>
                       </div>
-                      <div className="flex justify-between items-center pt-1 border-t border-amber-500/20">
-                        <span className="text-muted-foreground font-medium">Nomor Resi:</span>
-                        <span className="font-mono font-bold text-foreground">
+                      <div className="flex justify-between items-center pt-1 border-t border-amber-200/80 dark:border-amber-800/40">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">Nomor Resi:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
                           {selectedOrder.tracking_number || selectedOrder.waybill || 'Menunggu Resi'}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-3.5 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground font-medium">Strategi Fulfillment:</span>
-                        <span className="font-bold text-blue-700 dark:text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded text-[10px]">
+                    <div className="bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">Strategi Fulfillment:</span>
+                        <span className="font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-2 py-0.5 rounded text-[10px]">
                           Bebas Pengiriman Fisik &amp; Tanpa Resi Kurir
                         </span>
                       </div>
 
-                      <div className="bg-card border border-border rounded-xl p-3 space-y-2">
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Tipe Akses:</span>
-                          <span className="font-bold text-foreground">
+                          <span className="text-slate-500 dark:text-slate-400">Tipe Akses:</span>
+                          <span className="font-bold text-slate-900 dark:text-white">
                             {meta?.delivery_type === 'DOWNLOAD_LINK'
                               ? 'Link Unduh Materi'
                               : meta?.delivery_type === 'LICENSE_KEY'
@@ -1341,16 +1628,24 @@ export default function OrdersTab({
                         </div>
 
                         {meta?.license_key && (
-                          <div className="p-2 bg-muted rounded-lg border border-border space-y-0.5">
-                            <span className="text-[10px] font-bold text-muted-foreground block">Kunci Lisensi Pembeli:</span>
-                            <div className="font-mono font-bold text-blue-600 dark:text-blue-400 select-all">{meta.license_key}</div>
+                          <div className="p-2 bg-slate-50 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700 space-y-0.5">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
+                              Kunci Lisensi Pembeli:
+                            </span>
+                            <div className="font-mono font-bold text-blue-600 dark:text-blue-400 select-all">
+                              {meta.license_key}
+                            </div>
                           </div>
                         )}
 
                         {meta?.instructions && (
-                          <div className="p-2 bg-muted rounded-lg border border-border space-y-0.5">
-                            <span className="text-[10px] font-bold text-muted-foreground block">Petunjuk:</span>
-                            <p className="text-[11px] text-foreground whitespace-pre-line">{meta.instructions}</p>
+                          <div className="p-2 bg-slate-50 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700 space-y-0.5">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">
+                              Petunjuk:
+                            </span>
+                            <p className="text-[11px] text-slate-800 dark:text-slate-200 whitespace-pre-line">
+                              {meta.instructions}
+                            </p>
                           </div>
                         )}
 
@@ -1367,8 +1662,10 @@ export default function OrdersTab({
                         )}
 
                         {selectedOrder.customer_phone && (
-                          <div className="pt-2 border-t border-border flex items-center justify-between">
-                            <span className="text-[11px] text-muted-foreground font-medium">Kirim Informasi ke Pembeli:</span>
+                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                              Kirim Informasi ke Pembeli:
+                            </span>
                             <a
                               href={getDigitalWhatsAppResendUrl(selectedOrder, storeDisplayName || tenantSlug) || '#'}
                               target="_blank"
@@ -1386,7 +1683,7 @@ export default function OrdersTab({
                 </div>
               </div>
 
-              <div className="p-4 border-t border-border bg-muted/40 flex items-center justify-between gap-2 flex-wrap">
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 flex items-center justify-between gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1394,7 +1691,7 @@ export default function OrdersTab({
                     e.stopPropagation();
                     setSelectedOrder(null);
                   }}
-                  className="px-4 py-2 bg-card border border-border rounded-xl text-xs font-bold text-foreground hover:bg-muted transition cursor-pointer"
+                  className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Tutup
                 </button>
@@ -1426,8 +1723,8 @@ export default function OrdersTab({
                     }}
                     className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs border transition cursor-pointer disabled:opacity-50 ${
                       isOrderPaid
-                        ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80 hover:bg-rose-100'
-                        : 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-950/80'
+                        : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300'
                     }`}
                   >
                     {togglingId === selectedOrder.id ? (
@@ -1457,7 +1754,7 @@ export default function OrdersTab({
                           city: storeCity,
                         });
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Label Resi</span>
@@ -1476,11 +1773,11 @@ export default function OrdersTab({
                         window.open(invUrl, '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-card hover:bg-muted text-foreground border border-border transition cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>Lihat &amp; Cetak Invoice</span>
-                    <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
                   </button>
 
                   {/* Soft-Archive / Pulihkan Pesanan di Modal */}
@@ -1489,13 +1786,13 @@ export default function OrdersTab({
                       type="button"
                       disabled={archivingId === selectedOrder.id}
                       onClick={(e) => handleToggleArchive(selectedOrder, false, e)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-muted hover:bg-muted/80 text-foreground border border-border transition cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer disabled:opacity-50"
                       title="Pulihkan Pesanan dari Arsip"
                     >
                       {archivingId === selectedOrder.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <ArchiveRestore className="w-3.5 h-3.5 text-muted-foreground" />
+                        <ArchiveRestore className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                       )}
                       <span>Pulihkan Pesanan</span>
                     </button>
@@ -1504,7 +1801,7 @@ export default function OrdersTab({
                       type="button"
                       disabled={archivingId === selectedOrder.id}
                       onClick={(e) => handleToggleArchive(selectedOrder, true, e)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition cursor-pointer disabled:opacity-50"
                       title="Sembunyikan / Arsipkan Pesanan Ini"
                     >
                       {archivingId === selectedOrder.id ? (
@@ -1536,7 +1833,7 @@ export default function OrdersTab({
       {/* ======================================================== */}
       {orderToConfirm && (
         <div
-          className="fixed inset-0 z-[120] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={(e) => {
             if (!isConfirmingPayment) {
               e.preventDefault();
@@ -1546,17 +1843,17 @@ export default function OrdersTab({
           }}
         >
           <div
-            className="bg-card rounded-3xl max-w-md w-full border border-border shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-foreground"
+            className="bg-white dark:bg-[#0D1117] rounded-3xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-foreground">Konfirmasi Pembayaran Manual</h3>
-                  <p className="text-[11px] text-muted-foreground">Verifikasi penerimaan dana masuk</p>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Konfirmasi Pembayaran Manual</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Verifikasi penerimaan dana masuk</p>
                 </div>
               </div>
               <button
@@ -1567,39 +1864,41 @@ export default function OrdersTab({
                   e.stopPropagation();
                   setOrderToConfirm(null);
                 }}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3.5 bg-muted/40 rounded-2xl border border-border space-y-2">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Invoice:</span>
-                  <span className="font-mono font-bold text-foreground">{orderToConfirm.invoice_no}</span>
+                  <span className="text-slate-500 dark:text-slate-400">Invoice:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{orderToConfirm.invoice_no}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pelanggan:</span>
-                  <span className="font-bold text-foreground">{orderToConfirm.customer_name || 'Pelanggan Toko'}</span>
+                  <span className="text-slate-500 dark:text-slate-400">Pelanggan:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{orderToConfirm.customer_name || 'Pelanggan Toko'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">WhatsApp:</span>
-                  <span className="font-mono text-foreground">{orderToConfirm.customer_phone || '-'}</span>
+                  <span className="text-slate-500 dark:text-slate-400">WhatsApp:</span>
+                  <span className="font-mono text-slate-900 dark:text-slate-200">{orderToConfirm.customer_phone || '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Metode Bayar:</span>
-                  <span className="font-semibold text-foreground uppercase">{orderToConfirm.payment_method || 'Transfer Rekening / QRIS Manual'}</span>
+                  <span className="text-slate-500 dark:text-slate-400">Metode Bayar:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-200 uppercase">
+                    {orderToConfirm.payment_method || 'Transfer Rekening / QRIS Manual'}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center border-t border-border pt-2">
-                  <span className="font-bold text-foreground">Total Tagihan:</span>
-                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-800 pt-2">
+                  <span className="font-bold text-slate-900 dark:text-white">Total Tagihan:</span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
                     Rp {orderToConfirm.total_amount?.toLocaleString('id-ID')}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-2">
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/70 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <span>
                   Pastikan mutasi dana telah <strong>masuk ke rekening bank atau QRIS</strong> Anda. Menandai lunas akan memicu pembukaan akses materi/fulfillment dan notifikasi WhatsApp resmi kepada pembeli.
@@ -1607,7 +1906,7 @@ export default function OrdersTab({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 disabled={isConfirmingPayment}
@@ -1616,7 +1915,7 @@ export default function OrdersTab({
                   e.stopPropagation();
                   setOrderToConfirm(null);
                 }}
-                className="px-4 py-2.5 rounded-xl border border-border text-xs font-bold text-foreground hover:bg-muted transition cursor-pointer disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>

@@ -790,17 +790,17 @@ export default function StorefrontThemeCard({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900/50 rounded-3xl border border-slate-200 dark:border-slate-800/80 p-6 space-y-6 shadow-xs relative">
+    <div className="bg-white dark:bg-[#0D1117] rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-6 shadow-xs relative text-slate-900 dark:text-slate-100">
       {/* Header Info */}
-      <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800/80">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-800/60">
+      <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/70 dark:border-indigo-800/60">
             <Palette className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white">Pilihan Tema Visual Storefront</h3>
-              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Pilihan Tema Visual Storefront</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                 6 Pilihan Tema
               </span>
             </div>
@@ -811,8 +811,8 @@ export default function StorefrontThemeCard({
         </div>
 
         {isSaving && (
-          <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[11px] font-medium flex items-center gap-1.5 shrink-0">
-            <RefreshCw className="w-3 h-3 animate-spin text-indigo-600" />
+          <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium flex items-center gap-1.5 shrink-0">
+            <RefreshCw className="w-3 h-3 animate-spin text-indigo-600 dark:text-indigo-400" />
             <span>Menyimpan...</span>
           </span>
         )}
@@ -820,16 +820,16 @@ export default function StorefrontThemeCard({
 
       {/* Expired Read-Only Warning Banner */}
       {isSubscriptionExpired && (
-        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 text-amber-700 animate-fadeIn">
-          <div className="flex items-center gap-2.5 text-xs font-bold">
-            <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-800 dark:text-amber-200 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
+            <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.</span>
           </div>
           {onUpgrade && (
             <button
               type="button"
               onClick={onUpgrade}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer"
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold self-start sm:self-auto shrink-0 transition shadow-xs cursor-pointer"
             >
               Upgrade Paket
             </button>
@@ -839,15 +839,15 @@ export default function StorefrontThemeCard({
 
       {/* Notifications */}
       {toastMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-center gap-2 animate-fadeIn">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 rounded-xl text-xs text-emerald-800 dark:text-emerald-200 flex items-center gap-2 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span className="font-semibold">{toastMessage}</span>
         </div>
       )}
 
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 flex items-center gap-2 animate-fadeIn">
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+        <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center gap-2 animate-fadeIn">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
           <span className="font-semibold">{errorMessage}</span>
         </div>
       )}
@@ -855,616 +855,605 @@ export default function StorefrontThemeCard({
       {/* 6 Theme Options Grid (2 Kolom agar proporsional di samping Live Phone Preview) */}
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4.5">
-            {VISUAL_THEMES.map((theme) => {
-              const isSelected = selectedTheme === theme.id;
-              const locked = isThemeLocked(theme);
+          {VISUAL_THEMES.map((theme) => {
+            const isSelected = selectedTheme === theme.id;
+            const locked = isThemeLocked(theme);
 
-              return (
-                <div
-                  key={theme.id}
-                  onClick={() => handleSelectTheme(theme)}
-                  className={`group relative rounded-xl p-4.5 transition-all cursor-pointer flex flex-col justify-between text-left border ${
-                    isSelected
-                      ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/10 dark:bg-emerald-950/20 shadow-md'
-                      : locked
+            return (
+              <div
+                key={theme.id}
+                onClick={() => handleSelectTheme(theme)}
+                className={`group relative rounded-xl p-4.5 transition-all cursor-pointer flex flex-col justify-between text-left border ${isSelected
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/10 dark:bg-emerald-950/20 shadow-md'
+                    : locked
                       ? 'bg-card border-border opacity-75 hover:border-zinc-400 dark:hover:border-zinc-600'
                       : 'bg-card border-border hover:border-zinc-400 dark:hover:border-zinc-600'
                   }`}
-                >
-                  <div className="space-y-3">
-                    {/* Top row: Swatches & Badges */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted border border-border shrink-0">
-                        <span
-                          className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
-                          style={{ backgroundColor: theme.swatches.bg }}
-                        />
-                        <span
-                          className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
-                          style={{ backgroundColor: theme.swatches.card }}
-                        />
-                        <span
-                          className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
-                          style={{ backgroundColor: theme.swatches.accent }}
-                        />
-                      </div>
+              >
+                <div className="space-y-3">
+                  {/* Top row: Swatches & Badges */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted border border-border shrink-0">
+                      <span
+                        className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
+                        style={{ backgroundColor: theme.swatches.bg }}
+                      />
+                      <span
+                        className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
+                        style={{ backgroundColor: theme.swatches.card }}
+                      />
+                      <span
+                        className="w-3.5 h-3.5 rounded-md border border-white/10 shadow-2xs shrink-0"
+                        style={{ backgroundColor: theme.swatches.accent }}
+                      />
+                    </div>
 
-                      {locked ? (
-                        <span className="px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0">
-                          <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                          <span>Terkunci</span>
-                        </span>
-                      ) : (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
-                          theme.isLockedForSolo
-                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
-                            : 'bg-card text-foreground border-border shadow-2xs'
+                    {locked ? (
+                      <span className="px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0">
+                        <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                        <span>Terkunci</span>
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${theme.isLockedForSolo
+                          ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
+                          : 'bg-card text-foreground border-border shadow-2xs'
                         }`}>
-                          {theme.badge}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Title & Description */}
-                    <div>
-                      <h4 className="text-zinc-900 dark:text-zinc-100 font-bold text-sm tracking-tight flex items-center gap-1.5">
-                        <span>{theme.title}</span>
-                        {isSelected && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
-                        )}
-                      </h4>
-                      <p className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5">
-                        {theme.subtitle}
-                      </p>
-                      <p className="text-zinc-600 dark:text-zinc-400 text-xs leading-relaxed mt-1">
-                        {theme.description}
-                      </p>
-                    </div>
+                        {theme.badge}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Switch toggle / selection action at bottom */}
-                  <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-2">
-                    <div className="truncate">
-                      {isSelected ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Aktif Digunakan</span>
-                        </span>
-                      ) : locked ? (
-                        <span className="text-amber-600 dark:text-amber-400 text-xs font-medium flex items-center gap-1">
-                          <Lock className="w-3 h-3" /> Khusus Ads / Scale
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs font-medium">Klik untuk Pilih</span>
+                  {/* Title & Description */}
+                  <div>
+                    <h4 className="text-zinc-900 dark:text-zinc-100 font-bold text-sm tracking-tight flex items-center gap-1.5">
+                      <span>{theme.title}</span>
+                      {isSelected && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
                       )}
-                    </div>
-                    <div
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                        isSelected
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : locked
+                    </h4>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-[11px] font-medium mt-0.5">
+                      {theme.subtitle}
+                    </p>
+                    <p className="text-zinc-600 dark:text-zinc-400 text-xs leading-relaxed mt-1">
+                      {theme.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Switch toggle / selection action at bottom */}
+                <div className="pt-3 mt-3 border-t border-border flex items-center justify-between gap-2">
+                  <div className="truncate">
+                    {isSelected ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Aktif Digunakan</span>
+                      </span>
+                    ) : locked ? (
+                      <span className="text-amber-600 dark:text-amber-400 text-xs font-medium flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> Khusus Ads / Scale
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs font-medium">Klik untuk Pilih</span>
+                    )}
+                  </div>
+                  <div
+                    className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${isSelected
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : locked
                           ? 'border-border bg-muted text-muted-foreground'
                           : 'border-border bg-card text-muted-foreground group-hover:border-zinc-400 dark:group-hover:border-zinc-500'
                       }`}
-                    >
-                      {isSelected ? (
-                        <Check className="w-3 h-3 stroke-[2.5]" />
-                      ) : locked ? (
-                        <Lock className="w-2.5 h-2.5" />
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* KONTROL: FORM MANAJEMEN TOMBOL BIO LINKS (BIO LINKS EDITOR) */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/60 rounded-2xl p-4 sm:p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-800/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0 border border-indigo-100 dark:border-indigo-800/60">
-                  <LinkIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                      Kelola Tombol Bio Link Toko ({buttons.length})
-                    </h4>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
-                      Live Preview Interaktif
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Atur tombol navigasi utama (WhatsApp, Katalog, Instagram, Maps, dll.) yang tampil di bio storefront Anda.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddButton}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 self-start sm:self-auto shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Tombol</span>
-              </button>
-            </div>
-
-            {buttons.length === 0 ? (
-              <div className="p-6 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-center space-y-2 text-slate-400 bg-white dark:bg-slate-950/40">
-                <Sparkles className="w-5 h-5 mx-auto text-slate-300 dark:text-slate-600" />
-                <p className="text-xs font-semibold">Belum ada tombol link di bio storefront Anda.</p>
-                <button
-                  type="button"
-                  onClick={handleAddButton}
-                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  + Tambah tombol link pertama
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {buttons.map((btn, idx) => {
-                  const activeIconOpt = BIO_ICON_OPTIONS.find((o) => o.id === btn.icon) || BIO_ICON_OPTIONS[1];
-                  const IconComp = activeIconOpt.icon;
-
-                  return (
-                    <div
-                      key={btn.id}
-                      className={`p-3.5 rounded-2xl border transition-all space-y-3 ${
-                        btn.is_active
-                          ? 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-slate-800/80 shadow-2xs'
-                          : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/60 opacity-60'
-                      }`}
-                    >
-                      {/* Top Bar: Reorder, Icon preview, Title, Toggle, Delete */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[11px] font-black text-slate-600 dark:text-slate-300 shrink-0">
-                            {idx + 1}
-                          </span>
-                          <span className="p-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
-                            <IconComp className="w-3.5 h-3.5" />
-                          </span>
-                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                            {btn.label || 'Tanpa Label'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveButton(idx, 'up')}
-                            disabled={idx === 0}
-                            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 transition cursor-pointer"
-                            title="Pindah ke Atas"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveButton(idx, 'down')}
-                            disabled={idx === buttons.length - 1}
-                            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 transition cursor-pointer"
-                            title="Pindah ke Bawah"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Switch Active */}
-                          <label className="relative inline-flex items-center cursor-pointer ml-1">
-                            <input
-                              type="checkbox"
-                              checked={btn.is_active}
-                              onChange={(e) => handleUpdateButton(btn.id, { is_active: e.target.checked })}
-                              className="sr-only peer"
-                            />
-                            <div className="w-7 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteButton(btn.id)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer ml-0.5"
-                            title="Hapus Tombol"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Inputs: Label & URL */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                            Label Tombol
-                          </label>
-                          <input
-                            type="text"
-                            value={btn.label}
-                            onChange={(e) => handleUpdateButton(btn.id, { label: e.target.value })}
-                            placeholder="Contoh: Chat WhatsApp CS"
-                            className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 transition"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                            URL Tujuan
-                          </label>
-                          <input
-                            type="text"
-                            value={btn.url}
-                            onChange={(e) => handleUpdateButton(btn.id, { url: e.target.value })}
-                            placeholder="https://wa.me/... atau /slug"
-                            className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white font-mono text-[11px] focus:outline-none focus:border-indigo-500 transition"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Icon Selector Chips */}
-                      <div>
-                        <span className="block text-[10px] font-bold text-slate-500 mb-1.5">
-                          Pilihan Ikon:
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {BIO_ICON_OPTIONS.map((opt) => {
-                            const ChipIcon = opt.icon;
-                            const isIconSelected = btn.icon === opt.id;
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => handleUpdateButton(btn.id, { icon: opt.id })}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition cursor-pointer ${
-                                  isIconSelected
-                                    ? 'bg-indigo-50 border-indigo-600 text-indigo-700 shadow-2xs'
-                                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
-                                }`}
-                              >
-                                <ChipIcon className="w-3 h-3" />
-                                <span>{opt.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (SEARCH AUTOCOMPLETE & CHIPS) */}
-          <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 space-y-4 text-slate-700 dark:text-slate-300">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0 border border-emerald-100">
-                  <ShoppingBag className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs sm:text-sm font-black text-white">
-                      Produk Unggulan di Bio Storefront
-                    </h4>
-                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                      featuredProductIds.length === 5
-                        ? 'bg-amber-100 text-amber-800 border-amber-300'
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    }`}>
-                      {featuredProductIds.length}/5 Terpilih
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Pilih hingga 5 produk aktif dari etalase untuk disorot langsung pada kartu cuplikan bio storefront.
-                  </p>
-                </div>
-              </div>
-
-              {featuredProductIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFeaturedProductIds([]);
-                    persistFeaturedProducts([]);
-                  }}
-                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer self-start sm:self-auto shrink-0"
-                >
-                  Reset Semua Pilihan
-                </button>
-              )}
-            </div>
-
-            {/* FORM INPUT PENCARIAN & DROPDOWN AUTOCOMPLETE */}
-            <div ref={searchContainerRef} className="relative space-y-2">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  disabled={featuredProductIds.length >= 5}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setIsSearchOpen(true);
-                  }}
-                  onFocus={() => {
-                    if (searchQuery.trim().length > 0) setIsSearchOpen(true);
-                  }}
-                  placeholder={
-                    featuredProductIds.length >= 5
-                      ? "Maksimal 5 produk unggulan telah tercapai"
-                      : "Ketik nama produk untuk menambahkan..."
-                  }
-                  className={`w-full pl-9 pr-4 py-2.5 rounded-xl border text-xs font-medium transition ${
-                    featuredProductIds.length >= 5
-                      ? "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                      : "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-2xs"
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setIsSearchOpen(false);
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                    {isSelected ? (
+                      <Check className="w-3 h-3 stroke-[2.5]" />
+                    ) : locked ? (
+                      <Lock className="w-2.5 h-2.5" />
+                    ) : null}
+                  </div>
+                </div>
               </div>
+            );
+          })}
+        </div>
 
-              {/* Info batas maksimal 5 produk */}
-              {featuredProductIds.length >= 5 && (
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                  <span>Maksimal 5 produk unggulan telah tercapai. Hapus salah satu produk di bawah jika ingin menambahkan produk lain.</span>
-                </div>
-              )}
-
-              {/* Real-time Search Results Dropdown */}
-              {isSearchOpen && searchQuery.trim().length > 0 && featuredProductIds.length < 5 && (
-                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100">
-                  {filteredSearchProducts.length === 0 ? (
-                    <div className="p-3.5 text-center text-xs text-slate-400">
-                      Tidak ada produk aktif yang cocok dengan &quot;<strong className="text-slate-600">{searchQuery}</strong>&quot;
-                    </div>
-                  ) : (
-                    filteredSearchProducts.map((prod: ProductItem) => {
-                      const prodImage = prod.image || (prod as any).image_url;
-                      return (
-                        <div
-                          key={prod.id}
-                          onClick={() => handleAddFeaturedProduct(String(prod.id))}
-                          className="flex items-center gap-3 p-2.5 hover:bg-indigo-50/60 transition cursor-pointer group"
-                        >
-                          {prodImage ? (
-                            <img
-                              src={prodImage}
-                              alt={prod.name}
-                              className="w-9 h-9 rounded-lg object-cover border border-slate-100 shrink-0 bg-slate-50"
-                            />
-                          ) : (
-                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                              <Package className="w-4 h-4" />
-                            </div>
-                          )}
-
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
-                              {prod.name}
-                            </div>
-                            <div className="text-[11px] font-semibold text-emerald-600">
-                              {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
-                            </div>
-                          </div>
-
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 group-hover:bg-indigo-600 group-hover:text-white px-2.5 py-1 rounded-lg transition-all shrink-0">
-                            <Plus className="w-3 h-3" />
-                            <span>Pilih</span>
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* DAFTAR PRODUK UNGGULAN TERPILIH (CHIP / KARTU KECIL) */}
-            <div className="space-y-2 pt-2">
-              <span className="text-xs font-bold text-slate-700 block">
-                Produk Unggulan Terpilih ({featuredProductIds.length}/5):
-              </span>
-
-              {isLoadingProducts ? (
-                <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                  <span>Memuat daftar produk toko...</span>
-                </div>
-              ) : featuredProductIds.length === 0 ? (
-                <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-xs text-slate-400 space-y-1">
-                  <p>Belum ada produk unggulan yang dipilih untuk bio storefront.</p>
-                  <p className="text-[11px] text-slate-400">Gunakan form pencarian di atas untuk menambahkan produk unggulan.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {featuredProductIds.map((prodId) => {
-                    const prod = availableProducts.find((p: ProductItem) => String(p.id) === String(prodId)) || {
-                      id: prodId,
-                      name: `Produk (${prodId})`,
-                      price: 0,
-                      image: '',
-                    };
-                    const prodImage = prod.image || (prod as any).image_url;
-
-                    return (
-                      <div
-                        key={prodId}
-                        className="flex items-center gap-2.5 p-2.5 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition relative group"
-                      >
-                        {prodImage ? (
-                          <img
-                            src={prodImage}
-                            alt={prod.name}
-                            className="w-10 h-10 rounded-lg object-cover border border-slate-100 shrink-0 bg-slate-50"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                            <Package className="w-5 h-5" />
-                          </div>
-                        )}
-
-                        <div className="min-w-0 flex-1 pr-6">
-                          <h5 className="text-xs font-bold text-white truncate" title={prod.name}>
-                            {prod.name}
-                          </h5>
-                          <p className="text-[11px] font-semibold text-emerald-600 mt-0.5">
-                            {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFeaturedProduct(prodId)}
-                          className="absolute top-2 right-2 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          title="Hapus dari produk unggulan"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Switch Toggle: Aktifkan Webchat di Storefront */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800/80">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-950/60 text-indigo-400 border border-indigo-800/60 flex items-center justify-center shrink-0 mt-0.5">
-                <MessageSquare className="w-4 h-4" />
+        {/* KONTROL: FORM MANAJEMEN TOMBOL BIO LINKS (BIO LINKS EDITOR) */}
+        <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/60 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-800/60">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0 border border-indigo-100 dark:border-indigo-800/60">
+                <LinkIcon className="w-4 h-4" />
               </div>
-              <div className="space-y-0.5">
+              <div>
                 <div className="flex items-center gap-2">
-                  <label
-                    htmlFor="toggle-webchat"
-                    className="text-xs font-black text-white cursor-pointer"
-                  >
-                    Aktifkan Webchat di Storefront
-                  </label>
-                  <span
-                    className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded ${
-                      chatEnabled
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {chatEnabled ? 'Aktif' : 'Nonaktif'}
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    Kelola Tombol Bio Link Toko ({buttons.length})
+                  </h4>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
+                    Live Preview Interaktif
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Tampilkan widget floating chat asisten AI &amp; tombol chat langsung di storefront pengunjung.
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Atur tombol navigasi utama (WhatsApp, Katalog, Instagram, Maps, dll.) yang tampil di bio storefront Anda.
                 </p>
               </div>
             </div>
 
             <button
               type="button"
-              id="toggle-webchat"
-              role="switch"
-              aria-checked={chatEnabled}
-              disabled={isSaving}
-              onClick={handleToggleChat}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden disabled:opacity-50 ${
-                chatEnabled ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700'
-              }`}
+              onClick={handleAddButton}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 self-start sm:self-auto shrink-0"
             >
-              <span className="sr-only">Toggle Webchat</span>
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  chatEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tambah Tombol</span>
             </button>
           </div>
 
-          {/* Action Bar: Simpan Perubahan Tampilan */}
-          <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800/80">
-            <p className="text-xs text-slate-400 font-medium">
-              Simpan tema visual dan preferensi tampilan untuk pengunjung storefront Anda.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (isSubscriptionExpired) {
-                  setErrorMessage('Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.');
-                  if (onUpgrade) onUpgrade();
-                  else setShowUpgradeModal(true);
-                  return;
+          {buttons.length === 0 ? (
+            <div className="p-6 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-center space-y-2 text-slate-400 bg-white dark:bg-slate-950/40">
+              <Sparkles className="w-5 h-5 mx-auto text-slate-300 dark:text-slate-600" />
+              <p className="text-xs font-semibold">Belum ada tombol link di bio storefront Anda.</p>
+              <button
+                type="button"
+                onClick={handleAddButton}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              >
+                + Tambah tombol link pertama
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {buttons.map((btn, idx) => {
+                const activeIconOpt = BIO_ICON_OPTIONS.find((o) => o.id === btn.icon) || BIO_ICON_OPTIONS[1];
+                const IconComp = activeIconOpt.icon;
+
+                return (
+                  <div
+                    key={btn.id}
+                    className={`p-3.5 rounded-2xl border transition-all space-y-3 ${btn.is_active
+                        ? 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-slate-800/80 shadow-2xs'
+                        : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/60 opacity-60'
+                      }`}
+                  >
+                    {/* Top Bar: Reorder, Icon preview, Title, Toggle, Delete */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[11px] font-black text-slate-600 dark:text-slate-300 shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="p-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
+                          <IconComp className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                          {btn.label || 'Tanpa Label'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveButton(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 transition cursor-pointer"
+                          title="Pindah ke Atas"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveButton(idx, 'down')}
+                          disabled={idx === buttons.length - 1}
+                          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 transition cursor-pointer"
+                          title="Pindah ke Bawah"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Switch Active */}
+                        <label className="relative inline-flex items-center cursor-pointer ml-1">
+                          <input
+                            type="checkbox"
+                            checked={btn.is_active}
+                            onChange={(e) => handleUpdateButton(btn.id, { is_active: e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-7 h-4 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteButton(btn.id)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer ml-0.5"
+                          title="Hapus Tombol"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Inputs: Label & URL */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                          Label Tombol
+                        </label>
+                        <input
+                          type="text"
+                          value={btn.label}
+                          onChange={(e) => handleUpdateButton(btn.id, { label: e.target.value })}
+                          placeholder="Contoh: Chat WhatsApp CS"
+                          className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                          URL Tujuan
+                        </label>
+                        <input
+                          type="text"
+                          value={btn.url}
+                          onChange={(e) => handleUpdateButton(btn.id, { url: e.target.value })}
+                          placeholder="https://wa.me/... atau /slug"
+                          className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white font-mono text-[11px] focus:outline-none focus:border-indigo-500 transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Icon Selector Chips */}
+                    <div>
+                      <span className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                        Pilihan Ikon:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {BIO_ICON_OPTIONS.map((opt) => {
+                          const ChipIcon = opt.icon;
+                          const isIconSelected = btn.icon === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleUpdateButton(btn.id, { icon: opt.id })}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border transition cursor-pointer ${isIconSelected
+                                  ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-300 shadow-2xs'
+                                  : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                                }`}
+                            >
+                              <ChipIcon className="w-3 h-3" />
+                              <span>{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (SEARCH AUTOCOMPLETE & CHIPS) */}
+        <div className="bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 text-slate-700 dark:text-slate-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0 border border-emerald-200/70 dark:border-emerald-800/60">
+                <ShoppingBag className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Produk Unggulan di Bio Storefront
+                  </h4>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${featuredProductIds.length === 5
+                      ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    }`}>
+                    {featuredProductIds.length}/5 Terpilih
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Pilih hingga 5 produk aktif dari etalase untuk disorot langsung pada kartu cuplikan bio storefront.
+                </p>
+              </div>
+            </div>
+
+            {featuredProductIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFeaturedProductIds([]);
+                  persistFeaturedProducts([]);
+                }}
+                className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:underline cursor-pointer self-start sm:self-auto shrink-0"
+              >
+                Reset Semua Pilihan
+              </button>
+            )}
+          </div>
+
+          {/* FORM INPUT PENCARIAN & DROPDOWN AUTOCOMPLETE */}
+          <div ref={searchContainerRef} className="relative space-y-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                disabled={featuredProductIds.length >= 5}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchOpen(true);
+                }}
+                onFocus={() => {
+                  if (searchQuery.trim().length > 0) setIsSearchOpen(true);
+                }}
+                placeholder={
+                  featuredProductIds.length >= 5
+                    ? "Maksimal 5 produk unggulan telah tercapai"
+                    : "Ketik nama produk untuk menambahkan..."
                 }
-                saveThemeConfig(selectedTheme, chatEnabled);
-              }}
-              disabled={isSaving || isSubscriptionExpired}
-              title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.' : 'Simpan Perubahan Tampilan'}
-              className={`w-full sm:w-auto px-5 py-2.5 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 shrink-0 ${
-                isSubscriptionExpired
-                  ? 'bg-slate-400 hover:bg-slate-500 shadow-slate-400/20 cursor-not-allowed opacity-80'
-                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 cursor-pointer'
-              }`}
-            >
-              {isSaving ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : isSubscriptionExpired ? (
-                <Lock className="w-4 h-4" />
-              ) : (
-                <Save className="w-4 h-4" />
+                className={`w-full pl-9 pr-4 py-2 rounded-lg border text-xs font-medium transition ${featuredProductIds.length >= 5
+                    ? "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                    : "bg-white dark:bg-[#0D1117] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                  }`}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsSearchOpen(false);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
-              <span>{isSubscriptionExpired ? 'Mode Baca-Saja (Trial Habis)' : 'Simpan Perubahan Tampilan'}</span>
-            </button>
+            </div>
+
+            {/* Info batas maksimal 5 produk */}
+            {featuredProductIds.length >= 5 && (
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 px-3 py-1.5 rounded-lg">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Maksimal 5 produk unggulan telah tercapai. Hapus salah satu produk di bawah jika ingin menambahkan produk lain.</span>
+              </div>
+            )}
+
+            {/* Real-time Search Results Dropdown */}
+            {isSearchOpen && searchQuery.trim().length > 0 && featuredProductIds.length < 5 && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800">
+                {filteredSearchProducts.length === 0 ? (
+                  <div className="p-3.5 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Tidak ada produk aktif yang cocok dengan &quot;<strong className="text-slate-700 dark:text-slate-200">{searchQuery}</strong>&quot;
+                  </div>
+                ) : (
+                  filteredSearchProducts.map((prod: ProductItem) => {
+                    const prodImage = prod.image || (prod as any).image_url;
+                    return (
+                      <div
+                        key={prod.id}
+                        onClick={() => handleAddFeaturedProduct(String(prod.id))}
+                        className="flex items-center gap-3 p-2.5 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition cursor-pointer group"
+                      >
+                        {prodImage ? (
+                          <img
+                            src={prodImage}
+                            alt={prod.name}
+                            className="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0 bg-slate-50 dark:bg-slate-800"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                            <Package className="w-4 h-4" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            {prod.name}
+                          </div>
+                          <div className="text-[11px] font-semibold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
+                          </div>
+                        </div>
+
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 group-hover:bg-indigo-600 group-hover:text-white px-2.5 py-1 rounded-lg transition-all shrink-0">
+                          <Plus className="w-3 h-3" />
+                          <span>Pilih</span>
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* DAFTAR PRODUK UNGGULAN TERPILIH (CHIP / KARTU KECIL) */}
+          <div className="space-y-2 pt-2">
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+              Produk Unggulan Terpilih ({featuredProductIds.length}/5):
+            </span>
+
+            {isLoadingProducts ? (
+              <div className="p-4 rounded-xl bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                <span>Memuat daftar produk toko...</span>
+              </div>
+            ) : featuredProductIds.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white dark:bg-[#0D1117] border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                <p>Belum ada produk unggulan yang dipilih untuk bio storefront.</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Gunakan form pencarian di atas untuk menambahkan produk unggulan.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {featuredProductIds.map((prodId) => {
+                  const prod = availableProducts.find((p: ProductItem) => String(p.id) === String(prodId)) || {
+                    id: prodId,
+                    name: `Produk (${prodId})`,
+                    price: 0,
+                    image: '',
+                  };
+                  const prodImage = prod.image || (prod as any).image_url;
+
+                  return (
+                    <div
+                      key={prodId}
+                      className="flex items-center gap-2.5 p-2.5 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition relative group"
+                    >
+                      {prodImage ? (
+                        <img
+                          src={prodImage}
+                          alt={prod.name}
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0 bg-slate-50 dark:bg-slate-800"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                          <Package className="w-5 h-5" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1 pr-6">
+                        <h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={prod.name}>
+                          {prod.name}
+                        </h5>
+                        <p className="text-[11px] font-semibold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFeaturedProduct(prodId)}
+                        className="absolute top-2 right-2 p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                        title="Hapus dari produk unggulan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Switch Toggle: Aktifkan Webchat di Storefront */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-center shrink-0 mt-0.5">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label
+                  htmlFor="toggle-webchat"
+                  className="text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer"
+                >
+                  Aktifkan Webchat di Storefront
+                </label>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${chatEnabled
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                    }`}
+                >
+                  {chatEnabled ? 'Aktif' : 'Nonaktif'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Tampilkan widget floating chat asisten AI &amp; tombol chat langsung di storefront pengunjung.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="toggle-webchat"
+            role="switch"
+            aria-checked={chatEnabled}
+            disabled={isSaving}
+            onClick={handleToggleChat}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden disabled:opacity-50 ${chatEnabled ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+              }`}
+          >
+            <span className="sr-only">Toggle Webchat</span>
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${chatEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+            />
+          </button>
+        </div>
+
+        {/* Action Bar: Simpan Perubahan Tampilan */}
+        <div className="pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800">
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Simpan tema visual dan preferensi tampilan untuk pengunjung storefront Anda.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (isSubscriptionExpired) {
+                setErrorMessage('Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                if (onUpgrade) onUpgrade();
+                else setShowUpgradeModal(true);
+                return;
+              }
+              saveThemeConfig(selectedTheme, chatEnabled);
+            }}
+            disabled={isSaving || isSubscriptionExpired}
+            title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.' : 'Simpan Perubahan Tampilan'}
+            className={`w-full sm:w-auto px-4 py-2 text-white text-xs font-semibold rounded-lg transition-all shadow-xs active:scale-[0.98] flex items-center justify-center gap-2 shrink-0 ${isSubscriptionExpired
+                ? 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-80'
+                : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'
+              }`}
+          >
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : isSubscriptionExpired ? (
+              <Lock className="w-4 h-4" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>{isSubscriptionExpired ? 'Mode Baca-Saja (Trial Habis)' : 'Simpan Perubahan Tampilan'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Upgrade Paywall Modal */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 relative text-slate-800 dark:text-slate-200">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-[#0D1117] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 relative text-slate-900 dark:text-slate-100">
             <button
               type="button"
               onClick={() => setShowUpgradeModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="w-12 h-12 rounded-2xl bg-purple-950/60 border border-purple-800/60 text-purple-400 flex items-center justify-center">
-              <Crown className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+              <Crown className="w-5 h-5" />
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                   Fitur Ads Performance &amp; Team Scale
                 </span>
               </div>
-              <h3 className="text-base font-black text-white">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 Buka Tema {targetUpgradeTheme?.title || 'Visual Premium'}
               </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Pilihan tema visual <strong>{targetUpgradeTheme?.title}</strong> dirancang untuk memperkuat identitas brand dan konversi. Tersedia di paket <strong>Ads Performance (Rp 299k)</strong> atau <strong>Team Scale (Rp 499k)</strong>.
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Pilihan tema visual <strong className="text-slate-900 dark:text-slate-200">{targetUpgradeTheme?.title}</strong> dirancang untuk memperkuat identitas brand dan konversi. Tersedia di paket <strong className="text-slate-900 dark:text-slate-200">Ads Performance (Rp 299k)</strong> atau <strong className="text-slate-900 dark:text-slate-200">Team Scale (Rp 499k)</strong>.
               </p>
             </div>
 
-            <div className="p-3.5 bg-purple-950/30 rounded-2xl border border-purple-800/40 text-xs text-slate-300 space-y-2">
-              <p className="font-bold text-purple-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            <div className="p-3.5 bg-purple-50/60 dark:bg-purple-950/30 rounded-xl border border-purple-200/80 dark:border-purple-800/40 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+              <p className="font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 Benefit Paket Ads Performance &amp; Scale:
               </p>
-              <ul className="text-[11px] text-slate-400 space-y-1 pl-1">
+              <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 pl-1">
                 <li>&bull; Bebas pilih semua 5 tema visual storefront &amp; bio-link</li>
                 <li>&bull; Multi-CS Live Chat Inbox WhatsApp</li>
                 <li>&bull; Meta CAPI Tracking &amp; analitik konversi iklan</li>
@@ -1472,11 +1461,11 @@ export default function StorefrontThemeCard({
               </ul>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setShowUpgradeModal(false)}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 Nanti Saja
               </button>
@@ -1486,7 +1475,7 @@ export default function StorefrontThemeCard({
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                className="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
               >
                 <span>Upgrade Sekarang</span>
                 <ArrowRight className="w-3.5 h-3.5" />

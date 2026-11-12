@@ -450,32 +450,32 @@ export default function SettingsTab({
 
   // 1. SUB-MENU: PROFIL TOKO
   const profileSubMenu = (
-    <div className="space-y-4 text-xs font-medium text-muted-foreground">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
       {/* Logo Toko */}
-      <div className="p-3.5 bg-muted/40 rounded-2xl border border-border space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-bold text-foreground">
+      <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
             <ImageIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             <span>Logo Toko</span>
           </div>
           {storeLogoUrl ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
               <CheckCircle2 className="w-3 h-3" />
               Logo Terpasang
             </span>
           ) : (
-            <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+            <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
               Belum diupload
             </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
           Upload logo resmi toko Anda (JPG, PNG, WebP). Otomatis dioptimasi dan ditampilkan pada header storefront.
         </p>
 
         {storeLogoUrl && (
-          <div className="flex items-center gap-3 p-2.5 bg-card rounded-xl border border-border">
-            <div className="relative w-14 h-14 rounded-full border border-border bg-muted/50 overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+          <div className="flex items-center gap-3 p-2.5 bg-white dark:bg-[#0D1117] rounded-lg border border-slate-200 dark:border-slate-800">
+            <div className="relative w-12 h-12 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden flex items-center justify-center shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={storeLogoUrl}
@@ -487,8 +487,8 @@ export default function SettingsTab({
               />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-foreground truncate">Logo Aktif</p>
-              <p className="text-[10px] text-muted-foreground">Pilih file baru di bawah jika ingin mengganti logo.</p>
+              <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">Logo Aktif</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih file baru di bawah jika ingin mengganti logo.</p>
             </div>
           </div>
         )}
@@ -500,7 +500,7 @@ export default function SettingsTab({
               accept="image/*"
               onChange={handleLogoUpload}
               disabled={isUploadingLogo}
-              className="block w-full text-xs text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-500/10 file:text-blue-600 dark:file:text-blue-400 hover:file:bg-blue-500/20 cursor-pointer disabled:opacity-50"
+              className="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border file:border-blue-200 dark:file:border-blue-800/70 file:text-xs file:font-semibold file:bg-blue-50 dark:file:bg-blue-950/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900/60 cursor-pointer disabled:opacity-50"
             />
             {isUploadingLogo && (
               <p className="text-xs text-blue-600 dark:text-blue-400 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
@@ -512,71 +512,78 @@ export default function SettingsTab({
         )}
       </div>
 
-      <div>
-        <label className="block mb-1 font-semibold text-foreground">Nama Tampilan Toko</label>
-        <input
-          type="text"
-          value={storeDisplayName}
-          onChange={(e) => {
-            const val = e.target.value;
-            setStoreDisplayName(val);
-            if (!val.trim()) {
-              setNameError('Nama toko tidak boleh kosong.');
-            } else {
-              setNameError(null);
-            }
-          }}
-          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs bg-background text-foreground focus:outline-hidden transition-colors ${
-            nameError
-              ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20'
-              : 'border-border focus:border-blue-600'
-          }`}
-          placeholder="Contoh: Kuras Koren Karawang"
-        />
-        {nameError && (
-          <p className="text-[11px] font-semibold text-red-500 mt-1 flex items-center gap-1">
-            <span>⚠️</span>
-            <span>{nameError}</span>
-          </p>
-        )}
-      </div>
+      {/* Identitas Tampilan Toko */}
+      <div className="p-4 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 space-y-3.5">
+        <div>
+          <label className="block mb-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+            Nama Tampilan Toko
+          </label>
+          <input
+            type="text"
+            value={storeDisplayName}
+            onChange={(e) => {
+              const val = e.target.value;
+              setStoreDisplayName(val);
+              if (!val.trim()) {
+                setNameError('Nama toko tidak boleh kosong.');
+              } else {
+                setNameError(null);
+              }
+            }}
+            className={`w-full px-3 py-2 border rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden transition-colors ${
+              nameError
+                ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20'
+                : 'border-slate-200 dark:border-slate-700 focus:border-blue-600 dark:focus:border-blue-500'
+            }`}
+            placeholder="Contoh: Kuras Koren Karawang"
+          />
+          {nameError && (
+            <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-[11px] font-semibold text-red-700 dark:text-red-300 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+              <span>{nameError}</span>
+            </div>
+          )}
+        </div>
 
-      <div>
-        <label className="block mb-1 font-semibold text-foreground">Bio / Deskripsi Singkat Toko</label>
-        <textarea
-          rows={3}
-          value={storeBio}
-          onChange={(e) => setStoreBio(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-blue-600"
-          placeholder="Jelaskan secara singkat mengenai toko atau produk Anda..."
-        />
+        <div>
+          <label className="block mb-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+            Bio / Deskripsi Singkat Toko
+          </label>
+          <textarea
+            rows={3}
+            value={storeBio}
+            onChange={(e) => setStoreBio(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-blue-600 dark:focus:border-blue-500"
+            placeholder="Jelaskan secara singkat mengenai toko atau produk Anda..."
+          />
+        </div>
       </div>
 
       {/* QR Meja Toko Fisik */}
-      <div className="p-3.5 bg-muted/40 rounded-2xl border border-border space-y-3">
-        <div className="flex items-center gap-2 font-bold text-foreground">
+      <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <QrCode className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           <span>QR Meja &amp; Etalase Toko</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(getStorefrontUrl(tenantSlug, customDomain))}`}
             alt="QR Toko"
-            className="w-16 h-16 rounded-xl border border-border bg-white p-1 shrink-0"
+            className="w-16 h-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white p-1 shrink-0"
           />
-          <div className="space-y-1 min-w-0">
-            <p className="text-[11px] text-muted-foreground truncate">
-              URL Toko: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{customDomain ? customDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}</span>
+          <div className="space-y-1.5 min-w-0">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              URL Toko: <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{customDomain ? customDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '') : `shop.boontrack.com/${tenantSlug}`}</span>
             </p>
             <a
               href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(getStorefrontUrl(tenantSlug, customDomain))}`}
               download={`qr-${tenantSlug}.png`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-border rounded-lg text-[10px] font-bold text-foreground hover:bg-muted transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              <Download className="w-3 h-3 text-muted-foreground" />
+              <Download className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               Download QR Cetak (.PNG)
             </a>
           </div>
@@ -587,71 +594,73 @@ export default function SettingsTab({
 
   // 2. SUB-MENU: WHATSAPP
   const whatsappSubMenu = (
-    <div className="space-y-4 text-xs font-medium text-muted-foreground">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
       {/* Visual Quota Sesi AI WhatsApp Meter */}
       <AiSessionQuotaMeter tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
 
-      <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-2">
-        <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-bold">
+      <div className="p-3.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/70 rounded-xl space-y-1.5">
+        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold">
           <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           <span>Nomor WhatsApp Customer Service</span>
         </div>
-        <p className="text-[11px] text-emerald-800 dark:text-emerald-200/90 leading-relaxed">
+        <p className="text-[11px] text-emerald-800/90 dark:text-emerald-200/90 leading-relaxed">
           Nomor ini digunakan pelanggan untuk konfirmasi pesanan, menanyakan info produk, dan menerima rincian checkout.
         </p>
       </div>
 
-      <div>
-        <label className="block mb-1 font-semibold text-foreground">Nomor WhatsApp CS</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={storeWhatsapp}
-            onChange={(e) => setStoreWhatsapp(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-emerald-600"
-            placeholder="Contoh: 6281234567890"
-          />
+      <div className="p-4 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div>
+          <label className="block mb-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">Nomor WhatsApp CS</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={storeWhatsapp}
+              onChange={(e) => setStoreWhatsapp(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs font-mono focus:outline-hidden focus:border-emerald-600"
+              placeholder="Contoh: 6281234567890"
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+            Gunakan kode negara (misal <strong className="text-slate-700 dark:text-slate-200">628xxx</strong> bukan 08xxx) agar tautan chat langsung dapat dibuka di HP pelanggan.
+          </p>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">
-          Gunakan kode negara (misal <strong>628xxx</strong> bukan 08xxx) agar tautan chat langsung dapat dibuka di HP pelanggan.
-        </p>
-      </div>
 
-      <div className="pt-3 border-t border-border space-y-1.5">
-        <div className="flex items-center justify-between">
-          <label className="font-semibold text-foreground flex items-center gap-1.5">
-            <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Pesan Sapaan Otomatis (Greeting Message)</span>
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              const defaultMsg = `Halo! Selamat datang di [nama_toko] 👋\n\nTerima kasih telah menghubungi kami. Ada yang bisa kami bantu seputar produk atau pesanan hari ini?`;
-              setLocalGreeting(defaultMsg);
-              if (setStoreGreetingMessage) setStoreGreetingMessage(defaultMsg);
+        <div className="pt-3.5 border-t border-slate-200 dark:border-slate-800 space-y-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Pesan Sapaan Otomatis (Greeting Message)</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                const defaultMsg = `Halo! Selamat datang di [nama_toko] 👋\n\nTerima kasih telah menghubungi kami. Ada yang bisa kami bantu seputar produk atau pesanan hari ini?`;
+                setLocalGreeting(defaultMsg);
+                if (setStoreGreetingMessage) setStoreGreetingMessage(defaultMsg);
+              }}
+              className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            >
+              Format Bawaan
+            </button>
+          </div>
+          <textarea
+            rows={4}
+            value={localGreeting}
+            onChange={(e) => {
+              setLocalGreeting(e.target.value);
+              if (setStoreGreetingMessage) setStoreGreetingMessage(e.target.value);
             }}
-            className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-          >
-            Format Bawaan
-          </button>
+            placeholder="Halo! Selamat datang di [nama_toko] 👋 Ada yang bisa kami bantu hari ini?"
+            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-emerald-600 leading-relaxed font-sans"
+          />
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Pesan ini dikirimkan otomatis oleh Bot saat calon pembeli pertama kali mengirim chat. Gunakan variabel <code className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-1 py-0.5 rounded font-mono">[nama_toko]</code> untuk memuat nama toko dinamis.
+          </p>
         </div>
-        <textarea
-          rows={4}
-          value={localGreeting}
-          onChange={(e) => {
-            setLocalGreeting(e.target.value);
-            if (setStoreGreetingMessage) setStoreGreetingMessage(e.target.value);
-          }}
-          placeholder="Halo! Selamat datang di [nama_toko] 👋 Ada yang bisa kami bantu hari ini?"
-          className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-emerald-600 leading-relaxed font-sans"
-        />
-        <p className="text-[10px] text-muted-foreground">
-          Pesan ini dikirimkan otomatis oleh Bot saat calon pembeli pertama kali mengirim chat. Gunakan variabel <code className="bg-muted text-foreground px-1 py-0.5 rounded font-mono">[nama_toko]</code> untuk memuat nama toko dinamis.
-        </p>
       </div>
 
       {/* ── ATURAN OTOMASI FOLLOW-UP LIFECYCLE & RETENSI ── */}
-      <div className="pt-4 border-t border-border">
+      <div className="pt-2">
         <FollowUpRulesConfig
           tenantSlug={tenantSlug}
           tenantDisplayName={storeDisplayName}
@@ -665,44 +674,44 @@ export default function SettingsTab({
 
   // 3. SUB-MENU: PAYMENT / QRIS & KREDENSIAL SENSITIF
   const paymentSubMenu = (
-    <div className="space-y-4 text-xs font-medium text-muted-foreground">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
       {/* ── SEKSI REKENING BANK MANUAL (TRANSFER BANK) - POSISI PALING ATAS ── */}
-      <div className="p-4 bg-muted/40 rounded-2xl border border-border space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-foreground">
-            <div className="p-1.5 bg-violet-500/10 text-violet-700 dark:text-violet-300 rounded-lg">
+      <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+            <div className="p-1.5 bg-violet-50 dark:bg-violet-950/60 border border-violet-200/70 dark:border-violet-800/60 text-violet-700 dark:text-violet-300 rounded-lg shrink-0">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-xs font-bold text-foreground">Rekening Bank Manual (Transfer Bank)</span>
-              <p className="text-[10px] text-muted-foreground font-normal">
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Rekening Bank Manual (Transfer Bank)</span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
                 Tujuan transfer manual tanpa potongan fee payment gateway
               </p>
             </div>
           </div>
           {accountNumber.trim() ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
               <CheckCircle2 className="w-3 h-3" />
               Rekening Terpasang
             </span>
           ) : (
-            <span className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+            <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
               Belum diisi
             </span>
           )}
         </div>
 
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong>Transfer Bank Manual</strong> di halaman checkout dan Quick POS.
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong className="text-slate-800 dark:text-slate-200">Transfer Bank Manual</strong> di halaman checkout dan Quick POS.
         </p>
 
         {/* Toggle / Switch: Aktifkan Pembayaran Transfer Bank Manual */}
-        <div className="flex items-center justify-between p-3.5 bg-card rounded-xl border border-border shadow-2xs">
-          <div className="space-y-0.5 pr-3">
-            <label className="text-xs font-bold text-foreground flex items-center gap-1.5 cursor-pointer">
+        <div className="flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="space-y-0.5 pr-2">
+            <label className="text-xs font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 cursor-pointer">
               <span>Aktifkan Pembayaran Transfer Bank Manual</span>
             </label>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Tampilkan opsi metode Transfer Bank Manual di halaman checkout dan aktifkan tagihan transfer Quick POS
             </p>
           </div>
@@ -713,38 +722,38 @@ export default function SettingsTab({
               onChange={(e) => setIsBankTransferActive(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600" />
+            <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600" />
           </label>
         </div>
 
         {/* Feedback message */}
         {bankSaveMsg && (
-          <div className={`flex items-center gap-2 text-[11px] font-semibold px-3 py-2 rounded-lg ${
+          <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg border ${
             bankSaveMsg.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-              : 'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800/70'
+              : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/60'
           }`}>
             {bankSaveMsg.type === 'success'
-              ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              : <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />}
             <span>{bankSaveMsg.text}</span>
           </div>
         )}
 
         {/* Form Rekening Utama */}
-        <div className="p-3.5 bg-card rounded-xl border border-border shadow-2xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+        <div className="p-3.5 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
               Rekening Utama
             </span>
-            <span className="text-[10px] text-muted-foreground font-medium">Prioritas Tampilan Checkout &amp; Quick POS</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Prioritas Tampilan Checkout &amp; Quick POS</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Pilihan Bank (Dropdown) */}
             <div>
-              <label className="block text-[10px] font-bold text-foreground mb-1">
+              <label className="block text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-1">
                 Pilihan Bank <span className="text-red-500">*</span>
               </label>
               <select
@@ -756,7 +765,7 @@ export default function SettingsTab({
                     setCustomBankName('');
                   }
                 }}
-                className="w-full px-2.5 py-2 bg-background border border-border rounded-lg text-xs font-semibold text-foreground focus:outline-hidden focus:border-violet-600"
+                className="w-full px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-600"
               >
                 {BANK_DROPDOWN_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
@@ -768,7 +777,7 @@ export default function SettingsTab({
 
             {/* Input No Rekening */}
             <div>
-              <label className="block text-[10px] font-bold text-foreground mb-1">
+              <label className="block text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-1">
                 Nomor Rekening <span className="text-red-500">*</span>
               </label>
               <div className="relative flex items-center">
@@ -778,7 +787,7 @@ export default function SettingsTab({
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d\s-]/g, ''))}
                   placeholder="Contoh: 1234567890"
-                  className="w-full px-2.5 py-2 bg-background border border-border rounded-lg text-xs font-mono font-bold text-foreground focus:outline-hidden focus:border-violet-600 pr-8"
+                  className="w-full px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-violet-600 pr-8"
                 />
                 {accountNumber.trim() && (
                   <button
@@ -789,7 +798,7 @@ export default function SettingsTab({
                       setTimeout(() => setCopiedBankIdx(null), 2000);
                     }}
                     title="Salin nomor rekening"
-                    className="absolute right-1.5 p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer"
+                    className="absolute right-1.5 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
                   >
                     {copiedBankIdx === -1 ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -803,7 +812,7 @@ export default function SettingsTab({
 
             {/* Input Atas Nama Rekening */}
             <div>
-              <label className="block text-[10px] font-bold text-foreground mb-1">
+              <label className="block text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-1">
                 Atas Nama Rekening <span className="text-red-500">*</span>
               </label>
               <input
@@ -811,7 +820,7 @@ export default function SettingsTab({
                 value={accountHolder}
                 onChange={(e) => setAccountHolder(e.target.value)}
                 placeholder="Nama sesuai buku tabungan"
-                className="w-full px-2.5 py-2 bg-background border border-border rounded-lg text-xs font-bold uppercase text-foreground focus:outline-hidden focus:border-violet-600"
+                className="w-full px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold uppercase text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:border-violet-600"
               />
             </div>
           </div>
@@ -826,7 +835,7 @@ export default function SettingsTab({
                 value={customBankName}
                 onChange={(e) => setCustomBankName(e.target.value)}
                 placeholder="Contoh: Bank Permata / Bank Danamon / Bank Jago / SeaBank"
-                className="w-full px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs font-medium text-foreground focus:outline-hidden focus:border-violet-600"
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-600"
               />
             </div>
           )}
@@ -835,7 +844,7 @@ export default function SettingsTab({
         {/* Daftar Rekening Tambahan (Jika Ada) */}
         {additionalBankAccounts.length > 0 && (
           <div className="space-y-2 pt-1">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Rekening Tambahan ({additionalBankAccounts.length})
             </span>
             {additionalBankAccounts.map((acc, idx) => {
@@ -843,11 +852,11 @@ export default function SettingsTab({
               return (
                 <div
                   key={idx}
-                  className="p-3 bg-card rounded-xl border border-border space-y-2"
+                  className="p-3 bg-white dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-muted-foreground mb-0.5">Bank</label>
+                      <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">Bank</label>
                       <select
                         value={option}
                         onChange={(e) => {
@@ -857,7 +866,7 @@ export default function SettingsTab({
                             bank_name: val === 'Lainnya' ? (custom || 'Lainnya') : val
                           } : a));
                         }}
-                        className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-semibold text-foreground focus:outline-hidden focus:border-violet-500"
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-500"
                       >
                         {BANK_DROPDOWN_OPTIONS.map((opt) => (
                           <option key={opt} value={opt}>
@@ -867,7 +876,7 @@ export default function SettingsTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-bold text-muted-foreground mb-0.5">Nomor Rekening</label>
+                      <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">Nomor Rekening</label>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -877,12 +886,12 @@ export default function SettingsTab({
                           account_number: e.target.value.replace(/[^\d\s-]/g, '')
                         } : a))}
                         placeholder="1234567890"
-                        className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-mono font-bold text-foreground focus:outline-hidden focus:border-violet-500"
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-500"
                       />
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
-                        <label className="block text-[9px] font-bold text-muted-foreground mb-0.5">Atas Nama</label>
+                        <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">Atas Nama</label>
                         <input
                           type="text"
                           value={acc.account_holder}
@@ -891,13 +900,13 @@ export default function SettingsTab({
                             account_holder: e.target.value
                           } : a))}
                           placeholder="Nama pemilik"
-                          className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-bold uppercase text-foreground focus:outline-hidden focus:border-violet-500"
+                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold uppercase text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-500"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => setAdditionalBankAccounts(prev => prev.filter((_, i) => i !== idx))}
-                        className="mt-3.5 p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
+                        className="mt-3.5 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
                         title="Hapus rekening tambahan ini"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -913,7 +922,7 @@ export default function SettingsTab({
                         setAdditionalBankAccounts(prev => prev.map((a, i) => i === idx ? { ...a, bank_name: val } : a));
                       }}
                       placeholder="Ketik nama bank lainnya"
-                      className="w-full px-2 py-1 bg-background border border-violet-500/30 rounded-lg text-xs text-foreground focus:outline-hidden focus:border-violet-500"
+                      className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-violet-500/30 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-violet-500"
                     />
                   )}
                 </div>
@@ -930,7 +939,7 @@ export default function SettingsTab({
               ...prev,
               { bank_name: 'BCA', account_number: '', account_holder: accountHolder || storeDisplayName.trim(), is_active: true }
             ])}
-            className="flex items-center gap-1.5 px-3 py-2 bg-card border border-dashed border-violet-400 dark:border-violet-600 text-violet-700 dark:text-violet-300 rounded-xl text-xs font-bold hover:bg-violet-500/10 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-slate-900 border border-dashed border-violet-400 dark:border-violet-600 text-violet-700 dark:text-violet-300 rounded-xl text-xs font-bold hover:bg-violet-500/10 transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Tambah Rekening Tambahan
@@ -1057,30 +1066,30 @@ export default function SettingsTab({
       </div>
 
       {/* ── SEKSI QRIS TOKO RESMI ── */}
-      <div className="p-3.5 bg-muted/40 rounded-2xl border border-border space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-bold text-foreground">
+      <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
             <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>QRIS Toko Resmi</span>
           </div>
           {storeQrisUrl ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
               <CheckCircle2 className="w-3 h-3" />
               QRIS Terpasang
             </span>
           ) : (
-            <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+            <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
               Belum diupload
             </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
           Upload gambar QRIS statis dari Bank atau e-Wallet toko Anda. Pembayaran pelanggan langsung masuk ke rekening Anda tanpa potongan biaya transaksi.
         </p>
 
         {storeQrisUrl && (
-          <div className="flex items-center gap-3 p-2.5 bg-card rounded-xl border border-border">
-            <div className="relative w-16 h-16 border border-border bg-white rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 p-2.5 bg-white dark:bg-[#0D1117] rounded-lg border border-slate-200 dark:border-slate-800">
+            <div className="relative w-16 h-16 border border-slate-200 dark:border-slate-700 bg-white rounded-lg overflow-hidden flex items-center justify-center shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={storeQrisUrl}
@@ -1092,8 +1101,8 @@ export default function SettingsTab({
               />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-foreground truncate">QRIS Aktif</p>
-              <p className="text-[10px] text-muted-foreground">Pilih file baru di bawah untuk mengganti QRIS.</p>
+              <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">QRIS Aktif</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih file baru di bawah untuk mengganti QRIS.</p>
             </div>
           </div>
         )}
@@ -1104,7 +1113,7 @@ export default function SettingsTab({
             accept="image/*"
             onChange={handleQrisUpload}
             disabled={isUploadingQris}
-            className="block w-full text-xs text-muted-foreground file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-600 dark:file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer disabled:opacity-50"
+            className="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border file:border-emerald-200 dark:file:border-emerald-800/70 file:text-xs file:font-semibold file:bg-emerald-50 dark:file:bg-emerald-950/50 file:text-emerald-700 dark:file:text-emerald-300 hover:file:bg-emerald-100 dark:hover:file:bg-emerald-900/60 cursor-pointer disabled:opacity-50"
           />
           {isUploadingQris && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
@@ -1115,30 +1124,30 @@ export default function SettingsTab({
         </div>
 
         {/* Dynamic QRIS Status & Payload Input */}
-        <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+        <div className="p-3.5 bg-white dark:bg-[#0D1117] rounded-lg border border-slate-200 dark:border-slate-800 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>QRIS Dinamis (Auto-inject Tagihan Pas)</span>
             </span>
             {localQrisPayload ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
                 <CheckCircle2 className="w-3 h-3" />
                 Dinamis Aktif
               </span>
             ) : (
-              <span className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+              <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
                 Mode Gambar Statis
               </span>
             )}
           </div>
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
             {localQrisPayload
               ? '✅ String QRIS berhasil terdeteksi. Setiap transaksi di halaman checkout akan otomatis memuat nominal pas tagihan saat dipindai oleh pembeli.'
               : 'Unggah file gambar QRIS toko di atas, sistem akan otomatis membaca kode EMVCo untuk mengaktifkan nominal otomatis.'}
           </p>
           <div>
-            <label className="block text-[10px] font-semibold text-foreground mb-1">
+            <label className="block text-[10px] font-semibold text-slate-900 dark:text-slate-100 mb-1">
               Payload String QRIS EMVCo (000201...):
             </label>
             <textarea
@@ -1149,7 +1158,7 @@ export default function SettingsTab({
                 if (setStoreQrisPayload) setStoreQrisPayload(e.target.value);
               }}
               placeholder="Contoh: 00020101021126570011ID.DANA.WWW..."
-              className="w-full font-mono text-[10px] p-2 bg-background border border-border rounded-lg text-foreground focus:border-emerald-500 focus:outline-hidden"
+              className="w-full font-mono text-[11px] p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-emerald-500 focus:outline-hidden"
             />
           </div>
         </div>
@@ -1166,39 +1175,39 @@ export default function SettingsTab({
       </div>
 
       {/* ── KREDENSIAL SENSITIF PAYMENT GATEWAY (BACKEND-CONTROLLED) ── */}
-      <div className="p-4 bg-card text-foreground rounded-2xl border border-border space-y-3 shadow-xs">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-foreground">
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+      <div className="p-4 bg-white dark:bg-[#0D1117] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Kredensial Payment Gateway</span>
           </div>
-          <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
             <Lock className="w-2.5 h-2.5" />
             BACKEND-CONTROLLED
           </span>
         </div>
 
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
           Kredensial sensitif payment gateway (Xendit / Midtrans / ASPI QRIS) dikelola dan diamankan sepenuhnya di level server BoonTrack Core. Kunci rahasia tidak terekspos di browser merchant demi keamanan transaksi.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="p-2.5 bg-muted/40 rounded-xl border border-border space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="p-2.5 bg-slate-50/70 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
               <span>Server API Key</span>
-              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold">TERKUNCI AMAN</span>
+              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold">TERKUNCI AMAN</span>
             </div>
-            <div className="font-mono text-xs text-foreground tracking-widest select-none">
+            <div className="font-mono text-xs text-slate-900 dark:text-slate-100 tracking-widest select-none">
               ••••••••••••••••••••••••
             </div>
           </div>
 
-          <div className="p-2.5 bg-muted/40 rounded-xl border border-border space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="p-2.5 bg-slate-50/70 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
               <span>Webhook Signing Secret</span>
-              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold">TERKUNCI AMAN</span>
+              <span className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold">TERKUNCI AMAN</span>
             </div>
-            <div className="font-mono text-xs text-foreground tracking-widest select-none">
+            <div className="font-mono text-xs text-slate-900 dark:text-slate-100 tracking-widest select-none">
               ••••••••••••••••••••••••
             </div>
           </div>
@@ -1209,77 +1218,79 @@ export default function SettingsTab({
 
   // 4. SUB-MENU: BASIC SHIPPING
   const shippingSubMenu = (
-    <div className="space-y-4 text-xs font-medium text-muted-foreground">
-      <div className="p-4 bg-sky-500/10 border border-sky-500/30 rounded-2xl space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sky-700 dark:text-sky-300 font-bold">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+      <div className="p-3.5 bg-sky-50/80 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/70 rounded-xl space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sky-800 dark:text-sky-300 font-semibold">
             <Truck className="w-4 h-4 text-sky-600 dark:text-sky-400" />
             <span>Basic Shipping &amp; Pengiriman Dasar</span>
           </div>
-          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
             1/1 Provider Aktif (Checkout Lite)
           </span>
         </div>
-        <p className="text-[11px] text-sky-800 dark:text-sky-200/90 leading-relaxed">
+        <p className="text-[11px] text-sky-800/90 dark:text-sky-200/90 leading-relaxed">
           Tentukan lokasi gudang/toko asal dan 1 provider ekspedisi dasar untuk kalkulasi pengiriman pesanan fisik.
         </p>
       </div>
 
-      <div>
-        <label className="block mb-1 font-semibold text-foreground flex items-center gap-1">
-          <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-          <span>Kota / Kecamatan Asal Pengiriman</span>
-        </label>
-        <input
-          type="text"
-          value={originCity}
-          onChange={(e) => setOriginCity(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-sky-600"
-          placeholder="Contoh: Kota Bandung / Rancasari"
-        />
-      </div>
+      <div className="p-4 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 space-y-3.5">
+        <div>
+          <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+            <span>Kota / Kecamatan Asal Pengiriman</span>
+          </label>
+          <input
+            type="text"
+            value={originCity}
+            onChange={(e) => setOriginCity(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-sky-600"
+            placeholder="Contoh: Kota Bandung / Rancasari"
+          />
+        </div>
 
-      <div>
-        <label className="block mb-1 font-semibold text-foreground">Alamat Lengkap Toko / Gudang</label>
-        <textarea
-          rows={2}
-          value={originAddress}
-          onChange={(e) => setOriginAddress(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-sky-600"
-          placeholder="Jl. Soekarno Hatta No. 123..."
-        />
-      </div>
+        <div>
+          <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">Alamat Lengkap Toko / Gudang</label>
+          <textarea
+            rows={2}
+            value={originAddress}
+            onChange={(e) => setOriginAddress(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-sky-600"
+            placeholder="Jl. Soekarno Hatta No. 123..."
+          />
+        </div>
 
-      <div>
-        <label className="block mb-1.5 font-semibold text-foreground">Pilih Ekspedisi Dasar</label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {[
-            { id: 'jne', name: 'JNE Express (Reguler & YES)', desc: 'Ekspedisi reguler antar-kota seluruh Indonesia' },
-            { id: 'sicepat', name: 'SiCepat Ekspres', desc: 'Layanan pick-up kilat dan COD' },
-            { id: 'gosend', name: 'GoSend Instant', desc: 'Pengiriman instan roda dua radius 40km' },
-          ].map((c) => (
-            <label
-              key={c.id}
-              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
-                selectedCourier === c.id
-                  ? 'border-sky-500 bg-sky-500/10 text-foreground ring-1 ring-sky-500/30'
-                  : 'border-border bg-card hover:bg-muted/50 text-muted-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="basic_courier"
-                value={c.id}
-                checked={selectedCourier === c.id}
-                onChange={() => setSelectedCourier(c.id)}
-                className="mt-0.5 text-sky-600"
-              />
-              <div className="min-w-0">
-                <div className="font-bold text-xs text-foreground">{c.name}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">{c.desc}</div>
-              </div>
-            </label>
-          ))}
+        <div>
+          <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">Pilih Ekspedisi Dasar</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {[
+              { id: 'jne', name: 'JNE Express (Reguler & YES)', desc: 'Ekspedisi reguler antar-kota seluruh Indonesia' },
+              { id: 'sicepat', name: 'SiCepat Ekspres', desc: 'Layanan pick-up kilat dan COD' },
+              { id: 'gosend', name: 'GoSend Instant', desc: 'Pengiriman instan roda dua radius 40km' },
+            ].map((c) => (
+              <label
+                key={c.id}
+                className={`p-3 rounded-lg border flex items-start gap-2.5 cursor-pointer transition ${
+                  selectedCourier === c.id
+                    ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-950/30 text-slate-900 dark:text-slate-100 ring-1 ring-sky-500/30'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="basic_courier"
+                  value={c.id}
+                  checked={selectedCourier === c.id}
+                  onChange={() => setSelectedCourier(c.id)}
+                  className="mt-0.5 text-sky-600"
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold text-xs text-slate-900 dark:text-slate-100">{c.name}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{c.desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1287,74 +1298,74 @@ export default function SettingsTab({
 
   // ─── 5. SUB-MENU: KEAMANAN & AKUN ────────────────────────────────────────────
   const securitySubMenu = (
-    <div className="space-y-5 text-xs font-medium text-muted-foreground">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
 
       {/* ── Nomor WhatsApp Pendaftaran (READ-ONLY - Audit Trail CFO) ── */}
-      <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
-        <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-bold">
+      <div className="p-4 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 rounded-xl space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-amber-900 dark:text-amber-200 font-semibold">
           <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
           <span>Nomor WhatsApp Pendaftaran</span>
-          <span className="ml-auto text-[9px] font-black tracking-wide text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] font-bold tracking-wide text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-full">
             TERKUNCI PERMANEN
           </span>
         </div>
-        <p className="text-[11px] text-amber-900/80 dark:text-amber-200/90 leading-relaxed">
+        <p className="text-[11px] text-amber-900/90 dark:text-amber-200/90 leading-relaxed">
           Nomor WhatsApp yang digunakan saat pendaftaran toko bersifat <strong>imutable</strong> dan tidak dapat diubah sendiri.
           Perubahan hanya dapat dilakukan oleh Tim BoonTrack melalui proses verifikasi identitas resmi (±3 hari kerja) demi menjaga integritas audit trail keuangan.
         </p>
-        <div className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border">
-          <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+        <div className="flex items-center gap-3 p-3 bg-white dark:bg-[#0D1117] rounded-lg border border-slate-200 dark:border-slate-800">
+          <Phone className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
           <div className="min-w-0">
-            <p className="text-[10px] text-muted-foreground mb-0.5">Nomor Registrasi (Tidak dapat diubah)</p>
-            <p className="font-mono font-bold text-foreground text-xs">{storeWhatsapp || '—'}</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Nomor Registrasi (Tidak dapat diubah)</p>
+            <p className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">{storeWhatsapp || '—'}</p>
           </div>
         </div>
-        <div className="flex items-start gap-2 text-[10px] text-amber-800 dark:text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 text-[11px] text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-800/60 rounded-lg px-3 py-2">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
           <span>Perlu mengubah nomor? Hubungi <strong>support@boontrack.com</strong> dengan subjek: <em>Perubahan Nomor Registrasi — {tenantSlug}</em></span>
         </div>
       </div>
 
       {/* ── Ganti Email Akun ── */}
-      <div className="p-4 bg-muted/40 border border-border rounded-2xl space-y-3">
-        <div className="flex items-center gap-2 font-bold text-foreground">
+      <div className="p-4 bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+        <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <span>Ganti Email Akun</span>
         </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Masukkan alamat email baru. Link verifikasi akan dikirim ke <strong>kedua alamat email</strong> (lama &amp; baru) untuk konfirmasi perubahan.
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          Masukkan alamat email baru. Link verifikasi akan dikirim ke <strong className="text-slate-800 dark:text-slate-200">kedua alamat email</strong> (lama &amp; baru) untuk konfirmasi perubahan.
         </p>
         {securityMsg && (
-          <div className={`flex items-start gap-2 text-[11px] font-semibold px-3 py-2 rounded-lg ${
+          <div className={`flex items-start gap-2 text-xs font-semibold px-3 py-2 rounded-lg border ${
             securityMsg.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-              : 'bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800/70'
+              : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/60'
           }`}>
             {securityMsg.type === 'success'
-              ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              : <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+              : <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />}
             <span>{securityMsg.text}</span>
           </div>
         )}
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block mb-1 font-semibold text-foreground">Email Baru</label>
+            <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">Email Baru</label>
             <input
               type="email"
               value={securityEmail}
               onChange={(e) => { setSecurityEmail(e.target.value); setSecurityMsg(null); }}
-              className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-blue-600"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-blue-600"
               placeholder="email-baru@toko.com"
               autoComplete="off"
             />
           </div>
           <div>
-            <label className="block mb-1 font-semibold text-foreground">Konfirmasi Email Baru</label>
+            <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">Konfirmasi Email Baru</label>
             <input
               type="email"
               value={securityEmailConfirm}
               onChange={(e) => { setSecurityEmailConfirm(e.target.value); setSecurityMsg(null); }}
-              className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-blue-600"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-blue-600"
               placeholder="ulangi-email-baru@toko.com"
               autoComplete="off"
             />
@@ -1391,7 +1402,7 @@ export default function SettingsTab({
               setIsSavingEmail(false);
             }
           }}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95"
+          className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.98]"
         >
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>{isSavingEmail ? 'Mengirim link verifikasi...' : 'Kirim Verifikasi Ganti Email'}</span>
@@ -1399,17 +1410,17 @@ export default function SettingsTab({
       </div>
 
       {/* ── Atur / Ganti PIN 6-Digit ── */}
-      <div className="p-4 bg-muted/40 border border-border rounded-2xl space-y-3">
-        <div className="flex items-center gap-2 font-bold text-foreground">
+      <div className="p-4 bg-white dark:bg-[#0D1117] border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+        <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <KeyRound className="w-4 h-4 text-violet-600 dark:text-violet-400" />
           <span>PIN Keamanan 6-Digit</span>
         </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
           PIN digunakan sebagai lapisan verifikasi tambahan untuk aksi sensitif di dashboard (penarikan saldo, konfirmasi settlement). Disimpan terenkripsi menggunakan Argon2id di server.
         </p>
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block mb-1 font-semibold text-foreground">PIN Baru (6 Digit)</label>
+            <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">PIN Baru (6 Digit)</label>
             <div className="relative">
               <input
                 type={showPin ? 'text' : 'password'}
@@ -1417,145 +1428,147 @@ export default function SettingsTab({
                 maxLength={6}
                 value={securityPin}
                 onChange={(e) => { setSecurityPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setSecurityMsg(null); }}
-                className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-violet-600 font-mono tracking-widest pr-10"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-violet-600 font-mono tracking-widest pr-10"
                 placeholder="••••••"
                 autoComplete="new-password"
               />
               <button
                 type="button"
                 onClick={() => setShowPin(!showPin)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
               >
                 {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
           <div>
-            <label className="block mb-1 font-semibold text-foreground">Konfirmasi PIN Baru</label>
+            <label className="block mb-1.5 font-semibold text-slate-900 dark:text-slate-100">Konfirmasi PIN Baru</label>
             <input
               type="password"
               inputMode="numeric"
               maxLength={6}
               value={securityPinConfirm}
               onChange={(e) => { setSecurityPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6)); setSecurityMsg(null); }}
-              className="w-full px-3.5 py-2.5 border border-border bg-background text-foreground rounded-xl text-xs focus:outline-hidden focus:border-violet-600 font-mono tracking-widest"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg text-xs focus:outline-hidden focus:border-violet-600 font-mono tracking-widest"
               placeholder="••••••"
               autoComplete="new-password"
             />
           </div>
         </div>
-        <button
-          type="button"
-          disabled={isSavingPin || securityPin.length !== 6 || !securityPinConfirm}
-          onClick={async () => {
-            setSecurityMsg(null);
-            if (securityPin.length !== 6) {
-              setSecurityMsg({ type: 'error', text: 'PIN harus tepat 6 digit angka.' });
-              return;
-            }
-            if (securityPin !== securityPinConfirm) {
-              setSecurityMsg({ type: 'error', text: 'PIN dan konfirmasi tidak cocok.' });
-              return;
-            }
-            setIsSavingPin(true);
-            try {
-              const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/security/pin`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin: securityPin }),
-              });
-              const data = await res.json().catch(() => ({}));
-              if (!res.ok) throw new Error(data.error || data.message || 'Gagal menyimpan PIN.');
-              setSecurityMsg({ type: 'success', text: 'PIN berhasil diperbarui. Berlaku untuk sesi berikutnya.' });
-              setSecurityPin('');
-              setSecurityPinConfirm('');
-            } catch (err: any) {
-              setSecurityMsg({ type: 'error', text: err.message });
-            } finally {
-              setIsSavingPin(false);
-            }
-          }}
-          className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95"
-        >
-          <KeyRound className="w-3.5 h-3.5" />
-          <span>{isSavingPin ? 'Menyimpan PIN...' : 'Simpan PIN Baru'}</span>
-        </button>
-        <p className="text-[10px] text-muted-foreground text-center">
-          PIN disimpan terenkripsi (Argon2id) dan tidak pernah disimpan dalam bentuk teks biasa.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+          <button
+            type="button"
+            disabled={isSavingPin || securityPin.length !== 6 || !securityPinConfirm}
+            onClick={async () => {
+              setSecurityMsg(null);
+              if (securityPin.length !== 6) {
+                setSecurityMsg({ type: 'error', text: 'PIN harus tepat 6 digit angka.' });
+                return;
+              }
+              if (securityPin !== securityPinConfirm) {
+                setSecurityMsg({ type: 'error', text: 'PIN dan konfirmasi tidak cocok.' });
+                return;
+              }
+              setIsSavingPin(true);
+              try {
+                const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/security/pin`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ pin: securityPin }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || data.message || 'Gagal menyimpan PIN.');
+                setSecurityMsg({ type: 'success', text: 'PIN berhasil diperbarui. Berlaku untuk sesi berikutnya.' });
+                setSecurityPin('');
+                setSecurityPinConfirm('');
+              } catch (err: any) {
+                setSecurityMsg({ type: 'error', text: err.message });
+              } finally {
+                setIsSavingPin(false);
+              }
+            }}
+            className="w-full sm:w-auto px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.98]"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>{isSavingPin ? 'Menyimpan PIN...' : 'Simpan PIN Baru'}</span>
+          </button>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Disimpan terenkripsi (Argon2id), tidak pernah disimpan sebagai teks biasa.
+          </p>
+        </div>
       </div>
     </div>
   );
 
   // 6. SUB-MENU: PROGRAM RESELLER TOKO
   const resellerSubMenu = (
-    <div className="space-y-4 text-xs font-medium text-muted-foreground">
-      <div className="p-4 bg-muted/40 rounded-2xl border border-border space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-foreground">
+    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+      <div className="p-4 bg-white dark:bg-[#0D1117] rounded-xl border border-slate-200 dark:border-slate-800 space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
             <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <span>Program Reseller &amp; Distribusi Toko</span>
           </div>
           {isResellerEnabled ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
               <CheckCircle2 className="w-3.5 h-3.5" />
               Aktif &amp; Terverifikasi
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
               <AlertCircle className="w-3.5 h-3.5" />
               Belum Diaktifkan
             </span>
           )}
         </div>
 
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
           Bangun jaringan mitra reseller untuk memperluas distribusi produk toko Anda dengan pelacakan parameter <code className="text-indigo-600 dark:text-indigo-400 font-mono">?r=[KODE]</code> secara non-kustodial.
         </p>
 
         {isResellerEnabled ? (
-          <div className="p-3 bg-card rounded-xl border border-border space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Status Kepatuhan Hukum:</span>
+          <div className="p-3 bg-slate-50/70 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-slate-500 dark:text-slate-400">Status Kepatuhan Hukum:</span>
               <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" /> ToS Disetujui
               </span>
             </div>
             {resellerTosAcceptedAt && (
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Waktu Persetujuan:</span>
-                <span className="font-mono text-foreground">{new Date(resellerTosAcceptedAt).toLocaleString('id-ID')}</span>
+                <span className="font-mono text-slate-900 dark:text-slate-100 tabular-nums">{new Date(resellerTosAcceptedAt).toLocaleString('id-ID')}</span>
               </div>
             )}
-            <div className="pt-2 border-t border-border flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Prinsip Keuangan:</span>
-              <span className="text-[11px] font-medium text-foreground">Non-Custodial (BoonTrack tidak menampung dana / no escrow)</span>
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Prinsip Keuangan:</span>
+              <span className="text-[11px] font-medium text-slate-900 dark:text-slate-100">Non-Custodial (BoonTrack tidak menampung dana / no escrow)</span>
             </div>
           </div>
         ) : (
           <div className="space-y-3 pt-1">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
-              <div className="p-2.5 rounded-xl border border-border bg-card">
-                <div className="text-[10px] text-muted-foreground font-bold uppercase">Starter</div>
-                <div className="text-xs font-bold text-foreground mt-0.5">Hingga 25 Reseller</div>
-                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-1">Rp 79.000 / bln</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center">
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Starter</div>
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">Hingga 25 Reseller</div>
+                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold font-mono tabular-nums mt-1">Rp 79.000 / bln</div>
               </div>
-              <div className="p-2.5 rounded-xl border border-indigo-500/40 bg-indigo-500/10">
-                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase">Scale</div>
-                <div className="text-xs font-bold text-foreground mt-0.5">Hingga 100 Reseller</div>
-                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-1">Rp 149.000 / bln</div>
+              <div className="p-3 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/80 dark:bg-indigo-950/30">
+                <div className="text-[10px] text-indigo-700 dark:text-indigo-300 font-bold uppercase">Scale</div>
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">Hingga 100 Reseller</div>
+                <div className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold font-mono tabular-nums mt-1">Rp 149.000 / bln</div>
               </div>
-              <div className="p-2.5 rounded-xl border border-border bg-card">
-                <div className="text-[10px] text-muted-foreground font-bold uppercase">Unlimited</div>
-                <div className="text-xs font-bold text-foreground mt-0.5">Reseller Tanpa Batas</div>
-                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">Rp 249.000 / bln</div>
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Unlimited</div>
+                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5">Reseller Tanpa Batas</div>
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold font-mono tabular-nums mt-1">Rp 249.000 / bln</div>
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => setIsComplianceModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer active:scale-95"
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer active:scale-[0.98]"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>Verifikasi &amp; Buka Kepatuhan Hukum Reseller</span>
@@ -1604,22 +1617,22 @@ export default function SettingsTab({
           onClick={handleScrollLeft}
           title="Geser tab ke kiri"
           aria-label="Scroll tab ke kiri"
-          className="absolute -left-2.5 z-20 p-1.5 rounded-full bg-card text-foreground shadow-md border border-border hover:bg-muted transition-all cursor-pointer flex items-center justify-center active:scale-90"
+          className="absolute -left-2.5 z-20 p-1.5 rounded-full bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-center active:scale-90"
         >
-          <ChevronLeft className="w-4 h-4 text-foreground stroke-[2.5]" />
+          <ChevronLeft className="w-4 h-4 text-slate-700 dark:text-slate-200 stroke-[2.5]" />
         </button>
       )}
 
       {/* Visual Fade / Shadow Indikator Kiri */}
       {canScrollLeft && (
-        <div className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-r from-background/90 via-background/40 to-transparent rounded-l-2xl z-10" />
+        <div className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-r from-white/95 via-white/40 dark:from-[#0D1117]/95 dark:via-[#0D1117]/40 to-transparent rounded-l-2xl z-10" />
       )}
 
       {/* Container Tab Horizontal dengan onWheel dan Smooth Scroll */}
       <div
         ref={tabContainerRef}
         onWheel={handleTabWheel}
-        className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-2xl overflow-x-auto no-scrollbar w-full scroll-smooth border border-border/40"
+        className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-x-auto no-scrollbar w-full scroll-smooth border border-slate-200 dark:border-slate-800"
       >
         {subMenuTabs.map((tab) => {
           const Icon = tab.icon;
@@ -1631,11 +1644,11 @@ export default function SettingsTab({
               onClick={() => setActiveSubMenu(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 isActive
-                  ? 'bg-card text-foreground shadow-xs border border-border'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/80'
+                  ? 'bg-white dark:bg-[#0D1117] text-slate-900 dark:text-white shadow-xs border border-slate-200 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/70'
               }`}
             >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} />
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`} />
               <span>{tab.label}</span>
             </button>
           );
@@ -1644,7 +1657,7 @@ export default function SettingsTab({
 
       {/* Visual Fade / Shadow Indikator Kanan */}
       {canScrollRight && (
-        <div className="absolute right-0 top-0 bottom-0 w-10 pointer-events-none bg-gradient-to-l from-background/90 via-background/40 to-transparent rounded-r-2xl z-10" />
+        <div className="absolute right-0 top-0 bottom-0 w-10 pointer-events-none bg-gradient-to-l from-white/95 via-white/40 dark:from-[#0D1117]/95 dark:via-[#0D1117]/40 to-transparent rounded-r-2xl z-10" />
       )}
 
       {/* Tombol Navigasi Panah Kanan (>) */}
@@ -1654,9 +1667,9 @@ export default function SettingsTab({
           onClick={handleScrollRight}
           title="Geser tab ke kanan"
           aria-label="Scroll tab ke kanan"
-          className="absolute -right-2.5 z-20 p-1.5 rounded-full bg-card text-foreground shadow-md border border-border hover:bg-muted transition-all cursor-pointer flex items-center justify-center active:scale-90"
+          className="absolute -right-2.5 z-20 p-1.5 rounded-full bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-center active:scale-90"
         >
-          <ChevronRight className="w-4 h-4 text-foreground stroke-[2.5]" />
+          <ChevronRight className="w-4 h-4 text-slate-700 dark:text-slate-200 stroke-[2.5]" />
         </button>
       )}
     </div>
@@ -1664,12 +1677,12 @@ export default function SettingsTab({
 
   if (isModal) {
     return (
-      <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-        <div className="bg-card text-foreground rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-border my-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-border">
+      <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="bg-white dark:bg-[#0D1117] text-slate-900 dark:text-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-auto">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
             <div>
-              <h3 className="font-bold text-base text-foreground">Pengaturan Toko</h3>
-              <p className="text-[11px] text-muted-foreground">
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">Pengaturan Toko</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {isCheckoutLite
                   ? 'Khusus 4 sub-menu akses tier Checkout Lite'
                   : 'Kelola identitas, WhatsApp, pembayaran, dan logistik toko'}
@@ -1679,7 +1692,8 @@ export default function SettingsTab({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-muted-foreground hover:text-foreground font-bold p-1 text-sm rounded-md cursor-pointer"
+                className="text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 font-bold p-1.5 text-sm rounded-lg transition cursor-pointer"
+                aria-label="Tutup Pengaturan Toko"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1690,12 +1704,12 @@ export default function SettingsTab({
             {subMenuNavigation}
             {renderActiveSubMenuContent()}
 
-            <div className="flex items-center justify-end gap-2 pt-4 mt-4 border-t border-border">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
               {onClose && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   Tutup
                 </button>
@@ -1705,12 +1719,12 @@ export default function SettingsTab({
                 disabled={isSavingStore || isSubscriptionExpired}
                 onClick={handleSave}
                 title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir (Read-only)' : undefined}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                className={`w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-xs ${
                   isSubscriptionExpired
-                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                     : isSavingStore
                     ? 'bg-blue-400 text-white cursor-wait'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-[0.98]'
                 }`}
               >
                 {isSubscriptionExpired ? <Lock className="w-3.5 h-3.5 text-amber-500" /> : <Save className="w-3.5 h-3.5" />}
@@ -1724,27 +1738,29 @@ export default function SettingsTab({
   }
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-4xl mx-auto w-full space-y-6 text-foreground">
-      <div className="border-b border-border pb-4">
+    <div className="flex-1 px-4 py-5 md:px-6 md:py-6 overflow-y-auto max-w-5xl mx-auto w-full space-y-5 text-slate-900 dark:text-slate-100">
+      <div className="border-b border-slate-200 dark:border-slate-800 pb-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-lg font-black text-foreground flex items-center gap-2">
-            <Store className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Store className="w-4 h-4" />
+            </span>
             <span>Pengaturan Toko</span>
           </h2>
           {isCheckoutLite && (
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
               Tier: Checkout Lite (4 Sub-menu)
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           Kelola profil toko, nomor WhatsApp CS, Payment &amp; QRIS resmi, dan Basic Shipping.
         </p>
       </div>
 
       {isSubscriptionExpired && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-4 text-amber-700 dark:text-amber-300 animate-fadeIn">
-          <div className="flex items-center gap-2.5 text-xs font-bold">
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-800 dark:text-amber-200 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
             <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>Masa trial telah habis. Dashboard dalam mode baca-saja. Perubahan pengaturan toko dinonaktifkan.</span>
           </div>
@@ -1752,7 +1768,7 @@ export default function SettingsTab({
             <button
               type="button"
               onClick={onUpgrade}
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer active:scale-95"
+              className="w-full sm:w-auto px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition shadow-xs cursor-pointer active:scale-[0.98]"
             >
               Upgrade Paket
             </button>
@@ -1760,22 +1776,22 @@ export default function SettingsTab({
         </div>
       )}
 
-      <div className="bg-card text-foreground rounded-3xl border border-border p-6 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-[#0D1117] text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs space-y-4">
         {subMenuNavigation}
         {renderActiveSubMenuContent()}
 
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
             disabled={isSavingStore || isSubscriptionExpired}
             onClick={handleSave}
             title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir (Read-only)' : undefined}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+            className={`w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-xs ${
               isSubscriptionExpired
-                ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                 : isSavingStore
                 ? 'bg-blue-400 text-white cursor-wait'
-                : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+                : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-[0.98]'
             }`}
           >
             {isSubscriptionExpired ? <Lock className="w-3.5 h-3.5 text-amber-500" /> : <Save className="w-3.5 h-3.5" />}
