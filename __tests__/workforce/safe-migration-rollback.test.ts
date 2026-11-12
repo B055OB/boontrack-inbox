@@ -20,6 +20,9 @@ import { Client } from 'pg';
 import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
+  if (process.env.DISPOSABLE_POSTGRES_URL) {
+    return process.env.DISPOSABLE_POSTGRES_URL.trim();
+  }
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
   let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
 
@@ -63,9 +66,50 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
   const down012Sql = readMigrationSql('012_create_workforce_revocation_and_authz_versioning.down.sql');
   const up013Sql = readMigrationSql('013_attendance_atomic_state_rpc.sql');
   const down013Sql = readMigrationSql('013_attendance_atomic_state_rpc.down.sql');
+  const up014Sql = readMigrationSql('014_checkpoint_scan_atomic_rpc.sql');
+  const down014Sql = readMigrationSql('014_checkpoint_scan_atomic_rpc.down.sql');
+  const up015Sql = readMigrationSql('015_attendance_actor_binding_and_role_allowlist.sql');
+  const down015Sql = readMigrationSql('015_attendance_actor_binding_and_role_allowlist.down.sql');
+  const up016Sql = readMigrationSql('016_bwm_domain_authorization_isolation.sql');
+  const down016Sql = readMigrationSql('016_bwm_domain_authorization_isolation.down.sql');
 
   async function ensureFullMigrationsRestored(pgClient: Client): Promise<void> {
     await pgClient.query('RESET ROLE');
+    const has016 = await pgClient.query(
+      "SELECT to_regprocedure('workforce_staging.is_trusted_commerce_member(text,text)') IS NOT NULL AS exists"
+    );
+    if (has016.rows[0].exists) {
+      await pgClient.query(down016Sql);
+    }
+    const has015 = await pgClient.query(
+      "SELECT to_regprocedure('workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)') IS NOT NULL AS exists"
+    );
+    if (has015.rows[0].exists) {
+      await pgClient.query(down015Sql);
+    }
+    const has014 = await pgClient.query(
+      "SELECT to_regprocedure('workforce_staging.record_checkpoint_scan_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,numeric,text,text)') IS NOT NULL AS exists"
+    );
+    if (has014.rows[0].exists) {
+      await pgClient.query(down014Sql);
+    }
+    const has013 = await pgClient.query(
+      "SELECT to_regprocedure('workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)') IS NOT NULL AS exists"
+    );
+    if (has013.rows[0].exists) {
+      await pgClient.query(down013Sql);
+    }
+    const has012 = await pgClient.query(`
+      SELECT count(*)::int AS cnt
+      FROM information_schema.columns
+      WHERE table_schema = 'workforce_staging'
+        AND table_name IN ('tenants', 'tenant_memberships')
+        AND column_name = 'authz_version'
+    `);
+    if (has012.rows[0].cnt > 0) {
+      await pgClient.query('DROP VIEW IF EXISTS public.tenant_memberships');
+      await pgClient.query(down012Sql);
+    }
     await pgClient.query(up009Sql);
     await pgClient.query(upSql);
 
@@ -83,12 +127,19 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
 
     await pgClient.query(up012Sql);
     await pgClient.query(up013Sql);
+    await pgClient.query(up014Sql);
+    await pgClient.query(up015Sql);
+    await pgClient.query(up016Sql);
   }
 
   beforeAll(async () => {
     client = new Client({ connectionString: getDatabaseConnectionString() });
     await client.connect();
     await client.query('SET search_path TO workforce_staging, public');
+    await ensureFullMigrationsRestored(client);
+    await client.query(
+      "DELETE FROM workforce_staging.products WHERE id IN ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')"
+    );
   }, 30000);
 
   afterAll(async () => {
@@ -860,8 +911,15 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     await client.query('RESET ROLE');
 
     try {
-      // Symmetrical FK-safe rollback order: 013 -> 012 -> 011 -> 010 -> 009
+      // Symmetrical FK-safe rollback order: 016 -> 015 -> 014 -> 013 -> 012 -> 011 -> 010 -> 009
+      // Note: Test 3 re-applied 010 UP while 012 (authz_version) was active, causing 010's
+      // `SELECT * FROM workforce_staging.tenant_memberships` view to bind to 012's column.
+      // Drop the 010 view prior to 012 DOWN so 012->011->010->009 rollback is clean.
+      await expect(client.query(down016Sql)).resolves.toBeDefined();
+      await expect(client.query(down015Sql)).resolves.toBeDefined();
+      await expect(client.query(down014Sql)).resolves.toBeDefined();
       await expect(client.query(down013Sql)).resolves.toBeDefined();
+      await client.query('DROP VIEW IF EXISTS public.tenant_memberships');
       await expect(client.query(down012Sql)).resolves.toBeDefined();
       await expect(client.query(down011Sql)).resolves.toBeDefined();
       await expect(client.query(downSql)).resolves.toBeDefined();
@@ -879,11 +937,11 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
       }
       expect(gucBlocked).toBe(true);
     } finally {
-      // Symmetrical re-migration UP (009 -> 013) even if an assertion fails mid-test
+      // Symmetrical re-migration UP (009 -> 015) even if an assertion fails mid-test
       await ensureFullMigrationsRestored(client);
     }
 
-    // Verify database views and operational RPC restored
+    // Verify database views and operational RPCs restored (13-arg attendance + 12-arg scan, 0 legacy overloads)
     const viewCheck = await client.query(`
       SELECT table_name FROM information_schema.views 
       WHERE table_schema = 'public' 
@@ -892,11 +950,19 @@ describe('BWM Gate 1 Round 3H — Safe Migration Rollback (Blocker F)', () => {
     expect(viewCheck.rows.length).toBe(5);
 
     const rpcCheck = await client.query(`
-      SELECT count(*)::int AS cnt
-      FROM pg_proc p
-      JOIN pg_namespace n ON p.pronamespace = n.oid
-      WHERE n.nspname = 'workforce_staging' AND p.proname = 'record_attendance_atomic'
+      SELECT
+        to_regprocedure('workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)') IS NOT NULL AS has_att_13,
+        to_regprocedure('workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)') IS NOT NULL AS has_att_12,
+        to_regprocedure('workforce_staging.record_checkpoint_scan_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,numeric,text,text)') IS NOT NULL AS has_scan_12,
+        to_regprocedure('workforce_staging.is_trusted_commerce_member(text,text)') IS NOT NULL AS has_commerce_helper,
+        to_regprocedure('workforce_staging.is_trusted_bwm_operational_reader(text)') IS NOT NULL AS has_bwm_reader_helper
     `);
-    expect(rpcCheck.rows[0].cnt).toBe(1);
+    expect(rpcCheck.rows[0]).toEqual({
+      has_att_13: true,
+      has_att_12: false,
+      has_scan_12: true,
+      has_commerce_helper: true,
+      has_bwm_reader_helper: true,
+    });
   });
 });

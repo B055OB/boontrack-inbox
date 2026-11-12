@@ -166,7 +166,17 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       SELECT count(*)::int AS cnt
       FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
-      WHERE n.nspname = 'workforce_staging' AND p.proname = 'record_attendance_atomic';
+      WHERE n.nspname = 'workforce_staging'
+        AND p.proname = 'record_attendance_atomic'
+        AND p.pronargs = 13;
+    `);
+    const scanRpcCheck = await client.query(`
+      SELECT count(*)::int AS cnt
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname = 'workforce_staging'
+        AND p.proname = 'record_checkpoint_scan_atomic'
+        AND p.pronargs = 12;
     `);
     const seqColCheck = await client.query(`
       SELECT count(*)::int AS cnt
@@ -180,11 +190,25 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       rootDir,
       'packages/workforce-billing/schema/migrations/013_attendance_atomic_state_rpc.sql'
     );
+    const scanRpcMigrationPath = path.resolve(
+      rootDir,
+      'packages/workforce-billing/schema/migrations/014_checkpoint_scan_atomic_rpc.sql'
+    );
+    const actorBindingMigrationPath = path.resolve(
+      rootDir,
+      'packages/workforce-billing/schema/migrations/015_attendance_actor_binding_and_role_allowlist.sql'
+    );
 
     if (tblCheck.rows[0].cnt === 7) {
       await client.query(`GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;`);
-      if (rpcCheck.rows[0].cnt === 0 || seqColCheck.rows[0].cnt === 0) {
+      if (seqColCheck.rows[0].cnt === 0) {
         await client.query(fs.readFileSync(rpcMigrationPath, 'utf8'));
+      }
+      if (scanRpcCheck.rows[0].cnt === 0) {
+        await client.query(fs.readFileSync(scanRpcMigrationPath, 'utf8'));
+      }
+      if (rpcCheck.rows[0].cnt === 0) {
+        await client.query(fs.readFileSync(actorBindingMigrationPath, 'utf8'));
       }
       return;
     }
@@ -229,6 +253,8 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       path.resolve(rootDir, 'packages/workforce-billing/schema/migrations/011_create_workforce_operational_tables.sql'),
       path.resolve(rootDir, 'packages/workforce-billing/schema/migrations/012_create_workforce_revocation_and_authz_versioning.sql'),
       rpcMigrationPath,
+      scanRpcMigrationPath,
+      actorBindingMigrationPath,
     ];
     for (const filePath of sqlFiles) {
       await client.query(fs.readFileSync(filePath, 'utf8'));
@@ -1178,14 +1204,15 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         await conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
         const res = await conn.query(
           `SELECT workforce_staging.record_attendance_atomic(
-             $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-             $5::text, $6::timestamptz, $7::numeric, $8::numeric,
-             $9::boolean, $10::text, $11::text, $12::text
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+             $6::text, $7::timestamptz, $8::numeric, $9::numeric,
+             $10::boolean, $11::text, $12::text, $13::text
            ) AS result`,
           [
             crypto.randomUUID(),
             tenantAlphaId,
             personnelMultiConnId,
+            officerMultiConnUserId,
             facilityAlphaActiveId,
             eventType,
             new Date().toISOString(),
@@ -1248,17 +1275,30 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       ).rows[0].cnt;
       expect(postRetryCnt).toBe(1);
 
-      // 8d. Direct execution of Migration 013 RPC by anon / authenticated MUST fail with 42501
+      // 8d. Direct execution of Migration 015 13-arg RPC by anon / authenticated MUST fail with 42501,
+      // and legacy 12-arg overload from Migration 013 MUST be dropped (NULL in to_regprocedure).
+      const legacy12Check = await pgClient.query(
+        `SELECT to_regprocedure('workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)') AS reg`
+      );
+      expect(legacy12Check.rows[0].reg).toBeNull();
+
       for (const unprivilegedRole of ['anon', 'authenticated']) {
         await connA.query(`SET ROLE ${unprivilegedRole}`);
         let errCode = '';
         try {
           await connA.query(
             `SELECT workforce_staging.record_attendance_atomic(
-               $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-               'CLOCK_IN', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $5::text
+               $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+               'CLOCK_IN', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
              )`,
-            [crypto.randomUUID(), tenantAlphaId, personnelMultiConnId, facilityAlphaActiveId, `mconn-unpriv-${unprivilegedRole}-${ts}`]
+            [
+              crypto.randomUUID(),
+              tenantAlphaId,
+              personnelMultiConnId,
+              officerMultiConnUserId,
+              facilityAlphaActiveId,
+              `mconn-unpriv-${unprivilegedRole}-${ts}`,
+            ]
           );
         } catch (err: any) {
           errCode = err.code;
@@ -1325,10 +1365,10 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       // Younger transaction (tx2) locks & commits CLOCK_IN first -> state_seq = 1
       const r2In = await tx2Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_IN', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_IN', $6::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $7::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, clientNewerIso, `ord-9a-in-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, clientNewerIso, `ord-9a-in-${ts}`]
       );
       await tx2Conn.query('COMMIT');
       tx2InTx = false;
@@ -1338,10 +1378,10 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       // Older transaction (tx1) locks & commits CLOCK_OUT second with older p_timestamp -> state_seq = 2
       const r1Out = await tx1Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_OUT', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_OUT', $6::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $7::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, clientOlderIso, `ord-9a-out-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, clientOlderIso, `ord-9a-out-${ts}`]
       );
       await tx1Conn.query('COMMIT');
       tx1InTx = false;
@@ -1360,10 +1400,10 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       );
       const r1NextIn = await tx1Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_IN', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_IN', $6::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $7::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, new Date(Date.now() + 7200_000).toISOString(), `ord-9b-in-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, new Date(Date.now() + 7200_000).toISOString(), `ord-9b-in-${ts}`]
       );
       expect(r1NextIn.rows[0].result.outcome).toBe('CREATED');
       expect(r1NextIn.rows[0].result.state_seq).toBe(3);
@@ -1389,10 +1429,10 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
       const pTx2Lock = tx2Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_OUT', $5::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_OUT', $6::timestamptz, -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $7::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, new Date(Date.now() - 7200_000).toISOString(), `ord-9b-out-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, new Date(Date.now() - 7200_000).toISOString(), `ord-9b-out-${ts}`]
       );
 
       // 4. Empirically verify tx2Pid is blocked on Lock in PostgreSQL AND pTx2Lock remains pending while tx1Conn holds the lock.
@@ -1437,20 +1477,20 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       await tx2Conn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
       const invalidDupOut = await tx2Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_OUT', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $5::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_OUT', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, `ord-9c-bad-out-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, `ord-9c-bad-out-${ts}`]
       );
       expect(invalidDupOut.rows[0].result.outcome).toBe('INVALID_STATE_TRANSITION');
       expect(invalidDupOut.rows[0].result.current_state).toBe('CLOCK_OUT');
 
       const validNextIn = await tx2Conn.query(
         `SELECT workforce_staging.record_attendance_atomic(
-           $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-           'CLOCK_IN', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $5::text
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           'CLOCK_IN', NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
          ) AS result`,
-        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, facilityAlphaActiveId, `ord-9c-good-in-${ts}`]
+        [crypto.randomUUID(), tenantAlphaId, personnelOrderedId, officerOrderedUserId, facilityAlphaActiveId, `ord-9c-good-in-${ts}`]
       );
       await tx2Conn.query('COMMIT');
       tx2InTx = false;
@@ -1493,6 +1533,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
     const callDirectRpc = async (params: {
       tenantId: string;
       personnelId: string;
+      expectedUserId: string;
       facilityId: string | null;
       type?: 'CLOCK_IN' | 'CLOCK_OUT';
       keySuffix: string;
@@ -1503,13 +1544,14 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         await directConn.query("SET LOCAL request.jwt.claim.role = 'service_role'");
         const res = await directConn.query(
           `SELECT workforce_staging.record_attendance_atomic(
-             $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-             $5::text, NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $6::text
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+             $6::text, NOW(), -6.2088, 106.8456, true, 'NONE_UNVERIFIED', NULL, $7::text
            ) AS result`,
           [
             crypto.randomUUID(),
             params.tenantId,
             params.personnelId,
+            params.expectedUserId,
             params.facilityId,
             params.type || 'CLOCK_IN',
             `direct-rpc-${params.keySuffix}-${ts}`,
@@ -1524,18 +1566,30 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
     };
 
     try {
-      // 10a. Direct RPC negative facility & role checks bypassing app layer
+      // 10a. Direct RPC negative facility, role & actor-binding checks bypassing app layer
       const fieldDirectSwitch = await callDirectRpc({
         tenantId: tenantAlphaId,
         personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
         facilityId: facilityAlphaSecondaryActiveId,
         keySuffix: 'field-switch',
       });
       expect(fieldDirectSwitch.outcome).toBe('FACILITY_ASSIGNMENT_FORBIDDEN');
 
+      // HIGH-03 Direct RPC actor-binding mismatch: active member B (supervisorAlphaUserId) cannot claim personnelAlphaId (officerAlphaUserId)
+      const actorMismatchAtt = await callDirectRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: supervisorAlphaUserId,
+        facilityId: facilityAlphaActiveId,
+        keySuffix: 'actor-mismatch',
+      });
+      expect(actorMismatchAtt.outcome).toBe('MEMBERSHIP_REVOKED');
+
       const supDirectCrossTenant = await callDirectRpc({
         tenantId: tenantAlphaId,
         personnelId: personnelSupervisorId,
+        expectedUserId: supervisorAlphaUserId,
         facilityId: facilityBetaActiveId,
         keySuffix: 'sup-cross-tenant',
       });
@@ -1544,6 +1598,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       const inactiveDirectFac = await callDirectRpc({
         tenantId: tenantAlphaId,
         personnelId: personnelSupervisorId,
+        expectedUserId: supervisorAlphaUserId,
         facilityId: facilityAlphaInactiveId,
         keySuffix: 'sup-dead-fac',
       });
@@ -1553,6 +1608,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       const supDirectSwitch = await callDirectRpc({
         tenantId: tenantAlphaId,
         personnelId: personnelSupervisorId,
+        expectedUserId: supervisorAlphaUserId,
         facilityId: facilityAlphaSecondaryActiveId,
         keySuffix: 'sup-alpha-sec',
       });
@@ -1561,6 +1617,7 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
       const ownerDirectSwitch = await callDirectRpc({
         tenantId: tenantAlphaId,
         personnelId: personnelOwnerId,
+        expectedUserId: ownerAlphaUserId,
         facilityId: facilityAlphaSecondaryActiveId,
         keySuffix: 'owner-alpha-sec',
       });
@@ -1597,6 +1654,15 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
           `INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
            VALUES ($1, $2, $3, 'field_personnel', true) RETURNING id`,
           [raceUserId, raceTenantId, raceTenantSlug]
+        )
+      ).rows[0].id as string;
+
+      const raceUserBId = crypto.randomUUID();
+      const raceMemBId = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+           VALUES ($1, $2, $3, 'field_personnel', true) RETURNING id`,
+          [raceUserBId, raceTenantId, raceTenantSlug]
         )
       ).rows[0].id as string;
 
@@ -1683,12 +1749,26 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         'tenant-susp'
       );
 
-      // Also test direct RPC rejection when membership role is corrupted to unissued/prototype token
+      // Reactivate tenant, then run Race 5 (HIGH-03): In-flight personnel actor reassignment (User A -> User B, both active members)
       await pgClient.query(`UPDATE workforce_staging.tenants SET is_active = true, status = 'active' WHERE id = $1`, [raceTenantId]);
+      await runRaceAgainstUncommittedMutation(
+        `UPDATE workforce_staging.personnel SET user_id = $1, membership_id = $2 WHERE id = $3`,
+        [raceUserBId, raceMemBId, racePersonnelId],
+        raceFac1Id,
+        'MEMBERSHIP_REVOKED',
+        'actor-reassign-user-b'
+      );
+      await pgClient.query(
+        `UPDATE workforce_staging.personnel SET user_id = $1, membership_id = $2 WHERE id = $3`,
+        [raceUserId, raceMemId, racePersonnelId]
+      );
+
+      // Also test direct RPC rejection when membership role is corrupted to unissued/prototype token
       await pgClient.query(`UPDATE workforce_staging.tenant_memberships SET role = 'constructor' WHERE id = $1`, [raceMemId]);
       const protoRpcRes = await callDirectRpc({
         tenantId: raceTenantId,
         personnelId: racePersonnelId,
+        expectedUserId: raceUserId,
         facilityId: raceFac1Id,
         keySuffix: 'proto-role',
       });
@@ -1698,6 +1778,529 @@ describe('Workstream A Integration: Actual HTTP Routes + Disposable PostgreSQL',
         await pgClient.query(`SELECT count(*)::int AS cnt FROM workforce_staging.attendance_logs WHERE tenant_id = $1`, [raceTenantId])
       ).rows[0].cnt;
       expect(raceAttCount).toBe(0);
+    } finally {
+      await blockerConn.query('ROLLBACK').catch(() => {});
+      await directConn.query('ROLLBACK').catch(() => {});
+      await blockerConn.end().catch(() => {});
+      await directConn.end().catch(() => {});
+    }
+  });
+
+  it('11. HIGH-01 Atomic Checkpoint Scan Authorization: Transactional Revalidation, Concurrency Races, Geofence Non-Stale Config, QR Rotation & Idempotency', async () => {
+    const blockerConn = new Client({ connectionString: disposableUrl });
+    const directConn = new Client({ connectionString: disposableUrl });
+    await blockerConn.connect();
+    await directConn.connect();
+
+    const callDirectScanRpc = async (params: {
+      tenantId: string;
+      personnelId: string;
+      expectedUserId: string;
+      checkpointId: string;
+      qrToken: string;
+      latitude?: number;
+      longitude?: number;
+      distanceM?: number;
+      keySuffix: string;
+    }) => {
+      await directConn.query('BEGIN');
+      try {
+        await directConn.query('SET LOCAL ROLE service_role');
+        await directConn.query(
+          `SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true)`
+        );
+        const res = await directConn.query(
+          `SELECT workforce_staging.record_checkpoint_scan_atomic(
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::text, now(),
+             $7::numeric, $8::numeric, $9::numeric, 'VERIFIED', $10::text
+           ) AS result`,
+          [
+            crypto.randomUUID(),
+            params.tenantId,
+            params.personnelId,
+            params.expectedUserId,
+            params.checkpointId,
+            params.qrToken,
+            params.latitude ?? -6.2088,
+            params.longitude ?? 106.8456,
+            params.distanceM ?? 0,
+            `direct-scan-rpc-${params.keySuffix}-${ts}`,
+          ]
+        );
+        await directConn.query('COMMIT');
+        return res.rows[0].result;
+      } catch (err) {
+        await directConn.query('ROLLBACK').catch(() => {});
+        throw err;
+      }
+    };
+
+    try {
+      // 11a. Direct RPC privilege denial for anon and authenticated roles (42501) and no 11-arg overload
+      const legacy11ScanCheck = await pgClient.query(
+        `SELECT to_regprocedure('workforce_staging.record_checkpoint_scan_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,numeric,text,text)') AS reg`
+      );
+      expect(legacy11ScanCheck.rows[0].reg).toBeNull();
+
+      for (const restrictedRole of ['anon', 'authenticated']) {
+        let errCode = '';
+        try {
+          await directConn.query(`SET ROLE ${restrictedRole}`);
+          await directConn.query(
+            `SELECT workforce_staging.record_checkpoint_scan_atomic(
+               $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'QR', now(),
+               -6.2088, 106.8456, 0, 'VERIFIED', 'unauth-scan-key'
+             )`,
+            [crypto.randomUUID(), tenantAlphaId, personnelAlphaId, officerAlphaUserId, checkpointAlphaActiveId]
+          );
+        } catch (err: any) {
+          errCode = err.code;
+        } finally {
+          await directConn.query('RESET ROLE').catch(() => {});
+        }
+        expect(errCode).toBe('42501');
+      }
+
+      // 11b. Direct RPC negative & positive authority / actor-binding / QR / facility / geofence checks
+      const notProvRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: crypto.randomUUID(),
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaActiveId,
+        qrToken: `QR-ALPHA-A1-${ts}`,
+        keySuffix: 'not-prov',
+      });
+      expect(notProvRes.outcome).toBe('PERSONNEL_NOT_PROVISIONED');
+
+      // HIGH-01 Direct RPC actor-binding mismatch: active member B (supervisorAlphaUserId) cannot claim personnelAlphaId (officerAlphaUserId)
+      const actorMismatchScanRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: supervisorAlphaUserId,
+        checkpointId: checkpointAlphaActiveId,
+        qrToken: `QR-ALPHA-A1-${ts}`,
+        keySuffix: 'actor-mismatch',
+      });
+      expect(actorMismatchScanRes.outcome).toBe('MEMBERSHIP_REVOKED');
+
+      const inactivePersRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelInactiveAlphaId,
+        expectedUserId: inactivePersonnelAlphaUserId,
+        checkpointId: checkpointAlphaActiveId,
+        qrToken: `QR-ALPHA-A1-${ts}`,
+        keySuffix: 'inactive-pers',
+      });
+      expect(inactivePersRes.outcome).toBe('PERSONNEL_INACTIVE');
+
+      const missingCpRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: crypto.randomUUID(),
+        qrToken: `QR-ALPHA-A1-${ts}`,
+        keySuffix: 'missing-cp',
+      });
+      expect(missingCpRes.outcome).toBe('CHECKPOINT_NOT_FOUND');
+
+      const crossTenantCpRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointBetaActiveId,
+        qrToken: `QR-BETA-B1-${ts}`,
+        keySuffix: 'cross-cp',
+      });
+      expect(crossTenantCpRes.outcome).toBe('CROSS_TENANT_CHECKPOINT_FORBIDDEN');
+
+      const inactiveCpRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaInactiveId,
+        qrToken: `QR-ALPHA-A2-${ts}`,
+        keySuffix: 'inactive-cp',
+      });
+      expect(inactiveCpRes.outcome).toBe('CHECKPOINT_INACTIVE');
+
+      const qrMismatchRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaActiveId,
+        qrToken: 'WRONG-QR-TOKEN-VALUE',
+        keySuffix: 'qr-mismatch',
+      });
+      expect(qrMismatchRes.outcome).toBe('QR_TOKEN_MISMATCH');
+
+      const deadFacilityCpRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaDeadFacilityId,
+        qrToken: `QR-ALPHA-A3-${ts}`,
+        keySuffix: 'dead-fac-cp',
+      });
+      expect(deadFacilityCpRes.outcome).toBe('FACILITY_INACTIVE');
+
+      // Field personnel bound to facilityAlphaActiveId cannot scan checkpoint on facilityAlphaSecondaryActiveId
+      const fieldCrossFacScanRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaSecondaryActiveId,
+        qrToken: `QR-ALPHA-SEC-${ts}`,
+        keySuffix: 'field-cross-fac',
+      });
+      expect(fieldCrossFacScanRes.outcome).toBe('FACILITY_ASSIGNMENT_FORBIDDEN');
+
+      // Supervisor and master_reseller (DB role OWNER) CAN scan checkpoint on secondary active Alpha facility
+      const supCrossFacScanRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelSupervisorId,
+        expectedUserId: supervisorAlphaUserId,
+        checkpointId: checkpointAlphaSecondaryActiveId,
+        qrToken: `QR-ALPHA-SEC-${ts}`,
+        keySuffix: 'sup-cross-fac',
+      });
+      expect(supCrossFacScanRes.outcome).toBe('CREATED');
+
+      const ownerCrossFacScanRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelOwnerId,
+        expectedUserId: ownerAlphaUserId,
+        checkpointId: checkpointAlphaSecondaryActiveId,
+        qrToken: `QR-ALPHA-SEC-${ts}`,
+        keySuffix: 'owner-cross-fac',
+      });
+      expect(ownerCrossFacScanRes.outcome).toBe('CREATED');
+
+      // In-transaction geofence calculation ignores caller's forged p_distance_m = 0 when coordinates are outside radius
+      const forgedDistanceScanRes = await callDirectScanRpc({
+        tenantId: tenantAlphaId,
+        personnelId: personnelAlphaId,
+        expectedUserId: officerAlphaUserId,
+        checkpointId: checkpointAlphaActiveId,
+        qrToken: `QR-ALPHA-A1-${ts}`,
+        latitude: -6.2200,
+        longitude: 106.8456,
+        distanceM: 0,
+        keySuffix: 'forged-distance',
+      });
+      expect(forgedDistanceScanRes.outcome).toBe('GEOFENCE_VIOLATION');
+      expect(Number(forgedDistanceScanRes.distance_m)).toBeGreaterThan(1000);
+      expect(Number(forgedDistanceScanRes.radius_m)).toBe(100);
+
+      // 11c. Two-Connection Concurrency Races on POST /api/checkpoints/scan
+      const scanRaceTenantId = crypto.randomUUID();
+      const scanRaceTenantSlug = `ws-a-scan-race-${ts}`;
+      await pgClient.query(
+        `INSERT INTO workforce_staging.tenants (id, slug, name, tier, status, is_active, metadata)
+         VALUES ($1, $2, 'Scan Race Tenant', 'PRO_SCALE', 'active', true, '{}'::jsonb)`,
+        [scanRaceTenantId, scanRaceTenantSlug]
+      );
+
+      const scanRaceFac1Id = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude, geofence_radius_m, is_active)
+           VALUES ($1, $2, 'Scan Race Fac 1', 'SR-FAC-1', -6.2088000, 106.8456000, 100, true) RETURNING id`,
+          [scanRaceTenantId, scanRaceTenantSlug]
+        )
+      ).rows[0].id as string;
+
+      const scanRaceFac2Id = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude, geofence_radius_m, is_active)
+           VALUES ($1, $2, 'Scan Race Fac 2', 'SR-FAC-2', -6.2088000, 106.8456000, 100, true) RETURNING id`,
+          [scanRaceTenantId, scanRaceTenantSlug]
+        )
+      ).rows[0].id as string;
+
+      const scanRaceCpId = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.checkpoints (tenant_id, facility_id, name, code, zone, latitude, longitude, qr_token, sla_minutes, is_active)
+           VALUES ($1, $2, 'Scan Race Gate 1', 'SR-CP-1', 'North', -6.2088000, 106.8456000, $3, 60, true) RETURNING id`,
+          [scanRaceTenantId, scanRaceFac1Id, `SR-QR-INIT-${ts}`]
+        )
+      ).rows[0].id as string;
+
+      const scanRaceUserId = crypto.randomUUID();
+      const scanRaceMemId = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+           VALUES ($1, $2, $3, 'field_personnel', true) RETURNING id`,
+          [scanRaceUserId, scanRaceTenantId, scanRaceTenantSlug]
+        )
+      ).rows[0].id as string;
+
+      const scanRaceUserBId = crypto.randomUUID();
+      const scanRaceMemBId = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+           VALUES ($1, $2, $3, 'field_personnel', true) RETURNING id`,
+          [scanRaceUserBId, scanRaceTenantId, scanRaceTenantSlug]
+        )
+      ).rows[0].id as string;
+
+      const scanRacePersonnelId = (
+        await pgClient.query(
+          `INSERT INTO workforce_staging.personnel (tenant_id, tenant_slug, user_id, membership_id, facility_id, name, nik, role, is_active)
+           VALUES ($1, $2, $3, $4, $5, 'Scan Race Officer', $6, 'field_personnel', true) RETURNING id`,
+          [scanRaceTenantId, scanRaceTenantSlug, scanRaceUserId, scanRaceMemId, scanRaceFac1Id, `NIK-SR-${ts}`]
+        )
+      ).rows[0].id as string;
+
+      const scanRaceToken = signBwmSessionToken({
+        userId: scanRaceUserId,
+        tenantId: scanRaceTenantId,
+        tenantSlug: scanRaceTenantSlug,
+        role: 'field_personnel',
+        nik: `NIK-SR-${ts}`,
+        name: 'Scan Race Officer',
+        siteId: scanRaceFac1Id,
+      });
+
+      const waitForScanRpcLockWait = async () => {
+        for (let i = 0; i < 40; i++) {
+          const waitRes = await pgClient.query(
+            `SELECT count(*)::int AS cnt
+             FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND wait_event_type = 'Lock'
+               AND query LIKE '%record_checkpoint_scan_atomic%'`
+          );
+          if (waitRes.rows[0].cnt > 0) return;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      };
+
+      const runScanRaceAgainstUncommittedMutation = async (opts: {
+        mutationSql: string;
+        mutationArgs: unknown[];
+        expectedStatus: number;
+        expectedError: string;
+        keyTag: string;
+        latitude?: number;
+        longitude?: number;
+        qrToken?: string;
+      }) => {
+        await blockerConn.query('BEGIN');
+        await blockerConn.query(opts.mutationSql, opts.mutationArgs);
+
+        const httpPromise = sendHttpJson(
+          baseUrl,
+          '/api/checkpoints/scan',
+          {
+            checkpoint_id: scanRaceCpId,
+            qr_token: opts.qrToken ?? `SR-QR-INIT-${ts}`,
+            latitude: opts.latitude ?? -6.2088,
+            longitude: opts.longitude ?? 106.8456,
+            accuracy_meters: 10,
+          },
+          scanRaceToken,
+          { 'Idempotency-Key': `scan-race-${opts.keyTag}-${ts}` }
+        );
+
+        await waitForScanRpcLockWait();
+        await blockerConn.query('COMMIT');
+
+        const httpRes = await httpPromise;
+        expect(httpRes.status).toBe(opts.expectedStatus);
+        expect(httpRes.json.error).toBe(opts.expectedError);
+        expect(httpRes.json.verified).toBe(false);
+      };
+
+      // Race 1: Membership revocation mid-flight after non-locking pre-check passed
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.tenant_memberships SET is_active = false WHERE id = $1`,
+        mutationArgs: [scanRaceMemId],
+        expectedStatus: 403,
+        expectedError: 'MEMBERSHIP_REVOKED',
+        keyTag: 'mem-revoke',
+      });
+      await pgClient.query(`UPDATE workforce_staging.tenant_memberships SET is_active = true WHERE id = $1`, [scanRaceMemId]);
+
+      // Race 2: Personnel deactivation mid-flight
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.personnel SET is_active = false WHERE id = $1`,
+        mutationArgs: [scanRacePersonnelId],
+        expectedStatus: 403,
+        expectedError: 'PERSONNEL_INACTIVE',
+        keyTag: 'pers-off',
+      });
+      await pgClient.query(`UPDATE workforce_staging.personnel SET is_active = true WHERE id = $1`, [scanRacePersonnelId]);
+
+      // Race 3: Personnel facility reassignment (Fac 1 -> Fac 2) mid-flight
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.personnel SET facility_id = $1 WHERE id = $2`,
+        mutationArgs: [scanRaceFac2Id, scanRacePersonnelId],
+        expectedStatus: 403,
+        expectedError: 'FACILITY_ASSIGNMENT_FORBIDDEN',
+        keyTag: 'pers-reassign',
+      });
+      await pgClient.query(`UPDATE workforce_staging.personnel SET facility_id = $1 WHERE id = $2`, [scanRaceFac1Id, scanRacePersonnelId]);
+
+      // Race 4: Facility deactivation mid-flight
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.facilities SET is_active = false WHERE id = $1`,
+        mutationArgs: [scanRaceFac1Id],
+        expectedStatus: 403,
+        expectedError: 'FACILITY_INACTIVE',
+        keyTag: 'fac-off',
+      });
+      await pgClient.query(`UPDATE workforce_staging.facilities SET is_active = true WHERE id = $1`, [scanRaceFac1Id]);
+
+      // Race 5: Checkpoint deactivation mid-flight
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.checkpoints SET is_active = false WHERE id = $1`,
+        mutationArgs: [scanRaceCpId],
+        expectedStatus: 403,
+        expectedError: 'CHECKPOINT_INACTIVE',
+        keyTag: 'cp-off',
+      });
+      await pgClient.query(`UPDATE workforce_staging.checkpoints SET is_active = true WHERE id = $1`, [scanRaceCpId]);
+
+      // Race 6: QR token rotation mid-flight (app pre-check sees old QR token on MVCC snapshot; RPC sees rotated token)
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.checkpoints SET qr_token = $1 WHERE id = $2`,
+        mutationArgs: [`SR-QR-ROTATED-${ts}`, scanRaceCpId],
+        expectedStatus: 403,
+        expectedError: 'QR_TOKEN_MISMATCH',
+        keyTag: 'qr-rotate',
+        qrToken: `SR-QR-INIT-${ts}`,
+      });
+      await pgClient.query(`UPDATE workforce_staging.checkpoints SET qr_token = $1 WHERE id = $2`, [`SR-QR-INIT-${ts}`, scanRaceCpId]);
+
+      // Race 7: Geofence configuration change race (radius shrunk 100m -> 20m mid-flight while worker is ~44.48m away)
+      // Pre-check sees 44.48m <= 100m on MVCC snapshot; in-transaction RPC recomputes against fresh 20m radius and rejects!
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.facilities SET geofence_radius_m = 20 WHERE id = $1`,
+        mutationArgs: [scanRaceFac1Id],
+        expectedStatus: 403,
+        expectedError: 'GEOFENCE_VIOLATION',
+        keyTag: 'geo-radius-shrink',
+        latitude: -6.2092,
+        longitude: 106.8456,
+      });
+      await pgClient.query(`UPDATE workforce_staging.facilities SET geofence_radius_m = 100 WHERE id = $1`, [scanRaceFac1Id]);
+
+      // Race 8: Checkpoint coordinate relocation mid-flight (checkpoint moved ~1.2km away after pre-check passed)
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.checkpoints SET latitude = -6.2200000 WHERE id = $1`,
+        mutationArgs: [scanRaceCpId],
+        expectedStatus: 403,
+        expectedError: 'GEOFENCE_VIOLATION',
+        keyTag: 'geo-cp-move',
+        latitude: -6.2088,
+        longitude: 106.8456,
+      });
+      await pgClient.query(`UPDATE workforce_staging.checkpoints SET latitude = -6.2088000 WHERE id = $1`, [scanRaceCpId]);
+
+      // Race 9 (HIGH-01): In-flight personnel actor reassignment (User A -> User B, both active members)
+      await runScanRaceAgainstUncommittedMutation({
+        mutationSql: `UPDATE workforce_staging.personnel SET user_id = $1, membership_id = $2 WHERE id = $3`,
+        mutationArgs: [scanRaceUserBId, scanRaceMemBId, scanRacePersonnelId],
+        expectedStatus: 403,
+        expectedError: 'MEMBERSHIP_REVOKED',
+        keyTag: 'actor-reassign-user-b',
+      });
+      await pgClient.query(
+        `UPDATE workforce_staging.personnel SET user_id = $1, membership_id = $2 WHERE id = $3`,
+        [scanRaceUserId, scanRaceMemId, scanRacePersonnelId]
+      );
+
+      // Verify ZERO scans were persisted across all 9 rejected concurrency races
+      const raceScanCount = (
+        await pgClient.query(
+          `SELECT count(*)::int AS cnt FROM workforce_staging.checkpoint_scans WHERE tenant_id = $1`,
+          [scanRaceTenantId]
+        )
+      ).rows[0].cnt;
+      expect(raceScanCount).toBe(0);
+
+      // 11d. Concurrent Identical Idempotency vs Concurrent Conflicting Idempotency on POST /api/checkpoints/scan
+      const concIdemSameKey = `scan-conc-identical-${ts}`;
+      const [sameResA, sameResB] = await Promise.all([
+        sendHttpJson(
+          baseUrl,
+          '/api/checkpoints/scan',
+          {
+            checkpoint_id: scanRaceCpId,
+            qr_token: `SR-QR-INIT-${ts}`,
+            latitude: -6.2088,
+            longitude: 106.8456,
+            accuracy_meters: 10,
+          },
+          scanRaceToken,
+          { 'Idempotency-Key': concIdemSameKey }
+        ),
+        sendHttpJson(
+          baseUrl,
+          '/api/checkpoints/scan',
+          {
+            checkpoint_id: scanRaceCpId,
+            qr_token: `SR-QR-INIT-${ts}`,
+            latitude: -6.2088,
+            longitude: 106.8456,
+            accuracy_meters: 10,
+          },
+          scanRaceToken,
+          { 'Idempotency-Key': concIdemSameKey }
+        ),
+      ]);
+      expect([sameResA.status, sameResB.status].sort((a, b) => a - b)).toEqual([200, 201]);
+      expect(sameResA.json.data.id).toBe(sameResB.json.data.id);
+
+      const sameKeyRowCount = (
+        await pgClient.query(
+          `SELECT count(*)::int AS cnt FROM workforce_staging.checkpoint_scans WHERE tenant_id = $1 AND idempotency_key = $2`,
+          [scanRaceTenantId, concIdemSameKey]
+        )
+      ).rows[0].cnt;
+      expect(sameKeyRowCount).toBe(1);
+
+      const concIdemConflictKey = `scan-conc-conflict-${ts}`;
+      const [confResA, confResB] = await Promise.all([
+        sendHttpJson(
+          baseUrl,
+          '/api/checkpoints/scan',
+          {
+            checkpoint_id: scanRaceCpId,
+            qr_token: `SR-QR-INIT-${ts}`,
+            latitude: -6.2088,
+            longitude: 106.8456,
+            accuracy_meters: 10,
+          },
+          scanRaceToken,
+          { 'Idempotency-Key': concIdemConflictKey }
+        ),
+        sendHttpJson(
+          baseUrl,
+          '/api/checkpoints/scan',
+          {
+            checkpoint_id: scanRaceCpId,
+            qr_token: `SR-QR-INIT-${ts}`,
+            latitude: -6.2089,
+            longitude: 106.8456,
+            accuracy_meters: 10,
+          },
+          scanRaceToken,
+          { 'Idempotency-Key': concIdemConflictKey }
+        ),
+      ]);
+      expect([confResA.status, confResB.status].sort((a, b) => a - b)).toEqual([201, 409]);
+      const conflictResp = confResA.status === 409 ? confResA : confResB;
+      expect(conflictResp.json.error).toBe('IDEMPOTENCY_KEY_CONFLICT');
+
+      const conflictKeyRowCount = (
+        await pgClient.query(
+          `SELECT count(*)::int AS cnt FROM workforce_staging.checkpoint_scans WHERE tenant_id = $1 AND idempotency_key = $2`,
+          [scanRaceTenantId, concIdemConflictKey]
+        )
+      ).rows[0].cnt;
+      expect(conflictKeyRowCount).toBe(1);
+
+      await pgClient.query(`DELETE FROM workforce_staging.tenants WHERE id = $1`, [scanRaceTenantId]);
     } finally {
       await blockerConn.query('ROLLBACK').catch(() => {});
       await directConn.query('ROLLBACK').catch(() => {});

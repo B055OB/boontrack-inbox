@@ -105,7 +105,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Initialize DB Schema & Run Migrations (schema-draft.sql + 007-013)
+      - name: Initialize DB Schema & Run Migrations (schema-draft.sql + 007-016)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
       - name: Run Workstream A Authoritative PostgreSQL Gate (Attendance & Checkpoint Integrity)
@@ -115,18 +115,20 @@ jobs:
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/attendance-checkpoint-postgres.test.ts
 
-      - name: Run Safe Migration Rollback Suite (013->009 Symmetrical Teardown — Legacy Decoupled)
-        continue-on-error: true
+      - name: Run Workstream A M-2 Domain & Role Authorization Gate (role-authorization)
         run: |
-          set +e
+          node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
+            __tests__/workforce/role-authorization.test.ts
+
+      - name: Run Safe Migration Rollback Gate (016->009 Symmetrical Teardown & Re-apply)
+        run: |
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/safe-migration-rollback.test.ts
-          EXIT_CODE=$?
-          echo "SAFE_MIGRATION_ROLLBACK_EXIT=$EXIT_CODE"
-          if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "::warning::Legacy safe-migration-rollback exited with $EXIT_CODE (decoupled from Workstream A gate)"
-          fi
-          exit $EXIT_CODE
+
+      - name: Run Workstream A Adversarial RLS & M-2 Isolation Gate (database-rls-adversarial)
+        run: |
+          node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
+            __tests__/workforce/database-rls-adversarial.test.ts
 
       - name: Run Legacy PostgreSQL Batch 1b (Schema & RLS — Known BWM-LEGACY-VIEW-001)
         continue-on-error: true
@@ -134,9 +136,7 @@ jobs:
           set +e
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/api-authorization-convergence.test.ts \
-            __tests__/workforce/database-rls-adversarial.test.ts \
-            __tests__/workforce/membership-revocation.test.ts \
-            __tests__/workforce/role-authorization.test.ts
+            __tests__/workforce/membership-revocation.test.ts
           EXIT_CODE=$?
           echo "LEGACY_BATCH_1B_EXIT=$EXIT_CODE"
           if [ "$EXIT_CODE" -ne 0 ]; then
@@ -320,7 +320,7 @@ jobs:
             sleep 1
           done
 
-      - name: Bootstrap Database Schema & Run Migrations (schema-draft.sql + 007-013)
+      - name: Bootstrap Database Schema & Run Migrations (schema-draft.sql + 007-016)
         run: node scripts/verify-disposable-postgres-ci.mjs
 
       - name: Start Ephemeral GoTrue, PostgREST & Gateway Containers
@@ -385,7 +385,7 @@ jobs:
           READY=false
           for i in $(seq 1 30); do
             if test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/auth/v1/health)" = "200" && curl -sf http://localhost:3000/rest/v1/ > /dev/null 2>&1; then
-              echo "[READY] Ephemeral API Gateway (GoTrue & PostgREST) is fully operational on port 3000"
+              echo "[READY] Ephemeral API Gateway (GoTrue & PostgREST) is reachable on port 3000"
               READY=true
               break
             fi
@@ -397,6 +397,34 @@ jobs:
             docker logs gotrue || true
             docker logs postgrest || true
             docker logs api-gateway || true
+            exit 1
+          fi
+
+          SCHEMA_READY=false
+          for i in $(seq 1 20); do
+            ATT_RESP=$(curl -s -X POST "http://localhost:3000/rest/v1/rpc/record_attendance_atomic" \
+              -H "apikey: ${WORKFORCE_SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${WORKFORCE_SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Profile: workforce_staging" \
+              -H "Content-Type: application/json" \
+              -d '{"p_id":"00000000-0000-4000-8000-000000000931","p_tenant_id":"00000000-0000-4000-8000-000000000932","p_personnel_id":"00000000-0000-4000-8000-000000000933","p_expected_user_id":"00000000-0000-4000-8000-000000000934","p_facility_id":null,"p_type":"CLOCK_IN","p_timestamp":"2026-01-01T00:00:00Z","p_latitude":-6.2088,"p_longitude":106.8456,"p_geofence_verified":true,"p_biometric_mode":"NONE_UNVERIFIED","p_photo_url":null,"p_idempotency_key":"ci-schema-probe-att"}')
+            SCAN_RESP=$(curl -s -X POST "http://localhost:3000/rest/v1/rpc/record_checkpoint_scan_atomic" \
+              -H "apikey: ${WORKFORCE_SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${WORKFORCE_SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Profile: workforce_staging" \
+              -H "Content-Type: application/json" \
+              -d '{"p_id":"00000000-0000-4000-8000-000000000941","p_tenant_id":"00000000-0000-4000-8000-000000000932","p_checkpoint_id":"00000000-0000-4000-8000-000000000942","p_personnel_id":"00000000-0000-4000-8000-000000000933","p_expected_user_id":"00000000-0000-4000-8000-000000000934","p_qr_token":"PROBE-NONE","p_scanned_at":"2026-01-01T00:00:00Z","p_latitude":-6.2088,"p_longitude":106.8456,"p_distance_m":0,"p_status":"VERIFIED","p_idempotency_key":"ci-schema-probe-scan"}')
+            if echo "$ATT_RESP" | grep -q '"outcome"' && echo "$SCAN_RESP" | grep -q '"outcome"'; then
+              echo "[READY] PostgREST HTTP schema cache exposed 13-arg/12-arg RPC signatures cleanly"
+              SCHEMA_READY=true
+              break
+            fi
+            echo "Waiting for PostgREST schema cache RPC exposure... ($i/20)"
+            sleep 1
+          done
+          if [ "$SCHEMA_READY" != "true" ]; then
+            echo "[TIMEOUT ERROR] PostgREST schema cache failed to expose 13-arg/12-arg RPCs"
+            docker logs postgrest || true
             exit 1
           fi
 

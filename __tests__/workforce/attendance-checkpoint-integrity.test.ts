@@ -40,7 +40,9 @@ import {
   type WorkforceOperationalStore,
 } from '@/workforce-web/lib/workforce/operational-store';
 import {
+  canUseNonAtomicCheckpointFallback,
   CROSS_FACILITY_AUTHORIZED_ROLES,
+  isStrictUnitTestRuntime,
   processAttendanceSubmission,
   processCheckpointScanSubmission,
 } from '@/workforce-web/lib/workforce/attendance-verification';
@@ -1666,6 +1668,165 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
       );
       expect(pickFacDenied.status).toBe(403);
       expect((await pickFacDenied.json()).error).toBe('FACILITY_ASSIGNMENT_FORBIDDEN');
+    });
+  });
+
+  describe('M-1 Atomic Fallback Closure — Production Fail-Closed Matrix', () => {
+    const savedEnv = {
+      NODE_ENV: process.env.NODE_ENV,
+      APP_ENV: process.env.APP_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+    };
+
+    afterEach(() => {
+      const envRecord = process.env as Record<string, string | undefined>;
+      if (savedEnv.NODE_ENV === undefined) delete envRecord.NODE_ENV;
+      else envRecord.NODE_ENV = savedEnv.NODE_ENV;
+      if (savedEnv.APP_ENV === undefined) delete envRecord.APP_ENV;
+      else envRecord.APP_ENV = savedEnv.APP_ENV;
+      if (savedEnv.VERCEL_ENV === undefined) delete envRecord.VERCEL_ENV;
+      else envRecord.VERCEL_ENV = savedEnv.VERCEL_ENV;
+    });
+
+    function buildScanRequest(keySuffix: string) {
+      return makeAuthedRequest('https://workforce.boontrack.com/api/checkpoints/scan', {
+        qr_token: 'SECRET-QR-ALPHA-01',
+        checkpoint_id: CHECKPOINT_ALPHA_ID,
+        latitude: -6.2088,
+        longitude: 106.8456,
+        accuracy_meters: 10,
+        idempotency_key: `m1-guard-${keySuffix}-${Date.now()}`,
+      });
+    }
+
+    it('1. MOCK_TEST_DOUBLE + NODE_ENV=test permits non-atomic fallback when recordCheckpointScanAtomic is absent', async () => {
+      const envRecord = process.env as Record<string, string | undefined>;
+      envRecord.NODE_ENV = 'test';
+      delete envRecord.APP_ENV;
+      delete envRecord.VERCEL_ENV;
+
+      const store = createFixtureStore({ adapterKind: 'MOCK_TEST_DOUBLE' });
+      delete store.recordCheckpointScanAtomic;
+
+      expect(isStrictUnitTestRuntime()).toBe(true);
+      expect(canUseNonAtomicCheckpointFallback(store)).toBe(true);
+
+      const res = await processCheckpointScanSubmission(buildScanRequest('mock-test'), { store });
+      expect(res.status).toBe(201);
+      expect(store.findCheckpointScanByIdempotencyKey).toHaveBeenCalledTimes(1);
+      expect(store.insertCheckpointScan).toHaveBeenCalledTimes(1);
+    });
+
+    it('2. MOCK_TEST_DOUBLE fails closed with ZERO writes when NODE_ENV=production or APP_ENV/VERCEL_ENV non-test', async () => {
+      const envRecord = process.env as Record<string, string | undefined>;
+      const envCases: Array<{ NODE_ENV: string; APP_ENV?: string; VERCEL_ENV?: string }> = [
+        { NODE_ENV: 'production' },
+        { NODE_ENV: 'development' },
+        { NODE_ENV: 'test', APP_ENV: 'production' },
+        { NODE_ENV: 'test', APP_ENV: 'staging' },
+        { NODE_ENV: 'test', VERCEL_ENV: 'preview' },
+      ];
+
+      for (const ec of envCases) {
+        envRecord.NODE_ENV = ec.NODE_ENV;
+        if (ec.APP_ENV) envRecord.APP_ENV = ec.APP_ENV;
+        else delete envRecord.APP_ENV;
+        if (ec.VERCEL_ENV) envRecord.VERCEL_ENV = ec.VERCEL_ENV;
+        else delete envRecord.VERCEL_ENV;
+
+        const store = createFixtureStore({ adapterKind: 'MOCK_TEST_DOUBLE' });
+        delete store.recordCheckpointScanAtomic;
+
+        expect(canUseNonAtomicCheckpointFallback(store)).toBe(false);
+
+        const res = await processCheckpointScanSubmission(buildScanRequest(`mock-${ec.NODE_ENV}`), { store });
+        const body = await res.json();
+        expect(res.status).toBe(500);
+        expect(body.error).toBe('ATOMIC_CHECKPOINT_RPC_UNAVAILABLE');
+        expect(body.verified).toBe(false);
+        expect(store.findCheckpointScanByIdempotencyKey).not.toHaveBeenCalled();
+        expect(store.insertCheckpointScan).not.toHaveBeenCalled();
+      }
+    });
+
+    it('3. SUPABASE_SERVICE_ROLE executes recordCheckpointScanAtomic directly without touching non-atomic fallback', async () => {
+      const atomicSpy = jest.fn(async ({ row }: { row: CheckpointScanRow }) => ({
+        kind: 'CREATED' as const,
+        row: { ...row, status: 'VERIFIED' },
+        distanceM: 0,
+        radiusM: 200,
+      }));
+      const store = createFixtureStore({
+        adapterKind: 'SUPABASE_SERVICE_ROLE',
+        recordCheckpointScanAtomic: atomicSpy,
+      });
+
+      const res = await processCheckpointScanSubmission(buildScanRequest('prod-atomic'), { store });
+      const body = await res.json();
+      expect(res.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(atomicSpy).toHaveBeenCalledTimes(1);
+      expect(store.findCheckpointScanByIdempotencyKey).not.toHaveBeenCalled();
+      expect(store.insertCheckpointScan).not.toHaveBeenCalled();
+    });
+
+    it('4. SUPABASE_SERVICE_ROLE with missing recordCheckpointScanAtomic fails closed (500, ZERO writes) even in NODE_ENV=test', async () => {
+      const envRecord = process.env as Record<string, string | undefined>;
+      envRecord.NODE_ENV = 'test';
+
+      const store = createFixtureStore({ adapterKind: 'SUPABASE_SERVICE_ROLE' });
+      delete store.recordCheckpointScanAtomic;
+
+      expect(canUseNonAtomicCheckpointFallback(store)).toBe(false);
+
+      const res = await processCheckpointScanSubmission(buildScanRequest('prod-missing'), { store });
+      const body = await res.json();
+      expect(res.status).toBe(500);
+      expect(body.error).toBe('ATOMIC_CHECKPOINT_RPC_UNAVAILABLE');
+      expect(body.verified).toBe(false);
+      expect(store.findCheckpointScanByIdempotencyKey).not.toHaveBeenCalled();
+      expect(store.insertCheckpointScan).not.toHaveBeenCalled();
+    });
+
+    it('5. Unknown adapterKind & DISPOSABLE_PG_SUPERUSER_TEST fail closed with ZERO writes when atomic methods are absent', async () => {
+      const envRecord = process.env as Record<string, string | undefined>;
+      envRecord.NODE_ENV = 'test';
+
+      const unknownStore = createFixtureStore({
+        adapterKind: 'UNKNOWN_ADAPTER_KIND' as unknown as WorkforceOperationalStore['adapterKind'],
+      });
+      delete unknownStore.recordCheckpointScanAtomic;
+
+      expect(canUseNonAtomicCheckpointFallback(unknownStore)).toBe(false);
+      const resUnknown = await processCheckpointScanSubmission(buildScanRequest('unknown'), { store: unknownStore });
+      expect(resUnknown.status).toBe(500);
+      expect((await resUnknown.json()).error).toBe('ATOMIC_CHECKPOINT_RPC_UNAVAILABLE');
+      expect(unknownStore.insertCheckpointScan).not.toHaveBeenCalled();
+
+      const pgStore = createFixtureStore({ adapterKind: 'DISPOSABLE_PG_SUPERUSER_TEST' });
+      delete pgStore.recordCheckpointScanAtomic;
+      expect(canUseNonAtomicCheckpointFallback(pgStore)).toBe(false);
+      const resPg = await processCheckpointScanSubmission(buildScanRequest('pg-missing'), { store: pgStore });
+      expect(resPg.status).toBe(500);
+      expect((await resPg.json()).error).toBe('ATOMIC_CHECKPOINT_RPC_UNAVAILABLE');
+      expect(pgStore.insertCheckpointScan).not.toHaveBeenCalled();
+
+      const brokenAttendanceStore = createFixtureStore({ adapterKind: 'SUPABASE_SERVICE_ROLE' });
+      delete (brokenAttendanceStore as unknown as Record<string, unknown>).recordAttendanceWithStateTransition;
+      const resAtt = await processAttendanceSubmission(
+        makeAuthedRequest('https://workforce.boontrack.com/api/attendance', {
+          type: 'CLOCK_IN',
+          facility_id: FACILITY_ALPHA_ID,
+          latitude: -6.2088,
+          longitude: 106.8456,
+          accuracy_meters: 10,
+          idempotency_key: `m1-att-missing-${Date.now()}`,
+        }),
+        { store: brokenAttendanceStore }
+      );
+      expect(resAtt.status).toBe(500);
+      expect((await resAtt.json()).error).toBe('ATOMIC_ATTENDANCE_RPC_UNAVAILABLE');
+      expect(brokenAttendanceStore.insertAttendanceLog).not.toHaveBeenCalled();
     });
   });
 });

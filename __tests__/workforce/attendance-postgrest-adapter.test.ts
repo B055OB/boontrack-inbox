@@ -18,6 +18,8 @@
 jest.unmock('@supabase/supabase-js');
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { Client } from 'pg';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
@@ -206,6 +208,68 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     pgClient = new Client({ connectionString: config.pgConnectionString });
     await pgClient.connect();
     pgConnected = true;
+
+    // Ensure Migrations 014, 015, and 016 are applied and poll PostgREST over HTTP until schema cache reloads
+    const scanRpcPath = path.resolve(
+      process.cwd(),
+      'packages/workforce-billing/schema/migrations/014_checkpoint_scan_atomic_rpc.sql'
+    );
+    const actorBindingRpcPath = path.resolve(
+      process.cwd(),
+      'packages/workforce-billing/schema/migrations/015_attendance_actor_binding_and_role_allowlist.sql'
+    );
+    const domainAuthzPath = path.resolve(
+      process.cwd(),
+      'packages/workforce-billing/schema/migrations/016_bwm_domain_authorization_isolation.sql'
+    );
+    await pgClient.query(fs.readFileSync(scanRpcPath, 'utf8'));
+    await pgClient.query(fs.readFileSync(actorBindingRpcPath, 'utf8'));
+    await pgClient.query(fs.readFileSync(domainAuthzPath, 'utf8'));
+    await pgClient.query(`NOTIFY pgrst, 'reload schema'`);
+
+    let schemaCacheReady = false;
+    for (let attempt = 1; attempt <= 20; attempt++) {
+      const [attProbe, scanProbe] = await Promise.all([
+        serviceRoleClient.schema('workforce_staging').rpc('record_attendance_atomic', {
+          p_id: '00000000-0000-4000-8000-000000000911',
+          p_tenant_id: '00000000-0000-4000-8000-000000000912',
+          p_personnel_id: '00000000-0000-4000-8000-000000000913',
+          p_expected_user_id: '00000000-0000-4000-8000-000000000914',
+          p_facility_id: null,
+          p_type: 'CLOCK_IN',
+          p_timestamp: new Date().toISOString(),
+          p_latitude: -6.2088,
+          p_longitude: 106.8456,
+          p_geofence_verified: true,
+          p_biometric_mode: 'NONE_UNVERIFIED',
+          p_photo_url: null,
+          p_idempotency_key: `schema-probe-att-${ts}`,
+        }),
+        serviceRoleClient.schema('workforce_staging').rpc('record_checkpoint_scan_atomic', {
+          p_id: '00000000-0000-4000-8000-000000000921',
+          p_tenant_id: '00000000-0000-4000-8000-000000000912',
+          p_checkpoint_id: '00000000-0000-4000-8000-000000000922',
+          p_personnel_id: '00000000-0000-4000-8000-000000000913',
+          p_expected_user_id: '00000000-0000-4000-8000-000000000914',
+          p_qr_token: 'PROBE-NONE',
+          p_scanned_at: new Date().toISOString(),
+          p_latitude: -6.2088,
+          p_longitude: 106.8456,
+          p_distance_m: 0,
+          p_status: 'VERIFIED',
+          p_idempotency_key: `schema-probe-scan-${ts}`,
+        }),
+      ]);
+      if (attProbe.error?.code !== 'PGRST202' && scanProbe.error?.code !== 'PGRST202') {
+        schemaCacheReady = true;
+        break;
+      }
+      await pgClient.query(`NOTIFY pgrst, 'reload schema'`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!schemaCacheReady) {
+      throw new Error('PostgREST schema cache did not expose 13-arg/12-arg RPC signatures within bounded wait.');
+    }
 
     // 1. Create real GoTrue user using an isolated bootstrap client so anonClient never stores a user session
     const testEmail = `pgrst-officer-alpha-${ts}@workforce-ci.invalid`;
@@ -488,7 +552,8 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     );
     expect(clockOutRes.status).toBe(201);
 
-    // Checkpoint scan via PostgREST
+    // Checkpoint scan via PostgREST atomic RPC (Migration 014)
+    const scanKey = `pgrst-scan-${ts}`;
     const scanRes = await processCheckpointScanSubmission(
       buildReq(
         '/api/checkpoints/scan',
@@ -500,7 +565,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
           accuracy_meters: 10,
         },
         tokenOfficerAlpha,
-        `pgrst-scan-${ts}`
+        scanKey
       ),
       { store }
     );
@@ -514,6 +579,44 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     );
     expect(persistedScan.rows).toHaveLength(1);
     expect(persistedScan.rows[0].personnel_id).toBe(personnelAlphaId);
+
+    // Idempotent replay of checkpoint scan via PostgREST atomic RPC
+    const scanReplayRes = await processCheckpointScanSubmission(
+      buildReq(
+        '/api/checkpoints/scan',
+        {
+          checkpoint_id: checkpointAlphaId,
+          qr_token: `PG-QR-ALPHA-${ts}`,
+          latitude: -6.2088,
+          longitude: 106.8456,
+          accuracy_meters: 10,
+        },
+        tokenOfficerAlpha,
+        scanKey
+      ),
+      { store }
+    );
+    expect(scanReplayRes.status).toBe(200);
+    expect((await scanReplayRes.json()).idempotent_replay).toBe(true);
+
+    // Conflicting payload with same checkpoint scan idempotency key -> 409 IDEMPOTENCY_KEY_CONFLICT
+    const scanConflictRes = await processCheckpointScanSubmission(
+      buildReq(
+        '/api/checkpoints/scan',
+        {
+          checkpoint_id: checkpointAlphaId,
+          qr_token: `PG-QR-ALPHA-${ts}`,
+          latitude: -6.2089,
+          longitude: 106.8456,
+          accuracy_meters: 10,
+        },
+        tokenOfficerAlpha,
+        scanKey
+      ),
+      { store }
+    );
+    expect(scanConflictRes.status).toBe(409);
+    expect((await scanConflictRes.json()).error).toBe('IDEMPOTENCY_KEY_CONFLICT');
   });
 
   it('3. Enforces distributed concurrency over live PostgREST RPC (1x201, 1x409) and rejects CLOCK_OUT without CLOCK_IN', async () => {
@@ -585,7 +688,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
   it('4. Propagates Migration 013 FACILITY_REJECTED domain contract and PostgREST PGRST202 errors cleanly without swallowing failures', async () => {
     const store = createSupabaseServiceRoleOperationalStore(serviceRoleClient);
 
-    // Pre-insert facility guard in Migration 013 returns FACILITY_NOT_FOUND before raw FK INSERT when facility UUID does not exist
+    // Pre-insert facility guard in Migration 013/015 returns FACILITY_NOT_FOUND before raw FK INSERT when facility UUID does not exist
     const facilityResult = await store.recordAttendanceWithStateTransition({
       row: {
         id: crypto.randomUUID(),
@@ -601,6 +704,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
         photo_url: null,
         idempotency_key: `pgrst-fac-not-found-${ts}`,
       },
+      expectedUserId: officerConcurrentUserId,
       checkTransition: (currentState, eventType) => ({
         allowed: ALLOWED_TRANSITIONS[currentState]?.includes(eventType) ?? false,
       }),
@@ -610,11 +714,104 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
       expect(facilityResult.errorCode).toBe('FACILITY_NOT_FOUND');
     }
 
+    // HIGH-03 Actor-binding mismatch over PostgREST: active member B (officerConcurrentUserId) cannot claim personnelAlphaId
+    const attActorMismatch = await store.recordAttendanceWithStateTransition({
+      row: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantAlphaId,
+        personnel_id: personnelAlphaId,
+        facility_id: facilityAlphaId,
+        type: 'CLOCK_IN',
+        timestamp: new Date().toISOString(),
+        latitude: -6.2088,
+        longitude: 106.8456,
+        geofence_verified: true,
+        biometric_mode: 'NONE_UNVERIFIED',
+        photo_url: null,
+        idempotency_key: `pgrst-att-actor-mismatch-${ts}`,
+      },
+      expectedUserId: officerConcurrentUserId,
+      checkTransition: (currentState, eventType) => ({
+        allowed: ALLOWED_TRANSITIONS[currentState]?.includes(eventType) ?? false,
+      }),
+    });
+    expect(attActorMismatch).toEqual({
+      kind: 'AUTHORITY_REVOKED',
+      errorCode: 'MEMBERSHIP_REVOKED',
+    });
+
     // Real PostgREST missing-RPC propagation
     const missingRpc = await serviceRoleClient
       .schema('workforce_staging')
       .rpc('nonexistent_atomic_rpc_probe', {});
     expect(missingRpc.error?.code).toBe('PGRST202');
+
+    // Migration 014 record_checkpoint_scan_atomic direct PostgREST contract checks
+    const scanNotFoundRes = await store.recordCheckpointScanAtomic!({
+      row: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantAlphaId,
+        checkpoint_id: '99999999-9999-4999-8999-999999999998',
+        personnel_id: personnelAlphaId,
+        scanned_at: new Date().toISOString(),
+        latitude: -6.2088,
+        longitude: 106.8456,
+        distance_m: 0,
+        status: 'VERIFIED',
+        idempotency_key: `pgrst-scan-cp-not-found-${ts}`,
+      },
+      qrToken: `PG-QR-ALPHA-${ts}`,
+      expectedUserId: officerAlphaUserId,
+    });
+    expect(scanNotFoundRes).toEqual({
+      kind: 'CHECKPOINT_REJECTED',
+      errorCode: 'CHECKPOINT_NOT_FOUND',
+    });
+
+    // HIGH-01 Actor-binding mismatch over PostgREST: active member B (officerConcurrentUserId) cannot claim personnelAlphaId
+    const scanActorMismatchRes = await store.recordCheckpointScanAtomic!({
+      row: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantAlphaId,
+        checkpoint_id: checkpointAlphaId,
+        personnel_id: personnelAlphaId,
+        scanned_at: new Date().toISOString(),
+        latitude: -6.2088,
+        longitude: 106.8456,
+        distance_m: 0,
+        status: 'VERIFIED',
+        idempotency_key: `pgrst-scan-actor-mismatch-${ts}`,
+      },
+      qrToken: `PG-QR-ALPHA-${ts}`,
+      expectedUserId: officerConcurrentUserId,
+    });
+    expect(scanActorMismatchRes).toEqual({
+      kind: 'AUTHORITY_REVOKED',
+      errorCode: 'MEMBERSHIP_REVOKED',
+    });
+
+    const scanGeoViolationRes = await store.recordCheckpointScanAtomic!({
+      row: {
+        id: crypto.randomUUID(),
+        tenant_id: tenantAlphaId,
+        checkpoint_id: checkpointAlphaId,
+        personnel_id: personnelAlphaId,
+        scanned_at: new Date().toISOString(),
+        latitude: -6.2200,
+        longitude: 106.8456,
+        distance_m: 0,
+        status: 'VERIFIED',
+        idempotency_key: `pgrst-scan-geo-viol-${ts}`,
+      },
+      qrToken: `PG-QR-ALPHA-${ts}`,
+      expectedUserId: officerAlphaUserId,
+    });
+    expect(scanGeoViolationRes.kind).toBe('CHECKPOINT_REJECTED');
+    if (scanGeoViolationRes.kind === 'CHECKPOINT_REJECTED') {
+      expect(scanGeoViolationRes.errorCode).toBe('GEOFENCE_VIOLATION');
+      expect(scanGeoViolationRes.distanceM).toBeGreaterThan(1000);
+      expect(scanGeoViolationRes.radiusM).toBe(100);
+    }
   });
 
   it('5. Enforces tenant isolation & least-privilege ACL over live PostgREST (anon/authenticated denied 42501 on RPC & writes)', async () => {
@@ -693,6 +890,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
           p_id: crypto.randomUUID(),
           p_tenant_id: tenantAlphaId,
           p_personnel_id: personnelAlphaId,
+          p_expected_user_id: officerAlphaUserId,
           p_facility_id: facilityAlphaId,
           p_type: 'CLOCK_IN',
           p_timestamp: new Date().toISOString(),
@@ -721,6 +919,43 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
         });
       expect(directInsert.error).not.toBeNull();
       expect(directInsert.error?.code).toBe('42501');
+
+      const scanRpcRes = await restrictedClient
+        .schema('workforce_staging')
+        .rpc('record_checkpoint_scan_atomic', {
+          p_id: crypto.randomUUID(),
+          p_tenant_id: tenantAlphaId,
+          p_personnel_id: personnelAlphaId,
+          p_expected_user_id: officerAlphaUserId,
+          p_checkpoint_id: checkpointAlphaId,
+          p_qr_token: `PG-QR-ALPHA-${ts}`,
+          p_scanned_at: new Date().toISOString(),
+          p_latitude: -6.2088,
+          p_longitude: 106.8456,
+          p_distance_m: 0,
+          p_status: 'VERIFIED',
+          p_idempotency_key: `pgrst-denied-scan-rpc-${crypto.randomUUID()}`,
+        });
+      expect(scanRpcRes.error).not.toBeNull();
+      expect(scanRpcRes.error?.code).toBe('42501');
+
+      const directScanInsert = await restrictedClient
+        .schema('workforce_staging')
+        .from('checkpoint_scans')
+        .insert({
+          id: crypto.randomUUID(),
+          tenant_id: tenantAlphaId,
+          checkpoint_id: checkpointAlphaId,
+          personnel_id: personnelAlphaId,
+          scanned_at: new Date().toISOString(),
+          latitude: -6.2088,
+          longitude: 106.8456,
+          distance_m: 0,
+          status: 'VERIFIED',
+          idempotency_key: `pgrst-denied-scan-ins-${crypto.randomUUID()}`,
+        });
+      expect(directScanInsert.error).not.toBeNull();
+      expect(directScanInsert.error?.code).toBe('42501');
     }
 
     // Anonymous cannot read attendance_logs at all (42501)
@@ -748,6 +983,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
         photo_url: null,
         idempotency_key: `pgrst-direct-field-switch-${ts}`,
       },
+      expectedUserId: officerAlphaUserId,
       checkTransition: (s, t) => ({ allowed: ALLOWED_TRANSITIONS[s]?.includes(t) ?? false }),
     });
     expect(directFieldSwitch).toEqual({ kind: 'FACILITY_REJECTED', errorCode: 'FACILITY_ASSIGNMENT_FORBIDDEN' });
@@ -767,6 +1003,7 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
         photo_url: null,
         idempotency_key: `pgrst-direct-cross-fac-${ts}`,
       },
+      expectedUserId: officerAlphaUserId,
       checkTransition: (s, t) => ({ allowed: ALLOWED_TRANSITIONS[s]?.includes(t) ?? false }),
     });
     expect(directCrossTenantFac).toEqual({
@@ -820,5 +1057,103 @@ describe('Workstream A R3.1: Production createSupabaseServiceRoleOperationalStor
     expect(observedFetchUrls.some((u) => u.includes('/rest/v1/personnel'))).toBe(true);
     expect(observedFetchUrls.some((u) => u.includes('/rest/v1/facilities'))).toBe(true);
     expect(observedFetchUrls.some((u) => u.includes('/rest/v1/rpc/record_attendance_atomic'))).toBe(true);
+    expect(observedFetchUrls.some((u) => u.includes('/rest/v1/rpc/record_checkpoint_scan_atomic'))).toBe(true);
+  });
+
+  it('7. Verifies PostgREST HTTP schema cache: rejects obsolete 12-arg/11-arg signatures (PGRST202), denies anon/authenticated RPC (42501), and masks qr_token & Commerce', async () => {
+    // Obsolete 12-arg attendance payload (missing p_expected_user_id) must fail with PGRST202 over HTTP
+    const legacyAttRes = await serviceRoleClient.schema('workforce_staging').rpc('record_attendance_atomic', {
+      p_id: crypto.randomUUID(),
+      p_tenant_id: tenantAlphaId,
+      p_personnel_id: personnelAlphaId,
+      p_facility_id: facilityAlphaId,
+      p_type: 'CLOCK_IN',
+      p_timestamp: new Date().toISOString(),
+      p_latitude: -6.2088,
+      p_longitude: 106.8456,
+      p_geofence_verified: true,
+      p_biometric_mode: 'NONE_UNVERIFIED',
+      p_photo_url: null,
+      p_idempotency_key: `legacy-att-http-${ts}`,
+    });
+    expect(legacyAttRes.error?.code).toBe('PGRST202');
+
+    // Obsolete 11-arg scan payload (missing p_qr_token) must fail with PGRST202 over HTTP
+    const legacyScanRes = await serviceRoleClient.schema('workforce_staging').rpc('record_checkpoint_scan_atomic', {
+      p_id: crypto.randomUUID(),
+      p_tenant_id: tenantAlphaId,
+      p_checkpoint_id: checkpointAlphaId,
+      p_personnel_id: personnelAlphaId,
+      p_expected_user_id: officerAlphaUserId,
+      p_scanned_at: new Date().toISOString(),
+      p_latitude: -6.2088,
+      p_longitude: 106.8456,
+      p_distance_m: 0,
+      p_status: 'VERIFIED',
+      p_idempotency_key: `legacy-scan-http-${ts}`,
+    });
+    expect(legacyScanRes.error?.code).toBe('PGRST202');
+
+    // anon and authenticated clients must be denied EXECUTE over PostgREST HTTP (42501 / permission denied)
+    for (const untrustedClient of [anonClient, authenticatedClient]) {
+      const attDenied = await untrustedClient.schema('workforce_staging').rpc('record_attendance_atomic', {
+        p_id: crypto.randomUUID(),
+        p_tenant_id: tenantAlphaId,
+        p_personnel_id: personnelAlphaId,
+        p_expected_user_id: officerAlphaUserId,
+        p_facility_id: facilityAlphaId,
+        p_type: 'CLOCK_IN',
+        p_timestamp: new Date().toISOString(),
+        p_latitude: -6.2088,
+        p_longitude: 106.8456,
+        p_geofence_verified: true,
+        p_biometric_mode: 'NONE_UNVERIFIED',
+        p_photo_url: null,
+        p_idempotency_key: `denied-att-http-${ts}`,
+      });
+      expect(attDenied.error).not.toBeNull();
+      expect(attDenied.error?.code).toBe('42501');
+
+      const scanDenied = await untrustedClient.schema('workforce_staging').rpc('record_checkpoint_scan_atomic', {
+        p_id: crypto.randomUUID(),
+        p_tenant_id: tenantAlphaId,
+        p_checkpoint_id: checkpointAlphaId,
+        p_personnel_id: personnelAlphaId,
+        p_expected_user_id: officerAlphaUserId,
+        p_qr_token: `PG-QR-ALPHA-${ts}`,
+        p_scanned_at: new Date().toISOString(),
+        p_latitude: -6.2088,
+        p_longitude: 106.8456,
+        p_distance_m: 0,
+        p_status: 'VERIFIED',
+        p_idempotency_key: `denied-scan-http-${ts}`,
+      });
+      expect(scanDenied.error).not.toBeNull();
+      expect(scanDenied.error?.code).toBe('42501');
+    }
+
+    // Authenticated field_personnel reads own assigned public.workforce_checkpoints via HTTP with masked qr_token = null
+    const authedCpRes = await authenticatedClient
+      .from('workforce_checkpoints')
+      .select('id, facility_id, qr_token')
+      .eq('id', checkpointAlphaId);
+    expect(authedCpRes.error).toBeNull();
+    expect(authedCpRes.data).toHaveLength(1);
+    expect(authedCpRes.data?.[0].qr_token).toBeNull();
+
+    // Authenticated field_personnel cannot read cross-tenant Beta checkpoint or Commerce products over PostgREST HTTP
+    const crossBetaCpRes = await authenticatedClient
+      .from('workforce_checkpoints')
+      .select('id')
+      .eq('id', checkpointBetaId);
+    expect(crossBetaCpRes.error).toBeNull();
+    expect(crossBetaCpRes.data).toHaveLength(0);
+
+    const commerceProdRes = await authenticatedClient
+      .from('products')
+      .select('id')
+      .eq('tenant_id', tenantAlphaId);
+    expect(commerceProdRes.error).toBeNull();
+    expect(commerceProdRes.data).toHaveLength(0);
   });
 });

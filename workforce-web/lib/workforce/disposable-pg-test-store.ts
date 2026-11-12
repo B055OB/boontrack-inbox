@@ -21,8 +21,10 @@ import {
   mapFacilityRow,
   normalizeStoreError,
   parseAtomicAttendanceRpcResult,
+  parseAtomicCheckpointScanRpcResult,
   type AttendanceLogRow,
   type AtomicAttendanceWriteResult,
+  type AtomicCheckpointScanWriteResult,
   type MembershipAuthorityRecord,
   type PersonnelRecord,
   type TenantAuthorityRecord,
@@ -226,19 +228,20 @@ export function createDisposablePgTestStore(db: PgTestDatabase): WorkforceOperat
       }
     },
 
-    async recordAttendanceWithStateTransition({ row }): Promise<AtomicAttendanceWriteResult> {
+    async recordAttendanceWithStateTransition({ row, expectedUserId }): Promise<AtomicAttendanceWriteResult> {
       try {
-        // Invokes the identical database atomic RPC (Migration 013: SELECT ... FOR UPDATE on personnel + state validation)
+        // Invokes the identical database atomic RPC (Migration 015: SELECT ... FOR UPDATE on personnel + actor binding + state validation)
         const queryTarget = isSingleClient(db) ? db : db;
         const rpcRes = await queryTarget.query(
           `SELECT workforce_staging.record_attendance_atomic(
-             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::timestamptz,
-             $7::numeric, $8::numeric, $9::boolean, $10::text, $11::text, $12::text
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::text, $7::timestamptz,
+             $8::numeric, $9::numeric, $10::boolean, $11::text, $12::text, $13::text
            ) AS result`,
           [
             row.id,
             row.tenant_id,
             row.personnel_id,
+            expectedUserId ?? null,
             row.facility_id,
             row.type,
             row.timestamp,
@@ -347,6 +350,36 @@ export function createDisposablePgTestStore(db: PgTestDatabase): WorkforceOperat
         return { data: res.rows[0] ? mapCheckpointScanRow(res.rows[0]) : null, error: null };
       } catch (err) {
         return { data: null, error: normalizeStoreError(err) };
+      }
+    },
+
+    async recordCheckpointScanAtomic({ row, qrToken, expectedUserId }): Promise<AtomicCheckpointScanWriteResult> {
+      try {
+        // Invokes the identical database atomic RPC (Migration 014: topological lock hierarchy 1 -> 2 -> 3 -> 3.5 -> 4 + actor binding + fresh geofence & authority validation)
+        const queryTarget = isSingleClient(db) ? db : db;
+        const rpcRes = await queryTarget.query(
+          `SELECT workforce_staging.record_checkpoint_scan_atomic(
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::text, $7::timestamptz,
+             $8::numeric, $9::numeric, $10::numeric, $11::text, $12::text
+           ) AS result`,
+          [
+            row.id,
+            row.tenant_id,
+            row.personnel_id,
+            expectedUserId ?? null,
+            row.checkpoint_id,
+            qrToken,
+            row.scanned_at,
+            row.latitude,
+            row.longitude,
+            row.distance_m,
+            row.status,
+            row.idempotency_key,
+          ]
+        );
+        return parseAtomicCheckpointScanRpcResult(rpcRes.rows[0]?.result);
+      } catch (err) {
+        return { kind: 'ERROR', error: normalizeStoreError(err) };
       }
     },
   };

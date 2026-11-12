@@ -219,12 +219,15 @@ async function runVerification() {
     await executeMigrationFile('010_strict_storefront_opt_in_and_role_authorization.sql');
 
     // ========================================================================
-    // SECTION 2: MIGRATION 011 UP, 012 UP & 013 UP EXECUTION & VALIDATION
+    // SECTION 2: MIGRATION 011 UP THROUGH 016 UP EXECUTION & VALIDATION
     // ========================================================================
-    console.log('\n--- Section 2: Executing Migration 011 UP, 012 UP & 013 UP ---');
+    console.log('\n--- Section 2: Executing Migrations 011 UP through 016 UP ---');
     await executeMigrationFile('011_create_workforce_operational_tables.sql');
     await executeMigrationFile('012_create_workforce_revocation_and_authz_versioning.sql');
     await executeMigrationFile('013_attendance_atomic_state_rpc.sql');
+    await executeMigrationFile('014_checkpoint_scan_atomic_rpc.sql');
+    await executeMigrationFile('015_attendance_actor_binding_and_role_allowlist.sql');
+    await executeMigrationFile('016_bwm_domain_authorization_isolation.sql');
 
     // Validate operational tables exist
     const expectedTables = [
@@ -310,9 +313,12 @@ async function runVerification() {
     console.log('✓ Validated attendance_logs.state_seq (NOT NULL) and personnel.attendance_version.');
 
     // ========================================================================
-    // SECTION 3: DOWN MIGRATION ROLLBACK VALIDATION
+    // SECTION 3: DOWN MIGRATION ROLLBACK VALIDATION (016 -> 011 SYMMETRICAL)
     // ========================================================================
-    console.log('\n--- Section 3: Testing DOWN Migrations on Disposable Data ---');
+    console.log('\n--- Section 3: Testing DOWN Migrations (016 -> 011) on Disposable Data ---');
+    await executeMigrationFile('016_bwm_domain_authorization_isolation.down.sql');
+    await executeMigrationFile('015_attendance_actor_binding_and_role_allowlist.down.sql');
+    await executeMigrationFile('014_checkpoint_scan_atomic_rpc.down.sql');
     await executeMigrationFile('013_attendance_atomic_state_rpc.down.sql');
     const checkRpcDropped = await client.query(`
       SELECT count(*) FROM pg_proc p
@@ -329,6 +335,9 @@ async function runVerification() {
     if (Number(checkSeqDropped.rows[0].count) !== 0) {
       throw new Error('DOWN migration failed: attendance_logs.state_seq was not dropped');
     }
+    // 010/016's SELECT * view on public.tenant_memberships binds to 012's authz_version column when recreated after 012;
+    // drop the view prior to 012 DOWN (restored by 016 UP / 010 UP on re-apply).
+    await client.query('DROP VIEW IF EXISTS public.tenant_memberships;');
     await executeMigrationFile('012_create_workforce_revocation_and_authz_versioning.down.sql');
     await executeMigrationFile('011_create_workforce_operational_tables.down.sql');
 
@@ -351,11 +360,14 @@ async function runVerification() {
     }
     console.log('✓ DOWN migrations executed cleanly without corrupting baseline schema.');
 
-    // Reapply UP migrations for functional security testing
-    console.log('\n--- Reapplying UP Migrations for Security Tests ---');
+    // Reapply UP migrations (011 -> 016) for functional security testing
+    console.log('\n--- Reapplying UP Migrations (011 -> 016) for Security Tests ---');
     await executeMigrationFile('011_create_workforce_operational_tables.sql');
     await executeMigrationFile('012_create_workforce_revocation_and_authz_versioning.sql');
     await executeMigrationFile('013_attendance_atomic_state_rpc.sql');
+    await executeMigrationFile('014_checkpoint_scan_atomic_rpc.sql');
+    await executeMigrationFile('015_attendance_actor_binding_and_role_allowlist.sql');
+    await executeMigrationFile('016_bwm_domain_authorization_isolation.sql');
 
     // ========================================================================
     // SECTION 4: CREDENTIAL ISOLATION TESTS (ACTUAL POSTGRESQL ROLES & RLS)
@@ -504,8 +516,8 @@ async function runVerification() {
     // Reset role to superuser/service_role
     await client.query(`RESET ROLE;`);
 
-    // Test 5: Privilege Audit on Migration 011 Operational Tables
-    const viewSourceTables = ['facilities', 'personnel', 'incidents', 'checkpoints', 'attendance_logs', 'checkpoint_scans'];
+    // Test 5: Privilege Audit on Migration 011 Operational Tables & Migration 016 Column ACL
+    const viewSourceTables = ['facilities', 'personnel', 'incidents', 'attendance_logs', 'checkpoint_scans'];
     for (const tbl of viewSourceTables) {
       const privRes = await client.query(`
         SELECT has_table_privilege('authenticated', 'workforce_staging.' || $1, 'SELECT') AS has_select;
@@ -514,7 +526,17 @@ async function runVerification() {
         throw new Error(`Privilege failure: authenticated role must have SELECT on workforce_staging.${tbl}`);
       }
     }
-    console.log('✓ Verified: Minimum required SELECT privilege granted to authenticated on all 6 view source tables.');
+    const cpPrivRes = await client.query(`
+      SELECT
+        has_table_privilege('authenticated', 'workforce_staging.checkpoints', 'SELECT') AS has_table_select,
+        has_column_privilege('authenticated', 'workforce_staging.checkpoints', 'id', 'SELECT') AS has_id_select,
+        has_column_privilege('authenticated', 'workforce_staging.checkpoints', 'qr_token', 'SELECT') AS has_qr_token_select;
+    `);
+    const cpPriv = cpPrivRes.rows[0];
+    if (cpPriv.has_table_select || !cpPriv.has_id_select || cpPriv.has_qr_token_select) {
+      throw new Error(`Privilege failure on workforce_staging.checkpoints column ACL: ${JSON.stringify(cpPriv)}`);
+    }
+    console.log('✓ Verified: Minimum required SELECT privilege granted to authenticated across view source tables & qr_token column-revoked on checkpoints.');
 
     const nonViewTables = ['shift_handovers', 'notification_outbox', 'credential_audit_logs', 'personnel_credentials'];
     for (const tbl of nonViewTables) {
@@ -543,23 +565,63 @@ async function runVerification() {
     }
     console.log('✓ Verified: Zero INSERT/UPDATE/DELETE/TRUNCATE privileges for authenticated on all 10 operational tables.');
 
-    // Test 6: Migration 013 RPC EXECUTE ACLs & runtime authorization check
-    const rpcSig = 'workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)';
-    for (const deniedRole of ['anon', 'authenticated']) {
-      const execPriv = await client.query(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS can_exec;`, [deniedRole, rpcSig]);
-      if (execPriv.rows[0].can_exec) {
-        throw new Error(`Privilege breach: ${deniedRole} role must NOT have EXECUTE on record_attendance_atomic`);
-      }
+    // Test 6: Migration 014 & 015 Authoritative RPC Signatures, Obsolete Overload Removal, SECURITY INVOKER / search_path & ACLs
+    const rpcAttendanceSig = 'workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)';
+    const rpcScanSig = 'workforce_staging.record_checkpoint_scan_atomic(uuid,uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,numeric,text,text)';
+    const legacyAttendanceSig = 'workforce_staging.record_attendance_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,boolean,text,text,text)';
+    const legacyScanSig = 'workforce_staging.record_checkpoint_scan_atomic(uuid,uuid,uuid,uuid,text,timestamptz,numeric,numeric,numeric,text,text)';
+
+    const sigCheckRes = await client.query(
+      `SELECT
+         to_regprocedure($1) IS NOT NULL AS has_new_attendance,
+         to_regprocedure($2) IS NOT NULL AS has_new_scan,
+         to_regprocedure($3) IS NULL AS legacy_attendance_removed,
+         to_regprocedure($4) IS NULL AS legacy_scan_removed;`,
+      [rpcAttendanceSig, rpcScanSig, legacyAttendanceSig, legacyScanSig]
+    );
+    const sigRow = sigCheckRes.rows[0];
+    if (!sigRow.has_new_attendance || !sigRow.has_new_scan) {
+      throw new Error(`Missing authoritative RPC signature: ${JSON.stringify(sigRow)}`);
     }
-    const serviceRolePriv = await client.query(`SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS can_exec;`, [rpcSig]);
-    if (!serviceRolePriv.rows[0].can_exec) {
-      throw new Error('Privilege failure: service_role must have EXECUTE on record_attendance_atomic');
+    if (!sigRow.legacy_attendance_removed || !sigRow.legacy_scan_removed) {
+      throw new Error(`Obsolete legacy RPC overload still exists in database: ${JSON.stringify(sigRow)}`);
     }
 
-    const rpcProbeArgs = [
+    const procAuditRes = await client.query(
+      `SELECT proname, prosecdef, proconfig
+       FROM pg_proc
+       WHERE oid IN (to_regprocedure($1), to_regprocedure($2))
+       ORDER BY proname;`,
+      [rpcAttendanceSig, rpcScanSig]
+    );
+    for (const proc of procAuditRes.rows) {
+      if (proc.prosecdef !== false) {
+        throw new Error(`Security breach: ${proc.proname} must be SECURITY INVOKER (prosecdef=false), got ${proc.prosecdef}`);
+      }
+      const configStr = Array.isArray(proc.proconfig) ? proc.proconfig.join(';') : '';
+      if (!configStr.includes('search_path=pg_catalog, workforce_staging')) {
+        throw new Error(`Security breach: ${proc.proname} missing hardened search_path, got ${configStr}`);
+      }
+    }
+
+    for (const sig of [rpcAttendanceSig, rpcScanSig]) {
+      for (const deniedRole of ['anon', 'authenticated']) {
+        const execPriv = await client.query(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS can_exec;`, [deniedRole, sig]);
+        if (execPriv.rows[0].can_exec) {
+          throw new Error(`Privilege breach: ${deniedRole} role must NOT have EXECUTE on ${sig}`);
+        }
+      }
+      const serviceRolePriv = await client.query(`SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS can_exec;`, [sig]);
+      if (!serviceRolePriv.rows[0].can_exec) {
+        throw new Error(`Privilege failure: service_role must have EXECUTE on ${sig}`);
+      }
+    }
+
+    const rpcAttendanceArgs = [
       '00000000-0000-4000-8000-000000000901',
       tenantAlphaId,
       '99999999-9999-4999-8999-999999999999',
+      '99999999-9999-4999-8999-999999999998',
       null,
       'CLOCK_IN',
       new Date().toISOString(),
@@ -570,35 +632,66 @@ async function runVerification() {
       null,
       'ci-rpc-acl-probe-01',
     ];
+    const rpcScanArgs = [
+      '00000000-0000-4000-8000-000000000902',
+      tenantAlphaId,
+      '99999999-9999-4999-8999-999999999997',
+      '99999999-9999-4999-8999-999999999999',
+      '99999999-9999-4999-8999-999999999998',
+      'PROBE-QR-NONE',
+      new Date().toISOString(),
+      -6.2088,
+      106.8456,
+      200,
+      'VERIFIED',
+      'ci-scan-acl-probe-01',
+    ];
+
     for (const deniedRole of ['anon', 'authenticated']) {
       await client.query(`SET ROLE ${deniedRole};`);
-      let deniedCode = '';
+      let deniedAttCode = '';
       try {
         await client.query(
-          `SELECT workforce_staging.record_attendance_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::text,$6::timestamptz,$7::numeric,$8::numeric,$9::boolean,$10::text,$11::text,$12::text);`,
-          rpcProbeArgs
+          `SELECT workforce_staging.record_attendance_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::text,$7::timestamptz,$8::numeric,$9::numeric,$10::boolean,$11::text,$12::text,$13::text);`,
+          rpcAttendanceArgs
         );
       } catch (err) {
-        deniedCode = err.code;
+        deniedAttCode = err.code;
+      }
+      let deniedScanCode = '';
+      try {
+        await client.query(
+          `SELECT workforce_staging.record_checkpoint_scan_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::text,$7::timestamptz,$8::numeric,$9::numeric,$10::numeric,$11::text,$12::text);`,
+          rpcScanArgs
+        );
+      } catch (err) {
+        deniedScanCode = err.code;
       }
       await client.query(`RESET ROLE;`);
-      if (deniedCode !== '42501') {
-        throw new Error(`RPC security failure: ${deniedRole} call did not fail with 42501 (got ${deniedCode})`);
+      if (deniedAttCode !== '42501' || deniedScanCode !== '42501') {
+        throw new Error(`RPC security failure for ${deniedRole}: attendance=${deniedAttCode}, scan=${deniedScanCode}`);
       }
     }
 
     await client.query(`SET ROLE service_role;`);
     await client.query(`SET request.jwt.claim.role = 'service_role';`);
-    const serviceProbe = await client.query(
-      `SELECT workforce_staging.record_attendance_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::text,$6::timestamptz,$7::numeric,$8::numeric,$9::boolean,$10::text,$11::text,$12::text) AS res;`,
-      rpcProbeArgs
+    const serviceAttProbe = await client.query(
+      `SELECT workforce_staging.record_attendance_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::text,$7::timestamptz,$8::numeric,$9::numeric,$10::boolean,$11::text,$12::text,$13::text) AS res;`,
+      rpcAttendanceArgs
+    );
+    const serviceScanProbe = await client.query(
+      `SELECT workforce_staging.record_checkpoint_scan_atomic($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::text,$7::timestamptz,$8::numeric,$9::numeric,$10::numeric,$11::text,$12::text) AS res;`,
+      rpcScanArgs
     );
     await client.query(`RESET ROLE;`);
     await client.query(`SELECT set_config('request.jwt.claim.role', '', false);`);
-    if (serviceProbe.rows[0]?.res?.outcome !== 'PERSONNEL_NOT_PROVISIONED') {
-      throw new Error(`Unexpected service_role RPC probe result: ${JSON.stringify(serviceProbe.rows[0]?.res)}`);
+    if (serviceAttProbe.rows[0]?.res?.outcome !== 'PERSONNEL_NOT_PROVISIONED') {
+      throw new Error(`Unexpected service_role 13-arg attendance RPC probe result: ${JSON.stringify(serviceAttProbe.rows[0]?.res)}`);
     }
-    console.log('✓ Verified: record_attendance_atomic EXECUTE denied (42501) for anon/authenticated and permitted for service_role.');
+    if (serviceScanProbe.rows[0]?.res?.outcome !== 'CHECKPOINT_NOT_FOUND' && serviceScanProbe.rows[0]?.res?.outcome !== 'PERSONNEL_NOT_PROVISIONED') {
+      throw new Error(`Unexpected service_role 12-arg checkpoint scan RPC probe result: ${JSON.stringify(serviceScanProbe.rows[0]?.res)}`);
+    }
+    console.log('✓ Verified: 13-arg attendance & 12-arg checkpoint RPCs present, obsolete overloads removed, SECURITY INVOKER + hardened search_path, EXECUTE denied (42501) for anon/authenticated and permitted for service_role.');
 
     // ========================================================================
     // SECTION 5: REVOCATION & AUTHZ_VERSION FUNCTIONALITY
@@ -757,7 +850,7 @@ async function runVerification() {
     const facilityAlphaId = facAlphaRes.rows[0].id;
     const facilityAlphaTenantId = facAlphaRes.rows[0].tenant_id;
 
-    // 2. Seed facility for Tenant Beta
+    // 2. Seed facility for Tenant Beta + Unassigned second facility & Commerce/Supervisor fixtures in Alpha
     const facBetaRes = await client.query(`
       INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude)
       VALUES ('${tenantBetaId}', 'beta-defense', 'Beta Outpost North', 'FAC-BETA-01', -6.3000, 106.9000)
@@ -765,6 +858,52 @@ async function runVerification() {
     `);
     const facilityBetaId = facBetaRes.rows[0].id;
     const facilityBetaTenantId = facBetaRes.rows[0].tenant_id;
+
+    // Bind Officer Alpha explicitly to facilityAlphaId for M-2 facility-bound RLS
+    await client.query(
+      `UPDATE workforce_staging.personnel SET facility_id = $1 WHERE id = $2;`,
+      [facilityAlphaId, personnelAlphaId]
+    );
+
+    const facAlphaSecondRes = await client.query(`
+      INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude)
+      VALUES ('${tenantAlphaId}', 'alpha-security', 'Alpha Secondary Depot', 'FAC-ALPHA-02', -6.2200, 106.8600)
+      RETURNING id;
+    `);
+    const facilityAlphaSecondId = facAlphaSecondRes.rows[0].id;
+
+    const coworkerAlphaUserId = '55555555-5555-4555-8555-555555555502';
+    const coworkerMemRes = await client.query(`
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      VALUES ('${coworkerAlphaUserId}', '${tenantAlphaId}', 'alpha-security', 'field_personnel', true)
+      RETURNING id;
+    `);
+    const coworkerMemId = coworkerMemRes.rows[0].id;
+    const coworkerPersRes = await client.query(`
+      INSERT INTO workforce_staging.personnel (tenant_id, tenant_slug, user_id, membership_id, facility_id, name, nik, role)
+      VALUES ('${tenantAlphaId}', 'alpha-security', '${coworkerAlphaUserId}', '${coworkerMemId}', '${facilityAlphaSecondId}', 'Officer Second', 'NIK-003', 'field_personnel')
+      RETURNING id;
+    `);
+    const coworkerAlphaPersonnelId = coworkerPersRes.rows[0].id;
+
+    const cpAlphaSecondRes = await client.query(`
+      INSERT INTO workforce_staging.checkpoints (tenant_id, facility_id, name, code, zone, latitude, longitude, qr_token)
+      VALUES ('${tenantAlphaId}', '${facilityAlphaSecondId}', 'Alpha Secondary Gate', 'CP-02', 'Rear', -6.2200, 106.8600, 'QR-ALPHA-02')
+      RETURNING id;
+    `);
+    const cpAlphaSecondId = cpAlphaSecondRes.rows[0].id;
+
+    const prodAlphaRes = await client.query(`
+      INSERT INTO workforce_staging.products (tenant_id, title, slug, price, stock, category, product_type, is_active, status, is_publicly_published)
+      VALUES ('${tenantAlphaId}', 'Alpha Commerce Package', 'alpha-commerce-pkg', 250000, 10, 'service', 'SERVICE', true, 'ACTIVE', false)
+      RETURNING id;
+    `);
+    const prodAlphaId = prodAlphaRes.rows[0].id;
+
+    await client.query(`
+      INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
+      VALUES ('44444444-4444-4444-8444-444444444401', '${tenantAlphaId}', 500, 5, 'IDR');
+    `);
 
     // 3 & 4. Validate facilities are strictly bound to their respective tenants
     if (facilityAlphaTenantId !== tenantAlphaId) {
@@ -817,10 +956,22 @@ async function runVerification() {
     await client.query(`SET request.jwt.claim.sub = '${officerAlphaUserId}';`);
     await client.query(`SET request.jwt.claim.role = 'authenticated';`);
 
-    // Positive RLS Read: Officer Alpha can read Tenant Alpha checkpoint
-    const readAlpha = await client.query(`SELECT * FROM workforce_staging.checkpoints WHERE id = '${checkpointAlphaId}';`);
+    // Positive RLS Read: Officer Alpha can read non-secret columns of assigned Tenant Alpha checkpoint
+    const readAlpha = await client.query(`SELECT id, tenant_id, facility_id, code, is_active FROM workforce_staging.checkpoints WHERE id = '${checkpointAlphaId}';`);
     if (readAlpha.rows.length !== 1) throw new Error('Officer Alpha failed to read own tenant checkpoint under RLS');
-    console.log('✓ Positive RLS Read: Officer Alpha successfully read Tenant Alpha checkpoint.');
+    console.log('✓ Positive RLS Read: Officer Alpha successfully read Tenant Alpha checkpoint (non-secret columns).');
+
+    // Negative Column ACL: Authenticated role cannot read raw qr_token column directly on workforce_staging.checkpoints
+    let rawQrDenied = false;
+    try {
+      await client.query(`SELECT qr_token FROM workforce_staging.checkpoints WHERE id = '${checkpointAlphaId}';`);
+    } catch (err) {
+      if (err.code === '42501') rawQrDenied = true;
+    }
+    if (!rawQrDenied) {
+      throw new Error('CRITICAL M-2 BREACH: field_personnel read raw qr_token directly from workforce_staging.checkpoints');
+    }
+    console.log('✓ Column ACL Enforcement: Direct SELECT qr_token on workforce_staging.checkpoints denied with SQLSTATE 42501.');
 
     // Positive RLS Read: Officer Alpha can read Tenant Alpha attendance log
     const readAttendAlpha = await client.query(`SELECT * FROM workforce_staging.attendance_logs WHERE id = '${attendanceAlphaId}';`);
@@ -828,7 +979,7 @@ async function runVerification() {
     console.log('✓ Positive RLS Read: Officer Alpha successfully read own tenant attendance log.');
 
     // Negative RLS Read: Officer Alpha CANNOT read Tenant Beta checkpoint (filtered by RLS -> 0 rows)
-    const readBeta = await client.query(`SELECT * FROM workforce_staging.checkpoints WHERE id = '${checkpointBetaId}';`);
+    const readBeta = await client.query(`SELECT id FROM workforce_staging.checkpoints WHERE id = '${checkpointBetaId}';`);
     if (readBeta.rows.length !== 0) {
       throw new Error('CRITICAL CROSS-TENANT DATA LEAK: Officer Alpha was able to view Tenant Beta checkpoint!');
     }
@@ -864,10 +1015,102 @@ async function runVerification() {
     }
     console.log('✓ Negative SQL Privilege: Cross-tenant direct mutation rejected with SQLSTATE 42501.');
 
+    // M-2 Domain Isolation Checks as field_personnel (Officer Alpha)
+    const fpViewCp = await client.query(`SELECT id, qr_token FROM public.workforce_checkpoints WHERE id = '${checkpointAlphaId}';`);
+    if (fpViewCp.rows.length !== 1 || fpViewCp.rows[0].qr_token !== null) {
+      throw new Error(`M-2 failure: field_personnel public.workforce_checkpoints expected 1 row with NULL qr_token, got ${JSON.stringify(fpViewCp.rows)}`);
+    }
+    if ((await client.query(`SELECT id FROM workforce_staging.checkpoints WHERE id = '${cpAlphaSecondId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: field_personnel read unassigned same-tenant facility checkpoint');
+    }
+    if ((await client.query(`SELECT id FROM workforce_staging.personnel WHERE id = '${coworkerAlphaPersonnelId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: field_personnel read coworker personnel record');
+    }
+    let fpDirectProdDenied = false;
+    try {
+      const fpDirectProd = await client.query(`SELECT id FROM workforce_staging.products WHERE id = '${prodAlphaId}';`);
+      if (fpDirectProd.rows.length === 0) fpDirectProdDenied = true;
+    } catch (err) {
+      if (err.code === '42501') fpDirectProdDenied = true;
+    }
+    if (!fpDirectProdDenied) {
+      throw new Error('M-2 breach: field_personnel read Commerce products table');
+    }
+    if ((await client.query(`SELECT id FROM public.products WHERE id = '${prodAlphaId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: field_personnel read Commerce public.products view');
+    }
+    if ((await client.query(`SELECT branch_id FROM workforce_staging.branch_credit_pools WHERE agency_id = '${tenantAlphaId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: field_personnel read branch_credit_pools');
+    }
+    console.log('✓ M-2 Verified: field_personnel strictly self/facility-scoped, qr_token masked, Commerce isolated.');
+
+    // M-2 Option C Checks as supervisor (Supervisor Alpha)
+    await client.query(`SET request.jwt.claim.sub = '${supervisorAlphaUserId}';`);
+    const supFacRead = await client.query(
+      `SELECT id FROM workforce_staging.facilities WHERE id IN ('${facilityAlphaId}', '${facilityAlphaSecondId}');`
+    );
+    if (supFacRead.rows.length !== 2) {
+      throw new Error(`M-2 Option C breach: supervisor must read same-tenant cross-facility rows, got ${supFacRead.rows.length}`);
+    }
+    const supBetaRead = await client.query(`SELECT id FROM workforce_staging.facilities WHERE id = '${facilityBetaId}';`);
+    if (supBetaRead.rows.length !== 0) {
+      throw new Error('M-2 breach: supervisor read cross-tenant Beta facility');
+    }
+    const supViewCp = await client.query(`SELECT id, qr_token FROM public.workforce_checkpoints WHERE id = '${checkpointAlphaId}';`);
+    if (supViewCp.rows.length !== 1 || supViewCp.rows[0].qr_token !== null) {
+      throw new Error('M-2 failure: supervisor must see masked NULL qr_token on public.workforce_checkpoints');
+    }
+    if ((await client.query(`SELECT id FROM public.products WHERE id = '${prodAlphaId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: supervisor read Commerce public.products view');
+    }
+    if ((await client.query(`SELECT branch_id FROM workforce_staging.branch_credit_pools WHERE agency_id = '${tenantAlphaId}';`)).rows.length !== 0) {
+      throw new Error('M-2 breach: supervisor read branch_credit_pools');
+    }
+    console.log('✓ M-2 Verified (Option C): supervisor retains same-tenant cross-facility read with masked qr_token & zero Commerce access.');
+
     await client.query(`RESET ROLE;`);
 
+    // ========================================================================
+    // SECTION 8: MIGRATION 016 -> 015 -> 014 ROLLBACK & RE-APPLY GATE (M-3)
+    // ========================================================================
+    console.log('\n--- Section 8: Testing Migration 016 -> 015 -> 014 Rollback & Clean Re-apply ---');
+    await executeMigrationFile('016_bwm_domain_authorization_isolation.down.sql');
+    await executeMigrationFile('015_attendance_actor_binding_and_role_allowlist.down.sql');
+    await executeMigrationFile('014_checkpoint_scan_atomic_rpc.down.sql');
+
+    const rolledBackCheck = await client.query(
+      `SELECT
+         to_regprocedure($1) IS NULL AS attendance_015_dropped,
+         to_regprocedure($2) IS NULL AS scan_014_dropped,
+         to_regprocedure($3) IS NOT NULL AS attendance_013_restored,
+         to_regprocedure('workforce_staging.is_trusted_commerce_member(text,text)') IS NULL AS m2_helper_dropped;`,
+      [rpcAttendanceSig, rpcScanSig, legacyAttendanceSig]
+    );
+    const rb = rolledBackCheck.rows[0];
+    if (!rb.attendance_015_dropped || !rb.scan_014_dropped || !rb.attendance_013_restored || !rb.m2_helper_dropped) {
+      throw new Error(`Migration rollback verification failed: ${JSON.stringify(rb)}`);
+    }
+
+    await executeMigrationFile('014_checkpoint_scan_atomic_rpc.sql');
+    await executeMigrationFile('015_attendance_actor_binding_and_role_allowlist.sql');
+    await executeMigrationFile('016_bwm_domain_authorization_isolation.sql');
+
+    const reappliedCheck = await client.query(
+      `SELECT
+         to_regprocedure($1) IS NOT NULL AS attendance_015_restored,
+         to_regprocedure($2) IS NOT NULL AS scan_014_restored,
+         to_regprocedure($3) IS NULL AS attendance_013_removed,
+         to_regprocedure('workforce_staging.is_trusted_commerce_member(text,text)') IS NOT NULL AS m2_helper_restored;`,
+      [rpcAttendanceSig, rpcScanSig, legacyAttendanceSig]
+    );
+    const ra = reappliedCheck.rows[0];
+    if (!ra.attendance_015_restored || !ra.scan_014_restored || !ra.attendance_013_removed || !ra.m2_helper_restored) {
+      throw new Error(`Migration re-apply verification failed: ${JSON.stringify(ra)}`);
+    }
+    console.log('✓ Section 8 Verified: 016 -> 015 -> 014 DOWN rollback and clean 014 -> 015 -> 016 UP re-apply succeeded.');
+
     console.log('\n======================================================================');
-    console.log('All 7 verification sections passed successfully on disposable PostgreSQL.');
+    console.log('All 8 verification sections passed successfully on disposable PostgreSQL.');
     console.log('======================================================================');
   } finally {
     await client.end();

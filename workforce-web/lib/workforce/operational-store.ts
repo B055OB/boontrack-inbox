@@ -138,6 +138,48 @@ export type AtomicAuthorityRevokedCode =
   | 'PERSONNEL_INACTIVE'
   | 'UNRECOGNIZED_MEMBERSHIP_ROLE';
 
+export type AtomicCheckpointRejectCode =
+  | 'CHECKPOINT_NOT_FOUND'
+  | 'CROSS_TENANT_CHECKPOINT_FORBIDDEN'
+  | 'CHECKPOINT_INACTIVE'
+  | 'QR_TOKEN_MISMATCH'
+  | 'CROSS_TENANT_FACILITY_FORBIDDEN'
+  | 'FACILITY_INACTIVE'
+  | 'FACILITY_ASSIGNMENT_FORBIDDEN'
+  | 'INVALID_GEOFENCE_CONFIGURATION'
+  | 'GEOFENCE_VIOLATION';
+
+export type AtomicCheckpointScanWriteResult =
+  | {
+      kind: 'CREATED';
+      row: CheckpointScanRow;
+      distanceM?: number;
+      radiusM?: number;
+    }
+  | {
+      kind: 'IDEMPOTENCY_EXISTING';
+      row: CheckpointScanRow;
+      distanceM?: number;
+      radiusM?: number;
+    }
+  | {
+      kind: 'PERSONNEL_NOT_PROVISIONED';
+    }
+  | {
+      kind: 'AUTHORITY_REVOKED';
+      errorCode: AtomicAuthorityRevokedCode;
+    }
+  | {
+      kind: 'CHECKPOINT_REJECTED';
+      errorCode: AtomicCheckpointRejectCode;
+      distanceM?: number;
+      radiusM?: number;
+    }
+  | {
+      kind: 'ERROR';
+      error: StoreError;
+    };
+
 export type AtomicAttendanceWriteResult =
   | {
       kind: 'CREATED';
@@ -186,6 +228,7 @@ export interface WorkforceOperationalStore {
   ): Promise<StoreResult<AttendanceLogRow>>;
   recordAttendanceWithStateTransition(params: {
     row: AttendanceLogRow;
+    expectedUserId?: string;
     checkTransition: (
       currentState: AttendanceEventType | 'INITIAL',
       attemptedType: 'CLOCK_IN' | 'CLOCK_OUT'
@@ -195,6 +238,11 @@ export interface WorkforceOperationalStore {
   findAttendanceByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<StoreResult<AttendanceLogRow>>;
   insertCheckpointScan(row: CheckpointScanRow): Promise<StoreResult<CheckpointScanRow>>;
   findCheckpointScanByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<StoreResult<CheckpointScanRow>>;
+  recordCheckpointScanAtomic?(params: {
+    row: CheckpointScanRow;
+    qrToken: string;
+    expectedUserId?: string;
+  }): Promise<AtomicCheckpointScanWriteResult>;
 }
 
 export function assertServerContext(): void {
@@ -376,6 +424,93 @@ export function parseAtomicAttendanceRpcResult(
   };
 }
 
+export function parseAtomicCheckpointScanRpcResult(payload: unknown): AtomicCheckpointScanWriteResult {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {
+      kind: 'ERROR',
+      error: { message: 'Malformed or empty response from record_checkpoint_scan_atomic RPC.' },
+    };
+  }
+
+  const resObj = payload as Record<string, unknown>;
+  const outcome = typeof resObj.outcome === 'string' ? resObj.outcome : '';
+  const distanceM =
+    resObj.distance_m !== undefined && resObj.distance_m !== null && Number.isFinite(Number(resObj.distance_m))
+      ? Number(resObj.distance_m)
+      : undefined;
+  const radiusM =
+    resObj.radius_m !== undefined && resObj.radius_m !== null && Number.isFinite(Number(resObj.radius_m))
+      ? Number(resObj.radius_m)
+      : undefined;
+
+  if (outcome === 'CREATED') {
+    if (!resObj.row || typeof resObj.row !== 'object' || Array.isArray(resObj.row)) {
+      return {
+        kind: 'ERROR',
+        error: { message: 'Persisted checkpoint scan row was missing from record_checkpoint_scan_atomic response.' },
+      };
+    }
+    return {
+      kind: 'CREATED',
+      row: mapCheckpointScanRow(resObj.row as Record<string, unknown>),
+      distanceM,
+      radiusM,
+    };
+  }
+
+  if (outcome === 'IDEMPOTENCY_EXISTING') {
+    if (!resObj.row || typeof resObj.row !== 'object' || Array.isArray(resObj.row)) {
+      return {
+        kind: 'ERROR',
+        error: { message: 'Existing idempotency row was missing from record_checkpoint_scan_atomic response.' },
+      };
+    }
+    return {
+      kind: 'IDEMPOTENCY_EXISTING',
+      row: mapCheckpointScanRow(resObj.row as Record<string, unknown>),
+      distanceM,
+      radiusM,
+    };
+  }
+
+  if (outcome === 'PERSONNEL_NOT_PROVISIONED') {
+    return { kind: 'PERSONNEL_NOT_PROVISIONED' };
+  }
+
+  if (
+    outcome === 'TENANT_INACTIVE' ||
+    outcome === 'MEMBERSHIP_REVOKED' ||
+    outcome === 'PERSONNEL_INACTIVE' ||
+    outcome === 'UNRECOGNIZED_MEMBERSHIP_ROLE'
+  ) {
+    return { kind: 'AUTHORITY_REVOKED', errorCode: outcome };
+  }
+
+  if (
+    outcome === 'CHECKPOINT_NOT_FOUND' ||
+    outcome === 'CROSS_TENANT_CHECKPOINT_FORBIDDEN' ||
+    outcome === 'CHECKPOINT_INACTIVE' ||
+    outcome === 'QR_TOKEN_MISMATCH' ||
+    outcome === 'CROSS_TENANT_FACILITY_FORBIDDEN' ||
+    outcome === 'FACILITY_INACTIVE' ||
+    outcome === 'FACILITY_ASSIGNMENT_FORBIDDEN' ||
+    outcome === 'INVALID_GEOFENCE_CONFIGURATION' ||
+    outcome === 'GEOFENCE_VIOLATION'
+  ) {
+    return {
+      kind: 'CHECKPOINT_REJECTED',
+      errorCode: outcome,
+      distanceM,
+      radiusM,
+    };
+  }
+
+  return {
+    kind: 'ERROR',
+    error: { message: `Unexpected outcome '${outcome || 'UNKNOWN'}' from record_checkpoint_scan_atomic RPC.` },
+  };
+}
+
 /**
  * Production / Staging Operational Store backed strictly by Supabase Service Role client.
  */
@@ -484,13 +619,14 @@ export function createSupabaseServiceRoleOperationalStore(supabaseAdmin: Supabas
       return { data: data ? mapAttendanceRow(data) : null, error: null };
     },
 
-    async recordAttendanceWithStateTransition({ row }) {
+    async recordAttendanceWithStateTransition({ row, expectedUserId }) {
       const { data, error } = await supabaseAdmin
         .schema('workforce_staging')
         .rpc('record_attendance_atomic', {
           p_id: row.id,
           p_tenant_id: row.tenant_id,
           p_personnel_id: row.personnel_id,
+          p_expected_user_id: expectedUserId ?? null,
           p_facility_id: row.facility_id,
           p_type: row.type,
           p_timestamp: row.timestamp,
@@ -563,6 +699,31 @@ export function createSupabaseServiceRoleOperationalStore(supabaseAdmin: Supabas
         .maybeSingle();
       if (error) return { data: null, error: normalizeStoreError(error) };
       return { data: data ? mapCheckpointScanRow(data) : null, error: null };
+    },
+
+    async recordCheckpointScanAtomic({ row, qrToken, expectedUserId }) {
+      const { data, error } = await supabaseAdmin
+        .schema('workforce_staging')
+        .rpc('record_checkpoint_scan_atomic', {
+          p_id: row.id,
+          p_tenant_id: row.tenant_id,
+          p_personnel_id: row.personnel_id,
+          p_expected_user_id: expectedUserId ?? null,
+          p_checkpoint_id: row.checkpoint_id,
+          p_qr_token: qrToken,
+          p_scanned_at: row.scanned_at,
+          p_latitude: row.latitude,
+          p_longitude: row.longitude,
+          p_distance_m: row.distance_m,
+          p_status: row.status,
+          p_idempotency_key: row.idempotency_key,
+        });
+
+      if (error) {
+        return { kind: 'ERROR', error: normalizeStoreError(error) };
+      }
+
+      return parseAtomicCheckpointScanRpcResult(data);
     },
   };
 

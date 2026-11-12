@@ -124,6 +124,34 @@ export function isCrossFacilityAuthorizedRole(issuedOrDbRole: string): boolean {
   return resolved !== null && CROSS_FACILITY_AUTHORIZED_ROLES.has(resolved);
 }
 
+const NON_TEST_RUNTIME_ENVS = new Set(['production', 'staging', 'preview']);
+
+/**
+ * Returns true ONLY under strict unit-test execution (`NODE_ENV === 'test'`)
+ * with no overriding production/staging/preview runtime environment markers.
+ */
+export function isStrictUnitTestRuntime(): boolean {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const appEnv = String(process.env.APP_ENV || '').trim().toLowerCase();
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  if (nodeEnv !== 'test') {
+    return false;
+  }
+  if (NON_TEST_RUNTIME_ENVS.has(appEnv) || NON_TEST_RUNTIME_ENVS.has(vercelEnv)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * M-1 capability guard: legacy non-atomic fallback is strictly restricted to
+ * explicit in-memory `MOCK_TEST_DOUBLE` adapters running in `NODE_ENV=test`.
+ * All production/staging/unknown adapters fail closed if atomic RPC is unavailable.
+ */
+export function canUseNonAtomicCheckpointFallback(store: WorkforceOperationalStore): boolean {
+  return store.adapterKind === 'MOCK_TEST_DOUBLE' && isStrictUnitTestRuntime();
+}
+
 function jsonError(
   status: number,
   error: string,
@@ -1077,8 +1105,18 @@ export async function processAttendanceSubmission(
   const canonicalCandidate = buildCanonicalAttendancePayload(attendanceRecord);
 
   // 3. Execute idempotency-first + atomic state transition check via processAttendanceEvent() & ALLOWED_TRANSITIONS
+  if (typeof store.recordAttendanceWithStateTransition !== 'function') {
+    console.error('[BWM ATTENDANCE] Atomic attendance method unavailable for adapter:', store.adapterKind);
+    return jsonError(
+      500,
+      'ATOMIC_ATTENDANCE_RPC_UNAVAILABLE',
+      'Operasi absensi membutuhkan transactional atomic state-transition RPC.'
+    );
+  }
+
   const writeRes = await store.recordAttendanceWithStateTransition({
     row: attendanceRecord,
+    expectedUserId: auth.session.userId,
     checkTransition: (currentState: AttendanceEventType | 'INITIAL', attemptedType: 'CLOCK_IN' | 'CLOCK_OUT') => {
       const allowedNext = ALLOWED_TRANSITIONS[currentState] || [];
       if (!allowedNext.includes(attemptedType)) {
@@ -1281,6 +1319,131 @@ export async function processCheckpointScanSubmission(
 
   const canonicalCandidate = buildCanonicalCheckpointScanPayload(scanRecord);
 
+  // 3. Authoritative transactional execution via Migration 014 RPC (locks tenants -> tenant_memberships -> facilities -> checkpoints -> personnel FOR UPDATE)
+  if (typeof store.recordCheckpointScanAtomic === 'function') {
+    const writeRes = await store.recordCheckpointScanAtomic({
+      row: scanRecord,
+      qrToken: qr_token.trim(),
+      expectedUserId: auth.session.userId,
+    });
+
+    if (writeRes.kind === 'IDEMPOTENCY_EXISTING') {
+      if (isSameCanonicalCheckpointScanPayload(writeRes.row, canonicalCandidate)) {
+        return NextResponse.json(
+          {
+            success: true,
+            verified: writeRes.row.status === 'VERIFIED',
+            idempotent_replay: true,
+            message: 'Pemindaian duplikat dengan payload bisnis identik dikembalikan dari catatan checkpoint tersimpan.',
+            data: writeRes.row,
+          },
+          { status: 200 }
+        );
+      }
+      return jsonError(
+        409,
+        'IDEMPOTENCY_KEY_CONFLICT',
+        'Idempotency-Key telah digunakan untuk pemindaian checkpoint dengan payload atau personel berbeda.',
+        { verified: false }
+      );
+    }
+
+    if (writeRes.kind === 'PERSONNEL_NOT_PROVISIONED') {
+      return jsonError(403, 'PERSONNEL_NOT_PROVISIONED', 'Profil personel tidak ditemukan saat mengunci transaksi.', {
+        verified: false,
+      });
+    }
+
+    if (writeRes.kind === 'AUTHORITY_REVOKED') {
+      return jsonError(
+        403,
+        writeRes.errorCode,
+        'Otoritas tenant, keanggotaan, atau personel tidak lagi aktif saat transaksi.',
+        { verified: false }
+      );
+    }
+
+    if (writeRes.kind === 'CHECKPOINT_REJECTED') {
+      if (writeRes.errorCode === 'GEOFENCE_VIOLATION') {
+        const distM = writeRes.distanceM ?? cpCheck.geofence.distanceMeters;
+        const radM = writeRes.radiusM ?? cpCheck.geofence.radiusMeters;
+        return jsonError(
+          403,
+          'GEOFENCE_VIOLATION',
+          `Koordinat yang dilaporkan klien berada di luar radius geofence lokasi target (${distM}m > ${radM}m).`,
+          {
+            verified: false,
+            geofence_verified: false,
+            distance_m: distM,
+            radius_m: radM,
+            client_reported_accuracy_m: coordsCheck.accuracyMeters,
+            location_evidence_tier: 'CLIENT_REPORTED_UNATTESTED',
+            anti_spoof_verified: false,
+          }
+        );
+      }
+      if (writeRes.errorCode === 'INVALID_GEOFENCE_CONFIGURATION') {
+        return jsonError(
+          500,
+          'INVALID_GEOFENCE_CONFIGURATION',
+          'Konfigurasi koordinat atau radius geofence lokasi pada database tidak valid.',
+          { verified: false }
+        );
+      }
+      const status = writeRes.errorCode === 'CHECKPOINT_NOT_FOUND' ? 404 : 403;
+      return jsonError(
+        status,
+        writeRes.errorCode,
+        'Validasi checkpoint, QR token, atau fasilitas induk ditolak di dalam transaksi database.',
+        { verified: false }
+      );
+    }
+
+    if (writeRes.kind === 'ERROR') {
+      console.error('[BWM SCAN] DB atomic RPC failed:', writeRes.error.code || 'UNKNOWN');
+      return jsonError(500, 'DB_INSERT_FAILED', 'Gagal menyimpan pemindaian checkpoint ke database.', {
+        verified: false,
+      });
+    }
+
+    const effectiveDistanceM = writeRes.distanceM ?? writeRes.row.distance_m ?? cpCheck.geofence.distanceMeters;
+    const effectiveRadiusM = writeRes.radiusM ?? cpCheck.geofence.radiusMeters;
+
+    return NextResponse.json(
+      {
+        success: true,
+        verified: true,
+        message: 'Pemindaian checkpoint patroli dicatat setelah validasi QR token dan koordinat yang dilaporkan klien.',
+        data: writeRes.row,
+        verification: {
+          personnel_id: personnel.id,
+          checkpoint_id: cpCheck.checkpoint.id,
+          facility_id: cpCheck.facility.id,
+          facility_scope: cpCheck.facilityScope,
+          distance_m: effectiveDistanceM,
+          radius_m: effectiveRadiusM,
+          geofence_evaluation_basis: 'CLIENT_REPORTED_COORDINATE_MATH_ONLY',
+          client_reported_accuracy_m: coordsCheck.accuracyMeters,
+          location_evidence_tier: 'CLIENT_REPORTED_UNATTESTED',
+          anti_spoof_verified: false,
+          store_adapter: store.adapterKind,
+        },
+      },
+      { status: 201 }
+    );
+  }
+
+  if (!canUseNonAtomicCheckpointFallback(store)) {
+    console.error('[BWM SCAN] Atomic checkpoint RPC unavailable for adapter:', store.adapterKind);
+    return jsonError(
+      500,
+      'ATOMIC_CHECKPOINT_RPC_UNAVAILABLE',
+      'Operasi pemindaian checkpoint membutuhkan transactional atomic RPC pada adapter ini.',
+      { verified: false }
+    );
+  }
+
+  // Fallback strictly for in-memory unit-test doubles (MOCK_TEST_DOUBLE) under NODE_ENV=test
   // Pre-check idempotency so exact canonical retries return 200 and conflicts fail 409 immediately
   const preExisting = await store.findCheckpointScanByIdempotencyKey(tenantId, idempCheck.idempotencyKey);
   if (preExisting.error) {

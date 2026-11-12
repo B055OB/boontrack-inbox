@@ -27,6 +27,9 @@ import { Client } from 'pg';
 import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
 
 function getDatabaseConnectionString(): string {
+  if (process.env.DISPOSABLE_POSTGRES_URL) {
+    return process.env.DISPOSABLE_POSTGRES_URL.trim();
+  }
   let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
   let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
 
@@ -73,12 +76,12 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
     await pgClient.query('RESET app.current_agency_id');
     await pgClient.query('RESET app.current_tenant_id');
     // Block E: NEVER disable rules or triggers during teardown.
-    // Only delete mutable test-scoped baseline rows from branch_credit_pools, products, tenants, and tenant_memberships.
+    // Decouple superuser fixture cleanup from legacy public.tenants/public.tenant_memberships views (BWM-LEGACY-VIEW-001).
     await pgClient.query(`
-      DELETE FROM branch_credit_pools WHERE agency_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
-      DELETE FROM products WHERE tenant_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
-      DELETE FROM tenants WHERE slug IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f') OR id::text IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
-      DELETE FROM tenant_memberships WHERE user_id IN ('11111111-1111-4111-a111-111111111111', '22222222-2222-4222-a222-222222222222', '33333333-3333-4333-a333-333333333333');
+      DELETE FROM workforce_staging.branch_credit_pools WHERE agency_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
+      DELETE FROM workforce_staging.products WHERE tenant_id IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
+      DELETE FROM workforce_staging.tenant_memberships WHERE user_id IN ('11111111-1111-4111-a111-111111111111', '22222222-2222-4222-a222-222222222222', '33333333-3333-4333-a333-333333333333', '44444444-4444-4444-a444-444444444401', '44444444-4444-4444-a444-444444444402', '44444444-4444-4444-a444-444444444403');
+      DELETE FROM workforce_staging.tenants WHERE slug IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f') OR id::text IN ('adv_tenant_alpha_3f', 'adv_tenant_beta_3f');
     `);
   }
 
@@ -109,12 +112,26 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
     await client.connect();
     await client.query('SET search_path TO public, workforce_staging');
 
+    // Align updatable view tuple structures with 010 triggers (decoupled from BWM-LEGACY-VIEW-001 drift from 007/012)
+    // and keep 015 + 016 active without mutating historical migration files. Restored cleanly in afterAll.
+    const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+    const down012Sql = fs.readFileSync(path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.down.sql'), 'utf8');
+    const up010Sql = fs.readFileSync(path.join(migrationsDir, '010_strict_storefront_opt_in_and_role_authorization.sql'), 'utf8');
+    const up015Sql = fs.readFileSync(path.join(migrationsDir, '015_attendance_actor_binding_and_role_allowlist.sql'), 'utf8');
+    const up016Sql = fs.readFileSync(path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'), 'utf8');
+    await client.query('DROP VIEW IF EXISTS public.tenant_memberships, public.products, public.storefront_products');
+    await client.query('ALTER TABLE workforce_staging.products DROP COLUMN IF EXISTS metadata');
+    await client.query(down012Sql);
+    await client.query(up010Sql);
+    await client.query(up015Sql);
+    await client.query(up016Sql);
+
     // Clean up any stale test fixtures cleanly without touching ledger rules/triggers
     await cleanFixtures(client);
 
-    // 1. Seed tenants baseline
+    // 1. Seed tenants baseline directly on SSOT base table (decoupled from BWM-LEGACY-VIEW-001)
     await client.query(`
-      INSERT INTO tenants (slug, name, category, tier, status, is_active, metadata)
+      INSERT INTO workforce_staging.tenants (slug, name, category, tier, status, is_active, metadata)
       VALUES 
         ($1, 'Alpha Defense Systems', 'service', 'PRO_SCALE', 'active', true, '{"isolation": "ALPHA"}'),
         ($2, 'Beta Intelligence Labs', 'service', 'PRO_SCALE', 'active', true, '{"isolation": "BETA"}')
@@ -122,7 +139,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
     // 2. Seed branch credit pools baseline
     await client.query(`
-      INSERT INTO branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
+      INSERT INTO workforce_staging.branch_credit_pools (branch_id, agency_id, available_credits, active_seats, currency)
       VALUES 
         ($1, $2, 500, 5, 'IDR'),
         ($3, $4, 1000, 10, 'IDR')
@@ -130,7 +147,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
     // 3. Seed products baseline
     await client.query(`
-      INSERT INTO products (tenant_id, title, slug, price, stock, category, product_type)
+      INSERT INTO workforce_staging.products (tenant_id, title, slug, price, stock, category, product_type)
       VALUES
         ($1, 'Alpha Intelligence Suite', $2, 250000, 50, 'service', 'SERVICE'),
         ($3, 'Beta Operations Suite', $4, 500000, 100, 'service', 'SERVICE')
@@ -138,7 +155,7 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
 
     // 4. Seed tenant_memberships baseline (Blocker B)
     await client.query(`
-      INSERT INTO tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+      INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
       VALUES
         ($1, $2, $2, 'OWNER', true),
         ($3, $4, $4, 'OWNER', true),
@@ -150,6 +167,12 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
     if (client) {
       try {
         await cleanFixtures(client);
+        const migrationsDir = path.resolve('packages/workforce-billing/schema/migrations');
+        const up012Sql = fs.readFileSync(path.join(migrationsDir, '012_create_workforce_revocation_and_authz_versioning.sql'), 'utf8');
+        const up016Sql = fs.readFileSync(path.join(migrationsDir, '016_bwm_domain_authorization_isolation.sql'), 'utf8');
+        await client.query("ALTER TABLE workforce_staging.products ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'");
+        await client.query(up012Sql);
+        await client.query(up016Sql);
       } catch {
         // ignore
       } finally {
@@ -651,6 +674,113 @@ describe('BWM Gate 1 Round 3G — Database-Level RLS & Trusted Identity Adversar
     } finally {
       await client.query('RESET ROLE');
       await client.query('ROLLBACK');
+    }
+  });
+
+  test('15. Migration 016 Domain Isolation Matrix: BWM Roles Denied Commerce & Support Denied BWM Operational Tables', async () => {
+    const USER_BWM_FP = '44444444-4444-4444-a444-444444444401';
+    const USER_BWM_SUP = '44444444-4444-4444-a444-444444444402';
+    const USER_COMMERCE_CS = '44444444-4444-4444-a444-444444444403';
+
+    await client.query('BEGIN');
+    try {
+      const tUuidRes = await client.query('SELECT id FROM workforce_staging.tenants WHERE slug = $1', [TENANT_ALPHA]);
+      const tenantAlphaUuid = tUuidRes.rows[0].id;
+
+      const memRes = await client.query(
+        `INSERT INTO workforce_staging.tenant_memberships (user_id, tenant_id, tenant_slug, role, is_active)
+         VALUES
+           ($1, $2, $3, 'field_personnel', true),
+           ($4, $2, $3, 'supervisor', true),
+           ($5, $2, $3, 'CS', true)
+         RETURNING id, user_id`,
+        [USER_BWM_FP, tenantAlphaUuid, TENANT_ALPHA, USER_BWM_SUP, USER_COMMERCE_CS]
+      );
+      const fpMemId = memRes.rows.find((r) => r.user_id === USER_BWM_FP).id;
+
+      const fac1Res = await client.query(
+        `INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude, is_active)
+         VALUES ($1, $2, 'Adv Fac 1', 'ADV-F1', -6.2, 106.8, true) RETURNING id`,
+        [tenantAlphaUuid, TENANT_ALPHA]
+      );
+      const fac1Id = fac1Res.rows[0].id;
+
+      const fac2Res = await client.query(
+        `INSERT INTO workforce_staging.facilities (tenant_id, tenant_slug, name, code, latitude, longitude, is_active)
+         VALUES ($1, $2, 'Adv Fac 2', 'ADV-F2', -6.21, 106.81, true) RETURNING id`,
+        [tenantAlphaUuid, TENANT_ALPHA]
+      );
+      const fac2Id = fac2Res.rows[0].id;
+
+      await client.query(
+        `INSERT INTO workforce_staging.personnel (tenant_id, tenant_slug, user_id, membership_id, facility_id, name, nik, role, is_active)
+         VALUES ($1, $2, $3, $4, $5, 'Adv FP Bound', 'ADV-NIK-01', 'field_personnel', true)`,
+        [tenantAlphaUuid, TENANT_ALPHA, USER_BWM_FP, fpMemId, fac1Id]
+      );
+
+      const cp1Res = await client.query(
+        `INSERT INTO workforce_staging.checkpoints (tenant_id, facility_id, name, code, zone, latitude, longitude, qr_token, sla_minutes, is_active)
+         VALUES ($1, $2, 'Adv CP 1', 'ADV-CP1', 'North', -6.2, 106.8, 'ADV-QR-SECRET-1', 30, true) RETURNING id`,
+        [tenantAlphaUuid, fac1Id]
+      );
+      const cp1Id = cp1Res.rows[0].id;
+
+      // field_personnel: positive own-facility read with masked qr_token + column ACL 42501 on raw qr_token; denied Commerce & unassigned facility
+      await client.query('SET LOCAL ROLE authenticated');
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: USER_BWM_FP, role: 'authenticated' }),
+      ]);
+      expect((await client.query('SELECT id FROM products WHERE tenant_id = $1', [TENANT_ALPHA])).rows.length).toBe(0);
+      expect((await client.query('SELECT branch_id FROM branch_credit_pools WHERE agency_id = $1', [TENANT_ALPHA])).rows.length).toBe(0);
+      expect((await client.query('SELECT id FROM workforce_staging.facilities WHERE id = $1', [fac1Id])).rows.length).toBe(1);
+      expect((await client.query('SELECT id FROM workforce_staging.facilities WHERE id = $1', [fac2Id])).rows.length).toBe(0);
+      const fpCpMasked = await client.query('SELECT id, qr_token FROM public.workforce_checkpoints WHERE id = $1', [cp1Id]);
+      expect(fpCpMasked.rows.length).toBe(1);
+      expect(fpCpMasked.rows[0].qr_token).toBeNull();
+      let fpRawQrErr: any = null;
+      await client.query('SAVEPOINT sp_fp_qr');
+      try {
+        await client.query('SELECT qr_token FROM workforce_staging.checkpoints WHERE id = $1', [cp1Id]);
+        await client.query('RELEASE SAVEPOINT sp_fp_qr');
+      } catch (err) {
+        fpRawQrErr = err;
+        await client.query('ROLLBACK TO SAVEPOINT sp_fp_qr');
+      }
+      expect(fpRawQrErr?.code).toBe('42501');
+
+      // supervisor (Option C) reads same-tenant cross-facility rows, masked qr_token + column ACL 42501, denied Commerce products & credit pools
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: USER_BWM_SUP, role: 'authenticated' }),
+      ]);
+      expect(
+        (await client.query('SELECT id FROM workforce_staging.facilities WHERE id IN ($1, $2)', [fac1Id, fac2Id])).rows.length
+      ).toBe(2);
+      const supCpMasked = await client.query('SELECT id, qr_token FROM public.workforce_checkpoints WHERE id = $1', [cp1Id]);
+      expect(supCpMasked.rows.length).toBe(1);
+      expect(supCpMasked.rows[0].qr_token).toBeNull();
+      let supRawQrErr: any = null;
+      await client.query('SAVEPOINT sp_sup_qr');
+      try {
+        await client.query('SELECT qr_token FROM workforce_staging.checkpoints WHERE id = $1', [cp1Id]);
+        await client.query('RELEASE SAVEPOINT sp_sup_qr');
+      } catch (err) {
+        supRawQrErr = err;
+        await client.query('ROLLBACK TO SAVEPOINT sp_sup_qr');
+      }
+      expect(supRawQrErr?.code).toBe('42501');
+      expect((await client.query('SELECT id FROM products WHERE tenant_id = $1', [TENANT_ALPHA])).rows.length).toBe(0);
+      expect((await client.query('SELECT branch_id FROM branch_credit_pools WHERE agency_id = $1', [TENANT_ALPHA])).rows.length).toBe(0);
+
+      // Commerce CS retains Commerce SELECT parity but is denied BWM facilities
+      await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: USER_COMMERCE_CS, role: 'authenticated' }),
+      ]);
+      expect((await client.query('SELECT id FROM products WHERE tenant_id = $1', [TENANT_ALPHA])).rows.length).toBe(1);
+      expect((await client.query('SELECT branch_id FROM branch_credit_pools WHERE agency_id = $1', [TENANT_ALPHA])).rows.length).toBe(1);
+      expect((await client.query('SELECT id FROM workforce_staging.facilities WHERE tenant_id = $1', [tenantAlphaUuid])).rows.length).toBe(0);
+    } finally {
+      await client.query('ROLLBACK');
+      await client.query('RESET ROLE');
     }
   });
 });
