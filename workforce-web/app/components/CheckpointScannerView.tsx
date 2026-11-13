@@ -30,6 +30,7 @@ export interface CheckpointScannerViewProps {
   cameraError: string | null;
   cameraFacingMode: 'user' | 'environment';
   gpsAccuracy: number | null;
+  isDemoData?: boolean;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   onOpenScanner: () => void;
   onCloseScanner: () => void;
@@ -44,6 +45,7 @@ export default function CheckpointScannerView({
   cameraError,
   cameraFacingMode,
   gpsAccuracy,
+  isDemoData = false,
   videoRef,
   onOpenScanner,
   onCloseScanner,
@@ -53,6 +55,7 @@ export default function CheckpointScannerView({
   const completedCount = checkpoints.filter((c) => c.status === 'COMPLETED').length;
   const totalCount = checkpoints.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const hasValidGps = typeof gpsAccuracy === 'number' && Number.isFinite(gpsAccuracy) && gpsAccuracy >= 0;
 
   return (
     <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
@@ -63,7 +66,14 @@ export default function CheckpointScannerView({
             <QrCode className="w-6 h-6 stroke-[2.2]" aria-hidden="true" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900 leading-tight">Pos Patroli Fisik</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 leading-tight">Pos Patroli Fisik</h2>
+              {isDemoData && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                  DEMO / SIMULATED TELEMETRY
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {completedCount} dari {totalCount} titik terverifikasi ({progressPercent}%)
             </p>
@@ -216,11 +226,19 @@ export default function CheckpointScannerView({
             </div>
 
             {/* GPS & Status Telemetry */}
-            <div className="p-3 bg-slate-50 rounded-xl text-xs flex justify-between text-slate-600">
-              <span>Akurasi GPS Fisik:</span>
-              <span className="font-semibold text-slate-900">
-                {gpsAccuracy ? `±${Math.round(gpsAccuracy)}m` : 'Menghitung...'}
-              </span>
+            <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-2">
+              <div className="flex justify-between text-slate-600">
+                <span>Akurasi GPS Fisik:</span>
+                <span className="font-semibold text-slate-900">
+                  {hasValidGps ? `±${Math.round(gpsAccuracy!)}m` : 'Menunggu koordinat GPS...'}
+                </span>
+              </div>
+              {!hasValidGps && (
+                <div className="flex items-center gap-1.5 text-amber-700 text-[11px] font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span>GPS belum siap untuk pemindaian pos patroli.</span>
+                </div>
+              )}
             </div>
 
             {/* Submitting Overlay */}

@@ -132,16 +132,31 @@ export interface FacilityRecord {
   radius: string;
 }
 
+export function isValidGpsCoordinates(
+  latitude: unknown,
+  longitude: unknown,
+  accuracy?: unknown
+): boolean {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return false;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  if (latitude < -90 || latitude > 90) return false;
+  if (longitude < -180 || longitude > 180) return false;
+  if (accuracy !== undefined && accuracy !== null) {
+    if (typeof accuracy !== 'number' || !Number.isFinite(accuracy) || accuracy < 0) return false;
+  }
+  return true;
+}
+
 export interface WorkforceOperationsPortalProps {
   initialRole?: 'field' | 'supervisor' | 'reseller';
   tenantSlug?: string;
-  overrideSession?: WorkforceSession | null;
+  __testOnlySession?: WorkforceSession | null;
 }
 
 export default function WorkforceOperationsPortal({
   initialRole = 'field',
   tenantSlug,
-  overrideSession,
+  __testOnlySession,
 }: WorkforceOperationsPortalProps) {
   const branding = useTenantBranding(tenantSlug);
   const { locale, setLocale, t } = useTranslation();
@@ -157,7 +172,7 @@ export default function WorkforceOperationsPortal({
   }, [locale, setLocale]);
 
   // Synchronized authoritative session state
-  const [resolvedSession, setResolvedSession] = useState<WorkforceSession | null>(overrideSession || null);
+  const [resolvedSession, setResolvedSession] = useState<WorkforceSession | null>(__testOnlySession || null);
 
   // Shared Time & Clock
   const [currentTime, setCurrentTime] = useState('');
@@ -234,10 +249,11 @@ export default function WorkforceOperationsPortal({
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [attendanceSubmitting, setAttendanceSubmitting] = useState<boolean>(false);
 
+  // GPS coordinates initialized strictly to null (no synthetic fallbacks)
   const [gpsCoords, setGpsCoords] = useState<{ latitude: number | null; longitude: number | null; accuracy: number | null; isMockGps?: boolean }>({
-    latitude: -6.2088,
-    longitude: 106.8456,
-    accuracy: 10,
+    latitude: null,
+    longitude: null,
+    accuracy: null,
     isMockGps: false,
   });
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -246,18 +262,25 @@ export default function WorkforceOperationsPortal({
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setGpsCoords({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            isMockGps: false,
-          });
+          if (isValidGpsCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)) {
+            setGpsCoords({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              isMockGps: false,
+            });
+            setGpsError(null);
+          } else {
+            setGpsError('Koordinat GPS tidak valid');
+          }
         },
         (err) => {
-          setGpsError(err.message);
+          setGpsError(err.message || 'Izin akses lokasi ditolak');
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
       );
+    } else {
+      setGpsError('Geolokasi tidak didukung oleh peramban ini');
     }
   }, []);
 
@@ -274,6 +297,10 @@ export default function WorkforceOperationsPortal({
   }
 
   async function handleAttendanceClockOut() {
+    if (!isValidGpsCoordinates(gpsCoords.latitude, gpsCoords.longitude, gpsCoords.accuracy)) {
+      alert('Gagal mencatat absensi keluar: Koordinat GPS tidak valid atau belum tersedia.');
+      return;
+    }
     setAttendanceSubmitting(true);
     try {
       const res = await fetch('/api/attendance', {
@@ -281,9 +308,9 @@ export default function WorkforceOperationsPortal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'CLOCK_OUT',
-          latitude: gpsCoords.latitude || -6.2088,
-          longitude: gpsCoords.longitude || 106.8456,
-          accuracy_meters: gpsCoords.accuracy || 10,
+          latitude: gpsCoords.latitude,
+          longitude: gpsCoords.longitude,
+          accuracy_meters: gpsCoords.accuracy,
           idempotency_key: `bwm-att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         }),
       });
@@ -1249,6 +1276,10 @@ export default function WorkforceOperationsPortal({
 
   // Phase 2 & 3: Real Attendance Mutation
   async function handleAttendanceClockIn() {
+    if (!isValidGpsCoordinates(gpsCoords.latitude, gpsCoords.longitude, gpsCoords.accuracy)) {
+      alert('Gagal mencatat absensi: Koordinat GPS tidak valid atau belum tersedia.');
+      return;
+    }
     setAttendanceSubmitting(true);
     try {
       const res = await fetch('/api/attendance', {
@@ -1256,11 +1287,10 @@ export default function WorkforceOperationsPortal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'CLOCK_IN',
-          latitude: gpsCoords.latitude || -6.2088,
-          longitude: gpsCoords.longitude || 106.8456,
-          accuracy_meters: gpsCoords.accuracy || 10,
+          latitude: gpsCoords.latitude,
+          longitude: gpsCoords.longitude,
+          accuracy_meters: gpsCoords.accuracy,
           idempotency_key: `bwm-att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          biometric_mode: 'CAMERA_PREVIEW_VERIFIED',
         }),
       });
       const data = await res.json();
@@ -1280,6 +1310,10 @@ export default function WorkforceOperationsPortal({
 
   // Phase 2 & 3: Checkpoint Scan Verification
   async function handleVerifyCheckpointScan(qrToken: string, checkpointId?: string) {
+    if (!isValidGpsCoordinates(gpsCoords.latitude, gpsCoords.longitude, gpsCoords.accuracy)) {
+      alert('Gagal memindai pos: Koordinat GPS tidak valid atau belum tersedia.');
+      return;
+    }
     setIsScanning(true);
     try {
       const res = await fetch('/api/checkpoints/scan', {
@@ -1288,9 +1322,9 @@ export default function WorkforceOperationsPortal({
         body: JSON.stringify({
           qr_token: qrToken,
           checkpoint_id: checkpointId,
-          latitude: gpsCoords.latitude || -6.2088,
-          longitude: gpsCoords.longitude || 106.8456,
-          accuracy_meters: gpsCoords.accuracy || 10,
+          latitude: gpsCoords.latitude,
+          longitude: gpsCoords.longitude,
+          accuracy_meters: gpsCoords.accuracy,
           idempotency_key: `bwm-scan-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         }),
       });
@@ -1434,38 +1468,41 @@ export default function WorkforceOperationsPortal({
     }
   }
 
+  // Authoritative session callback stabilized via useCallback
+  const handleSessionResolved = React.useCallback((sess: WorkforceSession | null) => {
+    setResolvedSession(sess);
+    if (sess) {
+      if (sess.name) {
+        setUserName(sess.name);
+        setSupervisorName(sess.name);
+        setResellerName(sess.name);
+      }
+      if (sess.nik) {
+        setUserNip(sess.nik);
+        setSupervisorNip(sess.nik);
+        setResellerEmail(sess.nik);
+      }
+      if (sess.site) {
+        setMitraPlacement(sess.site);
+        setSupervisorSite(sess.site);
+      }
+      if (sess.branch) {
+        setSupervisorBranch(sess.branch);
+      }
+      if (sess.agency_name) {
+        setResellerAgency(sess.agency_name);
+      }
+    }
+  }, []);
+
   return (
     <WorkforceAppShell
-      overrideSession={overrideSession}
+      __testOnlySession={__testOnlySession}
       activeTab={activeNavTab}
       onSelectTab={setActiveNavTab}
       title={branding.brandName}
       subtitle={mitraPlacement}
-      onSessionResolved={(sess) => {
-        setResolvedSession(sess);
-        if (sess) {
-          if (sess.name) {
-            setUserName(sess.name);
-            setSupervisorName(sess.name);
-            setResellerName(sess.name);
-          }
-          if (sess.nik) {
-            setUserNip(sess.nik);
-            setSupervisorNip(sess.nik);
-            setResellerEmail(sess.nik);
-          }
-          if (sess.site) {
-            setMitraPlacement(sess.site);
-            setSupervisorSite(sess.site);
-          }
-          if (sess.branch) {
-            setSupervisorBranch(sess.branch);
-          }
-          if (sess.agency_name) {
-            setResellerAgency(sess.agency_name);
-          }
-        }
-      }}
+      onSessionResolved={handleSessionResolved}
     >
       {(session: WorkforceSession) => {
         const effectiveRole = session.role;
@@ -1651,6 +1688,7 @@ export default function WorkforceOperationsPortal({
             cameraError={cameraError}
             cameraFacingMode={cameraFacingMode}
             gpsAccuracy={gpsCoords.accuracy}
+            isDemoData={true}
             videoRef={qrVideoRef}
             onOpenScanner={() => setModalType('qr_scanner')}
             onCloseScanner={() => setModalType(null)}
@@ -1786,6 +1824,7 @@ export default function WorkforceOperationsPortal({
           {/* Modular Roster Shift List (U2 Component) */}
           <RosterShiftList
             personnel={rosterItems}
+            isDemoData={true}
             filterFacility={filterFacility}
             filterShift={filterShift}
             filterStatus={filterStatus}

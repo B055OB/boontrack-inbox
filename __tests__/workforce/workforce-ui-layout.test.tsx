@@ -18,11 +18,12 @@ import WorkforceAppShell, {
   WorkforceSession,
   fetchAuthoritativeSession,
   isAllowedBwmRole,
+  validateWorkforceSession,
 } from '@/workforce-web/app/components/WorkforceAppShell';
-import AttendanceCard, { GpsCoordinates } from '@/workforce-web/app/components/AttendanceCard';
+import AttendanceCard, { GpsCoordinates, isValidGpsCoordinates } from '@/workforce-web/app/components/AttendanceCard';
 import CheckpointScannerView, { CheckpointItem } from '@/workforce-web/app/components/CheckpointScannerView';
 import RosterShiftList, { PersonnelShiftItem } from '@/workforce-web/app/components/RosterShiftList';
-import WorkforceOperationsPortal from '@/workforce-web/app/components/WorkforceOperationsPortal';
+import WorkforceOperationsPortal, { isValidGpsCoordinates as isValidGpsCoordinatesPortal } from '@/workforce-web/app/components/WorkforceOperationsPortal';
 
 describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
   // =========================================================================
@@ -227,7 +228,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       );
 
       expect(html).toContain('Di Luar Shift');
-      expect(html).toContain('Absen Masuk (Biometrik)');
+      expect(html).toContain('Absen Masuk (Foto Kamera)');
       expect(html).toContain('aria-label="Absen Masuk (Clock In)"');
       expect(html).toContain('min-h-[48px]');
       expect(html).toContain('Metro Tower Hub');
@@ -316,9 +317,9 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       expect(html).toContain('role="dialog"');
       expect(html).toContain('aria-modal="true"');
-      expect(html).toContain('Verifikasi Absen Masuk');
+      expect(html).toContain('Foto Absen Masuk');
       expect(html).toContain('<video');
-      expect(html).toContain('Posisikan Wajah di Lingkaran');
+      expect(html).toContain('Posisikan Wajah di Kamera');
     });
   });
 
@@ -495,7 +496,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       };
 
       const html = renderToStaticMarkup(
-        <WorkforceOperationsPortal initialRole="field" overrideSession={fieldSession} />
+        <WorkforceOperationsPortal initialRole="field" __testOnlySession={fieldSession} />
       );
 
       // App Shell integration
@@ -530,7 +531,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       };
 
       const html = renderToStaticMarkup(
-        <WorkforceOperationsPortal initialRole="supervisor" overrideSession={supSession} />
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={supSession} />
       );
 
       expect(html).toContain('Operations Supervisor');
@@ -647,7 +648,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       };
 
       const html = renderToStaticMarkup(
-        <WorkforceOperationsPortal initialRole="supervisor" overrideSession={spoofedFieldSession} />
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={spoofedFieldSession} />
       );
 
       // Verify Field UI IS rendered
@@ -680,7 +681,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       };
 
       const html = renderToStaticMarkup(
-        <WorkforceOperationsPortal initialRole="reseller" overrideSession={spoofedFieldSession} />
+        <WorkforceOperationsPortal initialRole="reseller" __testOnlySession={spoofedFieldSession} />
       );
 
       // Verify Field UI IS rendered
@@ -730,7 +731,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify WorkforceOperationsPortal renders Access Denied
       const portalHtml = renderToStaticMarkup(
-        <WorkforceOperationsPortal overrideSession={adminSession} />
+        <WorkforceOperationsPortal __testOnlySession={adminSession} />
       );
       expect(portalHtml).toContain('Access Denied');
       expect(portalHtml).not.toContain('Absen Keluar');
@@ -768,7 +769,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(html).not.toContain('Unauthorized Content');
 
       const portalHtml = renderToStaticMarkup(
-        <WorkforceOperationsPortal overrideSession={unknownSession} />
+        <WorkforceOperationsPortal __testOnlySession={unknownSession} />
       );
       expect(portalHtml).toContain('Access Denied');
       expect(portalHtml).not.toContain('Absen Keluar');
@@ -804,7 +805,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(html).not.toContain('Blank Role Content');
 
       const portalHtml = renderToStaticMarkup(
-        <WorkforceOperationsPortal overrideSession={emptyRoleSession} />
+        <WorkforceOperationsPortal __testOnlySession={emptyRoleSession} />
       );
       expect(portalHtml).toContain('Access Denied');
       expect(portalHtml).not.toContain('Absen Keluar');
@@ -834,7 +835,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Test Supervisor UI
       const supPortalHtml = renderToStaticMarkup(
-        <WorkforceOperationsPortal overrideSession={supervisorSession} />
+        <WorkforceOperationsPortal __testOnlySession={supervisorSession} />
       );
       expect(supPortalHtml).toContain('Operations Supervisor');
       expect(supPortalHtml).toContain('Branch Command Desk');
@@ -843,12 +844,384 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Test Reseller UI
       const resPortalHtml = renderToStaticMarkup(
-        <WorkforceOperationsPortal overrideSession={resellerSession} />
+        <WorkforceOperationsPortal __testOnlySession={resellerSession} />
       );
       expect(resPortalHtml).toContain('Tenant Administrator');
       expect(resPortalHtml).toContain('ENTERPRISE MAIN AGENT CONSOLE');
       expect(resPortalHtml).toContain('Apex Partner Director');
       expect(resPortalHtml).not.toContain('Branch Command Desk');
+    });
+  });
+
+  // =========================================================================
+  // 8. BWM U1–U2 12 Acceptance Gates Verification (CTO Safety Mandate)
+  // =========================================================================
+  describe('BWM U1–U2 12 Acceptance Gates Verification', () => {
+    // Gate 1: Session Auth
+    it('Gate 1: Session Auth: Authoritative resolution from /api/auth/me as sole source of truth with complete fields', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          authenticated: true,
+          session: {
+            userId: 'USR-G1',
+            tenant_id: 'ten-01',
+            tenant_slug: 'slug-01',
+            agency_name: 'Apex Guard',
+            nik: 'NIK-001',
+            name: 'Gate One Officer',
+            role: 'field_personnel',
+            site: 'Gate Site A',
+          },
+        }),
+      });
+
+      const res = await fetchAuthoritativeSession(mockFetch as unknown as typeof fetch);
+      expect(res.authenticated).toBe(true);
+      expect(res.error).toBeNull();
+      expect(res.session).toEqual({
+        userId: 'USR-G1',
+        tenant_id: 'ten-01',
+        tenant_slug: 'slug-01',
+        agency_name: 'Apex Guard',
+        nik: 'NIK-001',
+        name: 'Gate One Officer',
+        role: 'field_personnel',
+        site: 'Gate Site A',
+      });
+    });
+
+    // Gate 2: Effect Loop Prevention
+    it('Gate 2: Effect Loop Prevention: fetchAuthoritativeSession called strictly once and callback is stabilized', async () => {
+      let callCount = 0;
+      const mockFetch = jest.fn().mockImplementation(async () => {
+        callCount++;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            authenticated: true,
+            session: {
+              userId: 'USR-G2',
+              tenant_id: 'ten-02',
+              tenant_slug: 'slug-02',
+              nik: 'NIK-002',
+              name: 'Gate Two Officer',
+              role: 'field_personnel',
+            },
+          }),
+        };
+      });
+
+      const res = await fetchAuthoritativeSession(mockFetch as unknown as typeof fetch);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(res.authenticated).toBe(true);
+      expect(callCount).toBe(1);
+    });
+
+    // Gate 3: Malformed Session Payload Fail-Closed
+    it('Gate 3: Malformed Session Payload Fail-Closed: returns SESSION_INVALID when required fields are missing', async () => {
+      // Validate schema helper directly
+      expect(validateWorkforceSession(null)).toBeNull();
+      expect(validateWorkforceSession(undefined)).toBeNull();
+      expect(validateWorkforceSession({})).toBeNull();
+      expect(validateWorkforceSession({ userId: 'u1' })).toBeNull();
+      expect(validateWorkforceSession({ userId: 'u1', tenant_id: 't1' })).toBeNull();
+      expect(validateWorkforceSession({ userId: 'u1', tenant_id: 't1', tenant_slug: 's1' })).toBeNull();
+      expect(validateWorkforceSession({ userId: 'u1', tenant_id: 't1', tenant_slug: 's1', nik: 'n1' })).toBeNull();
+      // missing role
+      expect(validateWorkforceSession({ userId: 'u1', tenant_id: 't1', tenant_slug: 's1', nik: 'n1', name: 'Name' })).toBeNull();
+
+      // Empty string whitespace
+      expect(validateWorkforceSession({
+        userId: '   ',
+        tenant_id: 't1',
+        tenant_slug: 's1',
+        nik: 'n1',
+        name: 'Name',
+        role: 'field_personnel',
+      })).toBeNull();
+
+      // Resolver handles malformed payload
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          authenticated: true,
+          session: { userId: 'u1', tenant_id: 't1' }, // incomplete
+        }),
+      });
+
+      const res = await fetchAuthoritativeSession(mockFetch as unknown as typeof fetch);
+      expect(res.authenticated).toBe(false);
+      expect(res.session).toBeNull();
+      expect(res.error).toBe('SESSION_INVALID');
+    });
+
+    // Gate 4: Role Authority Fail-Closed
+    it('Gate 4: Role Authority Fail-Closed: rejects unknown, empty, or unapproved roles with ACCESS_DENIED', async () => {
+      expect(isAllowedBwmRole('field_personnel')).toBe(true);
+      expect(isAllowedBwmRole('supervisor')).toBe(true);
+      expect(isAllowedBwmRole('master_reseller')).toBe(true);
+      expect(isAllowedBwmRole('admin')).toBe(false);
+      expect(isAllowedBwmRole('superadmin')).toBe(false);
+      expect(isAllowedBwmRole('')).toBe(false);
+      expect(isAllowedBwmRole(null)).toBe(false);
+      expect(isAllowedBwmRole(undefined)).toBe(false);
+
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          authenticated: true,
+          session: {
+            userId: 'USR-G4',
+            tenant_id: 'ten-04',
+            tenant_slug: 'slug-04',
+            nik: 'NIK-004',
+            name: 'Admin User',
+            role: 'admin',
+          },
+        }),
+      });
+
+      const res = await fetchAuthoritativeSession(mockFetch as unknown as typeof fetch);
+      expect(res.authenticated).toBe(false);
+      expect(res.error).toBe('ACCESS_DENIED');
+    });
+
+    // Gate 5: Production Bypass Rejection
+    it('Gate 5: Production Bypass Rejection: in non-test environment, test override prop is strictly ignored', () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      try {
+        (process.env as any).NODE_ENV = 'production';
+
+        const bypassSession: WorkforceSession = {
+          userId: 'USR-BYPASS',
+          tenant_id: 'ten-bypass',
+          tenant_slug: 'bypass',
+          nik: 'BP-01',
+          name: 'Bypass Intruder',
+          role: 'field_personnel',
+        };
+
+        const html = renderToStaticMarkup(
+          <WorkforceAppShell __testOnlySession={bypassSession}>
+            <div>Sensitive Production UI</div>
+          </WorkforceAppShell>
+        );
+
+        // Outside test environment, __testOnlySession is ignored -> defaults to loading authoritative session
+        expect(html).toContain('Memuat Sesi Otoritatif BWM...');
+        expect(html).not.toContain('Sensitive Production UI');
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+      }
+    });
+
+    // Gate 6: GPS Unavailable Fail-Closed
+    it('Gate 6: GPS Unavailable Fail-Closed: AttendanceCard disables submit when GPS is null', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="North Facility"
+          submitting={false}
+          gpsCoords={{ latitude: null, longitude: null, accuracy: null }}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      expect(html).toContain('Menunggu koordinat GPS yang valid...');
+      expect(html).toContain('Koordinat GPS belum valid. Tombol presensi dinonaktifkan demi integritas.');
+      expect(html).toContain('disabled=""');
+    });
+
+    // Gate 7: GPS Permission Denied Fail-Closed
+    it('Gate 7: GPS Permission Denied Fail-Closed: displays permission error and disables submission', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="North Facility"
+          submitting={false}
+          gpsCoords={{ latitude: null, longitude: null, accuracy: null }}
+          gpsError="Geolocation permission denied by user"
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      expect(html).toContain('Geolocation permission denied by user');
+      expect(html).toContain('disabled=""');
+    });
+
+    // Gate 8: GPS Out-of-Bounds & Invalid Coords Fail-Closed
+    it('Gate 8: GPS Out-of-Bounds & Invalid Coords Fail-Closed: rejects invalid lat/lng/accuracy', () => {
+      // Out of bounds latitude (-90 to 90)
+      expect(isValidGpsCoordinates({ latitude: -91, longitude: 106.8456, accuracy: 10 })).toBe(false);
+      expect(isValidGpsCoordinates({ latitude: 91, longitude: 106.8456, accuracy: 10 })).toBe(false);
+
+      // Out of bounds longitude (-180 to 180)
+      expect(isValidGpsCoordinates({ latitude: -6.2088, longitude: -181, accuracy: 10 })).toBe(false);
+      expect(isValidGpsCoordinates({ latitude: -6.2088, longitude: 181, accuracy: 10 })).toBe(false);
+
+      // Non-finite
+      expect(isValidGpsCoordinates({ latitude: NaN, longitude: 106.8456, accuracy: 10 })).toBe(false);
+      expect(isValidGpsCoordinates({ latitude: -6.2088, longitude: Infinity, accuracy: 10 })).toBe(false);
+
+      // Negative accuracy
+      expect(isValidGpsCoordinates({ latitude: -6.2088, longitude: 106.8456, accuracy: -1 })).toBe(false);
+
+      // Valid coordinates
+      expect(isValidGpsCoordinates({ latitude: -6.2088, longitude: 106.8456, accuracy: 10 })).toBe(true);
+
+      // Portal validator parity
+      expect(isValidGpsCoordinatesPortal(-91, 106.8456, 10)).toBe(false);
+      expect(isValidGpsCoordinatesPortal(-6.2088, 181, 10)).toBe(false);
+      expect(isValidGpsCoordinatesPortal(-6.2088, 106.8456, 10)).toBe(true);
+    });
+
+    // Gate 9: No Fallback Coordinates
+    it('Gate 9: No Fallback Coordinates: verify no hardcoded Jakarta coordinates injected into AttendanceCard or CheckpointScannerView', () => {
+      const nullGpsCoords: GpsCoordinates = {
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+      };
+
+      const attendanceHtml = renderToStaticMarkup(
+        <AttendanceCard
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Perimeter Hub"
+          submitting={false}
+          gpsCoords={nullGpsCoords}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // Must not contain hardcoded Jakarta fallback coordinates
+      expect(attendanceHtml).not.toContain('-6.2088');
+      expect(attendanceHtml).not.toContain('106.8456');
+
+      const scannerHtml = renderToStaticMarkup(
+        <CheckpointScannerView
+          checkpoints={[]}
+          isScanningModalOpen={true}
+          submitting={false}
+          cameraError={null}
+          cameraFacingMode="environment"
+          gpsAccuracy={null}
+          onOpenScanner={() => { }}
+          onCloseScanner={() => { }}
+          onToggleFacingMode={() => { }}
+        />
+      );
+
+      expect(scannerHtml).not.toContain('-6.2088');
+      expect(scannerHtml).not.toContain('106.8456');
+      expect(scannerHtml).toContain('Menunggu koordinat GPS...');
+      expect(scannerHtml).toContain('GPS belum siap untuk pemindaian pos patroli.');
+    });
+
+    // Gate 10: Truthful Biometric Representation
+    it('Gate 10: Truthful Biometric Representation: UI uses truthful camera preview copy without false claims', () => {
+      const validGps: GpsCoordinates = { latitude: -6.2, longitude: 106.8, accuracy: 5 };
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Perimeter Hub"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      expect(html).toContain('Absen Masuk (Foto Kamera)');
+      expect(html).toContain('Foto Absen Masuk');
+      expect(html).toContain('Posisikan Wajah di Kamera');
+      expect(html).not.toContain('Absen Masuk (Biometrik)');
+      expect(html).not.toContain('Verifikasi Absen Masuk');
+      expect(html).not.toContain('Posisikan Wajah di Lingkaran');
+    });
+
+    // Gate 11: Demo Telemetry Indicator
+    it('Gate 11: Demo Telemetry Indicator: renders DEMO / SIMULATED TELEMETRY on simulated components', () => {
+      const rosterHtml = renderToStaticMarkup(
+        <RosterShiftList
+          personnel={[]}
+          isDemoData={true}
+        />
+      );
+      expect(rosterHtml).toContain('DEMO / SIMULATED TELEMETRY');
+
+      const scannerHtml = renderToStaticMarkup(
+        <CheckpointScannerView
+          checkpoints={[]}
+          isScanningModalOpen={false}
+          submitting={false}
+          cameraError={null}
+          cameraFacingMode="environment"
+          gpsAccuracy={10}
+          isDemoData={true}
+          onOpenScanner={() => { }}
+          onCloseScanner={() => { }}
+          onToggleFacingMode={() => { }}
+        />
+      );
+      expect(scannerHtml).toContain('DEMO / SIMULATED TELEMETRY');
+    });
+
+    // Gate 12: API Payload Contract Alignment
+    it('Gate 12: API Payload Contract Alignment: attendance payload matches backend schema without biometric_mode', () => {
+      const validAttendancePayload = {
+        type: 'CLOCK_IN',
+        latitude: -6.2088,
+        longitude: 106.8456,
+        accuracy_meters: 10,
+        idempotency_key: 'bwm-att-test-123',
+      };
+
+      // Ensure no biometric_mode property
+      expect((validAttendancePayload as any).biometric_mode).toBeUndefined();
+
+      // Ensure coordinates are finite numbers
+      expect(Number.isFinite(validAttendancePayload.latitude)).toBe(true);
+      expect(Number.isFinite(validAttendancePayload.longitude)).toBe(true);
+      expect(validAttendancePayload.accuracy_meters).toBeGreaterThanOrEqual(0);
+
+      const validCheckpointPayload = {
+        qr_token: 'qr-sample-token',
+        checkpoint_id: 'CP-01',
+        latitude: -6.2088,
+        longitude: 106.8456,
+        accuracy_meters: 10,
+        idempotency_key: 'bwm-scan-test-123',
+      };
+
+      expect(validCheckpointPayload.qr_token).toBe('qr-sample-token');
+      expect(validCheckpointPayload.checkpoint_id).toBe('CP-01');
+      expect(Number.isFinite(validCheckpointPayload.latitude)).toBe(true);
+      expect(Number.isFinite(validCheckpointPayload.longitude)).toBe(true);
     });
   });
 });

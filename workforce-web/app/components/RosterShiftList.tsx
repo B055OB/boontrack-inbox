@@ -32,6 +32,7 @@ export interface PersonnelShiftItem {
 export interface RosterShiftListProps {
   personnel: PersonnelShiftItem[];
   loading?: boolean;
+  isDemoData?: boolean;
   filterFacility?: string;
   filterShift?: string;
   filterStatus?: string;
@@ -42,6 +43,7 @@ export interface RosterShiftListProps {
 export default function RosterShiftList({
   personnel,
   loading = false,
+  isDemoData = false,
   filterFacility = 'all',
   filterShift = 'all',
   filterStatus = 'all',
@@ -99,7 +101,14 @@ export default function RosterShiftList({
             <Users className="w-6 h-6 stroke-[2.2]" aria-hidden="true" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900 leading-tight">Roster & Alokasi Shift</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 leading-tight">Roster & Alokasi Shift</h2>
+              {isDemoData && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                  DEMO / SIMULATED TELEMETRY
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {filteredList.length} personel terdaftar pada filter aktif
             </p>

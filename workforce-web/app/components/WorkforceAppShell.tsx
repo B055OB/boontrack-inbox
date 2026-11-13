@@ -28,6 +28,38 @@ export function isAllowedBwmRole(role: unknown): role is BwmRole {
   return role === 'field_personnel' || role === 'supervisor' || role === 'master_reseller';
 }
 
+/**
+ * Validates workforce session payload according to authoritative schema.
+ * Rejects any malformed object or unauthorized role.
+ */
+export function validateWorkforceSession(data: unknown): WorkforceSession | null {
+  if (!data || typeof data !== 'object') return null;
+  const s = data as Record<string, unknown>;
+  if (
+    typeof s.userId !== 'string' || !s.userId.trim() ||
+    typeof s.tenant_id !== 'string' || !s.tenant_id.trim() ||
+    typeof s.tenant_slug !== 'string' || !s.tenant_slug.trim() ||
+    typeof s.nik !== 'string' || !s.nik.trim() ||
+    typeof s.name !== 'string' || !s.name.trim() ||
+    !isAllowedBwmRole(s.role)
+  ) {
+    return null;
+  }
+  return {
+    userId: s.userId.trim(),
+    tenant_id: s.tenant_id.trim(),
+    tenant_slug: s.tenant_slug.trim(),
+    agency_slug: typeof s.agency_slug === 'string' ? s.agency_slug.trim() : undefined,
+    agency_name: typeof s.agency_name === 'string' ? s.agency_name.trim() : undefined,
+    nik: s.nik.trim(),
+    name: s.name.trim(),
+    role: s.role,
+    site: typeof s.site === 'string' ? s.site.trim() : undefined,
+    branch: typeof s.branch === 'string' ? s.branch.trim() : undefined,
+    expires_at: typeof s.expires_at === 'string' || typeof s.expires_at === 'number' ? s.expires_at : undefined,
+  };
+}
+
 export interface WorkforceSession {
   userId: string;
   tenant_id: string;
@@ -48,7 +80,16 @@ export interface WorkforceAppShellProps {
   onSelectTab?: (tabId: string) => void;
   title?: string;
   subtitle?: string;
-  overrideSession?: WorkforceSession | null; // For deterministic unit testing
+  /**
+   * STRICT TEST-ONLY prop. Ignored if process.env.NODE_ENV !== 'test'.
+   * Never permitted in production build/runtime.
+   */
+  __testOnlySession?: WorkforceSession | null;
+  /**
+   * @deprecated Retained strictly for backward compatibility with test runners.
+   * Strictly ignored outside test environment.
+   */
+  overrideSession?: WorkforceSession | null;
   onSessionResolved?: (session: WorkforceSession | null) => void;
 }
 
@@ -77,11 +118,17 @@ export async function fetchAuthoritativeSession(fetchImpl: typeof fetch = fetch)
     }
 
     const sess = data.session;
-    if (!sess.role || !isAllowedBwmRole(sess.role)) {
-      return { authenticated: false, session: sess, error: 'ACCESS_DENIED' };
+    // Check if role is present but not allowed (including empty or unapproved roles)
+    if (sess && typeof sess === 'object' && 'role' in sess && !isAllowedBwmRole((sess as Record<string, unknown>).role)) {
+      return { authenticated: false, session: sess as WorkforceSession, error: 'ACCESS_DENIED' };
     }
 
-    return { authenticated: true, session: sess, error: null };
+    const validated = validateWorkforceSession(sess);
+    if (!validated) {
+      return { authenticated: false, session: null, error: 'SESSION_INVALID' };
+    }
+
+    return { authenticated: true, session: validated, error: null };
   } catch (err: unknown) {
     return {
       authenticated: false,
@@ -97,22 +144,44 @@ export default function WorkforceAppShell({
   onSelectTab,
   title,
   subtitle,
+  __testOnlySession,
   overrideSession,
   onSessionResolved,
 }: WorkforceAppShellProps) {
+  // Gate test overrides strictly to test environment
+  const isTest = process.env.NODE_ENV === 'test';
+  const effectiveTestSession = isTest
+    ? (__testOnlySession !== undefined ? __testOnlySession : overrideSession)
+    : undefined;
+
   const initialError = React.useMemo(() => {
-    if (overrideSession === null) return 'UNAUTHORIZED_SESSION';
-    if (overrideSession !== undefined && (!overrideSession.role || !isAllowedBwmRole(overrideSession.role))) {
-      return 'ACCESS_DENIED';
+    if (effectiveTestSession === null) return 'UNAUTHORIZED_SESSION';
+    if (effectiveTestSession !== undefined) {
+      if (!effectiveTestSession.role || !isAllowedBwmRole(effectiveTestSession.role)) {
+        return 'ACCESS_DENIED';
+      }
+      if (!validateWorkforceSession(effectiveTestSession)) {
+        return 'SESSION_INVALID';
+      }
     }
     return null;
-  }, [overrideSession]);
+  }, [effectiveTestSession]);
 
-  const [session, setSession] = useState<WorkforceSession | null>(overrideSession || null);
-  const [loading, setLoading] = useState<boolean>(overrideSession === undefined);
+  const [session, setSession] = useState<WorkforceSession | null>(
+    effectiveTestSession ? validateWorkforceSession(effectiveTestSession) || effectiveTestSession : null
+  );
+  const [loading, setLoading] = useState<boolean>(effectiveTestSession === undefined);
   const [error, setError] = useState<string | null>(initialError);
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [loggingOut, setLoggingOut] = useState<boolean>(false);
+
+  // Stabilize onSessionResolved callback to prevent re-fetch loop
+  const onSessionResolvedRef = React.useRef(onSessionResolved);
+  useEffect(() => {
+    onSessionResolvedRef.current = onSessionResolved;
+  }, [onSessionResolved]);
+
+  const fetchAttemptedRef = React.useRef(false);
 
   // Monitor network status
   useEffect(() => {
@@ -131,25 +200,36 @@ export default function WorkforceAppShell({
 
   // Fetch authoritative session strictly from /api/auth/me
   useEffect(() => {
-    if (overrideSession !== undefined) {
-      if (overrideSession === null) {
+    if (effectiveTestSession !== undefined) {
+      if (effectiveTestSession === null) {
         setSession(null);
         setError('UNAUTHORIZED_SESSION');
         setLoading(false);
-        onSessionResolved?.(null);
-      } else if (!overrideSession.role || !isAllowedBwmRole(overrideSession.role)) {
-        setSession(overrideSession);
+        onSessionResolvedRef.current?.(null);
+      } else if (!effectiveTestSession.role || !isAllowedBwmRole(effectiveTestSession.role)) {
+        setSession(effectiveTestSession);
         setError('ACCESS_DENIED');
         setLoading(false);
-        onSessionResolved?.(null);
+        onSessionResolvedRef.current?.(null);
       } else {
-        setSession(overrideSession);
-        setError(null);
-        setLoading(false);
-        onSessionResolved?.(overrideSession);
+        const validated = validateWorkforceSession(effectiveTestSession);
+        if (!validated) {
+          setSession(null);
+          setError('SESSION_INVALID');
+          setLoading(false);
+          onSessionResolvedRef.current?.(null);
+        } else {
+          setSession(validated);
+          setError(null);
+          setLoading(false);
+          onSessionResolvedRef.current?.(validated);
+        }
       }
       return;
     }
+
+    if (fetchAttemptedRef.current) return;
+    fetchAttemptedRef.current = true;
 
     let isMounted = true;
     async function initSession() {
@@ -157,14 +237,14 @@ export default function WorkforceAppShell({
       setError(null);
       const result = await fetchAuthoritativeSession();
       if (!isMounted) return;
-      if (!result.authenticated || result.error) {
+      if (!result.authenticated || result.error || !result.session) {
         setSession(result.session);
         setError(result.error || 'UNAUTHORIZED_SESSION');
-        onSessionResolved?.(null);
+        onSessionResolvedRef.current?.(null);
       } else {
         setSession(result.session);
         setError(null);
-        onSessionResolved?.(result.session);
+        onSessionResolvedRef.current?.(result.session);
       }
       setLoading(false);
     }
@@ -173,7 +253,7 @@ export default function WorkforceAppShell({
     return () => {
       isMounted = false;
     };
-  }, [overrideSession, onSessionResolved]);
+  }, [effectiveTestSession]);
 
   async function handleLogout() {
     setLoggingOut(true);
