@@ -39,11 +39,28 @@ export function isValidGpsCoordinates(coords: GpsCoordinates | null | undefined)
   return true;
 }
 
+/**
+ * Attendance status as reported by the server.
+ * - UNKNOWN: server has not yet responded; do not equate to OFF_DUTY.
+ * - ON_DUTY:  verified server-confirmed active shift.
+ * - OFF_DUTY: verified server-confirmed not on shift.
+ */
+export type AttendanceStatus = 'UNKNOWN' | 'ON_DUTY' | 'OFF_DUTY';
+
 export interface AttendanceCardProps {
+  /** Truthful tristate attendance status from server.
+   * If provided, takes precedence over onDuty bool.
+   * If omitted, falls back to legacy onDuty mapping ('ON_DUTY' if onDuty else 'OFF_DUTY').
+   */
+  attendanceStatus?: AttendanceStatus;
+  /** Legacy onDuty bool — only used for button routing once status is verified. Set false when status is UNKNOWN. */
   onDuty: boolean;
   clockInTime: string | null;
   clockOutTime: string | null;
+  /** Facility name from server session.site. Empty string = not assigned. Never pass a mock string as default. */
   facilityName: string;
+  /** True only when this card is displaying demo/simulated data, not live server data. */
+  isDemoData?: boolean;
   submitting: boolean;
   gpsCoords: GpsCoordinates;
   gpsError: string | null;
@@ -59,10 +76,12 @@ export interface AttendanceCardProps {
 }
 
 export default function AttendanceCard({
+  attendanceStatus: explicitStatus,
   onDuty,
   clockInTime,
   clockOutTime,
   facilityName,
+  isDemoData = false,
   submitting,
   gpsCoords,
   gpsError,
@@ -77,17 +96,65 @@ export default function AttendanceCard({
 }: AttendanceCardProps) {
   const hasValidGps = isValidGpsCoordinates(gpsCoords) && !gpsError;
 
+  // Resolve truthful attendance status:
+  // If explicitly passed, use it ('UNKNOWN' | 'ON_DUTY' | 'OFF_DUTY').
+  // If omitted, fallback to legacy onDuty mapping ('ON_DUTY' | 'OFF_DUTY') so existing tests remain green.
+  const attendanceStatus: AttendanceStatus =
+    explicitStatus !== undefined
+      ? explicitStatus
+      : onDuty
+      ? 'ON_DUTY'
+      : 'OFF_DUTY';
+
+  // ---- Truthful Status Pill ------------------------------------------------
+  // UNKNOWN must never be rendered as OFF_DUTY (or as ON_DUTY).
+  // Three fully distinct visual states are required.
+  const statusPillText =
+    attendanceStatus === 'UNKNOWN'
+      ? 'Status presensi belum tersedia'
+      : attendanceStatus === 'ON_DUTY'
+      ? 'Sedang Bertugas'
+      : 'Di Luar Shift';
+
+  const statusPillClass =
+    attendanceStatus === 'UNKNOWN'
+      ? 'bg-slate-50 text-slate-500 border-slate-200'
+      : attendanceStatus === 'ON_DUTY'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : 'bg-slate-100 text-slate-600 border-slate-200';
+
+  const iconBgClass =
+    attendanceStatus === 'ON_DUTY'
+      ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+      : 'bg-slate-100 text-slate-500';
+
+  // ---- Truthful Clock-In Display -------------------------------------------
+  // Never display a hardcoded clock-in time as an operational fact.
+  const clockInDisplay =
+    attendanceStatus === 'UNKNOWN'
+      ? 'Belum ada catatan presensi'
+      : clockInTime || 'Belum Absen';
+
+  // ---- Truthful Facility Display -------------------------------------------
+  // Empty string = not yet assigned from server session. Never display a
+  // simulated facility name as an operational placement.
+  const facilityDisplay = facilityName || 'Lokasi belum ditugaskan';
+
   return (
     <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
+      {/* Demo Data Banner — visible only when isDemoData is explicitly true */}
+      {isDemoData && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800 uppercase tracking-wider">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          DEMO / SIMULATED DATA — Not an operational attendance record
+        </div>
+      )}
+
       {/* Header Status */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-              onDuty
-                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                : 'bg-slate-100 text-slate-500'
-            }`}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center ${iconBgClass}`}
           >
             <Clock className="w-6 h-6 stroke-[2.2]" aria-hidden="true" />
           </div>
@@ -95,20 +162,17 @@ export default function AttendanceCard({
             <h2 className="text-base font-bold text-slate-900 leading-tight">Presensi Lapangan</h2>
             <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
               <Building className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-              <span>{facilityName || 'Lokasi Belum Ditugaskan'}</span>
+              <span>{facilityDisplay}</span>
             </p>
           </div>
         </div>
 
-        {/* Status Pill */}
+        {/* Status Pill — Truthful tristate: UNKNOWN / ON_DUTY / OFF_DUTY */}
         <span
-          className={`px-3 py-1 rounded-full text-xs font-bold border ${
-            onDuty
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              : 'bg-slate-100 text-slate-600 border-slate-200'
-          }`}
+          className={`px-3 py-1 rounded-full text-xs font-bold border ${statusPillClass}`}
+          data-attendance-status={attendanceStatus}
         >
-          {onDuty ? 'Sedang Bertugas' : 'Di Luar Shift'}
+          {statusPillText}
         </span>
       </div>
 
@@ -117,7 +181,7 @@ export default function AttendanceCard({
         <div>
           <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Jam Masuk</span>
           <span className="font-semibold text-slate-700 mt-0.5 block truncate">
-            {clockInTime || 'Belum Absen'}
+            {clockInDisplay}
           </span>
         </div>
         <div>
@@ -151,8 +215,13 @@ export default function AttendanceCard({
       </div>
 
       {/* Primary Touch Action Buttons (Min 48px Touch Target) */}
+      {/* Buttons are hidden when status is UNKNOWN — no server evidence exists for clock-in or out */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-        {!onDuty ? (
+        {attendanceStatus === 'UNKNOWN' ? (
+          <div className="col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500 text-center">
+            Status presensi belum tersedia. Tombol absensi akan aktif setelah status server dikonfirmasi.
+          </div>
+        ) : !onDuty ? (
           <button
             type="button"
             onClick={onOpenClockInModal}
@@ -245,7 +314,7 @@ export default function AttendanceCard({
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Pos Penugasan:</span>
-                    <span className="font-semibold text-slate-900 truncate max-w-[160px]">{facilityName}</span>
+                    <span className="font-semibold text-slate-900 truncate max-w-[160px]">{facilityDisplay}</span>
                   </div>
                 </div>
 

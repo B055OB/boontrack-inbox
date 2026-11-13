@@ -505,9 +505,11 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(html).toContain('role="banner"');
       expect(html).toContain('role="navigation"');
 
-      // AttendanceCard integration
-      expect(html).toContain('Absen Keluar'); // Officer Sarah Jenkins starts onDuty=true in initial state
-      expect(html).toContain('Sedang Bertugas');
+      // AttendanceCard integration — Truthful initial attendance status is UNKNOWN (not ON_DUTY)
+      expect(html).toContain('Presensi Lapangan');
+      expect(html).toContain('Status presensi belum tersedia');
+      expect(html).not.toContain('Sedang Bertugas');
+      expect(html).not.toContain('Absen Keluar');
 
       // CheckpointScannerView integration
       expect(html).toContain('Pos Patroli Fisik');
@@ -653,8 +655,8 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify Field UI IS rendered
       expect(html).toContain('Petugas Lapangan');
-      expect(html).toContain('Absen Keluar');
-      expect(html).toContain('Sedang Bertugas');
+      expect(html).toContain('Presensi Lapangan');
+      expect(html).toContain('Status presensi belum tersedia');
       expect(html).toContain('Pos Patroli Fisik');
       expect(html).toContain('Presensi');
 
@@ -686,7 +688,8 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify Field UI IS rendered
       expect(html).toContain('Petugas Lapangan');
-      expect(html).toContain('Absen Keluar');
+      expect(html).toContain('Presensi Lapangan');
+      expect(html).toContain('Status presensi belum tersedia');
       expect(html).toContain('Pos Patroli Fisik');
 
       // Verify Reseller UI, tabs, and actions are STRICTLY NOT rendered
@@ -1222,6 +1225,327 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(validCheckpointPayload.checkpoint_id).toBe('CP-01');
       expect(Number.isFinite(validCheckpointPayload.latitude)).toBe(true);
       expect(Number.isFinite(validCheckpointPayload.longitude)).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 9. BWM Operational Data Truthfulness 10 Acceptance Gates (CTO Directive)
+  // =========================================================================
+  describe('BWM Operational Data Truthfulness 10 Acceptance Gates (CTO Directive)', () => {
+    const defaultGps: GpsCoordinates = {
+      latitude: -6.2088,
+      longitude: 106.8456,
+      accuracy: 8,
+      isMockGps: false,
+    };
+
+    it('Gate 1: Initial attendance does NOT show ON_DUTY', () => {
+      const fieldSession: WorkforceSession = {
+        userId: 'USR-FIELD-TRUTH-1',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        agency_name: 'Apex Patrol Solutions',
+        nik: 'OP-4821',
+        name: 'Officer Sarah Jenkins',
+        role: 'field_personnel',
+        site: 'Perimeter Alpha',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="field" __testOnlySession={fieldSession} />
+      );
+
+      // Truthful initial attendance is UNKNOWN — not ON_DUTY
+      expect(html).toContain('data-attendance-status="UNKNOWN"');
+      expect(html).toContain('Status presensi belum tersedia');
+      expect(html).not.toContain('Sedang Bertugas');
+      expect(html).not.toContain('Absen Keluar');
+    });
+
+    it('Gate 2: No hardcoded initial clock-in time (07:42 UTC+7) rendered as fact', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="UNKNOWN"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Pos 1"
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // No hardcoded clock-in time
+      expect(html).not.toContain('07:42 UTC+7');
+      expect(html).not.toContain('07:42');
+      expect(html).toContain('Belum ada catatan presensi');
+    });
+
+    it('Gate 3: No unverified facility displayed as actual operational placement', () => {
+      // 1. AttendanceCard with empty facility
+      const cardHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="UNKNOWN"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName=""
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      expect(cardHtml).not.toContain('Metro Financial Tower Hub');
+      expect(cardHtml).toContain('Lokasi belum ditugaskan');
+
+      // 2. WorkforceOperationsPortal without site in session
+      const unassignedSession: WorkforceSession = {
+        userId: 'USR-FIELD-UNASSIGNED',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'OP-9999',
+        name: 'Officer Unassigned',
+        role: 'field_personnel',
+        site: '',
+      };
+
+      const portalHtml = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="field" __testOnlySession={unassignedSession} />
+      );
+
+      expect(portalHtml).not.toContain('Metro Financial Tower Hub');
+      expect(portalHtml).toContain('Lokasi belum ditugaskan');
+    });
+
+    it('Gate 4: UNKNOWN is distinct from OFF_DUTY and ON_DUTY (Three distinct states)', () => {
+      const unknownHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="UNKNOWN"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Pos Utama"
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      const offDutyHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Pos Utama"
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      const onDutyHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="ON_DUTY"
+          onDuty={true}
+          clockInTime="08:00 WIB"
+          clockOutTime={null}
+          facilityName="Pos Utama"
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // UNKNOWN: status pill says belum tersedia, buttons disabled with notification
+      expect(unknownHtml).toContain('data-attendance-status="UNKNOWN"');
+      expect(unknownHtml).toContain('Status presensi belum tersedia');
+      expect(unknownHtml).toContain('Tombol absensi akan aktif setelah status server dikonfirmasi');
+      expect(unknownHtml).not.toContain('Di Luar Shift');
+      expect(unknownHtml).not.toContain('Sedang Bertugas');
+      expect(unknownHtml).not.toContain('Absen Masuk (Foto Kamera)');
+      expect(unknownHtml).not.toContain('Absen Keluar');
+
+      // OFF_DUTY: status pill says Di Luar Shift, button is Absen Masuk
+      expect(offDutyHtml).toContain('data-attendance-status="OFF_DUTY"');
+      expect(offDutyHtml).toContain('Di Luar Shift');
+      expect(offDutyHtml).toContain('Absen Masuk (Foto Kamera)');
+      expect(offDutyHtml).not.toContain('Status presensi belum tersedia');
+      expect(offDutyHtml).not.toContain('Sedang Bertugas');
+
+      // ON_DUTY: status pill says Sedang Bertugas, button is Absen Keluar
+      expect(onDutyHtml).toContain('data-attendance-status="ON_DUTY"');
+      expect(onDutyHtml).toContain('Sedang Bertugas');
+      expect(onDutyHtml).toContain('Absen Keluar');
+      expect(onDutyHtml).not.toContain('Status presensi belum tersedia');
+      expect(onDutyHtml).not.toContain('Di Luar Shift');
+    });
+
+    it('Gate 5: AttendanceCard differentiates DEMO from verified operational status', () => {
+      const demoHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Pos 1"
+          isDemoData={true}
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      const liveHtml = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Pos 1"
+          isDemoData={false}
+          submitting={false}
+          gpsCoords={defaultGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      expect(demoHtml).toContain('DEMO / SIMULATED DATA — Not an operational attendance record');
+      expect(liveHtml).not.toContain('DEMO / SIMULATED DATA — Not an operational attendance record');
+    });
+
+    it('Gate 6: Static KPI values cannot appear as verified operational results without DEMO labeling', () => {
+      const supSession: WorkforceSession = {
+        userId: 'USR-SUP-KPI-1',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'SUP-1092',
+        name: 'Marcus Sterling',
+        role: 'supervisor',
+        branch: 'Branch Alpha',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={supSession} />
+      );
+
+      // All static KPIs carry data-demo-kpi attribute
+      expect(html).toContain('data-demo-kpi="true"');
+      // Grooming score has DEMO badge
+      expect(html).toContain('Pre-shift inspection score (Simulated)');
+      expect(html).toContain('Verified QR Cryptographic (Simulated)');
+      expect(html).toContain('Active Geofenced (Simulated)');
+    });
+
+    it('Gate 7: Demo incident initial state is not mixed with live API records', () => {
+      const supSession: WorkforceSession = {
+        userId: 'USR-SUP-INC-1',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'SUP-1092',
+        name: 'Marcus Sterling',
+        role: 'supervisor',
+        branch: 'Branch Alpha',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={supSession} />
+      );
+
+      // Initial state is loading from server, never pre-populated with mock incidents
+      expect(html).toContain('data-incident-source="LOADING"');
+      expect(html).toContain('Memuat rekaman insiden dari server...');
+      expect(html).not.toContain('External floodlight fixture damaged');
+      expect(html).not.toContain('Commercial freight carrier license plate mismatch');
+    });
+
+    it('Gate 8: Fetch failure does not display mock incidents as live data', () => {
+      const supSession: WorkforceSession = {
+        userId: 'USR-SUP-ERR-1',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'SUP-1092',
+        name: 'Marcus Sterling',
+        role: 'supervisor',
+        branch: 'Branch Alpha',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={supSession} />
+      );
+
+      // Invariant: mock incidents INC-01, INC-02 must NOT appear as live data
+      expect(html).not.toContain('External floodlight fixture damaged');
+      expect(html).not.toContain('Commercial freight carrier license plate mismatch');
+    });
+
+    it('Gate 9: GPS fail-closed protections remain intact with new attendanceStatus', () => {
+      const nullGps: GpsCoordinates = { latitude: null, longitude: null, accuracy: null };
+
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="North Perimeter"
+          submitting={false}
+          gpsCoords={nullGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      // GPS fail-closed: disabled submit button and alert
+      expect(html).toContain('Koordinat GPS belum valid. Tombol presensi dinonaktifkan demi integritas.');
+      expect(html).toContain('disabled=""');
+    });
+
+    it('Gate 10: Session authority and role restrictions remain fully enforced', () => {
+      // 1. Unauthenticated session renders login redirect
+      const unauthHtml = renderToStaticMarkup(
+        <WorkforceAppShell overrideSession={null}>
+          <div>Protected Content</div>
+        </WorkforceAppShell>
+      );
+      expect(unauthHtml).toContain('Sesi Kerja Tidak Ditemukan');
+      expect(unauthHtml).not.toContain('Protected Content');
+
+      // 2. Role spoofing: reseller initialRole with field_personnel server role
+      const spoofedSession: WorkforceSession = {
+        userId: 'USR-SPOOF-G10',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'OP-4821',
+        name: 'Officer Sarah Jenkins',
+        role: 'field_personnel',
+        site: 'Perimeter East',
+      };
+
+      const portalHtml = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="reseller" __testOnlySession={spoofedSession} />
+      );
+      expect(portalHtml).toContain('Petugas Lapangan');
+      expect(portalHtml).not.toContain('ENTERPRISE MAIN AGENT CONSOLE');
     });
   });
 });

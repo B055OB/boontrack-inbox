@@ -193,13 +193,13 @@ export default function WorkforceOperationsPortal({
   const [userName, setUserName] = useState('Officer Sarah Jenkins');
   const [userNip, setUserNip] = useState('OP-4821');
   const [contractStatus, setContractStatus] = useState('Permanent Service Level Agreement');
-  const [mitraPlacement, setMitraPlacement] = useState('Metro Financial Tower Hub');
+  const [mitraPlacement, setMitraPlacement] = useState('');
 
   // ROLE 2: SUPERVISOR STATE (Marcus Sterling)
   const [supervisorName, setSupervisorName] = useState('Marcus Sterling');
   const [supervisorNip, setSupervisorNip] = useState('SUP-1092');
-  const [supervisorBranch, setSupervisorBranch] = useState('Metro Financial Tower Hub');
-  const [supervisorSite, setSupervisorSite] = useState('Metro Financial Tower Hub');
+  const [supervisorBranch, setSupervisorBranch] = useState('');
+  const [supervisorSite, setSupervisorSite] = useState('');
 
   // ROLE 3: MASTER RESELLER STATE (Apex Security Services Ltd)
   const [resellerName, setResellerName] = useState('Apex Security Operations');
@@ -211,8 +211,16 @@ export default function WorkforceOperationsPortal({
     initialRole === 'field' ? 'presence' : initialRole === 'supervisor' ? 'radar' : 'overview'
   );
 
-  const [onDuty, setOnDuty] = useState(true);
-  const [clockInTime, setClockInTime] = useState('07:42 UTC+7');
+  /**
+   * Truthful tristate attendance status.
+   * - null / 'UNKNOWN': session not yet resolved or server has not confirmed shift status.
+   * - 'ON_DUTY': server confirmed active shift after successful clock-in mutation.
+   * - 'OFF_DUTY': server confirmed not on shift.
+   * NEVER default to ON_DUTY or OFF_DUTY without server evidence.
+   */
+  const [attendanceStatus, setAttendanceStatus] = useState<'UNKNOWN' | 'ON_DUTY' | 'OFF_DUTY'>('UNKNOWN');
+  const [onDuty, setOnDuty] = useState(false);
+  const [clockInTime, setClockInTime] = useState<string | null>(null);
   const [clockOutTime, setClockOutTime] = useState<string | null>(null);
 
   const [activeView, setActiveView] = useState<'main' | 'checkpoint'>('main');
@@ -316,6 +324,7 @@ export default function WorkforceOperationsPortal({
       });
       const data = await res.json();
       if (data.success) {
+        setAttendanceStatus('OFF_DUTY');
         setOnDuty(false);
         setClockOutTime(currentTime || new Date().toLocaleTimeString());
         setModalType(null);
@@ -541,8 +550,9 @@ export default function WorkforceOperationsPortal({
 
   // -------------------------------------------------------------
   // DUAL-DISPATCH INCIDENT REPORTING STATE
+  // Truthful data stream: loading, live API, empty, API error, demo
   // -------------------------------------------------------------
-  const [incidents, setIncidents] = useState<IncidentRecord[]>([
+  const DEMO_INCIDENTS: IncidentRecord[] = [
     {
       id: 'INC-01',
       time: '09:02 UTC+7',
@@ -552,8 +562,8 @@ export default function WorkforceOperationsPortal({
       urgency: 'Standard Follow-up',
       reporter: 'Officer Lucas Hayes',
       badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
-      inDatabase: true,
-      inWhatsAppGroup: true,
+      inDatabase: false,
+      inWhatsAppGroup: false,
     },
     {
       id: 'INC-02',
@@ -564,8 +574,8 @@ export default function WorkforceOperationsPortal({
       urgency: 'Critical Emergency',
       reporter: 'Officer Sarah Jenkins',
       badgeClass: 'bg-rose-100 text-rose-800 border-rose-300',
-      inDatabase: true,
-      inWhatsAppGroup: true,
+      inDatabase: false,
+      inWhatsAppGroup: false,
     },
     {
       id: 'INC-03',
@@ -576,10 +586,14 @@ export default function WorkforceOperationsPortal({
       urgency: 'Standard Follow-up',
       reporter: 'Officer Marcus Sterling',
       badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-      inDatabase: true,
-      inWhatsAppGroup: true,
+      inDatabase: false,
+      inWhatsAppGroup: false,
     },
-  ]);
+  ];
+
+  const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
+  const [incidentSource, setIncidentSource] = useState<'LOADING' | 'LIVE' | 'EMPTY' | 'FETCH_ERROR' | 'DEMO'>('LOADING');
+  const [incidentError, setIncidentError] = useState<string | null>(null);
 
   const [reportLocation, setReportLocation] = useState('Loading Dock Bay A');
   const [reportCategory, setReportCategory] = useState<'Security Breach' | 'Unauthorized Access' | 'Asset Damage' | 'Medical Emergency'>('Security Breach');
@@ -1295,6 +1309,7 @@ export default function WorkforceOperationsPortal({
       });
       const data = await res.json();
       if (data.success) {
+        setAttendanceStatus('ON_DUTY');
         setOnDuty(true);
         setClockInTime(currentTime || new Date().toLocaleTimeString());
         setModalType(null);
@@ -1360,26 +1375,58 @@ export default function WorkforceOperationsPortal({
 
   // Fetch initial incidents from backend API
   useEffect(() => {
+    let isMounted = true;
+    setIncidentSource('LOADING');
+    setIncidentError(null);
+
     fetch('/api/incidents')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        return r.json();
+      })
       .then((data) => {
-        if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-          const mapped: IncidentRecord[] = data.data.map((item: any) => ({
-            id: item.id,
-            time: item.time,
-            location: item.location,
-            note: item.note,
-            status: item.status,
-            urgency: item.urgency === 'Darurat' ? 'Critical Emergency' : 'Standard Follow-up',
-            reporter: item.reporter,
-            badgeClass: item.badge_class || 'bg-amber-100 text-amber-800 border-amber-300',
-            inDatabase: Boolean(item.in_database),
-            inWhatsAppGroup: Boolean(item.in_whatsapp_group),
-          }));
-          setIncidents(mapped);
+        if (!isMounted) return;
+        if (data.success && Array.isArray(data.data)) {
+          if (data.data.length > 0) {
+            const mapped: IncidentRecord[] = data.data.map((item: any) => ({
+              id: item.id || `INC-${Math.random().toString(36).substring(2, 7)}`,
+              time: item.server_timestamp_wib || item.time || (item.created_at ? new Date(item.created_at).toLocaleTimeString() : '12:00 WIB'),
+              location: item.location_point || item.location || 'Pos Operasional',
+              note: item.description || item.note || '',
+              status: item.status || 'Tercatat di Server',
+              urgency: item.urgency === 'Darurat' ? 'Critical Emergency' : 'Standard Follow-up',
+              reporter: item.reporter_name || item.reporter || 'Petugas Lapangan',
+              badgeClass: item.badge_class || (item.urgency === 'Darurat' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-amber-100 text-amber-800 border-amber-300'),
+              inDatabase: Boolean(item.id),
+              inWhatsAppGroup: Boolean(item.in_whatsapp_group ?? true),
+            }));
+            setIncidents(mapped);
+            setIncidentSource('LIVE');
+          } else {
+            // Live API returned empty list cleanly
+            setIncidents([]);
+            setIncidentSource('EMPTY');
+          }
+        } else {
+          // Unexpected schema — do NOT silently fall back to mock data as live
+          setIncidents([]);
+          setIncidentSource('FETCH_ERROR');
+          setIncidentError(data.message || data.error || 'Format respons insiden tidak valid');
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!isMounted) return;
+        // Fetch failed — do NOT silently show mock incidents as live!
+        setIncidents([]);
+        setIncidentSource('FETCH_ERROR');
+        setIncidentError(err.message || 'Gagal memuat catatan insiden');
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   async function handleReportIncident(e: React.FormEvent) {
@@ -1663,10 +1710,12 @@ export default function WorkforceOperationsPortal({
 
           {/* Modular Attendance Card (U2 Component) */}
           <AttendanceCard
+            attendanceStatus={attendanceStatus}
             onDuty={onDuty}
             clockInTime={clockInTime}
             clockOutTime={clockOutTime}
             facilityName={mitraPlacement}
+            isDemoData={false}
             submitting={attendanceSubmitting}
             gpsCoords={gpsCoords}
             gpsError={gpsError}
@@ -1748,10 +1797,13 @@ export default function WorkforceOperationsPortal({
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
                   Branch Command Desk
                 </span>
-                <span className="text-xs font-semibold text-slate-500">Metro Financial Tower Hub</span>
+                <span className="text-xs font-semibold text-slate-500">
+                  {supervisorBranch || supervisorSite || 'Cabang belum ditugaskan'}
+                </span>
               </div>
               <h2 className="text-2xl font-black text-slate-900 mt-1.5 tracking-tight">
-                {t('workforce.supervisor.deskTitle')} &mdash; Metro Financial Tower Hub
+                {t('workforce.supervisor.deskTitle')}
+                {supervisorBranch || supervisorSite ? ` — ${supervisorBranch || supervisorSite}` : ''}
               </h2>
               <p className="text-xs text-slate-600 mt-1">
                 Supervisor On-Duty: <span className="text-slate-900 font-bold">{supervisorName}</span> &bull; Badge: <span className="font-mono text-blue-600 font-bold">{supervisorNip}</span> &bull; Real-time perimeter tracking &amp; dual-dispatch incident escalation.
@@ -1784,40 +1836,52 @@ export default function WorkforceOperationsPortal({
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">On-Duty Officers</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">100% Coverage</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">DEMO</span>
               </div>
-              <div className="text-2xl font-black text-slate-900 mt-1">14 Officers</div>
-              <div className="text-[11px] text-emerald-600 font-semibold flex items-center space-x-1">
-                <span>&bull;</span>
-                <span>Active Geofenced</span>
-              </div>
+              <div className="text-2xl font-black text-slate-900 mt-1" data-demo-kpi="true">14 Officers</div>
+              <div className="text-[11px] text-slate-500">Active Geofenced (Simulated)</div>
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">Patrol Round SLA</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">&ge; 90% Target</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">DEMO</span>
               </div>
-              <div className="text-2xl font-black text-blue-600 mt-1">94.8%</div>
-              <div className="text-[11px] text-slate-500">Verified QR Cryptographic</div>
+              <div className="text-2xl font-black text-blue-600 mt-1" data-demo-kpi="true">94.8%</div>
+              <div className="text-[11px] text-slate-500">Verified QR Cryptographic (Simulated)</div>
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">Active Incidents</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700">Dual-Dispatch</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  incidentSource === 'LIVE'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : incidentSource === 'FETCH_ERROR'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  {incidentSource === 'LIVE' ? 'Live Stream' : incidentSource === 'FETCH_ERROR' ? 'Offline' : 'Dual-Dispatch'}
+                </span>
               </div>
-              <div className="text-2xl font-black text-amber-600 mt-1">{incidents.length} Logged</div>
-              <div className="text-[11px] text-slate-500">Automated Dispatch Active</div>
+              <div className="text-2xl font-black text-amber-600 mt-1">
+                {incidentSource === 'LOADING' ? '...' : `${incidents.length} Logged`}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {incidentSource === 'LIVE' ? 'Real-time Server Outbox' : incidentSource === 'FETCH_ERROR' ? 'Server Connection Error' : 'Automated Dispatch Active'}
+              </div>
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-medium">Readiness &amp; Grooming</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Inspection</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">DEMO</span>
               </div>
-              <div className="text-2xl font-black text-emerald-600 mt-1">{groomingScore}% Prime</div>
-              <div className="text-[11px] text-slate-500">Pre-shift inspection score</div>
+              <div className="text-2xl font-black text-emerald-600 mt-1" data-demo-kpi="true">
+                {groomingScore}% Prime
+                <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">DEMO</span>
+              </div>
+              <div className="text-[11px] text-slate-500">Pre-shift inspection score (Simulated)</div>
             </div>
           </div>
 
@@ -1845,9 +1909,42 @@ export default function WorkforceOperationsPortal({
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-extrabold text-slate-900">{t('workforce.supervisor.incidentTitle')}</h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider">
-                    SIMULATED INCIDENTS (DEMO DATA)
-                  </span>
+                  {incidentSource === 'LIVE' ? (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider"
+                      data-incident-source="LIVE"
+                    >
+                      LIVE DATA ({incidents.length})
+                    </span>
+                  ) : incidentSource === 'EMPTY' ? (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 tracking-wider"
+                      data-incident-source="EMPTY"
+                    >
+                      0 TERCATAT
+                    </span>
+                  ) : incidentSource === 'FETCH_ERROR' ? (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 tracking-wider"
+                      data-incident-source="FETCH_ERROR"
+                    >
+                      KONEKSI GAGAL
+                    </span>
+                  ) : incidentSource === 'LOADING' ? (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 tracking-wider"
+                      data-incident-source="LOADING"
+                    >
+                      MEMUAT DATA...
+                    </span>
+                  ) : (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider"
+                      data-incident-source="DEMO"
+                    >
+                      SIMULATED INCIDENTS (DEMO DATA)
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">Click any incident to open full audit trail in slide-over drawer.</p>
               </div>
@@ -1855,40 +1952,62 @@ export default function WorkforceOperationsPortal({
             </div>
 
             <div className="space-y-3">
-              {incidents.map((inc) => (
-                <div
-                  key={inc.id}
-                  onClick={() => setSelectedIncidentForDrawer(inc)}
-                  className="p-4 rounded-xl bg-slate-50 hover:bg-rose-50/40 border border-slate-200 hover:border-rose-200 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
-                >
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 shrink-0 mt-0.5">
-                      <AlertTriangle className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900 group-hover:text-rose-700 transition">{inc.note}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        Location: <span className="text-slate-800 font-semibold">{inc.location}</span> &bull; Reporter: {inc.reporter} &bull; Time: <span className="font-mono text-slate-600">{inc.time}</span>
+              {incidentSource === 'LOADING' ? (
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-400">
+                  Memuat rekaman insiden dari server...
+                </div>
+              ) : incidentSource === 'FETCH_ERROR' ? (
+                <div className="p-6 text-center bg-rose-50/50 border border-rose-200 rounded-xl space-y-1">
+                  <p className="text-xs font-bold text-rose-800">
+                    Gagal memuat data insiden server: {incidentError || 'Kesalahan jaringan'}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Sistem menolak menampilkan data tiruan tanpa izin demi menjaga integritas data operasional.
+                  </p>
+                </div>
+              ) : incidentSource === 'EMPTY' || incidents.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  <p className="text-xs font-bold text-slate-700">Tidak ada insiden aktif</p>
+                  <p className="text-[11px] text-slate-500">
+                    Perimeter aman. Belum ada eskalasi insiden yang dilaporkan pada shift ini.
+                  </p>
+                </div>
+              ) : (
+                incidents.map((inc) => (
+                  <div
+                    key={inc.id}
+                    onClick={() => setSelectedIncidentForDrawer(inc)}
+                    className="p-4 rounded-xl bg-slate-50 hover:bg-rose-50/40 border border-slate-200 hover:border-rose-200 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs group"
+                  >
+                    <div className="flex items-start space-x-3">
+                      <div className="p-2 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 shrink-0 mt-0.5">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 group-hover:text-rose-700 transition">{inc.note}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Location: <span className="text-slate-800 font-semibold">{inc.location}</span> &bull; Reporter: {inc.reporter} &bull; Time: <span className="font-mono text-slate-600">{inc.time}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        inc.urgency === 'Critical Emergency'
-                          ? 'bg-rose-50 text-rose-700 border-rose-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}
-                    >
-                      {inc.urgency}
-                    </span>
-                    <span className="text-[11px] font-bold text-blue-600 group-hover:underline">
-                      Audit Trail &rarr;
-                    </span>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          inc.urgency === 'Critical Emergency'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        {inc.urgency}
+                      </span>
+                      <span className="text-[11px] font-bold text-blue-600 group-hover:underline">
+                        Audit Trail &rarr;
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </main>
