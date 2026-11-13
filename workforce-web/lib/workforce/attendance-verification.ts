@@ -1248,6 +1248,113 @@ export async function processAttendanceSubmission(
 }
 
 /**
+ * Formats an ISO-8601 UTC server timestamp into Asia/Jakarta (UTC+7) representation.
+ * Returns null if timestamp is missing or invalid. Never falls back to client new Date().
+ */
+export function formatServerTimestampJakarta(isoString: string | null | undefined): string | null {
+  if (!isoString || typeof isoString !== 'string') return null;
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
+      hour12: false,
+    }).format(d);
+    return `${parts} UTC+7`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Authoritative Read-Only Handler for GET /api/attendance.
+ * Resolves current attendance status and latest timestamp from persistence without side effects.
+ */
+export async function processAttendanceStatusRead(
+  req: NextRequest,
+  deps?: { store?: WorkforceOperationalStore }
+): Promise<NextResponse> {
+  const auth = await getAuthenticatedWorkforceSession(req, deps?.store ? { store: deps.store } : undefined);
+  if (!auth.session) {
+    return jsonError(auth.status || 401, auth.error || 'UNAUTHORIZED', 'Autentikasi sesi BWM diperlukan.');
+  }
+
+  const store = deps?.store || (await getWorkforceOperationalStore());
+  const tenantId = auth.session.tenantId;
+
+  // 1. Verify tenant, active membership, and map session.userId -> personnel.id
+  const principalCheck = await verifyActiveWorkforcePrincipal(store, auth.session);
+  if (!principalCheck.ok) return principalCheck.response;
+
+  const { personnel } = principalCheck;
+
+  // 2. Query latest attendance log using existing store abstraction
+  const latestRes = await store.getLatestAttendanceByPersonnel(tenantId, personnel.id);
+  if (latestRes.error) {
+    console.error('[BWM ATTENDANCE STATUS] Failed to query latest attendance:', latestRes.error.code || 'UNKNOWN');
+    return jsonError(500, 'DB_QUERY_FAILED', 'Gagal membaca status presensi dari database.');
+  }
+
+  const latest = latestRes.data;
+  if (!latest) {
+    // Initial state: personnel has no prior attendance records.
+    // In universal attendance state machine, INITIAL permits CLOCK_IN.
+    // Therefore, personnel is currently OFF_DUTY.
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          status: 'OFF_DUTY',
+          server_state: 'INITIAL',
+          personnel_id: personnel.id,
+          facility_id: personnel.facility_id || null,
+          last_punch_time: null,
+          clock_in_time: null,
+          clock_out_time: null,
+        },
+      },
+      { status: 200 }
+    );
+  }
+
+  if (latest.type === 'CLOCK_IN') {
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          status: 'ON_DUTY',
+          server_state: 'CLOCK_IN',
+          personnel_id: personnel.id,
+          facility_id: latest.facility_id || personnel.facility_id || null,
+          last_punch_time: latest.timestamp || latest.created_at || null,
+          clock_in_time: latest.timestamp || latest.created_at || null,
+          clock_out_time: null,
+        },
+      },
+      { status: 200 }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      success: true,
+      data: {
+        status: 'OFF_DUTY',
+        server_state: 'CLOCK_OUT',
+        personnel_id: personnel.id,
+        facility_id: latest.facility_id || personnel.facility_id || null,
+        last_punch_time: latest.timestamp || latest.created_at || null,
+        clock_in_time: null,
+        clock_out_time: latest.timestamp || latest.created_at || null,
+      },
+    },
+    { status: 200 }
+  );
+}
+
+/**
  * Full HTTP handler logic for POST /api/checkpoints/scan.
  */
 export async function processCheckpointScanSubmission(

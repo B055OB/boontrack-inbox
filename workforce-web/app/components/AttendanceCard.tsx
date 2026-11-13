@@ -47,6 +47,27 @@ export function isValidGpsCoordinates(coords: GpsCoordinates | null | undefined)
  */
 export type AttendanceStatus = 'UNKNOWN' | 'ON_DUTY' | 'OFF_DUTY';
 
+/**
+ * Formats an ISO-8601 UTC server timestamp into Asia/Jakarta (UTC+7) representation.
+ * Returns null if timestamp is missing or invalid. Never falls back to client new Date().
+ */
+export function formatServerTimestampJakarta(isoString: string | null | undefined): string | null {
+  if (!isoString || typeof isoString !== 'string') return null;
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
+      hour12: false,
+    }).format(d);
+    return `${parts} UTC+7`;
+  } catch {
+    return null;
+  }
+}
+
 export interface AttendanceCardProps {
   /** Truthful tristate attendance status from server.
    * If provided, takes precedence over onDuty bool.

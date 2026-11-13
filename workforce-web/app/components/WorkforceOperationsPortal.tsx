@@ -42,7 +42,7 @@ import SlideOverDrawer from './SlideOverDrawer';
 import EmptyState from './EmptyState';
 import { CardSkeleton, RosterCardSkeleton } from './LoadingSkeleton';
 import WorkforceAppShell, { type WorkforceSession } from './WorkforceAppShell';
-import AttendanceCard, { type GpsCoordinates } from './AttendanceCard';
+import AttendanceCard, { type GpsCoordinates, formatServerTimestampJakarta } from './AttendanceCard';
 import CheckpointScannerView from './CheckpointScannerView';
 import RosterShiftList, { type PersonnelShiftItem } from './RosterShiftList';
 import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw, Printer, Mail, UserCheck } from 'lucide-react';
@@ -326,7 +326,9 @@ export default function WorkforceOperationsPortal({
       if (data.success) {
         setAttendanceStatus('OFF_DUTY');
         setOnDuty(false);
-        setClockOutTime(currentTime || new Date().toLocaleTimeString());
+        const serverTimestamp = data.data?.timestamp || data.data?.created_at;
+        const formatted = formatServerTimestampJakarta(serverTimestamp);
+        setClockOutTime(formatted || 'Waktu server tidak tersedia');
         setModalType(null);
       } else {
         alert('Gagal mencatat absensi keluar: ' + (data.message || data.error));
@@ -1311,7 +1313,9 @@ export default function WorkforceOperationsPortal({
       if (data.success) {
         setAttendanceStatus('ON_DUTY');
         setOnDuty(true);
-        setClockInTime(currentTime || new Date().toLocaleTimeString());
+        const serverTimestamp = data.data?.timestamp || data.data?.created_at;
+        const formatted = formatServerTimestampJakarta(serverTimestamp);
+        setClockInTime(formatted || 'Waktu server tidak tersedia');
         setModalType(null);
       } else {
         alert('Gagal mencatat absensi: ' + (data.message || data.error));
@@ -1452,45 +1456,36 @@ export default function WorkforceOperationsPortal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      const created: IncidentRecord = {
-        id: data.data?.id || `INC-0${incidents.length + 1}`,
-        time: data.data?.time || nowStr,
-        location: reportLocation,
-        note: fullNote,
-        status: data.data?.status || 'Dispatched to Desk',
-        urgency: reportUrgency,
-        reporter: reporterName,
-        badgeClass: reportUrgency === 'Critical Emergency' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-amber-100 text-amber-800 border-amber-300',
-        inDatabase: data.data?.in_database ?? true,
-        inWhatsAppGroup: data.data?.in_whatsapp_group ?? true,
-      };
+      if (res.ok && data.success && data.data) {
+        const created: IncidentRecord = {
+          id: data.data.id || `INC-${Date.now()}`,
+          time: data.data.server_timestamp_wib || data.data.time || nowStr,
+          location: reportLocation,
+          note: fullNote,
+          status: data.data.status || 'Dispatched to Desk',
+          urgency: reportUrgency,
+          reporter: reporterName,
+          badgeClass:
+            reportUrgency === 'Critical Emergency'
+              ? 'bg-rose-100 text-rose-800 border-rose-300'
+              : 'bg-amber-100 text-amber-800 border-amber-300',
+          inDatabase: Boolean(data.data.id),
+          inWhatsAppGroup: Boolean(data.data.in_whatsapp_group),
+        };
 
-      setIncidents([created, ...incidents]);
-      setLatestIncidentPayload(created);
-      setReportDescription('');
-      triggerToast('🚨 Peringatan darurat berhasil dialirkan ke Grup WhatsApp Operasional (Instance: boontrack-workforce via Railway vigilant-joy)');
-      setModalType('dual_dispatch_success');
-    } catch {
-      // Local fallback
-      const created: IncidentRecord = {
-        id: `INC-0${incidents.length + 1}`,
-        time: nowStr,
-        location: reportLocation,
-        note: fullNote,
-        status: 'Logged Locally',
-        urgency: reportUrgency,
-        reporter: reporterName,
-        badgeClass: reportUrgency === 'Critical Emergency' ? 'bg-rose-100 text-rose-800 border-rose-300' : 'bg-amber-100 text-amber-800 border-amber-300',
-        inDatabase: true,
-        inWhatsAppGroup: true,
-      };
-      setIncidents([created, ...incidents]);
-      setLatestIncidentPayload(created);
-      setReportDescription('');
-      triggerToast('🚨 Peringatan darurat berhasil dialirkan ke Grup WhatsApp Operasional (Instance: boontrack-workforce via Railway vigilant-joy)');
-      setModalType('dual_dispatch_success');
+        setIncidents((prev) => [created, ...prev]);
+        setIncidentSource('LIVE');
+        setLatestIncidentPayload(created);
+        setReportDescription('');
+        triggerToast('🚨 Laporan insiden berhasil dicatat dan diverifikasi oleh server operasional.');
+        setModalType('dual_dispatch_success');
+      } else {
+        alert('Gagal mencatat insiden: ' + (data.message || data.error || `HTTP ${res.status}`));
+      }
+    } catch (err: any) {
+      alert('Gagal mengirimkan laporan insiden: Terjadi kesalahan jaringan atau server tidak merespons.');
     } finally {
       setIncidentSubmitting(false);
     }
@@ -1541,6 +1536,43 @@ export default function WorkforceOperationsPortal({
       }
     }
   }, []);
+
+  // Workstream B: Authoritative Attendance State Rehydration
+  useEffect(() => {
+    let isMounted = true;
+    if (typeof window === 'undefined') return;
+
+    fetch('/api/attendance', { method: 'GET', credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (!isMounted) return;
+        if (data.success && data.data && (data.data.status === 'ON_DUTY' || data.data.status === 'OFF_DUTY')) {
+          setAttendanceStatus(data.data.status);
+          setOnDuty(data.data.status === 'ON_DUTY');
+          if (data.data.clock_in_time) {
+            const formatted = formatServerTimestampJakarta(data.data.clock_in_time);
+            if (formatted) setClockInTime(formatted);
+          }
+          if (data.data.clock_out_time) {
+            const formatted = formatServerTimestampJakarta(data.data.clock_out_time);
+            if (formatted) setClockOutTime(formatted);
+          }
+        } else {
+          setAttendanceStatus('UNKNOWN');
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setAttendanceStatus('UNKNOWN');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedSession?.userId]);
 
   return (
     <WorkforceAppShell

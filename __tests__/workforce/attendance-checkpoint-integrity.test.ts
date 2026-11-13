@@ -43,7 +43,9 @@ import {
 import {
   canUseNonAtomicCheckpointFallback,
   CROSS_FACILITY_AUTHORIZED_ROLES,
+  formatServerTimestampJakarta,
   isStrictUnitTestRuntime,
+  processAttendanceStatusRead,
   processAttendanceSubmission,
   processCheckpointScanSubmission,
 } from '@/workforce-web/lib/workforce/attendance-verification';
@@ -375,6 +377,17 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
         ...(headers || {}),
       },
       body: JSON.stringify(body),
+    });
+  }
+
+  function makeAuthedGetRequest(url: string, headers?: Record<string, string>, tokenOverride?: string | null): NextRequest {
+    const cookieHeader = tokenOverride === null ? {} : { cookie: `bwm_session_token=${tokenOverride !== undefined ? tokenOverride : validAlphaToken}` };
+    return new NextRequest(url, {
+      method: 'GET',
+      headers: {
+        ...cookieHeader,
+        ...(headers || {}),
+      },
     });
   }
 
@@ -1948,6 +1961,147 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
       } finally {
         restoreEnvSnapshot(localSnapshot);
       }
+    });
+  });
+
+  describe('4. Authoritative Attendance Status Read & Timestamp Contract Suite (CTO Directive)', () => {
+    it('1. Rejects unauthenticated GET /api/attendance with 401 UNAUTHORIZED', async () => {
+      const store = createFixtureStore();
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance', undefined, null);
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('UNAUTHORIZED_NO_SESSION');
+    });
+
+    it('2. Returns OFF_DUTY / INITIAL when personnel has zero prior attendance records (Zero Mutation)', async () => {
+      const store = createFixtureStore();
+      // Ensure getLatestAttendanceByPersonnel returns null (no records)
+      (store.getLatestAttendanceByPersonnel as jest.Mock).mockResolvedValueOnce({
+        data: null,
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe('OFF_DUTY');
+      expect(body.data.server_state).toBe('INITIAL');
+      expect(body.data.personnel_id).toBe(PERSONNEL_ALPHA_ID);
+      expect(body.data.facility_id).toBe(FACILITY_ALPHA_ID);
+      expect(body.data.clock_in_time).toBeNull();
+      expect(body.data.clock_out_time).toBeNull();
+      expect(body.data.last_punch_time).toBeNull();
+
+      // Invariant: GET endpoint must perform ZERO writes
+      expect(store.insertAttendanceLog).not.toHaveBeenCalled();
+      expect(store.recordAttendanceWithStateTransition).not.toHaveBeenCalled();
+    });
+
+    it('3. Returns ON_DUTY / CLOCK_IN with server timestamp when latest punch is CLOCK_IN', async () => {
+      const store = createFixtureStore();
+      const isoClockIn = '2026-11-13T01:30:00.000Z'; // 08:30 WIB
+      (store.getLatestAttendanceByPersonnel as jest.Mock).mockResolvedValueOnce({
+        data: {
+          id: 'att-log-01',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_IN',
+          timestamp: isoClockIn,
+          created_at: isoClockIn,
+        },
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe('ON_DUTY');
+      expect(body.data.server_state).toBe('CLOCK_IN');
+      expect(body.data.clock_in_time).toBe(isoClockIn);
+      expect(body.data.clock_out_time).toBeNull();
+      expect(body.data.last_punch_time).toBe(isoClockIn);
+
+      // Invariant: ZERO writes
+      expect(store.insertAttendanceLog).not.toHaveBeenCalled();
+    });
+
+    it('4. Returns OFF_DUTY / CLOCK_OUT with server timestamp when latest punch is CLOCK_OUT', async () => {
+      const store = createFixtureStore();
+      const isoClockOut = '2026-11-13T10:00:00.000Z'; // 17:00 WIB
+      (store.getLatestAttendanceByPersonnel as jest.Mock).mockResolvedValueOnce({
+        data: {
+          id: 'att-log-02',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_OUT',
+          timestamp: isoClockOut,
+          created_at: isoClockOut,
+        },
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe('OFF_DUTY');
+      expect(body.data.server_state).toBe('CLOCK_OUT');
+      expect(body.data.clock_in_time).toBeNull();
+      expect(body.data.clock_out_time).toBe(isoClockOut);
+      expect(body.data.last_punch_time).toBe(isoClockOut);
+
+      // Invariant: ZERO writes
+      expect(store.insertAttendanceLog).not.toHaveBeenCalled();
+    });
+
+    it('5. Enforces tenant boundary and denies cross-tenant personnel read (403)', async () => {
+      const store = createFixtureStore();
+      // Mock personnel with different tenant_id
+      (store.getPersonnelByTenantAndUser as jest.Mock).mockResolvedValueOnce({
+        data: {
+          id: PERSONNEL_ALPHA_ID,
+          tenant_id: TENANT_BETA_ID, // Mismatched tenant
+          user_id: USER_ALPHA_ID,
+          is_active: true,
+          facility_id: FACILITY_ALPHA_ID,
+        },
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('CROSS_TENANT_PERSONNEL_FORBIDDEN');
+    });
+
+    it('6. formatServerTimestampJakarta formats ISO UTC to Asia/Jakarta (UTC+7) and fails closed on invalid input', () => {
+      // 00:42 UTC is 07:42 WIB
+      expect(formatServerTimestampJakarta('2026-11-13T00:42:00.000Z')).toBe('07:42 UTC+7');
+      // 17:05 UTC is 00:05 next day WIB
+      expect(formatServerTimestampJakarta('2026-11-13T17:05:00.000Z')).toBe('00:05 UTC+7');
+
+      // Fail-closed checks: invalid or missing timestamps must return null (never current browser time)
+      expect(formatServerTimestampJakarta(null)).toBeNull();
+      expect(formatServerTimestampJakarta(undefined)).toBeNull();
+      expect(formatServerTimestampJakarta('')).toBeNull();
+      expect(formatServerTimestampJakarta('not-a-timestamp')).toBeNull();
+      expect(formatServerTimestampJakarta('invalid-iso-date')).toBeNull();
     });
   });
 });

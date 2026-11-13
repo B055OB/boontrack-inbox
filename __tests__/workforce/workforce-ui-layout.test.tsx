@@ -20,7 +20,11 @@ import WorkforceAppShell, {
   isAllowedBwmRole,
   validateWorkforceSession,
 } from '@/workforce-web/app/components/WorkforceAppShell';
-import AttendanceCard, { GpsCoordinates, isValidGpsCoordinates } from '@/workforce-web/app/components/AttendanceCard';
+import AttendanceCard, {
+  GpsCoordinates,
+  isValidGpsCoordinates,
+  formatServerTimestampJakarta,
+} from '@/workforce-web/app/components/AttendanceCard';
 import CheckpointScannerView, { CheckpointItem } from '@/workforce-web/app/components/CheckpointScannerView';
 import RosterShiftList, { PersonnelShiftItem } from '@/workforce-web/app/components/RosterShiftList';
 import WorkforceOperationsPortal, { isValidGpsCoordinates as isValidGpsCoordinatesPortal } from '@/workforce-web/app/components/WorkforceOperationsPortal';
@@ -1546,6 +1550,237 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       );
       expect(portalHtml).toContain('Petugas Lapangan');
       expect(portalHtml).not.toContain('ENTERPRISE MAIN AGENT CONSOLE');
+    });
+  });
+
+  // =========================================================================
+  // BWM Attendance State Rehydration & Incident Integrity (CTO Directives Workstreams A-D)
+  // =========================================================================
+  describe('BWM Attendance State Rehydration & Incident Integrity (CTO Directives Workstreams A-D)', () => {
+    const validGps: GpsCoordinates = { latitude: -6.2088, longitude: 106.8456, accuracy: 10 };
+    const nullGps: GpsCoordinates = { latitude: null, longitude: null, accuracy: null };
+
+    it('Gate R1: AttendanceCard renders UNKNOWN state with action buttons hidden and informative message', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="UNKNOWN"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Central Hub"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // Verify status pill and text
+      expect(html).toContain('data-attendance-status="UNKNOWN"');
+      expect(html).toContain('Status presensi belum tersedia');
+      expect(html).toContain('Belum ada catatan presensi');
+
+      // Verify action buttons hidden when status is UNKNOWN
+      expect(html).toContain('Tombol absensi akan aktif setelah status server dikonfirmasi');
+      expect(html).not.toContain('Absen Masuk (Foto Kamera)');
+      expect(html).not.toContain('Absen Keluar');
+    });
+
+    it('Gate R2: AttendanceCard renders OFF_DUTY state and enables first clock-in button', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="North Facility"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // Verify status pill and text
+      expect(html).toContain('data-attendance-status="OFF_DUTY"');
+      expect(html).toContain('Di Luar Shift');
+      expect(html).toContain('Belum Absen');
+
+      // Verify Absen Masuk button is rendered with >= 48px touch target
+      expect(html).toContain('Absen Masuk (Foto Kamera)');
+      expect(html).toContain('min-h-[48px]');
+      expect(html).not.toContain('Absen Keluar');
+    });
+
+    it('Gate R3: AttendanceCard renders ON_DUTY state and enables clock-out button', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="ON_DUTY"
+          onDuty={true}
+          clockInTime="08:00 UTC+7"
+          clockOutTime={null}
+          facilityName="North Facility"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      // Verify status pill and text
+      expect(html).toContain('data-attendance-status="ON_DUTY"');
+      expect(html).toContain('Sedang Bertugas');
+      expect(html).toContain('08:00 UTC+7');
+
+      // Verify Absen Keluar button is rendered with >= 48px touch target
+      expect(html).toContain('Absen Keluar');
+      expect(html).toContain('min-h-[48px]');
+      expect(html).not.toContain('Absen Masuk (Foto Kamera)');
+    });
+
+    it('Gate R4: formatServerTimestampJakarta formats UTC server timestamp into Asia/Jakarta (UTC+7)', () => {
+      // 08:30 WIB is 01:30 UTC
+      expect(formatServerTimestampJakarta('2026-11-13T01:30:00.000Z')).toBe('08:30 UTC+7');
+      // 17:00 WIB is 10:00 UTC
+      expect(formatServerTimestampJakarta('2026-11-13T10:00:00.000Z')).toBe('17:00 UTC+7');
+
+      // Edge cases: null, undefined, malformed return null without falling back to local client clock
+      expect(formatServerTimestampJakarta(null)).toBeNull();
+      expect(formatServerTimestampJakarta(undefined)).toBeNull();
+      expect(formatServerTimestampJakarta('')).toBeNull();
+      expect(formatServerTimestampJakarta('not-a-timestamp')).toBeNull();
+    });
+
+    it('Gate R5: AttendanceCard shows truthful clock-in display from server timestamp, never browser clock fallback', () => {
+      const serverTimestamp = '09:15 UTC+7';
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="ON_DUTY"
+          onDuty={true}
+          clockInTime={serverTimestamp}
+          clockOutTime={null}
+          facilityName="Gate 3"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      expect(html).toContain(serverTimestamp);
+      expect(html).not.toContain('Belum ada catatan presensi');
+    });
+
+    it('Gate R6: Initial mount of WorkforceOperationsPortal defaults attendanceStatus to UNKNOWN', () => {
+      const fieldSession: WorkforceSession = {
+        userId: 'USR-FLD-R6',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'OP-1111',
+        name: 'Officer John Truth',
+        role: 'field_personnel',
+        site: 'Sector North',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="field" __testOnlySession={fieldSession} />
+      );
+
+      // On initial server-render / pre-fetch, status is UNKNOWN
+      expect(html).toContain('Presensi Lapangan');
+      expect(html).toContain('Status presensi belum tersedia');
+      expect(html).not.toContain('Sedang Bertugas');
+      expect(html).not.toContain('Di Luar Shift');
+    });
+
+    it('Gate R7: GPS fail-closed protection remains enforced when status is OFF_DUTY', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Perimeter West"
+          submitting={false}
+          gpsCoords={nullGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      // GPS fail-closed: modal submit button must be disabled when coordinates are missing
+      expect(html).toContain('Koordinat GPS belum valid. Tombol presensi dinonaktifkan demi integritas.');
+      expect(html).toContain('disabled=""');
+    });
+
+    it('Gate R8: GPS fail-closed protection remains enforced when status is ON_DUTY', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="ON_DUTY"
+          onDuty={true}
+          clockInTime="07:00 UTC+7"
+          clockOutTime={null}
+          facilityName="Perimeter West"
+          submitting={false}
+          gpsCoords={nullGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="out"
+        />
+      );
+
+      // GPS fail-closed on clock out
+      expect(html).toContain('Koordinat GPS belum valid. Presensi keluar dikunci.');
+      expect(html).toContain('disabled=""');
+    });
+
+    it('Gate R9: Single camera owner pattern during biometric clock-in modal', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="HQ Main"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+          isModalOpen={true}
+          modalType="in"
+        />
+      );
+
+      expect(html).toContain('<video');
+      expect(html).toContain('Posisikan Wajah di Kamera');
+    });
+
+    it('Gate R10: Incident list strictly isolates demo data and does not fabricate database persistence', () => {
+      const supSession: WorkforceSession = {
+        userId: 'USR-SUP-R10',
+        tenant_id: 'workforce_staging',
+        tenant_slug: 'workforce-staging',
+        nik: 'SUP-7788',
+        name: 'Supervisor Vance',
+        role: 'supervisor',
+      };
+
+      const html = renderToStaticMarkup(
+        <WorkforceOperationsPortal initialRole="supervisor" __testOnlySession={supSession} />
+      );
+
+      // Verify that mock incidents are not presented as live verified database records
+      expect(html).toContain('DEMO');
     });
   });
 });
