@@ -1458,9 +1458,16 @@ export default function WorkforceOperationsPortal({
       });
       const data = await res.json().catch(() => ({}));
 
-      if (res.ok && data.success && data.data) {
+      const hasValidPersistedId =
+        res.ok &&
+        data?.success === true &&
+        typeof data?.data?.id === 'string' &&
+        data.data.id.trim().length > 0;
+
+      if (hasValidPersistedId) {
+        const persistedId = data.data.id.trim();
         const created: IncidentRecord = {
-          id: data.data.id || `INC-${Date.now()}`,
+          id: persistedId,
           time: data.data.server_timestamp_wib || data.data.time || nowStr,
           location: reportLocation,
           note: fullNote,
@@ -1471,7 +1478,7 @@ export default function WorkforceOperationsPortal({
             reportUrgency === 'Critical Emergency'
               ? 'bg-rose-100 text-rose-800 border-rose-300'
               : 'bg-amber-100 text-amber-800 border-amber-300',
-          inDatabase: Boolean(data.data.id),
+          inDatabase: true,
           inWhatsAppGroup: Boolean(data.data.in_whatsapp_group),
         };
 
@@ -1482,7 +1489,10 @@ export default function WorkforceOperationsPortal({
         triggerToast('🚨 Laporan insiden berhasil dicatat dan diverifikasi oleh server operasional.');
         setModalType('dual_dispatch_success');
       } else {
-        alert('Gagal mencatat insiden: ' + (data.message || data.error || `HTTP ${res.status}`));
+        alert(
+          'Gagal mencatat insiden: ' +
+            (data?.message || data?.error || (res.ok ? 'Data respons insiden dari server tidak valid.' : `HTTP ${res.status}`))
+        );
       }
     } catch (err: any) {
       alert('Gagal mengirimkan laporan insiden: Terjadi kesalahan jaringan atau server tidak merespons.');

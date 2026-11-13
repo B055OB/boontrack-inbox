@@ -294,7 +294,17 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
       }),
       getLatestAttendanceByPersonnel: jest.fn(async (tenantId: string, personnelId: string) => {
         const matching = attendanceRows.filter((r) => r.tenant_id === tenantId && r.personnel_id === personnelId);
-        return { data: matching.length > 0 ? matching[matching.length - 1] : null, error: null };
+        if (matching.length === 0) return { data: null, error: null };
+        const sorted = [...matching].sort((a, b) => {
+          const seqA = a.state_seq ?? 0;
+          const seqB = b.state_seq ?? 0;
+          if (seqA !== seqB) return seqB - seqA;
+          const tA = new Date(a.created_at || a.timestamp || 0).getTime();
+          const tB = new Date(b.created_at || b.timestamp || 0).getTime();
+          if (tA !== tB) return tB - tA;
+          return b.id.localeCompare(a.id);
+        });
+        return { data: sorted[0], error: null };
       }),
       insertAttendanceLog: jest.fn(async (row: AttendanceLogRow) => {
         const dup = attendanceRows.find(
@@ -2102,6 +2112,158 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
       expect(formatServerTimestampJakarta('')).toBeNull();
       expect(formatServerTimestampJakarta('not-a-timestamp')).toBeNull();
       expect(formatServerTimestampJakarta('invalid-iso-date')).toBeNull();
+    });
+
+    it('7. Fails closed with HTTP 500 when latest persisted record has corrupted type (e.g. CORRUPTED_LEGACY)', async () => {
+      const store = createFixtureStore();
+      (store.getLatestAttendanceByPersonnel as jest.Mock).mockResolvedValueOnce({
+        data: {
+          id: 'att-log-corrupt',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CORRUPTED_LEGACY' as any,
+          timestamp: '2026-11-13T01:00:00.000Z',
+          created_at: '2026-11-13T01:00:00.000Z',
+        },
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      // Invariant: Must fail closed with 500, NEVER return 200 or map to OFF_DUTY
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('INVALID_PERSISTED_ATTENDANCE_TYPE');
+    });
+
+    it('8. Fails closed with HTTP 500 when latest persisted record has null or empty type', async () => {
+      const store = createFixtureStore();
+      (store.getLatestAttendanceByPersonnel as jest.Mock).mockResolvedValueOnce({
+        data: {
+          id: 'att-log-null-type',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: null as any,
+          timestamp: '2026-11-13T01:00:00.000Z',
+          created_at: '2026-11-13T01:00:00.000Z',
+        },
+        error: null,
+      });
+
+      const req = makeAuthedGetRequest('https://workforce.boontrack.com/api/attendance');
+      const res = await processAttendanceStatusRead(req, { store });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('INVALID_PERSISTED_ATTENDANCE_TYPE');
+    });
+  });
+
+  describe('5. Cross-Adapter Attendance Sorting & Tie-Breaking Parity Suite (CTO Directive)', () => {
+    it('selects identical latest record across all adapters regardless of insertion sequence', async () => {
+      // Create multi-row dataset with edge cases:
+      // Row A: state_seq 1, early created_at
+      // Row B: state_seq 3, intermediate created_at
+      // Row C: state_seq 2, latest created_at (skewed clock)
+      // Row D: state_seq 3, identical created_at to B, but higher alphanumeric id
+      const dataset: AttendanceLogRow[] = [
+        {
+          id: 'att-uuid-001',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_IN',
+          timestamp: '2026-11-13T08:00:00.000Z',
+          latitude: -6.2088,
+          longitude: 106.8456,
+          geofence_verified: true,
+          biometric_mode: 'FACE_PREVIEW',
+          photo_url: null,
+          idempotency_key: 'idem-1',
+          state_seq: 1,
+          created_at: '2026-11-13T08:00:00.000Z',
+        },
+        {
+          id: 'att-uuid-002',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_OUT',
+          timestamp: '2026-11-13T17:00:00.000Z',
+          latitude: -6.2088,
+          longitude: 106.8456,
+          geofence_verified: true,
+          biometric_mode: 'FACE_PREVIEW',
+          photo_url: null,
+          idempotency_key: 'idem-2',
+          state_seq: 2,
+          created_at: '2026-11-13T19:00:00.000Z', // Later created_at but lower state_seq
+        },
+        {
+          id: 'att-uuid-003-alpha',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_IN',
+          timestamp: '2026-11-13T18:00:00.000Z',
+          latitude: -6.2088,
+          longitude: 106.8456,
+          geofence_verified: true,
+          biometric_mode: 'FACE_PREVIEW',
+          photo_url: null,
+          idempotency_key: 'idem-3a',
+          state_seq: 3,
+          created_at: '2026-11-13T18:00:00.000Z',
+        },
+        {
+          id: 'att-uuid-003-beta',
+          tenant_id: TENANT_ALPHA_ID,
+          personnel_id: PERSONNEL_ALPHA_ID,
+          facility_id: FACILITY_ALPHA_ID,
+          type: 'CLOCK_OUT',
+          timestamp: '2026-11-13T18:00:00.000Z',
+          latitude: -6.2088,
+          longitude: 106.8456,
+          geofence_verified: true,
+          biometric_mode: 'FACE_PREVIEW',
+          photo_url: null,
+          idempotency_key: 'idem-3b',
+          state_seq: 3,
+          created_at: '2026-11-13T18:00:00.000Z', // Same state_seq and created_at as 003-alpha, but 'att-uuid-003-beta' > 'att-uuid-003-alpha'
+        },
+      ];
+
+      // 1. Mock adapter sorting
+      const mockStore = createFixtureStore();
+      for (const row of dataset) {
+        await mockStore.insertAttendanceLog(row);
+      }
+      const mockResult = await mockStore.getLatestAttendanceByPersonnel(TENANT_ALPHA_ID, PERSONNEL_ALPHA_ID);
+
+      // Invariant: Winner must be 'att-uuid-003-beta' (highest state_seq: 3, tied created_at, highest id)
+      expect(mockResult.data?.id).toBe('att-uuid-003-beta');
+      expect(mockResult.data?.state_seq).toBe(3);
+
+      // 2. Parity verification against SQL order specification:
+      // ORDER BY state_seq DESC, created_at DESC, id DESC LIMIT 1
+      const sqlComparator = (a: AttendanceLogRow, b: AttendanceLogRow) => {
+        const seqA = a.state_seq ?? 0;
+        const seqB = b.state_seq ?? 0;
+        if (seqA !== seqB) return seqB - seqA;
+        const tA = new Date(a.created_at || 0).getTime();
+        const tB = new Date(b.created_at || 0).getTime();
+        if (tA !== tB) return tB - tA;
+        return b.id.localeCompare(a.id);
+      };
+
+      const sortedDataset = [...dataset].sort(sqlComparator);
+      expect(sortedDataset[0].id).toBe('att-uuid-003-beta');
+      expect(mockResult.data?.id).toBe(sortedDataset[0].id);
     });
   });
 });

@@ -1337,20 +1337,30 @@ export async function processAttendanceStatusRead(
     );
   }
 
-  return NextResponse.json(
-    {
-      success: true,
-      data: {
-        status: 'OFF_DUTY',
-        server_state: 'CLOCK_OUT',
-        personnel_id: personnel.id,
-        facility_id: latest.facility_id || personnel.facility_id || null,
-        last_punch_time: latest.timestamp || latest.created_at || null,
-        clock_in_time: null,
-        clock_out_time: latest.timestamp || latest.created_at || null,
+  if (latest.type === 'CLOCK_OUT') {
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          status: 'OFF_DUTY',
+          server_state: 'CLOCK_OUT',
+          personnel_id: personnel.id,
+          facility_id: latest.facility_id || personnel.facility_id || null,
+          last_punch_time: latest.timestamp || latest.created_at || null,
+          clock_in_time: null,
+          clock_out_time: latest.timestamp || latest.created_at || null,
+        },
       },
-    },
-    { status: 200 }
+      { status: 200 }
+    );
+  }
+
+  // Corrupted / unexpected attendance event type: fail-closed integrity error
+  console.error('[BWM ATTENDANCE STATUS] Invalid persisted attendance type:', (latest as any).type);
+  return jsonError(
+    500,
+    'INVALID_PERSISTED_ATTENDANCE_TYPE',
+    'Tipe data absensi pada catatan database tidak valid atau mengalami kerusakan integritas.'
   );
 }
 

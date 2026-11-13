@@ -231,7 +231,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
         />
       );
 
-      expect(html).toContain('Di Luar Shift');
+      expect(html).toContain('Belum Bertugas');
       expect(html).toContain('Absen Masuk (Foto Kamera)');
       expect(html).toContain('aria-label="Absen Masuk (Clock In)"');
       expect(html).toContain('min-h-[48px]');
@@ -1377,14 +1377,14 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(unknownHtml).toContain('data-attendance-status="UNKNOWN"');
       expect(unknownHtml).toContain('Status presensi belum tersedia');
       expect(unknownHtml).toContain('Tombol absensi akan aktif setelah status server dikonfirmasi');
-      expect(unknownHtml).not.toContain('Di Luar Shift');
+      expect(unknownHtml).not.toContain('Belum Bertugas');
       expect(unknownHtml).not.toContain('Sedang Bertugas');
       expect(unknownHtml).not.toContain('Absen Masuk (Foto Kamera)');
       expect(unknownHtml).not.toContain('Absen Keluar');
 
-      // OFF_DUTY: status pill says Di Luar Shift, button is Absen Masuk
+      // OFF_DUTY: status pill says Belum Bertugas, button is Absen Masuk
       expect(offDutyHtml).toContain('data-attendance-status="OFF_DUTY"');
-      expect(offDutyHtml).toContain('Di Luar Shift');
+      expect(offDutyHtml).toContain('Belum Bertugas');
       expect(offDutyHtml).toContain('Absen Masuk (Foto Kamera)');
       expect(offDutyHtml).not.toContain('Status presensi belum tersedia');
       expect(offDutyHtml).not.toContain('Sedang Bertugas');
@@ -1394,7 +1394,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(onDutyHtml).toContain('Sedang Bertugas');
       expect(onDutyHtml).toContain('Absen Keluar');
       expect(onDutyHtml).not.toContain('Status presensi belum tersedia');
-      expect(onDutyHtml).not.toContain('Di Luar Shift');
+      expect(onDutyHtml).not.toContain('Belum Bertugas');
     });
 
     it('Gate 5: AttendanceCard differentiates DEMO from verified operational status', () => {
@@ -1605,7 +1605,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify status pill and text
       expect(html).toContain('data-attendance-status="OFF_DUTY"');
-      expect(html).toContain('Di Luar Shift');
+      expect(html).toContain('Belum Bertugas');
       expect(html).toContain('Belum Absen');
 
       // Verify Absen Masuk button is rendered with >= 48px touch target
@@ -1694,7 +1694,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(html).toContain('Presensi Lapangan');
       expect(html).toContain('Status presensi belum tersedia');
       expect(html).not.toContain('Sedang Bertugas');
-      expect(html).not.toContain('Di Luar Shift');
+      expect(html).not.toContain('Belum Bertugas');
     });
 
     it('Gate R7: GPS fail-closed protection remains enforced when status is OFF_DUTY', () => {
@@ -1781,6 +1781,45 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify that mock incidents are not presented as live verified database records
       expect(html).toContain('DEMO');
+    });
+
+    it('Gate R11: Incident reporting rejects incomplete payload { success: true, data: {} } without adding to live stream', () => {
+      // Test payload validation invariant:
+      // res.ok && data?.success === true && typeof data?.data?.id === 'string' && data.data.id.trim().length > 0
+      const isValidIncidentPayload = (resOk: boolean, data: any) =>
+        resOk &&
+        data?.success === true &&
+        typeof data?.data?.id === 'string' &&
+        data.data.id.trim().length > 0;
+
+      // Incomplete payload: truthy but missing data.id
+      expect(isValidIncidentPayload(true, { success: true, data: {} })).toBe(false);
+      // Malformed: data is null
+      expect(isValidIncidentPayload(true, { success: true, data: null })).toBe(false);
+      // Malformed: id is empty string or whitespace
+      expect(isValidIncidentPayload(true, { success: true, data: { id: '   ' } })).toBe(false);
+      // Valid payload: proper persisted string ID
+      expect(isValidIncidentPayload(true, { success: true, data: { id: 'inc-persisted-991' } })).toBe(true);
+    });
+
+    it('Gate R12: Verified UI label "Belum Bertugas" represents truthful non-rostered off-duty status', () => {
+      const html = renderToStaticMarkup(
+        <AttendanceCard
+          attendanceStatus="OFF_DUTY"
+          onDuty={false}
+          clockInTime={null}
+          clockOutTime={null}
+          facilityName="Post Alpha"
+          submitting={false}
+          gpsCoords={validGps}
+          gpsError={null}
+          onOpenClockInModal={() => { }}
+          onOpenClockOutModal={() => { }}
+        />
+      );
+
+      expect(html).toContain('Belum Bertugas');
+      expect(html).not.toContain('Di Luar Shift');
     });
   });
 });

@@ -606,12 +606,12 @@ export function createSupabaseServiceRoleOperationalStore(supabaseAdmin: Supabas
         .schema('workforce_staging')
         .from('attendance_logs')
         .select(
-          'id, tenant_id, personnel_id, facility_id, type, timestamp, latitude, longitude, geofence_verified, biometric_mode, photo_url, idempotency_key, created_at'
+          'id, tenant_id, personnel_id, facility_id, type, timestamp, latitude, longitude, geofence_verified, biometric_mode, photo_url, idempotency_key, state_seq, created_at'
         )
         .eq('tenant_id', tenantId)
         .eq('personnel_id', personnelId)
+        .order('state_seq', { ascending: false })
         .order('created_at', { ascending: false })
-        .order('timestamp', { ascending: false })
         .order('id', { ascending: false })
         .limit(1)
         .maybeSingle();
