@@ -41,6 +41,10 @@ import PwaInstallPrompt from './PwaInstallPrompt';
 import SlideOverDrawer from './SlideOverDrawer';
 import EmptyState from './EmptyState';
 import { CardSkeleton, RosterCardSkeleton } from './LoadingSkeleton';
+import WorkforceAppShell, { type WorkforceSession } from './WorkforceAppShell';
+import AttendanceCard, { type GpsCoordinates } from './AttendanceCard';
+import CheckpointScannerView from './CheckpointScannerView';
+import RosterShiftList, { type PersonnelShiftItem } from './RosterShiftList';
 import { Phone, Shield, ShieldAlert, ArrowUpRight, Filter, Eye, RefreshCw, Printer, Mail, UserCheck } from 'lucide-react';
 
 interface CheckpointItem {
@@ -131,9 +135,14 @@ export interface FacilityRecord {
 export interface WorkforceOperationsPortalProps {
   initialRole?: 'field' | 'supervisor' | 'reseller';
   tenantSlug?: string;
+  overrideSession?: WorkforceSession | null;
 }
 
-export default function WorkforceOperationsPortal({ initialRole = 'field', tenantSlug }: WorkforceOperationsPortalProps) {
+export default function WorkforceOperationsPortal({
+  initialRole = 'field',
+  tenantSlug,
+  overrideSession,
+}: WorkforceOperationsPortalProps) {
   const branding = useTenantBranding(tenantSlug);
   const { locale, setLocale, t } = useTranslation();
 
@@ -146,8 +155,9 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       }
     } catch {}
   }, [locale, setLocale]);
-  // Lock the operational view strictly to the route context (Zero role switcher)
-  const currentRole = initialRole;
+
+  // Synchronized authoritative session state
+  const [resolvedSession, setResolvedSession] = useState<WorkforceSession | null>(overrideSession || null);
 
   // Shared Time & Clock
   const [currentTime, setCurrentTime] = useState('');
@@ -180,6 +190,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   const [resellerName, setResellerName] = useState('Apex Security Operations');
   const [resellerEmail, setResellerEmail] = useState('partner@apexsecurity.com');
   const [resellerAgency, setResellerAgency] = useState('Apex Security Services Ltd');
+
+  // Initial tab preference subordinated strictly to server role
+  const [activeNavTab, setActiveNavTab] = useState<string>(
+    initialRole === 'field' ? 'presence' : initialRole === 'supervisor' ? 'radar' : 'overview'
+  );
 
   const [onDuty, setOnDuty] = useState(true);
   const [clockInTime, setClockInTime] = useState('07:42 UTC+7');
@@ -218,6 +233,74 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [attendanceSubmitting, setAttendanceSubmitting] = useState<boolean>(false);
+
+  const [gpsCoords, setGpsCoords] = useState<{ latitude: number | null; longitude: number | null; accuracy: number | null; isMockGps?: boolean }>({
+    latitude: -6.2088,
+    longitude: 106.8456,
+    accuracy: 10,
+    isMockGps: false,
+  });
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setGpsCoords({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            isMockGps: false,
+          });
+        },
+        (err) => {
+          setGpsError(err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    }
+  }, []);
+
+  function handleToggleFacingMode() {
+    setCameraFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  }
+
+  async function handleAttendanceSubmit(type: 'CLOCK_IN' | 'CLOCK_OUT') {
+    if (type === 'CLOCK_IN') {
+      await handleAttendanceClockIn();
+    } else {
+      await handleAttendanceClockOut();
+    }
+  }
+
+  async function handleAttendanceClockOut() {
+    setAttendanceSubmitting(true);
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'CLOCK_OUT',
+          latitude: gpsCoords.latitude || -6.2088,
+          longitude: gpsCoords.longitude || 106.8456,
+          accuracy_meters: gpsCoords.accuracy || 10,
+          idempotency_key: `bwm-att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOnDuty(false);
+        setClockOutTime(currentTime || new Date().toLocaleTimeString());
+        setModalType(null);
+      } else {
+        alert('Gagal mencatat absensi keluar: ' + (data.message || data.error));
+      }
+    } catch (err: any) {
+      alert('Kesalahan jaringan: ' + err.message);
+    } finally {
+      setAttendanceSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -411,6 +494,21 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       whatsappNumber: '081234567895',
     },
   ]);
+
+  const rosterItems: PersonnelShiftItem[] = React.useMemo(() => {
+    return officers.map((off) => ({
+      id: off.id,
+      name: off.name,
+      nip: off.nip,
+      post: off.post,
+      shift: 'Pagi (07:00 - 15:00)',
+      status: (off.status === 'ALERT' ? 'LATE' : 'ON_DUTY') as PersonnelShiftItem['status'],
+      lateMinutes: off.status === 'ALERT' ? 25 : undefined,
+      checkInTime: off.checkInTime,
+      completedPoints: off.completedPoints,
+      totalPoints: off.totalPoints,
+    }));
+  }, [officers]);
 
   const [selectedOfficer, setSelectedOfficer] = useState<OfficerMonitoring | null>(null);
 
@@ -1080,36 +1178,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     return () => clearInterval(timer);
   }, []);
 
-  // Enforce authentication & hydrate profile from server session
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data || !data.authenticated) {
-          window.location.href = '/login';
-          return;
-        }
-
-        const sess = data.session;
-        if (sess) {
-          if (sess.name && currentRole === 'field') setUserName(sess.name);
-          if (sess.nik && currentRole === 'field') setUserNip(sess.nik);
-          if (sess.site && currentRole === 'field') setMitraPlacement(sess.site);
-
-          if (sess.name && currentRole === 'supervisor') setSupervisorName(sess.name);
-          if (sess.nik && currentRole === 'supervisor') setSupervisorNip(sess.nik);
-          if (sess.branch && currentRole === 'supervisor') setSupervisorBranch(sess.branch);
-          if (sess.site && currentRole === 'supervisor') setSupervisorSite(sess.site);
-
-          if (sess.name && currentRole === 'reseller') setResellerName(sess.name);
-          if (sess.nik && currentRole === 'reseller') setResellerEmail(sess.nik);
-          if (sess.agency_name && currentRole === 'reseller') setResellerAgency(sess.agency_name);
-        }
-      })
-      .catch(() => {
-        // Network fallback
-      });
-  }, [currentRole]);
+  // Session hydration is handled authoritatively by WorkforceAppShell
 
   const completedCount = checkpoints.filter((c) => c.status === 'COMPLETED').length;
   const totalCount = checkpoints.length;
@@ -1187,14 +1256,17 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'CLOCK_IN',
-          latitude: -6.9842,
-          longitude: 107.5189,
+          latitude: gpsCoords.latitude || -6.2088,
+          longitude: gpsCoords.longitude || 106.8456,
+          accuracy_meters: gpsCoords.accuracy || 10,
+          idempotency_key: `bwm-att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           biometric_mode: 'CAMERA_PREVIEW_VERIFIED',
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setClockInTime(currentTime);
+        setOnDuty(true);
+        setClockInTime(currentTime || new Date().toLocaleTimeString());
         setModalType(null);
       } else {
         alert('Gagal mencatat absensi: ' + (data.message || data.error));
@@ -1216,8 +1288,10 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         body: JSON.stringify({
           qr_token: qrToken,
           checkpoint_id: checkpointId,
-          latitude: -6.9842,
-          longitude: 107.5189,
+          latitude: gpsCoords.latitude || -6.2088,
+          longitude: gpsCoords.longitude || 106.8456,
+          accuracy_meters: gpsCoords.accuracy || 10,
+          idempotency_key: `bwm-scan-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         }),
       });
       const data = await res.json();
@@ -1279,7 +1353,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
     if (!reportDescription.trim()) return;
 
     setIncidentSubmitting(true);
-    const reporterName = currentRole === 'field' ? userName : supervisorName;
+    const reporterName = resolvedSession?.role === 'supervisor' ? supervisorName : userName;
     const nowStr = currentTime || '12:00 UTC+7';
 
     const fullNote: string = `[${reportCategory}] ${reportDescription.trim()}`;
@@ -1361,88 +1435,110 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-16">
-      {/* ------------------------------------------------------------- */}
-      {/* TOP HEADER: Crisp Slate-White Enterprise Operations Bar       */}
-      {/* ------------------------------------------------------------- */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 px-4 sm:px-6 py-3 shadow-xs">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Left: Brand Identity */}
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center p-1.5 shadow-xs">
-              <Image src={branding.logoLightUrl} alt={`${branding.brandName} Logo`} width={36} height={36} className="object-contain" priority />
-            </div>
-            <div>
-              <span className="text-2xl font-black tracking-tight text-slate-900">BWM</span>
-              <div className="text-[11px] text-slate-500">
-                Facility: <span className="text-slate-800 font-semibold">{currentRole === 'reseller' ? resellerAgency : currentRole === 'supervisor' ? supervisorBranch : mitraPlacement}</span> &bull; <span className="font-mono text-slate-600">{currentTime}</span>
+    <WorkforceAppShell
+      overrideSession={overrideSession}
+      activeTab={activeNavTab}
+      onSelectTab={setActiveNavTab}
+      title={branding.brandName}
+      subtitle={mitraPlacement}
+      onSessionResolved={(sess) => {
+        setResolvedSession(sess);
+        if (sess) {
+          if (sess.name) {
+            setUserName(sess.name);
+            setSupervisorName(sess.name);
+            setResellerName(sess.name);
+          }
+          if (sess.nik) {
+            setUserNip(sess.nik);
+            setSupervisorNip(sess.nik);
+            setResellerEmail(sess.nik);
+          }
+          if (sess.site) {
+            setMitraPlacement(sess.site);
+            setSupervisorSite(sess.site);
+          }
+          if (sess.branch) {
+            setSupervisorBranch(sess.branch);
+          }
+          if (sess.agency_name) {
+            setResellerAgency(sess.agency_name);
+          }
+        }
+      }}
+    >
+      {(session: WorkforceSession) => {
+        const effectiveRole = session.role;
+        const isField = effectiveRole === 'field_personnel';
+        const isSupervisor = effectiveRole === 'supervisor';
+        const isReseller = effectiveRole === 'master_reseller';
+
+        // Fail-closed: if role is unauthenticated or invalid, do not render operational UI
+        if (!isField && !isSupervisor && !isReseller) {
+          return null;
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* Top contextual status row / language switcher */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200/80 rounded-2xl p-3 sm:p-4 shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Fasilitas / Lokasi:</span>
+                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                  {isReseller ? (session.agency_name || resellerAgency) : isSupervisor ? (session.branch || supervisorBranch) : (session.site || mitraPlacement)}
+                </span>
+                <span className="hidden sm:inline text-xs text-slate-400 font-mono">({currentTime})</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Language Switcher [ EN | ID ] */}
+                <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setLocale('en')}
+                    className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      locale === 'en'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    aria-label="Switch to English"
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocale('id')}
+                    className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      locale === 'id'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    aria-label="Switch to Indonesian"
+                  >
+                    ID
+                  </button>
+                </div>
+
+                <span className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>{t('workforce.common.liveTelemetry')}</span>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setModalType('logout_confirm')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold border border-slate-200 hover:border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{t('workforce.common.signOut')}</span>
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Right: Language Switcher, Telemetry Status, Profile Badge, Sign Out */}
-          <div className="flex items-center space-x-3">
-            {/* Language Switcher [ EN | ID ] */}
-            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setLocale('en')}
-                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
-                  locale === 'en'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                aria-label="Switch to English"
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setLocale('id')}
-                className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer ${
-                  locale === 'id'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                aria-label="Switch to Indonesian"
-              >
-                ID
-              </button>
-            </div>
-
-            <span className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>{t('workforce.common.liveTelemetry')}</span>
-            </span>
-
-            <div className="hidden sm:block text-right text-xs">
-              <div className="font-bold text-slate-900">
-                {currentRole === 'field' ? userName : currentRole === 'supervisor' ? supervisorName : resellerName}
-              </div>
-              <div className="text-[11px] text-slate-500 font-medium">
-                {currentRole === 'reseller'
-                  ? 'Apex Security Operations • Country Main Agent'
-                  : currentRole === 'supervisor'
-                  ? `${supervisorBranch} • Branch Supervisor Desk`
-                  : `${mitraPlacement} • Field Officer Patrol`}
-              </div>
-            </div>
-
-            <button
-              onClick={() => setModalType('logout_confirm')}
-              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold border border-slate-200 hover:border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{t('workforce.common.signOut')}</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* ============================================================= */}
-      {/* SECTION 1: FIELD OFFICER PORTAL (/portal, /field)              */}
-      {/* ============================================================= */}
-      {currentRole === 'field' && (
+          {/* ============================================================= */}
+          {/* SECTION 1: FIELD OFFICER PORTAL (/portal, /field)              */}
+          {/* ============================================================= */}
+          {isField && (
         <main className="max-w-md mx-auto px-4 pt-6 space-y-4">
           {/* Verified Mobile Banner */}
           <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-slate-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
@@ -1528,144 +1624,84 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* Primary Field Action Cards (Thumb-Friendly, High Contrast Outdoor Touch Targets) */}
-          <div className="space-y-3">
-            {/* Primary Action 1: QR Patrol Scanner */}
-            <button
-              type="button"
-              onClick={() => setModalType('qr_scanner')}
-              className="w-full min-h-[64px] p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-left transition shadow-md flex items-center justify-between group cursor-pointer active:scale-98"
-            >
-              <div className="flex items-center gap-3.5">
-                <div className="p-2.5 rounded-xl bg-white/15 text-white">
-                  <QrCode className="w-7 h-7" />
-                </div>
-                <div>
-                  <h4 className="text-base font-extrabold">{t('workforce.field.patrol')}</h4>
-                  <p className="text-xs text-blue-100">{t('workforce.field.patrolSub')}</p>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform" />
-            </button>
+          {/* Modular Attendance Card (U2 Component) */}
+          <AttendanceCard
+            onDuty={onDuty}
+            clockInTime={clockInTime}
+            clockOutTime={clockOutTime}
+            facilityName={mitraPlacement}
+            submitting={attendanceSubmitting}
+            gpsCoords={gpsCoords}
+            gpsError={gpsError}
+            onOpenClockInModal={() => setModalType('absen_masuk')}
+            onOpenClockOutModal={() => setModalType('absen_keluar')}
+            isModalOpen={modalType === 'absen_masuk' || modalType === 'absen_keluar'}
+            modalType={modalType === 'absen_masuk' ? 'in' : modalType === 'absen_keluar' ? 'out' : null}
+            onCloseModal={() => setModalType(null)}
+            videoRef={videoRef}
+            cameraError={cameraError}
+            onSubmitAttendance={(type) => handleAttendanceSubmit(type)}
+          />
 
-            {/* Primary Action 2: Report Field Incident */}
+          {/* Modular Checkpoint Scanner View (U2 Component) */}
+          <CheckpointScannerView
+            checkpoints={checkpoints}
+            isScanningModalOpen={modalType === 'qr_scanner'}
+            submitting={isScanning}
+            cameraError={cameraError}
+            cameraFacingMode={cameraFacingMode}
+            gpsAccuracy={gpsCoords.accuracy}
+            videoRef={qrVideoRef}
+            onOpenScanner={() => setModalType('qr_scanner')}
+            onCloseScanner={() => setModalType(null)}
+            onToggleFacingMode={handleToggleFacingMode}
+            onManualScanSubmit={(token, checkpointId) => {
+              handleVerifyCheckpointScan(token, checkpointId);
+            }}
+          />
+
+          {/* Secondary Actions: Report Incident & Shift / Leave Request */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               type="button"
               onClick={() => setModalType('lapor_insiden')}
-              className="w-full min-h-[56px] p-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-left transition shadow-md flex items-center justify-between group cursor-pointer active:scale-98"
+              className="min-h-[48px] p-3.5 rounded-2xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-800 hover:text-rose-800 text-left transition shadow-xs flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-3.5">
-                <div className="p-2.5 rounded-xl bg-white/15 text-white">
-                  <AlertTriangle className="w-6 h-6" />
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-50 text-rose-600">
+                  <AlertTriangle className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-extrabold">{t('workforce.field.incident')}</h4>
-                  <p className="text-xs text-rose-100">{t('workforce.field.incidentSub')}</p>
+                  <h4 className="text-xs font-bold">{t('workforce.field.incident')}</h4>
+                  <p className="text-[10px] text-slate-500">Laporkan temuan</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
             </button>
 
-            {/* Attendance Actions: Clock In & Clock Out Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setModalType('absen_masuk')}
-                className="min-h-[56px] p-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-left transition shadow-md flex items-center justify-between cursor-pointer active:scale-98"
-              >
-                <div>
-                  <div className="text-xs font-medium text-emerald-100">Liveness Scan</div>
-                  <h4 className="text-sm font-extrabold">{t('workforce.field.clockIn')}</h4>
-                </div>
-                <div className="p-2 rounded-xl bg-white/15 text-white">
-                  <LogIn className="w-5 h-5" />
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalType('absen_keluar')}
-                className="min-h-[56px] p-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-left transition shadow-md flex items-center justify-between cursor-pointer active:scale-98"
-              >
-                <div>
-                  <div className="text-xs font-medium text-amber-100">Handover</div>
-                  <h4 className="text-sm font-extrabold">{t('workforce.field.clockOut')}</h4>
-                </div>
-                <div className="p-2 rounded-xl bg-white/15 text-white">
-                  <LogOut className="w-5 h-5" />
-                </div>
-              </button>
-            </div>
-
-            {/* Secondary Action: Shift Exchange & Leave Request */}
             <button
               type="button"
               onClick={() => setModalType('time_off')}
-              className="w-full min-h-[52px] p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-left transition shadow-xs flex items-center justify-between group cursor-pointer"
+              className="min-h-[48px] p-3.5 rounded-2xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-200 text-slate-800 hover:text-blue-800 text-left transition shadow-xs flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-slate-100 text-slate-700">
-                  <FileText className="w-5 h-5" />
+                  <FileText className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">{t('workforce.field.timeOff')}</h4>
-                  <p className="text-[11px] text-slate-500">Submit roster relief or scheduled leave</p>
+                  <h4 className="text-xs font-bold">{t('workforce.field.timeOff')}</h4>
+                  <p className="text-[10px] text-slate-500">Pengajuan izin</p>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
             </button>
-          </div>
-
-          {/* Active Checkpoint Checklist Card */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-extrabold text-slate-900">
-                Assigned Checkpoints ({checkpoints.length})
-              </h4>
-              <span className="text-xs font-bold text-blue-600">{completedCount} Completed</span>
-            </div>
-
-            <div className="space-y-2">
-              {checkpoints.map((cp) => (
-                <div
-                  key={cp.id}
-                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
-                        cp.status === 'COMPLETED'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-white text-slate-500 border border-slate-200'
-                      }`}
-                    >
-                      {cp.status === 'COMPLETED' ? '✓' : cp.id.replace('CP-', '')}
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">{cp.name}</div>
-                      <div className="text-[10px] text-slate-500">{cp.zone}</div>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      cp.status === 'COMPLETED'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    {cp.status === 'COMPLETED' ? cp.scannedAt || 'Cleared' : 'Pending'}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         </main>
       )}
 
       {/* SECTION 2: BRANCH SUPERVISOR DESK (/ops, /supervisor)          */}
       {/* ============================================================= */}
-      {currentRole === 'supervisor' && (
+      {isSupervisor && (
         <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
           {/* Header Banner */}
           <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1747,151 +1783,22 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             </div>
           </div>
 
-          {/* Uniform Filter Bar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-slate-700 flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5 text-slate-400" /> Filter Desk:
-              </span>
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 font-medium">
-                <button
-                  type="button"
-                  onClick={() => setFilterFacility('all')}
-                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'all' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  All Facilities (3)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterFacility('metro')}
-                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'metro' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  Metro Tower (14)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterFacility('north')}
-                  className={`px-2.5 py-1 rounded-md transition ${filterFacility === 'north' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  North Hub (6)
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 font-medium">
-                <button
-                  type="button"
-                  onClick={() => setFilterShift('all')}
-                  className={`px-2 py-1 rounded-md transition ${filterShift === 'all' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  All Shifts
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterShift('morning')}
-                  className={`px-2 py-1 rounded-md transition ${filterShift === 'morning' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  Morning
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterShift('night')}
-                  className={`px-2 py-1 rounded-md transition ${filterShift === 'night' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                  Night
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Interactive Officer Monitoring Table */}
-          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-extrabold text-slate-900">{t('workforce.supervisor.rosterTitle')}</h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 tracking-wider">
-                    SIMULATED TELEMETRY (DEMO DATA)
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">Click any officer row to open contextual dossier in slide-over drawer.</p>
-              </div>
-              <span className="text-xs text-emerald-600 font-bold flex items-center gap-1.5 self-start sm:self-auto">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Updated Sub-Second
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="pb-3 px-2">OFFICER / BADGE</th>
-                    <th className="pb-3 px-2">ASSIGNED POST</th>
-                    <th className="pb-3 px-2">CLOCK-IN</th>
-                    <th className="pb-3 px-2">PROGRESS</th>
-                    <th className="pb-3 px-2">TELEMETRY</th>
-                    <th className="pb-3 px-2">GEOFENCE STATUS</th>
-                    <th className="pb-3 px-2 text-right">ACTION</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {officers.map((off) => (
-                    <tr
-                      key={off.id}
-                      onClick={() => setSelectedOfficerForDrawer(off)}
-                      className="hover:bg-blue-50/60 transition cursor-pointer group"
-                    >
-                      <td className="py-3 px-2 font-semibold text-slate-900">
-                        <div className="font-bold text-slate-900 group-hover:text-blue-600 transition">{off.name}</div>
-                        <div className="font-mono text-slate-400 text-[10px]">{off.nip}</div>
-                      </td>
-                      <td className="py-3 px-2 text-slate-600">{off.post}</td>
-                      <td className="py-3 px-2 font-mono text-slate-700 font-medium">{off.checkInTime}</td>
-                      <td className="py-3 px-2">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-blue-600">
-                            {off.completedPoints}/{off.totalPoints}
-                          </span>
-                          <span className="text-slate-400">
-                            ({Math.round((off.completedPoints / off.totalPoints) * 100)}%)
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex items-center space-x-2 text-slate-600">
-                          <BatteryCharging className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{off.battery}%</span>
-                          <span>&bull;</span>
-                          <span>{off.distanceMeter}m</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <span
-                          className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                            off.status === 'NORMAL'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : off.status === 'WARNING'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                          <span>{off.statusNote}</span>
-                        </span>
-                      </td>
-                      <td className="py-3 px-2 text-right">
-                        <span className="text-[11px] font-bold text-blue-600 group-hover:underline">
-                          View Dossier &rarr;
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* Modular Roster Shift List (U2 Component) */}
+          <RosterShiftList
+            personnel={rosterItems}
+            filterFacility={filterFacility}
+            filterShift={filterShift}
+            filterStatus={filterStatus}
+            onFilterChange={({ facility, shift, status }) => {
+              if (facility !== undefined) setFilterFacility(facility);
+              if (shift !== undefined) setFilterShift(shift);
+              if (status !== undefined) setFilterStatus(status);
+            }}
+            onSelectPersonnel={(officer) => {
+              const rawOfficer = officers.find((o) => o.id === officer.id);
+              if (rawOfficer) setSelectedOfficerForDrawer(rawOfficer);
+            }}
+          />
 
           {/* Incident Escalation Stream */}
           <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
@@ -1950,7 +1857,7 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
 
       {/* SECTION 3: ENTERPRISE MAIN AGENT CONSOLE (/dashboard, /admin) */}
       {/* ============================================================= */}
-      {currentRole === 'reseller' && (
+      {isReseller && (
         <main className="max-w-6xl mx-auto px-4 pt-6 space-y-6">
           {/* Header Banner */}
           <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2666,71 +2573,6 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
       {/* MODALS                                                        */}
       {/* ============================================================= */}
 
-      {/* Modal: QR Scanner Simulation */}
-      {modalType === 'qr_scanner' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 relative shadow-2xl text-slate-900">
-            <button
-              onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
-            >
-              &times;
-            </button>
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
-                <QrCode className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Dynamic QR Checkpoint Scanner</h3>
-              <p className="text-xs text-slate-400">Position camera towards rotating cryptographic QR code at checkpoint station.</p>
-              <div className="flex items-center justify-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setCameraFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'))}
-                  className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
-                >
-                  Switch Camera ({cameraFacingMode === 'user' ? 'Front' : 'Rear'})
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
-              <div className="w-48 h-48 mx-auto border-2 border-blue-500/60 rounded-xl relative overflow-hidden flex items-center justify-center bg-black">
-                <video
-                  ref={qrVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                <span className="w-full h-0.5 bg-blue-500 absolute top-1/2 -translate-y-1/2 animate-pulse shadow-sm shadow-blue-400 pointer-events-none"></span>
-                <span className="absolute bottom-2 text-[10px] font-mono text-blue-300 bg-black/60 px-2 py-0.5 rounded pointer-events-none">Live Camera Stream</span>
-              </div>
-              {cameraError ? (
-                <p className="text-[10px] text-rose-400 mt-3 font-mono">{cameraError}</p>
-              ) : (
-                <p className="text-[10px] text-slate-400 mt-3 font-mono">Geofence accuracy: &plusmn; 2.1m &bull; Dual-Band Lock</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <button
-                onClick={() => handleVerifyCheckpointScan('CP04_GEOFENCE_TOKEN_AUTH', 'CP-04')}
-                disabled={isScanning}
-                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer"
-              >
-                {isScanning ? 'Verifying with Server...' : 'Verify Scan & Log Checkpoint (CP-04)'}
-              </button>
-              <button
-                onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
-              >
-                Cancel Scan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal: Report Incident */}
       {modalType === 'lapor_insiden' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
@@ -2859,107 +2701,6 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
             >
               Acknowledge &amp; Dismiss
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Clock In (Biometric Verification) */}
-      {modalType === 'absen_masuk' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
-            <button
-              onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
-            >
-              &times;
-            </button>
-            <div className="w-14 h-14 mx-auto rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/40">
-              <Clock className="w-7 h-7" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Live Camera Preview &amp; Geofence Verification</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Live camera preview active. GPS geofence verified by backend attendance API.
-              </p>
-            </div>
-            <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-48 object-cover rounded-xl border border-blue-500/30"
-              />
-              <div className="absolute inset-0 border-2 border-dashed border-blue-500/40 rounded-xl pointer-events-none flex items-center justify-center">
-                <span className="text-[10px] font-mono text-blue-300 bg-black/60 px-2 py-0.5 rounded absolute bottom-2">Live Camera Stream</span>
-              </div>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 font-mono">
-              <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
-              <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
-              <div className="text-slate-400">Timestamp: <span className="text-emerald-400 font-bold">{currentTime}</span></div>
-              <div className="text-slate-400">Geohash: <span className="text-blue-400">e89f...32d1 (Within 50m SLA)</span></div>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={handleAttendanceClockIn}
-                disabled={attendanceSubmitting}
-                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer"
-              >
-                {attendanceSubmitting ? 'Recording Attendance...' : 'Verify & Clock In'}
-              </button>
-              <button
-                onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Clock Out Confirmation */}
-      {modalType === 'absen_keluar' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4 text-center relative shadow-2xl text-slate-900">
-            <button
-              onClick={() => setModalType(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
-            >
-              &times;
-            </button>
-            <div className="w-14 h-14 mx-auto rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40">
-              <LogOut className="w-7 h-7" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Shift Handover Clock-Out</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Confirm scheduled shift departure and handover of assigned gear.
-              </p>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-1 font-mono">
-              <div className="text-slate-400">Officer: <span className="text-white font-bold">{userName}</span> ({userNip})</div>
-              <div className="text-slate-400">Facility: <span className="text-white">{mitraPlacement}</span></div>
-              <div className="text-slate-400">Departure Timestamp: <span className="text-amber-400 font-bold">{currentTime}</span></div>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={() => {
-                  setClockOutTime(currentTime);
-                  setModalType(null);
-                }}
-                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition cursor-pointer"
-              >
-                Verify &amp; Clock Out
-              </button>
-              <button
-                onClick={() => setModalType(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -4518,8 +4259,11 @@ export default function WorkforceOperationsPortal({ initialRole = 'field', tenan
         </div>
       )}
 
-      {/* Pwa Install Prompt Helper */}
-      <PwaInstallPrompt branding={branding} />
-    </div>
+            {/* Pwa Install Prompt Helper */}
+            <PwaInstallPrompt branding={branding} />
+          </div>
+        );
+      }}
+    </WorkforceAppShell>
   );
 }
