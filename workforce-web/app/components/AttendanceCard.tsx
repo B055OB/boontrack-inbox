@@ -135,7 +135,7 @@ export default function AttendanceCard({
       ? 'Status presensi belum tersedia'
       : attendanceStatus === 'ON_DUTY'
       ? 'Sedang Bertugas'
-      : 'Belum Bertugas';
+      : 'Tidak Sedang Bertugas';
 
   const statusPillClass =
     attendanceStatus === 'UNKNOWN'

@@ -231,7 +231,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
         />
       );
 
-      expect(html).toContain('Belum Bertugas');
+      expect(html).toContain('Tidak Sedang Bertugas');
       expect(html).toContain('Absen Masuk (Foto Kamera)');
       expect(html).toContain('aria-label="Absen Masuk (Clock In)"');
       expect(html).toContain('min-h-[48px]');
@@ -1377,24 +1377,24 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(unknownHtml).toContain('data-attendance-status="UNKNOWN"');
       expect(unknownHtml).toContain('Status presensi belum tersedia');
       expect(unknownHtml).toContain('Tombol absensi akan aktif setelah status server dikonfirmasi');
-      expect(unknownHtml).not.toContain('Belum Bertugas');
+      expect(unknownHtml).not.toContain('Tidak Sedang Bertugas');
       expect(unknownHtml).not.toContain('Sedang Bertugas');
       expect(unknownHtml).not.toContain('Absen Masuk (Foto Kamera)');
       expect(unknownHtml).not.toContain('Absen Keluar');
 
-      // OFF_DUTY: status pill says Belum Bertugas, button is Absen Masuk
+      // OFF_DUTY: status pill says Tidak Sedang Bertugas, button is Absen Masuk
       expect(offDutyHtml).toContain('data-attendance-status="OFF_DUTY"');
-      expect(offDutyHtml).toContain('Belum Bertugas');
+      expect(offDutyHtml).toContain('Tidak Sedang Bertugas');
       expect(offDutyHtml).toContain('Absen Masuk (Foto Kamera)');
       expect(offDutyHtml).not.toContain('Status presensi belum tersedia');
-      expect(offDutyHtml).not.toContain('Sedang Bertugas');
+      expect(offDutyHtml).not.toContain('>Sedang Bertugas<');
 
       // ON_DUTY: status pill says Sedang Bertugas, button is Absen Keluar
       expect(onDutyHtml).toContain('data-attendance-status="ON_DUTY"');
       expect(onDutyHtml).toContain('Sedang Bertugas');
       expect(onDutyHtml).toContain('Absen Keluar');
       expect(onDutyHtml).not.toContain('Status presensi belum tersedia');
-      expect(onDutyHtml).not.toContain('Belum Bertugas');
+      expect(onDutyHtml).not.toContain('Tidak Sedang Bertugas');
     });
 
     it('Gate 5: AttendanceCard differentiates DEMO from verified operational status', () => {
@@ -1605,7 +1605,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
 
       // Verify status pill and text
       expect(html).toContain('data-attendance-status="OFF_DUTY"');
-      expect(html).toContain('Belum Bertugas');
+      expect(html).toContain('Tidak Sedang Bertugas');
       expect(html).toContain('Belum Absen');
 
       // Verify Absen Masuk button is rendered with >= 48px touch target
@@ -1694,7 +1694,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(html).toContain('Presensi Lapangan');
       expect(html).toContain('Status presensi belum tersedia');
       expect(html).not.toContain('Sedang Bertugas');
-      expect(html).not.toContain('Belum Bertugas');
+      expect(html).not.toContain('Tidak Sedang Bertugas');
     });
 
     it('Gate R7: GPS fail-closed protection remains enforced when status is OFF_DUTY', () => {
@@ -1802,7 +1802,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
       expect(isValidIncidentPayload(true, { success: true, data: { id: 'inc-persisted-991' } })).toBe(true);
     });
 
-    it('Gate R12: Verified UI label "Belum Bertugas" represents truthful non-rostered off-duty status', () => {
+    it('Gate R12: Verified UI label "Tidak Sedang Bertugas" represents truthful non-rostered off-duty status', () => {
       const html = renderToStaticMarkup(
         <AttendanceCard
           attendanceStatus="OFF_DUTY"
@@ -1818,7 +1818,7 @@ describe('BWM UI/Layout (U1–U2) Component & Architecture Test Suite', () => {
         />
       );
 
-      expect(html).toContain('Belum Bertugas');
+      expect(html).toContain('Tidak Sedang Bertugas');
       expect(html).not.toContain('Di Luar Shift');
     });
   });
