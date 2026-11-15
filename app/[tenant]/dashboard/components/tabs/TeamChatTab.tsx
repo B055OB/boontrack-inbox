@@ -49,9 +49,8 @@ import { useParams } from 'next/navigation';
 import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { useTenantInbox } from '../../hooks/useTenantInbox';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
-import { getStorefrontInvoiceUrl, getStorefrontPayUrl, generatePaymentToken } from '@/lib/storefront-urls';
+import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
-import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import DirectCsLoginModal from '../DirectCsLoginModal';
 import ContactSidebar from '@/components/crm/ContactSidebar';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
@@ -1497,36 +1496,12 @@ export default function TeamChatTab({
       }
     }
 
-    const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
-    let num = parseInt(sanitizedRaw, 10);
-    if (isNaN(num) || num < 1000) {
-      num = 100000;
-    }
     const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
     setIsGeneratingQris(true);
     setQrisFeedback(null);
 
     try {
-      const now = new Date();
-      const yy = String(now.getFullYear()).slice(-2);
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const datePart = `${yy}${mm}${dd}`;
-      const hexPart = typeof crypto !== 'undefined' && crypto.getRandomValues
-        ? Array.from(crypto.getRandomValues(new Uint8Array(3)))
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('')
-            .toUpperCase()
-        : Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
-      const displayOrderNumber = `ORD-POS-${datePart}-${hexPart}`;
-      const internalOrderId = typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = (Math.random() * 16) | 0;
-            return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-          });
-      const nowIso = now.toISOString();
-
+      const nowIso = new Date().toISOString();
       const targetCustomerPhone = isWalkInCustomer
         ? toE164(walkInPhone)
         : (currentConversation?.customerPhone || '');
@@ -1549,11 +1524,6 @@ export default function TeamChatTab({
         throw new Error('Static QRIS belum dikonfigurasi di data toko. Silakan atur QRIS di Pengaturan Pembayaran terlebih dahulu.');
       }
 
-      const dynamicQrString = generateDynamicQRIS(rawStaticQris, num);
-      const paymentToken = generatePaymentToken();
-      const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
-      const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
-
       // 2. Jika Walk-in: Buat atau update kontak baru di CRM
       let linkedContactId: string | null = null;
       if (isWalkInCustomer) {
@@ -1566,7 +1536,7 @@ export default function TeamChatTab({
               phone: targetCustomerPhone,
               lifecycleStage: 'CUSTOMER',
               tags: ['Walk-in'],
-              initialNotes: `Transaksi Quick POS Walk-in: ${itemName} (Rp ${num.toLocaleString('id-ID')})`,
+              initialNotes: `Transaksi Quick POS Walk-in: ${itemName} (${qrisAmount})`,
               metadata: {
                 source: 'walk_in',
                 last_visit_at: nowIso,
@@ -1580,57 +1550,39 @@ export default function TeamChatTab({
         }
       }
 
-      // 3. Simpan order ke Supabase orders table (dengan internal UUID dan order_number untuk display)
+      // 3. Panggil Dedicated Server Gateway untuk pembuatan order POS (INBOX-POS-01 / Patch 2)
+      const posRes = await fetch('/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: resolvedTenant,
+          conversationId: currentConversation?.id || null,
+          customerPhone: targetCustomerPhone,
+          customerName: targetCustomerName,
+          itemName,
+          rawAmount: qrisAmount,
+          billingType: 'QRIS',
+          csUserId: (activeCsUser as any)?.id || null,
+          csUserName: activeCsUser?.name || null,
+          isWalkIn: isWalkInCustomer,
+          contactId: linkedContactId,
+        }),
+      });
+
+      const posData = await posRes.json().catch(() => ({}));
+      if (!posRes.ok || !posData.success) {
+        throw new Error(posData.error || 'Gagal membuat tagihan QRIS di server');
+      }
+
+      const num = posData.amount;
+      const displayOrderNumber = posData.orderNumber || posData.orderId;
+      const internalOrderId = posData.orderId;
+      const paymentToken = posData.paymentToken;
+      const payUrl = posData.payUrl;
+      const dynamicQrString = generateDynamicQRIS(rawStaticQris, num);
+
       const supabase = getSupabase();
       if (supabase) {
-        // Resolve valid product_id from tenant catalog or fallback
-        const productsList: any[] =
-          (Array.isArray(initialTenant?.metadata?.products) ? initialTenant.metadata.products : null) ||
-          (Array.isArray(tenantPaymentData?.metadata?.products) ? tenantPaymentData.metadata.products : null) ||
-          [];
-        const matchedProd = productsList.find((p: any) =>
-          p && ((p.name && itemName && p.name.toLowerCase().includes(itemName.toLowerCase())) ||
-                (itemName && p.name && itemName.toLowerCase().includes(p.name.toLowerCase())))
-        );
-        const resolvedProductId = String(matchedProd?.id || productsList[0]?.id || 'srv_custom_chat');
-
-        const rawOrderPayload = {
-          id: internalOrderId,
-          order_number: displayOrderNumber,
-          correlation_id: paymentToken,
-          tenant_slug: resolvedTenant,
-          tenant_id: tenantId || resolvedTenant,
-          customer_phone: targetCustomerPhone,
-          customer_name: targetCustomerName,
-          product_id: resolvedProductId,
-          product_title: itemName,
-          gross_amount: num,
-          status: 'PENDING',
-          payment_status: 'PENDING',
-          order_status: 'PENDING',
-          created_at: nowIso,
-          updated_at: nowIso,
-          metadata: {
-            order_number: displayOrderNumber,
-            internal_id: internalOrderId,
-            conversation_id: currentConversation?.id || null,
-            contact_id: linkedContactId,
-            public_payment_token: paymentToken,
-            payment_token: paymentToken,
-            payment_method: 'qris',
-            pay_url: payUrl,
-            qr_string: dynamicQrString,
-            source: isWalkInCustomer ? 'QUICK_POS_WALKIN' : 'QUICK_POS_CHAT',
-            is_walk_in: isWalkInCustomer,
-          },
-        };
-
-        const orderPayload = sanitizeOrderPayload(rawOrderPayload);
-        const { error: insertOrderErr } = await supabase.from('orders').insert(orderPayload);
-        if (insertOrderErr) {
-          console.error('[Quick POS] Failed to insert QRIS order into Supabase:', insertOrderErr);
-          throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
-        }
 
         // 4. Buat / tautkan conversation jika belum ada
         let targetConversationId: string | null = currentConversation?.id || null;
@@ -1851,36 +1803,11 @@ export default function TeamChatTab({
       }
     }
 
-    const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
-    let baseAmt = parseInt(sanitizedRaw, 10);
-    if (isNaN(baseAmt) || baseAmt < 1000) {
-      baseAmt = 100000;
-    }
     const uniqueCode = Math.floor(1 + Math.random() * 999);
-    const totalWithCode = baseAmt + uniqueCode;
     const selectedBank = bankAccounts[selectedBankIdx] || bankAccounts[0];
     const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
 
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(-2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const datePart = `${yy}${mm}${dd}`;
-    const hexPart = typeof crypto !== 'undefined' && crypto.getRandomValues
-      ? Array.from(crypto.getRandomValues(new Uint8Array(3)))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('')
-          .toUpperCase()
-      : Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
-    const displayOrderNumber = `ORD-POS-${datePart}-${hexPart}`;
-    const internalOrderId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0;
-          return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-        });
-    const nowIso = now.toISOString();
-
+    const nowIso = new Date().toISOString();
     const targetCustomerPhone = isWalkInCustomer
       ? toE164(walkInPhone)
       : (currentConversation?.customerPhone || '');
@@ -1892,10 +1819,66 @@ export default function TeamChatTab({
     setQrisFeedback(null);
 
     try {
-      const paymentToken = generatePaymentToken();
-      const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
-      const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
+      // Jika Walk-in: Buat atau update kontak baru di CRM
+      let linkedContactId: string | null = null;
+      if (isWalkInCustomer) {
+        try {
+          const tenantUuid = await ContactService.resolveTenantId(tenantId || resolvedTenant);
+          if (tenantUuid) {
+            const contact = await ContactService.createOrUpdateFullContact({
+              tenantId: tenantUuid,
+              name: targetCustomerName,
+              phone: targetCustomerPhone,
+              lifecycleStage: 'CUSTOMER',
+              tags: ['Walk-in'],
+              initialNotes: `Transaksi Quick POS Bank Walk-in: ${itemName} (${qrisAmount})`,
+              metadata: {
+                source: 'walk_in',
+                last_visit_at: nowIso,
+                created_via: 'QUICK_POS_WALKIN',
+              },
+            });
+            linkedContactId = contact.id;
+          }
+        } catch (cErr) {
+          console.warn('[Quick POS] Create walk-in contact bank note:', cErr);
+        }
+      }
+
+      // Panggil Dedicated Server Gateway untuk pembuatan order POS (INBOX-POS-01 / Patch 2)
+      const posRes = await fetch('/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: resolvedTenant,
+          conversationId: currentConversation?.id || null,
+          customerPhone: targetCustomerPhone,
+          customerName: targetCustomerName,
+          itemName,
+          rawAmount: qrisAmount,
+          billingType: 'MANUAL_BANK',
+          uniqueCode,
+          bankAccount: selectedBank,
+          csUserId: (activeCsUser as any)?.id || null,
+          csUserName: activeCsUser?.name || null,
+          isWalkIn: isWalkInCustomer,
+          contactId: linkedContactId,
+        }),
+      });
+
+      const posData = await posRes.json().catch(() => ({}));
+      if (!posRes.ok || !posData.success) {
+        throw new Error(posData.error || 'Gagal membuat tagihan transfer bank di server');
+      }
+
+      const totalWithCode = posData.amount;
+      const baseAmt = posData.baseAmount || totalWithCode;
+      const displayOrderNumber = posData.orderNumber || posData.orderId;
+      const internalOrderId = posData.orderId;
+      const paymentToken = posData.paymentToken;
+      const payUrl = posData.payUrl;
       const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNumber);
+
       const bankText =
         `💳 *TAGIHAN TRANSFER BANK MANUAL*\n\n` +
         `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
@@ -1911,85 +1894,8 @@ export default function TeamChatTab({
         `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
         `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Anda juga dapat mengunggah bukti transfer langsung lewat tautan invoice resmi di atas. Terima kasih! 🙏`;
 
-      // Jika Walk-in: Buat atau update kontak baru di CRM
-      let linkedContactId: string | null = null;
-      if (isWalkInCustomer) {
-        try {
-          const tenantUuid = await ContactService.resolveTenantId(tenantId || resolvedTenant);
-          if (tenantUuid) {
-            const contact = await ContactService.createOrUpdateFullContact({
-              tenantId: tenantUuid,
-              name: targetCustomerName,
-              phone: targetCustomerPhone,
-              lifecycleStage: 'CUSTOMER',
-              tags: ['Walk-in'],
-              initialNotes: `Transaksi Quick POS Bank Walk-in: ${itemName} (Rp ${totalWithCode.toLocaleString('id-ID')})`,
-              metadata: {
-                source: 'walk_in',
-                last_visit_at: nowIso,
-                created_via: 'QUICK_POS_WALKIN',
-              },
-            });
-            linkedContactId = contact.id;
-          }
-        } catch (cErr) {
-          console.warn('[Quick POS] Create walk-in contact bank note:', cErr);
-        }
-      }
-
-      // Simpan pesanan di tabel orders Supabase
       const supabase = getSupabase();
       if (supabase) {
-        // Resolve valid product_id from tenant catalog or fallback
-        const productsList: any[] =
-          (Array.isArray(initialTenant?.metadata?.products) ? initialTenant.metadata.products : null) ||
-          (Array.isArray(tenantPaymentData?.metadata?.products) ? tenantPaymentData.metadata.products : null) ||
-          [];
-        const matchedProd = productsList.find((p: any) =>
-          p && ((p.name && itemName && p.name.toLowerCase().includes(itemName.toLowerCase())) ||
-                (itemName && p.name && itemName.toLowerCase().includes(p.name.toLowerCase())))
-        );
-        const resolvedProductId = String(matchedProd?.id || productsList[0]?.id || 'srv_custom_chat');
-
-        const rawOrderPayload = {
-          id: internalOrderId,
-          order_number: displayOrderNumber,
-          correlation_id: paymentToken,
-          tenant_slug: resolvedTenant,
-          tenant_id: tenantId || resolvedTenant,
-          customer_phone: targetCustomerPhone,
-          customer_name: targetCustomerName,
-          product_id: resolvedProductId,
-          product_title: itemName,
-          gross_amount: totalWithCode,
-          status: 'PENDING',
-          payment_status: 'PENDING',
-          order_status: 'PENDING',
-          created_at: nowIso,
-          updated_at: nowIso,
-          metadata: {
-            order_number: displayOrderNumber,
-            internal_id: internalOrderId,
-            conversation_id: currentConversation?.id || null,
-            contact_id: linkedContactId,
-            public_payment_token: paymentToken,
-            payment_token: paymentToken,
-            pay_url: payUrl,
-            unique_code: uniqueCode,
-            base_amount: baseAmt,
-            bank_account: selectedBank,
-            payment_method: 'MANUAL_BANK',
-            source: isWalkInCustomer ? 'QUICK_POS_WALKIN' : 'QUICK_POS_CHAT',
-            is_walk_in: isWalkInCustomer,
-          },
-        };
-
-        const orderPayload = sanitizeOrderPayload(rawOrderPayload);
-        const { error: insertOrderErr } = await supabase.from('orders').insert(orderPayload);
-        if (insertOrderErr) {
-          console.error('[Quick POS] Failed to insert Bank order into Supabase:', insertOrderErr);
-          throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
-        }
 
         // Buat / tautkan conversation jika belum ada
         let targetConversationId: string | null = currentConversation?.id || null;
