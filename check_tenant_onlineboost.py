@@ -11,7 +11,7 @@ load_dotenv('C:/boontrack-core/.env')
 load_dotenv('.env.local')
 load_dotenv('.env')
 
-url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "https://mpluzajlzpregmjwpjqr.supabase.co")
+url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
 key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", ""))
 
 if not key:

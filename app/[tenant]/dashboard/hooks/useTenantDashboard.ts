@@ -786,18 +786,22 @@ export function useTenantDashboard() {
         }
 
         if (!tenant) {
-          const res = await fetch(
-            `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${encodeURIComponent(tenantSlug)}&select=*`,
-            {
-              headers: {
-                apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-              },
+          const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
+          const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+          if (supabaseUrl && supabaseKey) {
+            const res = await fetch(
+              `${supabaseUrl}/rest/v1/tenants?slug=eq.${encodeURIComponent(tenantSlug)}&select=*`,
+              {
+                headers: {
+                  apikey: supabaseKey,
+                  Authorization: `Bearer ${supabaseKey}`,
+                },
+              }
+            );
+            const data = await res.json().catch(() => null);
+            if (Array.isArray(data) && data.length > 0) {
+              tenant = data[0];
             }
-          );
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            tenant = data[0];
           }
         }
 

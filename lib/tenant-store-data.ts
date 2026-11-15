@@ -11,13 +11,16 @@ export const getTenantStoreData = cache(async (rawTenant: string) => {
     return { store: null, settings: null };
   }
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
   const currentKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   const supabaseKey =
     (currentKey && !currentKey.startsWith('sb_secret_'))
       ? currentKey
-      : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M');
+      : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+
+  if (!supabaseUrl || !supabaseKey) {
+    return { store: null, settings: null };
+  }
 
   const headers: HeadersInit = {
     apikey: supabaseKey,
