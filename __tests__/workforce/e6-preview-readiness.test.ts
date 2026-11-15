@@ -10,8 +10,7 @@
  */
 
 import { Client } from 'pg';
-import fs from 'fs';
-import path from 'path';
+import { createSafePgTestClient } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 import {
   resolveWorkforceHost,
   PartnerDomainConfig,
@@ -59,44 +58,9 @@ describe('BWM Gate E6-F: Preview Readiness & Harmonization Suite', () => {
    * Connection helper prioritizing Direct / Session Mode Port 5432
    */
   async function createLiveClient(): Promise<Client> {
-    const envDirect = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-    const envPooler = process.env.WORKFORCE_DATABASE_URL;
-
-    let directUrl = envDirect;
-    let poolerUrl = envPooler;
-    if (!directUrl || !poolerUrl) {
-      try {
-        const envFile = fs.readFileSync(path.resolve('.env.local'), 'utf8');
-        const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-        const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-        if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-        if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-      } catch {
-        // ignore read error
-      }
-    }
-
-    const candidates: string[] = [];
-    if (directUrl) candidates.push(directUrl);
-    if (poolerUrl) {
-      candidates.push(poolerUrl.replace(':6543', ':5432'));
-      candidates.push(poolerUrl);
-    }
-
-    for (const connStr of candidates) {
-      try {
-        const c = new Client({
-          connectionString: connStr,
-          ssl: { rejectUnauthorized: false },
-          connectionTimeoutMillis: 5000,
-        });
-        await c.connect();
-        return c;
-      } catch {
-        // try next candidate
-      }
-    }
-    throw new Error('Failed to connect to staging database via candidate connection strings');
+    const c = createSafePgTestClient({ connectionTimeoutMillis: 5000 });
+    await c.connect();
+    return c;
   }
 
   async function cleanFixtureData(dbClient: Client) {

@@ -11,7 +11,7 @@
  *   deadlock-free lock ordering (`tenants -> tenant_memberships -> facilities -> personnel`).
  */
 
-import { Pool, type PoolClient } from 'pg';
+import { Client, Pool, type ClientConfig, type PoolClient, type PoolConfig } from 'pg';
 import {
   assertServerContext,
   isDisposablePgTestMode,
@@ -175,6 +175,50 @@ export function getStrictDisposableTestDatabaseUrl(): string {
   }
 
   return assertDisposableLoopbackUrl(rawConnStr);
+}
+
+export interface SafePgTestConnectionConfig {
+  readonly connectionString: string;
+  readonly ssl: false;
+}
+
+/**
+ * Resolves strictly the local disposable PostgreSQL connection configuration for test execution (BWM-P1).
+ * Exclusively calls getStrictDisposableTestDatabaseUrl() with ZERO connection-string parameters.
+ * Runtime configuration is guaranteed to have readonly ssl: false.
+ */
+export function resolveSafePgTestConfig(): SafePgTestConnectionConfig {
+  const connectionString = getStrictDisposableTestDatabaseUrl();
+  return {
+    connectionString,
+    ssl: false,
+  };
+}
+
+/**
+ * Factory for test pools using strictly validated loopback configuration.
+ * Parameter options cannot override connectionString or ssl.
+ */
+export function createSafePgTestPool(options?: Omit<PoolConfig, 'connectionString' | 'ssl'>): Pool {
+  const config = resolveSafePgTestConfig();
+  return new Pool({
+    ...options,
+    connectionString: config.connectionString,
+    ssl: config.ssl,
+  });
+}
+
+/**
+ * Factory for single test clients using strictly validated loopback configuration.
+ * Parameter options cannot override connectionString or ssl.
+ */
+export function createSafePgTestClient(options?: Omit<ClientConfig, 'connectionString' | 'ssl'>): Client {
+  const config = resolveSafePgTestConfig();
+  return new Client({
+    ...options,
+    connectionString: config.connectionString,
+    ssl: config.ssl,
+  });
 }
 
 function assertDisposableTestAdapterAllowed(): void {
