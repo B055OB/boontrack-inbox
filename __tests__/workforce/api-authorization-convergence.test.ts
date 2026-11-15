@@ -6,28 +6,60 @@
 jest.unmock('@/lib/supabaseClient');
 jest.unmock('@supabase/supabase-js');
 
-import fs from 'fs';
-import path from 'path';
+import crypto from 'crypto';
+import pg, { Client, Pool } from 'pg';
+import { NextRequest } from 'next/server';
+import { getStrictDisposableTestDatabaseUrl } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 
-// Pre-load .env.local into process.env before Supabase client initialization
-const envPath = path.resolve('.env.local');
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  for (const rawLine of envContent.split('\n')) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eqIdx = line.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    let val = line.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-    process.env[key] = val;
+// Option 1B: Snapshot process.env and bind Commerce route environment variables to disposable container
+const initialEnv = { ...process.env };
+const disposableDbUrl = getStrictDisposableTestDatabaseUrl();
+process.env.WORKFORCE_DATABASE_DIRECT_URL = disposableDbUrl;
+process.env.DATABASE_URL = disposableDbUrl;
+process.env.WORKFORCE_DATABASE_URL = disposableDbUrl;
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'dummy-service-role-test';
+}
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://mock-project.supabase.co';
+}
+if (!process.env.WORKFORCE_SUPABASE_URL) {
+  process.env.WORKFORCE_SUPABASE_URL = 'https://tjkbgxrckaocgosvmzmj.supabase.co';
+}
+if (!process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY) {
+  process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY = 'dummy-workforce-service-role';
+}
+if (!process.env.BOONTRACK_HMAC_SECRET) {
+  process.env.BOONTRACK_HMAC_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
+}
+if (!process.env.BOONTRACK_SESSION_SECRET) {
+  process.env.BOONTRACK_SESSION_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
+}
+
+// Option 1B: Intercept and track all direct Client, test Pool, and route-handler Pool instances
+const trackedClients = new Set<Client>();
+const trackedPools = new Set<Pool>();
+const OriginalClient = pg.Client;
+const OriginalPool = pg.Pool;
+
+class TrackedClient extends OriginalClient {
+  constructor(...args: any[]) {
+    super(...args);
+    trackedClients.add(this);
   }
 }
 
-import crypto from 'crypto';
-import { Client } from 'pg';
-import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
-import { NextRequest } from 'next/server';
+class TrackedPool extends OriginalPool {
+  constructor(...args: any[]) {
+    super(...args);
+    trackedPools.add(this);
+  }
+}
+
+(pg as any).Client = TrackedClient;
+(pg as any).Pool = TrackedPool;
+
 import {
   signMerchantSessionToken,
   authorizeMerchantSession,
@@ -50,30 +82,7 @@ import {
 } from '@/app/api/v1/tenants/[slug]/reseller/members/route';
 
 function getDatabaseConnectionString(): string {
-  let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-  let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-  if (!directUrl || !poolerUrl) {
-    try {
-      const envPath = path.resolve('.env.local');
-      if (fs.existsSync(envPath)) {
-        const envFile = fs.readFileSync(envPath, 'utf8');
-        const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-        const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-        if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-        if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const connStr = directUrl || poolerUrl;
-  if (!connStr) {
-    throw new Error('STAGING_DB_REQUIRED: Staging connection required for convergence tests');
-  }
-  assertStagingDatabaseTarget(connStr);
-  return connStr;
+  return getStrictDisposableTestDatabaseUrl();
 }
 
 describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Authority', () => {
@@ -168,15 +177,45 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
   }, 30000);
 
   afterAll(async () => {
-    if (pgClient) {
-      try {
-        await pgClient.query('RESET ROLE');
-        await pgClient.query('DELETE FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
-        await pgClient.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1 OR tenant_slug = $2', [tenantId, slug]);
-        await pgClient.query('DELETE FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
-      } finally {
-        await pgClient.end();
+    try {
+      if (pgClient) {
+        try {
+          await pgClient.query('RESET ROLE');
+          await pgClient.query('DELETE FROM workforce_staging.products WHERE tenant_id = $1', [tenantId]);
+          await pgClient.query('DELETE FROM workforce_staging.tenant_memberships WHERE tenant_id = $1 OR tenant_slug = $2', [tenantId, slug]);
+          await pgClient.query('DELETE FROM workforce_staging.tenants WHERE id = $1', [tenantId]);
+        } catch {
+          // ignore fixture teardown error
+        }
       }
+    } finally {
+      (pg as any).Client = OriginalClient;
+      (pg as any).Pool = OriginalPool;
+
+      for (const client of trackedClients) {
+        try {
+          await client.end();
+        } catch {
+          // ignore client close error
+        }
+      }
+      trackedClients.clear();
+
+      for (const pool of trackedPools) {
+        try {
+          await pool.end();
+        } catch {
+          // ignore pool close error
+        }
+      }
+      trackedPools.clear();
+
+      for (const key of Object.keys(process.env)) {
+        if (!(key in initialEnv)) {
+          delete process.env[key];
+        }
+      }
+      Object.assign(process.env, initialEnv);
     }
   }, 30000);
 

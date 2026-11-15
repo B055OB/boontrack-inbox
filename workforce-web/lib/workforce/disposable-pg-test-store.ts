@@ -33,6 +33,23 @@ import {
 
 export type PgTestDatabase = Pool | PoolClient;
 
+const FORBIDDEN_REMOTE_MARKERS = [
+  'supabase.co',
+  'supabase.com',
+  'pooler.supabase.com',
+  'tjkbgxrckaocgosvmzmj',
+  'railway.app',
+  'neon.tech',
+  'amazonaws.com',
+  'compute.amazonaws.com',
+  'azure.com',
+  'googleapis.com',
+  'render.com',
+  'fly.dev',
+  'cockroachlabs.cloud',
+  'cloud.timescale.com',
+];
+
 /**
  * Validates that a PostgreSQL connection string strictly targets the local disposable CI container.
  */
@@ -41,9 +58,28 @@ export function assertDisposableLoopbackUrl(connStr: string): string {
     throw new Error('[DISPOSABLE GUARD FATAL] Database connection string is empty or invalid.');
   }
 
+  const trimmed = connStr.trim();
+
+  if (trimmed.includes('#')) {
+    throw new Error('[DISPOSABLE GUARD FATAL] URL fragment identifier detected. Fragment identifiers are strictly forbidden.');
+  }
+
+  if (trimmed.includes('?')) {
+    throw new Error('[DISPOSABLE GUARD FATAL] Query parameters are strictly forbidden on disposable database connection.');
+  }
+
+  const lower = trimmed.toLowerCase();
+  for (const marker of FORBIDDEN_REMOTE_MARKERS) {
+    if (lower.includes(marker)) {
+      throw new Error(
+        `[DISPOSABLE GUARD FATAL] Remote or cloud marker '${marker}' detected in database connection string. Disposable test database must be strictly local loopback.`
+      );
+    }
+  }
+
   let parsed: URL;
   try {
-    parsed = new URL(connStr.trim());
+    parsed = new URL(trimmed);
   } catch {
     throw new Error('[DISPOSABLE GUARD FATAL] Malformed database connection URL. Abort.');
   }
@@ -84,7 +120,56 @@ export function assertDisposableLoopbackUrl(connStr: string): string {
     throw new Error('[DISPOSABLE GUARD FATAL] Query parameters are strictly forbidden on disposable database connection.');
   }
 
-  return connStr.trim();
+  return trimmed;
+}
+
+/**
+ * Resolves strictly the local disposable PostgreSQL connection URL for test execution (BWM-HR-07).
+ * Reads EXCLUSIVELY from process.env.DISPOSABLE_POSTGRES_URL with ZERO fallback to .env, .env.local,
+ * WORKFORCE_DATABASE_DIRECT_URL, WORKFORCE_DATABASE_URL, DATABASE_URL, or TEST_POSTGRES_URL.
+ * Fails closed immediately if running in non-test mode or in production/staging environments.
+ */
+export function getStrictDisposableTestDatabaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    throw new Error('[DISPOSABLE GUARD FATAL] Disposable database operations are restricted strictly to server-side test execution.');
+  }
+
+  const envMap = process.env as Record<string, string | undefined>;
+
+  if (envMap.NODE_ENV === 'production') {
+    throw new Error('[DISPOSABLE GUARD FATAL] Production NODE_ENV detected. Disposable database access is strictly prohibited.');
+  }
+
+  if (envMap.NODE_ENV !== 'test') {
+    throw new Error(
+      `[DISPOSABLE GUARD FATAL] Disposable database operations are restricted strictly to test environment (NODE_ENV === "test"). Current: ${envMap.NODE_ENV || 'undefined'}`
+    );
+  }
+
+  if (process.env.APP_ENV === 'staging' || process.env.APP_ENV === 'production') {
+    throw new Error(
+      `[DISPOSABLE GUARD FATAL] Staging or production APP_ENV detected (${process.env.APP_ENV}). Disposable database access is strictly prohibited.`
+    );
+  }
+
+  if (process.env.VERCEL_ENV === 'production') {
+    throw new Error('[DISPOSABLE GUARD FATAL] Production VERCEL_ENV detected. Disposable database access is strictly prohibited.');
+  }
+
+  if (process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.RAILWAY_ENVIRONMENT === 'staging') {
+    throw new Error(
+      `[DISPOSABLE GUARD FATAL] Railway production or staging environment detected (${process.env.RAILWAY_ENVIRONMENT}). Disposable database access is strictly prohibited.`
+    );
+  }
+
+  const rawConnStr = process.env.DISPOSABLE_POSTGRES_URL;
+  if (!rawConnStr || typeof rawConnStr !== 'string' || !rawConnStr.trim()) {
+    throw new Error(
+      '[DISPOSABLE GUARD FATAL] process.env.DISPOSABLE_POSTGRES_URL is required but not set. Refusing fallback to shared or staging database.'
+    );
+  }
+
+  return assertDisposableLoopbackUrl(rawConnStr);
 }
 
 function assertDisposableTestAdapterAllowed(): void {
@@ -392,8 +477,7 @@ let cachedDisposableConnStr: string | null = null;
 
 export function getDisposablePgPool(): Pool {
   assertDisposableTestAdapterAllowed();
-  const rawConnStr = process.env.DISPOSABLE_POSTGRES_URL || process.env.WORKFORCE_DATABASE_DIRECT_URL || '';
-  const safeConnStr = assertDisposableLoopbackUrl(rawConnStr);
+  const safeConnStr = getStrictDisposableTestDatabaseUrl();
 
   if (!cachedDisposablePool || cachedDisposableConnStr !== safeConnStr) {
     cachedDisposableConnStr = safeConnStr;

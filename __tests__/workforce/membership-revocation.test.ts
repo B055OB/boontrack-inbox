@@ -26,33 +26,10 @@
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
-import { assertStagingDatabaseTarget } from '@/lib/supabaseClient';
+import { getStrictDisposableTestDatabaseUrl } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 
 function getDatabaseConnectionString(): string {
-  let directUrl = process.env.WORKFORCE_DATABASE_DIRECT_URL;
-  let poolerUrl = process.env.WORKFORCE_DATABASE_URL;
-
-  if (!directUrl || !poolerUrl) {
-    try {
-      const envPath = path.resolve('.env.local');
-      if (fs.existsSync(envPath)) {
-        const envFile = fs.readFileSync(envPath, 'utf8');
-        const matchDirect = envFile.match(/^WORKFORCE_DATABASE_DIRECT_URL=(.*)$/m);
-        const matchPooler = envFile.match(/^WORKFORCE_DATABASE_URL=(.*)$/m);
-        if (matchDirect) directUrl = matchDirect[1].trim().replace(/^["']|["']$/g, '');
-        if (matchPooler) poolerUrl = matchPooler[1].trim().replace(/^["']|["']$/g, '');
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const connStr = directUrl || poolerUrl;
-  if (!connStr) {
-    throw new Error('STAGING_DB_REQUIRED: Staging connection required for membership revocation tests');
-  }
-  assertStagingDatabaseTarget(connStr);
-  return connStr;
+  return getStrictDisposableTestDatabaseUrl();
 }
 
 describe('BWM Gate 1 Round 3H — Revocation & Stale JWT Claim Safety (Blocker E)', () => {

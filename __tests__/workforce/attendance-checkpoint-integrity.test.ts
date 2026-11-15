@@ -31,6 +31,7 @@ import {
 import {
   assertDisposableLoopbackUrl,
   createDisposablePgTestStore,
+  getStrictDisposableTestDatabaseUrl,
 } from '@/workforce-web/lib/workforce/disposable-pg-test-store';
 import {
   createSupabaseServiceRoleOperationalStore,
@@ -422,6 +423,106 @@ describe('Workstream A: Attendance & Checkpoint Integrity Unit & Contract Suite'
       expect(() =>
         assertDisposableLoopbackUrl('postgresql://postgres:p@localhost:5432/test_workforce_ci#frag')
       ).toThrow(/fragment/);
+    });
+
+    it('enforces getStrictDisposableTestDatabaseUrl with zero fallback and strict fail-closed validation', () => {
+      const prevEnv = { ...process.env };
+      try {
+        process.env.NODE_ENV = 'test';
+        delete process.env.APP_ENV;
+        delete process.env.VERCEL_ENV;
+        delete process.env.RAILWAY_ENVIRONMENT;
+
+        // 1. Positive loopback resolution
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:testpass@localhost:5432/test_workforce_ci';
+        expect(getStrictDisposableTestDatabaseUrl()).toBe('postgresql://postgres:testpass@localhost:5432/test_workforce_ci');
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgres://authenticator:authpass@127.0.0.1:5432/test_workforce_ci';
+        expect(getStrictDisposableTestDatabaseUrl()).toBe('postgres://authenticator:authpass@127.0.0.1:5432/test_workforce_ci');
+
+        // 2. Missing DISPOSABLE_POSTGRES_URL must fail closed without fallback to other env vars
+        delete process.env.DISPOSABLE_POSTGRES_URL;
+        process.env.WORKFORCE_DATABASE_DIRECT_URL = 'postgresql://postgres:pass@localhost:5432/test_workforce_ci';
+        process.env.WORKFORCE_DATABASE_URL = 'postgresql://postgres:pass@localhost:5432/test_workforce_ci';
+        process.env.DATABASE_URL = 'postgresql://postgres:pass@localhost:5432/test_workforce_ci';
+        process.env.TEST_POSTGRES_URL = 'postgresql://postgres:pass@localhost:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/DISPOSABLE_POSTGRES_URL is required but not set/);
+
+        // 3. Rejection of remote Supabase, cloud markers, and external hosts
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@db.tjkbgxrckaocgosvmzmj.supabase.co:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@containers.railway.app:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@ep-cool-project.neon.tech:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@my-db.compute.amazonaws.com:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Remote or cloud marker/);
+
+        // 4. Rejection of non-loopback IP addresses
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@192.168.1.100:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Unauthorized database host/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@10.0.0.1:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Unauthorized database host/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@0.0.0.0:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Unauthorized database host/);
+
+        // 5. Rejection of invalid port, database name, and username
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@localhost:5433/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Invalid database port/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@localhost:5432/postgres';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Invalid database name/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://root:p@localhost:5432/test_workforce_ci';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Unauthorized database user/);
+
+        // 6. Rejection of query parameters and URL fragments
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@localhost:5432/test_workforce_ci?sslmode=require';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Query parameters/);
+
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@localhost:5432/test_workforce_ci#pool';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/fragment/);
+
+        // 7. Environment fail-closed checks
+        process.env.DISPOSABLE_POSTGRES_URL = 'postgresql://postgres:p@localhost:5432/test_workforce_ci';
+
+        process.env.NODE_ENV = 'production';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Production NODE_ENV detected/);
+
+        process.env.NODE_ENV = 'development';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/restricted strictly to test environment/);
+
+        process.env.NODE_ENV = 'test';
+        process.env.APP_ENV = 'staging';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Staging or production APP_ENV detected/);
+
+        delete process.env.APP_ENV;
+        process.env.VERCEL_ENV = 'production';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Production VERCEL_ENV detected/);
+
+        delete process.env.VERCEL_ENV;
+        process.env.RAILWAY_ENVIRONMENT = 'production';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Railway production or staging environment detected/);
+
+        process.env.RAILWAY_ENVIRONMENT = 'staging';
+        expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/Railway production or staging environment detected/);
+
+        // 8. Server-side context requirement
+        delete process.env.RAILWAY_ENVIRONMENT;
+        (globalThis as any).window = {};
+        try {
+          expect(() => getStrictDisposableTestDatabaseUrl()).toThrow(/restricted strictly to server-side test execution/);
+        } finally {
+          delete (globalThis as any).window;
+        }
+      } finally {
+        process.env = prevEnv;
+      }
     });
 
     it('keeps disposable PG mode disabled and blocks createDisposablePgTestStore outside test mode', async () => {

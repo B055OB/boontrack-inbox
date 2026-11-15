@@ -2,10 +2,16 @@ name: BoonTrack Workforce CI — Unit & Integration
 
 on:
   push:
-    branches: [ main, 'ci/**', feat/bwm-workforce-isolated ]
+    branches: [ main, 'ci/**', feat/bwm-workforce-isolated, 'fix/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/bwm-workforce-isolated ]
   workflow_dispatch:
+    inputs:
+      expected_head_sha:
+        description: 'Expected 40-character commit SHA for provenance assertion'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -41,6 +47,56 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify Provenance & Commit Attestation
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          echo "=== CI RUN PROVENANCE ATTESTATION ==="
+          echo "Run ID:          $GITHUB_RUN_ID"
+          echo "Event Name:      $GITHUB_EVENT_NAME"
+          echo "Ref:             $GITHUB_REF"
+          echo "GitHub SHA:      $GITHUB_SHA"
+          echo "Workflow Ref:    $GITHUB_WORKFLOW_REF"
+          echo "Workflow SHA:    $GITHUB_WORKFLOW_SHA"
+          echo "PR Head SHA:     ${PR_HEAD_SHA:-N/A}"
+
+          CURRENT_HEAD=$(git rev-parse HEAD)
+          echo "Git HEAD:        $CURRENT_HEAD"
+
+          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            MERGE_PARENT_2=$(git rev-parse HEAD^2)
+            echo "Merge Parent 2:  $MERGE_PARENT_2"
+          else
+            echo "Merge Parent 2:  N/A (not a merge commit)"
+          fi
+
+          WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
+          if [ -f "$WORKFLOW_FILE_PATH" ]; then
+            WORKFLOW_SHA256=$(sha256sum "$WORKFLOW_FILE_PATH" | awk '{print $1}')
+            echo "Workflow SHA256: $WORKFLOW_SHA256"
+          fi
+
+          if [ -n "$EXPECTED_HEAD_SHA" ]; then
+            echo "Validating expected HEAD SHA: $EXPECTED_HEAD_SHA"
+            if ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
+              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+              exit 1
+            fi
+            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+          fi
+          echo "======================================"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -96,6 +152,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Provenance & Commit Attestation
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          echo "=== CI RUN PROVENANCE ATTESTATION ==="
+          echo "Run ID:          $GITHUB_RUN_ID"
+          echo "Event Name:      $GITHUB_EVENT_NAME"
+          echo "Ref:             $GITHUB_REF"
+          echo "GitHub SHA:      $GITHUB_SHA"
+          echo "Workflow Ref:    $GITHUB_WORKFLOW_REF"
+          echo "Workflow SHA:    $GITHUB_WORKFLOW_SHA"
+          echo "PR Head SHA:     ${PR_HEAD_SHA:-N/A}"
+
+          CURRENT_HEAD=$(git rev-parse HEAD)
+          echo "Git HEAD:        $CURRENT_HEAD"
+
+          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            MERGE_PARENT_2=$(git rev-parse HEAD^2)
+            echo "Merge Parent 2:  $MERGE_PARENT_2"
+          else
+            echo "Merge Parent 2:  N/A (not a merge commit)"
+          fi
+
+          WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
+          if [ -f "$WORKFLOW_FILE_PATH" ]; then
+            WORKFLOW_SHA256=$(sha256sum "$WORKFLOW_FILE_PATH" | awk '{print $1}')
+            echo "Workflow SHA256: $WORKFLOW_SHA256"
+          fi
+
+          if [ -n "$EXPECTED_HEAD_SHA" ]; then
+            echo "Validating expected HEAD SHA: $EXPECTED_HEAD_SHA"
+            if ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
+              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+              exit 1
+            fi
+            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+          fi
+          echo "======================================"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -130,12 +236,16 @@ jobs:
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
             __tests__/workforce/database-rls-adversarial.test.ts
 
+      - name: Run API Authorization Convergence Gate (api-authorization-convergence)
+        run: |
+          node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
+            __tests__/workforce/api-authorization-convergence.test.ts
+
       - name: Run Legacy PostgreSQL Batch 1b (Schema & RLS — Known BWM-LEGACY-VIEW-001)
         continue-on-error: true
         run: |
           set +e
           node ./node_modules/jest/bin/jest.js --forceExit --testTimeout=30000 --runInBand \
-            __tests__/workforce/api-authorization-convergence.test.ts \
             __tests__/workforce/membership-revocation.test.ts
           EXIT_CODE=$?
           echo "LEGACY_BATCH_1B_EXIT=$EXIT_CODE"
@@ -236,6 +346,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Provenance & Commit Attestation
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          echo "=== CI RUN PROVENANCE ATTESTATION ==="
+          echo "Run ID:          $GITHUB_RUN_ID"
+          echo "Event Name:      $GITHUB_EVENT_NAME"
+          echo "Ref:             $GITHUB_REF"
+          echo "GitHub SHA:      $GITHUB_SHA"
+          echo "Workflow Ref:    $GITHUB_WORKFLOW_REF"
+          echo "Workflow SHA:    $GITHUB_WORKFLOW_SHA"
+          echo "PR Head SHA:     ${PR_HEAD_SHA:-N/A}"
+
+          CURRENT_HEAD=$(git rev-parse HEAD)
+          echo "Git HEAD:        $CURRENT_HEAD"
+
+          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            MERGE_PARENT_2=$(git rev-parse HEAD^2)
+            echo "Merge Parent 2:  $MERGE_PARENT_2"
+          else
+            echo "Merge Parent 2:  N/A (not a merge commit)"
+          fi
+
+          WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
+          if [ -f "$WORKFLOW_FILE_PATH" ]; then
+            WORKFLOW_SHA256=$(sha256sum "$WORKFLOW_FILE_PATH" | awk '{print $1}')
+            echo "Workflow SHA256: $WORKFLOW_SHA256"
+          fi
+
+          if [ -n "$EXPECTED_HEAD_SHA" ]; then
+            echo "Validating expected HEAD SHA: $EXPECTED_HEAD_SHA"
+            if ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
+              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+              exit 1
+            fi
+            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+          fi
+          echo "======================================"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -299,6 +459,56 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify Provenance & Commit Attestation
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          echo "=== CI RUN PROVENANCE ATTESTATION ==="
+          echo "Run ID:          $GITHUB_RUN_ID"
+          echo "Event Name:      $GITHUB_EVENT_NAME"
+          echo "Ref:             $GITHUB_REF"
+          echo "GitHub SHA:      $GITHUB_SHA"
+          echo "Workflow Ref:    $GITHUB_WORKFLOW_REF"
+          echo "Workflow SHA:    $GITHUB_WORKFLOW_SHA"
+          echo "PR Head SHA:     ${PR_HEAD_SHA:-N/A}"
+
+          CURRENT_HEAD=$(git rev-parse HEAD)
+          echo "Git HEAD:        $CURRENT_HEAD"
+
+          if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            MERGE_PARENT_2=$(git rev-parse HEAD^2)
+            echo "Merge Parent 2:  $MERGE_PARENT_2"
+          else
+            echo "Merge Parent 2:  N/A (not a merge commit)"
+          fi
+
+          WORKFLOW_FILE_PATH=".github/workflows/ci.yml"
+          if [ -f "$WORKFLOW_FILE_PATH" ]; then
+            WORKFLOW_SHA256=$(sha256sum "$WORKFLOW_FILE_PATH" | awk '{print $1}')
+            echo "Workflow SHA256: $WORKFLOW_SHA256"
+          fi
+
+          if [ -n "$EXPECTED_HEAD_SHA" ]; then
+            echo "Validating expected HEAD SHA: $EXPECTED_HEAD_SHA"
+            if ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "[PROVENANCE FATAL] expected_head_sha must be exactly 40 hex characters: $EXPECTED_HEAD_SHA"
+              exit 1
+            fi
+            if [ "$EXPECTED_HEAD_SHA" != "$CURRENT_HEAD" ]; then
+              echo "[PROVENANCE FATAL] HEAD mismatch! Expected: $EXPECTED_HEAD_SHA, Actual: $CURRENT_HEAD"
+              exit 1
+            fi
+            echo "[PROVENANCE OK] HEAD SHA matches expected: $CURRENT_HEAD"
+          fi
+          echo "======================================"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
