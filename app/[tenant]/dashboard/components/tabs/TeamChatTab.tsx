@@ -1554,6 +1554,7 @@ export default function TeamChatTab({
       const posRes = await fetch('/api/inbox/orders/custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           tenantSlug: resolvedTenant,
           conversationId: currentConversation?.id || null,
@@ -1562,8 +1563,6 @@ export default function TeamChatTab({
           itemName,
           rawAmount: qrisAmount,
           billingType: 'QRIS',
-          csUserId: (activeCsUser as any)?.id || null,
-          csUserName: activeCsUser?.name || null,
           isWalkIn: isWalkInCustomer,
           contactId: linkedContactId,
         }),
@@ -1849,6 +1848,7 @@ export default function TeamChatTab({
       const posRes = await fetch('/api/inbox/orders/custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           tenantSlug: resolvedTenant,
           conversationId: currentConversation?.id || null,
@@ -1858,9 +1858,7 @@ export default function TeamChatTab({
           rawAmount: qrisAmount,
           billingType: 'MANUAL_BANK',
           uniqueCode,
-          bankAccount: selectedBank,
-          csUserId: (activeCsUser as any)?.id || null,
-          csUserName: activeCsUser?.name || null,
+          bankAccountIndex: selectedBankIdx,
           isWalkIn: isWalkInCustomer,
           contactId: linkedContactId,
         }),

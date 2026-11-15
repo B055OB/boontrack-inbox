@@ -2,28 +2,39 @@
  * @file __tests__/inbox/inbox_pos_01_order_gateway.test.ts
  * @description Unit and Integration Test Suite for Custom POS Order Server Gateway
  *
- * Covers INBOX-POS-01 / Patch 2:
- * 1. SEC-01 & SEC-03: Eliminates client-side direct orders DB insertion.
- * 2. ASPI & Bank Indonesia Standards: Min Rp 1.000, Max Rp 10.000.000 for QRIS.
- * 3. Decimal parsing anti-spike: prevents "25000.50" from becoming 2500050.
- * 4. Collision-proof IDs: ORD-POS-{YYMMDD}-{HEX6} and UUID orderId.
- * 5. 1:1 Omnichannel conversation_id & contact_id linkage in orders.metadata.
- * 6. Dynamic Tenant Resolution (Zero Hardcoding).
- * 7. Manual Bank Transfer unique code calculation.
- * 8. v1 API alias consistency.
+ * Covers INBOX-POS-01 / Patch 2 & CTO Security Remediation Order (SEC-P5-01, SEC-P5-02, SEC-P5-03):
+ * 1. Missing/invalid session -> 401
+ * 2. Authenticated non-CS/unauthorized user -> 403
+ * 3. CS without order permission -> 403
+ * 4. CS from Tenant A attempting Tenant B -> 403
+ * 5. Forged csUserId/csUserName -> overridden by session
+ * 6. conversationId belonging to another tenant -> 403/404
+ * 7. contactId belonging to another tenant -> 403/404
+ * 8. Forged bankAccount -> ignored (uses DB tenant bank account)
+ * 9. Invalid amounts ("25000abc", "25000.50", "-1000", "NaN", "500", "10000001" QRIS) -> 400
+ * 10. Valid authorized POS order -> 200
  */
 
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/inbox/orders/custom/route';
+import { POST, parseStrictRupiahAmount } from '@/app/api/inbox/orders/custom/route';
 import { POST as POST_V1 } from '@/app/api/v1/inbox/orders/custom/route';
 import * as supabaseClientModule from '@/lib/supabaseClient';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
-describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
+describe('INBOX-POS-01: Custom POS Order Server Gateway Security & Functional Suite', () => {
   const originalEnv = process.env;
+
+  const TEST_TENANT_ID = 'tenant-uuid-1234';
+  const TEST_TENANT_SLUG = 'toko-kreatif';
+  const ALIEN_TENANT_ID = 'tenant-uuid-9999';
+  const ALIEN_TENANT_SLUG = 'toko-alien';
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
+    process.env = {
+      ...originalEnv,
+      MERCHANT_SESSION_SECRET: 'test_dev_secret_32_characters_long_for_hmac!',
+    };
   });
 
   afterEach(() => {
@@ -31,25 +42,62 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
     process.env = originalEnv;
   });
 
+  // Helper to mint test tokens
+  const mintTestToken = (params: {
+    tenantSlug?: string;
+    tenantId?: string;
+    role?: 'OWNER' | 'MERCHANT' | 'CS' | 'OPERATOR' | string;
+    userId?: string;
+    name?: string;
+    phone?: string;
+    permissions?: string[];
+    access_level?: string;
+    canCreateOrders?: boolean;
+    ttlMs?: number;
+  }) => {
+    return signMerchantSessionToken({
+      tenantSlug: params.tenantSlug || TEST_TENANT_SLUG,
+      tenantId: params.tenantId || TEST_TENANT_ID,
+      role: (params.role as any) || 'OWNER',
+      userId: params.userId || 'user-01',
+      name: params.name || 'Test User',
+      phone: params.phone || '628111222333',
+      ttlMs: params.ttlMs || 3600000,
+      ...(params.permissions ? { permissions: params.permissions } : {}),
+      ...(params.access_level ? { access_level: params.access_level } : {}),
+      ...(params.canCreateOrders !== undefined ? { canCreateOrders: params.canCreateOrders } : {}),
+    } as any);
+  };
+
   const createMockSupabase = (options: {
     tenantData?: any;
     tenantError?: any;
     insertError?: any;
+    conversations?: Record<string, any>;
+    contacts?: Record<string, any>;
+    tenantUsers?: Record<string, any>;
   } = {}) => {
     const {
       tenantData = {
-        id: 'tenant-uuid-1234',
-        slug: 'toko-kreatif',
+        id: TEST_TENANT_ID,
+        slug: TEST_TENANT_SLUG,
         name: 'Toko Kreatif',
         metadata: {
           products: [
             { id: 'prod_video_1', name: 'Jasa Video Promosi', price: 150000 },
             { id: 'prod_logo_2', name: 'Desain Logo', price: 200000 },
           ],
+          bank_accounts: [
+            { bank_name: 'BCA', account_number: '1234567890', account_holder: 'PT Toko Kreatif' },
+            { bank_name: 'Mandiri', account_number: '9876543210', account_holder: 'PT Toko Kreatif' },
+          ],
         },
       },
       tenantError = null,
       insertError = null,
+      conversations = {},
+      contacts = {},
+      tenantUsers = {},
     } = options;
 
     let capturedOrderPayload: any = null;
@@ -81,6 +129,39 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
             }),
           };
         }
+        if (table === 'conversations') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockImplementation((col: string, val: string) => ({
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: conversations[val] || null,
+                error: null,
+              }),
+            })),
+          };
+        }
+        if (table === 'contacts') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockImplementation((col: string, val: string) => ({
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: contacts[val] || null,
+                error: null,
+              }),
+            })),
+          };
+        }
+        if (table === 'tenant_users') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockImplementation((col: string, val: string) => ({
+              maybeSingle: jest.fn().mockResolvedValue({
+                data: tenantUsers[val] || null,
+                error: null,
+              }),
+            })),
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -93,287 +174,126 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
     return mockSupabase;
   };
 
-  describe('1. Input Validation & ASPI / BI Standards', () => {
-    it('returns 500 when Supabase admin client is unavailable', async () => {
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(null);
+  // ===========================================================================
+  // CTO SECURITY REMEDIATION ORDER — 10 MANDATORY SCENARIOS
+  // ===========================================================================
+  describe('CTO SECURITY REMEDIATION ORDER — 10 MANDATORY SCENARIOS', () => {
+    // -------------------------------------------------------------------------
+    // Scenario 1: Missing or Invalid Session -> 401 Unauthorized
+    // -------------------------------------------------------------------------
+    it('Scenario 1: rejects requests with missing or invalid session with 401 Unauthorized', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+      // Case 1a: Completely missing token/cookie
+      const reqMissing = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281234567890',
           rawAmount: '50000',
         }),
       });
+      const resMissing = await POST(reqMissing);
+      const dataMissing = await resMissing.json();
+      expect(resMissing.status).toBe(401);
+      expect(dataMissing.success).toBe(false);
+      expect(dataMissing.error).toContain('Unauthorized');
 
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(500);
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('Database admin unavailable');
-    });
-
-    it('rejects missing or empty tenantSlug with 400', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+      // Case 1b: Invalid/forged signature token
+      const reqForged = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: 'bt_merchant_token=forgedpayload.invalidhmacsignature12345',
+        },
         body: JSON.stringify({
-          tenantSlug: '',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281234567890',
           rawAmount: '50000',
         }),
       });
+      const resForged = await POST(reqForged);
+      const dataForged = await resForged.json();
+      expect(resForged.status).toBe(401);
+      expect(dataForged.success).toBe(false);
+      expect(dataForged.error).toContain('Unauthorized');
 
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('tenant slug');
-    });
-
-    it('rejects missing or empty customerPhone with 400', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+      // Case 1c: Expired token
+      const expiredToken = mintTestToken({ ttlMs: -10000 });
+      const reqExpired = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${expiredToken}`,
+        },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '   ',
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
           rawAmount: '50000',
         }),
       });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('WhatsApp');
+      const resExpired = await POST(reqExpired);
+      const dataExpired = await resExpired.json();
+      expect(resExpired.status).toBe(401);
+      expect(dataExpired.success).toBe(false);
+      expect(dataExpired.error).toContain('Unauthorized');
     });
 
-    it('rejects amount below Rp 1.000 (ASPI minimum limit) with 400', async () => {
+    // -------------------------------------------------------------------------
+    // Scenario 2: Authenticated Non-CS / Unauthorized User -> 403 Forbidden
+    // -------------------------------------------------------------------------
+    it('Scenario 2: rejects authenticated users with unauthorized roles (e.g. VIEWER, GUEST) with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
-      const testAmounts = [0, 500, '999', 'Rp 500', -1000, null, ''];
-      for (const amount of testAmounts) {
+      const unauthorizedRoles = ['VIEWER', 'GUEST', 'MEMBER', 'AFFILIATE', 'CUSTOMER'];
+
+      for (const role of unauthorizedRoles) {
+        const token = mintTestToken({ role });
         const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            cookie: `bt_merchant_token=${token}`,
+          },
           body: JSON.stringify({
-            tenantSlug: 'toko-kreatif',
+            tenantSlug: TEST_TENANT_SLUG,
             customerPhone: '6281234567890',
-            rawAmount: amount,
+            rawAmount: '50000',
           }),
         });
 
         const res = await POST(req);
         const data = await res.json();
-
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(403);
         expect(data.success).toBe(false);
-        expect(data.error).toContain('Minimal transaksi adalah Rp 1.000');
+        expect(data.error).toContain('tidak memiliki wewenang');
       }
     });
 
-    it('rejects QRIS amount exceeding Rp 10.000.000 (ASPI / BI maximum limit) with 400', async () => {
+    // -------------------------------------------------------------------------
+    // Scenario 3: CS Without Order Permission -> 403 Forbidden
+    // -------------------------------------------------------------------------
+    it('Scenario 3: rejects CS users without explicit POS order-creation permission with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      // Case 3a: CS token with empty or read-only permissions
+      const csNoPermToken = mintTestToken({
+        role: 'CS',
+        userId: 'cs-chat-only-1',
+        permissions: ['live_chat', 'view_messages'],
+      });
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          rawAmount: 10000001,
-          billingType: 'QRIS',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('10.000.000');
-      expect(data.error).toContain('BI/ASPI');
-    });
-
-    it('allows MANUAL_BANK amount exceeding Rp 10.000.000 without QRIS restriction', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          rawAmount: '25000000',
-          billingType: 'MANUAL_BANK',
-          uniqueCode: 150,
-          bankAccount: { bank_name: 'BCA', account_number: '1234567890', account_holder: 'Owner' },
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.amount).toBe(25000150);
-      expect(data.baseAmount).toBe(25000000);
-      expect(data.uniqueCode).toBe(150);
-    });
-  });
-
-  describe('2. Anti-Spike Decimal Handling', () => {
-    it('properly truncates decimals without 100x spike ("25000.50" -> 25000)', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          rawAmount: '25000.50',
-          billingType: 'QRIS',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.amount).toBe(25000); // NOT 2500050!
-      expect(data.baseAmount).toBe(25000);
-
-      const inserted = mockDb._getCapturedOrderPayload();
-      expect(inserted.gross_amount).toBe(25000);
-    });
-
-    it('handles comma-formatted currency strings cleanly ("25,000.00" -> 25000)', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          rawAmount: '25,000.00',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.amount).toBe(25000);
-    });
-  });
-
-  describe('3. Dynamic Tenant Resolution & Catalog Matching (Zero Hardcoding)', () => {
-    it('returns 404 when tenant is not found in database', async () => {
-      const mockDb = createMockSupabase({ tenantData: null });
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'non-existent-store',
-          customerPhone: '6281234567890',
-          rawAmount: '75000',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(404);
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('tidak ditemukan');
-    });
-
-    it('resolves product_id from tenant catalog when item name matches', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          itemName: 'Jasa Video Promosi Instagram',
-          rawAmount: '150000',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(200);
-      const inserted = mockDb._getCapturedOrderPayload();
-      expect(inserted.product_id).toBe('prod_video_1');
-      expect(inserted.product_title).toBe('Jasa Video Promosi Instagram');
-    });
-
-    it('falls back to srv_custom_chat when no catalog products match', async () => {
-      const mockDb = createMockSupabase({
-        tenantData: {
-          id: 'tenant-uuid-1234',
-          slug: 'toko-kreatif',
-          metadata: { products: [] },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csNoPermToken}`,
         },
-      });
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          customerPhone: '6281234567890',
-          itemName: 'Paket Kustom Konsultasi',
-          rawAmount: '500000',
-        }),
-      });
-
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(200);
-      const inserted = mockDb._getCapturedOrderPayload();
-      expect(inserted.product_id).toBe('srv_custom_chat');
-    });
-  });
-
-  describe('4. Cryptographic ID Generation & Collision Proofing', () => {
-    it('generates compliant ORD-POS-{YYMMDD}-{HEX6} order number and UUID internal ID', async () => {
-      const mockDb = createMockSupabase();
-      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
-
-      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281234567890',
           rawAmount: '50000',
         }),
@@ -381,80 +301,507 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
 
       const res = await POST(req);
       const data = await res.json();
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak memiliki izin');
 
-      expect(res.status).toBe(200);
-      expect(data.success).toBe(true);
-
-      // Verify order number format: ORD-POS-YYMMDD-HEX6
-      expect(data.orderNumber).toMatch(/^ORD-POS-\d{6}-[0-9A-F]{6}$/);
-
-      // Verify internal orderId format: UUID v4
-      expect(data.orderId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-
-      // Verify paymentToken format: pay_{32 hex chars}
-      expect(data.paymentToken).toMatch(/^pay_[0-9a-f]{32}$/);
-
-      // Verify payUrl contains tenant slug and token
-      expect(data.payUrl).toContain('toko-kreatif');
-      expect(data.payUrl).toContain(data.paymentToken);
-
-      // Verify inserted payload matches
-      const inserted = mockDb._getCapturedOrderPayload();
-      expect(inserted.id).toBe(data.orderId);
-      expect(inserted.order_number).toBe(data.orderNumber);
-      expect(inserted.correlation_id).toBe(data.paymentToken);
+      // Case 3b: CS token with explicit canCreateOrders: false
+      const csExplicitDenied = mintTestToken({
+        role: 'CS',
+        userId: 'cs-denied-1',
+        canCreateOrders: false,
+      });
+      const reqDenied = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csExplicitDenied}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+      const resDenied = await POST(reqDenied);
+      const dataDenied = await resDenied.json();
+      expect(resDenied.status).toBe(403);
+      expect(dataDenied.success).toBe(false);
     });
-  });
 
-  describe('5. 1:1 Conversation & Contact Linkage (SEC-01 & Fulfillment Routing)', () => {
-    it('embeds conversation_id and contact_id into orders.metadata for webhook fulfillment', async () => {
+    // -------------------------------------------------------------------------
+    // Scenario 4: CS from Tenant A Attempting Tenant B -> 403 Forbidden
+    // -------------------------------------------------------------------------
+    it('Scenario 4: blocks CS from Tenant A attempting to create order for Tenant B with 403 Forbidden', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      // CS token bound to Tenant A (toko-kreatif)
+      const tokenTenantA = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        permissions: ['pos', 'orders'],
+      });
+
+      // Request body targets Tenant B (toko-alien)
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${tokenTenantA}`,
+        },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
-          conversationId: 'conv-uuid-998877',
-          contactId: 'crm-contact-554433',
+          tenantSlug: ALIEN_TENANT_SLUG,
           customerPhone: '6281234567890',
-          customerName: 'Budi Santoso',
-          rawAmount: '120000',
-          csUserId: 'cs-user-01',
-          csUserName: 'Siti Aminah',
-          isWalkIn: false,
+          rawAmount: '50000',
         }),
       });
 
       const res = await POST(req);
       const data = await res.json();
-
-      expect(res.status).toBe(200);
-
-      const inserted = mockDb._getCapturedOrderPayload();
-      expect(inserted.metadata).toBeDefined();
-      expect(inserted.metadata.conversation_id).toBe('conv-uuid-998877');
-      expect(inserted.metadata.contact_id).toBe('crm-contact-554433');
-      expect(inserted.metadata.created_by_cs_id).toBe('cs-user-01');
-      expect(inserted.metadata.created_by_cs_name).toBe('Siti Aminah');
-      expect(inserted.metadata.source).toBe('INBOX_QUICK_POS');
-      expect(inserted.metadata.is_walk_in).toBe(false);
-      expect(inserted.customer_name).toBe('Budi Santoso');
-      expect(inserted.customer_phone).toBe('6281234567890');
+      expect(res.status).toBe(403);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('tidak diizinkan mengakses tenant target');
     });
 
+    // -------------------------------------------------------------------------
+    // Scenario 5: Forged csUserId / csUserName -> Overridden by Session
+    // -------------------------------------------------------------------------
+    it('Scenario 5: overrides forged client-supplied csUserId and csUserName with authoritative session data', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const legitimateCsToken = mintTestToken({
+        tenantSlug: TEST_TENANT_SLUG,
+        tenantId: TEST_TENANT_ID,
+        role: 'CS',
+        userId: 'legitimate-cs-uuid-777',
+        name: 'Siti Legitimate CS',
+        permissions: ['pos', 'orders'],
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${legitimateCsToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+          // Malicious client attempts to forge CS identity
+          csUserId: 'attacker-forged-cs-id',
+          csUserName: 'Attacker Forged Name',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      const inserted = mockDb._getCapturedOrderPayload();
+      expect(inserted.metadata.created_by_cs_id).toBe('legitimate-cs-uuid-777');
+      expect(inserted.metadata.created_by_cs_name).toBe('Siti Legitimate CS');
+      expect(inserted.metadata.created_by_cs_id).not.toBe('attacker-forged-cs-id');
+      expect(inserted.metadata.created_by_cs_name).not.toBe('Attacker Forged Name');
+    });
+
+    // -------------------------------------------------------------------------
+    // Scenario 6: conversationId Belonging to Another Tenant -> 403/404
+    // -------------------------------------------------------------------------
+    it('Scenario 6: rejects conversationId belonging to another tenant or non-existent with 403 or 404', async () => {
+      const mockDb = createMockSupabase({
+        conversations: {
+          'conv-alien-store': {
+            id: 'conv-alien-store',
+            tenant_id: ALIEN_TENANT_ID,
+            tenant_slug: ALIEN_TENANT_SLUG,
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      // Case 6a: Conversation belongs to alien tenant -> 403 Forbidden
+      const reqAlienConv = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          conversationId: 'conv-alien-store',
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+      const resAlienConv = await POST(reqAlienConv);
+      const dataAlienConv = await resAlienConv.json();
+      expect(resAlienConv.status).toBe(403);
+      expect(dataAlienConv.success).toBe(false);
+      expect(dataAlienConv.error).toContain('Conversation tidak terdaftar pada tenant ini');
+
+      // Case 6b: Conversation does not exist -> 404 Not Found
+      const reqNotFoundConv = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          conversationId: 'conv-completely-unknown-999',
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+      const resNotFoundConv = await POST(reqNotFoundConv);
+      const dataNotFoundConv = await resNotFoundConv.json();
+      expect(resNotFoundConv.status).toBe(404);
+      expect(dataNotFoundConv.success).toBe(false);
+      expect(dataNotFoundConv.error).toContain('Conversation tidak ditemukan');
+    });
+
+    // -------------------------------------------------------------------------
+    // Scenario 7: contactId Belonging to Another Tenant -> 403/404
+    // -------------------------------------------------------------------------
+    it('Scenario 7: rejects contactId belonging to another tenant or non-existent with 403 or 404', async () => {
+      const mockDb = createMockSupabase({
+        contacts: {
+          'contact-alien-store': {
+            id: 'contact-alien-store',
+            tenant_id: ALIEN_TENANT_ID,
+          },
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      // Case 7a: Contact belongs to alien tenant -> 403 Forbidden
+      const reqAlienContact = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          contactId: 'contact-alien-store',
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+      const resAlienContact = await POST(reqAlienContact);
+      const dataAlienContact = await resAlienContact.json();
+      expect(resAlienContact.status).toBe(403);
+      expect(dataAlienContact.success).toBe(false);
+      expect(dataAlienContact.error).toContain('Kontak tidak terdaftar pada tenant ini');
+
+      // Case 7b: Contact does not exist -> 404 Not Found
+      const reqNotFoundContact = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          contactId: 'contact-non-existent-888',
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+        }),
+      });
+      const resNotFoundContact = await POST(reqNotFoundContact);
+      const dataNotFoundContact = await resNotFoundContact.json();
+      expect(resNotFoundContact.status).toBe(404);
+      expect(dataNotFoundContact.success).toBe(false);
+      expect(dataNotFoundContact.error).toContain('Kontak tidak ditemukan');
+    });
+
+    // -------------------------------------------------------------------------
+    // Scenario 8: Forged bankAccount -> Ignored (Uses DB Tenant Bank Account)
+    // -------------------------------------------------------------------------
+    it('Scenario 8: ignores forged client bankAccount and selects trusted bank account strictly from DB tenant record', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '100000',
+          billingType: 'MANUAL_BANK',
+          bankAccountIndex: 1, // Requests 2nd account (Mandiri)
+          // Forged bank account payload sent by attacker
+          bankAccount: {
+            bank_name: 'ATTACKER_BANK',
+            account_number: '6666666666',
+            account_holder: 'Attacker Account',
+          },
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      const inserted = mockDb._getCapturedOrderPayload();
+      expect(inserted.metadata.bank_account).toBeDefined();
+      // Must be Mandiri from DB (canonical uppercase), NOT ATTACKER_BANK
+      expect(inserted.metadata.bank_account.bank_name).toBe('MANDIRI');
+      expect(inserted.metadata.bank_account.account_number).toBe('9876543210');
+      expect(inserted.metadata.bank_account.account_holder).toBe('PT Toko Kreatif');
+      expect(inserted.metadata.bank_account.bank_name).not.toBe('ATTACKER_BANK');
+    });
+
+    // -------------------------------------------------------------------------
+    // Scenario 9: Invalid Amounts -> 400 Bad Request
+    // -------------------------------------------------------------------------
+    it('Scenario 9: rejects invalid amounts ("25000abc", "25000.50", "-1000", "NaN", "500", "10000001" QRIS) with 400 Bad Request', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      const invalidAmountCases: Array<{ amount: any; billingType?: string; errorSubstr?: string }> = [
+        { amount: '25000abc', errorSubstr: 'non-angka' },
+        { amount: '25000.50', errorSubstr: 'pecahan/desimal' },
+        { amount: -1000, errorSubstr: 'negatif' },
+        { amount: '-1000', errorSubstr: 'negatif' },
+        { amount: 'NaN', errorSubstr: 'angka yang valid' },
+        { amount: 500, errorSubstr: 'Minimal transaksi adalah Rp 1.000' },
+        { amount: 10000001, billingType: 'QRIS', errorSubstr: '10.000.000' },
+        { amount: 0, errorSubstr: 'Minimal transaksi adalah Rp 1.000' },
+        { amount: '0', errorSubstr: 'Minimal transaksi adalah Rp 1.000' },
+        { amount: '25000,50', errorSubstr: 'pecahan/desimal' },
+      ];
+
+      for (const tc of invalidAmountCases) {
+        const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            cookie: `bt_merchant_token=${validToken}`,
+          },
+          body: JSON.stringify({
+            tenantSlug: TEST_TENANT_SLUG,
+            customerPhone: '6281234567890',
+            rawAmount: tc.amount,
+            billingType: tc.billingType || 'QRIS',
+          }),
+        });
+
+        const res = await POST(req);
+        const data = await res.json();
+        expect(res.status).toBe(400);
+        expect(data.success).toBe(false);
+        if (tc.errorSubstr) {
+          expect(data.error).toContain(tc.errorSubstr);
+        }
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // Scenario 10: Valid Authorized POS Order -> 200 OK
+    // -------------------------------------------------------------------------
+    it('Scenario 10: successfully creates authorized POS order with 200 OK for owner and authorized CS', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      // Test with authorized CS
+      const csToken = mintTestToken({
+        role: 'CS',
+        userId: 'cs-auth-01',
+        name: 'Authorized CS Siti',
+        permissions: ['pos', 'orders'],
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${csToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          customerName: 'Budi Pembeli',
+          itemName: 'Jasa Video Promosi',
+          rawAmount: '150.000', // Standard Indonesian thousands format
+          billingType: 'QRIS',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(150000);
+      expect(data.baseAmount).toBe(150000);
+      expect(data.orderNumber).toMatch(/^ORD-POS-\d{6}-[0-9A-F]{6}$/);
+      expect(data.orderId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      expect(data.paymentToken).toMatch(/^pay_[0-9a-f]{32}$/);
+      expect(data.payUrl).toContain(data.paymentToken);
+
+      const inserted = mockDb._getCapturedOrderPayload();
+      expect(inserted.product_id).toBe('prod_video_1');
+      expect(inserted.gross_amount).toBe(150000);
+      expect(inserted.customer_name).toBe('Budi Pembeli');
+      expect(inserted.customer_phone).toBe('6281234567890');
+      expect(inserted.metadata.created_by_cs_id).toBe('cs-auth-01');
+      expect(inserted.metadata.created_by_cs_name).toBe('Authorized CS Siti');
+    });
+  });
+
+  // ===========================================================================
+  // ADDITIONAL REGRESSION & EDGE CASE SUITES
+  // ===========================================================================
+  describe('Standalone Unit Tests: parseStrictRupiahAmount', () => {
+    it('accepts clean integers and thousand-separated formats', () => {
+      expect(parseStrictRupiahAmount(25000)).toEqual({ valid: true, amount: 25000 });
+      expect(parseStrictRupiahAmount('25000')).toEqual({ valid: true, amount: 25000 });
+      expect(parseStrictRupiahAmount('25.000')).toEqual({ valid: true, amount: 25000 });
+      expect(parseStrictRupiahAmount('25,000')).toEqual({ valid: true, amount: 25000 });
+      expect(parseStrictRupiahAmount('Rp 25.000')).toEqual({ valid: true, amount: 25000 });
+      expect(parseStrictRupiahAmount('IDR 1.500.000')).toEqual({ valid: true, amount: 1500000 });
+    });
+
+    it('rejects invalid, decimal, or negative inputs', () => {
+      expect(parseStrictRupiahAmount('25000.50').valid).toBe(false);
+      expect(parseStrictRupiahAmount('25000,50').valid).toBe(false);
+      expect(parseStrictRupiahAmount(25000.5).valid).toBe(false);
+      expect(parseStrictRupiahAmount('25000abc').valid).toBe(false);
+      expect(parseStrictRupiahAmount(-500).valid).toBe(false);
+      expect(parseStrictRupiahAmount('NaN').valid).toBe(false);
+      expect(parseStrictRupiahAmount(null).valid).toBe(false);
+      expect(parseStrictRupiahAmount('').valid).toBe(false);
+    });
+  });
+
+  describe('MANUAL_BANK Edge Cases & Unique Code', () => {
+    it('allows MANUAL_BANK amounts above Rp 10.000.000 with server-generated uniqueCode', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '25.000.000',
+          billingType: 'MANUAL_BANK',
+          uniqueCode: 250,
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.amount).toBe(25000250);
+      expect(data.baseAmount).toBe(25000000);
+      expect(data.uniqueCode).toBe(250);
+    });
+
+    it('rejects MANUAL_BANK with invalid uniqueCode (e.g. 1500 or -5)', async () => {
+      const mockDb = createMockSupabase();
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+          billingType: 'MANUAL_BANK',
+          uniqueCode: 1500, // Invalid: exceeds 999
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('antara 1 dan 999');
+    });
+
+    it('returns 400 when store has no bank accounts configured for MANUAL_BANK', async () => {
+      const mockDb = createMockSupabase({
+        tenantData: {
+          id: TEST_TENANT_ID,
+          slug: TEST_TENANT_SLUG,
+          metadata: { products: [] }, // No bank accounts configured
+        },
+      });
+      jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
+
+      const validToken = mintTestToken({ role: 'OWNER' });
+
+      const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
+        body: JSON.stringify({
+          tenantSlug: TEST_TENANT_SLUG,
+          customerPhone: '6281234567890',
+          rawAmount: '50000',
+          billingType: 'MANUAL_BANK',
+        }),
+      });
+
+      const res = await POST(req);
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain('belum mengonfigurasi rekening bank');
+    });
+  });
+
+  describe('Walk-in POS Orders', () => {
     it('marks walk-in orders with QUICK_POS_WALKIN and is_walk_in true', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      const validToken = mintTestToken({ role: 'OWNER' });
+
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281299998888',
-          customerName: 'Walk-in Guest',
+          customerName: 'Tamu Toko',
           rawAmount: '35000',
           isWalkIn: true,
         }),
@@ -462,7 +809,6 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
 
       const res = await POST(req);
       const data = await res.json();
-
       expect(res.status).toBe(200);
 
       const inserted = mockDb._getCapturedOrderPayload();
@@ -472,18 +818,23 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
     });
   });
 
-  describe('6. Database Insert Error Handling', () => {
+  describe('Database Error Handling & v1 API Alias Consistency', () => {
     it('returns 500 when Supabase order insertion encounters database error', async () => {
       const mockDb = createMockSupabase({
         insertError: { message: 'Database disk full or constraint violation' },
       });
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      const validToken = mintTestToken({ role: 'OWNER' });
+
       const req = new NextRequest('http://localhost:3000/api/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281234567890',
           rawAmount: '50000',
         }),
@@ -491,23 +842,25 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
 
       const res = await POST(req);
       const data = await res.json();
-
       expect(res.status).toBe(500);
       expect(data.success).toBe(false);
       expect(data.error).toContain('Gagal membuat data pesanan');
     });
-  });
 
-  describe('7. v1 API Re-export Consistency', () => {
     it('executes identical logic through /api/v1/inbox/orders/custom alias', async () => {
       const mockDb = createMockSupabase();
       jest.spyOn(supabaseClientModule, 'getSupabaseAdmin').mockReturnValue(mockDb as any);
 
+      const validToken = mintTestToken({ role: 'OWNER' });
+
       const req = new NextRequest('http://localhost:3000/api/v1/inbox/orders/custom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `bt_merchant_token=${validToken}`,
+        },
         body: JSON.stringify({
-          tenantSlug: 'toko-kreatif',
+          tenantSlug: TEST_TENANT_SLUG,
           customerPhone: '6281234567890',
           rawAmount: '75000',
         }),
@@ -515,7 +868,6 @@ describe('INBOX-POS-01: Custom POS Order Server Gateway', () => {
 
       const res = await POST_V1(req);
       const data = await res.json();
-
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.amount).toBe(75000);

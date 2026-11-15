@@ -23,6 +23,9 @@ export interface MerchantSessionPayload {
   userId?: string;
   name?: string;
   phone?: string;
+  permissions?: string[];
+  access_level?: string;
+  canCreateOrders?: boolean;
   iat: number;
   exp: number;
   nonce: string;

@@ -99,11 +99,14 @@ export function signMerchantSessionToken(
   params: {
     tenantSlug: string;
     tenantId?: string;
-    role?: 'MERCHANT' | 'OWNER' | 'CS' | 'OPERATOR';
+    role?: 'MERCHANT' | 'OWNER' | 'CS' | 'OPERATOR' | string;
     userId?: string;
     name?: string;
     phone?: string;
     ttlMs?: number; // default: 30 days
+    permissions?: string[];
+    access_level?: string;
+    canCreateOrders?: boolean;
   },
   customSecret?: string
 ): string {
@@ -114,10 +117,13 @@ export function signMerchantSessionToken(
   const payload: MerchantSessionPayload = {
     tenantSlug: params.tenantSlug.toLowerCase().trim(),
     tenantId: params.tenantId?.trim(),
-    role: params.role || 'MERCHANT',
+    role: (params.role as any) || 'MERCHANT',
     userId: params.userId?.trim(),
     name: params.name?.trim(),
     phone: params.phone?.trim(),
+    ...(params.permissions ? { permissions: params.permissions } : {}),
+    ...(params.access_level ? { access_level: params.access_level } : {}),
+    ...(params.canCreateOrders !== undefined ? { canCreateOrders: params.canCreateOrders } : {}),
     iat: now,
     exp: now + ttl,
     nonce: crypto.randomBytes(12).toString('hex'),

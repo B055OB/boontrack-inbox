@@ -1,2 +1,2 @@
 export const dynamic = 'force-dynamic';
-export { POST } from '@/app/api/inbox/orders/custom/route';
+export { POST, parseStrictRupiahAmount } from '@/app/api/inbox/orders/custom/route';
