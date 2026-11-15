@@ -15,8 +15,68 @@ import { getStrictDisposableTestDatabaseUrl } from '@/workforce-web/lib/workforc
 // 1. Snapshot initial environment and bind Commerce route variables to disposable container
 const initialEnv = { ...process.env };
 
-const ephemeralSupabaseUrl =
-  process.env.DISPOSABLE_POSTGREST_URL || process.env.WORKFORCE_SUPABASE_URL || 'http://127.0.0.1:3000';
+/**
+ * Synchronous fail-closed validator for ephemeral PostgREST loopback gateway.
+ * Strictly rejects any remote or cloud endpoint, invalid ports, non-http protocol,
+ * or credentials before any Supabase client construction can occur.
+ */
+export function validateAndResolveDisposablePostgrestEndpoint(rawUrl?: string): string {
+  const target =
+    rawUrl !== undefined && String(rawUrl).trim() !== ''
+      ? String(rawUrl).trim()
+      : 'http://127.0.0.1:3000';
+
+  let parsed: URL;
+  try {
+    parsed = new URL(target);
+  } catch (err: any) {
+    throw new Error(`[FAIL-CLOSED POSTGREST GUARD] Invalid URL syntax: '${target}'. Error: ${err?.message || err}`);
+  }
+
+  // 1. Protocol is exactly 'http:'
+  if (parsed.protocol !== 'http:') {
+    throw new Error(
+      `[FAIL-CLOSED POSTGREST GUARD] Disallowed protocol '${parsed.protocol}'. Protocol must be strictly 'http:'. Cloud/HTTPS endpoints are forbidden.`
+    );
+  }
+
+  // 2. Hostname is strictly 'localhost', '127.0.0.1', or IPv6 loopback '[::1]'
+  const allowedHosts = ['localhost', '127.0.0.1', '[::1]'];
+  if (!allowedHosts.includes(parsed.hostname)) {
+    throw new Error(
+      `[FAIL-CLOSED POSTGREST GUARD] Non-loopback hostname rejected: '${parsed.hostname}'. ` +
+        `PostgREST integration endpoint must strictly be loopback (localhost, 127.0.0.1, or [::1]). Cloud or remote endpoints are forbidden.`
+    );
+  }
+
+  // 3. Port is the documented local PostgREST gateway port '3000'
+  if (parsed.port !== '3000') {
+    throw new Error(
+      `[FAIL-CLOSED POSTGREST GUARD] Disallowed port '${parsed.port || 'default'}'. Endpoint must strictly use port 3000.`
+    );
+  }
+
+  // 4. Username and password are absent
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      `[FAIL-CLOSED POSTGREST GUARD] Credentials detected in loopback URL. Username and password must be absent.`
+    );
+  }
+
+  return parsed.origin;
+}
+
+export function createValidatedPostgrestClient(
+  rawUrl: string | undefined,
+  serviceKey: string
+): SupabaseClient {
+  const validatedUrl = validateAndResolveDisposablePostgrestEndpoint(rawUrl);
+  return createRealSupabaseClient(validatedUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+const ephemeralSupabaseUrl = validateAndResolveDisposablePostgrestEndpoint(process.env.DISPOSABLE_POSTGREST_URL);
 const ephemeralServiceKey =
   process.env.DISPOSABLE_POSTGREST_SERVICE_ROLE_KEY ||
   process.env.WORKFORCE_SUPABASE_SERVICE_ROLE_KEY ||
@@ -39,9 +99,10 @@ process.env.BOONTRACK_HMAC_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999
 process.env.BOONTRACK_SESSION_SECRET = 'test_ci_secure_hmac_secret_for_pipeline_999';
 
 // Option 2: Provide a real SupabaseClient connected to the local disposable PostgREST gateway (port 3000)
-const realPostgrestAdmin: SupabaseClient = createRealSupabaseClient(ephemeralSupabaseUrl, ephemeralServiceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+const realPostgrestAdmin: SupabaseClient = createValidatedPostgrestClient(
+  process.env.DISPOSABLE_POSTGREST_URL,
+  ephemeralServiceKey
+);
 
 jest.mock('@/lib/supabaseClient', () => {
   return {
@@ -1016,5 +1077,90 @@ describe('BWM Gate 1 Round 3I — API Authorization Convergence & Role-Safe Auth
 
     await pgClient.query('RESET ROLE');
     await pgClient.query('RESET request.jwt.claims');
+  });
+
+  describe('BWM Fail-Closed PostgREST Guard (Negative Tests)', () => {
+    test('Supabase cloud URLs are rejected', () => {
+      const cloudUrls = [
+        'https://tjkbgxrckaocgosvmzmj.supabase.co',
+        'https://mpluzajlzpregmjwpjqr.supabase.co',
+        'https://xkhqirhurnjqglmajghn.supabase.co',
+        'https://any-project.supabase.co',
+        'http://tjkbgxrckaocgosvmzmj.supabase.co:3000',
+      ];
+      for (const url of cloudUrls) {
+        expect(() => validateAndResolveDisposablePostgrestEndpoint(url)).toThrow(
+          /\[FAIL-CLOSED POSTGREST GUARD\]/
+        );
+      }
+    });
+
+    test('A remote hostname is rejected', () => {
+      const remoteUrls = [
+        'http://remote.host:3000',
+        'http://192.168.1.100:3000',
+        'http://10.0.0.1:3000',
+        'http://boontrack.com:3000',
+        'http://internal.corp:3000',
+      ];
+      for (const url of remoteUrls) {
+        expect(() => validateAndResolveDisposablePostgrestEndpoint(url)).toThrow(
+          /\[FAIL-CLOSED POSTGREST GUARD\] Non-loopback hostname rejected/
+        );
+      }
+    });
+
+    test('An unexpected local port is rejected', () => {
+      const badPortUrls = [
+        'http://127.0.0.1:8080',
+        'http://localhost:5432',
+        'http://127.0.0.1:3001',
+        'http://127.0.0.1',
+        'http://localhost',
+        'http://[::1]:8000',
+      ];
+      for (const url of badPortUrls) {
+        expect(() => validateAndResolveDisposablePostgrestEndpoint(url)).toThrow(
+          /\[FAIL-CLOSED POSTGREST GUARD\] Disallowed port/
+        );
+      }
+    });
+
+    test('Missing disposable PostgREST configuration uses only the documented local default', () => {
+      const savedWorkforceUrl = process.env.WORKFORCE_SUPABASE_URL;
+      try {
+        process.env.WORKFORCE_SUPABASE_URL = 'https://tjkbgxrckaocgosvmzmj.supabase.co';
+        expect(validateAndResolveDisposablePostgrestEndpoint(undefined)).toBe('http://127.0.0.1:3000');
+        expect(validateAndResolveDisposablePostgrestEndpoint('')).toBe('http://127.0.0.1:3000');
+        expect(validateAndResolveDisposablePostgrestEndpoint('   ')).toBe('http://127.0.0.1:3000');
+        expect(validateAndResolveDisposablePostgrestEndpoint(undefined)).not.toContain('supabase.co');
+      } finally {
+        process.env.WORKFORCE_SUPABASE_URL = savedWorkforceUrl;
+      }
+    });
+
+    test('Rejected URLs fail before SupabaseClient construction', () => {
+      const badEndpoints = [
+        'https://tjkbgxrckaocgosvmzmj.supabase.co',
+        'http://remote-server.com:3000',
+        'http://127.0.0.1:9999',
+        'http://admin:secret@127.0.0.1:3000',
+        'not_a_valid_url',
+      ];
+
+      for (const badUrl of badEndpoints) {
+        let clientCreated = false;
+        expect(() => {
+          validateAndResolveDisposablePostgrestEndpoint(badUrl);
+          clientCreated = true;
+          createRealSupabaseClient(badUrl, 'dummy-key');
+        }).toThrow(/\[FAIL-CLOSED POSTGREST GUARD\]/);
+        expect(clientCreated).toBe(false);
+
+        expect(() => createValidatedPostgrestClient(badUrl, 'dummy-key')).toThrow(
+          /\[FAIL-CLOSED POSTGREST GUARD\]/
+        );
+      }
+    });
   });
 });
