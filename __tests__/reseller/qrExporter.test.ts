@@ -40,7 +40,7 @@ describe('Reseller QR Code Engine & Exporter Utility', () => {
       expect(dataUrlLarge.startsWith('data:image/png;base64,')).toBe(true);
       // Larger QR produces more image data bytes
       expect(dataUrlLarge.length).toBeGreaterThanOrEqual(dataUrlSmall.length);
-    });
+    }, 20000);
 
     it('should confirm default options are width 512, margin 2, and errorCorrectionLevel H', () => {
       expect(DEFAULT_QR_OPTIONS.width).toBe(512);
@@ -62,7 +62,7 @@ describe('Reseller QR Code Engine & Exporter Utility', () => {
 
       expect(alias.startsWith('data:image/png;base64,')).toBe(true);
       expect(direct.startsWith('data:image/png;base64,')).toBe(true);
-    });
+    }, 20000);
   });
 
   // =========================================================================

@@ -24,13 +24,25 @@ describe('app.boontrack.com Root & Routing Boundaries', () => {
     expect(res.status).toBe(200);
   });
 
-  it('redirects unknown browser navigation path on app.boontrack.com to dashboard.boontrack.com', async () => {
-    const req = new NextRequest('https://app.boontrack.com/some-legacy-path', {
+  it('allows /margasari on app.boontrack.com to render civic demo', async () => {
+    const req = new NextRequest('https://app.boontrack.com/margasari', {
       headers: { host: 'app.boontrack.com' },
     });
     const res = await middleware(req);
     expect(res).toBeDefined();
-    expect(res.status).toBe(301);
-    expect(res.headers.get('location')).toBe('https://dashboard.boontrack.com/some-legacy-path');
+    expect(res.headers.get('location')).toBeNull();
+    const rewriteHeader = res.headers.get('x-middleware-rewrite');
+    expect(rewriteHeader).toContain('/margasari');
+  });
+
+  it('safely renders 404 for unknown browser navigation path on app.boontrack.com (never redirects to dashboard/shop)', async () => {
+    const req = new NextRequest('https://app.boontrack.com/some-unknown-path', {
+      headers: { host: 'app.boontrack.com' },
+    });
+    const res = await middleware(req);
+    expect(res).toBeDefined();
+    expect(res.headers.get('location')).toBeNull();
+    const rewriteHeader = res.headers.get('x-middleware-rewrite');
+    expect(rewriteHeader).toContain('/404');
   });
 });

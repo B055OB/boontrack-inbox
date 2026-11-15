@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
     const resolvedTenantSlug = String(tenantRow.slug || '');
 
     // Auth Guard & Tenant Isolation
-    const isAuthorized = verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
+    const isAuthorized = await verifyTenantAuth(req, resolvedTenantSlug, resolvedTenantUuid);
     if (!isAuthorized) {
       return NextResponse.json(
         {

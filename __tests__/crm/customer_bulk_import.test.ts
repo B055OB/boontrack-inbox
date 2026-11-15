@@ -13,6 +13,7 @@ import { CustomerBulkImportService } from '@/lib/services/customer-bulk-import.s
 import { OrderBulkImportService } from '@/lib/services/order-bulk-import.service';
 import { POST as customerBulkImportRoute } from '@/app/api/customers/bulk-import/route';
 import { GET as customerTemplateRoute } from '@/app/api/customers/bulk-import/template/route';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import * as XLSX from 'xlsx';
 import type { NextRequest } from 'next/server';
 
@@ -346,7 +347,18 @@ describe('Customer & Meta Custom Audience Bulk Import Module', () => {
     it('processes JSON payload via POST /api/customers/bulk-import', async () => {
       const req = {
         headers: new Headers({ 'content-type': 'application/json' }),
-        cookies: { get: () => undefined },
+        cookies: {
+          get: (name?: string) =>
+            name === 'bt_merchant_token'
+              ? {
+                  value: signMerchantSessionToken({
+                    tenantId: 'tenant-uuid-demo',
+                    tenantSlug: 'demo-tenant',
+                    role: 'OWNER',
+                  }),
+                }
+              : undefined,
+        },
         json: async () => ({
           tenantSlug: 'demo-tenant',
           customers: [

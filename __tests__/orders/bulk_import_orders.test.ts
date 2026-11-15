@@ -7,6 +7,7 @@ import { OrderBulkImportService } from '@/lib/services/order-bulk-import.service
 import { POST as bulkImportRoute } from '@/app/api/orders/bulk-import/route';
 import { GET as templateRoute } from '@/app/api/orders/bulk-import/template/route';
 import { ContactService } from '@/lib/crm/contact.service';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 import type { NextRequest } from 'next/server';
 
 interface MockTenant {
@@ -475,7 +476,18 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
       const req = {
         headers: { get: () => 'application/json' },
         json: async () => ({ orders: [] }),
-        cookies: { get: () => undefined },
+        cookies: {
+          get: (name?: string) =>
+            name === 'bt_merchant_token'
+              ? {
+                  value: signMerchantSessionToken({
+                    tenantId: '11111111-2222-3333-4444-555555555555',
+                    tenantSlug: 'toko-berkah',
+                    role: 'OWNER',
+                  }),
+                }
+              : undefined,
+        },
       } as unknown as NextRequest;
 
       const res = await bulkImportRoute(req);
@@ -502,7 +514,18 @@ describe('Bulk Import Pesanan (CSV/XLSX) dengan Auto Sync Meta CAPI & Laporan Ke
           ],
           syncMetaCapi: false,
         }),
-        cookies: { get: () => undefined },
+        cookies: {
+          get: (name?: string) =>
+            name === 'bt_merchant_token'
+              ? {
+                  value: signMerchantSessionToken({
+                    tenantId: '11111111-2222-3333-4444-555555555555',
+                    tenantSlug: 'toko-berkah',
+                    role: 'OWNER',
+                  }),
+                }
+              : undefined,
+        },
       } as unknown as NextRequest;
 
       const res = await bulkImportRoute(req);

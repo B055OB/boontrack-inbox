@@ -302,8 +302,8 @@ describe('P0 Adversarial Tenant Authorization & Isolation Suite', () => {
     });
   });
 
-  describe('6. Studio Desk Unauthenticated Redirect Guard', () => {
-    it('redirects unauthenticated visitor to /login when requesting studio.boontrack.com/desk', async () => {
+  describe('6. Studio Desk Stable URL & Isolation Guard', () => {
+    it('rewrites unauthenticated visitor internally to /studio/desk without external redirect to /login', async () => {
       jest.spyOn(merchantSessionEdgeModule, 'extractMerchantSessionToken').mockReturnValue('');
       jest.spyOn(merchantSessionEdgeModule, 'verifyMerchantSessionToken').mockResolvedValue({ valid: false } as any);
 
@@ -316,8 +316,9 @@ describe('P0 Adversarial Tenant Authorization & Isolation Suite', () => {
 
       const res = await middleware(req);
 
-      expect(res.status).toBe(302);
-      expect(res.headers.get('location')).toContain('/login');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('location')).toBeNull();
+      expect(res.headers.get('x-middleware-rewrite')).toContain('/studio/desk');
     });
   });
 });

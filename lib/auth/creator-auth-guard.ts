@@ -14,6 +14,7 @@
 
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { verifyHostSessionToken } from '@/lib/auth/host-session';
 
 export interface CreatorAuthResult {
   authorized: boolean;
@@ -90,6 +91,7 @@ export function extractAuthTokens(req: Request | NextRequest) {
     bearerToken = authHeader.trim();
   }
 
+  let signedCreatorToken = '';
   let cookieSbToken = '';
   let cookieCreatorHandle = '';
   let cookieCreatorSession = '';
@@ -97,6 +99,10 @@ export function extractAuthTokens(req: Request | NextRequest) {
 
   if ('cookies' in req && typeof (req as any).cookies?.get === 'function') {
     const nextReq = req as NextRequest;
+    signedCreatorToken =
+      nextReq.cookies.get('__Host-bt_creator_session')?.value ||
+      nextReq.cookies.get('bt_creator_session')?.value ||
+      '';
     cookieSbToken = nextReq.cookies.get('sb-access-token')?.value || '';
     if (!cookieSbToken) {
       for (const c of nextReq.cookies.getAll()) {
@@ -120,6 +126,9 @@ export function extractAuthTokens(req: Request | NextRequest) {
   } else {
     // Standard Request headers
     const cookieHeader = req.headers.get('cookie') || '';
+    const matchSigned = cookieHeader.match(/(?:__Host-)?bt_creator_session=([^;]+)/i);
+    if (matchSigned) signedCreatorToken = decodeURIComponent(matchSigned[1]);
+
     const matchSb = cookieHeader.match(/sb-access-token=([^;]+)/i);
     if (matchSb) cookieSbToken = decodeURIComponent(matchSb[1]);
 
@@ -151,6 +160,7 @@ export function extractAuthTokens(req: Request | NextRequest) {
 
   return {
     token,
+    signedCreatorToken,
     creatorHandleCookie: cleanHandle(cookieCreatorHandle || cookieCreatorSession),
     merchantStoreCookie: cleanHandle(cookieMerchantStore),
   };
@@ -158,7 +168,15 @@ export function extractAuthTokens(req: Request | NextRequest) {
 
 /**
  * P1: Anti-IDOR & Otorisasi Sesi Server untuk Kreator
- * Memvalidasi apakah requester berhak mengakses/mengubah data milik targetHandle atau targetTenantId.
+ * Memvalidasi apakah requester memiliki token sesi kreator yang sah dan berhak mengakses/mengubah target.
+ *
+ * MANDAT CTO FINAL (PR #95):
+ * 1. Wajib memiliki cryptographic signed Creator host-session token (__Host-bt_creator_session / bt_creator_session atau Bearer signed token).
+ * 2. Generic Supabase bearer token dan sb-* cookie DILARANG KERAS mengotorisasi API Creator (Fail-closed 401).
+ * 3. User-editable user_metadata DILARANG KERAS memberikan hak akses (Fail-closed 401).
+ * 4. DILARANG fallback ke affiliate ADMIN atau generic Supabase ownership check.
+ * 5. Anti-IDOR validasi ketat: target harus sesuai tsl (handle), tid (tenantId), atau sub (userId) dari signed token (atau ADMIN/SUPERADMIN).
+ * 6. Wrong-product (Studio / Shop merchant session), expired, atau revoked token -> Fail-closed 401.
  */
 export async function verifyCreatorSession(
   req: Request | NextRequest,
@@ -174,7 +192,7 @@ export async function verifyCreatorSession(
     };
   }
 
-  const { token, creatorHandleCookie } = extractAuthTokens(req);
+  const { token, signedCreatorToken, creatorHandleCookie } = extractAuthTokens(req);
 
   // Security Guard: SUPABASE_SERVICE_ROLE_KEY is strictly rejected as a human bearer token
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -186,135 +204,56 @@ export async function verifyCreatorSession(
     };
   }
 
-  const supabase = options.supabaseClient || getSupabaseAdmin();
-  if (!supabase) {
-    return {
-      authorized: false,
-      errorStatus: 401,
-      errorMessage: 'Unauthorized: Database engine tidak tersedia.',
-    };
-  }
+  // ── 1. Ekstrak Candidate Signed Creator Token ──
+  // Signed Creator Token dapat berasal dari cookie (__Host-bt_creator_session / bt_creator_session)
+  // atau dari header Authorization: Bearer <signed_token> / x-creator-token: <signed_token>.
+  const candidateToken = signedCreatorToken || (token && !token.startsWith('sb-') ? token : '');
 
-  // ── Skenario 1: Verifikasi via Supabase Auth Session Token (auth.uid()) ──
-  if (token) {
-    const { data: authData, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !authData?.user) {
+  if (candidateToken) {
+    const verification = await verifyHostSessionToken(candidateToken, 'creator');
+    if (!verification.valid || !verification.payload) {
       return {
         authorized: false,
         errorStatus: 401,
-        errorMessage: 'Unauthorized: Token autentikasi tidak valid atau telah kedaluwarsa.',
+        errorMessage: `Unauthorized: Token sesi kreator tidak valid (${verification.error || 'INVALID_SESSION'}). Silakan login kembali.`,
       };
     }
 
-    const user = authData.user;
-    const userId = user.id;
-    const userEmail = (user.email || '').trim().toLowerCase();
-    const appRole = String(user.app_metadata?.role || user.user_metadata?.role || '').trim().toUpperCase();
-
-    // 1. Admin Bypass
-    if (appRole === 'ADMIN' || appRole === 'SUPERADMIN') {
-      return {
-        authorized: true,
-        role: 'ADMIN',
-        userId,
-        email: userEmail,
-        handle: target,
-      };
-    }
-
-    // Check affiliates table for ADMIN role
-    const { data: affAdmin } = await supabase
-      .from('affiliates')
-      .select('role')
-      .or(`id.eq.${userId},email.eq.${userEmail}`)
-      .maybeSingle();
-
-    if (affAdmin && (String(affAdmin.role).toUpperCase() === 'ADMIN' || String(affAdmin.role).toUpperCase() === 'SUPERADMIN')) {
-      return {
-        authorized: true,
-        role: 'ADMIN',
-        userId,
-        email: userEmail,
-        handle: target,
-      };
-    }
-
-    // 2. Ownership Verification against creator_profiles and tenants (Anti-IDOR)
+    const payload = verification.payload;
     const baseTarget = target.replace(/_+$/, '');
+    const tokenSlug = (payload.tsl || '').toLowerCase().replace(/^@+/, '');
+    const baseTokenSlug = tokenSlug.replace(/_+$/, '');
+    const tokenTid = (payload.tid || '').toLowerCase();
+    const tokenSub = (payload.sub || '').toLowerCase();
 
-    // Check if target is a tenant_id UUID or matching profile
-    const { data: profile } = await supabase
-      .from('creator_profiles')
-      .select('id, handle, tenant_id')
-      .or(`handle.eq.${target},handle.eq.${baseTarget},tenant_id.eq.${target},id.eq.${target}`)
-      .limit(1)
-      .maybeSingle();
+    // Verifikasi Anti-IDOR: apakah requester adalah pemilik target atau platform admin
+    const isOwner =
+      tokenSlug === target ||
+      baseTokenSlug === baseTarget ||
+      tokenTid === target ||
+      tokenSub === target ||
+      payload.role === 'ADMIN' ||
+      payload.role === 'SUPERADMIN';
 
-    if (profile) {
-      const isOwner =
-        profile.tenant_id === userId ||
-        profile.id === userId ||
-        (userEmail && profile.handle === userEmail.split('@')[0]);
-
-      if (isOwner) {
-        return {
-          authorized: true,
-          role: 'CREATOR_OWNER',
-          userId,
-          email: userEmail,
-          handle: profile.handle,
-          tenantId: profile.tenant_id,
-        };
-      }
-    }
-
-    // Check against tenants table
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('id, slug, metadata')
-      .or(`slug.eq.${target},id.eq.${target}`)
-      .maybeSingle();
-
-    if (tenant) {
-      const isOwner =
-        tenant.id === userId ||
-        tenant.metadata?.user_id === userId ||
-        tenant.metadata?.owner_id === userId ||
-        (userEmail && tenant.metadata?.email === userEmail);
-
-      if (isOwner) {
-        return {
-          authorized: true,
-          role: 'CREATOR_OWNER',
-          userId,
-          email: userEmail,
-          handle: tenant.slug,
-          tenantId: tenant.id,
-        };
-      }
-    }
-
-    // Direct match: if target itself is the user's UUID
-    if (target === userId.toLowerCase()) {
+    if (isOwner) {
       return {
         authorized: true,
-        role: 'CREATOR_OWNER',
-        userId,
-        email: userEmail,
-        handle: target,
-        tenantId: userId,
+        role: payload.role as any,
+        userId: payload.sub,
+        handle: payload.tsl,
+        tenantId: payload.tid,
       };
     }
 
-    // User is authenticated, but trying to access/mutate someone else's resource -> 403 Forbidden!
+    // Token sah, namun mencoba mengakses target milik kreator/tenant lain -> HTTP 403 Forbidden Anti-IDOR
     return {
       authorized: false,
       errorStatus: 403,
-      errorMessage: `Forbidden: Akun Anda (${userEmail || userId}) tidak memiliki izin mengakses atau mengubah data kreator '@${target}' (Anti-IDOR).`,
+      errorMessage: `Forbidden: Sesi kreator aktif (@${payload.tsl}) tidak memiliki hak akses terhadap target '@${target}' (Anti-IDOR).`,
     };
   }
 
-  // ── Skenario 2: Verifikasi via Creator Session Cookie ──
+  // ── 2. Plaintext Creator Cookie Guard (Zero Trust / Fail-Closed) ──
   if (creatorHandleCookie) {
     const baseTarget = target.replace(/_+$/, '');
     const isMatchingCookie =
@@ -330,45 +269,19 @@ export async function verifyCreatorSession(
       };
     }
 
-    // Verify that the cookie corresponds to a real existing profile in the database
-    const { data: profile } = await supabase
-      .from('creator_profiles')
-      .select('id, handle, tenant_id')
-      .or(`handle.eq.${creatorHandleCookie},handle.eq.${baseTarget}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (profile) {
-      return {
-        authorized: true,
-        role: 'CREATOR_COOKIE',
-        handle: profile.handle,
-        tenantId: profile.tenant_id,
-      };
-    }
-
-    // Check tenants
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('id, slug')
-      .eq('slug', creatorHandleCookie)
-      .maybeSingle();
-
-    if (tenant) {
-      return {
-        authorized: true,
-        role: 'CREATOR_COOKIE',
-        handle: tenant.slug,
-        tenantId: tenant.id,
-      };
-    }
+    // Plaintext cookie cannot authorize server endpoints -> Reject with 401
+    return {
+      authorized: false,
+      errorStatus: 401,
+      errorMessage: 'Unauthorized: Plaintext cookie dilarang untuk otorisasi server. Diperlukan signed token.',
+    };
   }
 
-  // ── Skenario 3: Fail-Closed: Tidak ada token atau sesi valid ──
+  // ── 3. Fail-Closed: Tolak generic Supabase Auth atau request tanpa token sah ──
   return {
     authorized: false,
     errorStatus: 401,
-    errorMessage: 'Unauthorized: Sesi atau token autentikasi tidak ditemukan. Silakan login kembali.',
+    errorMessage: 'Unauthorized: Sesi atau token autentikasi kreator tidak ditemukan. Diperlukan signed token.',
   };
 }
 

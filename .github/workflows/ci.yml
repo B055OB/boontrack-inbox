@@ -2,9 +2,9 @@ name: Inbox CI & Dispatch Test Suite
 
 on:
   push:
-    branches: [ main, 'ci/**' ]
+    branches: [ main, 'ci/**', 'sec/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'sec/**' ]
   workflow_dispatch:
 
 permissions:

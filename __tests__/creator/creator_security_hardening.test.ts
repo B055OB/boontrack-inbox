@@ -26,6 +26,8 @@ import {
   verifyTenantOwnerOrAdmin,
 } from '@/lib/auth/creator-auth-guard';
 import { getResellerWalletMetricsFromLedger } from '@/lib/attribution/reseller-attribution-service';
+import { signHostSessionToken } from '@/lib/auth/host-session';
+import { signMerchantSessionToken } from '@/lib/auth/merchant-session';
 
 describe('Priority A: Creator Security Hardening (P0 DTO Sanitization, P1 Anti-IDOR, Tenant Scoping & Canonical Ledger)', () => {
   const TENANT_CREATOR_A = '11111111-1111-1111-1111-111111111111';
@@ -205,113 +207,185 @@ describe('Priority A: Creator Security Hardening (P0 DTO Sanitization, P1 Anti-I
       expect(result.errorMessage).toContain('Unauthorized');
     });
 
-    it('rejects expired / invalid token with HTTP 401 Unauthorized', async () => {
+    it('1. Generic Supabase bearer token only -> 401 Unauthorized', async () => {
       const mockReq = {
         headers: new Headers({
-          authorization: 'Bearer invalid-token',
+          authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.generic.supabase.token',
         }),
       } as any;
 
-      const mockSupabase = createMockSupabase(null);
-
-      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B, {
-        supabaseClient: mockSupabase,
-      });
-
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
       expect(result.authorized).toBe(false);
       expect(result.errorStatus).toBe(401);
-      expect(result.errorMessage).toContain('tidak valid atau telah kedaluwarsa');
+      expect(result.errorMessage).toContain('Unauthorized');
     });
 
-    it('rejects cross-user mutation (IDOR: User A accessing User B) with HTTP 403 Forbidden', async () => {
+    it('2. Generic sb-access-token cookie only -> 401 Unauthorized', async () => {
       const mockReq = {
         headers: new Headers({
-          authorization: 'Bearer token-user-a',
+          cookie: 'sb-access-token=mock-generic-supabase-token',
         }),
       } as any;
 
-      // User A authenticated
-      const userA = {
-        id: USER_ID_CREATOR_A,
-        email: 'attacker.suzie@example.com',
-        app_metadata: { role: 'USER' },
-      };
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
+      expect(result.errorMessage).toContain('Unauthorized');
+    });
 
-      const mockSupabase = createMockSupabase(userA, { profileOwnerId: USER_ID_CREATOR_B });
+    it('3. Generic sb-* auth cookie array only -> 401 Unauthorized', async () => {
+      const mockReq = {
+        headers: new Headers({
+          cookie: 'sb-project-auth-token=' + encodeURIComponent(JSON.stringify(['mock-token-xyz'])),
+        }),
+      } as any;
 
-      // User A attempts to target User B ('victimcreator')
-      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B, {
-        supabaseClient: mockSupabase,
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
+      expect(result.errorMessage).toContain('Unauthorized');
+    });
+
+    it('4. User-editable ADMIN metadata cannot authorize (returns 401 Unauthorized)', async () => {
+      // Attacker passes bearer token claiming admin in user_metadata
+      const mockReq = {
+        headers: new Headers({
+          authorization: 'Bearer attacker-fake-token-with-admin-metadata',
+        }),
+      } as any;
+
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
+      expect(result.errorMessage).toContain('Unauthorized');
+    });
+
+    it('5. Valid signed Creator token for the correct tenant -> authorized (200 OK)', async () => {
+      const validToken = signHostSessionToken({
+        product: 'creator',
+        userId: USER_ID_CREATOR_B,
+        tenantId: TENANT_CREATOR_B,
+        tenantSlug: HANDLE_CREATOR_B,
+        role: 'CREATOR_OWNER',
       });
 
+      const mockReq = {
+        headers: new Headers({
+          cookie: `bt_creator_session=${validToken}`,
+        }),
+      } as any;
+
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(true);
+      expect(result.role).toBe('CREATOR_OWNER');
+      expect(result.userId).toBe(USER_ID_CREATOR_B);
+      expect(result.handle).toBe(HANDLE_CREATOR_B);
+      expect(result.tenantId).toBe(TENANT_CREATOR_B);
+    });
+
+    it('6. Valid signed Creator token targeting another tenant -> 403 Forbidden Anti-IDOR', async () => {
+      const tokenUserA = signHostSessionToken({
+        product: 'creator',
+        userId: USER_ID_CREATOR_A,
+        tenantId: TENANT_CREATOR_A,
+        tenantSlug: HANDLE_CREATOR_A,
+        role: 'CREATOR_OWNER',
+      });
+
+      // User A attempts to target User B ('victimcreator')
+      const mockReq = {
+        headers: new Headers({
+          cookie: `bt_creator_session=${tokenUserA}`,
+        }),
+      } as any;
+
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
       expect(result.authorized).toBe(false);
       expect(result.errorStatus).toBe(403);
       expect(result.errorMessage).toContain('Forbidden');
       expect(result.errorMessage).toContain('Anti-IDOR');
     });
 
-    it('rejects cross-user session cookie forgery with HTTP 403 Forbidden', async () => {
+    it('7. Plaintext creator_handle/creator_session matching target -> 401 Unauthorized', async () => {
       const mockReq = {
         headers: new Headers({
-          cookie: `creator_session=${HANDLE_CREATOR_A}`, // Cookie has User A
+          cookie: `creator_handle=${HANDLE_CREATOR_B}`,
         }),
       } as any;
 
-      const mockSupabase = createMockSupabase(null);
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
+      expect(result.errorMessage).toContain('Plaintext cookie dilarang');
+    });
 
-      // Attempt to target User B
-      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B, {
-        supabaseClient: mockSupabase,
-      });
+    it('7b. Plaintext creator_handle/creator_session targeting another tenant -> 403 Forbidden Anti-IDOR', async () => {
+      const mockReq = {
+        headers: new Headers({
+          cookie: `creator_session=${HANDLE_CREATOR_A}`,
+        }),
+      } as any;
 
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
       expect(result.authorized).toBe(false);
       expect(result.errorStatus).toBe(403);
       expect(result.errorMessage).toContain('Anti-IDOR');
     });
 
-    it('permits legitimate owner session matching target resource (200 OK)', async () => {
+    it('8. Wrong-product session (Studio session token presented) -> rejected with 401 Unauthorized', async () => {
+      const studioToken = signHostSessionToken({
+        product: 'studio',
+        userId: USER_ID_CREATOR_B,
+        tenantId: TENANT_CREATOR_B,
+        tenantSlug: HANDLE_CREATOR_B,
+        role: 'STUDIO_MEMBER',
+      });
+
       const mockReq = {
         headers: new Headers({
-          authorization: 'Bearer token-legit-owner',
+          cookie: `bt_creator_session=${studioToken}`,
         }),
       } as any;
 
-      const userB = {
-        id: USER_ID_CREATOR_B,
-        email: 'victim@example.com',
-        app_metadata: { role: 'USER' },
-      };
-
-      const mockSupabase = createMockSupabase(userB, { profileOwnerId: USER_ID_CREATOR_B });
-
-      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B, {
-        supabaseClient: mockSupabase,
-      });
-
-      expect(result.authorized).toBe(true);
-      expect(result.role).toBe('CREATOR_OWNER');
-      expect(result.userId).toBe(USER_ID_CREATOR_B);
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
     });
 
-    it('permits SUPERADMIN / ADMIN session for maintenance operations', async () => {
+    it('8b. Wrong-product session (Shop merchant token presented) -> rejected with 401 Unauthorized', async () => {
+      const merchantToken = signMerchantSessionToken({
+        tenantSlug: HANDLE_CREATOR_B,
+        tenantId: TENANT_CREATOR_B,
+        role: 'MERCHANT',
+      });
+
       const mockReq = {
         headers: new Headers({
-          authorization: 'Bearer token-superadmin',
+          cookie: `bt_creator_session=${merchantToken}`,
         }),
       } as any;
 
-      const adminUser = {
-        id: USER_ID_ADMIN,
-        email: 'cto@boontrack.com',
-        app_metadata: { role: 'SUPERADMIN' },
-      };
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
+      expect(result.authorized).toBe(false);
+      expect(result.errorStatus).toBe(401);
+    });
 
-      const mockSupabase = createMockSupabase(adminUser, { profileOwnerId: USER_ID_CREATOR_B });
-
-      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B, {
-        supabaseClient: mockSupabase,
+    it('permits SUPERADMIN / ADMIN session for maintenance operations with signed admin token', async () => {
+      const adminToken = signHostSessionToken({
+        product: 'creator',
+        userId: USER_ID_ADMIN,
+        tenantId: 'admin-tenant-id',
+        tenantSlug: 'boon',
+        role: 'ADMIN',
       });
 
+      const mockReq = {
+        headers: new Headers({
+          authorization: `Bearer ${adminToken}`,
+        }),
+      } as any;
+
+      const result = await verifyCreatorSession(mockReq, HANDLE_CREATOR_B);
       expect(result.authorized).toBe(true);
       expect(result.role).toBe('ADMIN');
       expect(result.userId).toBe(USER_ID_ADMIN);

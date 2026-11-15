@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { extractMerchantSessionToken, verifyMerchantSessionToken } from '@/lib/auth/merchant-session-edge';
+import { extractHostSessionToken, verifyHostSessionTokenEdge } from '@/lib/auth/host-session-edge';
 import { STOREFRONT_CSP_HEADER } from '@/lib/security/csp-headers';
+
+/**
+ * Open Redirect Defense: sanitize redirect targets to ensure only relative internal paths are allowed.
+ */
+function sanitizeRedirectTarget(target?: string | null): string {
+  if (!target || typeof target !== 'string') return '/';
+  const trimmed = target.trim();
+  if (
+    trimmed.startsWith('/') &&
+    !trimmed.startsWith('//') &&
+    !trimmed.includes('\\') &&
+    !trimmed.includes('://')
+  ) {
+    return trimmed;
+  }
+  return '/';
+}
 
 /**
  * ============================================================
@@ -85,18 +103,20 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
     return true;
   }
 
-  // shop.boontrack.com
-  if (hostClean === 'shop.boontrack.com') {
-    return true;
-  }
-
-  // creator.boontrack.com
-  if (hostClean === 'creator.boontrack.com') {
-    return true;
-  }
-
-  // studio.boontrack.com
-  if (hostClean === 'studio.boontrack.com' || hostClean.startsWith('studio.')) {
+  // Exact production host allowlists (CTO § 6A)
+  if (
+    hostClean === 'dashboard.boontrack.com' ||
+    hostClean === 'shop.boontrack.com' ||
+    hostClean === 'creator.boontrack.com' ||
+    hostClean === 'studio.boontrack.com' ||
+    hostClean === 'boontrack.com' ||
+    hostClean === 'www.boontrack.com' ||
+    hostClean === 'admin.boontrack.com' ||
+    hostClean === 'app.boontrack.com' ||
+    hostClean === 'manager.boontrack.com' ||
+    hostClean === 'desk.boontrack.com' ||
+    hostClean === 'affiliate.boontrack.com'
+  ) {
     return true;
   }
 
@@ -477,7 +497,8 @@ function extractSubdomain(hostWithPort: string): string | null {
   if (
     hostClean === 'localhost' ||
     hostClean === '127.0.0.1' ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostClean)
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostClean) ||
+    hostClean.endsWith('.vercel.app')
   ) {
     return null;
   }
@@ -536,7 +557,7 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 
 async function handleRouting(req: NextRequest, hostClean: string) {
   const pathname = req.nextUrl.pathname;
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const host = hostClean;
 
   // ── CACHE FLUSH TRIGGER (Authorized Internal Memory Cache Purge) ──
   // P0 Security Invariant: Zero URL secret, zero CRON_SECRET fallback, fail closed when missing
@@ -674,11 +695,16 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean.startsWith('studio.') ||
     subdomain === 'studio';
 
+  const isCreatorHost =
+    hostClean === 'creator.boontrack.com' ||
+    hostClean.startsWith('creator.') ||
+    subdomain === 'creator';
+
   // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
   // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
   // Non-dashboard hosts (such as boontrack.com/login, shop.boontrack.com/login) redirect 302 to canonical dashboard.
   if (pathname === '/login' || pathname.startsWith('/login/')) {
-    if (!isDashboardDomain && !isStudioHost) {
+    if (!isDashboardDomain && !isStudioHost && !isCreatorHost) {
       const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
       const targetBase = isLocal
         ? `${req.nextUrl.protocol}//dashboard.localhost${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`
@@ -692,8 +718,36 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   }
 
   if (isDashboardDomain) {
-    // A. Root frontpage (/) atau (/login) -> Internal rewrite langsung ke /login (URL browser tetap dashboard.boontrack.com)
-    if (pathname === '/' || pathname === '' || pathname === '/login' || pathname.startsWith('/login/')) {
+    // A. Stable Root Entry (https://dashboard.boontrack.com/ — CTO § 4 Shop Target)
+    // - Anonymous user: internal rewrite directly to /login (keeps browser URL at dashboard.boontrack.com/)
+    // - Authenticated merchant: resolve tenant from authoritative session, rewrite to /{tenantSlug}/dashboard
+    // - Authenticated super admin: rewrite to /admin
+    if (pathname === '/' || pathname === '') {
+      const token = extractMerchantSessionToken(req);
+      if (token) {
+        const verified = await verifyMerchantSessionToken(token);
+        if (verified.valid && verified.payload) {
+          const payload = verified.payload;
+          if ((payload.role as string) === 'ADMIN' || (payload.role as string) === 'SUPER_ADMIN') {
+            const url = req.nextUrl.clone();
+            url.pathname = '/admin';
+            return NextResponse.rewrite(url);
+          }
+          if (payload.tenantSlug) {
+            const url = req.nextUrl.clone();
+            url.pathname = `/${payload.tenantSlug}/dashboard`;
+            return NextResponse.rewrite(url);
+          }
+        }
+      }
+      // Anonymous user -> internal rewrite to /login (browser URL remains dashboard.boontrack.com/)
+      const url = req.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.rewrite(url);
+    }
+
+    // Explicit /login request on dashboard domain -> rewrite directly to /login
+    if (pathname === '/login' || pathname.startsWith('/login/')) {
       const url = req.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.rewrite(url);
@@ -739,7 +793,7 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       if (!(await hasValidTenantSession(req, tenantSlug))) {
         const loginUrl = req.nextUrl.clone();
         loginUrl.pathname = '/login';
-        const redirectTarget = pathname + (req.nextUrl.search || '');
+        const redirectTarget = sanitizeRedirectTarget(pathname + (req.nextUrl.search || ''));
         loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
         return NextResponse.redirect(loginUrl, 302);
       }
@@ -769,11 +823,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
     return NextResponse.next();
   }
-
-  const isCreatorHost =
-    hostClean === 'creator.boontrack.com' ||
-    hostClean.startsWith('creator.') ||
-    subdomain === 'creator';
 
   // ===========================================================================
   // 1. CANONICAL ENFORCEMENT: SEMUA ROUTE /@handle WAJIB KE creator.boontrack.com
@@ -855,10 +904,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return res;
     }
 
-    // 4. Creator Admin Workspace -> /creator/admin
+    // 4. Creator Admin Workspace -> /creator/admin (CTO § 4 Creator Target)
+    // - Anonymous: render Creator-specific login, keep browser URL /admin
+    // - Authenticated: render Creator Admin workspace at /admin
     if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      const creatorToken = extractHostSessionToken(req, 'creator');
+      const creatorVerified = creatorToken ? await verifyHostSessionTokenEdge(creatorToken, 'creator') : null;
+      const isCreatorAuth = Boolean(creatorVerified && creatorVerified.valid && creatorVerified.payload);
+
+      if (!isCreatorAuth) {
+        url.pathname = '/creator/login';
+        return NextResponse.rewrite(url);
+      }
+
       const adminSubpath = pathname === '/admin' ? '' : pathname.replace(/^\/admin/, '');
       url.pathname = `/creator/admin${adminSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // 4b. Explicit /login on Creator domain -> rewrite directly to /creator/login
+    if (pathname === '/login' || pathname.startsWith('/login/')) {
+      url.pathname = '/creator/login';
       return NextResponse.rewrite(url);
     }
 
@@ -869,11 +935,20 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.rewrite(url);
     }
 
-    // 6. Direct /creator/* pass-through if already rewritten
-    if (
-      pathname.startsWith('/creator/admin') ||
-      pathname.startsWith('/creator/register')
-    ) {
+    // 6. Direct /creator/admin on Creator domain -> require valid creator session or rewrite to login
+    if (pathname === '/creator/admin' || pathname.startsWith('/creator/admin/')) {
+      const creatorToken = extractHostSessionToken(req, 'creator');
+      const creatorVerified = creatorToken ? await verifyHostSessionTokenEdge(creatorToken, 'creator') : null;
+      const isCreatorAuth = Boolean(creatorVerified && creatorVerified.valid && creatorVerified.payload);
+
+      if (!isCreatorAuth) {
+        url.pathname = '/creator/login';
+        return NextResponse.rewrite(url);
+      }
+      return NextResponse.next();
+    }
+
+    if (pathname.startsWith('/creator/register')) {
       return NextResponse.next();
     }
 
@@ -915,12 +990,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
-    // Deteksi sesi login aktif Studio / Merchant (Host-only Studio session or signed merchant token)
-    const hasStudioAuth = Boolean(
-      req.cookies.get('__Host-bt_studio_session')?.value ||
-      req.cookies.get('bt_studio_session')?.value ||
-      (await hasValidTenantSession(req))
-    );
+    // Authoritative Edge Verification of Studio Session Token (P0 Security Hardening)
+    // ZERO trust on plaintext cookies. ZERO privilege inheritance from Shop merchant token.
+    const studioToken = extractHostSessionToken(req, 'studio');
+    const studioVerified = studioToken ? await verifyHostSessionTokenEdge(studioToken, 'studio') : null;
+    const hasStudioAuth = Boolean(studioVerified && studioVerified.valid && studioVerified.payload);
 
     // 1. Root / ->
     //    - Jika pengguna sudah login: redirect ke /desk (Workspace Dashboard)
@@ -945,13 +1019,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.next();
     }
 
-    // 2. /desk -> rewrite ke /studio/desk (Wajib Sesi Login Aktif)
+    // 2. /desk -> internal rewrite ke /studio/desk (CTO Mandate: Stable Entry URL https://studio.boontrack.com/desk)
+    //    - Anonymous user: renders Studio-specific login and gateway interface directly inside the Desk shell
+    //    - Authenticated Studio session: renders Studio Desk workspace
+    //    - Browser URL remains /desk in both cases (Zero external redirect to /login)
     if (pathname === '/desk' || pathname.startsWith('/desk/')) {
-      if (!hasStudioAuth) {
-        url.pathname = '/login';
-        url.search = `?redirectTo=${encodeURIComponent(pathname + (req.nextUrl.search || ''))}`;
-        return NextResponse.redirect(url, 302);
-      }
       const deskSubpath = pathname === '/desk' ? '' : pathname.replace(/^\/desk/, '');
       url.pathname = `/studio/desk${deskSubpath}`;
       return NextResponse.rewrite(url);
@@ -969,15 +1041,20 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.rewrite(url);
     }
 
-    // 4. /ugc-studio -> rewrite ke /studio/ugc-studio
+    // 4. Legacy internal module routes: /ugc-studio, /fcd-automator, /carousel-automator
+    // Compatibility: rewrite internally ke /studio/... while keeping normal navigation inside desk shell
     if (pathname === '/ugc-studio' || pathname.startsWith('/ugc-studio/')) {
       url.pathname = `/studio${pathname}`;
       return NextResponse.rewrite(url);
     }
 
-    // 4b. /fcd-automator -> rewrite ke /studio/fcd-automator
     if (pathname === '/fcd-automator' || pathname.startsWith('/fcd-automator/')) {
       url.pathname = `/studio${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
+    if (pathname === '/carousel-automator' || pathname.startsWith('/carousel-automator/')) {
+      url.pathname = `/studio/desk/carousel-automator`;
       return NextResponse.rewrite(url);
     }
 
@@ -989,6 +1066,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     // 6. Sub-path /[path] -> rewrite ke /studio/[path]
     url.pathname = `/studio${pathname}`;
     return NextResponse.rewrite(url);
+  }
+
+  // ── DIRECT CREATOR ADMIN ACCESS ON NON-CREATOR HOSTS ──
+  // Enforces canonical creator domain and cryptographic creator token verification
+  if (pathname === '/creator/admin' || pathname.startsWith('/creator/admin/')) {
+    const creatorToken = extractHostSessionToken(req, 'creator');
+    const creatorVerified = creatorToken ? await verifyHostSessionTokenEdge(creatorToken, 'creator') : null;
+    const isCreatorAuth = Boolean(creatorVerified && creatorVerified.valid && creatorVerified.payload);
+
+    const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
+    const targetHost = isLocal
+      ? `creator.localhost${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`
+      : 'creator.boontrack.com';
+    const targetBase = `${req.nextUrl.protocol}//${targetHost}`;
+
+    if (!isCreatorAuth) {
+      return NextResponse.redirect(new URL(`${targetBase}/login`, req.url), 302);
+    } else {
+      const adminSubpath = pathname === '/creator/admin' ? '' : pathname.replace(/^\/creator\/admin/, '');
+      return NextResponse.redirect(new URL(`${targetBase}/admin${adminSubpath}`, req.url), 302);
+    }
   }
 
   // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
@@ -1464,20 +1562,27 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       return NextResponse.redirect(url, 307);
     }
 
-    // 3f-1. Root Portal: Render B2B Enterprise & Vertical Solutions Landing Page
+    // 3f-1. Commercial Showcase: Render BoonTrack Apps — Custom Business Solutions Landing Page
     if (pathname === '/' || pathname === '') {
       const url = req.nextUrl.clone();
       url.pathname = '/app-portal';
       return NextResponse.rewrite(url);
     }
 
-    // 3f. Standard Browser Navigation, Legacy Portal & Unknown Paths -> 301 to Dashboard
-    const url = req.nextUrl.clone();
-    url.protocol = 'https:';
-    url.host = 'dashboard.boontrack.com';
-    url.pathname = pathname === '/app-portal' || pathname.startsWith('/app-portal/') ? '/' : pathname;
-    url.port = '';
-    return NextResponse.redirect(url, 301);
+    // 3f-2. Existing Live Demos: /gym and /margasari
+    if (pathname === '/gym' || pathname.startsWith('/gym/')) {
+      return NextResponse.next();
+    }
+    if (pathname === '/margasari' || pathname.startsWith('/margasari/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = pathname;
+      return NextResponse.rewrite(url);
+    }
+
+    // 3f-3. Unknown Browser Paths on app.boontrack.com: Safe not-found (DO NOT redirect to Dashboard or Shop)
+    const notFoundUrl = req.nextUrl.clone();
+    notFoundUrl.pathname = '/404';
+    return NextResponse.rewrite(notFoundUrl);
   }
 
 
@@ -1486,15 +1591,15 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
 
 
-  // ── 6. Root domain boontrack.com & www.boontrack.com pass-through ──
+  // ── 6. Root domain boontrack.com & www.boontrack.com (Canonical Short Links & Lander) ──
   if (
     hostClean === 'localhost' ||
     hostClean === 'boontrack.com' ||
-    hostClean === 'www.boontrack.com'
+    hostClean === 'www.boontrack.com' ||
+    hostClean.endsWith('.vercel.app')
   ) {
     const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
     const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();
-    const res = NextResponse.next();
 
     const rootNonStorefrontPrefixes = new Set([
       'api', '_next', 'static', 'branding', 'admin', 'dashboard', 'inbox', 'chat',
@@ -1507,6 +1612,52 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     const pathSegments = pathname.split('/').filter(Boolean);
     const rootFirstSeg = pathSegments[0]?.toLowerCase() || '';
     const isTenantDashboardSubpath = /^\/[^/]+\/(dashboard|inbox|chat)(\/|$)/.test(pathname);
+
+    // ── SHORT SHOP LINKS: boontrack.com/{slug} & boontrack.com/{slug}/p/{product} ──
+    // Invariants (CTO § 4 Short Shop Links):
+    // 1. Temporary redirect (307) during Preview validation to prevent irreversible browser caching.
+    // 2. Preserves full path (/p/...), valid query params, and separate referral/reseller cookies.
+    // 3. Confirm slug validity through authoritative resolveTenantStorefront.
+    // 4. Unknown/inactive tenants fail closed (404 rewrite).
+    if (
+      (hostClean === 'boontrack.com' || hostClean === 'www.boontrack.com') &&
+      rootFirstSeg &&
+      !rootNonStorefrontPrefixes.has(rootFirstSeg) &&
+      !rootFirstSeg.startsWith('@') &&
+      !isTenantDashboardSubpath
+    ) {
+      const resolution = await resolveTenantStorefront(rootFirstSeg);
+      if (resolution.isEligible && resolution.tenantId) {
+        const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+        const shopBase = isProd
+          ? 'https://shop.boontrack.com'
+          : `${req.nextUrl.protocol}//shop.${hostClean.replace(/^(www\.)?/, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+
+        const targetUrl = new URL(`${shopBase}${pathname}`);
+        req.nextUrl.searchParams.forEach((val, key) => {
+          targetUrl.searchParams.set(key, val);
+        });
+
+        const res = NextResponse.redirect(targetUrl, 307);
+        res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
+        if (platformRef) {
+          setReferralCookies(res, platformRef, hostClean);
+        }
+        if (resellerParam) {
+          setResellerCookie(res, resellerParam, hostClean);
+        }
+        return res;
+      } else {
+        const url = req.nextUrl.clone();
+        url.pathname = '/404-store-not-found';
+        const res = NextResponse.rewrite(url);
+        res.headers.set('Content-Security-Policy', STOREFRONT_CSP_HEADER);
+        return res;
+      }
+    }
+
+    const res = NextResponse.next();
+
     if (
       rootFirstSeg &&
       !rootNonStorefrontPrefixes.has(rootFirstSeg) &&
@@ -1749,8 +1900,24 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 }
 
 export async function middleware(req: NextRequest) {
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl?.host || '';
-  const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
+  const rawHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl?.host || '';
+  const rawHostClean = rawHost.split(',')[0].trim().toLowerCase().split(':')[0];
+
+  // In preview/dev/testing environments only: support simulated host for quality gate testing
+  const isPreviewOrDev =
+    rawHostClean.endsWith('.vercel.app') ||
+    rawHostClean === 'localhost' ||
+    rawHostClean.endsWith('.localhost') ||
+    process.env.NODE_ENV !== 'production';
+
+  const previewCandidate = isPreviewOrDev
+    ? (req.headers.get('x-boontrack-host') || req.headers.get('x-preview-host') || req.nextUrl.searchParams.get('__host') || '').trim().toLowerCase().split(':')[0]
+    : '';
+
+  const hostClean =
+    previewCandidate && isSystemOrBoonTrackHost(previewCandidate)
+      ? previewCandidate
+      : rawHostClean;
 
   const res = await handleRouting(req, hostClean);
 
