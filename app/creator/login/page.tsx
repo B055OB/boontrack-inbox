@@ -19,10 +19,26 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
+function getCreatorAdminRedirect(targetRedirectParam?: string | null): string {
+  const isDedicatedCreatorDomain = typeof window !== 'undefined' && window.location.hostname === 'creator.boontrack.com';
+  const defaultPath = isDedicatedCreatorDomain ? '/admin' : '/creator/admin';
+
+  if (!targetRedirectParam || !targetRedirectParam.startsWith('/')) {
+    return defaultPath;
+  }
+
+  if (!isDedicatedCreatorDomain && (targetRedirectParam === '/admin' || targetRedirectParam.startsWith('/admin/'))) {
+    const sub = targetRedirectParam === '/admin' ? '' : targetRedirectParam.replace(/^\/admin/, '');
+    return `/creator/admin${sub}`;
+  }
+
+  return targetRedirectParam;
+}
+
 function CreatorLoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirectTo') || '/admin';
+  const rawRedirectParam = searchParams.get('redirectTo');
 
   const [mode, setMode] = useState<'handle' | 'email'>('handle');
   const [handle, setHandle] = useState('');
@@ -76,7 +92,9 @@ function CreatorLoginFormContent() {
           document.cookie = `creator_session=${encodeURIComponent(resolvedHandle)}; path=/; max-age=2592000; SameSite=Lax`;
         }
 
-        const targetUrl = redirectTo.startsWith('/') ? redirectTo : '/admin';
+        const serverRedirect = data.data?.redirect;
+        const candidateRedirect = rawRedirectParam || serverRedirect;
+        const targetUrl = getCreatorAdminRedirect(candidateRedirect);
         setTimeout(() => {
           router.push(targetUrl);
           setTimeout(() => {
@@ -296,7 +314,7 @@ function CreatorLoginFormContent() {
           <div className="pt-4 border-t border-slate-100 flex flex-col items-center gap-2 text-xs text-slate-500 text-center">
             <p>
               Belum punya bio link kreator?{' '}
-              <Link href="/register" className="font-bold text-orange-600 hover:underline">
+              <Link href="/creator/register" className="font-bold text-orange-600 hover:underline">
                 Daftar Gratis
               </Link>
             </p>

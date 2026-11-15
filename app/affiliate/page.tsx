@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { BANK_OPTIONS } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
+import { isPreviewOrStagingDomain } from '@/lib/utils/storefrontUrl';
 import CommunityPoolManager from './components/CommunityPoolManager';
 
 export interface LeadItem {
@@ -888,6 +889,10 @@ function AffiliatePortalContent() {
   const generatedCustomUrl = useMemo(() => {
     if (!activeCode) return '';
 
+    const shopBase = typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname)
+      ? window.location.origin
+      : 'https://shop.boontrack.com';
+
     let baseUrl = '';
     if (isBuzzerUkm) {
       if (targetUrlType === 'register') {
@@ -901,13 +906,13 @@ function AffiliatePortalContent() {
       }
     } else {
       if (targetUrlType === 'register') {
-        baseUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(activeCode)}`;
+        baseUrl = `${shopBase}/register?ref=${encodeURIComponent(activeCode)}`;
       } else if (targetUrlType === 'storefront') {
-        baseUrl = `https://shop.boontrack.com/?ref=${encodeURIComponent(activeCode)}`;
+        baseUrl = `${shopBase}/?ref=${encodeURIComponent(activeCode)}`;
       } else if (targetUrlType === 'recruit') {
-        baseUrl = `https://shop.boontrack.com/affiliate/register?ref=${encodeURIComponent(activeCode)}`;
+        baseUrl = `${shopBase}/affiliate/register?ref=${encodeURIComponent(activeCode)}`;
       } else if (targetUrlType === 'custom') {
-        baseUrl = customTargetUrl.trim() || `https://shop.boontrack.com/register?ref=${encodeURIComponent(activeCode)}`;
+        baseUrl = customTargetUrl.trim() || `${shopBase}/register?ref=${encodeURIComponent(activeCode)}`;
       }
     }
 
@@ -935,13 +940,13 @@ function AffiliatePortalContent() {
     ? ''
     : isBuzzerUkm
       ? 'https://buzzerukm.boontrack.com/'
-      : `https://shop.boontrack.com/?ref=${activeCode}`;
+      : `${typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname) ? window.location.origin : 'https://shop.boontrack.com'}/?ref=${activeCode}`;
 
   const recruitReferralLink = !activeCode
     ? ''
     : isBuzzerUkm
       ? 'https://buzzerukm.boontrack.com/affiliate/register'
-      : `https://shop.boontrack.com/affiliate/register?ref=${activeCode}`;
+      : `${typeof window !== 'undefined' && isPreviewOrStagingDomain(window.location.hostname) ? window.location.origin : 'https://shop.boontrack.com'}/affiliate/register?ref=${activeCode}`;
 
   const copyToClipboard = (text: string, type: 'base' | 'customUtm' | 'recruit') => {
     if (!text) return;

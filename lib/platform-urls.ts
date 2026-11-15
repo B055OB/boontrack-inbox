@@ -12,10 +12,28 @@
  * - Invoice / Pay Publik: https://shop.boontrack.com/{slug}/pay/{token} atau /invoice/{order_id}
  */
 
+function isClientPreviewOrStaging(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.vercel.app') ||
+    host === 'staging.boontrack.com' ||
+    host.endsWith('.staging.boontrack.com') ||
+    host.startsWith('staging.')
+  );
+}
+
 /**
  * URL basis merchant dashboard (dashboard.boontrack.com).
+ * In Preview/Staging or local development, preserves active origin.
  */
 export function getDashboardBaseUrl(): string {
+  if (isClientPreviewOrStaging()) {
+    return window.location.origin;
+  }
   return (
     process.env.NEXT_PUBLIC_DASHBOARD_URL ||
     'https://dashboard.boontrack.com'
@@ -45,8 +63,12 @@ export function getMerchantLoginUrl(): string {
 
 /**
  * URL basis pembeli / storefront publik (shop.boontrack.com).
+ * In Preview/Staging or local development, preserves active origin.
  */
 export function getStorefrontBaseUrl(): string {
+  if (isClientPreviewOrStaging()) {
+    return window.location.origin;
+  }
   return (
     process.env.NEXT_PUBLIC_STOREFRONT_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||

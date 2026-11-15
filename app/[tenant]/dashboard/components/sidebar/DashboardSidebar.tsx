@@ -530,9 +530,7 @@ export default function DashboardSidebar({
             <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
               <p className="text-xs font-black text-slate-900 dark:text-white truncate">{nameToShow}</p>
               <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 truncate">
-                {effectiveCustomDomain
-                  ? effectiveCustomDomain.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
-                  : `shop.boontrack.com/${tenantSlug}`}
+                {storefrontUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}
               </p>
             </div>
 

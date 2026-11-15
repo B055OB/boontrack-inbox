@@ -4,18 +4,7 @@
 // Synchronized for multi-tenant architecture (100% dynamic, zero hardcode)
 
 import React from 'react';
-import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import {
-  Store,
-  ExternalLink,
-  Calendar,
-  Download,
-  ShoppingBag,
-  Menu,
-  X,
-  Sun,
-  Moon,
   MessageSquare,
   Radio,
   Brain,
@@ -27,12 +16,10 @@ import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTierAccess } from '@/lib/subscription-tiers';
-import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
-import DashboardSidebar from './components/sidebar/DashboardSidebar';
+import DashboardShell, { useLocalStorageValue } from '@/src/components/dashboard/DashboardShell';
 import LivePhonePreview from './components/preview/LivePhonePreview';
-import StorefrontThemeCard, { VisualThemeType } from './components/settings/StorefrontThemeCard';
-import CustomDomainCard from './components/settings/CustomDomainCard';
+import { VisualThemeType } from './components/settings/StorefrontThemeCard';
 import OrderNotificationBell from './components/navbar/OrderNotificationBell';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import TrialBanner from './components/navbar/TrialBanner';
@@ -43,7 +30,7 @@ import TeamChatTab from './components/tabs/TeamChatTab';
 import OverviewTab from './components/tabs/OverviewTab';
 import SettingsTab from './components/tabs/SettingsTab';
 import MicrositeTab from './components/tabs/MicrositeTab';
-import DashboardOverviewTab from './components/tabs/DashboardOverviewTab';
+import DashboardOverviewTab from '@/src/components/dashboard/DashboardOverviewTab';
 import WhatsAppTab from './components/tabs/WhatsAppTab';
 import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
@@ -339,43 +326,21 @@ export default function TenantDashboardPage() {
     };
   }, []);
 
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(false);
-  const storeHeaderName = storeDisplayName || displayName || tenantSlug;
-
   // Theme Toggle (Light & Dark Mode)
-  const [themeMode, setThemeMode] = React.useState<'light' | 'dark'>('light');
+  const [savedThemeRaw, setSavedThemeRaw] = useLocalStorageValue('boontrack_theme', 'light');
+  const themeMode: 'light' | 'dark' = savedThemeRaw === 'dark' ? 'dark' : 'light';
 
   React.useEffect(() => {
-    try {
-      const savedTheme = localStorage.getItem('boontrack_theme') as 'light' | 'dark' | null;
-      if (savedTheme === 'dark' || savedTheme === 'light') {
-        setThemeMode(savedTheme);
-        if (savedTheme === 'dark') {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      } else {
-        // Default to light mode
-        document.documentElement.classList.remove('dark');
-      }
-    } catch (_) {}
-  }, []);
+    if (themeMode === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [themeMode]);
 
   const toggleTheme = React.useCallback(() => {
-    setThemeMode((prev) => {
-      const nextTheme = prev === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem('boontrack_theme', nextTheme);
-      } catch (_) {}
-      if (nextTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      return nextTheme;
-    });
-  }, []);
+    setSavedThemeRaw(themeMode === 'dark' ? 'light' : 'dark');
+  }, [themeMode, setSavedThemeRaw]);
 
   const isPreviewEnabledTab =
     activeTab === 'microsite' ||
@@ -410,300 +375,85 @@ export default function TenantDashboardPage() {
   }
 
   return (
-    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container bg-background text-foreground ${
-      themeMode === 'dark'
-        ? 'selection:bg-blue-900/50 selection:text-blue-200'
-        : 'selection:bg-blue-100 selection:text-blue-900'
-    }`}>
-      {/* MOBILE SLIDE-OVER DRAWER / SHEET (< lg) */}
-      {isMobileDrawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setIsMobileDrawerOpen(false)}
-          />
-
-          {/* Drawer Sheet Container */}
-          <div className="fixed inset-y-0 left-0 w-[290px] sm:w-[320px] max-w-[85vw] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-2xl z-50 flex flex-col animate-in slide-in-from-left duration-250">
-            <div className="absolute top-3 right-3 z-50">
-              <button
-                type="button"
-                onClick={() => setIsMobileDrawerOpen(false)}
-                className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition cursor-pointer"
-                aria-label="Tutup Menu"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <DashboardSidebar
-              className="w-full h-full border-r-0 static"
-              tenant={tenant}
-              tenantSlug={tenantSlug}
-              customDomain={customDomain}
-              displayName={displayName}
-              storeDisplayName={storeDisplayName}
-              storeLogoUrl={storeLogoUrl}
-              storeCategory={storeCategory || businessType}
-              businessType={businessType || storeCategory}
-              capabilities={capabilities}
-              isCrmEnabled={isCrmEnabled}
-              isAiBotAllowed={isAiBotAllowed}
-              activeTab={activeTab}
-              setActiveTab={(tab) => {
-                setActiveTab(tab);
-                setIsMobileDrawerOpen(false);
-              }}
-              isTeamScale={isTeamScale}
-              isAdsPerformance={isAdsPerformance}
-              isAdsTrackingUnlocked={isAdsTrackingUnlocked}
-              isSoloOrTrial={isSoloOrTrial}
-              isCheckoutLite={isCheckoutLite}
-              isTrialActive={isTrialActive}
-              isGrant={isGrant}
-              grantDaysLeft={grantDaysLeft}
-              grantValidUntil={grantValidUntil}
-              tierLabel={tierLabel}
-              trialDaysLeft={trialDaysLeft}
-              productCount={products.length}
-              activeProductCount={activeProductsCount}
-              orderCount={transactions.length}
-              inboxCount={conversations.length}
-              onOpenStoreSettings={() => {
-                setNameError(null);
-                setIsStoreSettingsOpen(true);
-                setIsMobileDrawerOpen(false);
-              }}
-              onOpenUpgradeModal={() => {
-                openUpgradeModal('ads_performance');
-                setIsMobileDrawerOpen(false);
-              }}
-              onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* KOLOM 1: SIDEBAR KIRI STATIS DESKTOP (hidden lg:flex) */}
-      <DashboardSidebar
-        className="hidden lg:flex"
+    <>
+      <DashboardShell
         tenant={tenant}
         tenantSlug={tenantSlug}
-        customDomain={customDomain}
         displayName={displayName}
         storeDisplayName={storeDisplayName}
         storeLogoUrl={storeLogoUrl}
-        storeCategory={storeCategory || businessType}
-        businessType={businessType || storeCategory}
-        capabilities={capabilities}
-        isCrmEnabled={isCrmEnabled}
-        isAiBotAllowed={isAiBotAllowed}
+        customDomain={customDomain}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        onSelectTab={(tab) => setActiveTab(tab as any)}
+        themeMode={themeMode}
+        onToggleTheme={toggleTheme}
+        themeToggleClassName="bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none"
+        saveFeedback={saveFeedback}
         isTeamScale={isTeamScale}
         isAdsPerformance={isAdsPerformance}
         isAdsTrackingUnlocked={isAdsTrackingUnlocked}
         isSoloOrTrial={isSoloOrTrial}
         isCheckoutLite={isCheckoutLite}
-        isTrialActive={isTrialActive}
         isGrant={isGrant}
         grantDaysLeft={grantDaysLeft}
-        grantValidUntil={grantValidUntil}
         tierLabel={tierLabel}
-        trialDaysLeft={trialDaysLeft}
         productCount={products.length}
-        activeProductCount={activeProductsCount}
         orderCount={transactions.length}
         inboxCount={conversations.length}
+        storeCategory={storeCategory || businessType}
+        businessType={businessType || storeCategory}
+        capabilities={capabilities}
+        isCrmEnabled={isCrmEnabled}
+        isAiBotAllowed={Boolean(isAiBotAllowed)}
+        isResellerUnlocked={isResellerFeatureUnlocked}
         onOpenStoreSettings={() => {
           setNameError(null);
           setIsStoreSettingsOpen(true);
         }}
         onOpenUpgradeModal={() => openUpgradeModal('ads_performance')}
-      />
-
-      {/* KOLOM 2 & 3 WRAPPER */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen w-full">
-        {/* TOP MOBILE NAVBAR (< lg) */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between shadow-2xs">
-          {/* Sisi Kiri: Tombol Hamburger Menu */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsMobileDrawerOpen(true)}
-              className="p-2 -ml-1.5 rounded-xl text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition cursor-pointer"
-              aria-label="Buka Menu Navigasi"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <OrderNotificationBell tenantSlug={tenantSlug} />
-          </div>
-
-          {/* Sisi Tengah: Nama & Logo Toko Ringkas */}
-          <div className="flex items-center gap-2 min-w-0 max-w-[50%]">
-            {storeLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={storeLogoUrl}
-                alt={storeHeaderName}
-                className="w-6 h-6 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 uppercase">
-                {storeHeaderName.charAt(0)}
+        onOpenNewProduct={openNewProductModal}
+        notificationSlot={<OrderNotificationBell tenantSlug={tenantSlug} />}
+        topBanners={
+          <>
+            <PwaInstallPrompt tenantSlug={tenantSlug} variant="banner" />
+            <TrialBanner
+              daysLeft={trialDaysLeft}
+              trialEndsAt={trialEndsAt}
+              isGrant={isGrant}
+              isExpired={isSubscriptionExpired}
+              tier={tenantFeatureFlags?.tier}
+              onUpgrade={handleUpgradeTier}
+            />
+            {isTrialActive && !isGrant && (
+              <div className="w-full max-w-[1400px] mx-auto px-6 pt-4 pb-0">
+                <TrialQuotaProgressBar
+                  tenantSlug={tenantSlug}
+                  onUpgradeClick={() => handleUpgradeTier('ads_performance')}
+                />
               </div>
             )}
-            <span className="text-xs font-black text-slate-900 dark:text-white truncate">
-              {storeHeaderName}
-            </span>
-          </div>
-
-          {/* Sisi Kanan: Theme Toggle & Status Aktif */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Theme Switcher Mobile */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition active:scale-95 cursor-pointer theme-toggle-btn shadow-xs"
-              title={themeMode === 'dark' ? 'Ganti ke Mode Terang (Light Mode)' : 'Ganti ke Mode Gelap (Dark Mode)'}
-              aria-label="Toggle Theme"
-            >
-              {themeMode === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-500 animate-spin-slow" />
-              ) : (
-                <Moon className="w-4 h-4 text-white" />
-              )}
-            </button>
-
-            {/* Install App Button Mobile Header */}
-            <PwaInstallPrompt tenantSlug={tenantSlug} variant="button" showNotificationButton={false} />
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('orders')}
-              className={`h-9 w-9 inline-flex items-center justify-center rounded-lg border transition cursor-pointer ${
-                activeTab === 'orders'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
-              }`}
-              title="Daftar Pesanan Toko"
-            >
-              <ShoppingBag className="w-4 h-4" />
-            </button>
-            <Link
-              href={getStorefrontUrl(tenantSlug, customDomain)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-9 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-semibold transition-colors border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-              title="Buka Storefront Toko"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span className="hidden sm:inline">Store Online</span>
-              <span className="sm:hidden">Live</span>
-            </Link>
-          </div>
-        </header>
-
-        {/* SLIM MOBILE PWA INSTALL BANNER */}
-        <PwaInstallPrompt tenantSlug={tenantSlug} variant="banner" />
-
-        {/* TOP BAR RINGKAS DESKTOP (Header Canvas - hidden on mobile, flex on desktop) */}
-        <header className="hidden lg:flex sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* Shortcut Pesanan */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('orders')}
-              className={`h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border cursor-pointer active:scale-95 ${
-                activeTab === 'orders'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
-              }`}
-              title="Daftar Pesanan Toko"
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Daftar Pesanan Toko</span>
-              {transactions?.length > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'orders' ? 'bg-white text-emerald-800' : 'bg-emerald-600 text-white'
-                  }`}
-                >
-                  {transactions.length}
-                </span>
-              )}
-            </button>
-
-            <OrderNotificationBell tenantSlug={tenantSlug} />
-            <PwaInstallPrompt tenantSlug={tenantSlug} variant="button" />
-
-            {saveFeedback && (
-              <span className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 animate-fadeIn truncate">
-                {saveFeedback}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Theme Toggle Desktop (Matahari / Bulan) */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-900 border-none transition-colors active:scale-95 cursor-pointer shadow-xs theme-toggle-btn"
-              title={themeMode === 'dark' ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
-            >
-              {themeMode === 'dark' ? (
-                <>
-                  <Sun className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs font-semibold">Light Mode</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-4 h-4 text-white" />
-                  <span className="text-xs font-semibold">Dark Mode</span>
-                </>
-              )}
-            </button>
-
-            <Link
-              href={getStorefrontUrl(tenantSlug, customDomain)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-9 px-3.5 inline-flex items-center gap-2 rounded-lg text-xs font-semibold transition-colors border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
-              title="Buka Halaman Storefront Toko"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span>Storefront Online</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-            </Link>
-          </div>
-        </header>
-
-        {/* TRIAL BANNER IF ACTIVE */}
-        <TrialBanner
-          daysLeft={trialDaysLeft}
-          trialEndsAt={trialEndsAt}
-          isGrant={isGrant}
-          isExpired={isSubscriptionExpired}
-          tier={tenantFeatureFlags?.tier}
-          onUpgrade={handleUpgradeTier}
-        />
-
-        {/* TRIAL QUOTA PROGRESS BAR (30 Order, 50 Interaksi AI, 15 Notifikasi WA) */}
-        {isTrialActive && !isGrant && (
-          <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 pb-0 max-w-7xl mx-auto">
-            <TrialQuotaProgressBar
-              tenantSlug={tenantSlug}
-              onUpgradeClick={() => handleUpgradeTier('ads_performance')}
-            />
-          </div>
-        )}
-
-        {/* CONTENT CANVAS AREA (KOLOM 2 & KOLOM 3) */}
-        <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0 w-full">
-          {/* KOLOM 2: CANVAS FORM MODUL AKTIF (Full Width on Mobile) */}
-          <div className="flex-1 min-w-0 w-full">
-            <ErrorBoundary key={activeTab} name={`DashboardTab:${activeTab}`}>
+          </>
+        }
+        asideSlot={
+          isPreviewEnabledTab ? (
+            <div className="hidden lg:block w-[360px] xl:w-[380px] sticky top-20 shrink-0 self-start">
+              <LivePhonePreview
+                tenantSlug={tenantSlug}
+                displayName={storeDisplayName || displayName}
+                storeBio={storeBio}
+                storeLogoUrl={storeLogoUrl}
+                storeWhatsapp={storeWhatsapp}
+                visualTheme={activeVisualTheme}
+                buttons={livePreviewButtons}
+                showProducts={livePreviewShowProducts}
+                products={products}
+                featuredProductIds={livePreviewFeaturedProductIds}
+              />
+            </div>
+          ) : null
+        }
+      >
+        <ErrorBoundary key={activeTab} name={`DashboardTab:${activeTab}`}>
           {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
       {(activeTab === 'dashboard' || activeTab === 'overview') && (
         <DashboardOverviewTab
@@ -717,7 +467,7 @@ export default function TenantDashboardPage() {
           waStatus={waStatus}
           connectedPhone={connectedPhone}
           products={products}
-          transactions={transactions}
+          transactions={Array.isArray(orders) && orders.length > 0 ? orders : transactions}
           totalOmzet={totalOmzet}
           isTeamScale={isTeamScale}
           isAdsPerformance={isAdsPerformance}
@@ -1390,45 +1140,27 @@ export default function TenantDashboardPage() {
               </div>
             )}
             </ErrorBoundary>
-          </div>
+      </DashboardShell>
 
-          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (SPLIT-SCREEN DUA KOLOM, >= lg) */}
-          {isPreviewEnabledTab && (
-            <div className="hidden lg:block w-[360px] xl:w-[380px] sticky top-20 shrink-0 self-start">
-              <LivePhonePreview
-                tenantSlug={tenantSlug}
-                displayName={storeDisplayName || displayName}
-                storeBio={storeBio}
-                storeLogoUrl={storeLogoUrl}
-                storeWhatsapp={storeWhatsapp}
-                visualTheme={activeVisualTheme}
-                buttons={livePreviewButtons}
-                showProducts={livePreviewShowProducts}
-                products={products}
-                featuredProductIds={livePreviewFeaturedProductIds}
-              />
-            </div>
-          )}
-        </div>
+      {/* BOONPILOT AI COPILOT DRAWER (FAB disembunyikan — dipicu via Topbar event 'open-boonpilot') */}
+      <div className="[&>div>button]:hidden!">
+        <BoonPilotWidget
+          tenantSlug={tenantSlug}
+          storeCategory={storeCategory}
+          businessType={businessType || storeCategory}
+          storeName={displayName}
+          isProductsEmpty={products.length === 0}
+          onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
+          onOpenNewProduct={openNewProductModal}
+          productsCount={products.length}
+          botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
+          isQrisUploaded={!!storeQrisUrl}
+          subscriptionPlan={tenant.tier}
+          isAiBotAllowed={Boolean(isAiBotAllowed)}
+          isCheckoutLite={Boolean(isCheckoutLite)}
+          onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'ads_performance')}
+        />
       </div>
-
-      {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
-      <BoonPilotWidget
-        tenantSlug={tenantSlug}
-        storeCategory={storeCategory}
-        businessType={businessType || storeCategory}
-        storeName={displayName}
-        isProductsEmpty={products.length === 0}
-        onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
-        onOpenNewProduct={openNewProductModal}
-        productsCount={products.length}
-        botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
-        isQrisUploaded={!!storeQrisUrl}
-        subscriptionPlan={tenant.tier}
-        isAiBotAllowed={Boolean(isAiBotAllowed)}
-        isCheckoutLite={Boolean(isCheckoutLite)}
-        onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'ads_performance')}
-      />
 
       {/* MODAL BULK IMPORT */}
       <BulkImportModal
@@ -1524,6 +1256,6 @@ export default function TenantDashboardPage() {
         isTrial={isTrialActive}
         subscriptionStatus={subscriptionStatus || (isTrialActive ? 'trial' : 'active')}
       />
-    </main>
+    </>
   );
 }

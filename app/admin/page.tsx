@@ -309,10 +309,10 @@ export default function SuperAdminExecutiveCenter() {
             badgeColor: isOffline
               ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
               : isFounder
-              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-              : isReserve
-              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-              : 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                : isReserve
+                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                  : 'bg-purple-500/15 text-purple-300 border-purple-500/30',
           });
         });
       }
@@ -431,7 +431,7 @@ export default function SuperAdminExecutiveCenter() {
             notes: grantNotes,
           }),
         });
-      } catch {}
+      } catch { }
 
       if (!resEntitlement.ok) {
         const jsonErr = await resEntitlement.json();
@@ -457,12 +457,12 @@ export default function SuperAdminExecutiveCenter() {
   // Filtered tenants for search autocomplete
   const searchedTenants = grantSearchQuery.trim()
     ? allTenantsList
-        .filter(
-          (t) =>
-            t.name.toLowerCase().includes(grantSearchQuery.toLowerCase()) ||
-            t.slug.toLowerCase().includes(grantSearchQuery.toLowerCase())
-        )
-        .slice(0, 5)
+      .filter(
+        (t) =>
+          t.name.toLowerCase().includes(grantSearchQuery.toLowerCase()) ||
+          t.slug.toLowerCase().includes(grantSearchQuery.toLowerCase())
+      )
+      .slice(0, 5)
     : [];
 
 
@@ -490,7 +490,7 @@ export default function SuperAdminExecutiveCenter() {
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <input
               type="password"
-              placeholder="PIN Super Admin (default: 998877)"
+              placeholder="Masukkan PIN Super Admin"
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value)}
               className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
@@ -543,11 +543,10 @@ export default function SuperAdminExecutiveCenter() {
                 onClick={() =>
                   setActiveDropdown(activeDropdown === 'directories' ? null : 'directories')
                 }
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                  activeDropdown === 'directories'
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${activeDropdown === 'directories'
                     ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20'
                     : 'bg-slate-900 text-slate-300 hover:text-white border-slate-800 hover:bg-slate-850'
-                }`}
+                  }`}
               >
                 <Store className="w-3.5 h-3.5 text-blue-400" />
                 <span>Directories</span>
@@ -638,11 +637,10 @@ export default function SuperAdminExecutiveCenter() {
                 onClick={() =>
                   setActiveDropdown(activeDropdown === 'operations' ? null : 'operations')
                 }
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                  activeDropdown === 'operations'
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${activeDropdown === 'operations'
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
                     : 'bg-slate-900 text-slate-300 hover:text-white border-slate-800 hover:bg-slate-850'
-                }`}
+                  }`}
               >
                 <Activity className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Operations</span>
@@ -948,33 +946,29 @@ export default function SuperAdminExecutiveCenter() {
                 <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
                   <button
                     onClick={() => setFeedFilter('ALL')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                      feedFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${feedFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
                   >
                     Semua ({liveFeed.length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('PAYMENT')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                      feedFilter === 'PAYMENT' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${feedFilter === 'PAYMENT' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
                   >
                     Settlement ({liveFeed.filter((f) => f.type === 'PAYMENT_SETTLED').length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('LEDGER')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                      feedFilter === 'LEDGER' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${feedFilter === 'LEDGER' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
                   >
                     Audit Ledger ({liveFeed.filter((f) => f.type === 'LEDGER_AUDIT').length})
                   </button>
                   <button
                     onClick={() => setFeedFilter('MERCHANT')}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                      feedFilter === 'MERCHANT' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${feedFilter === 'MERCHANT' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
                   >
                     Tenant ({liveFeed.filter((f) => f.type === 'MERCHANT_REGISTER').length})
                   </button>
@@ -1070,11 +1064,10 @@ export default function SuperAdminExecutiveCenter() {
 
               {grantFeedback && (
                 <div
-                  className={`p-3 rounded-2xl border text-xs font-medium flex items-center gap-2 ${
-                    grantFeedback.type === 'success'
+                  className={`p-3 rounded-2xl border text-xs font-medium flex items-center gap-2 ${grantFeedback.type === 'success'
                       ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                       : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
-                  }`}
+                    }`}
                 >
                   {grantFeedback.type === 'success' ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1138,9 +1131,8 @@ export default function SuperAdminExecutiveCenter() {
                     2. Pilihan Skema Akses Khusus
                   </label>
                   <div className="space-y-2">
-                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                      grantScheme === 'FOUNDER' ? 'bg-amber-500/10 border-amber-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
-                    }`}>
+                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${grantScheme === 'FOUNDER' ? 'bg-amber-500/10 border-amber-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                      }`}>
                       <div className="flex items-center gap-2.5">
                         <input
                           type="radio"
@@ -1160,9 +1152,8 @@ export default function SuperAdminExecutiveCenter() {
                       </span>
                     </label>
 
-                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                      grantScheme === 'PRO' ? 'bg-indigo-500/10 border-indigo-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
-                    }`}>
+                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${grantScheme === 'PRO' ? 'bg-indigo-500/10 border-indigo-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                      }`}>
                       <div className="flex items-center gap-2.5">
                         <input
                           type="radio"
@@ -1182,9 +1173,8 @@ export default function SuperAdminExecutiveCenter() {
                       </span>
                     </label>
 
-                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                      grantScheme === 'SPECIAL_GRANT' ? 'bg-emerald-500/10 border-emerald-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
-                    }`}>
+                    <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${grantScheme === 'SPECIAL_GRANT' ? 'bg-emerald-500/10 border-emerald-500/40 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                      }`}>
                       <div className="flex items-center gap-2.5">
                         <input
                           type="radio"

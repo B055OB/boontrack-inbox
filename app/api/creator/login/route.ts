@@ -16,6 +16,11 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { identifier, pin, password, email } = body;
 
+    const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+    const hostClean = host.split(':')[0].toLowerCase().trim();
+    const isDedicatedCreatorDomain = hostClean === 'creator.boontrack.com';
+    const baseRedirect = isDedicatedCreatorDomain ? '/admin' : '/creator/admin';
+
     const rawId = (identifier || email || '').toString().trim();
     const rawSecret = (pin || password || '').toString().trim();
 
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
                 handle: tenantByEmail.slug,
                 name: tenantByEmail.name,
                 role: 'CREATOR_OWNER',
-                redirect: `/admin?handle=${encodeURIComponent(tenantByEmail.slug)}`,
+                redirect: `${baseRedirect}?handle=${encodeURIComponent(tenantByEmail.slug)}`,
               },
             });
 
@@ -117,7 +122,7 @@ export async function POST(req: Request) {
           email: user.email,
           role: isAdmin ? 'ADMIN' : 'CREATOR_OWNER',
           handle: resolvedHandle,
-          redirect: `/admin?handle=${encodeURIComponent(resolvedHandle)}`,
+          redirect: `${baseRedirect}?handle=${encodeURIComponent(resolvedHandle)}`,
         },
       });
 
@@ -177,7 +182,7 @@ export async function POST(req: Request) {
           handle: profile.handle,
           display_name: profile.display_name,
           role: 'CREATOR_OWNER',
-          redirect: `/admin?handle=${encodeURIComponent(profile.handle)}`,
+          redirect: `${baseRedirect}?handle=${encodeURIComponent(profile.handle)}`,
         },
       });
 
@@ -225,7 +230,7 @@ export async function POST(req: Request) {
           handle: tenant.slug,
           name: tenant.name,
           role: 'CREATOR_OWNER',
-          redirect: `/admin?handle=${encodeURIComponent(tenant.slug)}`,
+          redirect: `${baseRedirect}?handle=${encodeURIComponent(tenant.slug)}`,
         },
       });
 

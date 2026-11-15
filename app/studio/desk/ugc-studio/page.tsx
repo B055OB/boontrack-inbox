@@ -488,7 +488,7 @@ export default function UGCStudioPage() {
               <span>Anda berada dalam mode pratinjau publik. Untuk merender video dan menyimpan draf naskah permanen, aktifkan akun Studio Anda.</span>
             </div>
             <Link
-              href="/register"
+              href="/studio/register"
               className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs whitespace-nowrap transition"
             >
               Daftar Gratis

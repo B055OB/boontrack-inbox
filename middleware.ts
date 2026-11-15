@@ -429,6 +429,21 @@ async function resolveAffiliateCode(subdomain: string): Promise<string | null> {
 }
 
 /**
+ * Helper to determine if a host belongs to Vercel Preview or Staging environments.
+ * Prevents origin-leakage to Production domains (*.boontrack.com).
+ */
+export function isPreviewOrStagingHost(hostClean: string): boolean {
+  if (!hostClean) return false;
+  const clean = hostClean.split(':')[0].toLowerCase().trim();
+  return (
+    clean.endsWith('.vercel.app') ||
+    clean === 'staging.boontrack.com' ||
+    clean.endsWith('.staging.boontrack.com') ||
+    clean.startsWith('staging.')
+  );
+}
+
+/**
  * Pasang cookie referral 30 hari pada response NextResponse
  */
 function setReferralCookies(res: NextResponse, refCode: string, hostClean?: string) {
@@ -439,7 +454,11 @@ function setReferralCookies(res: NextResponse, refCode: string, hostClean?: stri
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   };
-  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))) {
+  if (
+    hostClean &&
+    !isPreviewOrStagingHost(hostClean) &&
+    (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))
+  ) {
     cookieOptions.domain = '.boontrack.com';
   }
   res.cookies.set('ref', refCode, cookieOptions);
@@ -460,7 +479,11 @@ function setResellerCookie(res: NextResponse, resellerCode: string, hostClean?: 
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   };
-  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))) {
+  if (
+    hostClean &&
+    !isPreviewOrStagingHost(hostClean) &&
+    (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))
+  ) {
     cookieOptions.domain = '.boontrack.com';
   }
   res.cookies.set('bt_reseller_code', resellerCode, cookieOptions);
@@ -475,7 +498,8 @@ function extractSubdomain(hostWithPort: string): string | null {
   if (
     hostClean === 'localhost' ||
     hostClean === '127.0.0.1' ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostClean)
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostClean) ||
+    isPreviewOrStagingHost(hostClean)
   ) {
     return null;
   }
@@ -672,10 +696,32 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     hostClean.startsWith('studio.') ||
     subdomain === 'studio';
 
+  const isCreatorHost =
+    hostClean === 'creator.boontrack.com' ||
+    hostClean.startsWith('creator.') ||
+    subdomain === 'creator';
+
+  const isShopHost =
+    hostClean === 'shop.boontrack.com' ||
+    hostClean.startsWith('shop.') ||
+    subdomain === 'shop';
+
   // ── CANONICAL LOGIN ORIGIN ENFORCEMENT (P0 SECURITY MANDATE) ──
   // Merchant / CS login must be performed at the canonical dashboard origin (dashboard.boontrack.com).
   // Non-dashboard hosts (such as boontrack.com/login, shop.boontrack.com/login) redirect 302 to canonical dashboard.
   if (pathname === '/login' || pathname.startsWith('/login/')) {
+    if (isCreatorHost) {
+      const url = req.nextUrl.clone();
+      const loginSubpath = pathname === '/login' ? '' : pathname.replace(/^\/login/, '');
+      url.pathname = `/creator/login${loginSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    if (isPreviewOrStagingHost(hostClean)) {
+      // In Preview / Staging environments, preserve active origin and render /login directly
+      return NextResponse.next();
+    }
+
     if (!isDashboardDomain && !isStudioHost) {
       const isLocal = hostClean === 'localhost' || hostClean === '127.0.0.1' || hostClean.endsWith('.localhost');
       const targetBase = isLocal
@@ -768,11 +814,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.next();
   }
 
-  const isCreatorHost =
-    hostClean === 'creator.boontrack.com' ||
-    hostClean.startsWith('creator.') ||
-    subdomain === 'creator';
-
   // ===========================================================================
   // 1. CANONICAL ENFORCEMENT: SEMUA ROUTE /@handle WAJIB KE creator.boontrack.com
   // ===========================================================================
@@ -781,12 +822,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     if (handle) {
       const platformRef = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || handle;
       const resellerCode = req.nextUrl.searchParams.get('r');
-      // Jika hostname BUKAN creator.boontrack.com (misal shop.boontrack.com atau boontrack.com)
-      // -> Lakukan 301 Canonical Redirect ke https://creator.boontrack.com/@${handle}
-      if (!isCreatorHost) {
-        const targetUrl = new URL(`https://creator.boontrack.com/@${handle}`, req.url);
-        targetUrl.search = req.nextUrl.search;
-        const res = NextResponse.redirect(targetUrl, 301);
+
+      // Pada Preview, Staging, Localhost, atau Creator Host -> rewrite ke /creator/${handle} pada origin aktif
+      if (isCreatorHost || isPreviewOrStagingHost(hostClean) || hostClean === 'localhost' || hostClean.endsWith('.localhost')) {
+        const url = req.nextUrl.clone();
+        url.pathname = `/creator/${handle}`;
+        const res = NextResponse.rewrite(url);
         if (platformRef) {
           setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
         }
@@ -796,10 +837,11 @@ async function handleRouting(req: NextRequest, hostClean: string) {
         return res;
       }
 
-      // Jika hostname SUDAH creator.boontrack.com -> rewrite ke /creator/${handle}
-      const url = req.nextUrl.clone();
-      url.pathname = `/creator/${handle}`;
-      const res = NextResponse.rewrite(url);
+      // Jika hostname Production non-creator (misal shop.boontrack.com atau boontrack.com)
+      // -> Lakukan 301 Canonical Redirect ke https://creator.boontrack.com/@${handle}
+      const targetUrl = new URL(`https://creator.boontrack.com/@${handle}`, req.url);
+      targetUrl.search = req.nextUrl.search;
+      const res = NextResponse.redirect(targetUrl, 301);
       if (platformRef) {
         setReferralCookies(res, platformRef.trim().toLowerCase(), hostClean);
       }
@@ -814,13 +856,18 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // SUBDOMAIN CREATOR (creator.boontrack.com) - ARSITEKTUR TERISOLASI
   // ===========================================================================
   if (isCreatorHost) {
-    // 1. Host-Aware 301 Legacy Redirect: /ugc-studio dialihkan ke studio.boontrack.com
+    // 1. Host-Aware 301 Legacy Redirect: /ugc-studio dialihkan ke studio
     if (
       pathname === '/ugc-studio' ||
       pathname.startsWith('/ugc-studio/') ||
       pathname === '/creator/ugc-studio' ||
       pathname.startsWith('/creator/ugc-studio/')
     ) {
+      if (isPreviewOrStagingHost(hostClean) || hostClean === 'localhost' || hostClean.endsWith('.localhost')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/studio/desk/ugc-studio';
+        return NextResponse.rewrite(url);
+      }
       const redirectPath = pathname.startsWith('/creator/ugc-studio')
         ? pathname.replace(/^\/creator/, '')
         : pathname;
@@ -913,6 +960,13 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (isStudioHost) {
     const url = req.nextUrl.clone();
 
+    // 0. Block direct /admin & /admin/* access on Studio host (Executive plane isolation)
+    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      const notFoundUrl = req.nextUrl.clone();
+      notFoundUrl.pathname = '/404-store-not-found';
+      return NextResponse.rewrite(notFoundUrl, { status: 404 });
+    }
+
     // Deteksi sesi login aktif Studio / Merchant (Host-only Studio session or signed merchant token)
     const hasStudioAuth = Boolean(
       req.cookies.get('__Host-bt_studio_session')?.value ||
@@ -989,8 +1043,32 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return NextResponse.rewrite(url);
   }
 
-  // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
-  if (pathname.startsWith('/admin')) {
+  // ── 2. EXECUTIVE CONTROL PLANE (/admin) HOST-BASED LOCKDOWN (P0 SECURITY MANDATE) ──
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    // A. Creator Host: cleanly rewrites to /creator/admin (never reaches root /admin)
+    if (isCreatorHost) {
+      const adminSubpath = pathname === '/admin' ? '' : pathname.replace(/^\/admin/, '');
+      const url = req.nextUrl.clone();
+      url.pathname = `/creator/admin${adminSubpath}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // B. Public storefront, Studio, Custom Domain, or Storefront Subdomain:
+    // Block direct /admin access completely (Fail-closed 404 rewrite to /404-store-not-found)
+    const isCustomDomain = !isSystemOrBoonTrackHost(hostClean) && hostClean.length > 0;
+    const isPublicStorefrontSubdomain =
+      Boolean(subdomain) &&
+      !['admin', 'dashboard', 'preview', 'affiliate', 'api'].includes(subdomain!) &&
+      hostClean.endsWith('.boontrack.com') &&
+      !isPreviewOrStagingHost(hostClean);
+
+    if (isShopHost || isStudioHost || isCustomDomain || isPublicStorefrontSubdomain) {
+      const notFoundUrl = req.nextUrl.clone();
+      notFoundUrl.pathname = '/404-store-not-found';
+      return NextResponse.rewrite(notFoundUrl, { status: 404 });
+    }
+
+    // C. Authorized Administrative Hosts (admin.boontrack.com, preview/staging, localhost):
     const res = NextResponse.next();
     applySensitiveCacheHeaders(res);
     return res;
@@ -1109,11 +1187,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   // ARCHITECTURE.md § 63: shop.boontrack.com adalah rumah kanonikal storefront pembeli.
   // Terisolasi penuh: JANGAN PERNAH dialihkan ke root boontrack.com atau custom domain lookup.
   // ===========================================================================
-  const isShopHost =
-    hostClean === 'shop.boontrack.com' ||
-    hostClean.startsWith('shop.') ||
-    subdomain === 'shop';
-
   if (isShopHost) {
     const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
     const shopDeskMatch = pathname.match(/^\/([^/]+)\/desk(?:\/(.*))?$/);
@@ -1306,6 +1379,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
   if (
     pathname === '/app' ||
     pathname.startsWith('/app/') ||
+    pathname === '/studio' ||
+    pathname.startsWith('/studio/') ||
+    pathname === '/desk' ||
+    pathname.startsWith('/desk/') ||
+    pathname === '/ugc-studio' ||
+    pathname.startsWith('/ugc-studio/') ||
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
     pathname === '/affiliate' ||
@@ -1363,6 +1442,8 @@ async function handleRouting(req: NextRequest, hostClean: string) {
       pathname.startsWith('/checkout') ||
       pathname.startsWith('/admin') ||
       pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/desk') ||
+      pathname.startsWith('/studio') ||
       pathname.startsWith('/manager') ||
       pathname.startsWith('/login') ||
       pathname.startsWith('/auth') ||
@@ -1374,12 +1455,6 @@ async function handleRouting(req: NextRequest, hostClean: string) {
     return res;
   }
 
-  // ── 2b. /admin always resolves to Super Admin Panel ──
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    const res = NextResponse.next();
-    applySensitiveCacheHeaders(res);
-    return res;
-  }
 
   // ── 3. KHUSUS APP.BOONTRACK.COM (Retired Legacy Hub -> Method-Aware Gateway) ──
   if (hostClean === 'app.boontrack.com' || hostClean === 'app.localhost') {
@@ -1484,11 +1559,12 @@ async function handleRouting(req: NextRequest, hostClean: string) {
 
 
 
-  // ── 6. Root domain boontrack.com & www.boontrack.com pass-through ──
+  // ── 6. Root domain boontrack.com, preview & staging pass-through ──
   if (
     hostClean === 'localhost' ||
     hostClean === 'boontrack.com' ||
-    hostClean === 'www.boontrack.com'
+    hostClean === 'www.boontrack.com' ||
+    isPreviewOrStagingHost(hostClean)
   ) {
     const platformRef = (req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('aff') || '').trim().toLowerCase();
     const resellerParam = (req.nextUrl.searchParams.get('r') || '').trim().toLowerCase();

@@ -248,7 +248,7 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
           Tautan <strong className="text-slate-900 font-mono">boontrack.com/@{resolvedSlug}</strong> masih tersedia untuk didaftarkan. Klaim halaman bio resmi Anda sekarang dalam 30 detik!
         </p>
         <Link
-          href={`/register?handle=${encodeURIComponent(resolvedSlug)}`}
+          href={`/creator/register?handle=${encodeURIComponent(resolvedSlug)}`}
           className="px-8 py-3.5 rounded-full bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500 hover:from-orange-600 hover:via-rose-600 hover:to-pink-600 text-white font-extrabold text-sm tracking-wide shadow-xl shadow-orange-500/25 active:scale-95 transition-all flex items-center gap-2"
         >
           <span>Klaim @{resolvedSlug} Sekarang</span>
@@ -602,7 +602,7 @@ export default function CreatorPublicProfilePage({ params }: { params: Promise<{
       {/* ── FOOTER BRANDING ───────────────────────────────────── */}
       <footer className="py-6 text-center text-xs text-slate-400">
         <Link
-          href="/register"
+          href="/creator/register"
           className="inline-flex items-center gap-1.5 hover:text-slate-700 font-medium transition"
         >
           <span>Dibuat dengan</span>
